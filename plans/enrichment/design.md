@@ -50,6 +50,11 @@ Failure handling, fail-fast without losing the batch: every succeeded item is up
 
 `ANTHROPIC_API_KEY` is loaded from `.env`/environment, validated non-empty at command start, never printed.
 
+*As built (slice 3):* **`parent_agent_id` alone does not order the forest.** 112 of 2,459 recorded runs carry no `parent_agent_id` yet their spawning tool call sits inside another run's transcript, so that rule alone calls them roots and sends them before their parents. `EnrichmentStore.item_parents()` takes the union: `parent_agent_id` where the records name one, otherwise the transcript holding the spawning call — another run, or a main turn. Verified on `data/traces.duckdb`: 426 run-under-run edges, max depth 4 (five rounds), 55 roots, no cycles, and no run naming a parent the store lacks. Two consequences:
+
+- A fork's own transcript replays the call that spawned it (43 cases), so the call lookup excludes `c.source = r.id` — otherwise a run is its own parent
+- 46 of the 55 roots have no spawning call at all (the design's rootless runs); the other 9 were spawned by a main-transcript call that belongs to no turn. Slice 4's session-children rule (`tool_use_id IS NULL`) does not reach those 9, and nothing else embeds them — decide there whether they are session children too
+
 ## Cost
 
 Truncation-aware render sizes, from the store (queries in `enrich/prompts.py` mirror these; per tool call the line costs `30 + least(len(input),120) + 300×is_error` chars):
