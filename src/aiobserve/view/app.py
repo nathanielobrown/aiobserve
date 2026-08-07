@@ -73,14 +73,16 @@ STATIC = _PACKAGE / "static"
 # the second.
 CSP = "default-src 'self'"
 
-# The most a fragment will page at once, whatever a URL asks for. The payload bound the design
-# states is arithmetic over the *manifest defaults*; these ceilings are the coarser guard that
-# keeps a hand-typed `?calls=100000` from trying to render a whole session in one response.
-MAX_PAGE_CALLS = 100
-MAX_PAGE_TOOLS = 200
-MAX_PAGE_RECORDS = 300
-# The offload ceiling is the one set by escaping rather than by row count: the content is a
-# file some tool wrote, and a chunk of nothing but `&` weighs five bytes a character.
+# The most a page or a fragment will serve at once, whatever a URL asks for — so these, not
+# the manifest defaults, are the numbers the payload bound is arithmetic over. A size is
+# something a reader types. The turn fragment's two sizes multiply, and 12 KB a call row
+# spends the ceiling at the defaults themselves, so `?calls=` and `?tools=` only go down.
+MAX_PAGE_CALLS = queries.PAGE_CALLS
+MAX_PAGE_TOOLS = queries.PAGE_TOOLS
+MAX_PAGE_RECORDS = 200
+# The offload ceiling is the one set by escaping alone rather than by a row's markup: the
+# content is a file some tool wrote, and a chunk of nothing but `&` weighs five bytes a
+# character.
 MAX_CHUNK_CHARS = 60_000
 
 

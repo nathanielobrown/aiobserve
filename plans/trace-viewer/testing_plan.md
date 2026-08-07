@@ -161,6 +161,15 @@ The amendment resolved all five findings this plan opened against the previous d
 - **A NULL uuid turned one leaf into two arms.** The corpus holds a record with no uuid, and the first version of the record fragment printed the literal string `None` for it. The leaf now asserts both arms — a record with a uuid shows it, one without shows nothing — and that `"None"` appears in no field
 - **The turn-to-line link needed an attribute of its own.** Asserting on the turn row's `href` also captures its run chips' hrefs, so the link carries `data-record-link="{line_no}"` and the leaf reads that
 
+## As built: the payload audit
+
+Four leaves added after an audit of the shipped viewer, three of them planted because the corpus holds no instance of the shape.
+
+- **The escaping factor became arithmetic, and the arithmetic got an instrument.** The turn fragment's and records browser's ceilings now project at the worst character the way the offload page's already did, over row costs measured against `data/traces.duckdb`. A frozen measurement is a claim that rots as the templates change, so a planted all-`&` fragment measures the marginal cost of one call row and one tool row and asserts each fits its budget — 12,364 B against 13,700 and 1,546 B against 1,700 when it landed
+- **The per-value exemption needed a rendering leaf, not just a query one.** "One value to a request" bounds what the store hands the template, not what the template hands the browser: re-indenting JSON is quadratic in nesting, so 10 KB of `[` served 50 MB and deeper still answered 500. A planted value at both depths holds the fragment to the size the store holds, and a unit leaf pins the same rule on `render.pretty`
+- **A run can be placed by a run as well as by a turn.** The unattached list is the chip join's complement, and its expectation SQL said so as `spawn_turn_id IS NULL` — which also catches a run whose spawning call names a run but no turn, a run the page already nests under its parent. Every recorded NULL-turn run was spawned from `main`, so the double render was invisible: the leaf plants it by taking the turn away from the call that spawned a nested run
+- **A `pr_url` is a link only when its scheme is one a browser should follow.** Everything else on a session page is escaped text; a URL is the one value that reaches an attribute the browser acts on. The leaf plants a `javascript:` URL beside an `https:` one on the same session
+
 ## Obligation count
 
 | Area | Obligations |

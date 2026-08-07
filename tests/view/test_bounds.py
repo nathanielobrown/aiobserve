@@ -17,7 +17,13 @@ from fastapi.testclient import TestClient
 
 from aiobserve.analyze import queries
 from aiobserve.analyze.queries import QUERIES, VIEW_PREFIX
-from aiobserve.view.app import MAX_CHUNK_CHARS, MAX_PAGE_RECORDS, build_app
+from aiobserve.view.app import (
+    MAX_CHUNK_CHARS,
+    MAX_PAGE_CALLS,
+    MAX_PAGE_RECORDS,
+    MAX_PAGE_TOOLS,
+    build_app,
+)
 from aiobserve.view.listing import MAX_PAGE_SESSIONS
 from aiobserve.view.store import Fragment, Page, Value
 from tests.conftest import (
@@ -54,20 +60,44 @@ PROMPT_CHARS = 300
 # The same, for what a fragment shows of an api call's text and a tool call's arguments.
 TEXT_CHARS = 2_000
 INPUT_CHARS = 200
-# What one rendered tool row costs, from the design's arithmetic for the payload bound.
-TOOL_ROW_BYTES = 300
+# What the markup around one call row and one tool row of a turn fragment costs, with the
+# content those rows carry subtracted. Measured against `data/traces.duckdb` on 2026-08-07 as
+# the marginal cost of one more row — 18,292 B for 20 tool rows less 1,255 B for one, and
+# 50,311 B for 25 call rows less 2,346 B for one — with the rows' own `input` and `text` heads
+# taken back off. The call figure was measured at `tools=1`, so it still carries one tool row
+# that the arithmetic below counts again: a ceiling should err high. The fixture rows are
+# redacted to a few characters and project nothing about either.
+MEASURED_TOOL_ROW_MARKUP = 700
+MEASURED_CALL_ROW_MARKUP = 2_000
 # What a row of the records browser really costs — the preview plus the row's own markup, most
 # of it the `hx-get` that fetches the record whole. Measured against `data/traces.duckdb` on
 # 2026-08-08: 83,659 B for a 100-record page less 1,865 B of chrome, over the 99 rows between.
 # The fixture records are redacted to a few characters, so they project nothing about this.
 MEASURED_RECORD_BYTES = 826
 
-# The most one character of offloaded content can weigh on the page that shows it. An offload
-# holds whatever a tool wrote, so unlike every other value here it has no shape at all: the
-# bound has to hold for the worst character rather than the measured average. Markupsafe's
-# longest escape is five bytes (`&amp;`, `&#34;`, `&#39;`), and the longest UTF-8 encoding is
-# four, so five bytes a character covers both.
+# The most one character of a transcript's own content can weigh on the page that shows it.
+# Content has no shape at all — a tool wrote the file, a model wrote the text — so every bound
+# over it holds for the worst character rather than the measured average. Markupsafe's longest
+# escape is five bytes (`&amp;`, `&#34;`, `&#39;`), and the longest UTF-8 encoding is four, so
+# five bytes a character covers both.
 ESCAPED_CHAR_BYTES = 5
+
+
+def worst_call_bytes(page_tools: int) -> int:
+    """What one call row of a turn fragment can weigh: markup, text head, and its tool rows.
+
+    Markup is measured, because it is ours; the two content heads are counted at the worst
+    character, because a call's `text` and a tool's `input` are whatever the session held.
+    """
+    tool_row = MEASURED_TOOL_ROW_MARKUP + INPUT_CHARS * ESCAPED_CHAR_BYTES
+    return MEASURED_CALL_ROW_MARKUP + TEXT_CHARS * ESCAPED_CHAR_BYTES + page_tools * tool_row
+
+
+def worst_record_bytes() -> int:
+    """What one row of the records browser can weigh: its markup, and a preview of `&`."""
+    return (
+        MEASURED_RECORD_BYTES - queries.RECORD_PREVIEW + queries.RECORD_PREVIEW * ESCAPED_CHAR_BYTES
+    )
 
 
 # What a query may wrap a fat column in and still be bounded: a fixed-width prefix of it, or
@@ -134,20 +164,23 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     bound in production while CI stayed green. The numbers come from the turn-expand
     paragraph of `plans/trace-viewer/design.md`.
     """
-    assert QUERIES["view_turn_calls"].params["page_calls"].default == 25
-    assert QUERIES["view_call_tools"].params["page_tools"].default == 40
+    assert QUERIES["view_turn_calls"].params["page_calls"].default == 10
+    assert QUERIES["view_call_tools"].params["page_tools"].default == 12
     assert QUERIES["view_records"].params["page_records"].default == 100
     assert QUERIES["view_records"].params["preview_chars"].default == 160
     assert QUERIES["view_offload"].params["chunk_chars"].default == 50_000
-    # And they are the numbers the design's own arithmetic uses: a page of calls carries at
-    # most this much text plus this many tool rows, which is what `PAGE_BYTES` was set from.
-    assert queries.PAGE_CALLS * (TEXT_CHARS + queries.PAGE_TOOLS * TOOL_ROW_BYTES) <= PAGE_BYTES
-    # The records browser's ceiling is the same arithmetic against a measured row: what a
-    # `?size=` at the top of the range serves, not what the default does.
-    assert MAX_PAGE_RECORDS * MEASURED_RECORD_BYTES < PAGE_BYTES
-    # The offload page's ceiling is arithmetic over the worst character rather than a measured
-    # one, because the content is a file some tool wrote and nothing constrains what is in it.
+    # Every ceiling is projected at the largest page a URL can ask for, because a size is
+    # something a reader types. The turn fragment's two sizes multiply, so its ceiling is
+    # spent by the defaults themselves and `?calls=` only goes down from here.
+    assert MAX_PAGE_CALLS * worst_call_bytes(MAX_PAGE_TOOLS) < PAGE_BYTES
+    assert MAX_PAGE_RECORDS * worst_record_bytes() < PAGE_BYTES
     assert MAX_CHUNK_CHARS * ESCAPED_CHAR_BYTES < PAGE_BYTES
+    # And no default asks for more than its own ceiling allows, which nothing else checks: a
+    # default above the ceiling serves a 400 to a reader who typed no size at all.
+    assert queries.PAGE_CALLS <= MAX_PAGE_CALLS
+    assert queries.PAGE_TOOLS <= MAX_PAGE_TOOLS
+    assert queries.PAGE_RECORDS <= MAX_PAGE_RECORDS
+    assert queries.CHUNK_CHARS <= MAX_CHUNK_CHARS
 
 
 def limits(sql: str) -> list[str]:
@@ -360,6 +393,37 @@ def test_an_offload_of_nothing_but_escapes_still_serves_under_the_ceiling(
     # Served whole — the chunk is not silently cut — and still under the ceiling.
     assert page.text.count("&amp;") == MAX_CHUNK_CHARS
     assert len(page.content) < PAGE_BYTES
+
+
+def test_a_turn_fragment_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
+    plant: Planter,
+) -> None:
+    """A call row and a tool row weigh no more than the ceiling's arithmetic gives them.
+
+    The row costs behind that arithmetic were measured against the canonical store once, and a
+    template that grows a row past them puts the ceiling out by the page size it multiplies.
+    The content is planted `&` at both caps — the character that escapes to five bytes — for
+    the same reason the offload leaf plants one: no recorded row is adversarial.
+    """
+    path = plant(
+        ("UPDATE api_calls SET text = ? WHERE session_id = ?", ["&" * TEXT_CHARS, ANCESTOR]),
+        ("UPDATE tool_calls SET input = ? WHERE session_id = ?", ["&" * INPUT_CHARS, FORK_ORIGIN]),
+    )
+    turn = f"/fragment/turn/{ANCESTOR}/main/{DENSE_TURN}"
+    tools = f"/fragment/tools/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}"
+    with TestClient(build_app(path)) as planted:
+
+        def served(url: str, **params: int) -> int:
+            response = planted.get(url, params={"after": -1, **params})
+            assert response.status_code == 200
+            return len(response.content)
+
+        # What one more call row costs on a fragment, and one more tool row — the marginal
+        # cost, so the fragment's own chrome is not counted against a row's budget.
+        call_row = served(turn, calls=2, tools=1) - served(turn, calls=1, tools=1)
+        tool_rows = served(tools, tools=4) - served(tools, tools=1)
+    assert call_row <= worst_call_bytes(1)
+    assert tool_rows / 3 <= MEASURED_TOOL_ROW_MARKUP + INPUT_CHARS * ESCAPED_CHAR_BYTES
 
 
 def test_a_deeply_nested_value_is_served_at_the_size_it_was_stored(plant: Planter) -> None:

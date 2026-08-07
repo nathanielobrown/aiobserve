@@ -101,10 +101,12 @@ SIGNATURE_CHARS = 120
 
 # The viewer's page sizes. Every one of them is a bound parameter with a default here and
 # nowhere else, because the payload bound the design states is arithmetic over these numbers:
-# a page of calls carries at most `PAGE_CALLS` × (2 KB of text + `PAGE_TOOLS` tool rows).
-# `tests/view/test_bounds.py` pins both values and asserts the arithmetic still fits.
-PAGE_CALLS = 25
-PAGE_TOOLS = 40
+# a page of calls carries at most `PAGE_CALLS` × (2 KB of text + `PAGE_TOOLS` tool rows), and
+# every character of that content can escape to five bytes. The two sizes multiply, which is
+# what keeps them this small — a call row costs about 12 KB before its tool rows.
+# `tests/view/test_bounds.py` pins the values and asserts the arithmetic still fits.
+PAGE_CALLS = 10
+PAGE_TOOLS = 12
 PAGE_RECORDS = 100
 
 # How much of an offloaded tool result one chunk of the offload page carries. The only value
