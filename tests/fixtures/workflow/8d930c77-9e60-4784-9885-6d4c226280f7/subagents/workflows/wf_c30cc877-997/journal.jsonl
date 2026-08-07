@@ -1,0 +1,4 @@
+{"type": "started", "key": "v2:8eba0190aae3bf8f51824bad9b4e63d2984bb23913f973092ad1e21b52c7f172", "agentId": "a6f04bb0e6eff6013"}
+{"type": "result", "key": "v2:8eba0190aae3bf8f51824bad9b4e63d2984bb23913f973092ad1e21b52c7f172", "agentId": "a6f04bb0e6eff6013", "result": {"question": "[redacted]", "summary": "[redacted]", "angles": [{"label": "[redacted]", "query": "[redacted]", "rationale": "[redacted]"}, {"label": "[redacted]", "query": "[redacted]", "rationale": "[redacted]"}, {"label": "[redacted]", "query": "[redacted]", "rationale": "[redacted]"}, {"label": "[redacted]", "query": "[redacted]", "rationale": "[redacted]"}, {"label": "[redacted]", "query": "[redacted]", "rationale": "[redacted]"}]}}
+{"type": "started", "key": "v2:341be56b6d7ae9290072f1476488f2b53daa4d28f0f5598e0252d6baa5255271", "agentId": "a02cb882897e38778"}
+{"type": "started", "key": "v2:aaf32354060ad5e43265df641f0617ecf9429dc87d8b8b1f25605623967f8246", "agentId": "abf77afdbd69cba56"}

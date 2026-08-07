@@ -13,7 +13,8 @@ from tests.extract.test_claude_code import SPINE, at
 # issued it alongside two others.
 ANSWERED = "toolu_01GzkcnijJv7xLcXGBsKivfz"
 BATCH = "msg_011CdmMjFXDofyYSMxYtXa5n"
-# A message that issued a single call, and whose session ended before the result arrived.
+# A message that issued a single call. The recorded session answered it; `spine/` ends at
+# the call, standing in for the sessions that really do end mid-call.
 LONE = "toolu_01B6iTUMs3YrNvULzgRkwuar"
 # The `offload/` session, and the one Bash call whose output Claude Code moved to a file.
 OFFLOAD = "7e37bb35-4dcb-4e16-85be-55ac510c168e"
@@ -77,7 +78,8 @@ def test_parallel_calls_share_a_start_and_say_so(fixture_source: SourceFactory):
 
 def test_a_call_with_no_result_is_incomplete(fixture_source: SourceFactory):
     """A session that ended before its tool returned still exports the call."""
-    # If the transcript holds a `tool_use` with no answering record...
+    # If the transcript holds a `tool_use` with no answering record — here because the
+    # fixture stops at the call, which is what a session killed mid-call looks like...
     call = calls(fixture_source, "spine", SPINE)[LONE]
 
     # ...then the call is there, marked incomplete, with no result and no end.

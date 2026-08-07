@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 import pytest
 
 from aiobserve.extract.claude_code import ClaudeCodeExtractor, TranscriptSchemaError
-from aiobserve.model import ApiCall, Session, Turn
+from aiobserve.model import MAIN_SOURCE, ApiCall, Session, Turn
 from tests.conftest import SourceFactory
 
 SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"
@@ -162,8 +162,9 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
         ),
     ]
 
-    # ...while every line of the file survives in the archive, whatever it was.
-    assert len(trace.raw_records) == 25
+    # ...while every line of the transcript survives in the archive, whatever it was —
+    # beside the lines of the subagent it spawned, which carry their own source.
+    assert len([r for r in trace.raw_records if r.source == MAIN_SOURCE]) == 25
     assert trace.extractor == "claude_code"
 
 
@@ -177,7 +178,10 @@ def test_a_message_split_across_records_merges_into_one_call(fixture_source: Sou
     trace = ClaudeCodeExtractor().extract(fixture_source("spine", SPINE))
 
     # If the file holds eight assistant records under two message ids...
-    assert len([r for r in trace.raw_records if r.type == "assistant"]) == 8
+    assert (
+        len([r for r in trace.raw_records if r.type == "assistant" and r.source == MAIN_SOURCE])
+        == 8
+    )
     # ...then two API calls come back, each spanning from the record it answers to its
     # last chunk, with the thinking and the text it was split across both present.
     assert len(trace.api_calls) == 2

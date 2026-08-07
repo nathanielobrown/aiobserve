@@ -14,6 +14,7 @@ import pytest
 from aiobserve.extract.claude_code import ClaudeCodeExtractor
 from aiobserve.model import SessionTrace
 from aiobserve.pipeline import SessionSource
+from aiobserve.sessions import Session
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -23,15 +24,21 @@ TraceFactory = Callable[[str, str], SessionTrace]
 
 @pytest.fixture
 def fixture_source() -> SourceFactory:
-    """Build a `SessionSource` over one fixture transcript, the way `sessions()` would.
+    """Build a `SessionSource` over one fixture session, the way `sessions()` would.
+
+    The whole session directory, not just the transcript: subagent transcripts, workflow
+    journals and offloaded tool outputs are part of the session, and a builder that
+    skipped them would let a test pass on files the real pipeline never sees.
 
     Fingerprints belong to discovery, not parsing, so the value here is a placeholder —
     `extract()` never reads it.
     """
 
     def build(directory: str, stem: str) -> SessionSource:
-        transcript = FIXTURES / directory / f"{stem}.jsonl"
-        return SessionSource(id=stem, files=(transcript,), fingerprint="fixture-fingerprint")
+        session = Session(id=stem, transcript=FIXTURES / directory / f"{stem}.jsonl")
+        return SessionSource(
+            id=stem, files=tuple(session.files()), fingerprint="fixture-fingerprint"
+        )
 
     return build
 

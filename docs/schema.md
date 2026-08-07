@@ -77,7 +77,28 @@ Line separators appear inside string values, unescaped. Splitting a transcript w
 ## Sources of session data
 
 - `~/.claude/projects/<encoded-cwd>/<session-id>.jsonl` — the transcript of one session, one JSON object per line
-- `~/.claude/projects/<encoded-cwd>/<session-id>/subagents/agent-<id>.jsonl` — one subagent the session spawned, beside an `agent-<id>.meta.json`. A parallel fan-out nests them another level, under `subagents/workflows/wf_<id>/`. `aiobserve.sessions` walks this tree
+- `~/.claude/projects/<encoded-cwd>/<session-id>/` — the session's own directory, laid out below. `aiobserve.sessions` walks this tree
 - Claude Code's own OpenTelemetry export — a thinner, live schema. Enabled per-machine, not per-repo.
 
 The encoded directory name is the session's working directory with each `/` replaced by `-`, so `~/repos/mycelia` becomes `-Users-nob-repos-mycelia`. The tree is shared across Claude accounts: `~/.claude-black/projects` is a symlink to `~/.claude/projects`, so a transcript's path does not tell you which account produced it.
+
+### What a session directory holds
+
+104 of the 575 mycelia transcripts have a directory beside them (scanned 2026-08-07), holding these
+file kinds and no others. A file the extractor cannot place crashes it, because Claude Code prunes
+the directory within weeks and a skipped file is a schema change nobody sees.
+
+| Path under `<session-id>/` | Count | What it is | Archived as |
+| --- | --- | --- | --- |
+| `subagents/agent-<id>.jsonl` | 2275 | a subagent's own transcript | source `<id>` |
+| `subagents/agent-<id>.meta.json` | 2275 | what spawned that subagent — `toolUseId`, `agentType`, `spawnDepth` | not yet read |
+| `subagents/workflows/wf_<id>/agent-<id>.jsonl` | 180 | an agent of a parallel fan-out; same records, one level deeper | source `<id>` |
+| `subagents/workflows/wf_<id>/agent-<id>.meta.json` | 180 | only ever `agentType` and `spawnDepth` — a workflow agent has no spawning tool call | not yet read |
+| `subagents/workflows/wf_<id>/journal.jsonl` | 6 | the fan-out's own log: `started` and `result` records keyed by agent | source `wf_<id>/journal` |
+| `tool-results/<name>` | 567 | a tool output too large for the transcript, named by `persistedOutputPath` | `offload_files` |
+| `workflows/wf_<id>.json` | 6 | the workflow definition | nothing reads it |
+| `workflows/scripts/<name>.js` | 6 | the script that drove the run | nothing reads it |
+
+`<id>` in a subagent's file name is usually hex, but a session can name its agents (`agent-audit-pr291-79ea2c606313e623.jsonl`), so the source is the whole stem after `agent-`.
+
+*Seen in* `tests/fixtures/spine/` (a subagent), CC 2.1.221; `tests/fixtures/workflow/` (a fan-out and its journal), CC 2.1.207; `tests/fixtures/offload/` (a persisted result), CC 2.1.220.

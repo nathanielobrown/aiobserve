@@ -8,7 +8,8 @@ so every row is scoped by `session_id` and by `source` — the transcript inside
 that recorded it.
 
 Slices 1 and 2 of `plans/trace-pipeline/design.md` cover sessions, turns, API calls, tool
-calls, and the raw archive. Agent runs, compactions, PR links, cost, and the `replayed`
+calls, and the archive — every line of every file the session wrote, plus the tool outputs
+it moved out of the transcript. Agent runs, compactions, PR links, cost, and the `replayed`
 flag arrive with the slices that populate them.
 """
 
@@ -138,6 +139,28 @@ class ToolCall:
 
 
 @dataclass(frozen=True)
+class OffloadFile:
+    """A tool output Claude Code wrote to a file instead of into the transcript.
+
+    These hold the largest outputs a session produced, and Claude Code prunes them with
+    the transcript, so the archive is the only durable copy.
+    """
+
+    session_id: str
+    # The file's name under the session's `tool-results/`, as `ToolCall.offload_file`
+    # quotes it. The recorded path is absolute on the machine that wrote it, so only the
+    # name travels.
+    name: str
+    # The file decoded as UTF-8.
+    content: str
+    # The file was not valid UTF-8 — a fetched PDF, or output cut mid-character — and
+    # `content` carries replacement characters where the bytes were.
+    lossy_decode: bool
+    # Size on disk, which `content` stops measuring once the decode was lossy.
+    size_bytes: int
+
+
+@dataclass(frozen=True)
 class RawRecord:
     """One line of one transcript, kept verbatim.
 
@@ -171,4 +194,5 @@ class SessionTrace:
     turns: list[Turn]
     api_calls: list[ApiCall]
     tool_calls: list[ToolCall]
+    offload_files: list[OffloadFile]
     raw_records: list[RawRecord]

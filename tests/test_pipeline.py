@@ -21,6 +21,7 @@ from tests.conftest import FIXTURES
 
 SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"
 DUPS = "8ee00a94-b01a-4394-b447-b065f74b11af"
+OFFLOAD = "7e37bb35-4dcb-4e16-85be-55ac510c168e"
 
 
 class Corpus:
@@ -33,7 +34,11 @@ class Corpus:
         self.session_dir.mkdir(parents=True)
 
     def add(self, directory: str, stem: str, *, lines: int | None = None) -> Path:
-        """Copy a fixture transcript in, optionally truncated to its first `lines` records."""
+        """Copy a fixture session in, optionally truncating its transcript to `lines` records.
+
+        The session's own directory comes too, where the fixture has one, so the corpus
+        holds subagent transcripts and offloaded results as Claude Code wrote them.
+        """
         source = FIXTURES / directory / f"{stem}.jsonl"
         destination = self.session_dir / f"{stem}.jsonl"
         if lines is None:
@@ -41,6 +46,10 @@ class Corpus:
         else:
             kept = source.read_text().split("\n")[:lines]
             destination.write_text("\n".join(kept) + "\n")
+        if (FIXTURES / directory / stem).is_dir():
+            shutil.copytree(
+                FIXTURES / directory / stem, self.session_dir / stem, dirs_exist_ok=True
+            )
         return destination
 
     def extractor(self) -> ClaudeCodeExtractor:
@@ -164,9 +173,8 @@ def test_a_new_subagent_file_re_extracts_its_session(corpus: Corpus, exporter: D
     before = exporter.fingerprints()
     unchanged = (transcript.stat().st_size, transcript.stat().st_mtime_ns)
 
-    # If a subagent transcript appears beside an untouched main transcript...
+    # If another subagent transcript appears beside an untouched main transcript...
     subagents = corpus.session_dir / SPINE / "subagents"
-    subagents.mkdir(parents=True)
     shutil.copy(
         FIXTURES / "dup_uuid" / f"{DUPS}.jsonl", subagents / "agent-a1d0bc50fe316ed8e.jsonl"
     )
@@ -177,6 +185,24 @@ def test_a_new_subagent_file_re_extracts_its_session(corpus: Corpus, exporter: D
     assert result.extracted == [SPINE]
     assert extractor.extracted == [SPINE, SPINE]
     assert exporter.fingerprints() != before
+
+
+def test_a_changed_offload_file_re_extracts_its_session(corpus: Corpus, exporter: DuckDbExporter):
+    """Rewriting an offloaded tool result re-extracts the session and re-archives the file."""
+    corpus.add("offload", OFFLOAD)
+    extractor = CountingExtractor(corpus.extractor())
+    refresh(corpus.project, extractor=extractor, exporter=exporter)
+    offloaded = corpus.session_dir / OFFLOAD / "tool-results" / "bosvr1kjx.txt"
+
+    # If the file holding a tool's output changes while the transcript stands still...
+    offloaded.write_text("[redacted] — a shorter output than before")
+    result = refresh(corpus.project, extractor=extractor, exporter=exporter)
+
+    # ...then the session is parsed again, and the store holds the file as it now reads.
+    assert result.extracted == [OFFLOAD]
+    assert exporter.connection.execute(
+        "SELECT content, size_bytes FROM offload_files"
+    ).fetchall() == [("[redacted] — a shorter output than before", offloaded.stat().st_size)]
 
 
 def test_a_bumped_extractor_version_re_extracts_everything(

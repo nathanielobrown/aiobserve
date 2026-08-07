@@ -21,9 +21,20 @@ everything else is as recorded:
 - `<local-command-stdout>`, `<task-notification>`, `<bash-input>`, `<bash-stdout>` — archived, never turns
 - `msg_011CdmMjFXDofyYSMxYtXa5n` — five assistant chunks sharing one `message.id`, interleaved with a
   `tool_result` user record, carrying `attributionSkill`, `effort` and `stop_reason`
-- `msg_011Cdmz3NQtuzwN3cqYvvkuN` — three chunks with no `attributionSkill`
+- `msg_011Cdmz3NQtuzwN3cqYvvkuN` — three chunks with no `attributionSkill`. Its lone tool call ends
+  the excerpt: the original answered it, and cutting the answer gives the shape of a session killed
+  mid-call
 - two `system/turn_duration` records — `active_ms` is their sum
 - a plain-string prompt and a block-content prompt — the two turn-opening shapes
+
+## The session directory
+
+`4208c1bd-.../subagents/` holds one of the session's subagents, `agent-ac461ef46b4bb8e32.jsonl`:
+lines 1–6 of 43, **Claude Code 2.1.221**. It carries `isSidechain: true` and an `agentId`, the two
+fields that place a record under a source other than `main`, and its `cwd` is the worktree the
+subagent ran in rather than the session's. Its `.meta.json` came too, `description` redacted and the
+rest as recorded — it is the linkage from a subagent back to the `toolUseId` that spawned it, which
+agent runs read.
 
 ## Redaction
 

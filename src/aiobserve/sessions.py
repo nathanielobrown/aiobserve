@@ -19,6 +19,20 @@ from pathlib import Path
 # nothing about which account produced it.
 DEFAULT_PROJECTS_ROOT = Path.home() / ".claude" / "projects"
 
+# The names Claude Code gives the files inside a session's directory. Parsing reads these
+# too — a file's place in the tree says which transcript it is — so they live here with
+# the walk rather than being spelled out twice.
+TRANSCRIPT_SUFFIX = ".jsonl"
+SUBAGENTS_DIR = "subagents"
+# Under `subagents/`, one directory per parallel fan-out. At the top of the session
+# directory, the definitions and scripts of those workflows.
+WORKFLOWS_DIR = "workflows"
+WORKFLOW_PREFIX = "wf_"
+TOOL_RESULTS_DIR = "tool-results"
+AGENT_PREFIX = "agent-"
+META_SUFFIX = ".meta.json"
+JOURNAL_NAME = "journal.jsonl"
+
 
 def encode_project_path(project: Path) -> str:
     """Claude Code's directory name for a project: its absolute path, each `/` replaced by `-`.
@@ -45,11 +59,11 @@ class Session:
         accounting over a session that ignores these undercounts it. Empty for a
         session that spawned none.
         """
-        subagents = self.directory / "subagents"
+        subagents = self.directory / SUBAGENTS_DIR
         if not subagents.is_dir():
             return []
         # rglob, not glob: a parallel fan-out nests its agents under workflows/wf_<id>/.
-        return sorted(subagents.rglob("agent-*.jsonl"))
+        return sorted(subagents.rglob(f"{AGENT_PREFIX}*{TRANSCRIPT_SUFFIX}"))
 
     @property
     def directory(self) -> Path:
@@ -86,5 +100,5 @@ def find_sessions(project: Path, *, projects_root: Path = DEFAULT_PROJECTS_ROOT)
     # tool results, which belong to a session rather than being one.
     return [
         Session(id=transcript.stem, transcript=transcript)
-        for transcript in sorted(project_dir.glob("*.jsonl"))
+        for transcript in sorted(project_dir.glob(f"*{TRANSCRIPT_SUFFIX}"))
     ]

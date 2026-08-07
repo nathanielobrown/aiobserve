@@ -16,6 +16,7 @@ from tests.conftest import TraceFactory
 
 SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"
 DUPS = "8ee00a94-b01a-4394-b447-b065f74b11af"
+OFFLOAD = "7e37bb35-4dcb-4e16-85be-55ac510c168e"
 
 # Table name to the model attribute holding its rows, for the count-everything assertions.
 TABLES = {
@@ -23,6 +24,7 @@ TABLES = {
     "turns": "turns",
     "api_calls": "api_calls",
     "tool_calls": "tool_calls",
+    "offload_files": "offload_files",
     "raw_records": "raw_records",
 }
 
@@ -90,7 +92,8 @@ def test_re_exporting_a_session_replaces_it_wholly(db: Path, fixture_trace: Trac
             "turns": 4,
             "api_calls": 2,
             "tool_calls": 4,
-            "raw_records": 25,
+            "offload_files": 0,
+            "raw_records": 31,
         }
 
         # ...and the same session comes back shorter — one turn, one call, three lines...
@@ -109,6 +112,7 @@ def test_re_exporting_a_session_replaces_it_wholly(db: Path, fixture_trace: Trac
             "turns": 1,
             "api_calls": 1,
             "tool_calls": 1,
+            "offload_files": 0,
             "raw_records": 3,
         }
         assert rows(exporter, "turns", type(trace.turns[0])) == [
@@ -182,6 +186,29 @@ def test_an_id_is_scoped_to_its_transcript(db: Path, fixture_trace: TraceFactory
         # ...while a genuine repeat of the whole triple is rejected.
         with pytest.raises(duckdb.ConstraintException):
             exporter.export(replace(trace, api_calls=[call, call]), "fingerprint-2")
+
+
+def test_an_offloaded_output_is_keyed_by_session_and_name(db: Path, fixture_trace: TraceFactory):
+    """A `tool-results/` file is stored whole, and two sessions may hold the same name."""
+    trace = fixture_trace("offload", OFFLOAD)
+    (offloaded,) = trace.offload_files
+
+    with DuckDbExporter(db) as exporter:
+        # If two sessions each offloaded a file of the same name — invented: Claude Code
+        # names these randomly and none of the 636 on this machine repeats (scanned
+        # 2026-08-07) — then both survive, each with its content...
+        exporter.export(trace, "fingerprint-1")
+        spine = fixture_trace("spine", SPINE)
+        exporter.export(replace(spine, offload_files=[replace(offloaded, session_id=SPINE)]), "f-2")
+        assert counts(exporter)["offload_files"] == 2
+        assert rows(exporter, "offload_files", type(offloaded), OFFLOAD) == [
+            dataclasses.astuple(offloaded)
+        ]
+
+        # ...while one session claiming a name twice is rejected: a directory cannot
+        # hold two files of one name, so a second row would be a parser bug.
+        with pytest.raises(duckdb.ConstraintException):
+            exporter.export(replace(trace, offload_files=[offloaded, offloaded]), "f-3")
 
 
 def test_a_failed_export_changes_nothing(db: Path, fixture_trace: TraceFactory):

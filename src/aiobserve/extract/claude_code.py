@@ -16,16 +16,37 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path, PurePath
-from typing import Any
+from typing import Any, NamedTuple
 
-from aiobserve.model import MAIN_SOURCE, ApiCall, RawRecord, Session, SessionTrace, ToolCall, Turn
+from aiobserve.model import (
+    MAIN_SOURCE,
+    ApiCall,
+    OffloadFile,
+    RawRecord,
+    Session,
+    SessionTrace,
+    ToolCall,
+    Turn,
+)
 from aiobserve.pipeline import SessionSource
-from aiobserve.sessions import DEFAULT_PROJECTS_ROOT, encode_project_path, find_sessions
+from aiobserve.sessions import (
+    AGENT_PREFIX,
+    DEFAULT_PROJECTS_ROOT,
+    JOURNAL_NAME,
+    META_SUFFIX,
+    SUBAGENTS_DIR,
+    TOOL_RESULTS_DIR,
+    TRANSCRIPT_SUFFIX,
+    WORKFLOW_PREFIX,
+    WORKFLOWS_DIR,
+    encode_project_path,
+    find_sessions,
+)
 
 EXTRACTOR_NAME = "claude_code"
 # Bump on any change to what this parser produces: the version is folded into every
 # fingerprint, so bumping it re-extracts the whole corpus on the next refresh.
-EXTRACTOR_VERSION = "2"
+EXTRACTOR_VERSION = "3"
 
 
 class TranscriptSchemaError(Exception):
@@ -137,6 +158,15 @@ class _Line:
     raw: str
 
 
+class _SessionFiles(NamedTuple):
+    """One session's files, sorted by what reads them."""
+
+    transcript: Path
+    # Every other transcript the session wrote, paired with the `source` it records under.
+    archived: list[tuple[str, Path]]
+    offloads: list[Path]
+
+
 @dataclass(frozen=True)
 class _Result:
     """What a `tool_result` record said about the call it answered."""
@@ -179,27 +209,107 @@ class ClaudeCodeExtractor:
 
     def extract(self, source: SessionSource) -> SessionTrace:
         """Parse every file of one session into a trace."""
-        transcript = _transcript_of(source)
-        lines = _read(transcript, source.id)
-        # The archive keeps every line, duplicates included; the normalized tables below
-        # read the deduplicated view.
+        files = _classify(source)
+        lines = _read(files.transcript, source.id)
+        # The archive keeps every line of every file, duplicates included; the normalized
+        # tables below read the main transcript's deduplicated view. The subagents' own
+        # turns and calls arrive with slice 3.
         raw_records = [_raw_record(source.id, MAIN_SOURCE, line) for line in lines]
+        for name, path in files.archived:
+            raw_records += [_raw_record(source.id, name, line) for line in _read(path, source.id)]
         kept = _resolve_duplicates(lines, source.id)
         turns, turn_by_line = _turns(kept, source.id, MAIN_SOURCE)
         return SessionTrace(
             extractor=EXTRACTOR_NAME,
             extractor_version=EXTRACTOR_VERSION,
-            session=_session(kept, source.id, transcript),
+            session=_session(kept, source.id, files.transcript),
             turns=turns,
             api_calls=_api_calls(kept, turn_by_line, source.id, MAIN_SOURCE),
             tool_calls=_tool_calls(kept, source.id, MAIN_SOURCE),
+            offload_files=[_offload_file(path, source.id) for path in files.offloads],
             raw_records=raw_records,
+        )
+
+
+def _classify(source: SessionSource) -> _SessionFiles:
+    """Sort a session's files by what reads them.
+
+    The layout is closed-world like the record types: a file whose place we cannot name is
+    a Claude Code change we need to see, not a file to skip.
+    """
+    transcript = _transcript_of(source)
+    directory = transcript.with_suffix("")
+    archived: list[tuple[str, Path]] = []
+    offloads: list[Path] = []
+    for path in source.files:
+        if path == transcript:
+            continue
+        parts = path.relative_to(directory).parts
+        if parts[:1] == (TOOL_RESULTS_DIR,) and len(parts) == 2:
+            offloads.append(path)
+            continue
+        name = _archived_source(parts, source.id)
+        if name is not None:
+            archived.append((name, path))
+    return _SessionFiles(transcript=transcript, archived=archived, offloads=offloads)
+
+
+def _archived_source(parts: tuple[str, ...], session_id: str) -> str | None:
+    """The `source` name for one companion file, or None when nothing reads it.
+
+    A subagent's transcript is sourced by its bare agentId, which its file name carries
+    after the `agent-` prefix; a workflow's journal by its directory, as `wf_<id>/journal`.
+    """
+    unknown = TranscriptSchemaError(
+        f"Session {session_id}: unknown file {'/'.join(parts)} in its directory"
+    )
+    # A workflow's definition and the script that ran it, beside the runs they drove.
+    if parts[:1] == (WORKFLOWS_DIR,):
+        return None
+    workflow = None
+    if parts[:2] == (SUBAGENTS_DIR, WORKFLOWS_DIR):
+        if len(parts) != 4 or not parts[2].startswith(WORKFLOW_PREFIX):
+            raise unknown
+        workflow = parts[2]
+    elif parts[:1] != (SUBAGENTS_DIR,) or len(parts) != 2:
+        raise unknown
+    name = parts[-1]
+    # A subagent's metadata: its spawning call and its type, which agent runs read (slice 3).
+    if name.endswith(META_SUFFIX):
+        return None
+    if workflow and name == JOURNAL_NAME:
+        return f"{workflow}/journal"
+    if name.startswith(AGENT_PREFIX) and name.endswith(TRANSCRIPT_SUFFIX):
+        return name[len(AGENT_PREFIX) : -len(TRANSCRIPT_SUFFIX)]
+    raise unknown
+
+
+def _offload_file(path: Path, session_id: str) -> OffloadFile:
+    """One `tool-results/` file, read whole — it is the only copy once Claude Code prunes."""
+    data = path.read_bytes()
+    try:
+        return OffloadFile(
+            session_id=session_id,
+            name=path.name,
+            content=data.decode(),
+            lossy_decode=False,
+            size_bytes=len(data),
+        )
+    except UnicodeDecodeError:
+        # Not text at all — a fetched PDF — or text cut mid-character. Archived anyway:
+        # the file is gone in a few weeks, and its size and name still say what ran.
+        return OffloadFile(
+            session_id=session_id,
+            name=path.name,
+            content=data.decode(errors="replace"),
+            lossy_decode=True,
+            size_bytes=len(data),
         )
 
 
 def _transcript_of(source: SessionSource) -> Path:
     """The session's own transcript, among the files discovery collected."""
-    name = f"{source.id}.jsonl"
+    name = f"{source.id}{TRANSCRIPT_SUFFIX}"
     for path in source.files:
         if path.name == name:
             return path
