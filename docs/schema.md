@@ -36,6 +36,11 @@ Every line of a transcript is a JSON object with a `type`. `aiobserve.extract.cl
 | `effort` | `assistant` records | The reasoning-effort setting, as an opaque string (`"high"`) | `tests/fixtures/spine/`, CC 2.1.221 |
 | `requestId`, `stop_reason` | `assistant` records | The API request id and why generation stopped | `tests/fixtures/spine/`, CC 2.1.221 |
 | `durationMs` | `system`/`turn_duration` records | Wall-clock milliseconds the turn took. Summing these is the only measure of a session's active time — its timestamp span includes the hours it sat idle | `tests/fixtures/spine/`, CC 2.1.221 |
+| `message.model` | `assistant` records | The model that answered — or `<synthetic>`, Claude Code's own placeholder for an interrupt or a cancelled request. 205 of the corpus's ~290,000 assistant records are synthetic (scanned 2026-08-07); all report zero tokens, and none carries `usage.inference_geo` | `tests/fixtures/spine/`, CC 2.1.201 |
+| `compactMetadata` | `system`/`compact_boundary` records | What a compaction dropped: `trigger` (`auto` on 933 of the corpus's 1,026 boundaries, `manual` on 93), `preTokens`, `postTokens`, `durationMs`. All four are on every boundary (scanned 2026-08-07) | `tests/fixtures/compaction/`, CC 2.1.198 |
+| `customTitle`, `aiTitle` | `custom-title` and `ai-title` records | What the session is called. Claude Code writes `ai-title` itself and rewrites it as the session goes; `custom-title` is the operator's rename. Both are current, and 13 of the 398 titled mycelia sessions hold both (scanned 2026-08-07) | `tests/fixtures/spine/` and `tests/fixtures/legacy_title/`, CC 2.1.196–2.1.201 |
+| `agentName` | `agent-name` records | The persona the session ran under, rewritten alongside the title. A single-field record, like the titles: no uuid, no timestamp | `tests/fixtures/spine/`, CC 2.1.201 |
+| `prNumber`, `prUrl`, `prRepository` | `pr-link` records | A pull request the session touched, written once per mention. All 2,885 in the corpus carry exactly these three plus `type`, `sessionId` and `timestamp` — no uuid, so a link is keyed by its line. The same PR repeats within a session, so the number is not a key | `tests/fixtures/spine/`, CC 2.1.221 |
 
 ### A prompt's leading tag says who wrote it
 
@@ -71,6 +76,18 @@ Rewinding a session rewrites records under uuids the file already used. Both occ
 A pair whose `message.content` differs would mean the conversation itself was rewritten. No recorded pair does; the extractor crashes if one ever does.
 
 *Seen in* `tests/fixtures/dup_uuid/`, CC 2.1.211 — five uuids, each twice.
+
+### A compaction always writes the summary that replaced the context
+
+Every `system`/`compact_boundary` record has an `isCompactSummary` user record beside it: 1,026 of each across the mycelia corpus, and no file where the two counts differ (scanned 2026-08-07, CC 2.1.191–2.1.221). So a compaction is read from the boundary's own `compactMetadata` rather than inferred from the nearest assistant call, which is what the prior importer did.
+
+Subagents compact far more often than main transcripts do, so a compaction belongs to the file that hit the limit, not to the session.
+
+*Seen in* `tests/fixtures/compaction/`, CC 2.1.198 — two boundaries, one `auto` and one `manual`, each with its summary.
+
+### A cache-creation total can disagree with its own split
+
+`usage.cache_creation_input_tokens` and the `ephemeral_5m`/`ephemeral_1h` pair inside `usage.cache_creation` are two reports of the same number, and they disagree on 53 of the corpus's ~290,000 assistant records (scanned 2026-08-07). The extractor keeps both: `cache_creation_tokens` from the total, `cache_5m_tokens`/`cache_1h_tokens` from the split. Cost uses the split where it exists, so those 53 calls price against a figure the total does not confirm.
 
 ### Records contain raw U+2028 and U+2029
 
