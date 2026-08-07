@@ -177,3 +177,18 @@ VIEW_PREFIX = "view_"
 def load(name: str) -> str:
     """The SQL text of one library query, by file stem."""
     return (QUERY_DIR / f"{name}.sql").read_text()
+
+
+def citation(name: str, bindings: Mapping[str, ParamValue]) -> str:
+    """Query file and bindings as a SQL comment: what a report quotes and a reader re-runs.
+
+    Both consumers cite the same way. The viewer passes what it composed around the query —
+    the sort a page applied is as much a part of what produced it as a bound parameter.
+    """
+    bound = " ".join(f"{key}={_show(value)}" for key, value in bindings.items())
+    return f"-- queries/{name}.sql {bound}".rstrip()
+
+
+def _show(value: ParamValue) -> str:
+    """A binding as it goes in the citation — NULL is a value a reader can rebind."""
+    return "NULL" if value is None else str(value)

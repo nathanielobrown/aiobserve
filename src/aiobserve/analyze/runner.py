@@ -74,8 +74,7 @@ class Result:
     @property
     def citation(self) -> str:
         """Query file and resolved bindings, as a SQL comment: the claim's query."""
-        bound = " ".join(f"{key}={_show(value)}" for key, value in self.bindings.items())
-        return f"-- queries/{self.name}.sql {bound}".rstrip()
+        return queries.citation(self.name, self.bindings)
 
 
 def run(
@@ -194,8 +193,3 @@ def _check_schema(db: Path, connection: duckdb.DuckDBPyConnection) -> None:
             f"{db} holds schema version {held or 'nothing'}, these queries read "
             f"{SCHEMA_VERSION}. Delete the database and re-extract."
         )
-
-
-def _show(value: ParamValue) -> str:
-    """A binding as it goes in the citation — NULL is a value a reader can rebind."""
-    return "NULL" if value is None else str(value)
