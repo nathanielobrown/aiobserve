@@ -179,7 +179,9 @@ def test_an_error_result_tail_is_the_one_exception(fixture_db: Path) -> None:
         # ...and the tail is a tail: capped at the budget's size, the *end* of the message
         # survives. Injected small, since no recorded error runs to the real 300 chars.
         capped = render_turn(item, dataclasses.replace(TURN_BUDGETS, error_tail=4))
-    assert "| error tail: [+7 chars]able" in capped
+    # Four characters is all four characters of error text: the count of what was dropped
+    # comes out of the budget too, and here there is no room for it.
+    assert "| error tail: able" in capped
 
 
 def test_the_tool_input_head_is_the_head(fixture_db: Path) -> None:
@@ -191,9 +193,11 @@ def test_the_tool_input_head_is_the_head(fixture_db: Path) -> None:
         # ...then the line carries the input's own first characters — the workflow's name
         # here, a file path or a command elsewhere — not a hash and not the tool name again.
         assert '{"name": "deep-research"' in rendered
-        # ...and past the budget's head size it stops, saying how much it left behind.
+        # ...and past the budget's head size it stops, saying how much it left behind. The
+        # marker comes out of the budget rather than riding on top of it: nine characters of
+        # input and an eleven-character marker are the twenty the budget allows.
         capped = render_turn(item, dataclasses.replace(TURN_BUDGETS, input_head=20))
-    assert '{"name": "deep-resea[+27 chars]' in capped
+    assert '- Workflow (input 47 chars, result 10 chars) {"name": [+38 chars]' in capped
 
 
 def test_input_hash_reads_the_rendered_content_and_nothing_else(mutable_db: Path) -> None:
@@ -282,8 +286,10 @@ def test_each_instruction_is_capped_on_its_own(fixture_db: Path) -> None:
     # (injected: redaction leaves each recorded prompt at ten, so the real 4K cannot bite)...
     with EnrichmentStore(fixture_db) as store:
         capped = render_run(run(store, TEAM_RUN), dataclasses.replace(RUN_BUDGETS, prompt=4))
-    # ...then both instructions are still there, and each was truncated on its own.
-    assert capped.count("[red[+6 chars]") == 2
+    # ...then both instructions are still there, and each was truncated to four characters of
+    # its own rather than to four between them.
+    assert "## Task\n[red\n" in capped
+    assert "## Instruction\n[red\n" in capped
 
 
 def test_a_zero_turn_run_renders_as_a_continuation(fixture_db: Path) -> None:

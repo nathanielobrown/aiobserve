@@ -432,17 +432,33 @@ def _duration(ms: int | None) -> str:
 
 
 def _cap(text: str, limit: int) -> str:
-    """The head of `text`, saying how much was left behind."""
+    """The head of `text` and how much was left behind, in `limit` characters or fewer."""
     if len(text) <= limit:
         return text
-    return f"{text[:limit]}[+{len(text) - limit} chars]"
+    kept = _room(len(text), limit)
+    return f"{text[:kept]}{_dropped(len(text) - kept)}" if kept > 0 else text[:limit]
 
 
 def _tail(text: str, limit: int) -> str:
-    """The end of `text` — where an error message says what failed."""
+    """The end of `text` — where an error message says what failed — within the same limit."""
     if len(text) <= limit:
         return text
-    return f"[+{len(text) - limit} chars]{text[-limit:]}"
+    kept = _room(len(text), limit)
+    return f"{_dropped(len(text) - kept)}{text[-kept:]}" if kept > 0 else text[-limit:]
+
+
+def _dropped(count: int) -> str:
+    return f"[+{count} chars]"
+
+
+def _room(length: int, limit: int) -> int:
+    """How much text a cap keeps once room for its marker is paid for.
+
+    Reserved against the whole length, so the marker finally written — which counts something
+    shorter — always fits. Zero or less means the limit holds no marker at all, and the count
+    is then what goes: a reader who cannot have both wants the text.
+    """
+    return limit - len(_dropped(length))
 
 
 def _one_line(text: str) -> str:
