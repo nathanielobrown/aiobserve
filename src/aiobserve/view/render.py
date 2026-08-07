@@ -30,6 +30,12 @@ _MARKDOWN = MarkdownIt("commonmark", {"html": False, "linkify": False})
 # How far JSON is indented before it stops being readable and starts being a scroll.
 _INDENT = 2
 
+# How much indentation a value may gain before it is served as stored instead. Indenting is
+# quadratic in nesting — 10 KB of nothing but `[` indents to 50 MB — while real values gain
+# very little: across the canonical store on 2026-08-07, the worst of a 2,000-record sample
+# gained 3,418 characters and the largest values in it gained 352.
+_MAX_INDENT_CHARS = 20_000
+
 
 def _image(
     renderer: RendererHTML,
@@ -58,17 +64,50 @@ def markdown(text: str | None) -> Markup:
     return Markup(_MARKDOWN.render(text)) if text else Markup()
 
 
+def _indent_fits(parsed: object) -> bool:
+    """Whether indenting a parsed value would add less than `_MAX_INDENT_CHARS`.
+
+    Counts what `json.dumps(indent=…)` adds — a newline and one level of padding per member,
+    plus a line for each closing bracket — and stops at the budget, so measuring a hostile
+    value costs no more than the budget. The walk carries its own stack because the nesting
+    that makes indenting expensive is the nesting that would overflow a recursive one.
+    """
+    added = 0
+    stack: list[tuple[object, int]] = [(parsed, 0)]
+    while stack:
+        item, depth = stack.pop()
+        if isinstance(item, dict):
+            children: list[object] = list(item.values())
+        elif isinstance(item, list):
+            children = item
+        else:
+            continue
+        if not children:
+            continue
+        added += len(children) * (1 + (depth + 1) * _INDENT) + 1 + depth * _INDENT
+        if added >= _MAX_INDENT_CHARS:
+            return False
+        stack.extend((child, depth + 1) for child in children)
+    return True
+
+
 def pretty(value: str | None) -> Markup:
     """A stored JSON value indented for reading, escaped — or the value itself if it is not.
 
     Tool arguments and raw records are JSON *most* of the time. A value that does not parse
     is shown as it was stored rather than hidden: what it holds is the reason someone opened
     the fragment.
+
+    A value nested deeply enough that indenting it would explode — or that the parser's own
+    stack cannot hold — is shown as stored too, so what a fragment serves stays proportional
+    to what the store holds. `_MAX_INDENT_CHARS` sets the line.
     """
     if not value:
         return Markup()
     try:
-        shown = json.dumps(json.loads(value), indent=_INDENT, ensure_ascii=False)
-    except ValueError:
+        parsed = json.loads(value)
+        indent = _indent_fits(parsed)
+        shown = json.dumps(parsed, indent=_INDENT, ensure_ascii=False) if indent else value
+    except (ValueError, RecursionError):
         shown = value
     return escape(shown)

@@ -106,7 +106,9 @@ def test_a_per_value_query_returns_the_one_value_it_is_named_for(value: Value) -
 
     They select a fat column whole — that is what they are for. What keeps the bound is that
     the unit is one row of one value, so the fetch tops out at the largest value in the store
-    rather than at a page's worth of them.
+    rather than at a page's worth of them. Rendering is the other half of that promise, and
+    the planted leaf below holds it: what a fragment serves stays proportional to what the
+    store holds, however the value nests.
     """
     assert unbounded(queries.load(value)) != set()
 
@@ -358,6 +360,32 @@ def test_an_offload_of_nothing_but_escapes_still_serves_under_the_ceiling(
     # Served whole — the chunk is not silently cut — and still under the ceiling.
     assert page.text.count("&amp;") == MAX_CHUNK_CHARS
     assert len(page.content) < PAGE_BYTES
+
+
+def test_a_deeply_nested_value_is_served_at_the_size_it_was_stored(plant: Planter) -> None:
+    """A per-value fetch serves the value it names, not what indenting could turn it into.
+
+    Indenting is the one thing that can break the per-value exemption above, because it is
+    quadratic in nesting: 10 KB of nothing but `[` indents to 50 MB, and past the parser's
+    own stack the fragment answered 500 rather than anything at all. Both values are invented
+    and have to be — nothing recorded nests remotely this deep, which is the point.
+    """
+    indents_huge = "[" * 5_000 + "]" * 5_000
+    overflows_the_parser = "[" * 10_000 + "]" * 10_000
+    path = plant(
+        (
+            "UPDATE tool_calls SET input = ?, result = ? WHERE session_id = ?",
+            [indents_huge, indents_huge, FORK_ORIGIN],
+        ),
+        ("UPDATE raw_records SET raw = ? WHERE session_id = ?", [overflows_the_parser, ANCESTOR]),
+    )
+    with TestClient(build_app(path)) as planted:
+        tool = planted.get(f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}")
+        record = planted.get(f"/fragment/record/{ANCESTOR}/main/1")
+    # Each fragment answers, and weighs the values it names plus a page of chrome at most.
+    for response, stored in ((tool, 2 * len(indents_huge)), (record, len(overflows_the_parser))):
+        assert response.status_code == 200
+        assert len(response.content) < stored + PAGE_BYTES
 
 
 def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
