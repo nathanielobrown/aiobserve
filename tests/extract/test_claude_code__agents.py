@@ -12,7 +12,7 @@ import pytest
 
 from aiobserve.extract.claude_code import ClaudeCodeExtractor
 from aiobserve.model import MAIN_SOURCE, AgentRun, SessionTrace
-from tests.conftest import SourceFactory
+from tests.conftest import FIXTURES, PlantedFactory, SourceFactory
 from tests.extract.test_claude_code import SPINE, at
 
 # The subagent `spine/` spawned, the subagent *it* spawned in turn, and the workflow
@@ -168,6 +168,40 @@ def test_a_workflow_agent_parses_like_any_other(fixture_source: SourceFactory):
     assert calls[0].id == "msg_011CcxQueXXAiVxM6LKvY7Ya"
     # ...and the journal beside it stays an archive, contributing no calls of its own.
     assert {call.source for call in extracted.api_calls} == {MAIN_SOURCE, WORKFLOW_AGENT}
+
+
+def test_a_meta_that_names_no_depth_says_so_rather_than_guessing(
+    planted_source: PlantedFactory,
+):
+    """A run whose meta omits `spawnDepth` has no depth, not depth zero.
+
+    One meta of the 2764 on this machine leaves the key out (scanned 2026-08-07):
+    `-Users-nob-repos-mac-settings/c31ecec9-.../subagents/agent-a20276f6d8a4e5309.meta.json`,
+    **Claude Code 2.1.186**. Its shape is planted here rather than added as a fixture tree —
+    the missing key is the whole record. `description` is redacted as every fixture's is.
+    """
+    # If a session holds a subagent whose meta names its type and its spawning call, and
+    # nothing else...
+    recorded = FIXTURES / "spine" / SPINE / "subagents" / f"agent-{NESTED_AGENT}.jsonl"
+    source = planted_source(
+        "spine",
+        SPINE,
+        {
+            f"subagents/agent-{NESTED_AGENT}.jsonl": recorded.read_text(),
+            f"subagents/agent-{NESTED_AGENT}.meta.json": (
+                '{"agentType": "claude-code-guide", "description": "[redacted]", '
+                '"toolUseId": "toolu_01Wibfj3Q3njBXyH76pSf1hk"}'
+            ),
+        },
+    )
+
+    # ...then the run reports the depth as unknown, rather than reading absence as the top.
+    (run,) = ClaudeCodeExtractor().extract(source).agent_runs
+    assert (run.id, run.agent_type, run.spawn_depth) == (
+        NESTED_AGENT,
+        "claude-code-guide",
+        None,
+    )
 
 
 def test_a_teammate_run_is_an_orphan_and_says_so(

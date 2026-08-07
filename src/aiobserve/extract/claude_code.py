@@ -400,7 +400,8 @@ def _agent_runs(
                 description=meta.get("description"),
                 model=meta.get("model"),
                 workflow_id=agent.workflow_id,
-                spawn_depth=meta["spawnDepth"],
+                # Absent on one meta of the 2764 on this machine, a 2.1.186 session.
+                spawn_depth=meta.get("spawnDepth"),
                 started_at=min(moments) if moments else None,
                 ended_at=max(moments) if moments else None,
             )

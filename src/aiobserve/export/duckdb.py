@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     description VARCHAR,
     model VARCHAR,
     workflow_id VARCHAR,
-    spawn_depth INTEGER NOT NULL,
+    spawn_depth INTEGER,
     started_at TIMESTAMPTZ,
     ended_at TIMESTAMPTZ,
     PRIMARY KEY (session_id, id)

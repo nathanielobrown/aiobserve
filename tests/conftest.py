@@ -6,6 +6,7 @@ transcript is better evidence than one assembled by hand. Each fixture directory
 names its source session and Claude Code version.
 """
 
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 
@@ -20,6 +21,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 SourceFactory = Callable[[str, str], SessionSource]
 TraceFactory = Callable[[str, str], SessionTrace]
+PlantedFactory = Callable[[str, str, dict[str, str]], SessionSource]
 
 
 @pytest.fixture
@@ -39,6 +41,27 @@ def fixture_source() -> SourceFactory:
         return SessionSource(
             id=stem, files=tuple(session.files()), fingerprint="fixture-fingerprint"
         )
+
+    return build
+
+
+@pytest.fixture
+def planted_source(tmp_path: Path) -> PlantedFactory:
+    """A fixture session copied into `tmp_path`, with extra files in its directory.
+
+    The transcript is the recorded one; only the planted file *names* are invented, which is
+    the point — they stand for layouts Claude Code writes, or might write next.
+    """
+
+    def build(directory: str, stem: str, files: dict[str, str]) -> SessionSource:
+        transcript = tmp_path / f"{stem}.jsonl"
+        shutil.copy(FIXTURES / directory / transcript.name, transcript)
+        for relative, content in files.items():
+            path = tmp_path / stem / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content)
+        session = Session(id=stem, transcript=transcript)
+        return SessionSource(id=stem, files=tuple(session.files()), fingerprint="planted")
 
     return build
 

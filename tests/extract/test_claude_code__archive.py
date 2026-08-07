@@ -5,7 +5,6 @@ archived here is gone. The fixtures are redacted mycelia sessions; each fixture
 directory's README names its source session and Claude Code version.
 """
 
-import shutil
 from collections import Counter
 from pathlib import Path
 
@@ -13,9 +12,7 @@ import pytest
 
 from aiobserve.extract.claude_code import ClaudeCodeExtractor, TranscriptSchemaError
 from aiobserve.model import MAIN_SOURCE, OffloadFile, SessionTrace
-from aiobserve.pipeline import SessionSource
-from aiobserve.sessions import Session
-from tests.conftest import FIXTURES, SourceFactory
+from tests.conftest import FIXTURES, PlantedFactory, SourceFactory
 from tests.extract.test_claude_code import SPINE
 from tests.extract.test_claude_code__agents import (
     NESTED_AGENT,
@@ -34,22 +31,6 @@ OFFLOADED_FILE = "bosvr1kjx.txt"
 
 def lines_by_source(trace: SessionTrace) -> Counter[str]:
     return Counter(record.source for record in trace.raw_records)
-
-
-def planted(tmp_path: Path, files: dict[str, str]) -> SessionSource:
-    """The spine session copied into `tmp_path`, with extra files in its directory.
-
-    The transcript is the recorded one; only the planted file *names* are invented, which
-    is the whole point — they stand for layouts Claude Code writes or might write next.
-    """
-    transcript = tmp_path / f"{SPINE}.jsonl"
-    shutil.copy(FIXTURES / "spine" / transcript.name, transcript)
-    for relative, content in files.items():
-        path = tmp_path / SPINE / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content)
-    session = Session(id=SPINE, transcript=transcript)
-    return SessionSource(id=SPINE, files=tuple(session.files()), fingerprint="planted")
 
 
 def test_the_archive_holds_every_line_of_every_file(fixture_source: SourceFactory):
@@ -118,7 +99,9 @@ def test_an_offloaded_output_is_archived_whole(fixture_source: SourceFactory):
     assert trace.tool_calls[0].offload_file == OFFLOADED_FILE
 
 
-def test_an_output_that_is_not_text_is_archived_anyway(tmp_path: Path):
+def test_an_output_that_is_not_text_is_archived_anyway(
+    tmp_path: Path, planted_source: PlantedFactory
+):
     """A binary tool output is kept, flagged as decoded lossily rather than dropped.
 
     WebFetch persists PDFs here, and output cut mid-character lands the same way — nine
@@ -128,7 +111,7 @@ def test_an_output_that_is_not_text_is_archived_anyway(tmp_path: Path):
     offloaded = tmp_path / SPINE / "tool-results" / "fetched.pdf"
     offloaded.parent.mkdir(parents=True)
     offloaded.write_bytes(b"%PDF-\xff\xfe\x00")
-    source = planted(tmp_path, {})
+    source = planted_source("spine", SPINE, {})
 
     # If a session offloaded output that is not UTF-8...
     offload = ClaudeCodeExtractor().extract(source).offload_files[0]
@@ -138,11 +121,12 @@ def test_an_output_that_is_not_text_is_archived_anyway(tmp_path: Path):
     assert offload.content.startswith("%PDF-")
 
 
-def test_a_workflow_definition_is_not_a_transcript(tmp_path: Path):
+def test_a_workflow_definition_is_not_a_transcript(planted_source: PlantedFactory):
     """The workflow scripts a session stores beside its runs are not parsed as records."""
     # If a session ran a workflow, it keeps the definition and the script that drove it...
-    source = planted(
-        tmp_path,
+    source = planted_source(
+        "spine",
+        SPINE,
         {
             "workflows/wf_c30cc877-997.json": "{}",
             "workflows/scripts/deep-research-wf_c30cc877-997.js": "//",
@@ -154,13 +138,13 @@ def test_a_workflow_definition_is_not_a_transcript(tmp_path: Path):
     assert set(lines_by_source(trace)) == {MAIN_SOURCE}
 
 
-def test_an_unknown_file_in_a_session_directory_crashes(tmp_path: Path):
+def test_an_unknown_file_in_a_session_directory_crashes(planted_source: PlantedFactory):
     """A file we cannot place is a Claude Code change to look at, not a file to skip.
 
     Skipping it would lose whatever it holds for as long as nobody noticed — and the
     session's files are pruned within weeks.
     """
-    source = planted(tmp_path, {"subagents/notes.txt": ""})
+    source = planted_source("spine", SPINE, {"subagents/notes.txt": ""})
 
     with pytest.raises(TranscriptSchemaError, match="unknown file"):
         ClaudeCodeExtractor().extract(source)

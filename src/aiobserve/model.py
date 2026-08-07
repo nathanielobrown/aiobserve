@@ -165,8 +165,8 @@ class AgentRun:
     # The `wf_<id>` fan-out this run belonged to, from the directory it sits in.
     workflow_id: str | None
     # 1 for a run the session itself spawned, deeper for a subagent's subagent, 0 for a
-    # teammate.
-    spawn_depth: int
+    # teammate. None when the meta left the key out, which one recorded meta does.
+    spawn_depth: int | None
     # First and last record of its transcript.
     started_at: datetime | None
     ended_at: datetime | None
