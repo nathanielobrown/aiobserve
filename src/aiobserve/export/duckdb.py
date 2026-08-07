@@ -293,10 +293,12 @@ class DuckDbExporter:
         # Timestamps go in as UTC and must come back as UTC, whatever the machine's clock
         # is set to.
         self.connection.execute("SET TimeZone='UTC'")
+        # Before any DDL: a file this build cannot read must be left exactly as it was.
+        self._check_schema_version()
         self.connection.execute(_SCHEMA)
         # After the tables: every view below reads them.
         self.connection.execute(_VIEWS)
-        self._check_schema_version()
+        self._stamp_schema_version()
 
     def __enter__(self) -> "DuckDbExporter":
         return self
@@ -313,15 +315,37 @@ class DuckDbExporter:
         self.connection.close()
 
     def _check_schema_version(self) -> None:
-        row = self.connection.execute("SELECT schema_version FROM meta").fetchone()
-        if row is None:
-            self.connection.execute("INSERT INTO meta VALUES (?)", [SCHEMA_VERSION])
+        """Refuse a file this build's DDL does not fit, before that DDL touches it.
+
+        Runs first because the damage is silent otherwise: `CREATE TABLE IF NOT EXISTS`
+        would add current tables to a file written by an older schema, and the kept
+        archives beside the live store are exactly the files an operator points here by
+        mistake. An empty file is a new store; anything else has to carry our stamp.
+        """
+        tables = {
+            name
+            for (name,) in self.connection.execute(
+                "SELECT table_name FROM duckdb_tables()"
+            ).fetchall()
+        }
+        if not tables:
             return
-        if row[0] != SCHEMA_VERSION:
+        if "meta" not in tables:
+            raise SchemaVersionError(
+                f"{self.path} holds tables this build did not write. Point at a different "
+                f"file, or delete this one and re-extract."
+            )
+        row = self.connection.execute("SELECT schema_version FROM meta").fetchone()
+        # An empty `meta` is a store that crashed between its DDL and its stamp.
+        if row is not None and row[0] != SCHEMA_VERSION:
             raise SchemaVersionError(
                 f"{self.path} holds schema version {row[0]}, this build writes "
                 f"{SCHEMA_VERSION}. Delete the database and re-extract."
             )
+
+    def _stamp_schema_version(self) -> None:
+        if self.connection.execute("SELECT schema_version FROM meta").fetchone() is None:
+            self.connection.execute("INSERT INTO meta VALUES (?)", [SCHEMA_VERSION])
 
     def fingerprints(self) -> dict[str, str]:
         rows = self.connection.execute(
@@ -332,16 +356,12 @@ class DuckDbExporter:
     def export(self, trace: SessionTrace, fingerprint: str) -> None:
         """Replace everything held for this session, or roll back leaving it untouched."""
         session_id = trace.session.id
+        # Read off `_TABLES` rather than listed again: a table named there and forgotten
+        # here would be deleted on every export and never inserted. Each table's name is
+        # its `SessionTrace` list, except `sessions`, which is the one row the rest hang off.
         rows = {
-            "sessions": [trace.session],
-            "turns": trace.turns,
-            "api_calls": trace.api_calls,
-            "tool_calls": trace.tool_calls,
-            "agent_runs": trace.agent_runs,
-            "compactions": trace.compactions,
-            "pr_links": trace.pr_links,
-            "offload_files": trace.offload_files,
-            "raw_records": trace.raw_records,
+            table: [trace.session] if table == "sessions" else getattr(trace, table)
+            for table in _TABLES
         }
         self.connection.begin()
         try:

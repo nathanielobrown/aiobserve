@@ -386,12 +386,68 @@ def test_a_failed_export_changes_nothing(db: Path, fixture_trace: TraceFactory):
         assert exporter.fingerprints() == {SPINE: "fingerprint-1"}
 
 
-def test_a_schema_version_mismatch_refuses_to_open(db: Path):
-    """A store written by a different schema tells the operator to start over.
+def shape(path: Path) -> dict[str, list[str]]:
+    """Every table in the file and its column names — what opening a store may not change."""
+    with duckdb.connect(str(path), read_only=True) as connection:
+        return {
+            table: [
+                row[0]
+                for row in connection.execute(
+                    f'SELECT column_name FROM (DESCRIBE "{table}")'
+                ).fetchall()
+            ]
+            for (table,) in connection.execute("SELECT table_name FROM duckdb_tables()").fetchall()
+        }
 
-    There are no migrations while the project is early, so the message has to say what
-    to do rather than leave a half-readable DB in place.
+
+def old_store(path: Path) -> dict[str, list[str]]:
+    """A store as an older schema left it: a stamped `meta`, and tables of that vintage.
+
+    Hand-built rather than checked out: what matters is a `sessions` table the current
+    view DDL cannot bind against, which every schema before version 6 had — the archives
+    kept beside `data/traces.duckdb` are exactly such files.
     """
+    with duckdb.connect(str(path)) as connection:
+        connection.execute("CREATE TABLE meta (schema_version INTEGER NOT NULL)")
+        connection.execute("INSERT INTO meta VALUES (?)", [SCHEMA_VERSION - 1])
+        connection.execute("CREATE TABLE sessions (id VARCHAR PRIMARY KEY, project_dir VARCHAR)")
+    return shape(path)
+
+
+def test_a_schema_version_mismatch_refuses_to_open(db: Path):
+    """A store written by an older schema is left untouched, with a message saying what to do.
+
+    There are no migrations while the project is early, so the message has to say what to
+    do rather than leave a half-readable DB in place. The check has to run before any DDL:
+    `CREATE TABLE IF NOT EXISTS` would otherwise add current-schema tables to the old file,
+    and the view DDL would crash on the columns it lacks long before the version is read.
+    """
+    # If a store written by an older schema is opened...
+    before = old_store(db)
+
+    # ...then it says which version it holds and what to do about it...
+    with pytest.raises(SchemaVersionError, match="re-extract"):
+        DuckDbExporter(db)
+
+    # ...and not one table of it was written to.
+    assert shape(db) == before
+
+
+def test_a_foreign_database_refuses_to_open(db: Path):
+    """A DuckDB file that is not a trace store is refused rather than built on top of."""
+    # If the path names someone else's database...
+    with duckdb.connect(str(db)) as connection:
+        connection.execute("CREATE TABLE inventory (sku VARCHAR)")
+    before = shape(db)
+
+    # ...then opening it fails without adding our tables to it.
+    with pytest.raises(SchemaVersionError, match="re-extract"):
+        DuckDbExporter(db)
+    assert shape(db) == before
+
+
+def test_a_newer_schema_version_refuses_to_open(db: Path):
+    """A store this build is too old to read is refused too, not just one it is too new for."""
     with DuckDbExporter(db) as exporter:
         exporter.connection.execute("UPDATE meta SET schema_version = ?", [SCHEMA_VERSION + 1])
 
