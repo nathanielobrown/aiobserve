@@ -9,6 +9,9 @@ WITH RECURSIVE pool AS (
     -- The draw is over in-window sessions that did work of their own. `corpus_rollups`
     -- credits a resume's copied records to the session that ran them first, so a session
     -- with no turns and no agent runs has nothing left for a reader to read.
+    -- A session whose turns made no api call is out too, at the bound floor: `/model` and
+    -- `/effort` turns leave a session that ran nothing, and three took discovery slots in
+    -- iteration 1 (`reports/2026_08_07_mycelia_agent_friction.md`).
     SELECT
         p.session_id,
         r.started_at,
@@ -26,7 +29,9 @@ WITH RECURSIVE pool AS (
         FROM corpus_tool_calls
         GROUP BY session_id
     ) e USING (session_id)
-    WHERE p.in_window AND (r.turns > 0 OR r.agent_runs > 0)
+    WHERE p.in_window
+      AND (r.turns > 0 OR r.agent_runs > 0)
+      AND r.api_calls >= $min_api_calls
 ), skill_use AS (
     -- A skill's users, counted once each: a skill invoked forty times inside one session is
     -- one session's worth of evidence about how it behaves.

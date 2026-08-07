@@ -153,6 +153,11 @@ QUERIES: dict[str, Query] = {
             # Any fixed value serves; what matters is that the citation carries it, so the
             # discovery draw can be re-run — and rotated when an iteration wants new ground.
             "seed": Param(type=ParamType.TEXT, default="aiobserve"),
+            # Api calls a session needs before it is worth a reading slot. One keeps out the
+            # `/model`-only sessions that took three of iteration 1's eight discovery draws;
+            # it is bound rather than fixed because the filter is part of what the draw
+            # claims, and a citation that omits it describes a pool nobody can reconstruct.
+            "min_api_calls": Param(type=ParamType.INTEGER, default=1),
         },
     ),
     "session_counts": Query(scope=Scope.CORPUS, params={}),

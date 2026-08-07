@@ -12,6 +12,7 @@ pins the production defaults a committed report cites.
 from collections.abc import Mapping
 from pathlib import Path
 
+import duckdb
 import pytest
 
 from aiobserve.analyze.queries import QUERIES
@@ -28,6 +29,7 @@ from tests.analyze.conftest import (
 )
 from tests.conftest import (
     ANCESTOR,
+    CONFIG_ONLY,
     DEEP_RESEARCH_SESSION,
     FORK_ORIGIN,
     MYCELIA,
@@ -219,6 +221,30 @@ def test_a_session_that_did_no_work_of_its_own_is_outside_the_pool(
     assert not ({session for _, session in picks} & set(NO_WORK_SESSIONS))
 
 
+def test_a_session_whose_turns_made_no_api_call_is_outside_the_pool(
+    config_only_db: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A session that only set an option has nothing to read, so discovery cannot draw it."""
+
+    def config_only_query(name: str, *arguments: str) -> Output:
+        return query(config_only_db, capsys, name, *arguments)
+
+    # If a session holds a turn but no api call — the shape a `/model` or `/effort` session
+    # has, planted here by stripping one real session's calls, since every recorded fixture
+    # answered its turns — then the whole-pool draw comes back one session shorter...
+    exhausted: dict[str, int | str] = {"discovery_quota": 20}
+    picks = _select(config_only_query, exhausted)
+    assert len(picks) == POOL_AT_WHOLE - 1
+    assert CONFIG_ONLY not in {session for _, session in picks}
+    # ...and it is the api-call floor that excluded it, not the missing rows: bind the floor
+    # to zero and the session is back in the pool. Iteration 1 spent three of eight discovery
+    # slots on sessions like this, and the binding is in the citation so a report says which
+    # pool it drew from.
+    admitted = _select(config_only_query, {**exhausted, "min_api_calls": 0})
+    assert len(admitted) == POOL_AT_WHOLE
+    assert CONFIG_ONLY in {session for _, session in admitted}
+
+
 def test_the_selection_window_rides_as_of(run_query: QueryRunner) -> None:
     """Moving the as-of date moves the pool the draw is made from, and nothing else."""
     # If the same bindings are drawn against a window covering all thirteen sessions and then
@@ -244,6 +270,7 @@ def test_the_production_quotas_are_the_designed_reading_budget() -> None:
         "discovery_quota": 8,
         "skill_threshold": 5,
         "seed": "aiobserve",
+        "min_api_calls": 1,
     }
     # The run draw rides the same pin: its floor is what keeps a corpus of one-off agent
     # names from turning a ~20-run reading budget into one run per name.
@@ -304,6 +331,26 @@ def test_every_agent_type_gives_up_its_worst_and_its_costliest_run(
         "--csv",
     )
     assert len(quiet.csv_rows()) <= 1
+
+
+@pytest.fixture(scope="session")
+def config_only_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The corpus with one real session's api calls stripped, leaving it a turn and nothing.
+
+    Planted: every recorded fixture session answered its turns, so nothing in the corpus has
+    the shape of a session that only set an option. The turn is the recorded one.
+    """
+    path = tmp_path_factory.mktemp("config") / "traces.duckdb"
+    path.write_bytes(corpus_db.read_bytes())
+    connection = duckdb.connect(str(path))
+    try:
+        # The tool calls go with them: a tool call with no api call behind it is a shape no
+        # transcript holds.
+        for table in ("tool_calls", "api_calls"):
+            connection.execute(f"DELETE FROM {table} WHERE session_id = ?", [CONFIG_ONLY])  # noqa: S608
+    finally:
+        connection.close()
+    return path
 
 
 @pytest.fixture(scope="session")
