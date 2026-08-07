@@ -22,7 +22,7 @@ The corpus decides the levels. An agent run averages 1.031 turns (41 runs have 0
 | main turn | 1,409 | `Turn.prompt` ≤4K (slash turns render `command_name` + `command_args`, not the raw tag XML — the `prompt` column retains tags); same per-call render; `Agent`/`Workflow` tool lines embed the spawned run's description | 30K chars |
 | session | 473 (see skip rule) | title, wall/active time, token and cost totals from `session_rollups`, joined to `sessions` for `git_branch` (the rollup view carries no branch column); the chronological list of child enrichments (description, category, outcome). Children are main turns plus **rootless runs** — `tool_use_id IS NULL` (46: 43 recorded teammate agents at `spawn_depth = 0`, 3 orphans), which no turn's tool line embeds. Runs spawned from a main turn reach the session through that turn's description; runs spawned by another agent reach it through their parent run | 24K chars |
 
-Over budget, elide the middle of the call sequence and keep head and tail with an elision marker (209 of 2,458 runs hit the cap). Sessions average 2.5 children, max 92 (`select avg(c), max(c) from (select s.id, main_turns + rootless_runs c ...)`) — same head-and-tail rule. `thinking` is excluded everywhere. A session with no main turns and no runs at all — 102 of 575 — is skipped, not enriched: there is nothing to describe. Coverage is therefore 473 sessions.
+Over budget, elide the middle of the call sequence and keep head and tail with an elision marker (209 of 2,458 runs hit the cap). Sessions average 2.5 children, max 92 (`select avg(c), max(c) from (select s.id, main_turns + rootless_runs c ...)`) — same head-and-tail rule. *(The session row's children rule and this average are superseded — see the slice-4 note below: 55 children rather than 46, averaging 3.1.)* `thinking` is excluded everywhere. A session with no main turns and no runs at all — 102 of 575 — is skipped, not enriched: there is nothing to describe. Coverage is therefore 473 sessions.
 
 Each item's output, via a forced tool call with a JSON schema: `description` (1–2 sentences), `category` (taxonomy member), `outcome` (`completed | partial | failed | abandoned | unclear`), `friction` (one line naming visible struggle — retries, errors, backtracking — or null). Validated client-side; an out-of-vocabulary value fails the item, never widens the vocabulary.
 
@@ -55,6 +55,12 @@ Failure handling, fail-fast without losing the batch: every succeeded item is up
 - A fork's own transcript replays the call that spawned it (43 cases), so the call lookup excludes `c.source = r.id` — otherwise a run is its own parent
 - 46 of the 55 roots have no spawning call at all (the design's rootless runs); the other 9 were spawned by a main-transcript call that belongs to no turn. Slice 4's session-children rule (`tool_use_id IS NULL`) does not reach those 9, and nothing else embeds them — decide there whether they are session children too
 
+*As built (slice 4):* **a session's direct children are the runs nothing else embeds, not the runs with no spawning call.** The 9 above are session children too — the alternative is 9 runs that no render anywhere contains. Rather than name them as a second special case, the rule is derived from the same union parentage the rounds order by: a run is a session child when `item_parents()` gives it neither a parent run nor a parent turn. That reaches all 55 by construction, and a shape nobody has seen yet lands in a session render instead of vanishing. Re-verified read-only on `data/traces.duckdb`: 2,459 runs, 46 with no spawning call, 9 spawned outside every turn, 55 session children in total.
+
+Two numbers in the Cost section move with it: sessions average **3.1** children rather than 2.5 (1,464 over 473 sessions, max 92). The skip rule holds as written — 102 of 575 sessions record no turn and no run, leaving 473.
+
+*As built (slice 4):* **`item_parents()` covers all three levels**, mapping every main turn to its session as well. The design left it at the run level, where it served only the round ordering. Extending it is what lets `--dry-run` count a session among a leaf's ancestors, lets a new child description cascade to the session, and lets a failed child block it — three obligations the earlier slices had to defer for want of a parent link above the turn.
+
 ## Cost
 
 Truncation-aware render sizes, from the store (queries in `enrich/prompts.py` mirror these; per tool call the line costs `30 + least(len(input),120) + 300×is_error` chars):
@@ -64,6 +70,8 @@ Truncation-aware render sizes, from the store (queries in `enrich/prompts.py` mi
 - Sessions: 473 × (metrics + avg 2.5 children × ~300 chars) → **~0.7M chars**
 
 Items: 2,458 + 1,409 + 473 = 4,340. At 3.3–4 chars/token (4 is a floor for code-heavy text, not a ceiling): 10–12.1M content tokens + ~3.0M instruction overhead (~700 tokens × item) ≈ 13–15.1M input, ~0.9M output (200/item). Haiku 4.5 batch rates ($0.50 in / $2.50 out per MTok): **≈ $9–12 per full-corpus pass** (~$18–24 unbatched). Not an upper bound except with respect to caching, which the estimate counts at zero. A taxonomy or prompt bump re-buys its level(s); the hash keeps everything else free. `--dry-run` prints stale counts and this estimate before spending.
+
+*As built (slice 4):* the arithmetic lives in **`src/aiobserve/enrich/cost.py`**, a file the tree below does not list — the rate table and the constants behind it are the sort of thing that gets edited without touching a prompt or a store, and burying them in the CLI would hide them. Two departures from the numbers above. Instruction overhead is measured from the real `instructions(level)` text per item rather than assumed at ~700 tokens, so an instruction edit re-prices itself. `CHARS_PER_TOKEN` is the single value 3.3 — the low end of the measured range, which makes the quote read high — rather than a range, because the report has to print one number. Rates are stored at list price with a `BATCH_DISCOUNT` of 0.5 applied, so the table can be checked line by line against Anthropic's price page. A model absent from the table crashes: quoting zero for a pass nobody has costed is the failure worth being loud about.
 
 ## Schema
 
@@ -82,6 +90,8 @@ CREATE TABLE turn_enrichments (
 
 Consumers query three views: `enriched_turns` (`live_turns` ⋈ `turn_enrichments`), `enriched_agent_runs` (`agent_runs` ⋈ `agent_run_enrichments`), `enriched_sessions` (`session_rollups` ⋈ `session_enrichments`) — LEFT joins, so un-enriched rows appear with NULL enrichment and the UI can show coverage honestly.
 
+*As built (slice 4):* `enriched_agent_runs` reads `live_agent_runs`, not `agent_runs` — the same drop-the-replays rule the other two views follow. `agent_runs` also carries a `description` and a `model` of its own, which would collide with the enrichment's, so the view excludes both and re-exposes them as `task_description` and `agent_model`. `description` then means the same thing in all three views, which is the property a consumer writing one query against all of them depends on.
+
 ## File-tree diff
 
 ```
@@ -92,6 +102,7 @@ src/aiobserve/enrich/
   store.py         NEW  enrichment DDL + views, staleness query, upsert (pipeline never touches these tables)
   batches.py       NEW  BatchClient protocol + AnthropicBatchClient (submit/poll/collect) + SyncClient (dev)
   enricher.py      NEW  enrich(): rounds, per-round staleness, zombie sweep, skip-parents-of-failures, crash summary
+  cost.py          NEW  (slice 4, not in the original tree) rate table, chars-per-token, and the dry run's arithmetic
 src/aiobserve/cli.py  CHANGED  `enrich [--db] [--project] [--model] [--dry-run] [--limit] [--no-batch]`
 docs/enrichment.md    NEW  taxonomy meanings + staleness model (schema.md stays telemetry-only)
 CLAUDE.md             CHANGED  Layout entry for docs/enrichment.md (doc-sync will enforce)
@@ -108,7 +119,7 @@ tests/enrich/         NEW  test_prompts.py, test_store.py, test_enricher.py
 1. **Seam + spine, turn level.** Taxonomy, store DDL + `enriched_turns`, turn render + hash + staleness + zombie sweep, `enrich()` over the fake client, secret-shape screen, CLI with `--dry-run`. Verified by `test_enricher.py` enriching fixture-built turns end to end, plus a second-run-is-a-no-op test.
 2. **Real clients.** `AnthropicBatchClient` submit/poll/collect with all four result types (succeeded, errored, canceled, expired), `SyncClient`, key validation, per-item failure → classified crash summary → rerun resumes. Verified by mocked-SDK tests; manual live check noted in the PR.
 3. **Agent runs.** Topological rounds with per-round staleness recompute, child-description embedding into run and turn prompts, rootless runs as roots, multi-turn renders (teammate-tag unwrap) and zero-turn continuations, cap elision. Verified on a subagent fixture session including a multi-turn run.
-4. **Sessions + docs.** Session render from rollups + spawn-linkage children, skip rule, remaining views, `docs/enrichment.md` + the CLAUDE.md Layout line, full `--dry-run` cost report with ancestor counting. Verified by view SQL tests.
+4. **Sessions + docs.** Session render from rollups + spawn-linkage children, skip rule, remaining views, `docs/enrichment.md` + the CLAUDE.md Layout line, full `--dry-run` cost report with ancestor counting. Verified by view SQL tests. *Landed; deviations in the as-built notes above and in the testing plan's slice-4 section.*
 
 ## Decisions
 
