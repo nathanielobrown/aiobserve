@@ -43,6 +43,7 @@ docs/
   commits.md          Commit messages: format, emoji, hygiene — loaded via the commit skill
   doc-sync.md         Bringing docs into agreement with a change — loaded via the doc-sync skill
   handoffs.md         Per-run agent scratch: naming, transfer, and lifetime
+plans/                Designs and testing plans, one directory per change
 reports/              Analysis findings, one per run (see README.md)
 data/                 Gitignored: extracted sessions and analysis scratch
 ```
