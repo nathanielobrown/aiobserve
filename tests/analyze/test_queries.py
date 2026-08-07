@@ -20,11 +20,11 @@ from tests.analyze.conftest import QueryRunner
 from tests.conftest import (
     ANCESTOR,
     DENSE_CALL,
-    DENSE_CALL_SOURCE,
     DENSE_TOOL,
     DENSE_TURN,
     DENSE_TURN_CALL,
     FORK_ORIGIN,
+    FORK_ORIGIN_RUN,
     MAIN,
     MYCELIA,
     RESUME,
@@ -47,6 +47,7 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     # `spine/` is the fixture session with agent runs; its main thread never compacted, so
     # the compaction markers come from the session that did.
     "view_compactions": {"session_id": ANCESTOR, "source": MAIN},
+    "view_run_header": {"session_id": SPINE, "run_id": SPINE_RUN},
     "view_runs": {"session_id": SPINE},
     "view_session_header": {"session_id": SPINE},
     # The viewer's drill-down, bound at the corpus's densest shapes so each query answers
@@ -54,7 +55,7 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     "view_turn_calls": {"session_id": ANCESTOR, "source": MAIN, "turn_id": DENSE_TURN},
     "view_call_tools": {
         "session_id": FORK_ORIGIN,
-        "source": DENSE_CALL_SOURCE,
+        "source": FORK_ORIGIN_RUN,
         "api_call_id": DENSE_CALL,
     },
     # The per-value queries answer with one row apiece, whatever is bound.
@@ -62,7 +63,7 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     "view_call_thinking": {"session_id": ANCESTOR, "source": MAIN, "api_call_id": DENSE_TURN_CALL},
     "view_tool_value": {
         "session_id": FORK_ORIGIN,
-        "source": DENSE_CALL_SOURCE,
+        "source": FORK_ORIGIN_RUN,
         "tool_call_id": DENSE_TOOL,
     },
 }

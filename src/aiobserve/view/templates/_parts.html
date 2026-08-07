@@ -1,0 +1,72 @@
+{# What a session page and a run page have in common: both render one thread of a session,
+   and a run's transcript is a thread like the session's own. #}
+
+{# One run and the runs under it. `attribute` marks the top level — a chip hangs off a turn,
+   an unattached run hangs off nothing, a child hangs off the run whose page this is — and
+   everything nested is a chip either way. #}
+{% macro run_list(chips, attribute, session_id) %}
+<ul class="runs">
+  {% for chip in chips %}
+  <li {{ attribute }}="{{ chip.run.run_id }}">
+    <a class="type" data-field="agent_type"
+       href="/session/{{ session_id }}/run/{{ chip.run.run_id }}">{{ chip.run.agent_type }}</a>
+    <span data-field="description">{{ chip.run.description }}</span>
+    <span data-field="model" class="model">{{ chip.run.model }}</span>
+    {% if chip.run.is_fork %}<span class="fork">fork</span>{% endif %}
+    {% if chip.children %}{{ run_list(chip.children, 'data-chip', session_id) }}{% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endmacro %}
+
+{# One thread's turns in order, its compactions between them, and the runs each turn spawned.
+   `source` is `main` on a session page and the run's id on a run page; `attribute` is what
+   the page calls the runs a turn spawned. #}
+{% macro timeline(entries, session_id, source, attribute) %}
+<section id="timeline">
+  {% for entry in entries %}
+  {% if entry.kind == 'turn' %}
+  <article data-turn="{{ entry.row.turn_id }}"
+    {%- if entry.continuation %} data-continuation="{{ entry.row.turn_id }}"{% endif %}>
+    {# A continuation row's calls answer a prompt this transcript does not hold — a resume,
+       or a fork opened mid-conversation — so there is no prompt to show. #}
+    <h2 data-field="prompt">
+      {%- if entry.continuation %}calls answering a turn this thread does not hold
+      {%- else %}{{ entry.row.prompt }}{% endif %}</h2>
+    {# The unit sits outside the labelled span: what a reader sees is a number and a word,
+       what a `data-field` carries is the value the store holds. #}
+    <p class="numbers">
+      <span data-field="started_at">{{ entry.row.started_at | clock }}</span>
+      <span><span data-field="api_calls">{{ entry.row.api_calls }}</span> calls</span>
+      <span><span data-field="tool_calls">{{ entry.row.tool_calls }}</span> tools</span>
+      <span><span data-field="tool_errors">{{ entry.row.tool_errors }}</span> errors</span>
+      <span data-field="cost_usd">{{ entry.row.cost_usd | money }}</span>
+    </p>
+    {% if entry.chips %}{{ run_list(entry.chips, attribute, session_id) }}{% endif %}
+    {# The turn's api calls arrive on first open and not before: a turn is not a bounded
+       unit, so nothing about what it did rides on the page that lists it. #}
+    <details class="calls" data-expand="{{ entry.row.turn_id }}"
+             hx-get="/fragment/turn/{{ session_id }}/{{ source }}/{{ entry.row.turn_id }}"
+             hx-trigger="toggle once" hx-target="find .page">
+      <summary>{{ entry.row.api_calls }} api call(s)</summary>
+      <div class="page"></div>
+    </details>
+  </article>
+  {% else %}
+  {# A compaction sits between the turns it fell between: what a later turn could still see
+     depends on it. #}
+  <div class="compaction" data-compaction="{{ entry.row.compaction_id }}">
+    <span data-field="timestamp">{{ entry.row.timestamp | clock }}</span>
+    <span data-field="trigger">{{ entry.row.trigger }}</span>
+    <span data-field="tokens">
+      {{ entry.row.pre_tokens | count }} → {{ entry.row.post_tokens | count }} tokens
+    </span>
+  </div>
+  {% endif %}
+  {% endfor %}
+</section>
+{% endmacro %}
+
+{% macro fact(name, value) %}
+<div><dt>{{ name }}</dt><dd data-field="{{ name }}">{{ value }}</dd></div>
+{% endmacro %}

@@ -26,11 +26,11 @@ from aiobserve.view.app import (
 from tests.conftest import (
     ANCESTOR,
     DENSE_CALL,
-    DENSE_CALL_SOURCE,
     DENSE_TOOL,
     DENSE_TURN,
     DENSE_TURN_CALL,
     FORK_ORIGIN,
+    FORK_ORIGIN_RUN,
     FORK_RUN,
     MAIN,
     RESUME,
@@ -329,8 +329,8 @@ def test_a_session_the_store_does_not_hold_is_a_404(client: TestClient) -> None:
         f"/session/{SPINE}",
         f"/session/{MISSING}",
         f"/fragment/turn/{ANCESTOR}/{MAIN}/{DENSE_TURN}",
-        f"/fragment/tool/{FORK_ORIGIN}/{DENSE_CALL_SOURCE}/{DENSE_TOOL}",
-        f"/fragment/tool/{FORK_ORIGIN}/{DENSE_CALL_SOURCE}/{MISSING}",
+        f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}",
+        f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{MISSING}",
         "/static/style.css",
     ],
 )
@@ -369,7 +369,7 @@ def test_planted_markup_arrives_inert(plant: Planter) -> None:
             client.get(f"/session/{SPINE}").text,
             client.get(f"/fragment/turn/{ANCESTOR}/{MAIN}/{DENSE_TURN}").text,
             client.get(f"/fragment/text/{ANCESTOR}/{MAIN}/{DENSE_TURN_CALL}").text,
-            client.get(f"/fragment/tool/{FORK_ORIGIN}/{DENSE_CALL_SOURCE}/{DENSE_TOOL}").text,
+            client.get(f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}").text,
         )
         for page in served:
             # The sentinel survives to the page as text — angle brackets escaped, the one form
@@ -393,11 +393,11 @@ def test_a_per_value_fragment_returns_the_one_value_it_names(
         for row in store.execute(
             "SELECT id FROM live_tool_calls"
             " WHERE session_id = ? AND source = ? AND api_call_id = ?",
-            [FORK_ORIGIN, DENSE_CALL_SOURCE, DENSE_CALL],
+            [FORK_ORIGIN, FORK_ORIGIN_RUN, DENSE_CALL],
         ).fetchall()
     ]
     assert DENSE_TOOL in siblings and len(siblings) > 1
-    served = client.get(f"/fragment/tool/{FORK_ORIGIN}/{DENSE_CALL_SOURCE}/{DENSE_TOOL}").text
+    served = client.get(f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}").text
     # The value it was asked for is there, with what the tool returned...
     assert values(served, "data-tool-value") == [DENSE_TOOL]
     assert fields(served, "data-tool-value", DENSE_TOOL)["result"]
@@ -408,7 +408,7 @@ def test_a_per_value_fragment_returns_the_one_value_it_names(
 
 def test_a_fragment_naming_nothing_is_a_404(client: TestClient) -> None:
     """A per-value fragment for an id the store lacks is a 404, not an empty box."""
-    response = client.get(f"/fragment/tool/{FORK_ORIGIN}/{DENSE_CALL_SOURCE}/{MISSING}")
+    response = client.get(f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{MISSING}")
     assert response.status_code == 404
     assert MISSING not in response.text
 

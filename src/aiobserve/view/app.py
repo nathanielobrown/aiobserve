@@ -59,8 +59,11 @@ class Page(StrEnum):
 
     SESSIONS = "view_sessions"
     SESSION_HEADER = "view_session_header"
-    # The turn timeline, shared with `aiobserve query` — the same rows a report cites.
+    RUN_HEADER = "view_run_header"
+    # The two turn timelines, shared with `aiobserve query` — the same rows a report cites.
+    # One query per thread kind: `session_digest` reads `main`, `run_digest` a bound source.
     TIMELINE = "session_digest"
+    RUN_TIMELINE = "run_digest"
     RUNS = "view_runs"
     COMPACTIONS = "view_compactions"
 
@@ -170,11 +173,21 @@ class Chip:
 
 @dataclass(frozen=True)
 class Entry:
-    """One row of a session's timeline: a turn with its runs, or a compaction marker."""
+    """One row of a thread's timeline: a turn with its runs, or a compaction marker."""
 
     kind: EntryKind
     row: Row
     chips: tuple[Chip, ...] = ()
+
+    @property
+    def continuation(self) -> bool:
+        """The row carrying the calls that answer no turn of this thread.
+
+        A resume answers turns that live in the session it resumed, and a by-reference fork
+        opens mid-conversation; the digests give both a sentinel row rather than dropping
+        their spend. The page says so, because "no prompt" and "an empty prompt" read alike.
+        """
+        return self.kind is EntryKind.TURN and self.row["turn_id"] == queries.UNATTRIBUTED
 
 
 @contextmanager
@@ -298,12 +311,14 @@ def _under_turns(runs: Sequence[Row], source: str) -> tuple[Chip, ...]:
     return tuple(chip for turn_id in turns for chip in chips(runs, source, turn_id))
 
 
-def timeline(turns: Sequence[Row], runs: Sequence[Row], compactions: Sequence[Row]) -> list[Entry]:
-    """A session's turns in order, with its runs chipped on and its compactions interleaved.
+def timeline(
+    turns: Sequence[Row], runs: Sequence[Row], compactions: Sequence[Row], source: str
+) -> list[Entry]:
+    """One thread's turns in order, with the runs it spawned chipped on and its compactions
+    interleaved.
 
-    Every run of the session lands exactly once — on a turn, under the run that spawned it,
-    or in the unattached list `unattached` returns. A run this cannot place is a shape we
-    have not seen, so it raises rather than vanishing from a page that still counts it.
+    `source` is `main` for a session page and a run id for a run page: the same shape either
+    way, because a run's transcript is a thread like the session's own.
     """
     entries: list[Entry] = []
     pending = list(compactions)
@@ -312,14 +327,81 @@ def timeline(turns: Sequence[Row], runs: Sequence[Row], compactions: Sequence[Ro
         # A compaction that ran before this turn started belongs after the previous one.
         while pending and started is not None and pending[0]["timestamp"] <= started:
             entries.append(Entry(EntryKind.COMPACTION, pending.pop(0)))
-        entries.append(Entry(EntryKind.TURN, turn, chips(runs, MAIN_SOURCE, turn["turn_id"])))
-    entries += [Entry(EntryKind.COMPACTION, row) for row in pending]
+        entries.append(Entry(EntryKind.TURN, turn, chips(runs, source, turn["turn_id"])))
+    return entries + [Entry(EntryKind.COMPACTION, row) for row in pending]
+
+
+class Threads(NamedTuple):
+    """A session page's two run-bearing parts, which together hold every run it recorded."""
+
+    entries: list[Entry]
+    unattached: tuple[Chip, ...]
+
+
+def session_threads(
+    turns: Sequence[Row], runs: Sequence[Row], compactions: Sequence[Row]
+) -> Threads:
+    """The main thread's timeline and the unattached list, checked to cover every run.
+
+    Built together because the guarantee is about the pair: a run lands on a turn, under the
+    run that spawned it, or in the unattached list. One this cannot place is a shape we have
+    not seen, so it raises rather than vanishing from a page that still counts it.
+    """
+    entries = timeline(turns, runs, compactions, MAIN_SOURCE)
+    loose = unattached(runs)
     placed = {chip.run["run_id"] for entry in entries for chip in _walk(entry.chips)}
-    placed |= {chip.run["run_id"] for chip in _walk(unattached(runs))}
+    placed |= {chip.run["run_id"] for chip in _walk(loose)}
     missing = {run["run_id"] for run in runs} - placed
     if missing:
         raise ValueError(f"{len(missing)} run(s) hang off no turn and no run: {sorted(missing)}")
-    return entries
+    return Threads(entries, loose)
+
+
+def parent_of(run: Row) -> str | None:
+    """The thread a run hangs under: the parent its transcript names, else the thread its
+    spawning call was made from.
+
+    The two-rule linkage `enrich/store.py:item_parents` applies, and in that order — a fork's
+    spawning call is only in its own transcript, which the chip join deliberately excludes,
+    so `parent_agent_id` is all a fork has. None when the store names neither.
+    """
+    return run["parent_agent_id"] or run["spawn_source"]
+
+
+def ancestry(run_id: str, runs: Sequence[Row]) -> list[str]:
+    """The threads above a run, outermost first — as far as the store names them.
+
+    It stops where the naming stops rather than falling back to the session's main thread: a
+    run whose parent nothing names is a run this store cannot place, and `main` would be a
+    guess. So the trail is empty for such a run, and truncated for its descendants.
+    """
+    by_id = {run["run_id"]: run for run in runs}
+    trail: list[str] = []
+    current = run_id
+    while (parent := parent_of(by_id[current])) is not None:
+        if parent in trail:
+            raise ValueError(f"{run_id} hangs under itself: {[*trail, parent]}")
+        trail.append(parent)
+        # `main`, or a run of some other session: either way the walk is over.
+        if parent not in by_id:
+            break
+        current = parent
+    return trail[::-1]
+
+
+def children(run_id: str, runs: Sequence[Row]) -> tuple[Chip, ...]:
+    """The runs under this one that no turn of its own timeline claims.
+
+    The complement of its chips: together they hold every run whose parent is this one, each
+    exactly once, so a run page cannot lose a child the way the chip join alone would lose a
+    fork.
+    """
+    return tuple(
+        Chip(run, chips(runs, run["run_id"], None) + _under_turns(runs, run["run_id"]))
+        for run in runs
+        if parent_of(run) == run_id
+        and not (run["spawn_source"] == run_id and run["spawn_turn_id"] is not None)
+    )
 
 
 def unattached(runs: Sequence[Row]) -> tuple[Chip, ...]:
@@ -466,19 +548,53 @@ def build_app(db_path: Path) -> FastAPI:
                 connection, Page.COMPACTIONS, session_id=session_id, source=MAIN_SOURCE
             )
         keyed: dict[str, ParamValue] = {"session_id": session_id}
+        threads = session_threads(turns, runs, markers)
         return templates.TemplateResponse(
             request,
             "session.html",
             {
                 "header": header[0],
                 "main": MAIN_SOURCE,
-                "timeline": timeline(turns, runs, markers),
-                "unattached": unattached(runs),
+                "timeline": threads.entries,
+                "unattached": threads.unattached,
                 "citations": {
                     page.value: queries.citation(
                         page, keyed | ({"source": MAIN_SOURCE} if page is Page.COMPACTIONS else {})
                     )
                     for page in (Page.SESSION_HEADER, Page.TIMELINE, Page.RUNS, Page.COMPACTIONS)
+                },
+            },
+        )
+
+    @app.get("/session/{session_id}/run/{run_id}")
+    def run_page(request: Request, session_id: str, run_id: str) -> Response:
+        with open_store(resolved) as connection:
+            header = page_rows(connection, Page.RUN_HEADER, session_id=session_id, run_id=run_id)
+            if not header:
+                raise HTTPException(404, "No run with that id is in this session.")
+            turns = page_rows(connection, Page.RUN_TIMELINE, session_id=session_id, source=run_id)
+            # The session's runs, not this one's: the trail above the run and the runs under
+            # it are both read off the same set of links.
+            runs = page_rows(connection, Page.RUNS, session_id=session_id)
+            markers = page_rows(connection, Page.COMPACTIONS, session_id=session_id, source=run_id)
+        keyed: dict[str, ParamValue] = {"session_id": session_id}
+        at_source = keyed | {"source": run_id}
+        return templates.TemplateResponse(
+            request,
+            "run.html",
+            {
+                "header": header[0],
+                "main": MAIN_SOURCE,
+                "trail": ancestry(run_id, runs),
+                "timeline": timeline(turns, runs, markers, run_id),
+                "children": children(run_id, runs),
+                "citations": {
+                    Page.RUN_HEADER.value: queries.citation(
+                        Page.RUN_HEADER, keyed | {"run_id": run_id}
+                    ),
+                    Page.RUN_TIMELINE.value: queries.citation(Page.RUN_TIMELINE, at_source),
+                    Page.RUNS.value: queries.citation(Page.RUNS, keyed),
+                    Page.COMPACTIONS.value: queries.citation(Page.COMPACTIONS, at_source),
                 },
             },
         )

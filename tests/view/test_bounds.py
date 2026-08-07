@@ -27,12 +27,13 @@ from aiobserve.view.app import (
 from tests.conftest import (
     ANCESTOR,
     DENSE_CALL,
-    DENSE_CALL_SOURCE,
     DENSE_TOOL,
     DENSE_TURN,
     DENSE_TURN_CALL,
     FORK_ORIGIN,
+    FORK_ORIGIN_RUN,
     SPINE,
+    SPINE_RUN,
 )
 from tests.view.conftest import Planter, fields, one, values
 
@@ -187,20 +188,21 @@ def test_a_served_page_stays_under_its_ceiling(
 ROUTES: dict[str, str] = {
     "/": "/",
     "/session/{session_id}": f"/session/{SPINE}",
+    "/session/{session_id}/run/{run_id}": f"/session/{SPINE}/run/{SPINE_RUN}",
     "/fragment/turn/{session_id}/{source}/{turn_id}": (
         f"/fragment/turn/{ANCESTOR}/main/{DENSE_TURN}"
     ),
     "/fragment/tools/{session_id}/{source}/{api_call_id}": (
-        f"/fragment/tools/{FORK_ORIGIN}/{DENSE_CALL_SOURCE}/{DENSE_CALL}"
+        f"/fragment/tools/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}"
     ),
     "/fragment/text/{session_id}/{source}/{api_call_id}": (
-        f"/fragment/text/{FORK_ORIGIN}/{DENSE_CALL_SOURCE}/{DENSE_CALL}"
+        f"/fragment/text/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}"
     ),
     "/fragment/thinking/{session_id}/{source}/{api_call_id}": (
-        f"/fragment/thinking/{FORK_ORIGIN}/{DENSE_CALL_SOURCE}/{DENSE_CALL}"
+        f"/fragment/thinking/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}"
     ),
     "/fragment/tool/{session_id}/{source}/{tool_call_id}": (
-        f"/fragment/tool/{FORK_ORIGIN}/{DENSE_CALL_SOURCE}/{DENSE_TOOL}"
+        f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}"
     ),
 }
 
@@ -285,10 +287,10 @@ def test_the_tool_cap_truncates_the_list_and_says_how_much_it_cut(
         store,
         "SELECT count(*) FROM live_tool_calls"
         " WHERE session_id = ? AND source = ? AND api_call_id = ?",
-        [FORK_ORIGIN, DENSE_CALL_SOURCE, DENSE_CALL],
+        [FORK_ORIGIN, FORK_ORIGIN_RUN, DENSE_CALL],
     )
     assert total == 4, "the densest fixture call moved: re-pick DENSE_CALL"
-    url = f"/fragment/tools/{FORK_ORIGIN}/{DENSE_CALL_SOURCE}/{DENSE_CALL}"
+    url = f"/fragment/tools/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}"
     first = client.get(url, params={"after": -1, "tools": 2}).text
     # Two rows, and the page says two more are behind the indicator...
     shown = values(first, "data-tool-call")
@@ -327,7 +329,7 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     with TestClient(build_app(path)) as planted:
         page = planted.get(f"/session/{SPINE}").text
         turn = planted.get(f"/fragment/turn/{ANCESTOR}/main/{DENSE_TURN}").text
-        tools = planted.get(f"/fragment/tools/{FORK_ORIGIN}/{DENSE_CALL_SOURCE}/{DENSE_CALL}").text
+        tools = planted.get(f"/fragment/tools/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}").text
     # ...and what each of them shows is its cap, not the value.
     assert len(fields(page, "data-turn", turn_id)["prompt"]) == PROMPT_CHARS
     assert len(fields(turn, "data-api-call", DENSE_TURN_CALL)["text_head"]) == TEXT_CHARS

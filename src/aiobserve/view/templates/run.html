@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% import "_parts.html" as parts %}
+{% block title %}{{ header.agent_type }} {{ header.run_id }} — aiobserve{% endblock %}
+
+{% block main %}
+<section id="run-header">
+  <h1 data-field="agent_type">{{ header.agent_type }}</h1>
+  {# Where the run sits, outermost thread first. The trail stops where the store stops naming
+     parents rather than falling back to the session's main thread, which would be a guess. #}
+  <p class="trail">
+    {% for step in trail %}
+    <a data-breadcrumb="{{ step }}"
+       href="{% if step == main %}/session/{{ header.session_id }}
+             {%- else %}/session/{{ header.session_id }}/run/{{ step }}{% endif %}">{{ step }}</a>
+    {% endfor %}
+    {% if not trail %}
+    <span data-field="placement">under no thread in this store</span>
+    {% endif %}
+  </p>
+  <dl>
+    <div>
+      <dt>session</dt>
+      <dd data-field="session_id">
+        <a href="/session/{{ header.session_id }}">{{ header.session_id }}</a>
+      </dd>
+    </div>
+    {{ parts.fact('run_id', header.run_id) }}
+    {{ parts.fact('description', header.description) }}
+    {{ parts.fact('model', header.model) }}
+    {{ parts.fact('spawn_depth', header.spawn_depth) }}
+    {{ parts.fact('is_fork', header.is_fork) }}
+    {{ parts.fact('started_at', header.started_at | when) }}
+    {{ parts.fact('wall_ms', header.wall_ms | duration) }}
+    {{ parts.fact('turns', header.turns) }}
+    {{ parts.fact('api_calls', header.api_calls) }}
+    {{ parts.fact('tool_calls', header.tool_calls) }}
+    {{ parts.fact('tool_errors', header.tool_errors) }}
+    {{ parts.fact('compactions', header.compactions) }}
+    {{ parts.fact('cost_usd', header.cost_usd | money) }}
+    {{ parts.fact('unpriced_api_calls', header.unpriced_api_calls) }}
+    {{ parts.fact('output_tokens', header.output_tokens | count) }}
+  </dl>
+</section>
+
+{{ parts.timeline(timeline, header.session_id, header.run_id, 'data-child') }}
+
+{% if children %}
+<section id="children">
+  {# The runs this one spawned that no turn of its own timeline claims — a fork, or a run
+     whose spawning call the store does not hold. Listed here rather than dropped. #}
+  <h2>{{ children | length }} run(s) under no turn of this one</h2>
+  {{ parts.run_list(children, 'data-child', header.session_id) }}
+</section>
+{% endif %}
+{% endblock %}

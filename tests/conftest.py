@@ -59,18 +59,22 @@ SIBLING_SESSION = "4b443ab7-98f8-4c1d-859f-9bdcafbabdd3"
 # The densest shapes the corpus records, which the viewer's paging leaves page *below* so
 # that a page boundary is a real overflow of recorded data rather than a staged one:
 # `DENSE_TURN` is `ANCESTOR`'s main-thread turn holding 4 api calls, and `DENSE_CALL` is the
-# api call in `FORK_ORIGIN`'s `DENSE_CALL_SOURCE` holding 4 tool calls.
+# api call in `FORK_ORIGIN_RUN` holding 4 tool calls.
 DENSE_TURN = "55309e59-0fae-4ef1-9251-877e27487bda"
 DENSE_TURN_CALL = "msg_011Ccs78BfVLQfyQqhkxnpkm"
-DENSE_CALL_SOURCE = "acbc29008a04b9702"
 DENSE_CALL = "msg_011CdFxfStgUUn3Q59b4RFii"
 DENSE_TOOL = "toolu_015wiqbosE2nUYZBYdd9urjA"
 
 # `ANCESTOR` is the session `RESUME` resumed, and one of the two pool sessions that compacted.
-# `FORK_ORIGIN` holds the fork whose spawning call sits in the fork's own transcript.
+# `FORK_ORIGIN` holds the fork whose spawning call sits in the fork's own transcript:
+# `FORK_ORIGIN_RUN` is the run that spawned it — the fork's `parent_agent_id`, and the source
+# `DENSE_CALL` was made from. `BYREF_FORK` is the second recorded fork, the one whose own
+# api calls sit under no turn.
 ANCESTOR = "2352492b-1437-4427-ad51-70f35c75f663"
 FORK_ORIGIN = "5a88789c-1da7-4f32-b631-40a7e243334b"
+FORK_ORIGIN_RUN = "acbc29008a04b9702"
 FORK_RUN = "a61a059e3610e6fb4"
+BYREF_FORK = "afa3946951a08a798"
 REGISTRY_ZOO = "registry-zoo-0000-0000-0000-000000000000"
 # The `deep-research` user, and the only session `pr-and-document` reaches from the pool.
 DEEP_RESEARCH_SESSION = "8d930c77-9e60-4784-9885-6d4c226280f7"
