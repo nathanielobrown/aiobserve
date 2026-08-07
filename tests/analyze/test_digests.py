@@ -1,4 +1,4 @@
-"""The reading-support queries: `session_digest`, `run_digest`, `error_records`, `records_slice`.
+"""The reading-support queries: the digests, `view_runs`, `error_records`, `records_slice`.
 
 A digest is what a reader sees instead of the transcript, so the leaves here are about
 agreement and containment: the digest's cost has to equal the rollup for the scope it
@@ -15,7 +15,10 @@ import pytest
 
 from tests.analyze.conftest import Output, QueryRunner, query
 from tests.conftest import (
+    ANCESTOR,
     FORK_ORIGIN,
+    FORK_ORIGIN_RUN,
+    FORK_RUN,
     MAIN,
     RESUME,
     RESUME_LONG_RECORD,
@@ -285,6 +288,81 @@ def test_records_slice_caps_the_raw_text_it_returns(
     )
     assert len(rows) == 1
     assert len(rows[0]["raw"]) == RAW_CAP
+
+
+def test_view_runs_carries_what_ranking_a_session_s_runs_takes(
+    planted_run_compaction_db: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A session's runs come back with each one's cost, failed tool calls and compactions."""
+    # If a session's two runs differ on every measure a reader ranks by — one spent four
+    # times the other, one failed a tool call, one ran out of context (that compaction is
+    # planted onto a real run: no recorded fixture run compacted)...
+    rows = {
+        row["run_id"]: row
+        for row in _rows(
+            query(
+                planted_run_compaction_db,
+                capsys,
+                "view_runs",
+                "--param",
+                f"session_id={FORK_ORIGIN}",
+                "--csv",
+            )
+        )
+    }
+    # ...then one query ranks them: each row carries its own numbers, read back from the
+    # store rather than pinned here...
+    assert set(rows) == {FORK_ORIGIN_RUN, FORK_RUN}
+    for run_id, row in rows.items():
+        cost, unpriced, errors, compactions = _scalar(
+            planted_run_compaction_db,
+            """SELECT
+                 (SELECT coalesce(round(sum(c.cost_usd), 4), 0) FROM live_api_calls c
+                    WHERE c.session_id = ? AND c.source = ?),
+                 (SELECT count(*) FILTER (c.cost_usd IS NULL) FROM live_api_calls c
+                    WHERE c.session_id = ? AND c.source = ?),
+                 (SELECT count(*) FILTER (t.is_error) FROM live_tool_calls t
+                    WHERE t.session_id = ? AND t.source = ?),
+                 (SELECT count(*) FROM live_compactions k
+                    WHERE k.session_id = ? AND k.source = ?)""",
+            *(FORK_ORIGIN, run_id) * 4,
+            columns=4,
+        )
+        assert float(row["cost_usd"]) == cost
+        assert int(row["unpriced_api_calls"]) == unpriced
+        assert int(row["tool_errors"]) == errors
+        assert int(row["compactions"]) == compactions
+    # ...and the numbers are the run's own: the failure sits on the run that made it and the
+    # compaction on the other, where a session-wide total would put both on both.
+    assert (int(rows[FORK_RUN]["tool_errors"]), int(rows[FORK_RUN]["compactions"])) == (1, 0)
+    assert (
+        int(rows[FORK_ORIGIN_RUN]["tool_errors"]),
+        int(rows[FORK_ORIGIN_RUN]["compactions"]),
+    ) == (
+        0,
+        1,
+    )
+    assert float(rows[FORK_RUN]["cost_usd"]) > float(rows[FORK_ORIGIN_RUN]["cost_usd"])
+
+
+@pytest.fixture(scope="session")
+def planted_run_compaction_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The corpus with one recorded main-thread compaction moved onto a real agent run.
+
+    Invented placement, and it has to be: a run that compacts is what iteration 1 kept seeing
+    and no fixture session recorded, so nothing here would exercise the column otherwise.
+    """
+    path = tmp_path_factory.mktemp("run_compaction") / "traces.duckdb"
+    path.write_bytes(corpus_db.read_bytes())
+    connection = duckdb.connect(str(path))
+    try:
+        connection.execute(
+            "UPDATE compactions SET session_id = ?, source = ? WHERE session_id = ?",
+            [FORK_ORIGIN, FORK_ORIGIN_RUN, ANCESTOR],
+        )
+    finally:
+        connection.close()
+    return path
 
 
 @pytest.fixture(scope="session")

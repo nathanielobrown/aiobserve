@@ -17,6 +17,16 @@ SELECT
     a.tool_use_id,
     a.started_at,
     a.ended_at,
+    -- What a reader ranks runs by. Each is the run's own thread and not its subtree: a run
+    -- it spawned has a source of its own, and its numbers belong to its own row.
+    (SELECT coalesce(round(sum(c.cost_usd), 4), 0) FROM live_api_calls c
+        WHERE c.session_id = a.session_id AND c.source = a.id) AS cost_usd,
+    (SELECT count(*) FILTER (c.cost_usd IS NULL) FROM live_api_calls c
+        WHERE c.session_id = a.session_id AND c.source = a.id) AS unpriced_api_calls,
+    (SELECT count(*) FILTER (t.is_error) FROM live_tool_calls t
+        WHERE t.session_id = a.session_id AND t.source = a.id) AS tool_errors,
+    (SELECT count(*) FROM live_compactions k
+        WHERE k.session_id = a.session_id AND k.source = a.id) AS compactions,
     -- The thread the spawning call was made from, and the turn inside it. A run spawned from
     -- another run resolves to a turn of that run's timeline, not of `main`.
     c.source AS spawn_source,
