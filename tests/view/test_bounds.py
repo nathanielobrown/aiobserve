@@ -17,13 +17,9 @@ from fastapi.testclient import TestClient
 
 from aiobserve.analyze import queries
 from aiobserve.analyze.queries import QUERIES, VIEW_PREFIX
-from aiobserve.view.app import (
-    MAX_PAGE_SESSIONS,
-    Fragment,
-    Page,
-    Value,
-    build_app,
-)
+from aiobserve.view.app import build_app
+from aiobserve.view.listing import MAX_PAGE_SESSIONS
+from aiobserve.view.store import Fragment, Page, Value
 from tests.conftest import (
     ANCESTOR,
     DENSE_CALL,

@@ -32,4 +32,4 @@ Launching against a store this build cannot read, a store that is not there, or 
 
 ## What keeps a page small
 
-A viewer that renders a whole transcript is a viewer that hangs, so no query behind a page selects a column that holds what the agent read or wrote — `raw`, `text`, `thinking`, `result`, `input`, `content` — without truncating it in SQL. The list is the page a growing corpus stretches, so it is paged: `PAGE_SESSIONS` rows by default, `MAX_PAGE_SESSIONS` at most, both in `src/aiobserve/view/app.py`. `tests/view/test_bounds.py` holds the ceiling and the projection that has to fit under it.
+A viewer that renders a whole transcript is a viewer that hangs, so no query behind a page selects a column that holds what the agent read or wrote — `raw`, `text`, `thinking`, `result`, `input`, `content` — without truncating it in SQL. The list is the page a growing corpus stretches, so it is paged: `PAGE_SESSIONS` rows by default, `MAX_PAGE_SESSIONS` at most, both in `src/aiobserve/view/listing.py`. `tests/view/test_bounds.py` holds the ceiling and the projection that has to fit under it.

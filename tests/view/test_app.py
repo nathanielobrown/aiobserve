@@ -12,8 +12,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from aiobserve.analyze import queries
-from aiobserve.view.app import (
-    CSP,
+from aiobserve.view.app import CSP, TEMPLATES, build_app
+from aiobserve.view.listing import (
     DEFAULT_DIRECTION,
     DEFAULT_SORT,
     DIRECTIONS,
@@ -21,8 +21,6 @@ from aiobserve.view.app import (
     MAX_PAGE_SESSIONS,
     PAGE_SESSIONS,
     SORTS,
-    TEMPLATES,
-    build_app,
 )
 from tests.conftest import (
     ANCESTOR,

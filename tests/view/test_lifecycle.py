@@ -17,7 +17,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from aiobserve.export.duckdb import SCHEMA_VERSION
-from aiobserve.view.app import CSP, SchemaMoved, StoreLocked, build_app, serve
+from aiobserve.view.app import CSP, build_app, serve
+from aiobserve.view.store import SchemaMoved, StoreLocked
 from tests.view.conftest import fields
 
 # What a writer does to the store: opens it read-write and holds it. The connection has to
