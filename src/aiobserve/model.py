@@ -32,7 +32,10 @@ class Session:
     git_branch: str | None
     version: str | None
     entrypoint: str | None
-    # Earliest and latest record timestamp. Records are not written in timestamp order.
+    # Earliest and latest timestamp in the **main transcript**, which is not written in
+    # timestamp order. Subagent work can run past `ended_at`: 2 of the 424 mycelia sessions
+    # do, the worst by 24 minutes (scanned 2026-08-07). Reading the subagents in would let a
+    # fork's copied records move a session's clock, which the main transcript is immune to.
     started_at: datetime | None
     ended_at: datetime | None
     # Time Claude Code reported working, summed over `system/turn_duration` records. Well
