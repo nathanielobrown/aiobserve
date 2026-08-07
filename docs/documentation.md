@@ -13,6 +13,7 @@ Use this guide after the documentation summary in `CLAUDE.md` when you create or
 | What a telemetry field means and where it comes from | `docs/schema.md` |
 | A finding about an AI coding agent, with the evidence behind it | `reports/`; see [the report guide](../reports/README.md) |
 | An actionable bug, feature, or design question | a GitHub issue |
+| A design or testing plan for one change, kept after it lands | `plans/<change>/`, committed |
 | Scratch passed between agent runs | `handoffs/`; see [the handoff guide](handoffs.md) |
 
 Put module, function, and configuration details in comments or docstrings beside the code.
