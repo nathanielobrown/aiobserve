@@ -1,5 +1,5 @@
 ---
-template_version: 1
+template_version: 2
 iteration: YYYY_MM_DD
 # A run is keyed by both: an agent id is unique inside its session, not across the corpus.
 session_id:
@@ -16,8 +16,9 @@ tool_calls:
 tool_errors:
 ---
 
-<!-- Same shape as the session report and the same category vocabulary, which
-     `src/aiobserve/analyze/templates/session.md` defines — do not restate it here.
+<!-- Same shape as the session report. Category tags come from the closed vocabulary in
+     `src/aiobserve/analyze/templates/session.md` — open it and use those slugs exactly.
+     Do not invent tags; `other` is the escape valve, with a note in the item.
 
      Body cap: 30 lines, counting what you write, not the guidance comments you delete. A run
      report exists to say what this agent definition did well or badly; the session around it
@@ -44,6 +45,12 @@ tool_errors:
 <!-- What would have prevented it — often a change to the agent definition or its brief. -->
 
 - `category` — the change — the friction it addresses
+
+## Context spent
+
+<!-- Roughly what you loaded to write this report. One line. -->
+
+-
 
 ## Not examined
 

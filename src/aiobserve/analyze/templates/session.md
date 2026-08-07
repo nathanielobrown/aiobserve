@@ -1,5 +1,5 @@
 ---
-template_version: 1
+template_version: 2
 iteration: YYYY_MM_DD
 session_id:
 # The tag `select_sessions` gave this session — cost, tool-errors, compactions,
@@ -22,8 +22,12 @@ commands:
 
 <!-- Categories. The closed vocabulary for every tag below, defined here and nowhere else:
 
-     confusing-tool, failing-tool, doc-read-unneeded, doc-missed, workflow-mismatch,
-     layout-confusion, lintable-mistake, bloated-tool-output, unneeded-context, other
+     confusing-tool, failing-tool, false-positive-error, doc-read-unneeded, doc-missed,
+     workflow-mismatch, layout-confusion, lintable-mistake, bloated-tool-output,
+     unneeded-context, other
+
+     `false-positive-error` is a tool result marked is_error that reports no real failure —
+     a no-match grep exit, a shell artifact after correct output, a pending-check nonzero.
 
      `other` is the escape valve. An `other` that recurs across sessions is a category the
      next iteration should add — say so in the item.
@@ -60,6 +64,13 @@ commands:
 
 <!-- What got loaded that the work did not need: a doc read that went unused, tool output
      that swamped the window, a file pasted where a path would have done. -->
+
+-
+
+## Context spent
+
+<!-- Roughly what you loaded to write this report: digest calls, records_slice ranges and
+     caps, anything that dominated. One or two lines; the process review reads it. -->
 
 -
 
