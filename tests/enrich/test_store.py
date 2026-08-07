@@ -14,13 +14,13 @@ from aiobserve.enrich.prompts import Level, TurnItem
 from aiobserve.enrich.store import EnrichmentStore, Stamp
 from aiobserve.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
 from aiobserve.enrich.validation import Enrichment
+from tests.conftest import build_store, fixture_transcripts
 from tests.enrich.conftest import (
     COMPACTION,
     DUP_UUID,
     SPINE,
     SPINE_LEAF,
     SPINE_RUN,
-    build_store,
 )
 
 MODEL = "claude-haiku-4-5-20251001"
@@ -106,7 +106,7 @@ def test_the_tables_survive_a_re_export(mutable_db: Path) -> None:
         store.upsert(spine_turns(store)[0], enrichment(), stamp())
         before = store.connection.execute("SELECT * FROM turn_enrichments").fetchall()
     # ...and the pipeline then replaces every row that session owns...
-    build_store(mutable_db, ("spine",))
+    build_store(mutable_db, fixture_transcripts("spine"))
     # ...then the enrichment row is untouched, down to its timestamp: the per-session replace
     # never reaches these tables.
     with EnrichmentStore(mutable_db) as store:
@@ -293,7 +293,7 @@ def test_opening_a_store_creates_every_enrichment_table(mutable_db: Path) -> Non
 def test_a_store_written_by_another_schema_is_refused(tmp_path: Path) -> None:
     """Enrichment refuses a store whose base tables this build cannot read."""
     path = tmp_path / "old.duckdb"
-    build_store(path, ("spine",))
+    build_store(path, fixture_transcripts("spine"))
     connection = duckdb.connect(str(path))
     connection.execute("UPDATE meta SET schema_version = 1")
     connection.close()

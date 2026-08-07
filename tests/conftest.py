@@ -7,11 +7,12 @@ names its source session and Claude Code version.
 """
 
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 import pytest
 
+from aiobserve.export.duckdb import DuckDbExporter
 from aiobserve.extract.claude_code import ClaudeCodeExtractor
 from aiobserve.model import SessionTrace
 from aiobserve.pipeline import SessionSource
@@ -22,6 +23,32 @@ FIXTURES = Path(__file__).parent / "fixtures"
 SourceFactory = Callable[[str, str], SessionSource]
 TraceFactory = Callable[[str, str], SessionTrace]
 PlantedFactory = Callable[[str, str, dict[str, str]], SessionSource]
+
+
+def fixture_transcripts(*directories: str) -> tuple[Path, ...]:
+    """Every recorded transcript under the named fixture directories, in a stable order."""
+    return tuple(
+        transcript
+        for directory in directories
+        for transcript in sorted((FIXTURES / directory).glob("*.jsonl"))
+    )
+
+
+def build_store(path: Path, transcripts: Iterable[Path]) -> None:
+    """Extract each transcript into a store at `path`, as `refresh()` would.
+
+    Tiers that query the store want their evidence to be rows the real pipeline wrote, so
+    they build one from recorded transcripts rather than inserting rows by hand. Building
+    costs an extraction per transcript — build once per test session and copy the file for
+    any test that plants or deletes rows.
+    """
+    with DuckDbExporter(path) as exporter:
+        for transcript in transcripts:
+            session = Session(id=transcript.stem, transcript=transcript)
+            source = SessionSource(
+                id=transcript.stem, files=tuple(session.files()), fingerprint="fixture"
+            )
+            exporter.export(ClaudeCodeExtractor().extract(source), source.fingerprint)
 
 
 @pytest.fixture

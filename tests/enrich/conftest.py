@@ -13,11 +13,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from aiobserve.export.duckdb import DuckDbExporter
-from aiobserve.extract.claude_code import ClaudeCodeExtractor
-from aiobserve.pipeline import SessionSource
-from aiobserve.sessions import Session
-from tests.conftest import FIXTURES
+from tests.conftest import build_store, fixture_transcripts
 
 # The fixture directories enrichment reads, and the session ids their transcripts carry.
 # `plans/enrichment/testing_plan.md` maps each one to the shapes it carries; the rest of
@@ -56,23 +52,11 @@ ENRICHMENT_FIXTURES = (
 )
 
 
-def build_store(path: Path, directories: tuple[str, ...] = ENRICHMENT_FIXTURES) -> None:
-    """Extract each fixture session into a store at `path`, as `refresh()` would."""
-    with DuckDbExporter(path) as exporter:
-        for directory in directories:
-            for transcript in sorted((FIXTURES / directory).glob("*.jsonl")):
-                session = Session(id=transcript.stem, transcript=transcript)
-                source = SessionSource(
-                    id=transcript.stem, files=tuple(session.files()), fingerprint="fixture"
-                )
-                exporter.export(ClaudeCodeExtractor().extract(source), source.fingerprint)
-
-
 @pytest.fixture(scope="session")
 def fixture_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """The recorded fixtures as one trace store. Read from it; copy it before writing."""
     path = tmp_path_factory.mktemp("enrichment") / "traces.duckdb"
-    build_store(path)
+    build_store(path, fixture_transcripts(*ENRICHMENT_FIXTURES))
     return path
 
 

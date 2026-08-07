@@ -36,6 +36,7 @@ from aiobserve.enrich.prompts import (
 from aiobserve.enrich.store import EnrichmentStore
 from aiobserve.enrich.taxonomy import TAXONOMY_VERSION
 from aiobserve.enrich.validation import FailureKind
+from tests.conftest import build_store, fixture_transcripts
 from tests.enrich.conftest import (
     AUDITOR_RUN,
     ORIGIN_RUN,
@@ -43,7 +44,6 @@ from tests.enrich.conftest import (
     SPINE_LEAF,
     SPINE_RUN,
     TEAM_RUN,
-    build_store,
 )
 
 MODEL = "claude-haiku-4-5-20251001"
@@ -96,7 +96,7 @@ def answer(key: str, **overrides: object) -> dict[str, Any]:
 def spine_store(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """`spine/` alone as a trace store: four main turns, two of them slash commands."""
     path = tmp_path_factory.mktemp("enricher") / "traces.duckdb"
-    build_store(path, ("spine",))
+    build_store(path, fixture_transcripts("spine"))
     return path
 
 
@@ -117,7 +117,7 @@ def forest_store(tmp_path_factory: pytest.TempPathFactory) -> Path:
     auditor with no main turn above either, and `teammate/` holds a run nothing spawned.
     """
     path = tmp_path_factory.mktemp("forest") / "traces.duckdb"
-    build_store(path, ("spine", "fork_origin", "teammate"))
+    build_store(path, fixture_transcripts("spine", "fork_origin", "teammate"))
     return path
 
 
