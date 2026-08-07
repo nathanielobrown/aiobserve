@@ -4,9 +4,15 @@ import argparse
 import os
 from pathlib import Path
 
+import anthropic
 from dotenv import load_dotenv
 
-from aiobserve.enrich.batches import DEFAULT_MODEL, BatchClient
+from aiobserve.enrich.batches import (
+    DEFAULT_MODEL,
+    AnthropicBatchClient,
+    BatchClient,
+    SyncClient,
+)
 from aiobserve.enrich.enricher import enrich, plan_turns
 from aiobserve.enrich.store import EnrichmentStore
 from aiobserve.export.duckdb import DuckDbExporter
@@ -83,10 +89,12 @@ def build_client(model: str, *, batched: bool) -> BatchClient:
 
     The one place a real client is built, so a test can put a fake in its place.
     """
-    raise NotImplementedError(
-        f"no client for {model} yet (batched={batched}): the Anthropic clients are slice 2 of "
-        "plans/enrichment/design.md. `--dry-run` works today"
-    )
+    # Reads the same key `_enrich` validated a moment ago, from the environment `load_dotenv`
+    # populated.
+    client = anthropic.Anthropic()
+    if batched:
+        return AnthropicBatchClient(client, model)
+    return SyncClient(client, model)
 
 
 def _enrich(args: argparse.Namespace) -> None:

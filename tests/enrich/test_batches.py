@@ -6,6 +6,7 @@ must be — a model's answer is not a recorded transcript, and a batch result th
 unbilled takes 24 hours to produce.
 """
 
+import os
 import re
 from collections.abc import Iterator, Sequence
 from pathlib import Path
@@ -29,6 +30,7 @@ from anthropic.types.messages import (
 from anthropic.types.shared import ErrorResponse
 from anthropic.types.shared.api_error_object import APIErrorObject
 
+from aiobserve.cli import API_KEY
 from aiobserve.enrich.batches import (
     DEFAULT_MODEL,
     AnthropicBatchClient,
@@ -39,9 +41,12 @@ from aiobserve.enrich.batches import (
     SyncClient,
 )
 from aiobserve.enrich.enricher import enrich
-from aiobserve.enrich.prompts import OUTPUT_TOOL, OUTPUT_TOOL_NAME
+from aiobserve.enrich.prompts import OUTPUT_TOOL, OUTPUT_TOOL_NAME, instructions, render_turn
 from aiobserve.enrich.store import EnrichmentStore
-from aiobserve.enrich.validation import FailureKind
+from aiobserve.enrich.validation import FailureKind, validate
+
+# Opts in to the one live check below. Off by default: it bills the key it finds.
+LIVE_API = "AIOBSERVE_LIVE_API"
 
 # Two real item keys from the fixture corpus, in the shape the enricher hands over: a
 # level, a session uuid, and a key that is itself a uuid or a run id. Neither survives as a
@@ -320,6 +325,38 @@ def test_both_clients_write_the_same_rows(mutable_db: Path, tmp_path: Path) -> N
         # ...then both wrote a row per turn, and the rows are the same rows.
         assert rows(store) == through_batches
         assert len(through_batches) == len(keys)
+
+
+@pytest.mark.live  # The one test allowed past the network guard, and the only one that bills.
+@pytest.mark.slow  # A real round trip: seconds, and a few cents of Haiku.
+@pytest.mark.skipif(
+    LIVE_API not in os.environ or not os.environ.get(API_KEY),
+    reason=f"set {LIVE_API} and {API_KEY} to check the real API",
+)
+def test_two_real_items_come_back_valid(fixture_db: Path) -> None:
+    """Two fixture items through the real API return answers the validator accepts.
+
+    Everything else here mocks the SDK, which proves the mapping and nothing about the
+    contract: that the model, asked this way, answers in the shape the store requires. The
+    two items are the smallest renders in the fixture corpus, and redacted, so this sends no
+    session content.
+    """
+    with EnrichmentStore(fixture_db) as store:
+        items = sorted(store.turn_items(), key=lambda item: len(render_turn(item)))[:2]
+    client = SyncClient(anthropic.Anthropic(), DEFAULT_MODEL)
+    results = client.submit(
+        [
+            EnrichRequest(
+                key=item.key, instructions=instructions(item.level), content=render_turn(item)
+            )
+            for item in items
+        ]
+    )
+    assert [result.key for result in results] == [item.key for item in items]
+    for result in results:
+        assert isinstance(result, Succeeded), result.kind
+        # Raises `InvalidOutput` if the answer is out of vocabulary or malformed.
+        validate(result.output)
 
 
 def rows(store: EnrichmentStore) -> list[tuple[Any, ...]]:

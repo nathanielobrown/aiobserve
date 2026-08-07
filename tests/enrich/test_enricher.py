@@ -14,7 +14,14 @@ from typing import Any
 import pytest
 
 from aiobserve import cli
-from aiobserve.enrich.batches import EnrichRequest, Failed, Result, Succeeded
+from aiobserve.enrich.batches import (
+    AnthropicBatchClient,
+    EnrichRequest,
+    Failed,
+    Result,
+    Succeeded,
+    SyncClient,
+)
 from aiobserve.enrich.enricher import EnrichmentFailed, EnrichReport, enrich
 from aiobserve.enrich.prompts import PROMPT_VERSION, Level, TurnItem, input_hash, render_turn
 from aiobserve.enrich.store import EnrichmentStore
@@ -26,6 +33,10 @@ MODEL = "claude-haiku-4-5-20251001"
 
 # An invented credential, in a shape the screen knows, for the answer that must be refused.
 FAKE_SECRET = "AKIAIOSFODNN7EXAMPLE"
+
+# A sentinel inside an out-of-vocabulary answer: if it reaches the crash summary, so would
+# whatever a real answer had said there.
+FAKE_CATEGORY = "SENTINEL-5c1a-out-of-vocabulary"
 
 
 class FakeClient:
@@ -184,45 +195,68 @@ def test_a_model_switch_re_enriches(store: EnrichmentStore) -> None:
     assert {row[10] for row in stored(store)} == {"claude-sonnet-4-5"}
 
 
-def test_an_answer_carrying_a_secret_shape_writes_no_row(store: EnrichmentStore) -> None:
-    """A refused answer fails its item alone, and the crash names the key, never the answer."""
-    # If the model returns a credential-shaped description for one turn...
+def test_a_round_of_mixed_failures_crashes_naming_keys_and_kinds(store: EnrichmentStore) -> None:
+    """Failed items crash the run at the end, classified by kind and named by key alone.
+
+    Nothing the model wrote reaches the summary — the natural implementation, formatting the
+    failed response into the message, is the one that leaks a credential out of a transcript.
+    """
+    # If one round fails three ways at once — a request the API could not answer, an answer
+    # outside the taxonomy, and an answer carrying something shaped like a credential...
     items = turns(store)
-    refused = items[1]
+    dropped, invalid, refused = items[0], items[1], items[2]
     client = FakeClient(
         answers={
+            # The API-error item carries no sentinel because `Failed` has no field to put one
+            # in: a failure record cannot repeat model output it never received.
+            dropped.key: Failed(dropped.key, FailureKind.api_error),
+            invalid.key: Succeeded(
+                key=invalid.key,
+                output=answer(invalid.key, category=f"refactoring-{FAKE_CATEGORY}"),
+            ),
             refused.key: Succeeded(
                 key=refused.key,
                 output=answer(refused.key, description=f"Rotated {FAKE_SECRET} and re-ran."),
-            )
+            ),
         }
     )
     # ...then the run crashes, because a silent failure here is a hole in the coverage the
     # hash would then call current forever...
     with pytest.raises(EnrichmentFailed) as failure:
         enrich(store, client)
-    # ...the summary names the item and how it failed, and carries nothing the model wrote...
-    assert refused.key in str(failure.value)
-    assert FailureKind.secret_shape in str(failure.value)
-    assert FAKE_SECRET not in str(failure.value)
-    # ...that turn holds no row, so rerunning is the retry...
-    assert [row[2] for row in stored(store)] == [
-        item.turn_id for item in items if item is not refused
-    ]
-    # ...and the turns that succeeded in the same batch were kept.
-    assert len(stored(store)) == 3
+    summary = str(failure.value)
+    # ...the summary names each item and how it failed...
+    assert [key in summary for key in (dropped.key, invalid.key, refused.key)] == [True] * 3
+    assert [
+        kind in summary
+        for kind in (FailureKind.api_error, FailureKind.invalid_output, FailureKind.secret_shape)
+    ] == [True] * 3
+    # ...and carries nothing either answer said...
+    assert FAKE_SECRET not in summary
+    assert FAKE_CATEGORY not in summary
+    # ...the three failed turns hold no row, so rerunning is the retry...
+    assert [row[2] for row in stored(store)] == [items[3].turn_id]
+    # ...and the sibling that succeeded in the same round was kept.
+    assert stored(store)[0][3] == f"Described {items[3].key}."
 
 
-def test_a_failed_request_leaves_its_item_stale(store: EnrichmentStore) -> None:
-    """An item the API could not answer writes nothing, and the next run picks it up again."""
+def test_a_failed_request_leaves_its_item_stale(store: EnrichmentStore, tmp_path: Path) -> None:
+    """An item the API could not answer writes nothing, and the next run picks it up again.
+
+    Staleness is the whole resume mechanism: there is no state to keep, so a crashed run
+    leaves nothing behind to clean up or to go stale itself.
+    """
     items = turns(store)
     dropped = items[0]
     with pytest.raises(EnrichmentFailed):
         enrich(store, FakeClient(answers={dropped.key: Failed(dropped.key, FailureKind.expired)}))
-    # If the next run is the retry, it asks about exactly the item that failed.
+    # If the next run is the retry, it asks about exactly the item that failed...
     client = FakeClient()
     assert enrich(store, client) == EnrichReport(swept=0, enriched=1)
     assert client.keys == [dropped.key]
+    # ...and the crash wrote no resume file to find it by: the store and DuckDB's own
+    # write-ahead log are everything on disk.
+    assert {path.name for path in tmp_path.iterdir()} <= {"traces.duckdb", "traces.duckdb.wal"}
 
 
 def test_the_cli_refuses_without_a_key(
@@ -263,6 +297,30 @@ def test_the_cli_limits_what_it_sends(
     cli.main("enrich", "--db", str(store.path), "--limit", "2")
     assert len(client.keys) == 2
     assert len(stored(store)) == 2
+
+
+def test_the_batch_flag_picks_the_client(
+    store: EnrichmentStore, anthropic_env: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The default run batches at half price; `--no-batch` takes the dev path instead."""
+    # If the one place a client is built is asked for each path, it answers with the real
+    # client for that path, holding the model the rows will be stamped with...
+    batched = cli.build_client(MODEL, batched=True)
+    direct = cli.build_client(MODEL, batched=False)
+    assert isinstance(batched, AnthropicBatchClient)
+    assert isinstance(direct, SyncClient)
+    assert [batched.model, direct.model] == [MODEL] * 2
+    # ...and the flag is what decides which it is asked for.
+    asked: list[bool] = []
+
+    def record(model: str, *, batched: bool) -> FakeClient:
+        asked.append(batched)
+        return FakeClient()
+
+    monkeypatch.setattr(cli, "build_client", record)
+    cli.main("enrich", "--db", str(store.path), "--limit", "1")
+    cli.main("enrich", "--db", str(store.path), "--limit", "1", "--no-batch")
+    assert asked == [True, False]
 
 
 def test_the_key_never_reaches_the_output(
