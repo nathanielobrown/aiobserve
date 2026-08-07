@@ -10,7 +10,18 @@ import hashlib
 from dataclasses import dataclass
 from enum import StrEnum
 
-from aiobserve.enrich.taxonomy import CATEGORY_DEFINITIONS, OUTCOME_DEFINITIONS
+from anthropic.types import ToolParam
+
+from aiobserve.enrich.taxonomy import (
+    CATEGORY_DEFINITIONS,
+    OUTCOME_DEFINITIONS,
+    Category,
+    Outcome,
+)
+
+# The one tool the model may call. Both clients force it, so an answer is a JSON object or
+# it is a failure — there is no prose to parse.
+OUTPUT_TOOL_NAME = "record_enrichment"
 
 
 class Level(StrEnum):
@@ -34,7 +45,7 @@ _SUBJECT: dict[Level, str] = {
     )
 }
 
-_ANSWER = """Answer with a JSON object and nothing else:
+_ANSWER = f"""Answer by calling `{OUTPUT_TOOL_NAME}` once, and say nothing else:
 
 - description: one or two sentences saying what was done, and to what. Name the files, \
 commands and subjects concretely. Do not judge the work, and do not restate the category
@@ -45,6 +56,28 @@ taken and undone, a tool that would not answer — or null when the records show
 
 Never quote a credential, key or token, whatever it appears in. Never copy code or file \
 contents into the description."""
+
+# The tool the answer arrives as. Its input schema *is* the output contract, so the model
+# cannot answer out of vocabulary in the first place — and an edit here is a
+# `PROMPT_VERSION` bump, since `input_hash` cannot see it.
+OUTPUT_TOOL = ToolParam(
+    name=OUTPUT_TOOL_NAME,
+    description="Record what the item you just read was doing.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "description": {"type": "string", "description": "One or two sentences"},
+            "category": {"type": "string", "enum": [str(member) for member in Category]},
+            "outcome": {"type": "string", "enum": [str(member) for member in Outcome]},
+            "friction": {
+                "type": ["string", "null"],
+                "description": "One line naming visible struggle, or null when there was none",
+            },
+        },
+        # `friction` included: the model must decide there was none, not forget to say.
+        "required": ["description", "category", "outcome", "friction"],
+    },
+)
 
 
 def instructions(level: Level) -> str:
