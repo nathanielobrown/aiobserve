@@ -14,7 +14,7 @@ import logging
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path, PurePath
 from typing import Any, NamedTuple
@@ -50,7 +50,10 @@ EXTRACTOR_NAME = "claude_code"
 JOURNAL_SOURCE = "journal"
 # Bump on any change to what this parser produces: the version is folded into every
 # fingerprint, so bumping it re-extracts the whole corpus on the next refresh.
-EXTRACTOR_VERSION = "4"
+EXTRACTOR_VERSION = "5"
+# Where a run whose meta names no spawn depth sorts among its siblings: after every run
+# that does, since the depths Claude Code writes are small.
+_UNKNOWN_DEPTH = 1_000_000
 
 logger = logging.getLogger(__name__)
 
@@ -249,6 +252,7 @@ class ClaudeCodeExtractor:
         ]
         lines = {name: _read(path, source.id) for name, path in transcripts}
         journals = {name: _read(path, source.id) for name, path in files.journals}
+        metas = {agent.id: json.loads(agent.meta.read_text()) for agent in files.agents}
         # The archive keeps every line of every file, duplicates included; the normalized
         # tables below read each transcript's deduplicated view.
         raw_records = [
@@ -256,30 +260,104 @@ class ClaudeCodeExtractor:
             for name, rows in (*lines.items(), *journals.items())
             for line in rows
         ]
-        main = _resolve_duplicates(lines[MAIN_SOURCE], source.id)
-        parsed = [_parse(rows, source.id, name) for name, rows in lines.items()]
+        kept = {name: _resolve_duplicates(rows, source.id) for name, rows in lines.items()}
+        replays = _replays(kept, metas, source.id)
+        parsed = [_parse(rows, source.id, name, replays[name]) for name, rows in kept.items()]
         return SessionTrace(
             extractor=EXTRACTOR_NAME,
             extractor_version=EXTRACTOR_VERSION,
-            session=_session(main, source.id, files.transcript),
+            session=_session(kept[MAIN_SOURCE], source.id, files.transcript),
             turns=[turn for one in parsed for turn in one.turns],
             api_calls=[call for one in parsed for call in one.api_calls],
             tool_calls=[call for one in parsed for call in one.tool_calls],
-            agent_runs=_agent_runs(files.agents, lines, _workflow_launches(main), source.id),
+            agent_runs=_agent_runs(
+                files.agents,
+                kept,
+                metas,
+                replays,
+                _workflow_launches(kept[MAIN_SOURCE]),
+                source.id,
+            ),
             offload_files=[_offload_file(path, source.id) for path in files.offloads],
             raw_records=raw_records,
         )
 
 
-def _parse(lines: list[_Line], session_id: str, source: str) -> _Parsed:
-    """Turns, calls and tools from one transcript, keyed to the source that wrote it."""
-    kept = _resolve_duplicates(lines, session_id)
-    turns, turn_by_line = _turns(kept, session_id, source)
+def _parse(lines: list[_Line], session_id: str, source: str, replayed: set[int]) -> _Parsed:
+    """Turns, calls and tools from one transcript, keyed to the source that wrote it.
+
+    `replayed` holds the line numbers this transcript copied from an earlier one; a row
+    opened by such a line is a replay of that transcript's work.
+    """
+    turns, turn_by_line = _turns(lines, session_id, source, replayed)
     return _Parsed(
         turns=turns,
-        api_calls=_api_calls(kept, turn_by_line, session_id, source),
-        tool_calls=_tool_calls(kept, session_id, source),
+        api_calls=_api_calls(lines, turn_by_line, session_id, source, replayed),
+        tool_calls=_tool_calls(lines, session_id, source, replayed),
     )
+
+
+def _replays(
+    kept: dict[str, list[_Line]], metas: dict[str, dict[str, Any]], session_id: str
+) -> dict[str, set[int]]:
+    """Which lines of each transcript an earlier one already held.
+
+    A fork copies its parent's records verbatim, uuids included, so a uuid inside one
+    session can name several files. It belongs to the first transcript in the order below;
+    every later copy is a replay. Any other transcript repeating another's records means
+    the order put the wrong file first, and stops the run.
+    """
+    owner: dict[str, str] = {}
+    replays: dict[str, set[int]] = {}
+    for name in _transcript_order(kept, metas):
+        copies = {line.line_no for line in kept[name] if line.record.get("uuid") in owner}
+        if copies and not _is_fork(metas.get(name, {})):
+            first = min(copies)
+            uuid = next(line.record["uuid"] for line in kept[name] if line.line_no == first)
+            raise TranscriptSchemaError(
+                f"Session {session_id}: transcript {name} repeats record {uuid} from "
+                f"{owner[uuid]} without being a fork"
+            )
+        replays[name] = copies
+        for line in kept[name]:
+            uuid = line.record.get("uuid")
+            if uuid is not None:
+                owner.setdefault(uuid, name)
+    return replays
+
+
+def _transcript_order(kept: dict[str, list[_Line]], metas: dict[str, dict[str, Any]]) -> list[str]:
+    """The session's transcripts, first to record a uuid first.
+
+    Spawn depth leads, because a copied-history fork is spawned *by* the transcript it
+    copies and so always sits deeper. Time alone cannot separate them: the fork's opening
+    record is its parent's, timestamp and uuid alike, and 46 of the machine's 51 overlapping
+    pairs tie on it (scanned 2026-08-07). Ordering those ties by agentId instead hands 335
+    records of six real transcripts' own work to a fork.
+    """
+    agents = [name for name in kept if name != MAIN_SOURCE]
+
+    def key(name: str) -> tuple[int, datetime, str]:
+        # A meta that names no depth sorts last. The one such transcript on this machine
+        # shares no uuid with any sibling, so where it sits changes nothing (2.1.186).
+        depth = metas[name].get("spawnDepth")
+        moments = [t for t in (_timestamp(line.record) for line in kept[name]) if t]
+        return (
+            _UNKNOWN_DEPTH if depth is None else depth,
+            min(moments) if moments else datetime.max.replace(tzinfo=UTC),
+            name,
+        )
+
+    return [MAIN_SOURCE, *sorted(agents, key=key)]
+
+
+def _is_fork(meta: dict[str, Any]) -> bool:
+    """Whether a run continues another transcript's conversation.
+
+    `agentType: "fork"` agrees with the flag on all 52 fork metas on this machine
+    (scanned 2026-08-07), so the flag alone answers it.
+    """
+    return bool(meta.get("isFork"))
 
 
 def _classify(source: SessionSource) -> _SessionFiles:
@@ -369,14 +447,16 @@ def _companion(parts: tuple[str, ...], session_id: str) -> _Companion:
 
 def _agent_runs(
     agents: list[_AgentFiles],
-    lines: dict[str, list[_Line]],
+    kept: dict[str, list[_Line]],
+    metas: dict[str, dict[str, Any]],
+    replays: dict[str, set[int]],
     launches: dict[str, str],
     session_id: str,
 ) -> list[AgentRun]:
     """One row per subagent the session ran, from the meta Claude Code wrote beside it."""
     runs = []
     for agent in agents:
-        meta = json.loads(agent.meta.read_text())
+        meta = metas[agent.id]
         # A fan-out's agents are not spawned one by one, so their metas name no call. The
         # call that launched the whole fan-out stands in — it is what asked for the work.
         tool_use_id = meta.get("toolUseId") or launches.get(agent.workflow_id or "")
@@ -387,7 +467,17 @@ def _agent_runs(
             logger.warning(
                 "Session %s: agent run %s has no spawning tool call", session_id, agent.id
             )
-        moments = [t for t in (_timestamp(line.record) for line in lines[agent.id]) if t]
+        lines = kept[agent.id]
+        moments = [t for t in (_timestamp(line.record) for line in lines) if t]
+        # A fork's file opens with the conversation it inherited, so its own work starts
+        # where the copying stops.
+        own = [
+            t
+            for t in (
+                _timestamp(line.record) for line in lines if line.line_no not in replays[agent.id]
+            )
+            if t
+        ]
         runs.append(
             AgentRun(
                 id=agent.id,
@@ -402,11 +492,26 @@ def _agent_runs(
                 workflow_id=agent.workflow_id,
                 # Absent on one meta of the 2764 on this machine, a 2.1.186 session.
                 spawn_depth=meta.get("spawnDepth"),
-                started_at=min(moments) if moments else None,
+                is_fork=_is_fork(meta),
+                fork_context_uuid=_fork_context(lines),
+                started_at=min(own) if own else None,
                 ended_at=max(moments) if moments else None,
             )
         )
     return runs
+
+
+def _fork_context(lines: list[_Line]) -> str | None:
+    """The record a by-reference fork continues from, when its file opens on one.
+
+    Only that variant carries it: a fork that copied its history states the same thing by
+    holding the records themselves. Every one of the 25 in the corpus leads the file
+    (scanned 2026-08-07), but the search does not depend on that.
+    """
+    for line in lines:
+        if line.record["type"] == RecordType.FORK_CONTEXT_REF:
+            return line.record["parentLastUuid"]
+    return None
 
 
 def _workflow_launches(lines: list[_Line]) -> dict[str, str]:
@@ -571,7 +676,7 @@ def _session(lines: list[_Line], session_id: str, transcript: Path) -> Session:
 
 
 def _turns(
-    lines: list[_Line], session_id: str, source: str
+    lines: list[_Line], session_id: str, source: str, replayed: set[int]
 ) -> tuple[list[Turn], dict[int, str | None]]:
     """The session's turns, and which turn each line belongs to.
 
@@ -599,6 +704,7 @@ def _turns(
                     started_at=_required_timestamp(line, session_id),
                     # Replaced below, once the turn's span is known.
                     ended_at=_required_timestamp(line, session_id),
+                    replayed=line.line_no in replayed,
                 )
             )
         turn_by_line[line.line_no] = open_turn
@@ -674,7 +780,11 @@ def _captured(pattern: re.Pattern[str], content: str) -> str | None:
 
 
 def _api_calls(
-    lines: list[_Line], turn_by_line: dict[int, str | None], session_id: str, source: str
+    lines: list[_Line],
+    turn_by_line: dict[int, str | None],
+    session_id: str,
+    source: str,
+    replayed: set[int],
 ) -> list[ApiCall]:
     """One `ApiCall` per assistant message, however many records it was written across.
 
@@ -721,12 +831,17 @@ def _api_calls(
                 cache_1h_tokens=split["ephemeral_1h_input_tokens"] if split else None,
                 text=_blocks(group, "text", "text"),
                 thinking=_blocks(group, "thinking", "thinking"),
+                # The message belongs to whichever transcript wrote it first, so its first
+                # chunk decides — a fork copies a message whole.
+                replayed=first.line_no in replayed,
             )
         )
     return calls
 
 
-def _tool_calls(lines: list[_Line], session_id: str, source: str) -> list[ToolCall]:
+def _tool_calls(
+    lines: list[_Line], session_id: str, source: str, replayed: set[int]
+) -> list[ToolCall]:
     """Every tool the transcript asked for, paired with the record that answered it.
 
     A message issuing several calls writes one record per call, in the order Claude Code
@@ -765,6 +880,8 @@ def _tool_calls(lines: list[_Line], session_id: str, source: str) -> list[ToolCa
                 started_at=min(batch),
                 ended_at=result.ended_at if result else None,
                 duration_synthetic=len(batch) > 1,
+                # The issuing record decides: a fork copies the call and its answer together.
+                replayed=line.line_no in replayed,
             )
         )
     return calls

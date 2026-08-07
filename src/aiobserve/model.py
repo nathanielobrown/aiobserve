@@ -9,8 +9,8 @@ that recorded it.
 
 Slices 1 to 3 of `plans/trace-pipeline/design.md` cover sessions, turns, API calls, tool
 calls, agent runs, and the archive — every line of every file the session wrote, plus the
-tool outputs it moved out of the transcript. Compactions, PR links, cost, and the
-`replayed` flag arrive with the slices that populate them.
+tool outputs it moved out of the transcript. Compactions, PR links and cost arrive with the
+slices that populate them.
 """
 
 from dataclasses import dataclass
@@ -60,6 +60,10 @@ class Turn:
     started_at: datetime
     # The latest timestamp among the records this turn drove.
     ended_at: datetime
+    # This transcript is a fork replaying a turn another one opened. The row stays — the
+    # fork's file recorded it — but every rollup counts it under the first transcript to
+    # hold it.
+    replayed: bool
 
 
 @dataclass(frozen=True)
@@ -102,6 +106,8 @@ class ApiCall:
     # interleaving is lost; `raw_records` keeps it.
     text: str
     thinking: str
+    # A fork's copy of a call another transcript made. See `Turn.replayed`.
+    replayed: bool
 
 
 @dataclass(frozen=True)
@@ -136,6 +142,8 @@ class ToolCall:
     # issuing several calls writes their records in execution order, not issue order, so
     # `ended_at - started_at` reads longer than the tool ran.
     duration_synthetic: bool
+    # A fork's copy of a call another transcript made. See `Turn.replayed`.
+    replayed: bool
 
 
 @dataclass(frozen=True)
@@ -167,7 +175,15 @@ class AgentRun:
     # 1 for a run the session itself spawned, deeper for a subagent's subagent, 0 for a
     # teammate. None when the meta left the key out, which one recorded meta does.
     spawn_depth: int | None
-    # First and last record of its transcript.
+    # The run continues a conversation another transcript started, either by replaying its
+    # records or by pointing at them.
+    is_fork: bool
+    # The record a by-reference fork picked up from, in the session its transcript names.
+    # None for every other run, including a fork that copied the history instead.
+    fork_context_uuid: str | None
+    # The run's own work: its first record that no earlier transcript already held, and the
+    # last record of its transcript. `started_at` is None when the run copied everything it
+    # holds; `ended_at` when the transcript carries no timestamps at all.
     started_at: datetime | None
     ended_at: datetime | None
 

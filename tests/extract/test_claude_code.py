@@ -73,6 +73,8 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             command_args="[redacted]",
             started_at=at("2026-08-06T10:43:50.675"),
             ended_at=at("2026-08-06T10:43:50.675"),
+            # ...none of them a replay, no transcript here having copied another's work...
+            replayed=False,
         ),
         # ...one leading with `<command-message>` instead — both orderings occur...
         Turn(
@@ -85,6 +87,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             command_args="[redacted]",
             started_at=at("2026-08-06T10:44:27.629"),
             ended_at=at("2026-08-06T10:50:00.205"),
+            replayed=False,
         ),
         # ...a plain string prompt...
         Turn(
@@ -97,6 +100,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             command_args=None,
             started_at=at("2026-08-06T18:40:38.883"),
             ended_at=at("2026-08-06T18:41:14.084"),
+            replayed=False,
         ),
         # ...and one whose content is blocks rather than a string.
         Turn(
@@ -109,6 +113,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             command_args=None,
             started_at=at("2026-07-31T19:39:58.872"),
             ended_at=at("2026-07-31T19:39:58.872"),
+            replayed=False,
         ),
     ]
 
@@ -137,6 +142,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             cache_1h_tokens=20257,
             text="[redacted]",
             thinking="[redacted]",
+            replayed=False,
         ),
         # ...one that did nothing but delegate: a single `Agent` block, so no text and no
         # thinking, and its subagent's transcript holds what came of it...
@@ -163,6 +169,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             cache_1h_tokens=917,
             text="",
             thinking="",
+            replayed=False,
         ),
         ApiCall(
             id="msg_011Cdmz3NQtuzwN3cqYvvkuN",
@@ -186,6 +193,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             cache_1h_tokens=94194,
             text="[redacted]",
             thinking="[redacted]",
+            replayed=False,
         ),
     ]
 

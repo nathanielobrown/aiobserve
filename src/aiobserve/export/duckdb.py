@@ -7,6 +7,10 @@ Writing is per-session replace inside one transaction — delete every row this 
 then insert the new ones. That makes re-extraction idempotent whatever changed, and it is
 why a table added in a later slice must be added to `_TABLES` too: a table left out of the
 delete would keep stale rows forever.
+
+Count through `session_rollups` rather than the base tables. The tables hold what each file
+recorded, replays included; the view drops the replays so a record a fork copied counts
+under the transcript that ran it first.
 """
 
 import datetime as dt
@@ -30,7 +34,7 @@ from aiobserve.model import (
 
 # Bumped whenever the DDL below changes. There are no migrations while the project is
 # early: a mismatch tells the operator to delete the DB and re-extract.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -57,6 +61,7 @@ CREATE TABLE IF NOT EXISTS turns (
     command_args VARCHAR,
     started_at TIMESTAMPTZ NOT NULL,
     ended_at TIMESTAMPTZ NOT NULL,
+    replayed BOOLEAN NOT NULL,
     PRIMARY KEY (session_id, source, id)
 );
 CREATE TABLE IF NOT EXISTS api_calls (
@@ -80,6 +85,7 @@ CREATE TABLE IF NOT EXISTS api_calls (
     cache_1h_tokens BIGINT,
     text VARCHAR NOT NULL,
     thinking VARCHAR NOT NULL,
+    replayed BOOLEAN NOT NULL,
     PRIMARY KEY (session_id, source, id)
 );
 CREATE TABLE IF NOT EXISTS tool_calls (
@@ -97,6 +103,7 @@ CREATE TABLE IF NOT EXISTS tool_calls (
     started_at TIMESTAMPTZ NOT NULL,
     ended_at TIMESTAMPTZ,
     duration_synthetic BOOLEAN NOT NULL,
+    replayed BOOLEAN NOT NULL,
     PRIMARY KEY (session_id, source, id)
 );
 CREATE TABLE IF NOT EXISTS agent_runs (
@@ -109,6 +116,8 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     model VARCHAR,
     workflow_id VARCHAR,
     spawn_depth INTEGER,
+    is_fork BOOLEAN NOT NULL,
+    fork_context_uuid VARCHAR,
     started_at TIMESTAMPTZ,
     ended_at TIMESTAMPTZ,
     PRIMARY KEY (session_id, id)
@@ -139,6 +148,30 @@ CREATE TABLE IF NOT EXISTS extract_state (
     extractor VARCHAR NOT NULL,
     extractor_version VARCHAR NOT NULL
 );
+CREATE OR REPLACE VIEW session_rollups AS
+SELECT
+    s.id AS session_id,
+    s.project_dir,
+    s.started_at,
+    s.ended_at,
+    -- Time from the first record to the last, which includes every gap the user spent
+    -- away; `active_ms` is what Claude Code reported working.
+    date_diff('millisecond', s.started_at, s.ended_at) AS wall_ms,
+    s.active_ms,
+    (SELECT count(*) FROM turns t WHERE t.session_id = s.id AND NOT t.replayed) AS turns,
+    (SELECT count(*) FROM api_calls c WHERE c.session_id = s.id AND NOT c.replayed) AS api_calls,
+    (SELECT count(*) FROM tool_calls tc WHERE tc.session_id = s.id AND NOT tc.replayed)
+        AS tool_calls,
+    (SELECT count(*) FROM agent_runs a WHERE a.session_id = s.id) AS agent_runs,
+    (SELECT coalesce(sum(c.input_tokens), 0) FROM api_calls c
+        WHERE c.session_id = s.id AND NOT c.replayed) AS input_tokens,
+    (SELECT coalesce(sum(c.output_tokens), 0) FROM api_calls c
+        WHERE c.session_id = s.id AND NOT c.replayed) AS output_tokens,
+    (SELECT coalesce(sum(c.cache_read_tokens), 0) FROM api_calls c
+        WHERE c.session_id = s.id AND NOT c.replayed) AS cache_read_tokens,
+    (SELECT coalesce(sum(c.cache_creation_tokens), 0) FROM api_calls c
+        WHERE c.session_id = s.id AND NOT c.replayed) AS cache_creation_tokens
+FROM sessions s;
 """
 
 # Table name to the dataclass whose fields are its columns, in order. Every table a

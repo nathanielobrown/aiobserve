@@ -130,3 +130,20 @@ Every subagent transcript has a `meta.json` beside it, and every meta a transcri
 A fan-out's agents are not spawned one at a time, so their metas name no call. The `Workflow` call that launched the run answers with `toolUseResult.runId`, and that id is the `wf_<id>` directory its agents write into — the only link from a fan-out's transcripts back to a tool call. All 6 workflow runs on this machine carry it (scanned 2026-08-07).
 
 *Seen in* `tests/fixtures/workflow/`, CC 2.1.207 — the `Workflow` call, its result, and the `wf_c30cc877-997` directory it names.
+
+### A fork continues a conversation another transcript started
+
+A fork's meta carries `isFork: true` and `agentType: "fork"` — the two agree on all 52 fork metas on this machine (scanned 2026-08-07). Its first record says which of two shapes it is:
+
+| First record | Forks | What the file holds |
+| --- | --- | --- |
+| `fork-context-ref` | 26 | nothing copied. The record names `parentSessionId`, `parentLastUuid` and `contextLength`, and the work starts mid-conversation |
+| `user` or `system` | 26 | the parent's records copied verbatim, uuids and timestamps included, then the fork's own work |
+
+A copied record is therefore in two files at once. 51 pairs of transcripts overlap that way, every pair with a fork on one side, and 25 of them are fork-to-fork: a fork's own work copied onward again. Each record belongs to the transcript that ran it first; the copies are flagged `replayed` and left in place, so the archive still shows what the fork's file recorded while no count reads the work twice. Under this rule 1617 records across 9 sessions are replays, and none of them sits in a non-fork transcript — which is the check, since a non-fork copy would mean the ordering named the wrong file first.
+
+**Transcripts order by `(spawnDepth, first timestamp, agentId)`, main first.** Depth has to lead: a copied-history fork opens on the very record it copied, so 46 of the 51 overlapping pairs tie on first timestamp, and breaking those ties by agentId gives 335 records of six real transcripts' work to the fork that copied them. A fork is spawned by the transcript it copies, so it is always the deeper of the two.
+
+The one meta that names no `spawnDepth` sorts last. Its transcript — `-Users-nob-repos-mac-settings/c31ecec9-…/subagents/agent-a20276f6d8a4e5309.jsonl`, CC 2.1.186 — shares no uuid with any sibling, so its position changes nothing.
+
+*Seen in* `tests/fixtures/fork_origin/` (a copied-history fork and the auditor it copied), CC 2.1.215; `tests/fixtures/fork_byref/` (a `fork-context-ref` opening), CC 2.1.202.

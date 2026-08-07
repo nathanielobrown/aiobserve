@@ -1,0 +1,3 @@
+{"type": "mode", "mode": "[redacted]", "sessionId": "5a88789c-1da7-4f32-b631-40a7e243334b"}
+{"type": "file-history-snapshot", "messageId": "[redacted]", "snapshot": {"messageId": "[redacted]", "trackedFileBackups": {}, "timestamp": "2026-07-21T21:33:52.998Z"}, "isSnapshotUpdate": false}
+{"parentUuid": null, "isSidechain": false, "type": "user", "message": {"role": "user", "content": "[redacted]"}, "isMeta": true, "uuid": "9b06029f-915d-42db-bd58-7481f5a9d803", "timestamp": "2026-07-21T21:33:52.998Z", "userType": "external", "entrypoint": "cli", "cwd": "/Users/nob/repos/mycelia", "sessionId": "5a88789c-1da7-4f32-b631-40a7e243334b", "version": "2.1.215", "gitBranch": "fixture-branch-1"}

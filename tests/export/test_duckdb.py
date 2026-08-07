@@ -17,6 +17,8 @@ from tests.conftest import TraceFactory
 SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"
 DUPS = "8ee00a94-b01a-4394-b447-b065f74b11af"
 OFFLOAD = "7e37bb35-4dcb-4e16-85be-55ac510c168e"
+# The session whose fork replayed a sibling's history — see `tests/fixtures/fork_origin/`.
+ORIGIN = "5a88789c-1da7-4f32-b631-40a7e243334b"
 
 # Table name to the model attribute holding its rows, for the count-everything assertions.
 TABLES = {
@@ -220,6 +222,32 @@ def test_an_agent_run_is_keyed_by_session_and_agent_id(db: Path, fixture_trace: 
         # file that produced the run, and a directory holds it once.
         with pytest.raises(duckdb.ConstraintException):
             exporter.export(replace(trace, agent_runs=[run, run]), "fingerprint-3")
+
+
+def test_a_rollup_counts_replayed_work_once(db: Path, fixture_trace: TraceFactory):
+    """A session's totals count a fork's copied history under whoever ran it, and once.
+
+    Three readings of this fixture give three different totals, so the number is the whole
+    argument: 7,196 output tokens if copies are counted wherever they appear, 4,904 if both
+    copies are dropped, and 6,050 — the auditor's 1,146 plus the fork's own 4,904 — when
+    each record counts under the transcript that ran it first.
+    """
+    trace = fixture_trace("fork_origin", ORIGIN)
+
+    with DuckDbExporter(db) as exporter:
+        # If a session ran an auditor and a fork that replayed it...
+        exporter.export(trace, "fingerprint-1")
+        rollup = exporter.connection.execute(
+            "SELECT api_calls, output_tokens FROM session_rollups WHERE session_id = ?", [ORIGIN]
+        ).fetchone()
+
+        # ...then the rollup counts the copied message once and the fork's own work beside it...
+        assert rollup == (3, 6050)
+        # ...while the base table still holds the copy, flagged, so the archive keeps what
+        # the fork's file recorded.
+        assert exporter.connection.execute(
+            "SELECT count(*), sum(output_tokens) FROM api_calls WHERE replayed"
+        ).fetchone() == (1, 1146)
 
 
 def test_an_offloaded_output_is_keyed_by_session_and_name(db: Path, fixture_trace: TraceFactory):

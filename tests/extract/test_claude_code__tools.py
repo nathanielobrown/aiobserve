@@ -51,6 +51,7 @@ def test_a_tool_call_carries_its_result(fixture_source: SourceFactory):
         started_at=at("2026-08-06T10:44:33.136"),
         ended_at=at("2026-08-06T10:44:33.589"),
         duration_synthetic=True,
+        replayed=False,
     )
 
 

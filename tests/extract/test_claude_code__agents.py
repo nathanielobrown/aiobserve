@@ -107,6 +107,9 @@ def test_a_subagent_run_names_the_call_that_spawned_it(fixture_source: SourceFac
         model="opus",
         workflow_id=None,
         spawn_depth=1,
+        # ...continuing no one else's conversation...
+        is_fork=False,
+        fork_context_uuid=None,
         # ...and spanning its own transcript, which starts a beat after the call.
         started_at=at("2026-08-06T12:04:25.042"),
         ended_at=at("2026-08-06T12:09:15.651"),
