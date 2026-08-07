@@ -206,6 +206,7 @@ QUERIES: dict[str, Query] = {
         # The run's id is also the source its rows carry, so one key answers both questions.
         params={"session_id": SESSION_ID, "run_id": Param(type=ParamType.TEXT, default=REQUIRED)},
     ),
+    "view_projects": Query(scope=Scope.KEYED, params={}),
     "view_runs": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
     "view_session_header": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
     "view_sessions": Query(scope=Scope.KEYED, params={}),

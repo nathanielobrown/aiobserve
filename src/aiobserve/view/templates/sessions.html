@@ -20,6 +20,26 @@
 
 {% block main %}
 <h1>Sessions</h1>
+{# One input per filter the list offers, generated from `FILTERS` rather than listed here, so
+   a filter added in `view/app.py` appears without a template edit. Submitting keeps the sort
+   and drops the page: page 4 of a narrower list is a different page. #}
+<form id="filters" method="get" action="/">
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <input type="hidden" name="direction" value="{{ direction }}">
+  {% for control in controls %}
+  <label data-filter="{{ control.key }}">{{ control.key }}
+    <input type="{{ control.type }}" name="{{ control.key }}" value="{{ control.value }}"
+           {% if control.key == 'project' %}list="projects"{% endif %}>
+  </label>
+  {% endfor %}
+  <button type="submit">Filter</button>
+  <a href="/">clear</a>
+</form>
+{# Suggestions, not a closed set: a project the store has no sessions for is an empty list
+   rather than an error, and typing a path the datalist lacks still runs. #}
+<datalist id="projects">
+  {% for project in projects %}<option value="{{ project }}">{% endfor %}
+</datalist>
 {{ pager('top') }}
 <table id="sessions">
   <thead>

@@ -11,6 +11,7 @@ request text ever reaches SQL. `Page` names the queries whole pages read, which 
 set the payload bound scans (`tests/view/test_bounds.py`).
 """
 
+import datetime as dt
 import socket
 import webbrowser
 from collections.abc import Iterator, Mapping, Sequence
@@ -18,7 +19,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, assert_never
+from urllib.parse import urlencode
 
 import duckdb
 import uvicorn
@@ -58,6 +60,9 @@ class Page(StrEnum):
     """The library queries the pages are built from, by the part each one fills."""
 
     SESSIONS = "view_sessions"
+    # The names the list's project filter offers, which is a column of the store rather than
+    # of the page: the projects on one page of sessions are not the projects to filter by.
+    PROJECTS = "view_projects"
     SESSION_HEADER = "view_session_header"
     RUN_HEADER = "view_run_header"
     # The two turn timelines, shared with `aiobserve query` — the same rows a report cites.
@@ -115,6 +120,50 @@ SORTS: dict[str, str] = {
 }
 
 
+@dataclass(frozen=True)
+class Filter:
+    """One way the session list can be narrowed, as the two halves that make it safe."""
+
+    # The predicate composed into the WHERE, naming its own bound parameter and nothing else.
+    # It reads a column of `view_sessions`, which is what the composition wraps.
+    predicate: str
+    # What a request's value has to parse as before it can bind. A value that will not parse
+    # is a 400, so the type is also the only vetting a filter value gets.
+    type: queries.ParamType
+
+
+# What the session list can be narrowed by, per query-string key. Closed, like `SORTS`: a key
+# outside it is a 400, and a key inside it contributes a fixed predicate and a bound value —
+# request text never becomes SQL. Composed in this order, so the WHERE and the citation read
+# the same whatever order a URL happened to put them in.
+FILTERS: dict[str, Filter] = {
+    "project": Filter("project_dir = $project", queries.ParamType.TEXT),
+    "since": Filter("started_at >= $since", queries.ParamType.DATE),
+    # Inclusive of the day named: someone asking for sessions until the 7th means the 7th.
+    "until": Filter("started_at < $until + INTERVAL 1 DAY", queries.ParamType.DATE),
+    "skill": Filter("list_contains(skills, $skill)", queries.ParamType.TEXT),
+    # A floor rather than a flag, so `errors=1` reads "any" and a larger number "at least".
+    "errors": Filter("tool_errors >= $errors", queries.ParamType.INTEGER),
+}
+
+# The HTML input a filter's type gets on the form. One map rather than a field per filter.
+CONTROLS: dict[queries.ParamType, str] = {
+    queries.ParamType.TEXT: "text",
+    queries.ParamType.DATE: "date",
+    queries.ParamType.INTEGER: "number",
+}
+
+
+class Control(NamedTuple):
+    """One filter as the form renders it."""
+
+    key: str
+    # The HTML input type, from `CONTROLS`.
+    type: str
+    # What this request asked for, so the form comes back holding what was typed into it.
+    value: str
+
+
 class Direction(NamedTuple):
     """One sort direction, as the two SQL fragments it puts in the ORDER BY."""
 
@@ -138,6 +187,9 @@ DEFAULT_DIRECTION = "desc"
 # past the design's page ceiling, so the size is bound rather than assumed small.
 PAGE_SESSIONS = 200
 MAX_PAGE_SESSIONS = 500
+
+# Every query-string key the session list reads: the filters, plus what orders and pages them.
+LIST_KEYS = frozenset(FILTERS) | {"sort", "direction", "page", "size"}
 
 # The most a fragment will page at once, whatever a URL asks for. The payload bound the design
 # states is arithmetic over the *manifest defaults*; these ceilings are the coarser guard that
@@ -263,30 +315,85 @@ def paged(rows: list[Row], matched: str, cursor: str) -> Paged:
 
 
 def sorted_sessions(
-    connection: duckdb.DuckDBPyConnection, sort: str, direction: str, page: int, size: int
+    connection: duckdb.DuckDBPyConnection,
+    sort: str,
+    direction: str,
+    page: int,
+    size: int,
+    filters: Mapping[str, ParamValue],
 ) -> Listing:
     """One page of the session list, ordered by one of `SORTS` — the design's composition.
 
     The library query stays the citable core: it goes in a subquery untouched, and what is
-    wrapped around it is an ORDER BY built from two dictionary lookups and a LIMIT bound as
-    a parameter. `session_id` breaks ties in the same direction, which makes every sort a
-    total order, its reverse exact, and the page boundaries stable between requests.
+    wrapped around it is a WHERE of `FILTERS` predicates, an ORDER BY built from two
+    dictionary lookups, and a LIMIT — every value a request supplied bound as a parameter.
+    `session_id` breaks ties in the same direction, which makes every sort a total order,
+    its reverse exact, and the page boundaries stable between requests.
     """
-    # A sort key *is* a column name, so membership is the whole guard — and it is checked
-    # here as well as at the route, because this is the function that builds SQL.
-    if sort not in SORTS:
+    # A sort or filter key *is* part of a SQL fragment, so membership is the whole guard —
+    # and it is checked here as well as at the route, because this builds the SQL.
+    if sort not in SORTS or not filters.keys() <= FILTERS.keys():
         raise KeyError(sort)
     order = DIRECTIONS[direction]
     listing = queries.load(Page.SESSIONS).strip().rstrip(";")
+    # `FILTERS` order, not the query string's: the SQL a citation stands for is the same
+    # whichever way a URL was typed.
+    applied = [FILTERS[key].predicate for key in FILTERS if key in filters]
+    where = f" WHERE {' AND '.join(applied)}" if applied else ""
     # One row past the page: cheaper than a second query, and all a pager needs to know.
     rows = fetch(
         connection,
-        f"SELECT * FROM ({listing})"
+        f"SELECT * FROM ({listing}){where}"
         f" ORDER BY {sort} {order.keyword} {order.nulls}, session_id {order.keyword}"
         " LIMIT $limit OFFSET $offset",
-        {"limit": size + 1, "offset": (page - 1) * size},
+        {"limit": size + 1, "offset": (page - 1) * size, **filters},
     )
     return Listing(rows[:size], len(rows) > size)
+
+
+def narrowing(params: Mapping[str, str]) -> dict[str, ParamValue]:
+    """The filters one request asked for, each parsed as the type its predicate binds.
+
+    A key outside `LIST_KEYS` is a 400 rather than a no-op: FastAPI ignores what it was not
+    declared with, so a mistyped filter would otherwise show the whole corpus and look like
+    an answer. An empty value is not a filter — the list's form submits every field, so a
+    blank one has to mean "not filtering".
+    """
+    if not params.keys() <= LIST_KEYS:
+        raise HTTPException(400, f"The list takes {', '.join(sorted(LIST_KEYS))}.")
+    return {key: _as_bound(key, given) for key in FILTERS if (given := params.get(key))}
+
+
+def _as_bound(key: str, text: str) -> ParamValue:
+    """One filter's query-string text as the value DuckDB binds, or a 400."""
+    kind = FILTERS[key].type
+    try:
+        match kind:
+            case queries.ParamType.TEXT:
+                return text
+            case queries.ParamType.INTEGER:
+                return int(text)
+            case queries.ParamType.DATE:
+                return dt.date.fromisoformat(text)
+            case _:
+                assert_never(kind)
+    except ValueError as error:
+        raise HTTPException(400, f"The list's {key} takes {kind} values.") from error
+
+
+def list_url(sort: str, direction: str, page: int, size: int, filters: Mapping[str, str]) -> str:
+    """A link back to the list, carrying everything that made this view of it.
+
+    Every link the list writes goes through here. A filter that rode the sort headings but
+    not the pager would widen the list halfway through reading it, which is the kind of thing
+    a reader notices only after quoting the wrong count.
+    """
+    query: dict[str, str | int] = {"sort": sort, "direction": direction}
+    if page > 1:
+        query["page"] = page
+    if size != PAGE_SESSIONS:
+        query["size"] = size
+    return "/?" + urlencode(query | {key: value for key, value in filters.items() if value})
 
 
 def checked(size: int, ceiling: int) -> int:
@@ -497,18 +604,21 @@ def build_app(db_path: Path) -> FastAPI:
             raise HTTPException(
                 400, f"Ask for page 1 or later, at a size between 1 and {MAX_PAGE_SESSIONS}."
             )
+        filters = narrowing(request.query_params)
+        # What the URL said, kept as text: the links have to reproduce the request, and the
+        # form has to come back filled in with what was typed into it.
+        given = {key: request.query_params.get(key, "") for key in FILTERS}
         with open_store(resolved) as connection:
-            rows, more = sorted_sessions(connection, sort, direction, page, size)
+            rows, more = sorted_sessions(connection, sort, direction, page, size, filters)
+            projects = fetch(connection, queries.load(Page.PROJECTS), {})
         # A header link flips the direction of the column already sorted by, and opens any
         # other column at the direction that puts its largest values first. Re-sorting starts
         # from the first page: page 4 of one order says nothing about page 4 of another.
         flipped = "asc" if direction == "desc" else "desc"
-        held = f"&size={size}" if size != PAGE_SESSIONS else ""
         links = {
-            key: f"/?sort={key}&direction={flipped if key == sort else DEFAULT_DIRECTION}{held}"
+            key: list_url(key, flipped if key == sort else DEFAULT_DIRECTION, 1, size, given)
             for key in SORTS
         }
-        step = f"/?sort={sort}&direction={direction}{held}&page="
         return templates.TemplateResponse(
             request,
             "sessions.html",
@@ -518,10 +628,15 @@ def build_app(db_path: Path) -> FastAPI:
                 "sort": sort,
                 "direction": direction,
                 "links": links,
+                # One input per filter, in `FILTERS` order, carrying what this request asked.
+                "controls": [
+                    Control(key, CONTROLS[spec.type], given[key]) for key, spec in FILTERS.items()
+                ],
+                "projects": [row["project_dir"] for row in projects],
                 "page": page,
                 "first": (page - 1) * size + 1,
-                "previous": f"{step}{page - 1}" if page > 1 else None,
-                "next": f"{step}{page + 1}" if more else None,
+                "previous": list_url(sort, direction, page - 1, size, given) if page > 1 else None,
+                "next": list_url(sort, direction, page + 1, size, given) if more else None,
                 "citations": {
                     Page.SESSIONS.value: queries.citation(
                         Page.SESSIONS,
@@ -530,6 +645,7 @@ def build_app(db_path: Path) -> FastAPI:
                             "direction": direction,
                             "limit": size,
                             "offset": (page - 1) * size,
+                            **filters,
                         },
                     )
                 },

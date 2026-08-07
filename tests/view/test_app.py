@@ -17,6 +17,7 @@ from aiobserve.view.app import (
     DEFAULT_DIRECTION,
     DEFAULT_SORT,
     DIRECTIONS,
+    FILTERS,
     MAX_PAGE_SESSIONS,
     PAGE_SESSIONS,
     SORTS,
@@ -33,6 +34,7 @@ from tests.conftest import (
     FORK_ORIGIN_RUN,
     FORK_RUN,
     MAIN,
+    MYCELIA,
     RESUME,
     SPINE,
 )
@@ -190,6 +192,114 @@ def test_a_page_outside_the_bounds_is_refused(
     response = client.get("/", params=parameters)
     assert response.status_code == 400
     assert str(MAX_PAGE_SESSIONS) in response.text
+
+
+# One value per filter, read off the fixture corpus rather than invented, chosen so each
+# narrows the 16-session list without emptying it. The leaf below keeps the set honest when
+# a filter is added; the values themselves are checked by the narrowing leaf, which fails
+# loudly if a fixture change makes one of them match everything or nothing.
+SAMPLES: dict[str, str] = {
+    # 13 of the 16 fixture sessions ran in the mycelia checkout...
+    "project": MYCELIA,
+    # ...the corpus starts on 2026-06-30 and ends on 2026-08-06, so a bound inside that
+    # window cuts rows off each end...
+    "since": "2026-07-01",
+    "until": "2026-08-01",
+    # ...two sessions ran the grill-me skill...
+    "skill": "grill-me",
+    # ...and two recorded a failing tool call.
+    "errors": "1",
+}
+
+
+def test_every_filter_the_list_offers_has_a_sample_to_check_it_with() -> None:
+    """Each filter the list offers is exercised below, so a new one cannot land untested."""
+    assert set(SAMPLES) == set(FILTERS)
+
+
+@pytest.mark.parametrize("key", sorted(SAMPLES))
+def test_a_filter_narrows_the_list_without_emptying_it(key: str, client: TestClient) -> None:
+    """Every filter cuts the list to some of the sessions it held, never to all or none."""
+    whole = values(client.get("/").text, "data-session-id")
+    narrowed = values(client.get("/", params={key: SAMPLES[key]}).text, "data-session-id")
+    # A filter that matched everything would pass a subset check while filtering nothing,
+    # and one that matched nothing would pass it vacuously. This is a proper, non-empty cut.
+    assert set(narrowed) < set(whole)
+    assert narrowed
+    # The rows kept their order rather than being re-sorted by the filtering.
+    assert narrowed == [row for row in whole if row in set(narrowed)]
+
+
+def test_a_filter_keeps_exactly_the_sessions_the_store_says_it_should(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A skill filter shows the sessions that ran that skill — the whole set, and no other."""
+    ran_it = {
+        row[0]
+        for row in store.execute(
+            "SELECT DISTINCT session_id FROM live_api_calls WHERE attribution_skill = ?",
+            [SAMPLES["skill"]],
+        ).fetchall()
+    }
+    shown = values(client.get("/", params={"skill": SAMPLES["skill"]}).text, "data-session-id")
+    assert set(shown) == ran_it
+    # Every row shown says the skill it was filtered by, so the page shows its own evidence.
+    for session_id in shown:
+        page = client.get("/", params={"skill": SAMPLES["skill"]}).text
+        assert SAMPLES["skill"] in fields(page, "data-session-id", session_id)["skills"]
+
+
+def test_a_filter_value_reaches_duckdb_only_as_a_binding(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A filter value that is SQL rather than a name matches nothing and runs nothing."""
+    before = one(store, "SELECT count(*) FROM sessions")[0]
+    response = client.get("/", params={"skill": "'; DROP TABLE sessions; --"})
+    # A value that reached SQL as text would either error or execute; bound, it is a skill
+    # name no session ran...
+    assert response.status_code == 200
+    assert values(response.text, "data-session-id") == []
+    # ...and the table it named is still there, with every row it had.
+    assert one(store, "SELECT count(*) FROM sessions")[0] == before
+
+
+@pytest.mark.parametrize(
+    ("parameters", "says"),
+    [
+        # A key the list does not offer, however plausible, is told the keys it does...
+        ({"filter": "grill-me"}, "skill"),
+        ({"Skill": "grill-me"}, "skill"),
+        # ...and a known key whose value is not the type its predicate binds is told which.
+        ({"since": "last tuesday"}, "since takes date values"),
+        ({"errors": "many"}, "errors takes integer values"),
+    ],
+)
+def test_an_unknown_filter_key_or_unparseable_value_is_refused(
+    parameters: dict[str, str], says: str, client: TestClient
+) -> None:
+    """The list reads a closed set of query keys, each at one type; anything else is a 400."""
+    response = client.get("/", params=parameters)
+    assert response.status_code == 400
+    # The refusal says what would have worked, and never echoes what was asked for — a page
+    # that reflected the value back would be the one place unescaped request text could land.
+    assert says in response.text
+    for value in parameters.values():
+        assert value not in response.text
+
+
+def test_a_filter_rides_the_links_and_the_citation(client: TestClient) -> None:
+    """A filter survives re-sorting and paging, and the footer says the list was filtered."""
+    page = client.get("/", params={"skill": SAMPLES["skill"], "sort": "cost_usd", "size": 1}).text
+    # Every heading link and every pager link carries the filter, so changing the order or
+    # turning the page does not quietly widen the list back to the corpus...
+    links = re.findall(r'href="(/\?[^"]*)"', page)
+    assert links
+    for link in links:
+        assert "skill=grill-me" in link
+    # ...and the citation carries it too, after the paging, so the line reproduces the rows.
+    assert fields(page, "id", "citation")["view_sessions"] == (
+        "-- queries/view_sessions.sql sort=cost_usd direction=desc limit=1 offset=0 skill=grill-me"
+    )
 
 
 def test_the_session_header_holds_what_the_store_says_about_it(

@@ -28,6 +28,13 @@ h1 { font-size: 1.3rem; }
 h2 { font-size: 1rem; }
 
 /* The session list. */
+#filters { display: flex; flex-wrap: wrap; align-items: end; gap: 0.5rem 1rem;
+  margin: 0.5rem 0; }
+#filters label { display: flex; flex-direction: column; color: var(--dim);
+  font-size: 0.8rem; }
+/* Wide enough for a repository path, narrow enough that five of them fit on one line. */
+#filters input[name="project"] { width: 16rem; }
+#filters input[name="errors"] { width: 5rem; }
 table { border-collapse: collapse; width: 100%; }
 th, td { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--line); text-align: left; }
 th { position: sticky; top: 0; background: var(--paper); white-space: nowrap; }
