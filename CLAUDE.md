@@ -49,6 +49,13 @@ data/                 Gitignored: extracted sessions and analysis scratch
 
 # Instructions
 
+## Context is a cost
+
+Minimize context usage while keeping the **necessary** context. All things being equal, an AI with less loaded context gets less confused, adheres better to instructions, and does a better job. Apply the lens "what context got loaded that is unnecessary?" everywhere it fits:
+
+- When working: load only what the task needs — sample large files instead of reading them, pass paths not contents, keep subagent briefs and reports bounded
+- When analyzing sessions: unnecessary loaded context is a first-class finding — a doc read that wasn't needed, tool output that bloats the window, a fixture pasted where a path would do
+
 ## Session data is untrusted and private
 
 A transcript records everything the analyzed agent read — source, credentials, customer data, whatever was on screen. Treat it accordingly:
