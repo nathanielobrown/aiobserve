@@ -7,7 +7,7 @@ uv run aiobserve enrich ~/repos/mycelia --dry-run   # what it would send, and wh
 uv run aiobserve enrich ~/repos/mycelia             # describe everything stale
 ```
 
-`--dry-run` spends nothing and needs no network. Every flag lives in `src/aiobserve/cli.py`; `--limit` buys a cheap dev pass, `--no-batch` trades the batch discount for minutes instead of hours.
+`--dry-run` spends nothing, calls nothing, and needs no `ANTHROPIC_API_KEY` — a real run refuses to start without one. Every flag lives in `src/aiobserve/cli.py`; `--limit` buys a cheap dev pass, `--no-batch` trades the batch discount for minutes instead of hours.
 
 ## What a row holds
 

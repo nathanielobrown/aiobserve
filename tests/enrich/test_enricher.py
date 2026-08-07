@@ -11,6 +11,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+import duckdb
 import pytest
 
 from aiobserve import cli
@@ -358,18 +359,57 @@ def test_a_failed_request_leaves_its_item_stale(store: EnrichmentStore, tmp_path
 def test_the_cli_refuses_without_a_key(
     store: EnrichmentStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`enrich` refuses at command start when the API key is missing or empty."""
+    """A run that would spend refuses at command start when the API key is missing or empty."""
     # A developer's real `.env` must not decide this test.
     monkeypatch.setattr(cli, "load_dotenv", lambda: None)
-    for absent in ("", "   "):
-        monkeypatch.setenv("ANTHROPIC_API_KEY", absent)
+    for absent in ("", "   ", None):
+        if absent is None:
+            monkeypatch.delenv("ANTHROPIC_API_KEY")
+        else:
+            monkeypatch.setenv("ANTHROPIC_API_KEY", absent)
         with pytest.raises(SystemExit, match="ANTHROPIC_API_KEY"):
-            cli.main("enrich", "--db", str(store.path), "--dry-run")
-    monkeypatch.delenv("ANTHROPIC_API_KEY")
-    with pytest.raises(SystemExit, match="ANTHROPIC_API_KEY"):
-        cli.main("enrich", "--db", str(store.path))
-    # ...and it refuses before it writes anything, whatever it was asked to do.
+            cli.main("enrich", "--db", str(store.path))
+    # ...and it refuses before it renders anything, let alone writes a row.
     assert stored(store) == []
+
+
+def test_a_dry_run_prices_a_store_with_no_key_at_all(
+    store: EnrichmentStore, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Quoting a run needs no API key, because quoting spends nothing and calls nothing.
+
+    Whoever decides whether to pay for a pass is not always whoever holds the key.
+    """
+    monkeypatch.setattr(cli, "load_dotenv", lambda: None)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    cli.main("enrich", "--db", str(store.path), "--dry-run")
+    assert "at most 7 item(s) would be sent" in capsys.readouterr().out
+    assert stored(store) == []
+
+
+def test_a_dry_run_creates_the_enrichment_tables_it_finds_missing(
+    spine_store: Path, tmp_path: Path, anthropic_env: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A dry run over a store nothing has enriched leaves its three tables behind, empty.
+
+    Deliberate, and the one thing a dry run does write: opening a store is the single path
+    that creates the enrichment schema, and a read-only second path would be a second way to
+    be wrong about it. The tables are empty, and any run would have created them anyway.
+    """
+    # If a store the pipeline wrote and enrichment has never opened is priced...
+    fresh = tmp_path / "fresh.duckdb"
+    fresh.write_bytes(spine_store.read_bytes())
+    cli.main("enrich", "--db", str(fresh), "--dry-run")
+    assert "at most 7 item(s) would be sent" in capsys.readouterr().out
+    # ...then all three tables are there afterwards — the query would raise if one were
+    # missing — and every one of them is empty.
+    connection = duckdb.connect(str(fresh), read_only=True)
+    assert connection.execute(
+        "SELECT (SELECT count(*) FROM turn_enrichments),"
+        " (SELECT count(*) FROM agent_run_enrichments),"
+        " (SELECT count(*) FROM session_enrichments)"
+    ).fetchone() == (0, 0, 0)
+    connection.close()
 
 
 def test_a_dry_run_writes_nothing_and_sends_nothing(

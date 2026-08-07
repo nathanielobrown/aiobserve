@@ -102,10 +102,11 @@ def build_client(model: str, *, batched: bool) -> BatchClient:
 
 def _enrich(args: argparse.Namespace) -> None:
     """Describe the store's stale items, or say what a run would send and stop."""
-    # Before anything reads the store or renders a prompt: a run that would fail on its first
-    # request should fail now instead.
     load_dotenv()
-    if not os.environ.get(API_KEY, "").strip():
+    # Before anything reads the store or renders a prompt: a run that would fail on its first
+    # request fails now instead. A dry run makes no request, so it needs no key — whoever
+    # decides whether to pay for a pass is not always whoever holds the key.
+    if not args.dry_run and not os.environ.get(API_KEY, "").strip():
         raise SystemExit(f"{API_KEY} is unset or empty. Put it in .env or the environment")
     project = str(args.project.resolve()) if args.project else None
     with EnrichmentStore(args.db) as store:
