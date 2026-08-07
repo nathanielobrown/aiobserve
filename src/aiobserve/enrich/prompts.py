@@ -10,6 +10,8 @@ import hashlib
 from dataclasses import dataclass
 from enum import StrEnum
 
+from aiobserve.enrich.taxonomy import CATEGORY_DEFINITIONS, OUTCOME_DEFINITIONS
+
 
 class Level(StrEnum):
     """The three things that get an enrichment row, each with its own table and prompt."""
@@ -22,6 +24,41 @@ class Level(StrEnum):
 # Per level, covering what `input_hash` cannot see: the instructions and the output schema.
 # Bump one and that level re-enriches; its parents follow through the hash.
 PROMPT_VERSION: dict[Level, int] = {Level.turn: 1, Level.agent_run: 1, Level.session: 1}
+
+# What each level is looking at. The rest of the instructions is the same everywhere, so a
+# level reads differently only where it should.
+_SUBJECT: dict[Level, str] = {
+    Level.turn: (
+        "You are reading one turn of a coding session: what the person asked for, and what "
+        "the agent did about it. Describe that turn."
+    )
+}
+
+_ANSWER = """Answer with a JSON object and nothing else:
+
+- description: one or two sentences saying what was done, and to what. Name the files, \
+commands and subjects concretely. Do not judge the work, and do not restate the category
+- category: exactly one of the categories below
+- outcome: exactly one of the outcomes below
+- friction: one line naming visible struggle — a command that kept failing, a wrong turn \
+taken and undone, a tool that would not answer — or null when the records show none
+
+Never quote a credential, key or token, whatever it appears in. Never copy code or file \
+contents into the description."""
+
+
+def instructions(level: Level) -> str:
+    """The system prompt for one level. Versioned by `PROMPT_VERSION`, not by `input_hash`."""
+    vocabulary = "\n".join(
+        [
+            "Categories:",
+            *(f"- {member}: {text}" for member, text in CATEGORY_DEFINITIONS.items()),
+            "",
+            "Outcomes:",
+            *(f"- {member}: {text}" for member, text in OUTCOME_DEFINITIONS.items()),
+        ]
+    )
+    return "\n\n".join([_SUBJECT[level], _ANSWER, vocabulary])
 
 
 @dataclass(frozen=True)

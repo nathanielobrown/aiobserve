@@ -7,7 +7,13 @@ could never be committed.
 
 import pytest
 
-from aiobserve.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
+from aiobserve.enrich.taxonomy import (
+    CATEGORY_DEFINITIONS,
+    OUTCOME_DEFINITIONS,
+    TAXONOMY_VERSION,
+    Category,
+    Outcome,
+)
 from aiobserve.enrich.validation import Enrichment, FailureKind, InvalidOutput, validate
 
 
@@ -30,6 +36,10 @@ def test_every_taxonomy_member_validates() -> None:
     # cannot widen the vocabulary quietly, and one dropped from the enum cannot linger.
     assert accepted_categories == set(Category)
     assert accepted_outcomes == set(Outcome)
+    # ...every member has the one-line definition the prompt is written from, since a member
+    # the classifier is never told about is a member it will not use...
+    assert set(CATEGORY_DEFINITIONS) == set(Category)
+    assert set(OUTCOME_DEFINITIONS) == set(Outcome)
     # ...and the version rows are stamped with is a number they can be compared against.
     assert isinstance(TAXONOMY_VERSION, int)
 
