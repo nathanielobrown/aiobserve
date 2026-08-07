@@ -1,0 +1,2 @@
+{"type": "mode", "mode": "normal", "sessionId": "invented-novel-tag"}
+{"parentUuid": null, "isSidechain": false, "uuid": "22222222-2222-4222-8222-222222222222", "timestamp": "2026-08-06T10:00:00.000Z", "userType": "external", "entrypoint": "cli", "cwd": "/invented/project", "sessionId": "invented-novel-tag", "version": "2.1.221", "gitBranch": "fixture-branch-1", "type": "user", "message": {"role": "user", "content": "<sparkle-notice>SUPER-SECRET-PAYLOAD-9f2a</sparkle-notice>"}, "promptId": "00000000-0000-4000-8000-000000000001"}

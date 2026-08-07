@@ -45,11 +45,28 @@ class Session:
         accounting over a session that ignores these undercounts it. Empty for a
         session that spawned none.
         """
-        subagents = self.transcript.with_suffix("") / "subagents"
+        subagents = self.directory / "subagents"
         if not subagents.is_dir():
             return []
         # rglob, not glob: a parallel fan-out nests its agents under workflows/wf_<id>/.
         return sorted(subagents.rglob("agent-*.jsonl"))
+
+    @property
+    def directory(self) -> Path:
+        """Where Claude Code keeps everything else this session wrote. May not exist."""
+        return self.transcript.with_suffix("")
+
+    def files(self) -> list[Path]:
+        """Every file this session's records live in, sorted by path.
+
+        A whole-directory walk rather than a list of known names: subagent transcripts,
+        their metas, workflow journals, and offloaded tool results all sit under here, and
+        Claude Code adds shapes we have not seen. Missing one would leave a session
+        looking unchanged after it changed.
+        """
+        below = self.directory
+        walked = sorted(p for p in below.rglob("*") if p.is_file()) if below.is_dir() else []
+        return [self.transcript, *walked]
 
 
 def find_sessions(project: Path, *, projects_root: Path = DEFAULT_PROJECTS_ROOT) -> list[Session]:
