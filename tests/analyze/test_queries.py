@@ -27,6 +27,7 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     "records_slice": {"session_id": RESUME, "source": MAIN, "first_line": "1", "last_line": "5"},
     "run_digest": {"session_id": SPINE, "source": SPINE_RUN},
     "session_digest": {"session_id": SPINE},
+    "session_overview": {"session_id": SPINE},
 }
 
 # The clock a query file may not read: a `current_date` filter goes green on a frozen

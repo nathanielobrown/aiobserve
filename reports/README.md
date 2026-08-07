@@ -4,6 +4,8 @@ One analysis run, written down. A report is the durable output of this project: 
 
 Name a report `YYYY_MM_DD_<project>_<topic>.md` — the date it was run, the project analyzed, and what it was about.
 
+[The analysis guide](../docs/analysis.md) is the process that produces one: how sessions are selected, how readers work, the evidence ladder a candidate has to climb, and the citation and redaction rules any transcript quote has to pass.
+
 ## What a report has to carry
 
 - **The question** it set out to answer, and why that question was worth the run

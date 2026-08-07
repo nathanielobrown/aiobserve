@@ -128,6 +128,7 @@ QUERIES: dict[str, Query] = {
     ),
     "session_counts": Query(scope=Scope.CORPUS, params={}),
     "session_digest": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
+    "session_overview": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
     "session_shapes": Query(
         scope=Scope.CORPUS,
         # The classifier's cut points. Every one is a starting guess, which is why they are
