@@ -14,11 +14,15 @@ Opening a turn fetches its api calls a page at a time: per call the model, the t
 
 A run chip links to `/session/{session_id}/run/{run_id}`, the same page for one agent run: its header, the thread above it as a trail of links, its own turn timeline, and the runs under it that no turn of its timeline claims. The trail stops where the store stops naming parents — a fork's spawning call lives in files this store may not hold, and a guess in a breadcrumb is a wrong citation.
 
+Every timeline links to its thread's raw transcript at `/session/{session_id}/records/{source}`: one row per archived line, with the line number, the record type, its length, and the head of the line itself. Opening a row fetches that line whole. Each turn also links to the line that carries it, so a rendered turn and the record behind it reach each other in one click.
+
+A tool result Claude Code wrote to a file instead of the transcript links to `/session/{session_id}/offload/{name}`. Those files run to tens of megabytes, so the page serves the content in chunks and hands back the offset of the next one. The name is a key into `offload_files`, never a path the server opens.
+
 ## URLs are the citation surface
 
 Every page is a plain GET you can paste into a report or a message. The list takes `sort`, `direction`, `page`, `size`, and the filter keys; a session or a run takes its ids. An unknown key, an unknown sort or direction, a filter value of the wrong type, or a page outside its bounds answers 400 rather than guessing. Sort keys are column names and filter keys are fixed predicates, so a citation says what produced the rows and the order — and no request text reaches SQL as anything but a bound value.
 
-Session pages are keyed by natural ids, so a report that cites `(session_id, source, line_no)` keeps citing the tuple. The URL is derived from it, and a port or route change breaks nothing already written down.
+Session pages are keyed by natural ids, so a report that cites `(session_id, source, line_no)` keeps citing the tuple. The URL is derived from it, and a port or route change breaks nothing already written down. That tuple has a page of its own: `/session/{session_id}/records/{source}?after={line_no - 1}#L{line_no}` opens the records browser on the cited line.
 
 ## Reading while an extract runs
 
@@ -32,4 +36,6 @@ Launching against a store this build cannot read, a store that is not there, or 
 
 ## What keeps a page small
 
-A viewer that renders a whole transcript is a viewer that hangs, so no query behind a page selects a column that holds what the agent read or wrote — `raw`, `text`, `thinking`, `result`, `input`, `content` — without truncating it in SQL. The list is the page a growing corpus stretches, so it is paged: `PAGE_SESSIONS` rows by default, `MAX_PAGE_SESSIONS` at most, both in `src/aiobserve/view/listing.py`. `tests/view/test_bounds.py` holds the ceiling and the projection that has to fit under it.
+A viewer that renders a whole transcript is a viewer that hangs, so no query behind a page selects a column that holds what the agent read or wrote — `raw`, `text`, `thinking`, `result`, `input`, `content` — without truncating it in SQL. A per-value fetch is the declared exception: one tool's result or one transcript line, one value to a request, so it tops out at the largest value in the store rather than at a page of them.
+
+Every page size is a bound parameter too: a default in the query manifest, a ceiling in the app, and a 400 for a hand-typed `?size=` past it. What a row really costs is measured against the canonical store, because the fixtures are redacted down to a few characters and project nothing. The offload page is the one bound that can't be measured — its content is a file some tool wrote — so its ceiling is arithmetic over the worst character instead. `tests/view/test_bounds.py` holds the ceiling and everything that has to fit under it.

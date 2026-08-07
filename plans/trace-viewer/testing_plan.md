@@ -152,6 +152,15 @@ The amendment resolved all five findings this plan opened against the previous d
 - **The run page's parent-rule leaf carries a fork whose trail is empty.** The corpus holds a fork whose spawning call is in files the store does not hold — both parent rules come back empty — so the leaf pins "the trail stops rather than guessing `main`" on recorded data rather than on a planted row
 - **A new query joined the smoke tier by landing.** `view_projects.sql` needed no new leaf: the library tier parametrizes over `queries/*.sql`, so it ran, was scoped, and was checked against its manifest entry the moment the file appeared
 
+## As built: slice 3
+
+- **Finding A is discharged, and the page boundary is still out of reach.** `$page_records` exists with a manifest default of 100, but the densest fixture thread holds 47 records, so the walk that crosses a boundary binds `?size=` down the way the turn-expand leaf does. The leaf reads the fixture count first and fails naming it if the corpus moves
+- **The offload leaf compares whitespace-collapsed.** The HTML reader strips each chunk it lifts, and a 64-character boundary can land inside a run of spaces. What the leaf is about is the partition, not what the `<pre>` renders, so it asserts the chunks reassemble the file with whitespace collapsed — the byte-for-byte clause the plan wrote is not reachable through the rendered page
+- **The bound the plan could not state: escaping.** Every ceiling in this file multiplies a measured cost per row, which works because a row's content is prose. An offload's is not — it is a file some tool wrote — and a chunk of nothing but `&` weighs five times what the plan's arithmetic assumed. A planted all-`&` offload at `MAX_CHUNK_CHARS` holds the ceiling, with the content invented and labeled: no recorded offload is adversarial, and the character no corpus contains is the point
+- **`MAX_PAGE_RECORDS` was measured before it was pinned.** 500 served 415 KB against `data/traces.duckdb`, past the ceiling — the same mistake slice 2 found in `MAX_PAGE_SESSIONS`, caught this time before it shipped. `MEASURED_RECORD_BYTES` records the measurement and its date beside `MEASURED_SESSION_BYTES`
+- **A NULL uuid turned one leaf into two arms.** The corpus holds a record with no uuid, and the first version of the record fragment printed the literal string `None` for it. The leaf now asserts both arms — a record with a uuid shows it, one without shows nothing — and that `"None"` appears in no field
+- **The turn-to-line link needed an attribute of its own.** Asserting on the turn row's `href` also captures its run chips' hrefs, so the link carries `data-record-link="{line_no}"` and the leaf reads that
+
 ## Obligation count
 
 | Area | Obligations |
