@@ -32,10 +32,11 @@ Feel free to change existing tooling or add new tools when they ease the work or
 # Layout
 
 ```
-src/aiobserve/        The package — extraction, parsing, analysis
+src/aiobserve/        The package — `extract/` reads an agent's sessions, `export/` writes a sink, `pipeline.py` is the seam
 tests/                Mirrors the package layout; fixtures are recorded sessions
 docs/
   schema.md           What each telemetry field means, and the session that proves it
+  store.md            The trace store: why it's the archive, and what to check before deleting one
   documentation.md    Where each kind of content belongs — read before writing docs
   writing_style_guide.md   House prose style, Zinsser distilled — loaded via the writing skill
   mermaid-guide.md    Read before authoring Mermaid diagrams
@@ -45,7 +46,7 @@ docs/
   handoffs.md         Per-run agent scratch: naming, transfer, and lifetime
 plans/                Designs and testing plans, one directory per change
 reports/              Analysis findings, one per run (see README.md)
-data/                 Gitignored: extracted sessions and analysis scratch
+data/                 Gitignored: the canonical trace store `traces.duckdb` (`docs/store.md`) and analysis scratch
 ```
 
 # Instructions

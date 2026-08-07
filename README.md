@@ -8,7 +8,7 @@ The first target is **Claude Code**. The tool takes a project path, so it works 
 
 ## Status
 
-Early. The repository carries its own AI-coding guidance and a Python skeleton; the extraction pipeline lands next, ported from `mac_settings/claude-otel/`.
+Early. Claude Code transcripts extract into a local DuckDB store — sessions, turns, API calls, tool calls, subagent runs, compactions, cost, and every raw line. Enrichment, the spans Claude Code exports over OpenTelemetry, and the findings the store is for all come later.
 
 ## Getting started
 
@@ -35,6 +35,14 @@ uv run aiobserve sessions ~/repos/mycelia
 ```
 
 Field meanings go in `docs/schema.md`, each with the recorded session that established it — never from memory, because the harness changes these shapes without notice.
+
+## Extracting a project
+
+```bash
+uv run aiobserve extract ~/repos/mycelia    # --db to write somewhere other than data/traces.duckdb
+```
+
+Each run re-extracts only the sessions whose files changed, replacing a session's rows whole. Query the DuckDB file directly; count through the `session_rollups` and `corpus_rollups` views, which drop the records a fork or a resume copied. The store outlives the transcripts it was built from, so read [the store guide](docs/store.md) before deleting one.
 
 ## Handling the data
 
