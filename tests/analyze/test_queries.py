@@ -15,11 +15,15 @@ import pytest
 from aiobserve.analyze import queries
 from aiobserve.analyze.queries import QUERIES, Scope
 from aiobserve.export.duckdb import _TABLES
-from tests.analyze.conftest import MYCELIA, QueryRunner
+from tests.analyze.conftest import MAIN, MYCELIA, RESUME, SPINE, SPINE_RUN, QueryRunner
 
 # Bindings that make a query return something on the fixture corpus, per query name. The
 # production defaults are pinned by their own leaves; these are the fixture-sized values.
-FIXTURE_BINDINGS: dict[str, dict[str, str]] = {}
+FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
+    "records_slice": {"session_id": RESUME, "source": MAIN, "first_line": "1", "last_line": "5"},
+    "run_digest": {"session_id": SPINE, "source": SPINE_RUN},
+    "session_digest": {"session_id": SPINE},
+}
 
 # The clock a query file may not read: a `current_date` filter goes green on a frozen
 # fixture store today and returns nothing next month.

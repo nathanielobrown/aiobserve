@@ -75,8 +75,31 @@ class Query:
     params: Mapping[str, Param]
 
 
+# The keys of a keyed query: which session, and which thread inside it. Neither has a
+# sensible default — a digest of "some session" is not a question anyone asked.
+SESSION_ID = Param(type=ParamType.TEXT, default=REQUIRED)
+SOURCE = Param(type=ParamType.TEXT, default=REQUIRED)
+
+# How much of one raw record `records_slice` returns. A cap, not a limit: a reader can raise
+# it, and the design says so — the mechanism here is that the number is stated and cited.
+RAW_CHARS = 2000
+
 QUERIES: dict[str, Query] = {
+    "records_slice": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            "source": SOURCE,
+            # The line range is required for the same reason the cap exists: a default would
+            # hand back a window of private transcript with nothing to say it was a guess.
+            "first_line": Param(type=ParamType.INTEGER, default=REQUIRED),
+            "last_line": Param(type=ParamType.INTEGER, default=REQUIRED),
+            "max_chars": Param(type=ParamType.INTEGER, default=RAW_CHARS),
+        },
+    ),
+    "run_digest": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID, "source": SOURCE}),
     "session_counts": Query(scope=Scope.CORPUS, params={}),
+    "session_digest": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
     "sessions": Query(scope=Scope.CORPUS, params={}),
     "weekly_trend": Query(scope=Scope.CORPUS, params={}),
 }

@@ -44,7 +44,14 @@ SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"
 SPINE_RUN = "ac461ef46b4bb8e32"
 SPINE_LEAF = "af6473ae437c9608d"
 RESUME = "0a76f771-5f5b-447e-852a-664fc972ea7c"
+# The line of `RESUME`'s longest recorded raw record, 3,054 chars — the one record past the
+# `records_slice` cap.
+RESUME_LONG_RECORD = 5
 SERVER_TOOLS = "088d63aa-71d3-4108-965e-5147e3eaddbd"
+# `server_tools/`'s one agent source, which carries a NULL-`turn_id` api call outside `main`.
+SERVER_TOOLS_RUN = "a3b37063695183556"
+# The source name of a session's own thread, which is the scope `session_digest` covers.
+MAIN = "main"
 # The two sessions `worktree_db` re-exports under a planted `project_dir`, chosen because no
 # other leaf asserts on them.
 WORKTREE_SESSION = "0b34d1b8-ebd3-40a6-bd89-f1881e1de2ba"

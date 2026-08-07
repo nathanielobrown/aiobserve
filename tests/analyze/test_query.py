@@ -14,13 +14,16 @@ import pytest
 from aiobserve.analyze import queries
 from tests.analyze.conftest import (
     AS_OF_PARTIAL,
+    MAIN,
     MYCELIA,
     MYCELIA_SESSIONS,
     NO_PROJECT_SESSION,
     NON_CORPUS,
+    RESUME,
     SIBLING_SESSION,
     SPINE,
     WORKTREE_SESSION,
+    Output,
     QueryRunner,
     query,
 )
@@ -111,6 +114,33 @@ def test_since_filters_and_omitting_it_means_the_whole_corpus(run_query: QueryRu
     assert len(whole.column("session_id")) == MYCELIA_SESSIONS
 
 
+def test_the_production_defaults_run_unless_a_param_overrides_one(run_query: QueryRunner) -> None:
+    """A run with no `--param` uses the manifest's numbers, and an override moves only its own.
+
+    Stands in for `select_sessions`, whose quotas are the design's headline defaults and land
+    with selection in the next slice; `records_slice`'s cap is the same mechanism.
+    """
+    keys = (
+        "--param",
+        f"session_id={RESUME}",
+        "--param",
+        f"source={MAIN}",
+        "--param",
+        "first_line=1",
+        "--param",
+        "last_line=1",
+    )
+    # If a query declares a parameter with a production default and the caller binds none...
+    bare = run_query("records_slice", *keys, "--csv")
+    # ...the citation reports the manifest's value, which is what a committed report quotes...
+    assert _bindings(bare)["max_chars"] == str(queries.RAW_CHARS)
+    # ...and an explicit override moves that one binding and no other...
+    overridden = run_query("records_slice", *keys, "--param", "max_chars=50", "--csv")
+    assert _bindings(overridden) == {**_bindings(bare), "max_chars": "50"}
+    # ...and the result obeys the value the citation reports, which is the point of citing it.
+    assert len(overridden.csv_rows()[1][-1]) == 50
+
+
 def test_an_unknown_query_or_parameter_names_what_it_did_not_recognize(
     run_query: QueryRunner,
 ) -> None:
@@ -142,6 +172,12 @@ def test_the_store_is_opened_read_only(
     # ...and the store is exactly as it was: the analysis layer is out of the mutation
     # business by construction, not by convention.
     assert _tables(analyze_db) == before
+
+
+def _bindings(output: Output) -> dict[str, str]:
+    """The `k=v` pairs of a citation line, which under `--csv` sits on stderr."""
+    citation = next(line for line in output.stderr.splitlines() if line.startswith("-- queries/"))
+    return dict(pair.split("=", 1) for pair in citation.split()[2:])
 
 
 def _tables(db: Path) -> list[tuple[str]]:
