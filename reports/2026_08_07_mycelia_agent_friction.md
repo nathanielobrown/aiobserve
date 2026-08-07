@@ -13,6 +13,14 @@ First full analysis iteration over the mycelia corpus. The question: **where do 
 
 Findings are labeled by the evidence ladder in `docs/analysis.md`: **counted** (a corpus query backs it), **recurring** (three or more independent session reports), **anecdote** (one or two sightings; a hypothesis). Citations are `(source, first_line–last_line)` per the quoting contract; `source` is `main` or an agent id within the named session.
 
+## Amendment, 2026-08-08
+
+Three findings moved up the ladder. Iteration 1 published them as recurring because no query could count them; the counting queries — `error_signatures`, `agent_compactions`, `error_records`, and a `view_runs` carrying cost, errors and compactions — were built after publication, from the process fixes listed at the end of this report. They ran against the same store with the same bindings as everything above, so the corpus stamp still holds.
+
+R1 became C3, R3 became C4, and the first of R4's three false-positive patterns became C5. The rest of R4 stays recurring: a bare `Exit code 1` carries nothing that separates a benign grep miss from a real failure. Each promoted finding keeps its reader evidence as the mechanism — the query supplies only the magnitude.
+
+One count corrects a reading. R3 said orchestrator threads stay lean, and they did in the four sessions read; corpus-wide the main thread compacts more per thread than every agent definition except `implementer`. C4 carries the correction.
+
 ## Counted findings
 
 ### C1. Fifty delegation-heavy sessions carry 94% of window spend; a third of sessions do no work
@@ -27,33 +35,48 @@ Everything else in this report should be read against this shape: mycelia's cost
 
 Recommendation: verify the Honeycomb MCP grant covers the resources the `honeycomb` agent queries, and have the agent definition fail fast on the first auth error instead of retrying tool by tool. Error rate: high confidence; auth as the dominant mechanism: low (one run).
 
+### C3. Edit/Write-before-Read is two thirds of every Edit and Write failure (published as R1)
+
+`error_signatures.sql project=/Users/nob/repos/mycelia since=NULL as_of=2026-08-07 window_days=28 signature=NULL min_occurrences=5 signature_chars=120`: over the window, "File has not been read yet. Read it first before writing to it." is 460 of Edit's 661 errors (70%) across 27 sessions and 190 threads, and 123 of Write's 216 (57%) across 33 sessions and 103 threads. Together 583 of the 877 Edit/Write failures — 66%. The session counts overlap and do not add.
+
+The mechanism comes from the read sample, where the signature landed in ≥6 sessions, concentrated in implementer and auditor runs: `0164a230` (main, 522–527, 3× after a `gt checkout` branch switch), `26dfe608` (runs `afa965bcc1b7a691f` and `ab9c838384bb33718`, 12× against `/tmp` copies of the worktree), `8c2ea996` (19× across ≥4 runs, clustered right after `[Request interrupted by user]` turn boundaries — `ae2c93066ea2c8864`, 75–210), `0db9e51a` (5×), `d835351c` (run `a1f560beb5849a692`, 7×), `4b613b5a` (1×). Three sub-mechanisms: a new turn or interruption resets the read state; the guard is path-scoped, so a file read at its repo path still blocks edits to a `/tmp` copy; Write to a file the run never read.
+
+Recommendation: one line in mycelia's implementer and auditor definitions — Read a file at its current path, in the current turn, before Edit/Write, even if you read it earlier or at another path. Confidence: high. The count settles iteration 1's open question of how much of the 877 this signature explains, and replaces its floor of six read sessions with the corpus figures above.
+
+### C4. Half of implementer threads compact; implementers carry 46% of the window's compactions (published as R3)
+
+`agent_compactions.sql project=/Users/nob/repos/mycelia since=NULL as_of=2026-08-07 window_days=28`: of the window's 890 compactions over 2,044 threads, `implementer` holds 412 over 426 threads — 0.97 per thread, with 216 of those threads (51%) compacting at least once, across 41 sessions. The definitions it is measured against: `general-purpose` 0.34 (177 over 522 threads), `claude` and `auditor` 0.41, `honeycomb` 0.12, `doc-writer` and `writer` 0.05, `Explore` 0.02 (3 over 136 threads), `pr-submitter` 0.02, and `stack-merger`, `workflow-subagent` and `claude-code-guide` at zero. Ad-hoc one-run definitions top the per-thread ranking with the same shape at n=1 — `impl-rung1` 9 compactions in a single thread, `impl-cards` 7.
+
+Where the count corrects the reading: the main thread is not lean. 49 of 264 main threads compacted, 136 compactions, 0.52 per thread — second only to `implementer` among definitions with ten or more threads, and 15% of the window's total. Read as: orchestrators compact about half as often per thread as implementers, not negligibly.
+
+The mechanism comes from four read sessions, all at a consistent ~166–172k-token auto-compaction ceiling: `2f3e6be5` (one run took 6 of the session's 27 compactions, ~6% of wall time), `8320539c` (22 of 25 sub-run compactions in implementers, one every 15–25 minutes), `cb76d8e4` (every implementer compacted ≥1×; designer, test-planner, and Explore runs zero — the implementers front-loaded 25–52KB whole-file reads in their first minutes), `ce02402d` (post-compaction full re-read loop: ~131K chars re-read, next compaction 4.6 minutes later). Corroborating: `8ee00a94` (run with 15 compactions), `d835351c`.
+
+Recommendations: split multi-hour implementer briefs so each rung gets a fresh dispatch; prefer targeted reads (grep, offset/limit) over whole-file dumps in implementer guidance; add post-compaction discipline — trust the summary, re-read by range, don't re-read the tree. Confidence: high for the concentration; the compaction→defect link stays unestablished (see "What we could not tell").
+
+### C5. A `===` separator in a zsh command line is a quarter of all Bash errors (published as R4's first pattern)
+
+`error_signatures.sql project=/Users/nob/repos/mycelia since=NULL as_of=2026-08-07 window_days=28 signature="== not found" min_occurrences=1 signature_chars=120`: 381 window Bash errors carry the text `== not found`, across 42 sessions and 224 threads — 26% of the window's 1,487 Bash errors, and 34% of the 1,115 whose first line is `Exit code 1`.
+
+The text is attributable because zsh produces it in one way: equals-expansion on a token beginning with `=`. A chained `echo ===` separator runs, prints its output, and zsh then reports `(eval):1: == not found`, which the harness reads as a failed call. `error_records.sql session_id=31c7f80b-… source=NULL max_chars=1500` shows the fragment sitting after a successful command's output in that session's main thread. Reader sightings gave the mechanism first: `31c7f80b` main, 50–51; `4b613b5a` run `aad961ae2ae09e010` 3×; `24bfe69f` run `ad466ce80911da904` 2×; `4208c1bd` run `a58506e9ffaa80800`, 29–30; also `aa6b3f5d`.
+
+Recommendation: mycelia Bash guidance uses `printf` or a quoted string as a separator. Consequence for anyone reading these numbers: a quarter of the window's Bash "errors" are this, so `tool_failures` overstates Bash failure by at least that much. Confidence: high — the count raises the sighting floor from 4 sessions to 42.
+
 ## Recurring findings
-
-### R1. Edit/Write-before-Read rejections recur across at least six sessions
-
-The tool error "File has not been read yet. Read it first before writing to it." shows up in ≥6 read sessions, concentrated in implementer/auditor runs: `0164a230` (main, 522–527, 3× after a `gt checkout` branch switch), `26dfe608` (runs `afa965bcc1b7a691f` and `ab9c838384bb33718`, 12× against `/tmp` copies of the worktree), `8c2ea996` (19× across ≥4 runs, clustered right after `[Request interrupted by user]` turn boundaries — `ae2c93066ea2c8864`, 75–210), `0db9e51a` (5×), `d835351c` (run `a1f560beb5849a692`, 7×), `4b613b5a` (1×). Three sub-mechanisms: a new turn or interruption resets the read state; the guard is path-scoped, so a file read at its repo path still blocks edits to a `/tmp` copy; Write to a file the run never read. Counted context: window Edit errors 661/18,327 (3.6%) and Write 216/5,106 (4.2%) — 877 errors — but this signature's share of them was not countable this iteration (see process review).
-
-Recommendation: one line in mycelia's implementer and auditor definitions — Read a file at its current path, in the current turn, before Edit/Write, even if you read it earlier or at another path. Confidence: high for recurrence; medium for how much of the 877 it explains.
 
 ### R2. Agents with persistent memory files write them before reading them
 
 Three sessions: auditor run `a0e02c85a90dd91fe` (session `0a527620`) had its MEMORY.md Write rejected (`a0e02c85a90dd91fe`, 127–128); pr-submitter `a5d0ae93c86927be3` (session `1ae6e5f6`) hit the same on its own MEMORY.md; auditor `aa10eede9bdf109fd` (session `f087648e`) three times. Recommendation: any mycelia agent definition with a persistent MEMORY.md reads it at run start. Confidence: high; cost per incident is small but the fix is one line.
 
-### R3. Compaction concentrates in long single-worker implementer runs; orchestrator threads stay lean
+### R4. Two more benign patterns read as errors, and neither can be counted
 
-Four sessions show the same shape, all at a consistent ~166–172k-token auto-compaction ceiling: `2f3e6be5` (one run took 6 of the session's 27 compactions, ~6% of wall time), `8320539c` (22 of 25 sub-run compactions in implementers, one every 15–25 minutes), `cb76d8e4` (every implementer compacted ≥1×; designer, test-planner, and Explore runs zero — the implementers front-loaded 25–52KB whole-file reads in their first minutes), `ce02402d` (post-compaction full re-read loop: ~131K chars re-read, next compaction 4.6 minutes later). Corroborating: `8ee00a94` (run with 15 compactions), `d835351c`. Counted context: 890 window compactions (`session_counts.sql`), but per-run attribution by agent type was not countable this iteration.
+The `===` separator moved to C5. These two stay recurring, because the error text does not distinguish them:
 
-Recommendations: split multi-hour implementer briefs so each rung gets a fresh dispatch; prefer targeted reads (grep, offset/limit) over whole-file dumps in implementer guidance; add post-compaction discipline — trust the summary, re-read by range, don't re-read the tree. Confidence: high for the pattern; the compaction→defect link is unestablished (see "What we could not tell").
-
-### R4. False-positive tool errors inflate the error signal
-
-Three benign patterns read as `is_error` by the harness:
-
-- `echo ===` as a separator in chained zsh commands throws `(eval):1: == not found` after correct output — 4+ sessions (`31c7f80b` main, 50–51; `4b613b5a` run `aad961ae2ae09e010` 3×; `24bfe69f` run `ad466ce80911da904` 2×; `4208c1bd` run `a58506e9ffaa80800`, 29–30; also `aa6b3f5d`)
 - grep/rg with no match exits 1 — 4 sessions (`0db9e51a` 3×, `24bfe69f`, `8d930c77` run `ac5abc2b2bf516436`, `0a527620`)
 - `gh pr checks` exits nonzero while checks are pending — 2 sightings (`cdedfb8f` run `a5a9c890f2ec9e879`, `1ae6e5f6`)
 
-Recommendation for mycelia: Bash guidance to use `printf` or a quoted string as a separator, and to treat grep exit 1 and pending `gh pr checks` as expected. Consequence for anyone reading these numbers: raw `tool_failures` counts overstate real failures — the window's 1,487 Bash errors include an unknown share of these. Confidence: high for recurrence; share uncounted.
+Both land in a bare `Exit code N` group — the window holds 1,115 `Exit code 1` errors and 16 `Exit code 8` — and nothing in the result says which command produced it. Attributing a slice of `Exit code 1` to grep would be a guess with a number attached, so the share stays uncounted; counting it needs a signature query over the command line rather than the error text (process fix below).
+
+Recommendation for mycelia: Bash guidance treats grep exit 1 and a pending `gh pr checks` as expected. Confidence: high for recurrence; share uncountable with today's queries.
 
 ### R5. The merge-stack flow has three documented-gap failures
 
@@ -79,14 +102,16 @@ Recommendation: one documented wait recipe in mycelia guidance — Monitor with 
 
 ### R8. The auto-mode permission classifier denies benign commands
 
-Three sessions: `4c0c9e8e` (run `a223a319f1f29c055`: `sed -n` and `uv sync` denied three times in a row, 40–90s lost each), `0db9e51a` (5 main-thread denials, including spawning an auditor the human had approved), `e4003d83` (2 denials mid-recovery). Recommendation: allowlist read-only and idempotent commands (`sed -n`, `uv sync`, `ls`, `grep`) in mycelia's settings. Confidence: high for recurrence; the specific allowlist should come from the denial log, not this sample.
+Three sessions: `4c0c9e8e` (run `a223a319f1f29c055`: `sed -n` and `uv sync` denied three times in a row, 40–90s lost each), `0db9e51a` (5 main-thread denials, including spawning an auditor the human had approved), `e4003d83` (2 denials mid-recovery). Counted context (2026-08-08, `error_signatures.sql`, same bindings, `signature=NULL min_occurrences=5`): classifier denials in the window run 49 on Bash over 17 sessions and 27 threads, plus 9 on Edit, 7 more Bash denials reasoned "[Irreversible Local Destruction]" and 5 with no reason given. The query counts denials, not whether the command was benign — that judgment stays with the three read sessions, so the finding stays recurring.
+
+Recommendation: allowlist read-only and idempotent commands (`sed -n`, `uv sync`, `ls`, `grep`) in mycelia's settings. Confidence: high for recurrence; the specific allowlist should come from the denial log, not this sample.
 
 ### R9. Orchestration gaps: the manager workflow loses state, contradicts guardrails, and under-specifies briefs
 
 The class recurs across ≥5 delegation-heavy sessions; each sub-gap is a single sighting:
 
 - **No research-tier routing.** `c068966d`: no routing row for research work, so the manager improvised a recursive opus tree (depth 3, up to 6 concurrent opus against a "two opus" cap) — roughly $45 of the session's $66.87 before design started
-- **Spawn prompt contradicts the harness.** `c7c4cae9`: dispatch prompts order subagents to write scratch report files while the harness hard-blocks subagent report writes ("Subagents should return findings as text, not write report files") — ≥8 of 9 sampled multi-error runs wasted a call and a heredoc workaround each
+- **Spawn prompt contradicts the harness.** `c7c4cae9`: dispatch prompts order subagents to write scratch report files while the harness hard-blocks subagent report writes ("Subagents should return findings as text, not write report files") — ≥8 of 9 sampled multi-error runs wasted a call and a heredoc workaround each. Counted (2026-08-08, `error_signatures.sql`, same bindings, `signature=NULL min_occurrences=5`): that block fired 42 times in the window over 7 sessions and 38 threads
 - **Manager state goes stale.** `c068966d`: manager-state.md written once, never updated across 10 dispatches (~106 min). `8ee00a94`: the human lost track of 39 subagents and paid for a from-scratch git/gh reconciliation although the state sat in the manager scratchpad
 - **Brief omits the audit bar.** `4b613b5a`: four audit/implement rounds (~$42) because the brief never named the mutation-testing bar the auditor would apply
 - **Long-lived agent reuse over fresh dispatch.** `5f4b59fb`: one doc-writer alive ~11h across 3 injected asks (one reversing a "no PR" instruction); two context-reload calls cost $2.96, ~21% of the run. Kin: `24bfe69f` (5 checkpoints fused into one honeycomb run, 2 forced compactions)
@@ -115,7 +140,8 @@ Each is a hypothesis with its session named.
 
 ## What we could not tell
 
-- The corpus-wide share of Edit/Write errors matching the before-Read signature (R1), and of Bash errors that are false positives (R4) — no error-text query exists yet; both are listed as process fixes below
+- ~~The corpus-wide share of Edit/Write errors matching the before-Read signature (R1)~~ — answered 2026-08-08 by `error_signatures`; see C3
+- What share of the window's 1,115 Bash `Exit code 1` errors are benign grep no-matches (R4). The error text is identical for a real failure, so no signature query reaches it
 - Whether compaction correlates with defects: `a6cc585d`'s audit found defects after a 5-compaction run, one unverified anecdote
 - How prevalent idle-interrupted dispatches are (`cdedfb8f` showed 3 of 65)
 - Whether the ~10.5KB dispatch preamble (A6) holds across all 1,780 window dispatches
@@ -132,7 +158,7 @@ Per the checklist in `docs/analysis.md`.
 
 **Reader context.** Error-hunting dominated reader spend: several readers scanned 1,000+ records at 2,000-char caps to locate `is_error` results, and some never found them (`a296e39745f86e891` 5 errors, `ac549ca3bfec11e8c` 14, `afff07e2437c2e264` 43 — all untraced). Readers self-reported context spend inconsistently; the templates now ask for it.
 
-**Queries that misled.** `tool_failures` counts include false positives (R4). `session_digest` covers main-thread only, hiding up to 87% of a delegation-heavy session's cost. `run_digest`'s single-turn framing hides multi-ask agent reuse (`5f4b59fb`). `select_sessions` admits config-only sessions to the pool. One reader initially missed `view_runs`; the brief was updated mid-iteration, as was a `mktemp -d` scratch-dir line after two concurrent readers collided in `/tmp`.
+**Queries that misled.** `tool_failures` counts include false positives — a quarter of its window Bash errors, per C5. `session_digest` covers main-thread only, hiding up to 87% of a delegation-heavy session's cost. `run_digest`'s single-turn framing hides multi-ask agent reuse (`5f4b59fb`). `select_sessions` admits config-only sessions to the pool. One reader initially missed `view_runs`; the brief was updated mid-iteration, as was a `mktemp -d` scratch-dir line after two concurrent readers collided in `/tmp`.
 
 **Fixes applied in this commit** (docs and templates only):
 
@@ -147,3 +173,5 @@ Per the checklist in `docs/analysis.md`.
 3. New corpus error-signature query: normalize the first line of error text, group with session/run counts — makes R1, R4, and R8 countable next iteration
 4. `view_runs.sql`: add `cost_usd`, `tool_errors`, `compactions` columns
 5. New per-run compaction query by `agent_type`, counting runs that compact more than their session's main thread — makes R3 countable
+
+**Status, 2026-08-08.** All five landed. Queries 3 and 5 produced C3, C4 and C5 above; query 2 (`error_records`) confirmed C5's mechanism without opening a raw slice. One fix remains open: counting R4's grep no-match needs a signature query over the command line, since the error text of a benign no-match and a real failure are the same string.
