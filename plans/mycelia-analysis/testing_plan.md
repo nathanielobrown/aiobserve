@@ -112,6 +112,8 @@ The digest and error-listing queries through the CLI, against the fixture store;
 
 - **`error_signatures` counts one signature over many bodies.** *Evidence:* a copied store marking every `Read` in `4208c1bd…` and `5a88789c…` failed with a shared first line and a per-call tail (invented, because a recurring error is exactly what the recorded corpus lacks); assert the eight calls come back as one row carrying 8 errors, 2 sessions and 3 threads. Bolded: grouping on the whole result splits a recurring error into a group per call site, which reads as no error recurring at all.
 - Each signature is counted over the trailing window and over the corpus, like every other corpus count. *Evidence:* at `$as_of` 2026-08-07 the older of the two planted sessions falls out of the window; assert the window row drops its four errors while the corpus row still holds all eight.
+- **`agent_compactions` counts every compaction under the thread that had it, and no compaction goes uncounted.** *Evidence:* a copied store with a recorded compaction copied onto `5a88789c…`'s `auditor` run under a fresh id (invented placement: no fixture run compacted, and a fresh id keeps the `corpus_*` first-seen rule from preferring a twin); assert the run's definition carries it and that the `compactions` column sums to the store's own total for the project. Bolded: the query carries no floor precisely so the sum holds, and a floor is the obvious thing for a later edit to add.
+- The main thread rides in as its own row, counted over every session in the period rather than only the ones that compacted, and thread count stays separate from compaction count. *Evidence:* the fixture's five recorded main-thread compactions over four sessions, one of which compacted twice; assert the row's `threads`, `compacting_threads` and `compactions`, and that a definition that never compacted still gets a row.
 - A bound `$signature` counts a phrase anywhere in the error text, and `$min_occurrences` bounds the listing. *Evidence:* the planted signature beside the two recorded one-off errors; assert the floor of 2 leaves only the planted group, and that binding a phrase that appears only in the planted tails returns that group with its full count.
 
 ## integration (windows and trends) — `tests/analyze/test_windows.py`
@@ -172,8 +174,9 @@ Two residuals, both worth a sentence rather than a redesign:
 | --- | --- |
 | integration (runner) | 10 |
 | integration (library smoke) | 5 |
-| integration (selection) | 13 |
-| integration (digests) | 5 |
+| integration (selection) | 14 |
+| integration (digests) | 9 |
+| integration (corpus counts) | 5 |
 | integration (windows and trends) | 4 |
 | inspection (process artifacts) | 4 |
-| **Total** | **41** |
+| **Total** | **46** |

@@ -11,7 +11,9 @@ import io
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any
 
+import duckdb
 import pytest
 
 from aiobserve import cli
@@ -19,7 +21,16 @@ from aiobserve.export.duckdb import DuckDbExporter
 from aiobserve.extract.claude_code import ClaudeCodeExtractor
 from aiobserve.pipeline import SessionSource
 from aiobserve.sessions import Session
-from tests.conftest import FIXTURES, MYCELIA, RESUME, SIBLING_SESSION, WORKTREE_SESSION
+from tests.conftest import (
+    ANCESTOR,
+    FIXTURES,
+    FORK_ORIGIN,
+    FORK_ORIGIN_RUN,
+    MYCELIA,
+    RESUME,
+    SIBLING_SESSION,
+    WORKTREE_SESSION,
+)
 
 # Mycelia sessions `corpus_rollups` credits with no turns and no agent runs, so no stratum
 # may reach them. Two of them compacted, which is what makes the exclusion visible: a pool
@@ -29,6 +40,9 @@ NO_WORK_SESSIONS = (
     "8ee00a94-b01a-4394-b447-b065f74b11af",
     "1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9",
 )
+
+# The id the planted agent-run compaction carries, so no first-seen twin can own it.
+PLANTED_COMPACTION = "planted-compaction"
 
 # Measured on 2026-08-08: of the in-window sessions, the ones with any turn or agent run.
 POOL_AT_WHOLE = 10
@@ -80,6 +94,23 @@ def query(db: Path, capsys: pytest.CaptureFixture[str], name: str, *arguments: s
     return Output(captured.out, captured.err)
 
 
+def mappings(output: Output) -> list[dict[str, str]]:
+    """One `--csv` result as a list of column-name to value mappings."""
+    header, *rows = output.csv_rows()
+    return [dict(zip(header, row, strict=True)) for row in rows]
+
+
+def scalar(db: Path, sql: str, *parameters: Any, columns: int = 1) -> Any:
+    """One value — or one row of `columns` values — read straight from the store."""
+    connection = duckdb.connect(str(db), read_only=True)
+    try:
+        row = connection.execute(sql, list(parameters)).fetchone()
+        assert row is not None
+        return row if columns > 1 else row[0]
+    finally:
+        connection.close()
+
+
 @pytest.fixture
 def run_query(corpus_db: Path, capsys: pytest.CaptureFixture[str]) -> QueryRunner:
     """Run `aiobserve query` against the fixture corpus, returning what it printed."""
@@ -88,6 +119,30 @@ def run_query(corpus_db: Path, capsys: pytest.CaptureFixture[str]) -> QueryRunne
         return query(corpus_db, capsys, name, *arguments)
 
     return run
+
+
+@pytest.fixture(scope="session")
+def planted_run_compaction_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The corpus plus a copy of a recorded main-thread compaction, moved onto an agent run.
+
+    Invented placement, and it has to be: a run that compacts is what iteration 1 kept seeing
+    and no fixture session recorded, so nothing would exercise the per-run counts otherwise.
+    A copy under a new id rather than a move, so the recorded compaction stays where it was
+    recorded and the `corpus_*` first-seen rule has no twin to prefer.
+    """
+    path = tmp_path_factory.mktemp("run_compaction") / "traces.duckdb"
+    path.write_bytes(corpus_db.read_bytes())
+    connection = duckdb.connect(str(path))
+    try:
+        connection.execute(
+            """INSERT INTO compactions
+               SELECT ?, ?, ?, timestamp, trigger, pre_tokens, post_tokens, duration_ms
+               FROM compactions WHERE session_id = ? LIMIT 1""",
+            [PLANTED_COMPACTION, FORK_ORIGIN, FORK_ORIGIN_RUN, ANCESTOR],
+        )
+    finally:
+        connection.close()
+    return path
 
 
 @pytest.fixture(scope="session")

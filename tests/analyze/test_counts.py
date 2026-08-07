@@ -1,11 +1,12 @@
 """The corpus counts that promote a recurring observation to a counted finding.
 
-`error_signatures` answers "how often did this error happen, and to which tool". The leaves
-here are about what a group holds: which rows fall into one signature, how much of the
-corpus a count is evidence about, and what the trailing window leaves out.
+`error_signatures` answers "how often did this error happen, and to which tool";
+`agent_compactions` answers "which kinds of thread run out of context". The leaves here are
+about what a group holds: which rows fall into one signature, which thread a compaction is
+counted under, and what the trailing window leaves out.
 
-The fixture corpus records two failed tool calls, both one-off and both redacted down to a
-word, so a leaf that needs a recurring error plants one onto real rows and says so.
+Both need a population the recorded corpus lacks — every recorded error is a one-off redacted
+down to a word, and no recorded run compacted — so each plants one onto real rows and says so.
 """
 
 from pathlib import Path
@@ -13,7 +14,15 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from tests.analyze.conftest import AS_OF_PARTIAL, AS_OF_WHOLE, Output, QueryRunner, query
+from tests.analyze.conftest import (
+    AS_OF_PARTIAL,
+    AS_OF_WHOLE,
+    Output,
+    QueryRunner,
+    mappings,
+    query,
+    scalar,
+)
 from tests.conftest import FORK_ORIGIN, MYCELIA, SPINE
 
 # The first line every planted failure shares, and the tail that differs between them. A
@@ -33,6 +42,12 @@ PLANTED_IN_SHORT_WINDOW = 4
 # The two recorded errors, each in a session of its own: an `Agent` call and a server-side
 # `advisor` call, whose results redaction left as one word apiece.
 RECORDED_SIGNATURES = ["[redacted]", "unavailable"]
+
+# The row `agent_compactions` gives a session's own thread, so a definition's rate has the
+# thing it has to beat beside it. The query writes the sentinel; nothing in Python reads it.
+MAIN_THREAD = "(main thread)"
+# The agent definition the planted compaction lands under.
+PLANTED_DEFINITION = "auditor"
 
 
 def test_error_signatures_counts_one_signature_over_many_bodies(
@@ -101,6 +116,70 @@ def test_error_signatures_narrows_to_a_bound_phrase_and_a_floor(
     assert int(bound[0]["errors"]) == PLANTED_ERRORS
 
 
+def test_agent_compactions_counts_a_compaction_under_the_thread_that_had_it(
+    planted_run_compaction_db: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A run that ran out of context is counted against its definition, not its session."""
+
+    def planted_query(name: str, *arguments: str) -> Output:
+        return query(planted_run_compaction_db, capsys, name, *arguments)
+
+    # If one compaction happened inside an agent run rather than on a main thread (planted:
+    # no recorded fixture run compacted, which is why iteration 1 could not count this)...
+    rows = _compactions(planted_query)
+    # ...then it is counted under that run's definition, once, and against the one run the
+    # definition has — which is the ratio a reader ranks definitions by...
+    definition = rows[PLANTED_DEFINITION]
+    assert (int(definition["compactions"]), int(definition["compacting_threads"])) == (1, 1)
+    assert int(definition["threads"]) == 1
+    assert float(definition["compactions_per_thread"]) == 1.0
+    # ...and it is counted there instead of under the session's own thread: every compaction
+    # the period holds is in exactly one row, so the column sums to the store's own total.
+    total = scalar(
+        planted_run_compaction_db,
+        """SELECT count(*) FROM corpus_compactions k JOIN sessions s ON s.id = k.session_id
+           WHERE s.project_dir = ?""",
+        MYCELIA,
+    )
+    assert total > 1
+    assert sum(int(row["compactions"]) for row in rows.values()) == total
+
+
+def test_agent_compactions_separates_how_many_threads_from_how_often(
+    planted_run_compaction_db: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The main thread's row says both how many sessions compacted and how often they did."""
+
+    def planted_query(name: str, *arguments: str) -> Output:
+        return query(planted_run_compaction_db, capsys, name, *arguments)
+
+    # If one session's main thread compacted twice and others compacted once...
+    threads, compactions = scalar(
+        planted_run_compaction_db,
+        """SELECT count(DISTINCT k.session_id), count(*)
+           FROM corpus_compactions k JOIN sessions s ON s.id = k.session_id
+           WHERE s.project_dir = ? AND k.source = 'main'""",
+        MYCELIA,
+        columns=2,
+    )
+    assert compactions > threads
+    # ...then the main-thread row keeps the two apart, so "most sessions compact" and "a few
+    # sessions compact repeatedly" cannot be read for one another...
+    rows = _compactions(planted_query)
+    assert int(rows[MAIN_THREAD]["compacting_threads"]) == threads
+    assert int(rows[MAIN_THREAD]["compactions"]) == compactions
+    # ...and its population is every session in the period, not only the ones that compacted,
+    # so the rate underneath is a rate and not a share of the sessions that already did.
+    sessions = scalar(
+        planted_run_compaction_db, "SELECT count(*) FROM sessions WHERE project_dir = ?", MYCELIA
+    )
+    assert int(rows[MAIN_THREAD]["threads"]) == sessions
+    # ...while a definition that never compacted still gets a row, which is what makes the
+    # absence readable: a missing row would look like a definition nobody ran.
+    quiet = [name for name, row in rows.items() if int(row["compactions"]) == 0]
+    assert quiet
+
+
 @pytest.fixture(scope="session")
 def planted_failures_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     """The corpus with one tool's calls in two sessions marked failed, sharing a first line.
@@ -134,9 +213,10 @@ def _signatures(
         part for name, value in bindings.items() for part in ("--param", f"{name}={value}")
     ]
     output = run("error_signatures", "--project", MYCELIA, "--as-of", as_of, "--csv", *arguments)
-    header, *rows = output.csv_rows()
-    return [
-        mapping
-        for mapping in (dict(zip(header, row, strict=True)) for row in rows)
-        if mapping["period"] == period
-    ]
+    return [row for row in mappings(output) if row["period"] == period]
+
+
+def _compactions(run: QueryRunner, *, period: str = "corpus") -> dict[str, dict[str, str]]:
+    """`agent_compactions` over the fixture project, by `agent_type`, for one period."""
+    output = run("agent_compactions", "--project", MYCELIA, "--as-of", AS_OF_WHOLE, "--csv")
+    return {row["agent_type"]: row for row in mappings(output) if row["period"] == period}

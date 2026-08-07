@@ -117,6 +117,7 @@ AFTER = Param(type=ParamType.INTEGER, default=FIRST_PAGE)
 UNATTRIBUTED = "(unattributed)"
 
 QUERIES: dict[str, Query] = {
+    "agent_compactions": Query(scope=Scope.CORPUS, params={}),
     "agent_types": Query(scope=Scope.CORPUS, params={}),
     "co_occurrence": Query(
         scope=Scope.CORPUS,

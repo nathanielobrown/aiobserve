@@ -8,14 +8,12 @@ moves both sides together.
 """
 
 from pathlib import Path
-from typing import Any
 
 import duckdb
 import pytest
 
-from tests.analyze.conftest import Output, QueryRunner, query
+from tests.analyze.conftest import QueryRunner, mappings, query, scalar
 from tests.conftest import (
-    ANCESTOR,
     FORK_ORIGIN,
     FORK_ORIGIN_RUN,
     FORK_RUN,
@@ -48,20 +46,20 @@ def test_a_session_digest_accounts_for_api_calls_that_sit_under_no_turn(
     """Calls belonging to no turn get their own digest row, so the cost still adds up."""
     # If a resumed session's api calls all carry a NULL `turn_id` — no turn of its own owns
     # them, because the turns they answered live in the session it resumed...
-    unattributed = _scalar(
+    unattributed = scalar(
         corpus_db,
         "SELECT count(*) FROM live_api_calls WHERE session_id = ? AND turn_id IS NULL",
         RESUME,
     )
     assert unattributed > 0
     # ...then the digest still lists them, in one row that names itself...
-    rows = _rows(run_query("session_digest", "--param", f"session_id={RESUME}", "--csv"))
+    rows = mappings(run_query("session_digest", "--param", f"session_id={RESUME}", "--csv"))
     orphans = [row for row in rows if row["turn_id"] == UNATTRIBUTED]
     assert len(orphans) == 1
     assert int(orphans[0]["api_calls"]) == unattributed
     # ...and the digest's total is the session's rollup cost, not the $0 a plain turn join
     # would report against a front matter quoting the real number.
-    rollup = _scalar(corpus_db, "SELECT cost_usd FROM session_rollups WHERE session_id = ?", RESUME)
+    rollup = scalar(corpus_db, "SELECT cost_usd FROM session_rollups WHERE session_id = ?", RESUME)
     assert rollup > 0
     assert _total(rows, "cost_usd") == pytest.approx(rollup, abs=1e-4)
 
@@ -72,7 +70,7 @@ def test_a_session_digest_totals_only_the_thread_it_lists(
     """A digest of the main thread reports the main thread's cost, not the session's."""
     # If a session spends part of its cost inside an agent run — here on a call under no turn
     # at all, the shape most likely to be swept into the wrong scope...
-    scoped, elsewhere = _scalar(
+    scoped, elsewhere = scalar(
         corpus_db,
         """SELECT
                coalesce(sum(cost_usd) FILTER (source = ?), 0),
@@ -86,14 +84,14 @@ def test_a_session_digest_totals_only_the_thread_it_lists(
     assert elsewhere > 0
     # ...then the main-thread digest totals the main thread and stops there: a digest that
     # lists one scope and advertises another's total is a number no reader can reconcile.
-    rows = _rows(run_query("session_digest", "--param", f"session_id={SERVER_TOOLS}", "--csv"))
+    rows = mappings(run_query("session_digest", "--param", f"session_id={SERVER_TOOLS}", "--csv"))
     assert _total(rows, "cost_usd") == pytest.approx(scoped, abs=1e-4)
 
 
 def test_a_run_digest_holds_one_run_and_no_other(corpus_db: Path, run_query: QueryRunner) -> None:
     """A run's digest counts that run's own turns and calls, not its children's."""
     # If a run spawned a leaf run of its own...
-    rows = _rows(
+    rows = mappings(
         run_query(
             "run_digest",
             "--param",
@@ -104,7 +102,7 @@ def test_a_run_digest_holds_one_run_and_no_other(corpus_db: Path, run_query: Que
         )
     )
     # ...then its digest lists exactly its own turns...
-    turns = _scalar(
+    turns = scalar(
         corpus_db,
         "SELECT count(*) FROM live_turns WHERE session_id = ? AND source = ?",
         SPINE,
@@ -114,7 +112,7 @@ def test_a_run_digest_holds_one_run_and_no_other(corpus_db: Path, run_query: Que
     # ...and its own api and tool calls, counted once each: a join that fans out over the
     # tree inflates every number a reader copies, and the totals still look plausible.
     for column, table in (("api_calls", "live_api_calls"), ("tool_calls", "live_tool_calls")):
-        expected = _scalar(
+        expected = scalar(
             corpus_db,
             f"SELECT count(*) FROM {table} WHERE session_id = ? AND source = ?",  # noqa: S608
             SPINE,
@@ -122,7 +120,7 @@ def test_a_run_digest_holds_one_run_and_no_other(corpus_db: Path, run_query: Que
         )
         assert _total(rows, column) == expected
     # ...and the leaf's own rows are absent, since they answer to the leaf's digest.
-    leaf = _rows(
+    leaf = mappings(
         run_query(
             "run_digest",
             "--param",
@@ -141,7 +139,7 @@ def test_a_digest_truncates_a_long_prompt(
     """A digest's prompt cell is bounded, so reading a session cannot flood the reader."""
     # If a turn's prompt runs past the cap (planted: the longest recorded prompt is 145 chars
     # after redaction, so no fixture can carry this)...
-    rows = _rows(
+    rows = mappings(
         query(
             planted_prompt_db, capsys, "session_digest", "--param", f"session_id={SPINE}", "--csv"
         )
@@ -159,7 +157,7 @@ def test_error_records_finds_a_run_s_errors_without_being_told_the_thread(
     """A session's failed tool calls come back whatever thread they happened in."""
     # If a session's only error happened inside an agent run rather than on the main thread —
     # the shape a reader cannot search for, because finding it means knowing the run first...
-    source, tool_call_id = _scalar(
+    source, tool_call_id = scalar(
         corpus_db,
         "SELECT source, id FROM live_tool_calls WHERE session_id = ? AND is_error",
         FORK_ORIGIN,
@@ -167,13 +165,13 @@ def test_error_records_finds_a_run_s_errors_without_being_told_the_thread(
     )
     assert source != MAIN
     # ...then a query keyed on the session alone lists it, naming the thread it belongs to...
-    rows = _rows(run_query("error_records", "--param", f"session_id={FORK_ORIGIN}", "--csv"))
+    rows = mappings(run_query("error_records", "--param", f"session_id={FORK_ORIGIN}", "--csv"))
     assert [(row["source"], row["tool_call_id"]) for row in rows] == [(source, tool_call_id)]
     # ...and the line it gives is the record a reader can go read: `records_slice` at that
     # line comes back holding the call. Locating errors by scanning raw records at a thousand
     # lines a session is what this query exists to replace.
     line_no = rows[0]["line_no"]
-    sliced = _rows(
+    sliced = mappings(
         run_query(
             "records_slice",
             "--param",
@@ -189,7 +187,7 @@ def test_error_records_finds_a_run_s_errors_without_being_told_the_thread(
     )
     assert tool_call_id in sliced[0]["raw"]
     # ...while binding the source narrows to that one thread, so the main thread holds none.
-    main_only = _rows(
+    main_only = mappings(
         run_query(
             "error_records",
             "--param",
@@ -208,7 +206,7 @@ def test_error_records_lists_the_failures_and_nothing_else(
     """Only the calls that came back an error are listed, each of them once."""
     # If a session made both failing and succeeding tool calls, one of them server-side —
     # whose result rides an assistant record rather than a user one...
-    failed, succeeded = _scalar(
+    failed, succeeded = scalar(
         corpus_db,
         """SELECT count(*) FILTER (is_error), count(*) FILTER (NOT is_error)
            FROM live_tool_calls WHERE session_id = ?""",
@@ -219,7 +217,7 @@ def test_error_records_lists_the_failures_and_nothing_else(
     assert succeeded > 0
     # ...then the errors come back one row apiece, with what the tool was and how long its
     # result ran, whether or not a raw record could be found to cite.
-    rows = _rows(run_query("error_records", "--param", f"session_id={SERVER_TOOLS}", "--csv"))
+    rows = mappings(run_query("error_records", "--param", f"session_id={SERVER_TOOLS}", "--csv"))
     assert len(rows) == failed
     assert rows[0]["tool"] == "advisor"
     assert int(rows[0]["error_chars"]) > 0
@@ -231,7 +229,7 @@ def test_error_records_bounds_the_error_text_it_returns(
     """An error's text comes back cut, so listing a session's errors cannot flood a reader."""
     # If a tool returned an error longer than the cap (planted: fixture results are redacted
     # down to a word, so nothing recorded exercises the cut)...
-    rows = _rows(
+    rows = mappings(
         query(
             planted_error_db,
             capsys,
@@ -263,7 +261,7 @@ def test_records_slice_caps_the_raw_text_it_returns(
 ) -> None:
     """A raw record comes back bounded, whatever its length in the store."""
     # If the store holds a record longer than the cap...
-    length = _scalar(
+    length = scalar(
         corpus_db,
         "SELECT length(raw) FROM raw_records WHERE session_id = ? AND source = ? AND line_no = ?",
         RESUME,
@@ -272,7 +270,7 @@ def test_records_slice_caps_the_raw_text_it_returns(
     )
     assert length > RAW_CAP
     # ...then the slice that names it returns the record cut to the cap.
-    rows = _rows(
+    rows = mappings(
         run_query(
             "records_slice",
             "--param",
@@ -299,7 +297,7 @@ def test_view_runs_carries_what_ranking_a_session_s_runs_takes(
     # planted onto a real run: no recorded fixture run compacted)...
     rows = {
         row["run_id"]: row
-        for row in _rows(
+        for row in mappings(
             query(
                 planted_run_compaction_db,
                 capsys,
@@ -314,7 +312,7 @@ def test_view_runs_carries_what_ranking_a_session_s_runs_takes(
     # store rather than pinned here...
     assert set(rows) == {FORK_ORIGIN_RUN, FORK_RUN}
     for run_id, row in rows.items():
-        cost, unpriced, errors, compactions = _scalar(
+        cost, unpriced, errors, compactions = scalar(
             planted_run_compaction_db,
             """SELECT
                  (SELECT coalesce(round(sum(c.cost_usd), 4), 0) FROM live_api_calls c
@@ -343,26 +341,6 @@ def test_view_runs_carries_what_ranking_a_session_s_runs_takes(
         1,
     )
     assert float(rows[FORK_RUN]["cost_usd"]) > float(rows[FORK_ORIGIN_RUN]["cost_usd"])
-
-
-@pytest.fixture(scope="session")
-def planted_run_compaction_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """The corpus with one recorded main-thread compaction moved onto a real agent run.
-
-    Invented placement, and it has to be: a run that compacts is what iteration 1 kept seeing
-    and no fixture session recorded, so nothing here would exercise the column otherwise.
-    """
-    path = tmp_path_factory.mktemp("run_compaction") / "traces.duckdb"
-    path.write_bytes(corpus_db.read_bytes())
-    connection = duckdb.connect(str(path))
-    try:
-        connection.execute(
-            "UPDATE compactions SET session_id = ?, source = ? WHERE session_id = ?",
-            [FORK_ORIGIN, FORK_ORIGIN_RUN, ANCESTOR],
-        )
-    finally:
-        connection.close()
-    return path
 
 
 @pytest.fixture(scope="session")
@@ -398,22 +376,5 @@ def planted_prompt_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory)
     return path
 
 
-def _rows(output: Output) -> list[dict[str, str]]:
-    """The CSV stdout as a list of column-name to value mappings."""
-    header, *rows = output.csv_rows()
-    return [dict(zip(header, row, strict=True)) for row in rows]
-
-
 def _total(rows: list[dict[str, str]], column: str) -> float:
     return sum(float(row[column]) for row in rows)
-
-
-def _scalar(db: Path, sql: str, *parameters: Any, columns: int = 1) -> Any:
-    """One value — or one row of `columns` values — read straight from the store."""
-    connection = duckdb.connect(str(db), read_only=True)
-    try:
-        row = connection.execute(sql, list(parameters)).fetchone()
-        assert row is not None
-        return row if columns > 1 else row[0]
-    finally:
-        connection.close()

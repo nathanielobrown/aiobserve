@@ -54,7 +54,7 @@ Synthesis promotes a candidate to a finding at one of three stated levels, and t
 - **Recurring** — three or more independent session reports show it, and no query can count it
 - **Anecdote** — reported as a hypothesis, with its one session named
 
-A recurring error is the usual candidate for promotion, and `error_signatures` is the query that does it: it counts each error's occurrences, sessions and threads over the window and the corpus, and takes a bound phrase when the first line of the text is as generic as `Exit code 1`.
+Two queries exist to do the promoting. `error_signatures` counts an error's occurrences, sessions and threads over the window and the corpus, and takes a bound phrase when the first line of the text is as generic as `Exit code 1`. `agent_compactions` counts how often each agent definition runs out of context, with the main thread in a row of its own as the thing a definition's rate has to beat.
 
 **An absence is only ever counted.** "No session did X" has to come from a corpus-wide query whose filter demonstrably could have matched X. It never comes from the read sample: zero sightings across roughly thirty read sessions bounds prevalence only at about one in three, over a pool that already excluded the sessions that did no work. A reader who notices an absence files it as a hypothesis for synthesis to count or to drop.
 
