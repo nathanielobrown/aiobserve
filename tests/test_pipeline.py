@@ -174,10 +174,15 @@ def test_a_new_subagent_file_re_extracts_its_session(corpus: Corpus, exporter: D
     before = exporter.fingerprints()
     unchanged = (transcript.stat().st_size, transcript.stat().st_mtime_ns)
 
-    # If another subagent transcript appears beside an untouched main transcript...
+    # If another subagent transcript appears beside an untouched main transcript — with the
+    # `meta.json` Claude Code always writes with it, here a recorded one under the new name...
     subagents = corpus.session_dir / SPINE / "subagents"
     shutil.copy(
         FIXTURES / "dup_uuid" / f"{DUPS}.jsonl", subagents / "agent-a1d0bc50fe316ed8e.jsonl"
+    )
+    shutil.copy(
+        subagents / "agent-af6473ae437c9608d.meta.json",
+        subagents / "agent-a1d0bc50fe316ed8e.meta.json",
     )
     result = refresh(corpus.project, extractor=extractor, exporter=exporter)
 

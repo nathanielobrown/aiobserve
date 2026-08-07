@@ -10,6 +10,7 @@ What each field means, and the session that proves it, is in `docs/schema.md`.
 
 import hashlib
 import json
+import logging
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
@@ -20,6 +21,7 @@ from typing import Any, NamedTuple
 
 from aiobserve.model import (
     MAIN_SOURCE,
+    AgentRun,
     ApiCall,
     OffloadFile,
     RawRecord,
@@ -48,7 +50,9 @@ EXTRACTOR_NAME = "claude_code"
 JOURNAL_SOURCE = "journal"
 # Bump on any change to what this parser produces: the version is folded into every
 # fingerprint, so bumping it re-extracts the whole corpus on the next refresh.
-EXTRACTOR_VERSION = "3"
+EXTRACTOR_VERSION = "4"
+
+logger = logging.getLogger(__name__)
 
 
 class TranscriptSchemaError(Exception):
@@ -162,12 +166,22 @@ class _Line:
     raw: str
 
 
+class _AgentFiles(NamedTuple):
+    """One subagent's pair of files, and where the pair sat."""
+
+    # The agentId: the file stem after `agent-`, and the `source` its records take.
+    id: str
+    # The `wf_<id>` fan-out directory it sat in, for the runs a workflow drove.
+    workflow_id: str | None
+    transcript: Path
+    meta: Path
+
+
 class _SessionFiles(NamedTuple):
     """One session's files, sorted by what reads them."""
 
     transcript: Path
-    # Each subagent's transcript, paired with the agentId it records under.
-    agents: list[tuple[str, Path]]
+    agents: list[_AgentFiles]
     # Each workflow journal, paired with its `wf_<id>/journal` source. Archive only: the
     # runs it logs write their own transcripts.
     journals: list[tuple[str, Path]]
@@ -229,7 +243,10 @@ class ClaudeCodeExtractor:
         same parser, distinguished only by the `source` its rows carry.
         """
         files = _classify(source)
-        transcripts = [(MAIN_SOURCE, files.transcript), *files.agents]
+        transcripts = [
+            (MAIN_SOURCE, files.transcript),
+            *((agent.id, agent.transcript) for agent in files.agents),
+        ]
         lines = {name: _read(path, source.id) for name, path in transcripts}
         journals = {name: _read(path, source.id) for name, path in files.journals}
         # The archive keeps every line of every file, duplicates included; the normalized
@@ -248,6 +265,7 @@ class ClaudeCodeExtractor:
             turns=[turn for one in parsed for turn in one.turns],
             api_calls=[call for one in parsed for call in one.api_calls],
             tool_calls=[call for one in parsed for call in one.tool_calls],
+            agent_runs=_agent_runs(files.agents, lines, _workflow_launches(main), source.id),
             offload_files=[_offload_file(path, source.id) for path in files.offloads],
             raw_records=raw_records,
         )
@@ -272,7 +290,10 @@ def _classify(source: SessionSource) -> _SessionFiles:
     """
     transcript = _transcript_of(source)
     directory = transcript.with_suffix("")
-    agents: list[tuple[str, Path]] = []
+    # Each agent's two files arrive independently; they are paired once both are seen.
+    transcripts: dict[str, Path] = {}
+    metas: dict[str, Path] = {}
+    workflows: dict[str, str | None] = {}
     journals: list[tuple[str, Path]] = []
     offloads: list[Path] = []
     for path in source.files:
@@ -282,25 +303,49 @@ def _classify(source: SessionSource) -> _SessionFiles:
         if parts[:1] == (TOOL_RESULTS_DIR,) and len(parts) == 2:
             offloads.append(path)
             continue
-        name = _archived_source(parts, source.id)
-        if name is None:
+        # A workflow's definition and the script that ran it, beside the runs they drove.
+        if parts[:1] == (WORKFLOWS_DIR,):
             continue
-        (journals if name.endswith(f"/{JOURNAL_SOURCE}") else agents).append((name, path))
+        place = _companion(parts, source.id)
+        if place.agent_id is None:
+            journals.append((f"{place.workflow_id}/{JOURNAL_SOURCE}", path))
+            continue
+        (metas if place.meta else transcripts)[place.agent_id] = path
+        workflows[place.agent_id] = place.workflow_id
+    if transcripts.keys() != metas.keys():
+        odd = transcripts.keys() ^ metas.keys()
+        raise TranscriptSchemaError(
+            f"Session {source.id}: agent runs {sorted(odd)} have a transcript or a meta, not both"
+        )
+    agents = [
+        _AgentFiles(
+            id=agent, workflow_id=workflows[agent], transcript=transcripts[agent], meta=metas[agent]
+        )
+        for agent in transcripts
+    ]
     return _SessionFiles(transcript=transcript, agents=agents, journals=journals, offloads=offloads)
 
 
-def _archived_source(parts: tuple[str, ...], session_id: str) -> str | None:
-    """The `source` name for one companion file, or None when nothing reads it.
+class _Companion(NamedTuple):
+    """Where one file under the session directory sits, and what it is."""
 
-    A subagent's transcript is sourced by its bare agentId, which its file name carries
-    after the `agent-` prefix; a workflow's journal by its directory, as `wf_<id>/journal`.
+    # The `wf_<id>` directory it sat in, when a fan-out wrote it.
+    workflow_id: str | None
+    # The agentId its name carries, or None for a workflow's journal.
+    agent_id: str | None
+    # The `.meta.json` beside a subagent's transcript rather than the transcript.
+    meta: bool
+
+
+def _companion(parts: tuple[str, ...], session_id: str) -> _Companion:
+    """Place one file under `subagents/`. A file we cannot place stops the run.
+
+    The layout is closed-world like the record types: an unplaceable file is a Claude Code
+    change we need to see, not a file to skip.
     """
     unknown = TranscriptSchemaError(
         f"Session {session_id}: unknown file {'/'.join(parts)} in its directory"
     )
-    # A workflow's definition and the script that ran it, beside the runs they drove.
-    if parts[:1] == (WORKFLOWS_DIR,):
-        return None
     workflow = None
     if parts[:2] == (SUBAGENTS_DIR, WORKFLOWS_DIR):
         if len(parts) != 4 or not parts[2].startswith(WORKFLOW_PREFIX):
@@ -309,14 +354,76 @@ def _archived_source(parts: tuple[str, ...], session_id: str) -> str | None:
     elif parts[:1] != (SUBAGENTS_DIR,) or len(parts) != 2:
         raise unknown
     name = parts[-1]
-    # A subagent's metadata: its spawning call and its type, which agent runs read (slice 3).
-    if name.endswith(META_SUFFIX):
-        return None
     if workflow and name == JOURNAL_NAME:
-        return f"{workflow}/{JOURNAL_SOURCE}"
-    if name.startswith(AGENT_PREFIX) and name.endswith(TRANSCRIPT_SUFFIX):
-        return name[len(AGENT_PREFIX) : -len(TRANSCRIPT_SUFFIX)]
+        return _Companion(workflow_id=workflow, agent_id=None, meta=False)
+    if not name.startswith(AGENT_PREFIX):
+        raise unknown
+    stem = name[len(AGENT_PREFIX) :]
+    # `.meta.json` first: it is the longer suffix, and both end in "json".
+    if stem.endswith(META_SUFFIX):
+        return _Companion(workflow, stem[: -len(META_SUFFIX)], meta=True)
+    if stem.endswith(TRANSCRIPT_SUFFIX):
+        return _Companion(workflow, stem[: -len(TRANSCRIPT_SUFFIX)], meta=False)
     raise unknown
+
+
+def _agent_runs(
+    agents: list[_AgentFiles],
+    lines: dict[str, list[_Line]],
+    launches: dict[str, str],
+    session_id: str,
+) -> list[AgentRun]:
+    """One row per subagent the session ran, from the meta Claude Code wrote beside it."""
+    runs = []
+    for agent in agents:
+        meta = json.loads(agent.meta.read_text())
+        # A fan-out's agents are not spawned one by one, so their metas name no call. The
+        # call that launched the whole fan-out stands in — it is what asked for the work.
+        tool_use_id = meta.get("toolUseId") or launches.get(agent.workflow_id or "")
+        if tool_use_id is None:
+            # Real and expected: a teammate is started by the team mechanism, not by a
+            # tool call. Said out loud because a silently dropped run hides a whole
+            # delegated workload.
+            logger.warning(
+                "Session %s: agent run %s has no spawning tool call", session_id, agent.id
+            )
+        moments = [t for t in (_timestamp(line.record) for line in lines[agent.id]) if t]
+        runs.append(
+            AgentRun(
+                id=agent.id,
+                session_id=session_id,
+                # Absent for a run the session itself spawned.
+                parent_agent_id=meta.get("parentAgentId"),
+                tool_use_id=tool_use_id,
+                agent_type=meta["agentType"],
+                # Both absent when the caller named none.
+                description=meta.get("description"),
+                model=meta.get("model"),
+                workflow_id=agent.workflow_id,
+                spawn_depth=meta["spawnDepth"],
+                started_at=min(moments) if moments else None,
+                ended_at=max(moments) if moments else None,
+            )
+        )
+    return runs
+
+
+def _workflow_launches(lines: list[_Line]) -> dict[str, str]:
+    """Which tool call launched each fan-out: `runId` from the result, to its call's id.
+
+    A `Workflow` call answers with the run it started, and the run id is the name of the
+    directory its agents write into — the only join between a fan-out's transcripts and the
+    call that asked for them.
+    """
+    launches = {}
+    for line in lines:
+        details = line.record.get("toolUseResult")
+        if not isinstance(details, dict) or "runId" not in details:
+            continue
+        for block in line.record["message"]["content"]:
+            if block["type"] == "tool_result":
+                launches[details["runId"]] = block["tool_use_id"]
+    return launches
 
 
 def _offload_file(path: Path, session_id: str) -> OffloadFile:

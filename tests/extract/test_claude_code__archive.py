@@ -17,14 +17,16 @@ from aiobserve.pipeline import SessionSource
 from aiobserve.sessions import Session
 from tests.conftest import FIXTURES, SourceFactory
 from tests.extract.test_claude_code import SPINE
+from tests.extract.test_claude_code__agents import (
+    NESTED_AGENT,
+    SPINE_AGENT,
+    WORKFLOW,
+    WORKFLOW_AGENT,
+    WORKFLOW_RUN,
+)
 
-# The subagent `spine/` spawned, sourced by its bare agentId.
-SPINE_AGENT = "ac461ef46b4bb8e32"
-# A session whose subagents ran as a parallel workflow, so they sit a directory deeper
-# beside the journal that tracked them.
-WORKFLOW = "8d930c77-9e60-4784-9885-6d4c226280f7"
-WORKFLOW_AGENT = "a6f04bb0e6eff6013"
-JOURNAL = "wf_c30cc877-997/journal"
+# The fan-out's journal, sourced by the directory it sits in rather than by an agentId.
+JOURNAL = f"{WORKFLOW_RUN}/journal"
 # The session that offloaded a tool result, and the file holding it.
 OFFLOAD = "7e37bb35-4dcb-4e16-85be-55ac510c168e"
 OFFLOADED_FILE = "bosvr1kjx.txt"
@@ -55,16 +57,16 @@ def test_the_archive_holds_every_line_of_every_file(fixture_source: SourceFactor
     source = fixture_source("spine", SPINE)
     trace = ClaudeCodeExtractor().extract(source)
 
-    # If a session spawned a subagent, then both files are in the archive, each line
-    # under the transcript that recorded it — the main one as "main", the subagent's
-    # under its bare agentId...
-    assert lines_by_source(trace) == Counter({MAIN_SOURCE: 25, SPINE_AGENT: 7})
+    # If a session spawned a subagent, which spawned one in turn, then all three files
+    # are in the archive, each line under the transcript that recorded it — the main one
+    # as "main", each subagent's under its bare agentId...
+    assert lines_by_source(trace) == Counter({MAIN_SOURCE: 27, SPINE_AGENT: 10, NESTED_AGENT: 6})
     # ...numbered from 1 within its own file, so a row points back at a line...
     agent = [r.line_no for r in trace.raw_records if r.source == SPINE_AGENT]
-    assert agent == [1, 2, 3, 4, 5, 6, 7]
-    # ...and nothing else in the directory became a source, though the walk found it: the
-    # third file is the subagent's `meta.json`, linkage that agent runs read, not records.
-    assert len(source.files) == 3
+    assert agent == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    # ...and the two `meta.json` files the walk also found became no source at all: they
+    # are linkage that agent runs read, not records.
+    assert len(source.files) == 5
 
 
 def test_a_workflow_run_archives_its_journal_and_its_agents(fixture_source: SourceFactory):
@@ -73,7 +75,7 @@ def test_a_workflow_run_archives_its_journal_and_its_agents(fixture_source: Sour
 
     # If a session fanned out into a workflow, then its agents are sourced by agentId as
     # any other subagent is, and the journal by its workflow directory...
-    assert lines_by_source(trace) == Counter({MAIN_SOURCE: 6, WORKFLOW_AGENT: 6, JOURNAL: 4})
+    assert lines_by_source(trace) == Counter({MAIN_SOURCE: 8, WORKFLOW_AGENT: 6, JOURNAL: 4})
     # ...carrying the two record types only journals hold.
     assert {r.type for r in trace.raw_records if r.source == JOURNAL} == {"started", "result"}
 

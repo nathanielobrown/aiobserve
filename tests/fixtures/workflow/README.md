@@ -1,8 +1,8 @@
 # `workflow/` — a session that fanned out into a parallel workflow
 
 Redacted excerpt of `8d930c77-9e60-4784-9885-6d4c226280f7.jsonl`, **Claude Code 2.1.207**, from
-`~/.claude/projects/-Users-nob-repos-mycelia/`. Lines 1–6 of 210, in original order, plus part of the
-session's directory.
+`~/.claude/projects/-Users-nob-repos-mycelia/`. Lines 1–6 and 150–151 of 210, in original order, plus
+part of the session's directory.
 
 The session was sourced for the workflow layout: `spine/` spawns subagents into `subagents/`, and no
 recorded session of slice 1 puts an agent a directory deeper, beside a journal.
@@ -11,6 +11,9 @@ recorded session of slice 1 puts an agent a directory deeper, beside a journal.
 
 - the main transcript, lines 1–6 — the four editor-state records that open a transcript with neither
   a uuid nor a timestamp, then the two records of the first turn
+- the main transcript, lines 150–151 — the `Workflow` call that launched the fan-out and the result
+  answering it, whose `toolUseResult.runId` is the `wf_c30cc877-997` directory name. That is the only
+  link from a workflow agent back to a tool call: the agents' own metas carry no `toolUseId`
 - `subagents/workflows/wf_c30cc877-997/agent-a6f04bb0e6eff6013.jsonl` — one workflow agent's run,
   whole (the original is 6 records). Sourced by its bare `agentId`, exactly as a `subagents/` agent
   is: the extra directory changes where the file sits, not what the records are

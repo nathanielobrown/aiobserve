@@ -18,6 +18,7 @@ from typing import Any
 import duckdb
 
 from aiobserve.model import (
+    AgentRun,
     ApiCall,
     OffloadFile,
     RawRecord,
@@ -29,7 +30,7 @@ from aiobserve.model import (
 
 # Bumped whenever the DDL below changes. There are no migrations while the project is
 # early: a mismatch tells the operator to delete the DB and re-extract.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -98,6 +99,20 @@ CREATE TABLE IF NOT EXISTS tool_calls (
     duration_synthetic BOOLEAN NOT NULL,
     PRIMARY KEY (session_id, source, id)
 );
+CREATE TABLE IF NOT EXISTS agent_runs (
+    id VARCHAR NOT NULL,
+    session_id VARCHAR NOT NULL,
+    parent_agent_id VARCHAR,
+    tool_use_id VARCHAR,
+    agent_type VARCHAR NOT NULL,
+    description VARCHAR,
+    model VARCHAR,
+    workflow_id VARCHAR,
+    spawn_depth INTEGER NOT NULL,
+    started_at TIMESTAMPTZ,
+    ended_at TIMESTAMPTZ,
+    PRIMARY KEY (session_id, id)
+);
 CREATE TABLE IF NOT EXISTS offload_files (
     session_id VARCHAR NOT NULL,
     name VARCHAR NOT NULL,
@@ -133,6 +148,7 @@ _TABLES: dict[str, type] = {
     "turns": Turn,
     "api_calls": ApiCall,
     "tool_calls": ToolCall,
+    "agent_runs": AgentRun,
     "offload_files": OffloadFile,
     "raw_records": RawRecord,
 }
@@ -196,6 +212,7 @@ class DuckDbExporter:
             "turns": trace.turns,
             "api_calls": trace.api_calls,
             "tool_calls": trace.tool_calls,
+            "agent_runs": trace.agent_runs,
             "offload_files": trace.offload_files,
             "raw_records": trace.raw_records,
         }

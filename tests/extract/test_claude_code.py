@@ -59,7 +59,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
         transcript_path=str(source.files[0]),
     )
 
-    # ...four of the ten `user` records in its own transcript open a turn (its subagent's
+    # ...four of the eleven `user` records in its own transcript open a turn (its subagent's
     # rows carry that agent's source, and are asserted in `test_claude_code__agents.py`)...
     assert [turn for turn in trace.turns if turn.source == MAIN_SOURCE] == [
         # ...a slash command leading with `<command-name>`...
@@ -112,7 +112,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
         ),
     ]
 
-    # ...the eight assistant records collapse into the two messages they belong to...
+    # ...the nine assistant records collapse into the three messages they belong to...
     assert [call for call in trace.api_calls if call.source == MAIN_SOURCE] == [
         ApiCall(
             id="msg_011CdmMjFXDofyYSMxYtXa5n",
@@ -138,12 +138,38 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             text="[redacted]",
             thinking="[redacted]",
         ),
+        # ...one that did nothing but delegate: a single `Agent` block, so no text and no
+        # thinking, and its subagent's transcript holds what came of it...
+        ApiCall(
+            id="msg_011CdmToQdxciYnDo9M2d7HN",
+            session_id=SPINE,
+            source="main",
+            turn_id="818588ad-3849-48fe-a546-573163768e04",
+            index=1,
+            model="claude-fable-5",
+            effort="high",
+            stop_reason="tool_use",
+            attribution_skill=None,
+            request_id="req_011CdmToGAj76xW5dBRexvQm",
+            # ...answering a record this excerpt does not carry, so it falls back to its
+            # own first chunk for a start...
+            started_at=at("2026-08-06T12:04:25.038"),
+            ended_at=at("2026-08-06T12:04:25.038"),
+            input_tokens=2,
+            output_tokens=2378,
+            cache_read_tokens=75235,
+            cache_creation_tokens=917,
+            cache_5m_tokens=0,
+            cache_1h_tokens=917,
+            text="",
+            thinking="",
+        ),
         ApiCall(
             id="msg_011Cdmz3NQtuzwN3cqYvvkuN",
             session_id=SPINE,
             source="main",
             turn_id="818588ad-3849-48fe-a546-573163768e04",
-            index=1,
+            index=2,
             model="claude-fable-5",
             effort="high",
             stop_reason="tool_use",
@@ -165,7 +191,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
 
     # ...while every line of the transcript survives in the archive, whatever it was —
     # beside the lines of the subagent it spawned, which carry their own source.
-    assert len([r for r in trace.raw_records if r.source == MAIN_SOURCE]) == 25
+    assert len([r for r in trace.raw_records if r.source == MAIN_SOURCE]) == 27
     assert trace.extractor == "claude_code"
 
 
@@ -178,15 +204,15 @@ def test_a_message_split_across_records_merges_into_one_call(fixture_source: Sou
     """
     trace = ClaudeCodeExtractor().extract(fixture_source("spine", SPINE))
 
-    # If the file holds eight assistant records under two message ids...
+    # If the file holds nine assistant records under three message ids...
     assert (
         len([r for r in trace.raw_records if r.type == "assistant" and r.source == MAIN_SOURCE])
-        == 8
+        == 9
     )
-    # ...then two API calls come back, each spanning from the record it answers to its
+    # ...then three API calls come back, each spanning from the record it answers to its
     # last chunk, with the thinking and the text it was split across both present.
     main = [call for call in trace.api_calls if call.source == MAIN_SOURCE]
-    assert len(main) == 2
+    assert len(main) == 3
     merged = main[0]
     assert (merged.started_at, merged.ended_at) == (
         at("2026-08-06T10:44:27.629"),

@@ -7,10 +7,10 @@ is globally unique: a resume copies its ancestor's records verbatim into a new s
 so every row is scoped by `session_id` and by `source` — the transcript inside the session
 that recorded it.
 
-Slices 1 and 2 of `plans/trace-pipeline/design.md` cover sessions, turns, API calls, tool
-calls, and the archive — every line of every file the session wrote, plus the tool outputs
-it moved out of the transcript. Agent runs, compactions, PR links, cost, and the `replayed`
-flag arrive with the slices that populate them.
+Slices 1 to 3 of `plans/trace-pipeline/design.md` cover sessions, turns, API calls, tool
+calls, agent runs, and the archive — every line of every file the session wrote, plus the
+tool outputs it moved out of the transcript. Compactions, PR links, cost, and the
+`replayed` flag arrive with the slices that populate them.
 """
 
 from dataclasses import dataclass
@@ -139,6 +139,40 @@ class ToolCall:
 
 
 @dataclass(frozen=True)
+class AgentRun:
+    """One subagent the session ran, and what is known about why it ran.
+
+    The run's own work is in the turns, calls and tools carrying its id as their `source`;
+    this row says who asked for it. Everything but the timestamps comes from the
+    `agent-<id>.meta.json` Claude Code writes beside the transcript.
+    """
+
+    # The agentId, which is the file stem after `agent-` and the `source` its rows carry.
+    id: str
+    session_id: str
+    # The agent that spawned this one, when it was a subagent's subagent.
+    parent_agent_id: str | None
+    # The `Agent` (or `Workflow`) tool call that asked for this run. None makes the run an
+    # orphan: a teammate the team mechanism started, with no tool call behind it.
+    tool_use_id: str | None
+    # Which agent definition ran: "general-purpose", "auditor", "workflow-subagent", a
+    # session-defined name. Not a closed set — sessions name their own.
+    agent_type: str
+    # The one-line summary of the task, from the spawning call. Absent on some runs.
+    description: str | None
+    # The model alias the caller asked for, e.g. "opus". Absent when the caller named none.
+    model: str | None
+    # The `wf_<id>` fan-out this run belonged to, from the directory it sits in.
+    workflow_id: str | None
+    # 1 for a run the session itself spawned, deeper for a subagent's subagent, 0 for a
+    # teammate.
+    spawn_depth: int
+    # First and last record of its transcript.
+    started_at: datetime | None
+    ended_at: datetime | None
+
+
+@dataclass(frozen=True)
 class OffloadFile:
     """A tool output Claude Code wrote to a file instead of into the transcript.
 
@@ -194,5 +228,6 @@ class SessionTrace:
     turns: list[Turn]
     api_calls: list[ApiCall]
     tool_calls: list[ToolCall]
+    agent_runs: list[AgentRun]
     offload_files: list[OffloadFile]
     raw_records: list[RawRecord]

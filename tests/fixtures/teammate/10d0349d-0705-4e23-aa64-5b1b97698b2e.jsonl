@@ -1,0 +1,5 @@
+{"type": "mode", "mode": "[redacted]", "sessionId": "10d0349d-0705-4e23-aa64-5b1b97698b2e"}
+{"type": "permission-mode", "permissionMode": "[redacted]", "sessionId": "10d0349d-0705-4e23-aa64-5b1b97698b2e"}
+{"type": "bridge-session", "sessionId": "10d0349d-0705-4e23-aa64-5b1b97698b2e", "bridgeSessionId": "[redacted]", "lastSequenceNum": 0}
+{"type": "file-history-snapshot", "messageId": "[redacted]", "snapshot": {"messageId": "[redacted]", "trackedFileBackups": {}, "timestamp": "2026-07-16T14:44:28.870Z"}, "isSnapshotUpdate": false}
+{"parentUuid": null, "isSidechain": false, "promptId": "14430890-1c5e-4367-99d0-ac74f0015fe6", "type": "user", "message": {"role": "user", "content": "<command-message>[redacted]</command-message>\n<command-name>/coordinator</command-name>\n<command-args>[redacted]</command-args>"}, "uuid": "97d6f3d4-2259-4760-bd75-289a685b2168", "timestamp": "2026-07-16T14:44:28.870Z", "userType": "external", "entrypoint": "cli", "cwd": "/Users/nob/repos/mycelia", "sessionId": "10d0349d-0705-4e23-aa64-5b1b97698b2e", "version": "2.1.211", "gitBranch": "fixture-branch-1"}

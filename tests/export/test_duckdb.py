@@ -24,6 +24,7 @@ TABLES = {
     "turns": "turns",
     "api_calls": "api_calls",
     "tool_calls": "tool_calls",
+    "agent_runs": "agent_runs",
     "offload_files": "offload_files",
     "raw_records": "raw_records",
 }
@@ -69,6 +70,7 @@ def test_a_trace_round_trips(db: Path, fixture_trace: TraceFactory):
             ("turns", trace.turns),
             ("api_calls", trace.api_calls),
             ("tool_calls", trace.tool_calls),
+            ("agent_runs", trace.agent_runs),
         ):
             assert rows(exporter, table, type(entities[0])) == sorted(
                 dataclasses.astuple(entity) for entity in entities
@@ -90,10 +92,11 @@ def test_re_exporting_a_session_replaces_it_wholly(db: Path, fixture_trace: Trac
         assert counts(exporter) == {
             "sessions": 1,
             "turns": 6,
-            "api_calls": 3,
-            "tool_calls": 5,
+            "api_calls": 6,
+            "tool_calls": 9,
+            "agent_runs": 2,
             "offload_files": 0,
-            "raw_records": 32,
+            "raw_records": 43,
         }
 
         # ...and the same session comes back shorter — one turn, one call, three lines...
@@ -102,6 +105,7 @@ def test_re_exporting_a_session_replaces_it_wholly(db: Path, fixture_trace: Trac
             turns=trace.turns[:1],
             api_calls=trace.api_calls[:1],
             tool_calls=trace.tool_calls[:1],
+            agent_runs=trace.agent_runs[:1],
             raw_records=trace.raw_records[:3],
         )
         exporter.export(trimmed, "fingerprint-2")
@@ -112,6 +116,7 @@ def test_re_exporting_a_session_replaces_it_wholly(db: Path, fixture_trace: Trac
             "turns": 1,
             "api_calls": 1,
             "tool_calls": 1,
+            "agent_runs": 1,
             "offload_files": 0,
             "raw_records": 3,
         }
@@ -186,6 +191,35 @@ def test_an_id_is_scoped_to_its_transcript(db: Path, fixture_trace: TraceFactory
         # ...while a genuine repeat of the whole triple is rejected.
         with pytest.raises(duckdb.ConstraintException):
             exporter.export(replace(trace, api_calls=[call, call]), "fingerprint-2")
+
+
+def test_an_agent_run_is_keyed_by_session_and_agent_id(db: Path, fixture_trace: TraceFactory):
+    """One agentId may run under two sessions, but not twice under one.
+
+    A resume copies its ancestor's `subagents/` files into the new session's directory, so
+    the same agentId is extracted under both session ids — two of the 2764 agent
+    transcripts on this machine (scanned 2026-08-07). Only the composite key holds both.
+    """
+    trace = fixture_trace("spine", SPINE)
+    run = trace.agent_runs[0]
+    other = fixture_trace("dup_uuid", DUPS)
+
+    with DuckDbExporter(db) as exporter:
+        # If one agent run is recorded under the session that spawned it and again under
+        # the resume that inherited the file...
+        exporter.export(trace, "fingerprint-1")
+        exporter.export(replace(other, agent_runs=[replace(run, session_id=DUPS)]), "fingerprint-2")
+
+        # ...then both rows are there, each under its own session...
+        assert counts(exporter)["agent_runs"] == len(trace.agent_runs) + 1
+        assert rows(exporter, "agent_runs", type(run), DUPS) == [
+            dataclasses.astuple(replace(run, session_id=DUPS))
+        ]
+
+        # ...while one session claiming an agentId twice is rejected: the id names the
+        # file that produced the run, and a directory holds it once.
+        with pytest.raises(duckdb.ConstraintException):
+            exporter.export(replace(trace, agent_runs=[run, run]), "fingerprint-3")
 
 
 def test_an_offloaded_output_is_keyed_by_session_and_name(db: Path, fixture_trace: TraceFactory):
