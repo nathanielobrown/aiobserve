@@ -48,7 +48,26 @@ data/analysis/<YYYY_MM_DD>/  gitignored working papers: counts/, sessions/, runs
 - *Reading support*: `session_digest` (turn list with prompts truncated to 300 chars, per-turn call/error/cost aggregates, plus one **unattributed** row for api calls with NULL `turn_id` — 1,229 rows carrying $249 corpus-wide, which would otherwise make the digest's cost silently disagree with the front matter), `run_digest` (same at `source = agent_id`), `records_slice` (raw records for one `(session_id, source)` bounded by a **mandatory** line range and `substr(raw, 1, 2000)`)
 - *Selection*: `select_sessions`, `select_runs` (below)
 
+**As built,** the runner owns `--as-of` and `--since` rather than the manifest: they apply to
+every corpus query, and the citation reports them beside the query's own bindings. It
+materializes the corpus predicate and the window into a TEMP TABLE `project_sessions
+(session_id, started_at, in_window)` and every corpus query joins it, so the `/`-suffix trap
+is written once. The excluded count it prints is the store's NULL-`project_dir` sessions.
+
+**As built,** `session_digest` covers the main thread and totals it — a digest that lists one
+scope and advertises another's total is a number no reader can reconcile — so an agent run's
+cost reaches a reader through `run_digest`, which is the same query at a bound `$source`. The
+unattributed row carries the turn id `(unattributed)`. `records_slice`'s cap is a parameter,
+`$max_chars`, defaulting to 2,000: the number is then in the citation, which is the honest
+form of a bound that was always convention.
+
 **Recency rule.** Fixed dual window, not decay weights: every count is reported for the full corpus and for the trailing **28 days** measured back from the bound `$as_of` (263 sessions and $11,689 at as-of 2026-08-07, so the window carries plenty of signal), and trend queries bucket by ISO week. The runner defaults `$as_of` to today and the corpus stamp records it, so a report's window is a pair of dates anyone can rebind. When a finding tests a specific mycelia guidance change, split at that commit's date and name the commit — and name what else moved in the window, per the correlation rule.
+
+**As built,** `session_counts` returns both windows as two rows of one result, off one pass
+over `project_sessions`, so the window cannot drift from the total it restricts.
+`weekly_trend` buckets the same rows by ISO week and sends a session with no `started_at` to
+a bucket named `undated`: the weeks have to sum to the corpus total, and a NULL bucket
+swallows sessions where nobody looks.
 
 **Selection.** `select_sessions.sql` is deterministic and stratified over the 28-day window, ranking on `corpus_rollups` (a resume duplicate is valued at its deduped work) and excluding sessions with zero turns and zero runs — 82 of the window's 263 sessions today, a 31% cut of the pool, fine for choosing what to read but one more reason no absence claim may rest on this set (see the evidence ladder). Strata fill **in order**, each walking down its own ranking (`ORDER BY metric DESC, session_id` — the id tiebreaker is what makes "deterministic" true) and taking sessions *not already selected* until its quota is met. Quotas and the skill threshold are **bound parameters with these production defaults** — so a 16-session fixture store can exercise the mechanism at small values, and iteration 1's budget reset is a parameter change, not a query edit: 8 by `cost_usd`, 5 by tool-error count, 4 by `compactions`, one per **major skill** — an `attribution_skill` used in ≥5 in-window sessions (6 of the window's 19 today), iterated in skill-name order, taking each skill's most recent unselected user — then a seeded 8 from the remainder (`ORDER BY hash(session_id || $seed)`) for **discovery**: surfacing friction the ranked strata would never pick, and bounding nothing. The backfill walk is load-bearing: in this window the top-8-cost, top-5-error and top-4-compaction sessions collapse to 8 distinct sessions, so without it the read set would silently shrink to the same few monsters. Two run-out rules keep the tags honest: a ranked stratum takes only sessions with a **nonzero** metric — a `tool-errors` tag on an error-free session would lie — and stops short when the metric runs out; a major skill whose every pool user an earlier stratum already took contributes nothing. Unused ranked slots pass to the discovery quota, which draws from the whole remaining pool. The realized set is therefore **min(quota sum, pool size) — 31 sessions at defaults while the window's pool holds that many; what varies is the composition, not the count** — and each session carries the tag of the stratum that took it, so the report states the realized composition, not the target. `select_runs.sql` adds runs beyond the selected sessions: highest error counts and highest cost per `agent_type`, same tiebreaker, so every commonly used agent definition gets read each iteration.
 
