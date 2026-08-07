@@ -105,6 +105,14 @@ The digest and error-listing queries through the CLI, against the fixture store;
 - An error's text is cut to 200 chars, with its full length beside it. *Evidence:* a copied store with an over-long sentinel planted as one real error's result (invented, because fixture results are redacted to a word); assert the cell is 200 chars, the tail is absent, and `error_chars` reports the planted length.
 - **`records_slice` refuses to run without a line range**, and caps `raw` at 2000 chars. *Evidence:* assert the CLI exits naming the missing parameter; and assert against `0a76f771…`'s recorded 3,054-char record that the returned cell is 2000 chars. Bolded because a defaulted line range is the failure the design's "mandatory" is there to prevent — a reader who omits it would pull an unbounded slice of private transcript into context and see no error (finding B).
 
+## integration (corpus counts) — `tests/analyze/test_counts.py`
+
+**As built,** iteration 1's process review added the counting queries that promote a recurring observation to a counted finding. Their leaves need a population the recorded corpus does not hold — every recorded error is a one-off redacted to a word — so each plants one onto real rows and says so at the fixture.
+
+- **`error_signatures` counts one signature over many bodies.** *Evidence:* a copied store marking every `Read` in `4208c1bd…` and `5a88789c…` failed with a shared first line and a per-call tail (invented, because a recurring error is exactly what the recorded corpus lacks); assert the eight calls come back as one row carrying 8 errors, 2 sessions and 3 threads. Bolded: grouping on the whole result splits a recurring error into a group per call site, which reads as no error recurring at all.
+- Each signature is counted over the trailing window and over the corpus, like every other corpus count. *Evidence:* at `$as_of` 2026-08-07 the older of the two planted sessions falls out of the window; assert the window row drops its four errors while the corpus row still holds all eight.
+- A bound `$signature` counts a phrase anywhere in the error text, and `$min_occurrences` bounds the listing. *Evidence:* the planted signature beside the two recorded one-off errors; assert the floor of 2 leaves only the planted group, and that binding a phrase that appears only in the planted tails returns that group with its full count.
+
 ## integration (windows and trends) — `tests/analyze/test_windows.py`
 
 The windowed and trend queries against the fixture store, with `$as_of` bound rather than read from the clock.

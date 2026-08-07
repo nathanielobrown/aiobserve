@@ -94,6 +94,11 @@ RAW_CHARS = 2000
 # list stays a table rather than a transcript.
 ERROR_CHARS = 200
 
+# How much of an error's first line `error_signatures` groups on. Long enough to tell two
+# failures of one tool apart, short enough that the path or command trailing the sentence
+# does not split one recurring error into a group per call site.
+SIGNATURE_CHARS = 120
+
 # The viewer's page sizes. Every one of them is a bound parameter with a default here and
 # nowhere else, because the payload bound the design states is arithmetic over these numbers:
 # a page of calls carries at most `PAGE_CALLS` × (2 KB of text + `PAGE_TOOLS` tool rows).
@@ -129,6 +134,18 @@ QUERIES: dict[str, Query] = {
             # this session did anything fail?
             "source": Param(type=ParamType.TEXT, default=None),
             "max_chars": Param(type=ParamType.INTEGER, default=ERROR_CHARS),
+        },
+    ),
+    "error_signatures": Query(
+        scope=Scope.CORPUS,
+        params={
+            # Count a phrase wherever it sits in the error text, instead of grouping by the
+            # first line. NULL — group everything — is the survey a reader runs first.
+            "signature": Param(type=ParamType.TEXT, default=None),
+            # Occurrences a signature needs to be listed. Five, matching the other floors in
+            # this file, and for the same reason: below it a group is one session's accident.
+            "min_occurrences": Param(type=ParamType.INTEGER, default=5),
+            "signature_chars": Param(type=ParamType.INTEGER, default=SIGNATURE_CHARS),
         },
     ),
     "records_slice": Query(

@@ -43,6 +43,8 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     "select_runs": {"min_runs": "1"},
     # One of the two fixture sessions holding a failed tool call.
     "error_records": {"session_id": SERVER_TOOLS},
+    # Both fixture errors are one-offs, so the production floor of 5 lists neither.
+    "error_signatures": {"min_occurrences": "1"},
     "records_slice": {"session_id": RESUME, "source": MAIN, "first_line": "1", "last_line": "5"},
     "run_digest": {"session_id": SPINE, "source": SPINE_RUN},
     "session_digest": {"session_id": SPINE},
