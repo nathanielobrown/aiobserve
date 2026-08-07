@@ -30,6 +30,10 @@ TEAMMATE = "10d0349d-0705-4e23-aa64-5b1b97698b2e"
 # turn its origin ran.
 FORK_BYREF = "07a769d7-828c-4edb-b3ce-af51e2712aa3"
 FORK_ORIGIN = "5a88789c-1da7-4f32-b631-40a7e243334b"
+# The two sessions that record no main turn and no agent run: nothing to describe, so
+# enrichment skips them rather than sending an empty prompt.
+COMPACTION = "1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9"
+DUP_UUID = "8ee00a94-b01a-4394-b447-b065f74b11af"
 # The agent runs the render and rounds leaves are built on, one per shape: a multi-turn
 # teammate, a subagent and the leaf it spawned in turn, a turnless fork, a fork whose only
 # turn is a replay, and the run that really ran that turn.
@@ -37,6 +41,7 @@ TEAM_RUN = "aarchitect-5144001ac50718bc"
 SPINE_RUN = "ac461ef46b4bb8e32"
 SPINE_LEAF = "af6473ae437c9608d"
 BYREF_RUN = "afa3946951a08a798"
+WORKFLOW_RUN = "a6f04bb0e6eff6013"
 ORIGIN_RUN = "a61a059e3610e6fb4"
 AUDITOR_RUN = "acbc29008a04b9702"
 ENRICHMENT_FIXTURES = (

@@ -15,6 +15,7 @@ from aiobserve.enrich.prompts import (
     Level,
     input_hash,
     instructions,
+    level_of,
     render,
 )
 from aiobserve.enrich.store import EnrichmentStore, Stamp
@@ -48,10 +49,10 @@ class EnrichmentFailed(Exception):
         super().__init__(f"{len(failures)} item(s) failed, wrote nothing:\n{listed}")
 
 
-# The levels a run describes, in the order it describes them. Agent runs come first because
-# a turn's prompt embeds the descriptions of the runs it spawned; the runs themselves are
+# The levels a run describes, in the order it describes them: bottom-up, because every prompt
+# embeds its children's descriptions rather than their text. The agent runs are themselves
 # split into rounds by parentage.
-LEVELS = (Level.agent_run, Level.turn)
+LEVELS = (Level.agent_run, Level.turn, Level.session)
 
 
 def plan(
@@ -94,8 +95,9 @@ def enrich(
     rounds: list[tuple[Level, set[str] | None]] = [
         (Level.agent_run, keys) for keys in _rounds(parents)
     ]
-    # None: every turn of the level, since turns are one round and nothing waits on them.
-    rounds.append((Level.turn, None))
+    # None: every item of the level. Turns and sessions are one round each — no turn embeds
+    # another turn, and no session embeds another session.
+    rounds += [(Level.turn, None), (Level.session, None)]
     enriched, remaining = 0, limit
     failures: list[ItemFailure] = []
     # Items whose prompts embed something that failed. Writing one bakes a hole into a
@@ -149,9 +151,12 @@ def _rounds(parents: Mapping[str, str | None]) -> list[set[str]]:
 
     Grouped by height rather than depth: a leaf goes in the first round whatever tree it
     belongs to, so the whole store's forest is described in as many rounds as its deepest
-    branch has levels — four, over the recorded corpus.
+    branch has levels — four, over the recorded corpus. Only the runs: a run whose parent is
+    a turn or a session waits for nothing, because those levels come after every round here.
     """
-    waiting: dict[str, set[str]] = {key: set() for key in parents}
+    waiting: dict[str, set[str]] = {
+        key: set() for key in parents if level_of(key) is Level.agent_run
+    }
     for key, parent in parents.items():
         if parent in waiting:
             waiting[parent].add(key)

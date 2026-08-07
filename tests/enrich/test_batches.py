@@ -316,10 +316,12 @@ def test_both_clients_write_the_same_rows(mutable_db: Path, tmp_path: Path) -> N
     other.write_bytes(mutable_db.read_bytes())
     with EnrichmentStore(mutable_db) as store:
         turns = [item.key for item in store.turn_items()]
-        # One reply per item the run sends — every agent run, in rounds, and then every main
-        # turn. All of them say the same thing: results come back positionally, and which
-        # item an answer lands on is the mapping test's question, not this one's.
-        replies = [message(answer("any item"))] * (len(store.run_items()) + len(turns))
+        # One reply per item the run sends — every agent run, in rounds, then every main turn,
+        # then every session. All of them say the same thing: results come back positionally,
+        # and which item an answer lands on is the mapping test's question, not this one's.
+        replies = [message(answer("any item"))] * (
+            len(store.run_items()) + len(turns) + len(store.session_items())
+        )
         batched = FakeMessages(
             results=[
                 MessageBatchSucceededResult(type="succeeded", message=reply) for reply in replies

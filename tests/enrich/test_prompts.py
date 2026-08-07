@@ -16,11 +16,15 @@ import pytest
 
 from aiobserve.enrich.prompts import (
     RUN_BUDGETS,
+    SESSION_BUDGETS,
     TURN_BUDGETS,
     AgentRunItem,
+    Item,
+    SessionItem,
     TurnItem,
     input_hash,
     render_run,
+    render_session,
     render_turn,
 )
 from aiobserve.enrich.store import EnrichmentStore, Stamp
@@ -35,7 +39,9 @@ from tests.enrich.conftest import (
     SPINE_LEAF,
     SPINE_RUN,
     TEAM_RUN,
+    TEAMMATE,
     WORKFLOW,
+    WORKFLOW_RUN,
 )
 
 # A string no redacted fixture can contain, planted into one field per test.
@@ -64,8 +70,15 @@ def run(store: EnrichmentStore, agent_run_id: str) -> AgentRunItem:
     return items[0]
 
 
-def describe(store: EnrichmentStore, item: AgentRunItem, description: str) -> None:
-    """Enrich one run, so a render of its parent has a child description to embed."""
+def session(store: EnrichmentStore, session_id: str) -> SessionItem:
+    """The store's one enrichable session with this id."""
+    items = [item for item in store.session_items() if item.session_id == session_id]
+    assert len(items) == 1, f"{session_id} named {len(items)} sessions"
+    return items[0]
+
+
+def describe(store: EnrichmentStore, item: Item, description: str) -> None:
+    """Enrich one item, so a render of its parent has a child description to embed."""
     store.upsert(
         item,
         Enrichment(
@@ -381,6 +394,115 @@ def test_an_over_budget_run_drops_the_middle_of_its_work(fixture_db: Path) -> No
         '"subagent_type": "[redacted]", "run_in_background": false, "prompt": "[redacted]"}'
     )
     assert len(elided) <= 300
+
+
+def test_a_session_renders_its_metrics_then_what_it_did(mutable_db: Path) -> None:
+    """A session renders what it cost and a line per thing it did, in the order it did them."""
+    # If every main turn of `spine/` has been described...
+    with EnrichmentStore(mutable_db) as store:
+        for item in store.turn_items():
+            if item.session_id == SPINE:
+                describe(store, item, f"Did thing {item.index}.")
+        rendered = render_session(session(store, SPINE))
+    # ...then the whole prompt is this: the title and branch the session recorded, the time it
+    # took, what it spent, and its children as their own descriptions — never their text.
+    assert rendered == (
+        "# Session: fixture-title-2\n"
+        "\n"
+        "## Metrics\n"
+        "branch fixture-branch-1\n"
+        "wall 30d 23h, active 3m 39s\n"
+        "tokens 11 in, 5,091 out, 115,575 cache read, 143,029 cache write\n"
+        "cost $2.83\n"
+        "\n"
+        "## Work\n"
+        # The turn recorded a month before the other three comes first: children are in
+        # chronological order, which is not the order the store returns them in.
+        "- Main turn [explore/completed] Did thing 3.\n"
+        "- Main turn [explore/completed] Did thing 0.\n"
+        "- Main turn [explore/completed] Did thing 1.\n"
+        "- Main turn [explore/completed] Did thing 2."
+    )
+
+
+def test_a_sessions_children_are_its_turns_and_the_runs_nothing_embeds(mutable_db: Path) -> None:
+    """A session carries its main turns and the runs no turn or run of its own already carries.
+
+    Reading depth-1 runs as the children instead would drop every recorded teammate agent —
+    43 of them — out of every session summary, and embed ten other runs twice.
+    """
+    with EnrichmentStore(mutable_db) as store:
+        # If `teammate/` has one main turn and one run that no tool call spawned...
+        describe(store, run(store, TEAM_RUN), "Drew up the plan.")
+        for item in store.turn_items():
+            if item.session_id == TEAMMATE:
+                describe(store, item, "Asked for a plan.")
+        rendered = render_session(session(store, TEAMMATE))
+        # ...then both are children of the session, each once...
+        assert rendered.endswith(
+            "## Work\n"
+            "- Main turn [explore/completed] Asked for a plan.\n"
+            "- Agent run (architect) [explore/completed] Drew up the plan."
+        )
+        # ...while `spine/`'s subagent, which a main turn spawned, is not a child of the
+        # session at all: it reaches the session through that turn's own description.
+        describe(store, run(store, SPINE_RUN), "Ran the subagent.")
+        assert "Ran the subagent." not in render_session(session(store, SPINE))
+
+
+def test_a_run_spawned_outside_every_turn_is_still_a_session_child(mutable_db: Path) -> None:
+    """A run whose spawning call belongs to no turn is carried by the session itself.
+
+    Planted, but the shape is recorded: 9 runs of the corpus were spawned by a main-transcript
+    call that belongs to no turn, and no turn's render can reach them. A rule keyed on the
+    spawning call's *existence* rather than on what embeds the run would drop all nine.
+    """
+    with EnrichmentStore(mutable_db) as store:
+        # If the api call that spawned `spine/`'s subagent belongs to no turn...
+        store.connection.execute(
+            "UPDATE api_calls SET turn_id = NULL WHERE id ="
+            " (SELECT api_call_id FROM tool_calls WHERE id = 'toolu_015dP3eMe5GZn7BzFipupZwS')"
+        )
+        describe(store, run(store, SPINE_RUN), "Ran the subagent.")
+        # ...then nothing else embeds it, so the session does.
+        assert "- Agent run (claude) [explore/completed] Ran the subagent." in render_session(
+            session(store, SPINE)
+        )
+
+
+def test_an_over_budget_session_drops_the_middle_of_its_work(mutable_db: Path) -> None:
+    """Past its budget a session keeps its first and last child and says how many went."""
+    # If `spine/`'s four described turns are rendered at a budget that fits two of them
+    # (injected: real sessions reach 92 children, and no fixture comes near the real cap)...
+    with EnrichmentStore(mutable_db) as store:
+        for item in store.turn_items():
+            if item.session_id == SPINE:
+                describe(store, item, f"Did thing {item.index}.")
+        elided = render_session(
+            session(store, SPINE), dataclasses.replace(SESSION_BUDGETS, total=300)
+        )
+    # ...then the session keeps how it opened and how it ended, and counts what it dropped.
+    assert elided.endswith(
+        "## Work\n"
+        "- Main turn [explore/completed] Did thing 3.\n"
+        "[… 2 of 4 lines elided …]\n"
+        "- Main turn [explore/completed] Did thing 2."
+    )
+    assert len(elided) <= 300
+
+
+def test_a_workflow_line_embeds_its_spawned_run(mutable_db: Path) -> None:
+    """A `Workflow` call carries its run's description, exactly as an `Agent` call does."""
+    # If the run `workflow/`'s main turn started has been described...
+    with EnrichmentStore(mutable_db) as store:
+        describe(store, run(store, WORKFLOW_RUN), "Researched the question.")
+        rendered = render_turn(turn(store, WORKFLOW, "cd7adeae"))
+    # ...then the turn that spawned it reads what it did — the second of the two tools that
+    # start a run, and the one a rule keyed on the `Agent` name alone would miss.
+    assert rendered.endswith(
+        '- Workflow (input 47 chars, result 10 chars) {"name": "deep-research", '
+        '"args": "[redacted]"} | subagent: Researched the question.'
+    )
 
 
 @pytest.mark.slow  # Renders a whole real corpus — minutes, and it reads private sessions.

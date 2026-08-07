@@ -48,6 +48,10 @@ _SUBJECT: dict[Level, str] = {
         "You are reading one run of a subagent: the task it was given, any later "
         "instructions, and what it did about them. Describe that run."
     ),
+    Level.session: (
+        "You are reading a summary of one coding session: what it cost, and a description of "
+        "each thing it did, in order. Describe the session as a whole."
+    ),
 }
 
 _ANSWER = f"""Answer by calling `{OUTPUT_TOOL_NAME}` once, and say nothing else:
@@ -123,6 +127,9 @@ TURN_BUDGETS = Budgets(total=30_000)
 # The same cap: a run holds the same kind of work a main turn does, and 209 of 2,458 recorded
 # runs reach it.
 RUN_BUDGETS = Budgets(total=30_000)
+# Smaller: a session carries one line per child rather than a transcript. Sessions average 3.1
+# children and the longest recorded one has 92.
+SESSION_BUDGETS = Budgets(total=24_000)
 
 
 @dataclass(frozen=True)
@@ -170,6 +177,11 @@ class Item:
     def key(self) -> str:
         """The key as one string — what a request, a call log, and a failure record carry."""
         return "|".join((self.level, *self.key_values))
+
+
+def level_of(key: str) -> Level:
+    """The level of an item key, so a caller holding keys alone can still tell them apart."""
+    return Level(key.split("|", 1)[0])
 
 
 @dataclass(frozen=True)
@@ -271,6 +283,70 @@ def render_run(item: AgentRunItem, budgets: Budgets = RUN_BUDGETS) -> str:
     return _fit("\n".join(head), lines, budgets.total)
 
 
+@dataclass(frozen=True)
+class SessionChild:
+    """One thing a session did, as that thing's own enrichment described it.
+
+    No transcript text reaches a session prompt: a child that has not been described yet
+    renders as undescribed, which moves the session's hash again once it has been.
+    """
+
+    # `turn` for a main turn, `agent_run` for a run nothing else in the session embeds.
+    level: Level
+    # The run's type — `architect`, `Explore`. None for a main turn.
+    agent_type: str | None
+    description: str | None
+    category: str | None
+    outcome: str | None
+
+
+@dataclass(frozen=True)
+class SessionItem(Item):
+    """One whole session: what it cost, and what its children were described as doing."""
+
+    session_id: str
+    # As Claude Code recorded them; either can be absent from an older transcript.
+    title: str | None
+    git_branch: str | None
+    # Wall time is the whole span, gaps included; active is what Claude Code reported working.
+    # Wall is None when the session's records carry no end.
+    wall_ms: int | None
+    active_ms: int | None
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: int
+    cache_creation_tokens: int
+    # Sums only the api calls the extractor could price.
+    cost_usd: float
+    # The session's main turns and its rootless runs, in the order they started.
+    children: tuple[SessionChild, ...]
+
+    @property
+    def level(self) -> Level:
+        return Level.session
+
+    @property
+    def key_values(self) -> tuple[str, ...]:
+        return (self.session_id,)
+
+
+def render_session(item: SessionItem, budgets: Budgets = SESSION_BUDGETS) -> str:
+    """One session as the model sees it: what it cost, and a line per thing it did."""
+    head = [
+        f"# Session: {item.title or 'untitled'}",
+        "",
+        "## Metrics",
+        f"branch {item.git_branch or 'unknown'}",
+        f"wall {_duration(item.wall_ms)}, active {_duration(item.active_ms)}",
+        f"tokens {item.input_tokens:,} in, {item.output_tokens:,} out, "
+        f"{item.cache_read_tokens:,} cache read, {item.cache_creation_tokens:,} cache write",
+        f"cost ${item.cost_usd:.2f}",
+        "",
+        "## Work",
+    ]
+    return _fit("\n".join(head), [_child_line(child) for child in item.children], budgets.total)
+
+
 def render(item: Item) -> str:
     """One item as its level's prompt, at that level's default budgets.
 
@@ -282,6 +358,8 @@ def render(item: Item) -> str:
             return render_turn(item)
         case AgentRunItem():
             return render_run(item)
+        case SessionItem():
+            return render_session(item)
     raise ValueError(f"nothing renders a {type(item).__name__}")
 
 
@@ -329,6 +407,28 @@ def _tool_line(tool: ToolCallRow, budgets: Budgets) -> str:
     if tool.spawned is not None:
         line += f" | subagent: {_one_line(tool.spawned)}"
     return line
+
+
+def _child_line(child: SessionChild) -> str:
+    """One child of a session on one line: what kind of thing it was, and what it did."""
+    label = "Main turn" if child.agent_type is None else f"Agent run ({child.agent_type})"
+    if child.description is None:
+        return f"- {label} [not described yet]"
+    return f"- {label} [{child.category}/{child.outcome}] {_one_line(child.description)}"
+
+
+def _duration(ms: int | None) -> str:
+    """A span of time in the two largest units that carry it — what a reader compares."""
+    if ms is None:
+        return "unknown"
+    seconds, minutes = ms // 1000, ms // 60_000
+    if seconds < 60:
+        return f"{seconds}s"
+    if minutes < 60:
+        return f"{minutes}m {seconds % 60}s"
+    if minutes < 1440:
+        return f"{minutes // 60}h {minutes % 60}m"
+    return f"{minutes // 1440}d {minutes % 1440 // 60}h"
 
 
 def _cap(text: str, limit: int) -> str:

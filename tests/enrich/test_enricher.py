@@ -37,6 +37,7 @@ from aiobserve.enrich.validation import FailureKind
 from tests.enrich.conftest import (
     AUDITOR_RUN,
     ORIGIN_RUN,
+    SPINE,
     SPINE_LEAF,
     SPINE_RUN,
     TEAM_RUN,
@@ -147,6 +148,17 @@ def turn_key(store: EnrichmentStore, prefix: str) -> str:
     return next(item.key for item in turns(store) if item.turn_id.startswith(prefix))
 
 
+def session_key(store: EnrichmentStore, session_id: str) -> str:
+    """The item key one session is sent and stored under."""
+    return next(item.key for item in store.session_items() if item.session_id == session_id)
+
+
+def stored_sessions(store: EnrichmentStore) -> list[tuple[Any, ...]]:
+    return store.connection.execute(
+        "SELECT session_id, description, input_hash FROM session_enrichments ORDER BY session_id"
+    ).fetchall()
+
+
 def stored_runs(store: EnrichmentStore) -> list[tuple[Any, ...]]:
     return store.connection.execute(
         "SELECT agent_run_id, description, input_hash, enriched_at"
@@ -168,14 +180,15 @@ def test_a_run_writes_a_row_for_every_stale_item(store: EnrichmentStore) -> None
     client = FakeClient()
     report = enrich(store, client)
     # ...then it reports what it did, having swept nothing — there are no orphans yet...
-    assert report == EnrichReport(swept=0, enriched=6)
-    # ...the client was asked about the two agent runs, the deeper one first, and then about
-    # every main turn, once each...
+    assert report == EnrichReport(swept=0, enriched=7)
+    # ...the client was asked about the two agent runs, the deeper one first, then about every
+    # main turn, once each, and last about the session those turns belong to...
     items = turns(store)
     assert client.keys == [
         key_of(store, SPINE_LEAF),
         key_of(store, SPINE_RUN),
         *(item.key for item in items),
+        session_key(store, SPINE),
     ]
     # ...and each turn row holds the answer that came back, keyed by the turn it describes
     # and stamped with everything that decides whether it is still current. The hashes are
@@ -250,6 +263,7 @@ def test_a_taxonomy_bump_re_enriches(
         key_of(store, SPINE_LEAF),
         key_of(store, SPINE_RUN),
         *(item.key for item in turns(store)),
+        session_key(store, SPINE),
     ]
     assert {row[9] for row in stored(store)} == {99}
 
@@ -263,6 +277,7 @@ def test_a_model_switch_re_enriches(store: EnrichmentStore) -> None:
         key_of(store, SPINE_LEAF),
         key_of(store, SPINE_RUN),
         *(item.key for item in turns(store)),
+        session_key(store, SPINE),
     ]
     assert {row[10] for row in stored(store)} == {"claude-sonnet-4-5"}
 
@@ -322,10 +337,11 @@ def test_a_failed_request_leaves_its_item_stale(store: EnrichmentStore, tmp_path
     dropped = items[0]
     with pytest.raises(EnrichmentFailed):
         enrich(store, FakeClient(answers={dropped.key: Failed(dropped.key, FailureKind.expired)}))
-    # If the next run is the retry, it asks about exactly the item that failed...
+    # If the next run is the retry, it asks about exactly the item that failed — and about the
+    # session it belongs to, which the first run refused to describe from a hole...
     client = FakeClient()
-    assert enrich(store, client) == EnrichReport(swept=0, enriched=1)
-    assert client.keys == [dropped.key]
+    assert enrich(store, client) == EnrichReport(swept=0, enriched=2)
+    assert client.keys == [dropped.key, session_key(store, SPINE)]
     # ...and the crash wrote no resume file to find it by: the store and DuckDB's own
     # write-ahead log are everything on disk.
     assert {path.name for path in tmp_path.iterdir()} <= {"traces.duckdb", "traces.duckdb.wal"}
@@ -355,8 +371,9 @@ def test_a_dry_run_writes_nothing_and_sends_nothing(
     # If a dry run is asked for — with `build_client` left as it is, so constructing one
     # would fail the test rather than pass it...
     cli.main("enrich", "--db", str(store.path), "--dry-run")
-    # ...then it reports the two stale runs and the four stale turns, and writes no row.
-    assert "6 item(s) would be sent" in capsys.readouterr().out
+    # ...then it reports the two stale runs, the four stale turns and the session, and writes
+    # no row.
+    assert "7 item(s) would be sent" in capsys.readouterr().out
     assert stored(store) == []
 
 
@@ -434,8 +451,11 @@ def test_rounds_send_children_before_parents(forest: EnrichmentStore) -> None:
         {key_of(forest, SPINE_LEAF), key_of(forest, ORIGIN_RUN), key_of(forest, TEAM_RUN)},
         # ...then the runs that spawned them...
         {key_of(forest, SPINE_RUN), key_of(forest, AUDITOR_RUN)},
-        # ...and the main turns last, because a turn embeds the runs it spawned.
+        # ...then the main turns, because a turn embeds the runs it spawned...
         {item.key for item in turns(forest)},
+        # ...and the sessions last of all, each embedding its own turns and the runs nothing
+        # else in it embeds.
+        {item.key for item in forest.session_items()},
     ]
 
 
@@ -481,31 +501,38 @@ def test_a_childs_new_description_makes_its_ancestors_stale(store: EnrichmentSto
     before = {row[0]: row[2] for row in stored_runs(store)} | {
         row[2]: row[7] for row in stored(store)
     }
+    before_session = stored_sessions(store)[0][2]
     store.connection.execute(
         "UPDATE tool_calls SET name = 'Grep' WHERE id = 'toolu_01SzCMuLzJk8ag5BnK545sWY'"
     )
-    # ...and the model answers the two runs with new text, as a re-read of changed work
-    # would...
+    # ...and the model answers with new text each time it is asked again, as a re-read of
+    # changed work would...
     rewritten = {
         key: Succeeded(key=key, output=answer(key, description=f"Rewrote {key}."))
-        for key in (key_of(store, SPINE_LEAF), key_of(store, SPINE_RUN))
+        for key in (
+            key_of(store, SPINE_LEAF),
+            key_of(store, SPINE_RUN),
+            turn_key(store, "818588ad"),
+        )
     }
     client = FakeClient(answers=rewritten)
     enrich(store, client)
     # ...then the run goes up the tree: the leaf, then the run whose prompt embeds its
-    # description, then the main turn whose prompt embeds *that* — none of which was stale
-    # when the round started.
+    # description, then the main turn whose prompt embeds *that*, and last the session whose
+    # prompt embeds the turn — none of which was stale when the round started.
     assert client.keys == [
         key_of(store, SPINE_LEAF),
         key_of(store, SPINE_RUN),
         turn_key(store, "818588ad"),
+        session_key(store, SPINE),
     ]
-    # ...each of their stored inputs moved...
+    # ...and each of their stored inputs moved.
     after = {row[0]: row[2] for row in stored_runs(store)} | {
         row[2]: row[7] for row in stored(store)
     }
     changed = {key for key, value in after.items() if before[key] != value}
     assert changed == {SPINE_LEAF, SPINE_RUN, "818588ad-3849-48fe-a546-573163768e04"}
+    assert stored_sessions(store)[0][2] != before_session
 
 
 def test_a_child_re_described_identically_stops_the_cascade(store: EnrichmentStore) -> None:
@@ -542,13 +569,15 @@ def test_a_failed_childs_parents_are_skipped(store: EnrichmentStore) -> None:
     client = FakeClient(answers={leaf: Failed(leaf, FailureKind.api_error)})
     with pytest.raises(EnrichmentFailed, match=str(FailureKind.api_error)):
         enrich(store, client)
-    # ...then neither the run that spawned it nor the main turn that spawned *that* was
-    # sent, and neither wrote a row...
+    # ...then nothing above it was sent — not the run that spawned it, not the main turn that
+    # spawned *that*, and not the session, whose prompt embeds the turn — and none wrote a
+    # row...
     assert client.keys == [
         leaf,
         *(item.key for item in turns(store) if not item.turn_id.startswith("818588ad")),
     ]
     assert stored_runs(store) == []
+    assert stored_sessions(store) == []
     # ...while the session's three other main turns were enriched as usual: a skip is not a
     # failure, and it takes only the ancestors with it.
     assert [row[2][:8] for row in stored(store)] == ["30aad8e5", "5b848af7", "8cdceb31"]

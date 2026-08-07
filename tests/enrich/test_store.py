@@ -14,7 +14,7 @@ from aiobserve.enrich.prompts import Level, TurnItem
 from aiobserve.enrich.store import EnrichmentStore, Stamp
 from aiobserve.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
 from aiobserve.enrich.validation import Enrichment
-from tests.enrich.conftest import SPINE, build_store
+from tests.enrich.conftest import COMPACTION, DUP_UUID, SPINE, build_store
 
 MODEL = "claude-haiku-4-5-20251001"
 
@@ -166,6 +166,76 @@ def test_a_zombie_enrichment_is_swept(mutable_db: Path) -> None:
         assert store.connection.execute(
             "SELECT turn_id FROM turn_enrichments ORDER BY turn_id"
         ).fetchall() == sorted((item.turn_id,) for item in items if item is not gone)
+
+
+def test_a_session_with_no_turn_and_no_run_is_never_enriched(fixture_db: Path) -> None:
+    """A session holding nothing to describe is skipped, not enriched and not failed.
+
+    102 of 575 recorded sessions are in this state — compactions and duplicate-uuid records
+    with no work of their own — so coverage is 473, not 575.
+    """
+    with EnrichmentStore(fixture_db) as store:
+        described = {item.session_id for item in store.session_items()}
+        # If a session in the store recorded no main turn and no agent run...
+        empty = {
+            session_id
+            for (session_id,) in store.connection.execute(
+                "SELECT session_id FROM session_rollups WHERE turns = 0 AND agent_runs = 0"
+            ).fetchall()
+        }
+    # ...then it is not an item, so nothing ever sends it or writes a row for it, while every
+    # other session of the fixture corpus is.
+    assert empty == {COMPACTION, DUP_UUID}
+    assert described & empty == set()
+    assert len(described) == 6
+
+
+def test_the_run_and_session_views_left_join_too(mutable_db: Path) -> None:
+    """Every level's view returns un-enriched rows with empty enrichment columns."""
+    # If one of `spine/`'s two agent runs is enriched, and neither session is...
+    with EnrichmentStore(mutable_db) as store:
+        runs = [item for item in store.run_items() if item.session_id == SPINE]
+        store.upsert(runs[0], enrichment("Read one file."), stamp())
+        # ...then the runs view returns both, saying which carries no description...
+        assert store.connection.execute(
+            "SELECT id, description FROM enriched_agent_runs WHERE session_id = ? ORDER BY id",
+            [SPINE],
+        ).fetchall() == sorted(
+            [(runs[0].agent_run_id, "Read one file."), (runs[1].agent_run_id, None)]
+        )
+        # ...it keeps the run's own recorded task and model under names that say whose they
+        # are, so `description` means the enrichment's in all three views...
+        assert {
+            name
+            for (name,) in store.connection.execute(
+                "SELECT column_name FROM duckdb_columns() WHERE table_name = 'enriched_agent_runs'"
+            ).fetchall()
+        } >= {"task_description", "agent_model", "description", "enrichment_model"}
+        # ...and the sessions view reads coverage honestly for a corpus nothing has described.
+        assert store.connection.execute(
+            "SELECT count(*), count(description) FROM enriched_sessions"
+        ).fetchone() == (8, 0)
+
+
+def test_zombies_are_swept_at_all_three_levels(mutable_db: Path) -> None:
+    """An enrichment of any level whose base row is gone is deleted with it."""
+    # If a turn, a run and a session are each enriched...
+    with EnrichmentStore(mutable_db) as store:
+        turn_item = spine_turns(store)[0]
+        run_item = next(item for item in store.run_items() if item.session_id == SPINE)
+        session_item = next(item for item in store.session_items() if item.session_id == SPINE)
+        for item in (turn_item, run_item, session_item):
+            store.upsert(item, enrichment(), stamp())
+        # ...and every base row they hang off is then deleted, as an extractor bump that
+        # redraws a session's boundaries would...
+        store.connection.execute("DELETE FROM turns WHERE id = ?", [turn_item.turn_id])
+        store.connection.execute("DELETE FROM agent_runs WHERE id = ?", [run_item.agent_run_id])
+        store.connection.execute("DELETE FROM sessions WHERE id = ?", [SPINE])
+        # ...then all three enrichments go, because the LEFT-joined views would otherwise hide
+        # them completely.
+        assert store.sweep_zombies() == 3
+        for table in ("turn_enrichments", "agent_run_enrichments", "session_enrichments"):
+            assert store.connection.execute(f"SELECT count(*) FROM {table}").fetchone() == (0,)
 
 
 def test_opening_a_store_creates_every_enrichment_table(mutable_db: Path) -> None:

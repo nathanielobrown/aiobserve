@@ -22,6 +22,8 @@ from aiobserve.enrich.prompts import (
     Item,
     Level,
     RunSection,
+    SessionChild,
+    SessionItem,
     ToolCallRow,
     TurnItem,
 )
@@ -70,6 +72,21 @@ SELECT t.*, e.description, e.category, e.outcome, e.friction, e.input_hash,
 FROM live_turns t
 LEFT JOIN turn_enrichments e
   ON e.session_id = t.session_id AND e.source = t.source AND e.turn_id = t.id;
+-- `agent_runs` carries a `description` and a `model` of its own — the task Claude Code
+-- recorded for the run, and the model that ran it. Both keep their meaning under a name
+-- that says whose they are, so `description` means the same thing in all three views.
+CREATE OR REPLACE VIEW enriched_agent_runs AS
+SELECT r.* EXCLUDE (description, model), r.description AS task_description,
+       r.model AS agent_model, e.description, e.category, e.outcome, e.friction, e.input_hash,
+       e.prompt_version, e.taxonomy_version, e.model AS enrichment_model, e.enriched_at
+FROM live_agent_runs r
+LEFT JOIN agent_run_enrichments e
+  ON e.session_id = r.session_id AND e.agent_run_id = r.id;
+CREATE OR REPLACE VIEW enriched_sessions AS
+SELECT r.*, e.description, e.category, e.outcome, e.friction, e.input_hash,
+       e.prompt_version, e.taxonomy_version, e.model AS enrichment_model, e.enriched_at
+FROM session_rollups r
+LEFT JOIN session_enrichments e ON e.session_id = r.session_id;
 """
 
 
@@ -135,6 +152,19 @@ def _project_clause(project: str | None) -> str:
 
 def _project_parameters(project: str | None) -> list[str]:
     return [project] if project is not None else []
+
+
+@dataclass(frozen=True)
+class RunLink:
+    """One agent run against whatever spawned it, as the records name it."""
+
+    session_id: str
+    run_id: str
+    # The run whose transcript holds the spawning call, named either way the records name it.
+    parent_run: str | None
+    # The main turn holding the spawning call, when no run does. None alongside `parent_run`
+    # means nothing in the session embeds this run, and the session carries it directly.
+    parent_turn: str | None
 
 
 @dataclass(frozen=True)
@@ -360,23 +390,106 @@ class EnrichmentStore:
             ).fetchall()
         }
 
+    def session_items(self, project: str | None = None) -> list[SessionItem]:
+        """Every session worth describing, with what it cost and what its children did.
+
+        A session with no main turn and no agent run is skipped rather than enriched — there
+        is nothing to describe, and 102 of 575 recorded sessions are in that state.
+        """
+        children = self._session_children(project)
+        return [
+            SessionItem(
+                session_id=session_id,
+                title=title,
+                git_branch=git_branch,
+                wall_ms=wall_ms,
+                active_ms=active_ms,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cache_read_tokens=cache_read_tokens,
+                cache_creation_tokens=cache_creation_tokens,
+                cost_usd=cost_usd,
+                children=tuple(children.get(session_id, ())),
+            )
+            for (
+                session_id,
+                title,
+                git_branch,
+                wall_ms,
+                active_ms,
+                input_tokens,
+                output_tokens,
+                cache_read_tokens,
+                cache_creation_tokens,
+                cost_usd,
+            ) in self.connection.execute(
+                f"""SELECT r.session_id, s.title, s.git_branch, r.wall_ms, r.active_ms,
+                           r.input_tokens, r.output_tokens, r.cache_read_tokens,
+                           r.cache_creation_tokens, r.cost_usd
+                    FROM session_rollups r JOIN sessions s ON s.id = r.session_id
+                    WHERE (r.turns > 0 OR r.agent_runs > 0){_project_clause(project)}
+                    ORDER BY r.session_id""",
+                _project_parameters(project),
+            ).fetchall()
+        ]
+
+    def _session_children(self, project: str | None) -> dict[str, list[SessionChild]]:
+        """What each session did directly, in the order it started doing it.
+
+        Its main turns, plus the runs nothing in the session embeds — everything else reaches
+        the session through the turn or the run whose prompt carries its description.
+        """
+        direct = {
+            (link.session_id, link.run_id)
+            for link in self._run_links(project)
+            if link.parent_run is None and link.parent_turn is None
+        }
+        rows = [
+            (session_id, started_at, SessionChild(Level.turn, None, *enrichment))
+            for session_id, started_at, *enrichment in self.connection.execute(
+                f"""SELECT t.session_id, t.started_at, e.description, e.category, e.outcome
+                    FROM live_turns t JOIN sessions s ON s.id = t.session_id
+                    LEFT JOIN turn_enrichments e
+                      ON e.session_id = t.session_id AND e.source = t.source AND e.turn_id = t.id
+                    WHERE {_source_clause("t", main=True)}{_project_clause(project)}""",
+                _project_parameters(project),
+            ).fetchall()
+        ]
+        rows += [
+            (session_id, started_at, SessionChild(Level.agent_run, agent_type, *enrichment))
+            for session_id, run_id, agent_type, started_at, *enrichment in self.connection.execute(
+                f"""SELECT r.session_id, r.id, r.agent_type, r.started_at,
+                           e.description, e.category, e.outcome
+                    FROM live_agent_runs r JOIN sessions s ON s.id = r.session_id
+                    LEFT JOIN agent_run_enrichments e
+                      ON e.session_id = r.session_id AND e.agent_run_id = r.id
+                    WHERE true{_project_clause(project)}""",
+                _project_parameters(project),
+            ).fetchall()
+            if (session_id, run_id) in direct
+        ]
+        children: dict[str, list[SessionChild]] = {}
+        for session_id, _, child in sorted(rows, key=lambda row: (row[1] is None, row[1])):
+            children.setdefault(session_id, []).append(child)
+        return children
+
     def items(self, level: Level, project: str | None = None) -> list[Item]:
         """Every enrichable item of one level. The enricher's one door into the store."""
-        readers = {Level.turn: self.turn_items, Level.agent_run: self.run_items}
-        if level not in readers:
-            raise ValueError(f"nothing reads {level} items yet")
+        readers = {
+            Level.turn: self.turn_items,
+            Level.agent_run: self.run_items,
+            Level.session: self.session_items,
+        }
         return list(readers[level](project))
 
-    def item_parents(self, project: str | None = None) -> dict[str, str | None]:
-        """Each agent run's key against the key of the item whose prompt embeds its description.
+    def _run_links(self, project: str | None) -> list[RunLink]:
+        """Each agent run against whatever spawned it, by both rules the records offer.
 
-        The parent is the agent that spawned the run: the run `parent_agent_id` names, and
-        otherwise whatever transcript holds the spawning tool call — another run, or a main
-        turn. Both rules are needed: 112 of 2,459 recorded runs name no parent agent yet were
-        spawned from inside another run, and taking either rule alone strands them. None is a
-        root: a run nothing spawned, or one spawned by a call that belongs to no turn.
+        `parent_agent_id` where the records name one, and otherwise the transcript holding the
+        spawning tool call. Both are needed: 112 of 2,459 recorded runs name no parent agent
+        yet were spawned from inside another run, and either rule alone strands them.
 
-        Ordering cannot be right for a tree with a gap in it, so a run naming a parent the
+        Ordering cannot be right for a tree with a gap in it, so a run naming a parent run the
         store does not hold crashes here rather than being treated as a root.
         """
         rows = self.connection.execute(
@@ -394,7 +507,7 @@ class EnrichmentStore:
             _project_parameters(project),
         ).fetchall()
         held = {(session_id, run_id) for session_id, run_id, *_ in rows}
-        parents: dict[str, str | None] = {}
+        links: list[RunLink] = []
         for session_id, run_id, parent_agent_id, source, turn_id in rows:
             run = parent_agent_id or (source if source not in (None, MAIN_SOURCE) else None)
             if run is not None and (session_id, run) not in held:
@@ -402,10 +515,45 @@ class EnrichmentStore:
                     f"agent run {session_id}/{run_id} names parent run {run}, which the store"
                     f" does not hold — re-extract the session before enriching it"
                 )
-            parent = f"{Level.agent_run}|{session_id}|{run}" if run is not None else None
-            if parent is None and turn_id is not None:
-                parent = f"{Level.turn}|{session_id}|{MAIN_SOURCE}|{turn_id}"
-            parents[f"{Level.agent_run}|{session_id}|{run_id}"] = parent
+            links.append(
+                RunLink(
+                    session_id=session_id,
+                    run_id=run_id,
+                    parent_run=run,
+                    parent_turn=turn_id if run is None else None,
+                )
+            )
+        return links
+
+    def item_parents(self, project: str | None = None) -> dict[str, str | None]:
+        """Each item's key against the key of the item whose prompt embeds its description.
+
+        A run's parent is the agent that spawned it, or the main turn that did, or — when
+        nothing in the session embeds it — the session itself. A main turn's parent is always
+        its session. Sessions are not here: nothing embeds a session, so they are the roots
+        every chain ends at.
+
+        A run's `tool_use_id` alone would not do: 9 recorded runs were spawned by a
+        main-transcript call belonging to no turn, and reading those as embedded by nothing
+        *and* claimed by nothing would drop them out of every render there is.
+        """
+        parents: dict[str, str | None] = {}
+        for link in self._run_links(project):
+            if link.parent_run is not None:
+                parent = f"{Level.agent_run}|{link.session_id}|{link.parent_run}"
+            elif link.parent_turn is not None:
+                parent = f"{Level.turn}|{link.session_id}|{MAIN_SOURCE}|{link.parent_turn}"
+            else:
+                parent = f"{Level.session}|{link.session_id}"
+            parents[f"{Level.agent_run}|{link.session_id}|{link.run_id}"] = parent
+        for session_id, turn_id in self.connection.execute(
+            f"""SELECT t.session_id, t.id FROM live_turns t JOIN sessions s ON s.id = t.session_id
+                WHERE {_source_clause("t", main=True)}{_project_clause(project)}""",
+            _project_parameters(project),
+        ).fetchall():
+            parents[f"{Level.turn}|{session_id}|{MAIN_SOURCE}|{turn_id}"] = (
+                f"{Level.session}|{session_id}"
+            )
         return parents
 
     def stale_keys(self, level: Level, planned: Mapping[str, Stamp]) -> list[str]:
