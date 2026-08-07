@@ -14,9 +14,29 @@ from pathlib import Path
 
 import pytest
 
-from aiobserve.enrich.prompts import TURN_BUDGETS, TurnItem, input_hash, render_turn
-from aiobserve.enrich.store import EnrichmentStore
-from tests.enrich.conftest import SERVER_TOOLS, SPINE, WORKFLOW
+from aiobserve.enrich.prompts import (
+    RUN_BUDGETS,
+    TURN_BUDGETS,
+    AgentRunItem,
+    TurnItem,
+    input_hash,
+    render_run,
+    render_turn,
+)
+from aiobserve.enrich.store import EnrichmentStore, Stamp
+from aiobserve.enrich.taxonomy import Category, Outcome
+from aiobserve.enrich.validation import Enrichment
+from tests.enrich.conftest import (
+    AUDITOR_RUN,
+    BYREF_RUN,
+    ORIGIN_RUN,
+    SERVER_TOOLS,
+    SPINE,
+    SPINE_LEAF,
+    SPINE_RUN,
+    TEAM_RUN,
+    WORKFLOW,
+)
 
 # A string no redacted fixture can contain, planted into one field per test.
 SENTINEL = "SENTINEL-b4d1e7-content-that-must-not-travel"
@@ -35,6 +55,28 @@ def turn(store: EnrichmentStore, session_id: str, prefix: str) -> TurnItem:
     ]
     assert len(items) == 1, f"{prefix} named {len(items)} turns"
     return items[0]
+
+
+def run(store: EnrichmentStore, agent_run_id: str) -> AgentRunItem:
+    """The store's one agent run with this id."""
+    items = [item for item in store.run_items() if item.agent_run_id == agent_run_id]
+    assert len(items) == 1, f"{agent_run_id} named {len(items)} runs"
+    return items[0]
+
+
+def describe(store: EnrichmentStore, item: AgentRunItem, description: str) -> None:
+    """Enrich one run, so a render of its parent has a child description to embed."""
+    store.upsert(
+        item,
+        Enrichment(
+            description=description,
+            category=Category.explore,
+            outcome=Outcome.completed,
+            friction=None,
+        ),
+        # The stamp decides re-enrichment, which no render reads.
+        Stamp(input_hash="unused", prompt_version=1, taxonomy_version=1, model="fake"),
+    )
 
 
 def test_a_plain_main_turn_renders_its_prompt_then_its_calls(fixture_db: Path) -> None:
@@ -186,18 +228,175 @@ def test_an_over_budget_turn_drops_the_middle_of_its_work(fixture_db: Path) -> N
     assert len(elided) <= 200
 
 
+def test_a_multi_turn_run_renders_every_instruction_in_sequence(fixture_db: Path) -> None:
+    """A run renders each instruction it was given, in order, with the teammate markup gone.
+
+    Before this the model saw an agent's replies but never what it was asked, for every run
+    its lead came back to.
+    """
+    # If the `teammate/` architect was given a second instruction an hour after the first...
+    with EnrichmentStore(fixture_db) as store:
+        rendered = render_run(run(store, TEAM_RUN))
+    # ...then the whole prompt is this: the run's type, its task, and then each later
+    # instruction with the work it drove, in the order they happened.
+    assert rendered == (
+        "# Agent run: architect\n"
+        "\n"
+        "## Task\n"
+        "[redacted]\n"
+        "\n"
+        "## Response\n"
+        '- Read (input 27 chars, result 10 chars) {"file_path": "[redacted]"}\n'
+        "\n"
+        "## Instruction\n"
+        "[redacted]\n"
+        "\n"
+        "## Response\n"
+        "[redacted]\n"
+        '- Bash (input 54 chars, result 10 chars) {"command": "[redacted]", "description": '
+        '"[redacted]"}'
+    )
+    # The wrapper the transcript stores an instruction in is markup, and would read as
+    # content — the attributes especially, which no other turn opener carries.
+    assert "<teammate-message" not in rendered
+    assert "teammate_id=" not in rendered
+
+
+def test_each_instruction_is_capped_on_its_own(fixture_db: Path) -> None:
+    """Every prompt of a run gets the whole per-prompt budget, not a share of one."""
+    # If the two-instruction run is rendered at a per-prompt cap of four characters
+    # (injected: redaction leaves each recorded prompt at ten, so the real 4K cannot bite)...
+    with EnrichmentStore(fixture_db) as store:
+        capped = render_run(run(store, TEAM_RUN), dataclasses.replace(RUN_BUDGETS, prompt=4))
+    # ...then both instructions are still there, and each was truncated on its own.
+    assert capped.count("[red[+6 chars]") == 2
+
+
+def test_a_zero_turn_run_renders_as_a_continuation(fixture_db: Path) -> None:
+    """A run with no prompt of its own renders its work alone, labeled for what it is.
+
+    All 41 zero-turn runs of the corpus are forks whose task lives in the transcript they
+    continue — a render that assumes a task prompt lies about every one of them.
+    """
+    # If `fork_byref/`'s fork, which holds two api calls and not one turn, is rendered...
+    with EnrichmentStore(fixture_db) as store:
+        rendered = render_run(run(store, BYREF_RUN))
+    # ...then the render says where the task went, and carries both calls in order. The
+    # first is the fork's own spawning call, recorded inside the fork: a run does not embed
+    # itself.
+    assert rendered == (
+        "# Agent run: fork\n"
+        "\n"
+        "## Continuation\n"
+        "This run continues a conversation another transcript holds; its task is not here.\n"
+        "\n"
+        "## Response\n"
+        '- Agent (input 84 chars, result 10 chars) {"description": "[redacted]", '
+        '"subagent_type": "[redacted]", "prompt": "[redacted]"}\n'
+        "\n"
+        "## Response\n"
+        '- Bash (input 54 chars, result 10 chars) {"command": "[redacted]", "description": '
+        '"[redacted]"}'
+    )
+
+
+def test_a_replayed_turn_is_not_the_runs_task(fixture_db: Path) -> None:
+    """A fork's copy of the turn it continues is not that fork's task.
+
+    The renders read the `live_*` views for exactly this: over the base tables the same turn
+    id appears twice, and the copy would hand the fork the auditor's prompt as its own.
+    """
+    # If `fork_origin/`'s auditor and the fork it spawned both hold turn `33438141…` — the
+    # auditor because it ran it, the fork because forking replays it...
+    with EnrichmentStore(fixture_db) as store:
+        auditor = render_run(run(store, AUDITOR_RUN))
+        fork = render_run(run(store, ORIGIN_RUN))
+    # ...then the run that ran the turn renders it as its task...
+    assert auditor.startswith("# Agent run: auditor\n\n## Task\n[redacted]\n")
+    # ...and the fork renders as a continuation, with no task at all...
+    assert fork.startswith("# Agent run: fork\n\n## Continuation\n")
+    assert "## Task" not in fork
+    # ...while still carrying its own work, error tail and unanswered call included.
+    assert fork.endswith(
+        "## Response\n"
+        "[redacted]\n"
+        '- Agent (input 84 chars, result 10 chars, ERROR) {"description": "[redacted]", '
+        '"subagent_type": "[redacted]", "prompt": "[redacted]"} | error tail: [redacted]\n'
+        '- Agent (input 84 chars, unanswered) {"description": "[redacted]", "subagent_type": '
+        '"[redacted]", "prompt": "[redacted]"}'
+    )
+
+
+def test_a_spawned_run_renders_as_its_description(mutable_db: Path) -> None:
+    """A run's children reach its prompt as their descriptions, never as their text."""
+    # If `spine/`'s leaf run has been enriched, and its parent — the run whose `Agent` call
+    # spawned it — is rendered...
+    with EnrichmentStore(mutable_db) as store:
+        describe(store, run(store, SPINE_LEAF), "Read one file and reported back.")
+        rendered = render_run(run(store, SPINE_RUN))
+    # ...then the spawning line carries what the child did, which is how a parent describes
+    # work it never saw the text of.
+    assert (
+        '- Agent (input 112 chars, result 10 chars) {"description": "[redacted]", '
+        '"subagent_type": "[redacted]", "run_in_background": false, "prompt": "[redacted]"}'
+        " | subagent: Read one file and reported back." in rendered
+    )
+
+
+def test_a_spawning_call_with_no_run_renders_plainly(mutable_db: Path) -> None:
+    """An `Agent` call whose run is missing renders as an ordinary tool line."""
+    # If the same run is rendered with its one enriched child — its other `Agent` call
+    # really spawned no run row, the subagent having left no transcript...
+    with EnrichmentStore(mutable_db) as store:
+        describe(store, run(store, SPINE_LEAF), "Read one file and reported back.")
+        rendered = render_run(run(store, SPINE_RUN))
+    # ...then that call is a tool line like any other, with no description slot and no
+    # crash: exactly one of the two `Agent` lines carries a child.
+    assert rendered.count(" | subagent: ") == 1
+    assert rendered.endswith(
+        '- Agent (input 112 chars, result 10 chars) {"description": "[redacted]", '
+        '"subagent_type": "[redacted]", "run_in_background": false, "prompt": "[redacted]"}'
+    )
+
+
+def test_an_over_budget_run_drops_the_middle_of_its_work(fixture_db: Path) -> None:
+    """Past its budget a run drops the middle of its call sequence and says how much went."""
+    # If `spine/`'s subagent run is rendered at 300 characters, half what it needs
+    # (injected — 209 of 2,458 real runs hit the real 30K cap, and no fixture comes near
+    # it)...
+    with EnrichmentStore(fixture_db) as store:
+        elided = render_run(run(store, SPINE_RUN), dataclasses.replace(RUN_BUDGETS, total=300))
+    # ...then the task and the start of the work survive, the last thing the run did
+    # survives, and the gap between them counts itself.
+    assert elided == (
+        "# Agent run: claude\n"
+        "\n"
+        "## Task\n"
+        "[redacted]\n"
+        "\n"
+        "## Response\n"
+        "[redacted]\n"
+        "[… 4 of 8 lines elided …]\n"
+        '- Agent (input 112 chars, result 10 chars) {"description": "[redacted]", '
+        '"subagent_type": "[redacted]", "run_in_background": false, "prompt": "[redacted]"}'
+    )
+    assert len(elided) <= 300
+
+
 @pytest.mark.slow  # Renders a whole real corpus — minutes, and it reads private sessions.
 @pytest.mark.skipif(
     LIVE_STORE not in os.environ, reason=f"set {LIVE_STORE} to a real trace store to run"
 )
-def test_no_real_turn_renders_past_its_budget() -> None:
-    """Every turn in a real store renders within the budget the enricher would send.
+def test_no_real_item_renders_past_its_budget() -> None:
+    """Every turn and run in a real store renders within the budget the enricher would send.
 
     The fixtures cannot show this: redaction leaves them two orders of magnitude short of
     the cap, so this is the only check that the default budgets hold on real text.
     """
     with EnrichmentStore(Path(os.environ[LIVE_STORE])) as store:
-        items = store.turn_items()
-    assert items, f"{LIVE_STORE} names a store with no turns in it"
-    over = [item.key for item in items if len(render_turn(item)) > TURN_BUDGETS.total]
+        turn_items, run_items = store.turn_items(), store.run_items()
+    assert turn_items, f"{LIVE_STORE} names a store with no turns in it"
+    assert run_items, f"{LIVE_STORE} names a store with no agent runs in it"
+    over = [item.key for item in turn_items if len(render_turn(item)) > TURN_BUDGETS.total]
+    over += [item.key for item in run_items if len(render_run(item)) > RUN_BUDGETS.total]
     assert over == []

@@ -26,6 +26,19 @@ SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"
 SERVER_TOOLS = "088d63aa-71d3-4108-965e-5147e3eaddbd"
 WORKFLOW = "8d930c77-9e60-4784-9885-6d4c226280f7"
 TEAMMATE = "10d0349d-0705-4e23-aa64-5b1b97698b2e"
+# The two fork sessions: one whose fork carries no turn at all, one whose fork replays the
+# turn its origin ran.
+FORK_BYREF = "07a769d7-828c-4edb-b3ce-af51e2712aa3"
+FORK_ORIGIN = "5a88789c-1da7-4f32-b631-40a7e243334b"
+# The agent runs the render and rounds leaves are built on, one per shape: a multi-turn
+# teammate, a subagent and the leaf it spawned in turn, a turnless fork, a fork whose only
+# turn is a replay, and the run that really ran that turn.
+TEAM_RUN = "aarchitect-5144001ac50718bc"
+SPINE_RUN = "ac461ef46b4bb8e32"
+SPINE_LEAF = "af6473ae437c9608d"
+BYREF_RUN = "afa3946951a08a798"
+ORIGIN_RUN = "a61a059e3610e6fb4"
+AUDITOR_RUN = "acbc29008a04b9702"
 ENRICHMENT_FIXTURES = (
     "spine",
     "server_tools",

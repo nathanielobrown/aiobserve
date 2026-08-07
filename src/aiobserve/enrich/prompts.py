@@ -7,6 +7,7 @@ of the real budgets and elision could not otherwise be tested at all.
 """
 
 import hashlib
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -42,7 +43,11 @@ _SUBJECT: dict[Level, str] = {
     Level.turn: (
         "You are reading one turn of a coding session: what the person asked for, and what "
         "the agent did about it. Describe that turn."
-    )
+    ),
+    Level.agent_run: (
+        "You are reading one run of a subagent: the task it was given, any later "
+        "instructions, and what it did about them. Describe that run."
+    ),
 }
 
 _ANSWER = f"""Answer by calling `{OUTPUT_TOOL_NAME}` once, and say nothing else:
@@ -115,6 +120,9 @@ class Budgets:
 
 
 TURN_BUDGETS = Budgets(total=30_000)
+# The same cap: a run holds the same kind of work a main turn does, and 209 of 2,458 recorded
+# runs reach it.
+RUN_BUDGETS = Budgets(total=30_000)
 
 
 @dataclass(frozen=True)
@@ -131,6 +139,11 @@ class ToolCallRow:
     result: str | None
     is_error: bool
     incomplete: bool
+    # The description of the agent run this call spawned — the one way a child's work
+    # reaches a parent's prompt. None when the call spawned nothing, when the run it spawned
+    # is not enriched yet, and when the run is the one being rendered: a fork's transcript
+    # holds a copy of its own spawning call, and a run does not embed itself.
+    spawned: str | None
 
 
 @dataclass(frozen=True)
@@ -201,6 +214,63 @@ def render_turn(item: TurnItem, budgets: Budgets = TURN_BUDGETS) -> str:
     return _fit("\n".join(head), lines, budgets.total)
 
 
+@dataclass(frozen=True)
+class RunSection:
+    """One stretch of a run's transcript: one instruction, and the calls it drove."""
+
+    # None for the calls a run made before any turn of its own — a fork continuing a
+    # conversation whose prompt lives in another transcript.
+    prompt: str | None
+    api_calls: tuple[ApiCallRow, ...]
+
+
+@dataclass(frozen=True)
+class AgentRunItem(Item):
+    """One subagent run: what it was asked, in sequence, and what it did about it."""
+
+    session_id: str
+    agent_run_id: str
+    agent_type: str
+    sections: tuple[RunSection, ...]
+
+    @property
+    def level(self) -> Level:
+        return Level.agent_run
+
+    @property
+    def key_values(self) -> tuple[str, ...]:
+        return (self.session_id, self.agent_run_id)
+
+
+def render_run(item: AgentRunItem, budgets: Budgets = RUN_BUDGETS) -> str:
+    """One agent run as the model sees it: every instruction it got, and the work each drove.
+
+    The title and the run's first section survive any budget; the sequence after them elides.
+    """
+    head = [f"# Agent run: {item.agent_type}"]
+    lines: list[str] = []
+    task_seen = False
+    for index, section in enumerate(item.sections):
+        if section.prompt is None:
+            opening = ["## Continuation", _CONTINUATION]
+        else:
+            opening = [
+                "## Task" if not task_seen else "## Instruction",
+                _cap(_unwrap_teammate(section.prompt), budgets.prompt),
+            ]
+            task_seen = True
+        # Only the opening of the first section is protected from elision; its calls, and
+        # everything after it, are the sequence `_fit` trims.
+        (head if index == 0 else lines).extend(["", *opening])
+        for call in section.api_calls:
+            lines += ["", "## Response"]
+            text = _cap(call.text.strip(), budgets.text)
+            if text:
+                lines.append(text)
+            lines += [_tool_line(tool, budgets) for tool in call.tool_calls]
+    return _fit("\n".join(head), lines, budgets.total)
+
+
 def input_hash(rendered: str) -> str:
     """The staleness hash: the rendered content and nothing else.
 
@@ -208,6 +278,23 @@ def input_hash(rendered: str) -> str:
     instruction edit does not have to pretend the content changed.
     """
     return hashlib.sha256(rendered.encode()).hexdigest()
+
+
+# What a run with no prompt of its own says in place of a task. All 41 zero-turn runs of the
+# corpus are forks, and the conversation they continue is not in their transcript.
+_CONTINUATION = "This run continues a conversation another transcript holds; its task is not here."
+
+# The one turn opener that carries attributes. Its wrapper is markup — forwarding it would
+# spend budget on the tag and read as content, exactly as a slash command's tags would.
+_TEAMMATE_MESSAGE = re.compile(
+    r"\A<teammate-message\b[^>]*>(.*)</teammate-message>\Z", re.DOTALL | re.IGNORECASE
+)
+
+
+def _unwrap_teammate(prompt: str) -> str:
+    """An instruction from another agent, without the XML the transcript stores it in."""
+    match = _TEAMMATE_MESSAGE.fullmatch(prompt.strip())
+    return match.group(1).strip() if match else prompt
 
 
 def _tool_line(tool: ToolCallRow, budgets: Budgets) -> str:
@@ -225,6 +312,8 @@ def _tool_line(tool: ToolCallRow, budgets: Budgets) -> str:
     )
     if tool.is_error and tool.result:
         line += f" | error tail: {_one_line(_tail(tool.result, budgets.error_tail))}"
+    if tool.spawned is not None:
+        line += f" | subagent: {_one_line(tool.spawned)}"
     return line
 
 

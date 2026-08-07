@@ -16,9 +16,18 @@ from types import TracebackType
 
 import duckdb
 
-from aiobserve.enrich.prompts import ApiCallRow, Item, Level, ToolCallRow, TurnItem
+from aiobserve.enrich.prompts import (
+    AgentRunItem,
+    ApiCallRow,
+    Item,
+    Level,
+    RunSection,
+    ToolCallRow,
+    TurnItem,
+)
 from aiobserve.enrich.validation import Enrichment
 from aiobserve.export.duckdb import SCHEMA_VERSION, SchemaVersionError
+from aiobserve.model import MAIN_SOURCE
 
 # Every enrichment table holds the same columns; only the primary key differs.
 _ENRICHMENT_COLUMNS = """
@@ -114,6 +123,20 @@ _PAYLOAD_COLUMNS = (
 )
 
 
+def _source_clause(alias: str, *, main: bool) -> str:
+    """The main transcript's rows, or every agent run's — the two families a `source` has."""
+    return f"{alias}.source {'=' if main else '<>'} '{MAIN_SOURCE}'"
+
+
+def _project_clause(project: str | None) -> str:
+    """Narrows a query already joined to `sessions s` to one analyzed repository."""
+    return " AND s.project_dir = ?" if project is not None else ""
+
+
+def _project_parameters(project: str | None) -> list[str]:
+    return [project] if project is not None else []
+
+
 @dataclass(frozen=True)
 class Stamp:
     """What a row was written under. A row is current when its stamp equals today's."""
@@ -173,19 +196,20 @@ class EnrichmentStore:
         `project` filters by the analyzed repository's path, as `sessions.project_dir`
         records it; None takes every session in the store.
         """
-        where = "t.source = 'main'"
-        parameters: list[str] = []
-        if project is not None:
-            where += " AND s.project_dir = ?"
-            parameters.append(project)
         turns = self.connection.execute(
             f"""SELECT t.session_id, t.source, t.id, t."index", t.prompt,
                        t.command_name, t.command_args
                 FROM live_turns t JOIN sessions s ON s.id = t.session_id
-                WHERE {where} ORDER BY t.session_id, t."index" """,
-            parameters,
+                WHERE {_source_clause("t", main=True)}{_project_clause(project)}
+                ORDER BY t.session_id, t."index" """,
+            _project_parameters(project),
         ).fetchall()
-        calls = self._api_calls(where, parameters)
+        calls = self._api_calls(main=True, project=project)
+        by_turn: dict[tuple[str, str, str], list[ApiCallRow]] = {}
+        for (session_id, source), sequence in calls.items():
+            for turn_id, row in sequence:
+                if turn_id is not None:
+                    by_turn.setdefault((session_id, source, turn_id), []).append(row)
         return [
             TurnItem(
                 session_id=session_id,
@@ -195,42 +219,97 @@ class EnrichmentStore:
                 prompt=prompt,
                 command_name=command_name,
                 command_args=command_args,
-                api_calls=tuple(calls.get((session_id, source, turn_id), ())),
+                api_calls=tuple(by_turn.get((session_id, source, turn_id), ())),
             )
             for session_id, source, turn_id, index, prompt, command_name, command_args in turns
         ]
 
-    def _api_calls(
-        self, where: str, parameters: list[str]
-    ) -> dict[tuple[str, str, str], list[ApiCallRow]]:
-        """Every api call of the selected turns, in order, with its tool calls attached.
+    def run_items(self, project: str | None = None) -> list[AgentRunItem]:
+        """Every agent run, each as the sequence of instructions and work its transcript holds.
 
-        Read in two queries and joined here rather than in SQL: a row per tool call would
-        repeat every call's text once per tool.
+        A run's api calls that belong to no turn of its own come first, as one continuation
+        section: they are a fork's work on a conversation another transcript opened, and the
+        turn its records replay is that other transcript's, not this run's.
         """
+        runs = self.connection.execute(
+            f"""SELECT r.session_id, r.id, r.agent_type
+                FROM live_agent_runs r JOIN sessions s ON s.id = r.session_id
+                WHERE true{_project_clause(project)} ORDER BY r.session_id, r.id""",
+            _project_parameters(project),
+        ).fetchall()
+        turns: dict[tuple[str, str], list[tuple[str, str]]] = {}
+        for session_id, source, turn_id, prompt in self.connection.execute(
+            f"""SELECT t.session_id, t.source, t.id, t.prompt
+                FROM live_turns t JOIN sessions s ON s.id = t.session_id
+                WHERE {_source_clause("t", main=False)}{_project_clause(project)}
+                ORDER BY t.session_id, t.source, t."index" """,
+            _project_parameters(project),
+        ).fetchall():
+            turns.setdefault((session_id, source), []).append((turn_id, prompt))
+        calls = self._api_calls(main=False, project=project)
+        items: list[AgentRunItem] = []
+        for session_id, run_id, agent_type in runs:
+            local = turns.get((session_id, run_id), [])
+            local_ids = {turn_id for turn_id, _ in local}
+            sequence = calls.get((session_id, run_id), [])
+            continuation = [row for turn_id, row in sequence if turn_id not in local_ids]
+            by_turn: dict[str, list[ApiCallRow]] = {}
+            for turn_id, row in sequence:
+                if turn_id is not None and turn_id in local_ids:
+                    by_turn.setdefault(turn_id, []).append(row)
+            sections = (
+                [RunSection(prompt=None, api_calls=tuple(continuation))] if continuation else []
+            )
+            sections += [
+                RunSection(prompt=prompt, api_calls=tuple(by_turn.get(turn_id, ())))
+                for turn_id, prompt in local
+            ]
+            if not sections:
+                # No turn and no api call: nothing to describe, and no recorded run is in
+                # this state (2,459 scanned). Crash rather than buy a description of nothing.
+                raise ValueError(f"agent run {session_id}/{run_id} holds no turn and no api call")
+            items.append(
+                AgentRunItem(
+                    session_id=session_id,
+                    agent_run_id=run_id,
+                    agent_type=agent_type,
+                    sections=tuple(sections),
+                )
+            )
+        return items
+
+    def _api_calls(
+        self, *, main: bool, project: str | None
+    ) -> dict[tuple[str, str], list[tuple[str | None, ApiCallRow]]]:
+        """Every api call of the selected sources, in order, with its tool calls attached.
+
+        Keyed by session and source, each call paired with the turn it belongs to — which is
+        None for a call no turn opened. Read in two queries and joined here rather than in
+        SQL: a row per tool call would repeat every call's text once per tool.
+        """
+        spawned = self._spawned_descriptions()
         tools: dict[tuple[str, str, str], list[ToolCallRow]] = {}
         for (
             session_id,
             source,
             api_call_id,
+            tool_call_id,
             name,
             tool_input,
             result,
             is_error,
             incomplete,
         ) in self.connection.execute(
-            f"""SELECT c.session_id, c.source, c.api_call_id, c.name, c.input, c.result,
-                           c.is_error, c.incomplete
-                    FROM live_tool_calls c
-                    JOIN live_api_calls a
-                      ON a.session_id = c.session_id AND a.source = c.source
-                     AND a.id = c.api_call_id
-                    JOIN live_turns t
-                      ON t.session_id = a.session_id AND t.source = a.source
-                     AND t.id = a.turn_id
-                    JOIN sessions s ON s.id = t.session_id
-                    WHERE {where} ORDER BY c.session_id, c."index" """,
-            parameters,
+            f"""SELECT c.session_id, c.source, c.api_call_id, c.id, c.name, c.input, c.result,
+                       c.is_error, c.incomplete
+                FROM live_tool_calls c
+                JOIN live_api_calls a
+                  ON a.session_id = c.session_id AND a.source = c.source
+                 AND a.id = c.api_call_id
+                JOIN sessions s ON s.id = c.session_id
+                WHERE {_source_clause("c", main=main)}{_project_clause(project)}
+                ORDER BY c.session_id, c.source, c."index" """,
+            _project_parameters(project),
         ).fetchall():
             tools.setdefault((session_id, source, api_call_id), []).append(
                 ToolCallRow(
@@ -239,24 +318,47 @@ class EnrichmentStore:
                     result=result,
                     is_error=is_error,
                     incomplete=incomplete,
+                    spawned=spawned.get((session_id, source, tool_call_id)),
                 )
             )
-        calls: dict[tuple[str, str, str], list[ApiCallRow]] = {}
+        calls: dict[tuple[str, str], list[tuple[str | None, ApiCallRow]]] = {}
         for session_id, source, turn_id, api_call_id, text in self.connection.execute(
             f"""SELECT a.session_id, a.source, a.turn_id, a.id, a.text
-                FROM live_api_calls a
-                JOIN live_turns t
-                  ON t.session_id = a.session_id AND t.source = a.source AND t.id = a.turn_id
-                JOIN sessions s ON s.id = t.session_id
-                WHERE {where} ORDER BY a.session_id, a."index" """,
-            parameters,
+                FROM live_api_calls a JOIN sessions s ON s.id = a.session_id
+                WHERE {_source_clause("a", main=main)}{_project_clause(project)}
+                ORDER BY a.session_id, a.source, a."index" """,
+            _project_parameters(project),
         ).fetchall():
-            calls.setdefault((session_id, source, turn_id), []).append(
-                ApiCallRow(
-                    text=text, tool_calls=tuple(tools.get((session_id, source, api_call_id), ()))
+            calls.setdefault((session_id, source), []).append(
+                (
+                    turn_id,
+                    ApiCallRow(
+                        text=text,
+                        tool_calls=tuple(tools.get((session_id, source, api_call_id), ())),
+                    ),
                 )
             )
         return calls
+
+    def _spawned_descriptions(self) -> dict[tuple[str, str, str], str]:
+        """What each spawning tool call's run was described as, for the calls that have one.
+
+        Keyed by the *call*, so a tool line can carry its child's description. A call
+        recorded inside the very run it spawned is left out: forking replays the spawning
+        call into the fork's own transcript, and a run embedding itself is a cycle.
+        """
+        return {
+            (session_id, source, tool_call_id): description
+            for session_id, source, tool_call_id, description in self.connection.execute(
+                """SELECT c.session_id, c.source, c.id, e.description
+                   FROM live_tool_calls c
+                   JOIN live_agent_runs r
+                     ON r.session_id = c.session_id AND r.tool_use_id = c.id
+                   JOIN agent_run_enrichments e
+                     ON e.session_id = r.session_id AND e.agent_run_id = r.id
+                   WHERE c.source <> r.id"""
+            ).fetchall()
+        }
 
     def stale_keys(self, level: Level, planned: Mapping[str, Stamp]) -> list[str]:
         """The planned items whose stored stamp is not the one the enricher would write now.
