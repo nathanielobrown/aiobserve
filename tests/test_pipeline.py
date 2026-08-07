@@ -143,13 +143,13 @@ def test_a_grown_session_is_replaced_rather_than_appended(
     built from scratch over the grown file catches that, where a row count would not.
     """
     # If a session was extracted while it was still short...
-    corpus.add("spine", SPINE, lines=18)
+    corpus.add("spine", SPINE, lines=22)
     extractor = corpus.extractor()
     refresh(corpus.project, extractor=extractor, exporter=exporter)
     # Three turns of its own, plus the two its subagent's transcript holds.
     assert len(table(exporter, "turns", SPINE)) == 5
 
-    # ...and then it resumed, growing by seven more records...
+    # ...and then it resumed, growing by thirteen more records...
     corpus.add("spine", SPINE)
     refresh(corpus.project, extractor=extractor, exporter=exporter)
 
@@ -159,6 +159,38 @@ def test_a_grown_session_is_replaced_rather_than_appended(
         for name in ("sessions", "turns", "api_calls", "raw_records"):
             assert table(exporter, name, SPINE) == table(fresh, name, SPINE)
     assert len(table(exporter, "turns", SPINE)) == 6
+
+
+def test_a_session_caught_mid_write_heals_on_the_next_refresh(
+    corpus: Corpus, exporter: DuckDbExporter
+):
+    """Extracting a live session keeps the complete records and picks up the rest later.
+
+    Claude Code appends to the transcript of a session that is still running, so a refresh
+    on a timer will sooner or later read a line that stops mid-JSON. Refusing the file
+    would leave the session unextracted for as long as it stays open.
+    """
+    # If a refresh catches a transcript with a record only half written...
+    transcript = corpus.add("spine", SPINE, lines=22)
+    whole = (FIXTURES / "spine" / f"{SPINE}.jsonl").read_text().split("\n")
+    transcript.write_text(transcript.read_text() + whole[22][:60])
+    extractor = corpus.extractor()
+    refresh(corpus.project, extractor=extractor, exporter=exporter)
+
+    # ...then the records before it are stored and the half one is not...
+    def archived() -> int:
+        row = exporter.connection.execute(
+            "SELECT count(*) FROM raw_records WHERE session_id = ? AND source = 'main'", [SPINE]
+        ).fetchone()
+        assert row is not None
+        return row[0]
+
+    assert archived() == 22
+
+    # ...and once Claude Code has finished the line, the next refresh takes the session whole.
+    corpus.add("spine", SPINE)
+    assert refresh(corpus.project, extractor=extractor, exporter=exporter).extracted == [SPINE]
+    assert archived() == 35
 
 
 def test_a_new_subagent_file_re_extracts_its_session(corpus: Corpus, exporter: DuckDbExporter):

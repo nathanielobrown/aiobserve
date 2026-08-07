@@ -11,7 +11,12 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from aiobserve.export.duckdb import SCHEMA_VERSION, DuckDbExporter, SchemaVersionError
+from aiobserve.export.duckdb import (
+    _TABLES,
+    SCHEMA_VERSION,
+    DuckDbExporter,
+    SchemaVersionError,
+)
 from tests.conftest import TraceFactory
 
 SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"
@@ -19,17 +24,15 @@ DUPS = "8ee00a94-b01a-4394-b447-b065f74b11af"
 OFFLOAD = "7e37bb35-4dcb-4e16-85be-55ac510c168e"
 # The session whose fork replayed a sibling's history — see `tests/fixtures/fork_origin/`.
 ORIGIN = "5a88789c-1da7-4f32-b631-40a7e243334b"
+# The session that compacted twice — see `tests/fixtures/compaction/`.
+COMPACTED = "1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9"
+# A session and the resume that copied its history forward — see `tests/fixtures/resume_pair/`.
+ANCESTOR = "2352492b-1437-4427-ad51-70f35c75f663"
+RESUMED = "0a76f771-5f5b-447e-852a-664fc972ea7c"
 
-# Table name to the model attribute holding its rows, for the count-everything assertions.
-TABLES = {
-    "sessions": None,
-    "turns": "turns",
-    "api_calls": "api_calls",
-    "tool_calls": "tool_calls",
-    "agent_runs": "agent_runs",
-    "offload_files": "offload_files",
-    "raw_records": "raw_records",
-}
+# Every table a session owns, read from the exporter's own list so a table added there and
+# forgotten here cannot slip past the count-everything assertions.
+TABLES = list(_TABLES)
 
 
 @pytest.fixture
@@ -59,13 +62,16 @@ def rows(
 def test_a_trace_round_trips(db: Path, fixture_trace: TraceFactory):
     """Every column of an exported trace reads back as it was written, nulls included."""
     trace = fixture_trace("spine", SPINE)
+    # The spine session never compacted, so the compactions come from the session that did.
+    compacted = fixture_trace("compaction", COMPACTED)
 
     with DuckDbExporter(db) as exporter:
         exporter.export(trace, "fingerprint-1")
+        exporter.export(compacted, "fingerprint-2")
 
         # If a trace is exported, then each table holds exactly its entities, field for
         # field — including the `command_name`/`command_args` nulls on a plain prompt.
-        assert rows(exporter, "sessions", type(trace.session)) == [
+        assert rows(exporter, "sessions", type(trace.session), SPINE) == [
             dataclasses.astuple(trace.session)
         ]
         for table, entities in (
@@ -73,11 +79,15 @@ def test_a_trace_round_trips(db: Path, fixture_trace: TraceFactory):
             ("api_calls", trace.api_calls),
             ("tool_calls", trace.tool_calls),
             ("agent_runs", trace.agent_runs),
+            ("pr_links", trace.pr_links),
+            ("compactions", compacted.compactions),
         ):
-            assert rows(exporter, table, type(entities[0])) == sorted(
+            assert rows(exporter, table, type(entities[0]), entities[0].session_id) == sorted(
                 dataclasses.astuple(entity) for entity in entities
             )
-        assert counts(exporter)["raw_records"] == len(trace.raw_records)
+        assert counts(exporter)["raw_records"] == len(trace.raw_records) + len(
+            compacted.raw_records
+        )
 
 
 def test_re_exporting_a_session_replaces_it_wholly(db: Path, fixture_trace: TraceFactory):
@@ -94,20 +104,24 @@ def test_re_exporting_a_session_replaces_it_wholly(db: Path, fixture_trace: Trac
         assert counts(exporter) == {
             "sessions": 1,
             "turns": 6,
-            "api_calls": 6,
+            "api_calls": 7,
             "tool_calls": 9,
             "agent_runs": 2,
+            "compactions": 0,
+            "pr_links": 2,
             "offload_files": 0,
-            "raw_records": 43,
+            "raw_records": 51,
         }
 
-        # ...and the same session comes back shorter — one turn, one call, three lines...
+        # ...and the same session comes back shorter — one turn, one call, three lines,
+        # and no PR link at all...
         trimmed = replace(
             trace,
             turns=trace.turns[:1],
             api_calls=trace.api_calls[:1],
             tool_calls=trace.tool_calls[:1],
             agent_runs=trace.agent_runs[:1],
+            pr_links=[],
             raw_records=trace.raw_records[:3],
         )
         exporter.export(trimmed, "fingerprint-2")
@@ -119,6 +133,8 @@ def test_re_exporting_a_session_replaces_it_wholly(db: Path, fixture_trace: Trac
             "api_calls": 1,
             "tool_calls": 1,
             "agent_runs": 1,
+            "compactions": 0,
+            "pr_links": 0,
             "offload_files": 0,
             "raw_records": 3,
         }
@@ -248,6 +264,86 @@ def test_a_rollup_counts_replayed_work_once(db: Path, fixture_trace: TraceFactor
         assert exporter.connection.execute(
             "SELECT count(*), sum(output_tokens) FROM api_calls WHERE replayed"
         ).fetchone() == (1, 1146)
+
+
+def test_a_corpus_rollup_counts_a_resumed_session_once(db: Path, fixture_trace: TraceFactory):
+    """Work a resume copied from the session it continued counts under the original only.
+
+    `/resume` writes the whole prior transcript into the new session's file, so the base
+    tables hold both copies and the two rollups answer different questions: what this
+    session's files say, and what this session added to the corpus.
+    """
+    ancestor = fixture_trace("resume_pair", ANCESTOR)
+    resumed = fixture_trace("resume_pair", RESUMED)
+
+    def rollup(exporter: DuckDbExporter, view: str) -> list[tuple[object, ...]]:
+        return exporter.connection.execute(
+            f"SELECT session_id, project_dir, turns, api_calls, tool_calls, compactions, "
+            f"cost_usd, unpriced_api_calls FROM {view} ORDER BY started_at"
+        ).fetchall()
+
+    with DuckDbExporter(db) as exporter:
+        # If a session and the resume that continued it are both exported...
+        exporter.export(ancestor, "fingerprint-1")
+        exporter.export(resumed, "fingerprint-2")
+
+        # ...then each session's own rollup reports what its file holds, copies included —
+        # four calls under the original, and five under the resume that copied them...
+        assert rollup(exporter, "session_rollups") == [
+            (ANCESTOR, "/Users/nob/repos/mycelia", 1, 4, 5, 1, pytest.approx(1.47611), 0),
+            (RESUMED, "/Users/nob/repos/mycelia", 0, 5, 5, 1, pytest.approx(2.386974), 0),
+        ]
+        # ...while the corpus rollup credits every copied call, tool call and compaction to
+        # the session that ran it first, leaving the resume its own single new call.
+        assert rollup(exporter, "corpus_rollups") == [
+            (ANCESTOR, "/Users/nob/repos/mycelia", 1, 4, 5, 1, pytest.approx(1.47611), 0),
+            (RESUMED, "/Users/nob/repos/mycelia", 0, 1, 0, 0, pytest.approx(1.150518), 0),
+        ]
+
+
+def test_a_rollup_can_be_scoped_to_one_project(db: Path, fixture_trace: TraceFactory):
+    """One store holds every project, and a rollup filters down to the one you asked about."""
+    here = fixture_trace("spine", SPINE)
+    # The same session under another checkout — invented, because the fixtures are all
+    # mycelia sessions and the column, not the path, is what the test is about.
+    elsewhere = fixture_trace("dup_uuid", DUPS)
+    elsewhere = replace(elsewhere, session=replace(elsewhere.session, project_dir="/repos/other"))
+
+    with DuckDbExporter(db) as exporter:
+        # If two projects' sessions share the store...
+        exporter.export(here, "fingerprint-1")
+        exporter.export(elsewhere, "fingerprint-2")
+
+        # ...then a rollup filtered by project reports that project's sessions and no others.
+        assert exporter.connection.execute(
+            "SELECT session_id FROM corpus_rollups WHERE project_dir = ?", ["/repos/other"]
+        ).fetchall() == [(DUPS,)]
+        assert exporter.connection.execute(
+            "SELECT count(*) FROM corpus_rollups WHERE project_dir = ?",
+            [here.session.project_dir],
+        ).fetchone() == (1,)
+
+
+def test_a_call_we_cannot_price_is_counted_out_of_the_total(db: Path, fixture_trace: TraceFactory):
+    """A cost total says how many calls it left out, so it is never read as complete.
+
+    Our price table is ours, not Claude Code's: a model it lacks prices as NULL rather
+    than as free, and the rollup carries the gap beside the sum.
+    """
+    trace = fixture_trace("spine", SPINE)
+    priced, unpriced = trace.api_calls[0], trace.api_calls[1]
+
+    with DuckDbExporter(db) as exporter:
+        # If a session holds a call whose model our table does not price — invented by
+        # nulling a real call's cost, since every model the corpus used is priced...
+        exporter.export(
+            replace(trace, api_calls=[priced, replace(unpriced, cost_usd=None)]), "fingerprint-1"
+        )
+
+        # ...then the total sums the calls we could price, and says one was left out.
+        assert exporter.connection.execute(
+            "SELECT cost_usd, unpriced_api_calls FROM session_rollups WHERE session_id = ?", [SPINE]
+        ).fetchone() == (pytest.approx(priced.cost_usd), 1)
 
 
 def test_an_offloaded_output_is_keyed_by_session_and_name(db: Path, fixture_trace: TraceFactory):

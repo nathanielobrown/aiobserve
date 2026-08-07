@@ -19,11 +19,14 @@ from enum import StrEnum
 from pathlib import Path, PurePath
 from typing import Any, NamedTuple
 
+from aiobserve.extract.pricing import SYNTHETIC_MODEL, TokenUsage, compute_cost
 from aiobserve.model import (
     MAIN_SOURCE,
     AgentRun,
     ApiCall,
+    Compaction,
     OffloadFile,
+    PrLink,
     RawRecord,
     Session,
     SessionTrace,
@@ -50,7 +53,7 @@ EXTRACTOR_NAME = "claude_code"
 JOURNAL_SOURCE = "journal"
 # Bump on any change to what this parser produces: the version is folded into every
 # fingerprint, so bumping it re-extracts the whole corpus on the next refresh.
-EXTRACTOR_VERSION = "5"
+EXTRACTOR_VERSION = "6"
 # Where a run whose meta names no spawn depth sorts among its siblings: after every run
 # that does, since the depths Claude Code writes are small.
 _UNKNOWN_DEPTH = 1_000_000
@@ -72,7 +75,8 @@ class RecordType(StrEnum):
     USER = "user"
     SYSTEM = "system"
     CUSTOM_TITLE = "custom-title"
-    # The title record before v2.1.187 renamed it.
+    # The title Claude Code wrote for the session itself, still current beside
+    # `custom-title` — which is the one the operator typed.
     AI_TITLE = "ai-title"
     AGENT_NAME = "agent-name"
     PR_LINK = "pr-link"
@@ -197,6 +201,7 @@ class _Parsed(NamedTuple):
     turns: list[Turn]
     api_calls: list[ApiCall]
     tool_calls: list[ToolCall]
+    compactions: list[Compaction]
 
 
 @dataclass(frozen=True)
@@ -278,6 +283,9 @@ class ClaudeCodeExtractor:
                 _workflow_launches(kept[MAIN_SOURCE]),
                 source.id,
             ),
+            compactions=[one for parsed_one in parsed for one in parsed_one.compactions],
+            # Main-transcript only: no subagent in the corpus records one (2026-08-07).
+            pr_links=_pr_links(kept[MAIN_SOURCE], source.id),
             offload_files=[_offload_file(path, source.id) for path in files.offloads],
             raw_records=raw_records,
         )
@@ -294,6 +302,7 @@ def _parse(lines: list[_Line], session_id: str, source: str, replayed: set[int])
         turns=turns,
         api_calls=_api_calls(lines, turn_by_line, session_id, source, replayed),
         tool_calls=_tool_calls(lines, session_id, source, replayed),
+        compactions=_compactions(lines, session_id, source),
     )
 
 
@@ -570,12 +579,30 @@ def _read(path: Path, session_id: str) -> list[_Line]:
     Split on "\\n" rather than `splitlines()`: real records contain U+2028 and U+2029
     inside string values, which `splitlines()` treats as line breaks and so cuts records
     in half.
+
+    A transcript read while Claude Code is writing it can end mid-record. That last line is
+    dropped with a warning, because the session is live rather than corrupt and the next
+    refresh will pick it up whole. Anywhere earlier, unparseable JSON is real damage and
+    stops the run.
     """
+    raws = path.read_text().split("\n")
     lines = []
-    for line_no, raw in enumerate(path.read_text().split("\n"), start=1):
+    for line_no, raw in enumerate(raws, start=1):
         if not raw.strip():
             continue
-        record = json.loads(raw)
+        try:
+            record = json.loads(raw)
+        except json.JSONDecodeError as error:
+            if any(later.strip() for later in raws[line_no:]):
+                raise TranscriptSchemaError(
+                    f"Unparseable record in session {session_id}, line {line_no}"
+                ) from error
+            logger.warning(
+                "Session %s: dropped an incomplete final line (%d), still being written",
+                session_id,
+                line_no,
+            )
+            continue
         _check_type(record, session_id, line_no)
         lines.append(_Line(line_no=line_no, record=record, raw=raw))
     return lines
@@ -672,7 +699,62 @@ def _session(lines: list[_Line], session_id: str, transcript: Path) -> Session:
         ended_at=max(moments) if moments else None,
         active_ms=active_ms,
         transcript_path=str(transcript),
+        # Claude Code appends a fresh title record on every rename, so the last one is the
+        # name the session ended up with. Both spellings are current; 13 of the 398 titled
+        # mycelia sessions hold both (scanned 2026-08-07), and there the operator's wins.
+        title=_last_field(lines, RecordType.CUSTOM_TITLE, "customTitle")
+        or _last_field(lines, RecordType.AI_TITLE, "aiTitle"),
+        agent_name=_last_field(lines, RecordType.AGENT_NAME, "agentName"),
     )
+
+
+def _last_field(lines: list[_Line], kind: RecordType, field: str) -> str | None:
+    """The last value of a single-field record type, or None when the file holds none."""
+    values = [line.record[field] for line in lines if line.record["type"] == kind]
+    return values[-1] if values else None
+
+
+def _compactions(lines: list[_Line], session_id: str, source: str) -> list[Compaction]:
+    """Every point this transcript summarised itself to free context.
+
+    Each boundary is written alongside the summary that replaced the history, so one row
+    here is one `isCompactSummary` user record in the same file.
+    """
+    return [
+        Compaction(
+            id=line.record["uuid"],
+            session_id=session_id,
+            source=source,
+            timestamp=_required_timestamp(line, session_id),
+            trigger=line.record["compactMetadata"]["trigger"],
+            pre_tokens=line.record["compactMetadata"]["preTokens"],
+            post_tokens=line.record["compactMetadata"]["postTokens"],
+            duration_ms=line.record["compactMetadata"]["durationMs"],
+        )
+        for line in lines
+        if line.record["type"] == RecordType.SYSTEM
+        and line.record["subtype"] == SystemSubtype.COMPACT_BOUNDARY
+    ]
+
+
+def _pr_links(lines: list[_Line], session_id: str) -> list[PrLink]:
+    """Every pull request the session recorded touching.
+
+    These records carry no uuid, and a session that pushes repeatedly links the same PR
+    once per push, so the line number is what separates two of them.
+    """
+    return [
+        PrLink(
+            session_id=session_id,
+            line_no=line.line_no,
+            pr_number=line.record["prNumber"],
+            pr_url=line.record["prUrl"],
+            pr_repository=line.record["prRepository"],
+            timestamp=_required_timestamp(line, session_id),
+        )
+        for line in lines
+        if line.record["type"] == RecordType.PR_LINK
+    ]
 
 
 def _turns(
@@ -808,6 +890,14 @@ def _api_calls(
         # or in a fork that opens mid-conversation.
         answered = at_uuid.get(first.record["parentUuid"])
         split = usage.get("cache_creation")
+        tokens = TokenUsage(
+            input=usage["input_tokens"],
+            output=usage["output_tokens"],
+            cache_read=usage["cache_read_input_tokens"],
+            cache_creation=usage["cache_creation_input_tokens"],
+            cache_5m=split["ephemeral_5m_input_tokens"] if split else None,
+            cache_1h=split["ephemeral_1h_input_tokens"] if split else None,
+        )
         calls.append(
             ApiCall(
                 id=message_id,
@@ -823,12 +913,14 @@ def _api_calls(
                 request_id=last.record.get("requestId"),
                 started_at=_required_timestamp(answered or first, session_id),
                 ended_at=_required_timestamp(last, session_id),
-                input_tokens=usage["input_tokens"],
-                output_tokens=usage["output_tokens"],
-                cache_read_tokens=usage["cache_read_input_tokens"],
-                cache_creation_tokens=usage["cache_creation_input_tokens"],
-                cache_5m_tokens=split["ephemeral_5m_input_tokens"] if split else None,
-                cache_1h_tokens=split["ephemeral_1h_input_tokens"] if split else None,
+                input_tokens=tokens.input,
+                output_tokens=tokens.output,
+                cache_read_tokens=tokens.cache_read,
+                cache_creation_tokens=tokens.cache_creation,
+                cache_5m_tokens=tokens.cache_5m,
+                cache_1h_tokens=tokens.cache_1h,
+                cost_usd=compute_cost(message["model"], tokens),
+                synthetic=message["model"] == SYNTHETIC_MODEL,
                 text=_blocks(group, "text", "text"),
                 thinking=_blocks(group, "thinking", "thinking"),
                 # The message belongs to whichever transcript wrote it first, so its first

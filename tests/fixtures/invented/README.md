@@ -14,9 +14,12 @@ invented record follows on a known line.
 | `invented-novel-tag.jsonl` | a prompt string leading with `<sparkle-notice>` | the tag census closed over every main and subagent transcript |
 | `invented-dup-content-diff.jsonl` | one uuid twice, with different `message.content` | 995 duplicate-uuid pairs exist and **none** differs in content; a difference would mean the conversation itself was rewritten under one uuid |
 | `invented-no-cache-creation.jsonl` | an assistant `usage` with no `cache_creation` key | scanned every assistant record in the corpus: zero lack the key, so "absent, not zero" has no recorded example (see the note below) |
+| `invented-truncated-tail.jsonl` | a final line cut mid-JSON | a transcript Claude Code is still appending to. The extractor **warns and drops the line** here rather than crashing — the one file in this directory whose expected outcome is not a crash |
+| `invented-corrupt-middle.jsonl` | the same broken line, with a complete record after it | corruption rather than a live write, so it crashes. The pair only means something read together: a tolerance that leaked to any line would turn a schema change into silent data loss |
 
-The first three carry the string `SUPER-SECRET-PAYLOAD-9f2a` in the offending record. That is the
-test's tripwire: a crash message that names it has leaked private transcript content into a log.
+Five of the seven carry the string `SUPER-SECRET-PAYLOAD-9f2a` in the offending record: the three
+unknown-shape files and both broken-line files. That is the test's tripwire — a crash message or a
+log line that names it has leaked private transcript content.
 
 ## The `cache_creation` gap
 

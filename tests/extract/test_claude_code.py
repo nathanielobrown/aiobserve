@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 import pytest
 
 from aiobserve.extract.claude_code import ClaudeCodeExtractor, TranscriptSchemaError
-from aiobserve.model import MAIN_SOURCE, ApiCall, Session, Turn
+from aiobserve.model import MAIN_SOURCE, ApiCall, PrLink, Session, Turn
 from tests.conftest import SourceFactory
 
 SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"
@@ -50,13 +50,18 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
         git_branch="fixture-branch-1",
         version="2.1.221",
         entrypoint="cli",
-        # ...the session spans its earliest and latest record (this excerpt borrows three
-        # records from other sessions, which is what widens the window past a single day)...
-        started_at=at("2026-07-17T19:07:56.861"),
+        # ...the session spans its earliest and latest record (this excerpt borrows records
+        # from other sessions, which is what widens the window past a single day)...
+        started_at=at("2026-07-06T19:10:55.881"),
         ended_at=at("2026-08-06T18:41:14.084"),
         # ...and active time is the sum of the two `system/turn_duration` records, 206872 + 12713.
         active_ms=219585,
         transcript_path=str(source.files[0]),
+        # ...the title is the *last* `custom-title`, and a later `ai-title` does not
+        # displace it: a hand-written name outranks a generated one...
+        title="fixture-title-2",
+        # ...and the persona name likewise comes from the last `agent-name`.
+        agent_name="fixture-agent-name-2",
     )
 
     # ...four of the eleven `user` records in its own transcript open a turn (its subagent's
@@ -112,12 +117,13 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             command_name=None,
             command_args=None,
             started_at=at("2026-07-31T19:39:58.872"),
-            ended_at=at("2026-07-31T19:39:58.872"),
+            # ...running to the last record the excerpt holds, a `pr-link`.
+            ended_at=at("2026-08-06T11:52:57.977"),
             replayed=False,
         ),
     ]
 
-    # ...the nine assistant records collapse into the three messages they belong to...
+    # ...the ten assistant records collapse into the four messages they belong to...
     assert [call for call in trace.api_calls if call.source == MAIN_SOURCE] == [
         ApiCall(
             id="msg_011CdmMjFXDofyYSMxYtXa5n",
@@ -140,6 +146,10 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             cache_creation_tokens=20257,
             cache_5m_tokens=0,
             cache_1h_tokens=20257,
+            # ...priced from our own table, which the transcript knows nothing about — the
+            # arithmetic is `tests/extract/test_pricing.py`'s job, so these are exact...
+            cost_usd=0.435678,
+            synthetic=False,
             text="[redacted]",
             thinking="[redacted]",
             replayed=False,
@@ -167,6 +177,8 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             cache_creation_tokens=917,
             cache_5m_tokens=0,
             cache_1h_tokens=917,
+            cost_usd=0.212495,
+            synthetic=False,
             text="",
             thinking="",
             replayed=False,
@@ -191,15 +203,65 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             cache_creation_tokens=94194,
             cache_5m_tokens=0,
             cache_1h_tokens=94194,
+            cost_usd=1.987,
+            synthetic=False,
             text="[redacted]",
             thinking="[redacted]",
             replayed=False,
+        ),
+        # ...and one Claude Code wrote itself rather than asking a model for: no request id,
+        # no effort, no tokens, and a stated cost of zero rather than an unpriced null.
+        ApiCall(
+            id="03b918cc-8a2a-4891-9385-39caceac50ac",
+            session_id=SPINE,
+            source="main",
+            turn_id="8cdceb31-385c-42d4-9dae-137958b09b88",
+            index=3,
+            model="<synthetic>",
+            effort=None,
+            stop_reason="stop_sequence",
+            attribution_skill=None,
+            request_id=None,
+            started_at=at("2026-07-06T19:10:55.881"),
+            ended_at=at("2026-07-06T19:10:55.881"),
+            input_tokens=0,
+            output_tokens=0,
+            cache_read_tokens=0,
+            cache_creation_tokens=0,
+            cache_5m_tokens=0,
+            cache_1h_tokens=0,
+            cost_usd=0.0,
+            synthetic=True,
+            text="[redacted]",
+            thinking="",
+            replayed=False,
+        ),
+    ]
+
+    # ...the two `pr-link` records become two rows even though both name the same PR, since
+    # a session that pushes twice links it twice and the records carry no uuid...
+    assert trace.pr_links == [
+        PrLink(
+            session_id=SPINE,
+            line_no=33,
+            pr_number=656,
+            pr_url="fixture-pr-url-1",
+            pr_repository="fixture-pr-repo-1",
+            timestamp=at("2026-08-06T11:48:48.477"),
+        ),
+        PrLink(
+            session_id=SPINE,
+            line_no=34,
+            pr_number=656,
+            pr_url="fixture-pr-url-1",
+            pr_repository="fixture-pr-repo-1",
+            timestamp=at("2026-08-06T11:52:57.977"),
         ),
     ]
 
     # ...while every line of the transcript survives in the archive, whatever it was —
     # beside the lines of the subagent it spawned, which carry their own source.
-    assert len([r for r in trace.raw_records if r.source == MAIN_SOURCE]) == 27
+    assert len([r for r in trace.raw_records if r.source == MAIN_SOURCE]) == 35
     assert trace.extractor == "claude_code"
 
 
@@ -212,15 +274,15 @@ def test_a_message_split_across_records_merges_into_one_call(fixture_source: Sou
     """
     trace = ClaudeCodeExtractor().extract(fixture_source("spine", SPINE))
 
-    # If the file holds nine assistant records under three message ids...
+    # If the file holds ten assistant records under four message ids...
     assert (
         len([r for r in trace.raw_records if r.type == "assistant" and r.source == MAIN_SOURCE])
-        == 9
+        == 10
     )
-    # ...then three API calls come back, each spanning from the record it answers to its
+    # ...then four API calls come back, each spanning from the record it answers to its
     # last chunk, with the thinking and the text it was split across both present.
     main = [call for call in trace.api_calls if call.source == MAIN_SOURCE]
-    assert len(main) == 3
+    assert len(main) == 4
     merged = main[0]
     assert (merged.started_at, merged.ended_at) == (
         at("2026-08-06T10:44:27.629"),

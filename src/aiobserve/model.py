@@ -7,10 +7,9 @@ is globally unique: a resume copies its ancestor's records verbatim into a new s
 so every row is scoped by `session_id` and by `source` — the transcript inside the session
 that recorded it.
 
-Slices 1 to 3 of `plans/trace-pipeline/design.md` cover sessions, turns, API calls, tool
-calls, agent runs, and the archive — every line of every file the session wrote, plus the
-tool outputs it moved out of the transcript. Compactions, PR links and cost arrive with the
-slices that populate them.
+Slices 1 to 4 of `plans/trace-pipeline/design.md` cover sessions, turns, API calls, tool
+calls, agent runs, compactions, PR links, cost, and the archive — every line of every file
+the session wrote, plus the tool outputs it moved out of the transcript.
 """
 
 from dataclasses import dataclass
@@ -40,6 +39,11 @@ class Session:
     # below `ended_at - started_at`, which includes every gap the user spent away.
     active_ms: int
     transcript_path: str
+    # What the session is called, from the last `custom-title` record, or the last `ai-title`
+    # when the user never renamed it. None when the session was never titled.
+    title: str | None
+    # The persona name the session ran under, from the last `agent-name` record.
+    agent_name: str | None
 
 
 @dataclass(frozen=True)
@@ -106,6 +110,13 @@ class ApiCall:
     # interleaving is lost; `raw_records` keeps it.
     text: str
     thinking: str
+    # USD, from our own price table (`extract/pricing.py`) — not from the transcript, which
+    # records no cost. None when the table does not price `model`, which is a gap in our
+    # list to fill, not a schema change.
+    cost_usd: float | None
+    # A placeholder reply Claude Code wrote itself rather than a model response. It reports
+    # zero tokens and costs nothing, so counting it as a call inflates call counts.
+    synthetic: bool
     # A fork's copy of a call another transcript made. See `Turn.replayed`.
     replayed: bool
 
@@ -211,6 +222,42 @@ class OffloadFile:
 
 
 @dataclass(frozen=True)
+class Compaction:
+    """One point where Claude Code summarised the conversation to free context.
+
+    Everything after a compaction is reasoning over a summary, so these mark where the
+    transcript's account of the session gets lossy. Subagents compact far more often than
+    the sessions that spawn them.
+    """
+
+    # The `system/compact_boundary` record's uuid.
+    id: str
+    session_id: str
+    source: str
+    timestamp: datetime
+    # "auto" when the context window filled, "manual" for an explicit `/compact`.
+    trigger: str
+    # Context size either side of the summary, in tokens.
+    pre_tokens: int
+    post_tokens: int
+    duration_ms: int
+
+
+@dataclass(frozen=True)
+class PrLink:
+    """A pull request the session opened or touched, as Claude Code recorded it."""
+
+    session_id: str
+    # These records carry no uuid, and one session links the same PR many times, so the
+    # transcript line number is the only thing that tells two of them apart.
+    line_no: int
+    pr_number: int
+    pr_url: str
+    pr_repository: str
+    timestamp: datetime
+
+
+@dataclass(frozen=True)
 class RawRecord:
     """One line of one transcript, kept verbatim.
 
@@ -245,5 +292,7 @@ class SessionTrace:
     api_calls: list[ApiCall]
     tool_calls: list[ToolCall]
     agent_runs: list[AgentRun]
+    compactions: list[Compaction]
+    pr_links: list[PrLink]
     offload_files: list[OffloadFile]
     raw_records: list[RawRecord]
