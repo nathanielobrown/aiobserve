@@ -271,6 +271,20 @@ def render_run(item: AgentRunItem, budgets: Budgets = RUN_BUDGETS) -> str:
     return _fit("\n".join(head), lines, budgets.total)
 
 
+def render(item: Item) -> str:
+    """One item as its level's prompt, at that level's default budgets.
+
+    The enricher's one door into the renders. Take a `render_*` function directly to pass
+    budgets, as the tests do.
+    """
+    match item:
+        case TurnItem():
+            return render_turn(item)
+        case AgentRunItem():
+            return render_run(item)
+    raise ValueError(f"nothing renders a {type(item).__name__}")
+
+
 def input_hash(rendered: str) -> str:
     """The staleness hash: the rendered content and nothing else.
 

@@ -111,16 +111,19 @@ def error_result() -> MessageBatchErroredResult:
 
 
 class FakeBatches:
-    """`client.messages.batches`: one batch, ending after `ends_after` polls.
+    """`client.messages.batches`: a batch per submission, each ending after `ends_after` polls.
 
     `results` are handed back in the order the requests were created, which is *not* what the
     real API promises — the mapping under test is the one from `custom_id` back to item key.
+    One script covers every batch, taken from the front: an enrichment run submits a batch per
+    round, and the rounds are the enricher's business, not this file's.
     """
 
     def __init__(self, results: Sequence[MessageBatchResult], *, ends_after: int) -> None:
         self.results_script = results
         self.ends_after = ends_after
         self.created: list[list[dict[str, Any]]] = []
+        self.answered = 0
         self.polls = 0
 
     def create(self, *, requests: Any) -> MessageBatch:
@@ -133,7 +136,9 @@ class FakeBatches:
 
     def results(self, batch_id: str) -> Iterator[MessageBatchIndividualResponse]:
         custom_ids = [entry["custom_id"] for entry in self.created[-1]]
-        for custom_id, result in zip(custom_ids, self.results_script, strict=True):
+        taken = self.results_script[self.answered : self.answered + len(custom_ids)]
+        self.answered += len(taken)
+        for custom_id, result in zip(custom_ids, taken, strict=True):
             yield MessageBatchIndividualResponse(custom_id=custom_id, result=result)
 
     def _batch(self, status: Any) -> MessageBatch:
@@ -310,21 +315,23 @@ def test_both_clients_write_the_same_rows(mutable_db: Path, tmp_path: Path) -> N
     other = tmp_path / "sync.duckdb"
     other.write_bytes(mutable_db.read_bytes())
     with EnrichmentStore(mutable_db) as store:
-        keys = [item.key for item in store.turn_items()]
+        turns = [item.key for item in store.turn_items()]
+        # One reply per item the run sends — every agent run, in rounds, and then every main
+        # turn. All of them say the same thing: results come back positionally, and which
+        # item an answer lands on is the mapping test's question, not this one's.
+        replies = [message(answer("any item"))] * (len(store.run_items()) + len(turns))
         batched = FakeMessages(
             results=[
-                MessageBatchSucceededResult(type="succeeded", message=message(answer(key)))
-                for key in keys
+                MessageBatchSucceededResult(type="succeeded", message=reply) for reply in replies
             ]
         )
         enrich(store, AnthropicBatchClient(sdk(batched), DEFAULT_MODEL))
         through_batches = rows(store)
     with EnrichmentStore(other) as store:
-        direct = FakeMessages(replies=[message(answer(key)) for key in keys])
-        enrich(store, SyncClient(sdk(direct), DEFAULT_MODEL))
+        enrich(store, SyncClient(sdk(FakeMessages(replies=replies)), DEFAULT_MODEL))
         # ...then both wrote a row per turn, and the rows are the same rows.
         assert rows(store) == through_batches
-        assert len(through_batches) == len(keys)
+        assert len(through_batches) == len(turns)
 
 
 @pytest.mark.live  # The one test allowed past the network guard, and the only one that bills.

@@ -360,6 +360,54 @@ class EnrichmentStore:
             ).fetchall()
         }
 
+    def items(self, level: Level, project: str | None = None) -> list[Item]:
+        """Every enrichable item of one level. The enricher's one door into the store."""
+        readers = {Level.turn: self.turn_items, Level.agent_run: self.run_items}
+        if level not in readers:
+            raise ValueError(f"nothing reads {level} items yet")
+        return list(readers[level](project))
+
+    def item_parents(self, project: str | None = None) -> dict[str, str | None]:
+        """Each agent run's key against the key of the item whose prompt embeds its description.
+
+        The parent is the agent that spawned the run: the run `parent_agent_id` names, and
+        otherwise whatever transcript holds the spawning tool call — another run, or a main
+        turn. Both rules are needed: 112 of 2,459 recorded runs name no parent agent yet were
+        spawned from inside another run, and taking either rule alone strands them. None is a
+        root: a run nothing spawned, or one spawned by a call that belongs to no turn.
+
+        Ordering cannot be right for a tree with a gap in it, so a run naming a parent the
+        store does not hold crashes here rather than being treated as a root.
+        """
+        rows = self.connection.execute(
+            f"""SELECT r.session_id, r.id, r.parent_agent_id, c.source, a.turn_id
+                FROM live_agent_runs r
+                JOIN sessions s ON s.id = r.session_id
+                -- The spawning call, excluding the copy of itself a fork's own transcript
+                -- holds: a run is not its own parent.
+                LEFT JOIN live_tool_calls c
+                  ON c.session_id = r.session_id AND c.id = r.tool_use_id AND c.source <> r.id
+                LEFT JOIN live_api_calls a
+                  ON a.session_id = c.session_id AND a.source = c.source
+                 AND a.id = c.api_call_id
+                WHERE true{_project_clause(project)}""",
+            _project_parameters(project),
+        ).fetchall()
+        held = {(session_id, run_id) for session_id, run_id, *_ in rows}
+        parents: dict[str, str | None] = {}
+        for session_id, run_id, parent_agent_id, source, turn_id in rows:
+            run = parent_agent_id or (source if source not in (None, MAIN_SOURCE) else None)
+            if run is not None and (session_id, run) not in held:
+                raise ValueError(
+                    f"agent run {session_id}/{run_id} names parent run {run}, which the store"
+                    f" does not hold — re-extract the session before enriching it"
+                )
+            parent = f"{Level.agent_run}|{session_id}|{run}" if run is not None else None
+            if parent is None and turn_id is not None:
+                parent = f"{Level.turn}|{session_id}|{MAIN_SOURCE}|{turn_id}"
+            parents[f"{Level.agent_run}|{session_id}|{run_id}"] = parent
+        return parents
+
     def stale_keys(self, level: Level, planned: Mapping[str, Stamp]) -> list[str]:
         """The planned items whose stored stamp is not the one the enricher would write now.
 

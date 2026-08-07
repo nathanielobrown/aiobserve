@@ -23,11 +23,25 @@ from aiobserve.enrich.batches import (
     SyncClient,
 )
 from aiobserve.enrich.enricher import EnrichmentFailed, EnrichReport, enrich
-from aiobserve.enrich.prompts import PROMPT_VERSION, Level, TurnItem, input_hash, render_turn
+from aiobserve.enrich.prompts import (
+    PROMPT_VERSION,
+    AgentRunItem,
+    Level,
+    TurnItem,
+    input_hash,
+    render_turn,
+)
 from aiobserve.enrich.store import EnrichmentStore
 from aiobserve.enrich.taxonomy import TAXONOMY_VERSION
 from aiobserve.enrich.validation import FailureKind
-from tests.enrich.conftest import build_store
+from tests.enrich.conftest import (
+    AUDITOR_RUN,
+    ORIGIN_RUN,
+    SPINE_LEAF,
+    SPINE_RUN,
+    TEAM_RUN,
+    build_store,
+)
 
 MODEL = "claude-haiku-4-5-20251001"
 
@@ -92,9 +106,52 @@ def store(spine_store: Path, tmp_path: Path) -> Iterator[EnrichmentStore]:
         yield opened
 
 
+@pytest.fixture(scope="module")
+def forest_store(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Three sessions holding every shape the rounds have to order.
+
+    `spine/` nests a run under a run under a main turn, `fork_origin/` nests a fork under an
+    auditor with no main turn above either, and `teammate/` holds a run nothing spawned.
+    """
+    path = tmp_path_factory.mktemp("forest") / "traces.duckdb"
+    build_store(path, ("spine", "fork_origin", "teammate"))
+    return path
+
+
+@pytest.fixture
+def forest(forest_store: Path, tmp_path: Path) -> Iterator[EnrichmentStore]:
+    """A private copy of the three-session store, open for enrichment."""
+    copy = tmp_path / "forest.duckdb"
+    copy.write_bytes(forest_store.read_bytes())
+    with EnrichmentStore(copy) as opened:
+        yield opened
+
+
 def turns(store: EnrichmentStore) -> list[TurnItem]:
     """The store's main turns in the order a run sends them — the order they happened in."""
     return store.turn_items()
+
+
+def runs(store: EnrichmentStore) -> list[AgentRunItem]:
+    """The store's agent runs, in no particular order — the rounds decide what goes when."""
+    return store.run_items()
+
+
+def key_of(store: EnrichmentStore, agent_run_id: str) -> str:
+    """The item key one agent run is sent and stored under."""
+    return next(item.key for item in runs(store) if item.agent_run_id == agent_run_id)
+
+
+def turn_key(store: EnrichmentStore, prefix: str) -> str:
+    """The item key of the one main turn whose id starts with `prefix`."""
+    return next(item.key for item in turns(store) if item.turn_id.startswith(prefix))
+
+
+def stored_runs(store: EnrichmentStore) -> list[tuple[Any, ...]]:
+    return store.connection.execute(
+        "SELECT agent_run_id, description, input_hash, enriched_at"
+        " FROM agent_run_enrichments ORDER BY agent_run_id"
+    ).fetchall()
 
 
 def stored(store: EnrichmentStore) -> list[tuple[Any, ...]]:
@@ -105,18 +162,25 @@ def stored(store: EnrichmentStore) -> list[tuple[Any, ...]]:
     ).fetchall()
 
 
-def test_a_run_writes_a_row_for_every_stale_turn(store: EnrichmentStore) -> None:
-    """One pass describes every enrichable turn and records what it was described under."""
+def test_a_run_writes_a_row_for_every_stale_item(store: EnrichmentStore) -> None:
+    """One pass describes every enrichable item and records what it was described under."""
     # If a run enriches the `spine/` store...
     client = FakeClient()
-    items = turns(store)
     report = enrich(store, client)
     # ...then it reports what it did, having swept nothing — there are no orphans yet...
-    assert report == EnrichReport(swept=0, enriched=4)
-    # ...the client was asked about every main turn, once...
-    assert client.keys == [item.key for item in items]
-    # ...and each row holds the answer that came back, keyed by the turn it describes and
-    # stamped with everything that decides whether it is still current.
+    assert report == EnrichReport(swept=0, enriched=6)
+    # ...the client was asked about the two agent runs, the deeper one first, and then about
+    # every main turn, once each...
+    items = turns(store)
+    assert client.keys == [
+        key_of(store, SPINE_LEAF),
+        key_of(store, SPINE_RUN),
+        *(item.key for item in items),
+    ]
+    # ...and each turn row holds the answer that came back, keyed by the turn it describes
+    # and stamped with everything that decides whether it is still current. The hashes are
+    # taken now, not before the run: the turn that spawned a subagent renders differently
+    # once that subagent has a description.
     assert stored(store) == [
         (
             item.session_id,
@@ -182,7 +246,11 @@ def test_a_taxonomy_bump_re_enriches(
     monkeypatch.setattr("aiobserve.enrich.enricher.TAXONOMY_VERSION", 99)
     client = FakeClient()
     enrich(store, client)
-    assert client.keys == [item.key for item in turns(store)]
+    assert client.keys == [
+        key_of(store, SPINE_LEAF),
+        key_of(store, SPINE_RUN),
+        *(item.key for item in turns(store)),
+    ]
     assert {row[9] for row in stored(store)} == {99}
 
 
@@ -191,7 +259,11 @@ def test_a_model_switch_re_enriches(store: EnrichmentStore) -> None:
     enrich(store, FakeClient())
     client = FakeClient(model="claude-sonnet-4-5")
     enrich(store, client)
-    assert client.keys == [item.key for item in turns(store)]
+    assert client.keys == [
+        key_of(store, SPINE_LEAF),
+        key_of(store, SPINE_RUN),
+        *(item.key for item in turns(store)),
+    ]
     assert {row[10] for row in stored(store)} == {"claude-sonnet-4-5"}
 
 
@@ -283,8 +355,8 @@ def test_a_dry_run_writes_nothing_and_sends_nothing(
     # If a dry run is asked for — with `build_client` left as it is, so constructing one
     # would fail the test rather than pass it...
     cli.main("enrich", "--db", str(store.path), "--dry-run")
-    # ...then it reports the four stale turns and writes no row.
-    assert "4 item(s) would be sent" in capsys.readouterr().out
+    # ...then it reports the two stale runs and the four stale turns, and writes no row.
+    assert "6 item(s) would be sent" in capsys.readouterr().out
     assert stored(store) == []
 
 
@@ -296,7 +368,10 @@ def test_the_cli_limits_what_it_sends(
     monkeypatch.setattr(cli, "build_client", lambda model, *, batched: client)
     cli.main("enrich", "--db", str(store.path), "--limit", "2")
     assert len(client.keys) == 2
-    assert len(stored(store)) == 2
+    # The limit is spent from the deepest round outwards, so it buys the two agent runs
+    # before it reaches a turn.
+    assert len(stored_runs(store)) == 2
+    assert stored(store) == []
 
 
 def test_the_batch_flag_picks_the_client(
@@ -342,3 +417,138 @@ def test_the_key_never_reaches_the_output(
     # ...then the key is in none of what the run said, and none of what it raised.
     printed = capsys.readouterr()
     assert anthropic_env not in printed.out + printed.err + str(failure.value)
+
+
+def test_rounds_send_children_before_parents(forest: EnrichmentStore) -> None:
+    """Every run is described after the runs it spawned, and every main turn after both.
+
+    A parent's prompt embeds its children's descriptions, so a parent sent first would be
+    described from a hole — and the hash would then call that description current forever.
+    """
+    # If three sessions are enriched at once — a run under a run under a turn, a fork under
+    # an auditor under no turn at all, and a run nothing spawned...
+    client = FakeClient()
+    enrich(forest, client)
+    # ...then the batches are the levels of the forest, deepest first: every leaf run...
+    assert [set(request.key for request in batch) for batch in client.batches] == [
+        {key_of(forest, SPINE_LEAF), key_of(forest, ORIGIN_RUN), key_of(forest, TEAM_RUN)},
+        # ...then the runs that spawned them...
+        {key_of(forest, SPINE_RUN), key_of(forest, AUDITOR_RUN)},
+        # ...and the main turns last, because a turn embeds the runs it spawned.
+        {item.key for item in turns(forest)},
+    ]
+
+
+def test_a_rootless_run_is_a_root(forest: EnrichmentStore) -> None:
+    """A run no tool call spawned is a leaf of nobody's tree, and goes out in the first round.
+
+    46 recorded runs carry no spawning call — mostly teammates, which the team mechanism
+    starts rather than an agent. Waiting for a parent they do not have would strand them.
+    """
+    client = FakeClient()
+    enrich(forest, client)
+    first = {request.key for request in client.batches[0]}
+    # The teammate run, which names neither a spawning call nor a parent agent, goes in the
+    # first round; a run that does name a parent waits for it.
+    assert key_of(forest, TEAM_RUN) in first
+    assert key_of(forest, SPINE_RUN) not in first
+
+
+def test_a_run_naming_a_missing_parent_crashes(forest: EnrichmentStore) -> None:
+    """A child whose parent run is not in the store crashes the run, naming the child.
+
+    Planted, not recorded: no run of the corpus names a parent the store lacks (2,459
+    scanned). Ordering cannot be right for a tree with a gap in it, and guessing a root
+    would send the child before a parent that may yet arrive.
+    """
+    # If the run that spawned `spine/`'s leaf is deleted, standing for a store missing an
+    # agent that some other agent named as its parent...
+    forest.connection.execute("DELETE FROM agent_runs WHERE id = ?", [SPINE_RUN])
+    # ...then the run refuses to order anything, and says which child it could not place.
+    with pytest.raises(ValueError, match=f"{SPINE_LEAF}.*{SPINE_RUN}"):
+        enrich(forest, FakeClient())
+
+
+def test_a_childs_new_description_makes_its_ancestors_stale(store: EnrichmentStore) -> None:
+    """A description that changes re-describes everything above it, in the same invocation.
+
+    The stale set has to be recomputed after each round's upserts. Computing it once up
+    front passes every other check here while silently never cascading.
+    """
+    # If `spine/` is fully enriched, and then the leaf run alone is made stale — by renaming
+    # a tool call only that run's prompt renders...
+    enrich(store, FakeClient())
+    before = {row[0]: row[2] for row in stored_runs(store)} | {
+        row[2]: row[7] for row in stored(store)
+    }
+    store.connection.execute(
+        "UPDATE tool_calls SET name = 'Grep' WHERE id = 'toolu_01SzCMuLzJk8ag5BnK545sWY'"
+    )
+    # ...and the model answers the two runs with new text, as a re-read of changed work
+    # would...
+    rewritten = {
+        key: Succeeded(key=key, output=answer(key, description=f"Rewrote {key}."))
+        for key in (key_of(store, SPINE_LEAF), key_of(store, SPINE_RUN))
+    }
+    client = FakeClient(answers=rewritten)
+    enrich(store, client)
+    # ...then the run goes up the tree: the leaf, then the run whose prompt embeds its
+    # description, then the main turn whose prompt embeds *that* — none of which was stale
+    # when the round started.
+    assert client.keys == [
+        key_of(store, SPINE_LEAF),
+        key_of(store, SPINE_RUN),
+        turn_key(store, "818588ad"),
+    ]
+    # ...each of their stored inputs moved...
+    after = {row[0]: row[2] for row in stored_runs(store)} | {
+        row[2]: row[7] for row in stored(store)
+    }
+    changed = {key for key, value in after.items() if before[key] != value}
+    assert changed == {SPINE_LEAF, SPINE_RUN, "818588ad-3849-48fe-a546-573163768e04"}
+
+
+def test_a_child_re_described_identically_stops_the_cascade(store: EnrichmentStore) -> None:
+    """A re-described child whose text did not change leaves its ancestors alone.
+
+    The other half of the hash contract, and the reason a dry run's count is an upper bound.
+    """
+    # If the same leaf run is made stale, and the model answers it with the same description
+    # as before...
+    enrich(store, FakeClient())
+    turns_before = stored(store)
+    parent_before = [row for row in stored_runs(store) if row[0] == SPINE_RUN]
+    store.connection.execute(
+        "UPDATE tool_calls SET name = 'Grep' WHERE id = 'toolu_01SzCMuLzJk8ag5BnK545sWY'"
+    )
+    client = FakeClient()
+    enrich(store, client)
+    # ...then the leaf is the only item sent: its parent's prompt reads the same as it did,
+    # so nothing above it is stale...
+    assert client.keys == [key_of(store, SPINE_LEAF)]
+    # ...and no ancestor's row was rewritten, down to when it was written.
+    assert stored(store) == turns_before
+    assert [row for row in stored_runs(store) if row[0] == SPINE_RUN] == parent_before
+
+
+def test_a_failed_childs_parents_are_skipped(store: EnrichmentStore) -> None:
+    """When a child fails, the items whose prompts embed it write nothing at all.
+
+    Writing a parent whose child failed bakes a hole into a description that the hash then
+    calls current forever — the one failure mode a rerun cannot heal.
+    """
+    # If the leaf run fails and everything else answers normally...
+    leaf = key_of(store, SPINE_LEAF)
+    client = FakeClient(answers={leaf: Failed(leaf, FailureKind.api_error)})
+    with pytest.raises(EnrichmentFailed, match=str(FailureKind.api_error)):
+        enrich(store, client)
+    # ...then neither the run that spawned it nor the main turn that spawned *that* was
+    # sent, and neither wrote a row...
+    assert client.keys == [
+        leaf,
+        *(item.key for item in turns(store) if not item.turn_id.startswith("818588ad")),
+    ]
+    assert stored_runs(store) == []
+    # ...while the session's three other main turns were enriched as usual: a skip is not a
+    # failure, and it takes only the ancestors with it.
+    assert [row[2][:8] for row in stored(store)] == ["30aad8e5", "5b848af7", "8cdceb31"]

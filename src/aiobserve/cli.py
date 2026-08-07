@@ -13,7 +13,7 @@ from aiobserve.enrich.batches import (
     BatchClient,
     SyncClient,
 )
-from aiobserve.enrich.enricher import enrich, plan_turns
+from aiobserve.enrich.enricher import enrich, plan
 from aiobserve.enrich.store import EnrichmentStore
 from aiobserve.export.duckdb import DuckDbExporter
 from aiobserve.extract.claude_code import ClaudeCodeExtractor
@@ -107,8 +107,8 @@ def _enrich(args: argparse.Namespace) -> None:
     project = str(args.project.resolve()) if args.project else None
     with EnrichmentStore(args.db) as store:
         if args.dry_run:
-            planned = plan_turns(store, args.model, project=project, limit=args.limit)
-            print(f"{len(planned)} item(s) would be sent to {args.model}")
+            planned = plan(store, args.model, project=project, limit=args.limit)
+            print(f"at most {len(planned)} item(s) would be sent to {args.model}")
             return
         client = build_client(args.model, batched=not args.no_batch)
         report = enrich(store, client, project=project, limit=args.limit)
