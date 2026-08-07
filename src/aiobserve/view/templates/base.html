@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}aiobserve{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav id="masthead"><a href="/">aiobserve</a></nav>
+  <main>{% block main %}{% endblock %}</main>
+  {# Every page says what produced it: the query file and the bindings, ready to re-run. #}
+  {% if citations %}
+  <footer id="citation">
+    <ul>
+      {% for name, line in citations.items() %}
+      <li data-field="{{ name }}"><code>{{ line }}</code></li>
+      {% endfor %}
+    </ul>
+  </footer>
+  {% endif %}
+</body>
+</html>

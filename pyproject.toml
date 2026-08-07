@@ -9,6 +9,9 @@ dependencies = [
   "pytz>=2025.2",  # duckdb needs it to hand a TIMESTAMPTZ back to Python, but doesn't declare it
   "anthropic>=0.75", # the enrichment client — Message Batches for a pass, Messages for dev runs
   "python-dotenv>=1.1", # reads ANTHROPIC_API_KEY out of .env, which is gitignored
+  "fastapi>=0.115", # the trace viewer's routes, and the test client the viewer tier drives
+  "uvicorn>=0.34", # serves the viewer on localhost; nothing here is deployed
+  "jinja2>=3.1", # the viewer's templates, autoescaping every value a transcript wrote
 ]
 
 [project.scripts]
@@ -22,9 +25,10 @@ build-backend = "hatchling.build"
 dev = [
   "pytest>=8.4",
   "pytest-timeout>=2.4", # backs the `timeout` setting below
-
   "pyrefly>=0.24",
   "ruff>=0.12",
+  "httpx>=0.28", # what `fastapi.testclient` calls the app through
+
 ]
 
 [tool.ruff]

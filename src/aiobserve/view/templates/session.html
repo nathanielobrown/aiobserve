@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}{{ header.title or header.session_id }} — aiobserve{% endblock %}
+
+{# One run and the runs under it. `attribute` marks the top level: a chip hangs off a turn,
+   an unattached run hangs off nothing. Everything nested is a chip either way. #}
+{% macro run_list(chips, attribute) %}
+<ul class="runs">
+  {% for chip in chips %}
+  <li {{ attribute }}="{{ chip.run.run_id }}">
+    <span data-field="agent_type" class="type">{{ chip.run.agent_type }}</span>
+    <span data-field="description">{{ chip.run.description }}</span>
+    <span data-field="model" class="model">{{ chip.run.model }}</span>
+    {% if chip.run.is_fork %}<span class="fork">fork</span>{% endif %}
+    {% if chip.children %}{{ run_list(chip.children, 'data-chip') }}{% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endmacro %}
+
+{% macro fact(name, value) %}
+<div><dt>{{ name }}</dt><dd data-field="{{ name }}">{{ value }}</dd></div>
+{% endmacro %}
+
+{% block main %}
+<section id="session-header">
+  <h1 data-field="title">{{ header.title or header.session_id }}</h1>
+  <dl>
+    {{ fact('session_id', header.session_id) }}
+    {{ fact('project_dir', header.project_dir) }}
+    {{ fact('git_branch', header.git_branch) }}
+    {{ fact('version', header.version) }}
+    {{ fact('entrypoint', header.entrypoint) }}
+    {{ fact('started_at', header.started_at | when) }}
+    {{ fact('wall_ms', header.wall_ms | duration) }}
+    {{ fact('active_ms', header.active_ms | duration) }}
+    {{ fact('turns', header.turns) }}
+    {{ fact('api_calls', header.api_calls) }}
+    {{ fact('tool_calls', header.tool_calls) }}
+    {{ fact('tool_errors', header.tool_errors) }}
+    {{ fact('agent_runs', header.agent_runs) }}
+    {{ fact('compactions', header.compactions) }}
+    {{ fact('cost_usd', header.cost_usd | money) }}
+    {{ fact('unpriced_api_calls', header.unpriced_api_calls) }}
+    {{ fact('output_tokens', header.output_tokens | count) }}
+    {{ fact('skills', (header.skills or []) | join(', ')) }}
+  </dl>
+  {% if header.pr_urls %}
+  <ul class="prs">
+    {% for url in header.pr_urls %}<li><a href="{{ url }}">{{ url }}</a></li>{% endfor %}
+  </ul>
+  {% endif %}
+</section>
+
+<section id="timeline">
+  {% for entry in timeline %}
+  {% if entry.kind == 'turn' %}
+  <article data-turn="{{ entry.row.turn_id }}">
+    <h2 data-field="prompt">{{ entry.row.prompt }}</h2>
+    <p class="numbers">
+      <span data-field="started_at">{{ entry.row.started_at | clock }}</span>
+      <span data-field="api_calls">{{ entry.row.api_calls }} calls</span>
+      <span data-field="tool_calls">{{ entry.row.tool_calls }} tools</span>
+      <span data-field="tool_errors">{{ entry.row.tool_errors }} errors</span>
+      <span data-field="cost_usd">{{ entry.row.cost_usd | money }}</span>
+    </p>
+    {% if entry.chips %}{{ run_list(entry.chips, 'data-chip') }}{% endif %}
+  </article>
+  {% else %}
+  {# A compaction sits between the turns it fell between: what a later turn could still see
+     depends on it. #}
+  <div class="compaction" data-compaction="{{ entry.row.compaction_id }}">
+    <span data-field="timestamp">{{ entry.row.timestamp | clock }}</span>
+    <span data-field="trigger">{{ entry.row.trigger }}</span>
+    <span data-field="tokens">
+      {{ entry.row.pre_tokens | count }} → {{ entry.row.post_tokens | count }} tokens
+    </span>
+  </div>
+  {% endif %}
+  {% endfor %}
+</section>
+
+{% if unattached %}
+<section id="unattached">
+  {# The chip join's complement. Listed rather than dropped, so the run count in the header
+     and the runs on the page agree. #}
+  <h2>{{ unattached | length }} run(s) under no turn</h2>
+  {{ run_list(unattached, 'data-unattached') }}
+</section>
+{% endif %}
+{% endblock %}

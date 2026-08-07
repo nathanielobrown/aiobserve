@@ -27,6 +27,7 @@ from aiobserve.export.duckdb import DuckDbExporter
 from aiobserve.extract.claude_code import ClaudeCodeExtractor
 from aiobserve.pipeline import refresh
 from aiobserve.sessions import DEFAULT_PROJECTS_ROOT, find_sessions
+from aiobserve.view.app import PORT, serve
 
 # Gitignored, so an extract never lands in a commit.
 DEFAULT_DB = Path("data") / "traces.duckdb"
@@ -108,7 +109,21 @@ def main(*argv: str) -> None:
         "--csv", action="store_true", help="Write CSV to stdout, commentary to stderr"
     )
 
+    viewer = subcommands.add_parser("view", help="Read the trace store in a local web viewer")
+    viewer.add_argument(
+        "--db", type=Path, default=DEFAULT_DB, help=f"The trace store (default: {DEFAULT_DB})"
+    )
+    viewer.add_argument(
+        "--port", type=int, default=PORT, help=f"The port to serve on (default: {PORT})"
+    )
+    viewer.add_argument(
+        "--no-browser", action="store_true", help="Do not open a browser on startup"
+    )
+
     args = parser.parse_args(argv or None)
+    if args.command == "view":
+        serve(args.db, args.port, open_browser=not args.no_browser)
+        return
     if args.command == "query":
         _query(args)
         return

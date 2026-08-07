@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Sessions — aiobserve{% endblock %}
+
+{# A column heading: a link that re-sorts, marked when it is the sort in force. #}
+{% macro heading(key) %}
+<th data-column="{{ key }}" {% if key == sort %}aria-sort="{{ direction }}"{% endif %}>
+  <a href="{{ links[key] }}">{{ sorts[key] }}</a>
+</th>
+{% endmacro %}
+
+{% block main %}
+<h1>{{ sessions | length }} sessions</h1>
+<table id="sessions">
+  <thead>
+    <tr>
+      {{ heading('started_at') }}
+      {{ heading('title') }}
+      {{ heading('project_dir') }}
+      {{ heading('turns') }}
+      {{ heading('api_calls') }}
+      {{ heading('tool_calls') }}
+      {{ heading('tool_errors') }}
+      {{ heading('agent_runs') }}
+      {{ heading('compactions') }}
+      {{ heading('cost_usd') }}
+      {{ heading('output_tokens') }}
+      {{ heading('wall_ms') }}
+      {{ heading('active_ms') }}
+      <th>Skills</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in sessions %}
+    <tr data-session-id="{{ row.session_id }}">
+      <td data-field="started_at">{{ row.started_at | when }}</td>
+      <td data-field="title" class="title">
+        <a href="/session/{{ row.session_id }}">{{ row.title or row.session_id }}</a>
+      </td>
+      <td data-field="project_dir" class="path">{{ row.project_dir }}</td>
+      <td data-field="turns" class="number">{{ row.turns }}</td>
+      <td data-field="api_calls" class="number">{{ row.api_calls }}</td>
+      <td data-field="tool_calls" class="number">{{ row.tool_calls }}</td>
+      <td data-field="tool_errors" class="number">{{ row.tool_errors }}</td>
+      <td data-field="agent_runs" class="number">{{ row.agent_runs }}</td>
+      <td data-field="compactions" class="number">{{ row.compactions }}</td>
+      {# The unpriced count rides beside the cost: a total with calls our price table
+         missed is not the session's cost, and the page has to say so. #}
+      <td class="number"><span data-field="cost_usd">{{ row.cost_usd | money }}</span>{% if
+        row.unpriced_api_calls %}<sup
+        title="{{ row.unpriced_api_calls }} call(s) at a model our price table lacks">*</sup>{%
+        endif %}</td>
+      <td data-field="output_tokens" class="number">{{ row.output_tokens | count }}</td>
+      <td data-field="wall_ms" class="number">{{ row.wall_ms | duration }}</td>
+      <td data-field="active_ms" class="number">{{ row.active_ms | duration }}</td>
+      <td data-field="skills" class="names">{{ (row.skills or []) | join(', ') }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

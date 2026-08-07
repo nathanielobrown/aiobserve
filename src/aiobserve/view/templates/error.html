@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ status }} — aiobserve{% endblock %}
+{% block main %}
+{# The message never repeats what was asked for: a request is untrusted text like any other. #}
+<section id="error">
+  <h1 data-field="status">{{ status }}</h1>
+  <p data-field="message">{{ message }}</p>
+  <p><a href="/">Back to the session list</a></p>
+</section>
+{% endblock %}

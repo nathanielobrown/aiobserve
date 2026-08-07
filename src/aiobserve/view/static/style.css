@@ -1,0 +1,56 @@
+/* One stylesheet, served from this app — the policy in `app.CSP` allows no other source. */
+:root {
+  color-scheme: light dark;
+  --ink: #1b1b1f;
+  --dim: #6a6a75;
+  --line: #d8d8de;
+  --paper: #fbfbfd;
+  --mark: #2b5fd9;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --ink: #e6e6ea; --dim: #9a9aa5; --line: #33333c; --paper: #17171c; --mark: #7aa2f7; }
+}
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 14px/1.45 ui-sans-serif, system-ui, sans-serif;
+}
+a { color: var(--mark); }
+main { padding: 0 1.5rem 3rem; }
+#masthead {
+  padding: 0.6rem 1.5rem;
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+}
+#masthead a { text-decoration: none; }
+h1 { font-size: 1.3rem; }
+h2 { font-size: 1rem; }
+
+/* The session list. */
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--line); text-align: left; }
+th { position: sticky; top: 0; background: var(--paper); white-space: nowrap; }
+th[aria-sort] a { font-weight: 700; }
+td.number { text-align: right; font-variant-numeric: tabular-nums; }
+td.path, td.names, .model, .type { color: var(--dim); }
+td.path, td.title { max-width: 22rem; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+
+/* One session's timeline. */
+#session-header dl { display: flex; flex-wrap: wrap; gap: 0.25rem 1.5rem; margin: 0.5rem 0; }
+#session-header dt { color: var(--dim); font-size: 0.8rem; }
+#session-header dd { margin: 0; font-variant-numeric: tabular-nums; }
+article[data-turn] { border-top: 1px solid var(--line); padding: 0.75rem 0; }
+article[data-turn] h2 { margin: 0 0 0.25rem; font-weight: 600; white-space: pre-wrap; }
+.numbers { margin: 0; color: var(--dim); display: flex; gap: 1rem; }
+.compaction { border-top: 1px dashed var(--line); padding: 0.4rem 0; color: var(--dim); }
+.compaction span { margin-right: 1rem; }
+ul.runs { margin: 0.4rem 0 0; padding-left: 1.2rem; }
+ul.runs li { list-style: none; }
+.fork { color: var(--dim); font-size: 0.8rem; }
+
+/* Footers and error pages. */
+#citation { border-top: 1px solid var(--line); padding: 0.5rem 1.5rem; color: var(--dim); }
+#citation ul { margin: 0; padding: 0; list-style: none; }
+#error p { max-width: 40rem; }
