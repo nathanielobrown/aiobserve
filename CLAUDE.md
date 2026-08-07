@@ -32,11 +32,12 @@ Feel free to change existing tooling or add new tools when they ease the work or
 # Layout
 
 ```
-src/aiobserve/        The package — `extract/` reads an agent's sessions, `export/` writes a sink, `pipeline.py` is the seam
+src/aiobserve/        The package — `extract/` reads an agent's sessions, `export/` writes a sink, `enrich/` describes what it found, `pipeline.py` is the seam
 tests/                Mirrors the package layout; fixtures are recorded sessions
 docs/
   schema.md           What each telemetry field means, and the session that proves it
   store.md            The trace store: why it's the archive, and what to check before deleting one
+  enrichment.md       Model-written descriptions beside every run, turn, and session — what makes one stale, and what a pass costs
   documentation.md    Where each kind of content belongs — read before writing docs
   writing_style_guide.md   House prose style, Zinsser distilled — loaded via the writing skill
   mermaid-guide.md    Read before authoring Mermaid diagrams

@@ -8,7 +8,7 @@ The first target is **Claude Code**. The tool takes a project path, so it works 
 
 ## Status
 
-Early. Claude Code transcripts extract into a local DuckDB store — sessions, turns, API calls, tool calls, subagent runs, compactions, cost, and every raw line. Enrichment, the spans Claude Code exports over OpenTelemetry, and the findings the store is for all come later.
+Early. Claude Code transcripts extract into a local DuckDB store — sessions, turns, API calls, tool calls, subagent runs, compactions, cost, and every raw line. A second pass describes each run, turn, and session in the model's words, so findings can filter on meaning. The spans Claude Code exports over OpenTelemetry, and the findings the store is for, come later.
 
 ## Getting started
 
@@ -43,6 +43,14 @@ uv run aiobserve extract ~/repos/mycelia    # --db to write somewhere other than
 ```
 
 Each run re-extracts only the sessions whose files changed, replacing a session's rows whole. Query the DuckDB file directly; count through the `session_rollups` and `corpus_rollups` views, which drop the records a fork or a resume copied. The store outlives the transcripts it was built from, so read [the store guide](docs/store.md) before deleting one.
+
+## Describing what happened
+
+```bash
+uv run aiobserve enrich ~/repos/mycelia --dry-run    # what it would send, and what that costs
+```
+
+A model describes every agent run, main turn, and session, and the store keeps the answer beside the rows it describes. Only what changed is re-described. Read [the enrichment guide](docs/enrichment.md) before running one against a real corpus — it explains what a pass buys and what it costs.
 
 ## Handling the data
 
