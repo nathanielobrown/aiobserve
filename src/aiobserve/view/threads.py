@@ -166,11 +166,16 @@ def unattached(runs: Sequence[Row]) -> tuple[Chip, ...]:
 
     No `tool_use_id`, a spawning call naming a tool call the store lacks, or a fork's own
     un-replayed copy of that call: the page says the run is unattached and does not guess.
+
+    A missing turn is not on its own enough to land here. A run whose spawning call names a
+    run of this session but no turn of it already hangs under that run — `chips` asks for
+    exactly that pair — so listing it here as well would show it twice.
     """
+    spawners = {run["run_id"] for run in runs}
     return tuple(
         Chip(run, chips(runs, run["run_id"], None) + _under_turns(runs, run["run_id"]))
         for run in runs
-        if run["spawn_turn_id"] is None
+        if run["spawn_turn_id"] is None and run["spawn_source"] not in spawners
     )
 
 

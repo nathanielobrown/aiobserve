@@ -392,18 +392,60 @@ def test_every_session_page_accounts_for_all_of_its_runs(
 def test_the_unattached_section_is_the_chip_joins_complement(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """A run is listed as unattached exactly when the chip join fails to place it."""
+    """A run is listed as unattached exactly when the chip join fails to place it.
+
+    Placing it takes a turn *or* a run of this session: a run spawned by a call that names
+    the run but no turn hangs under that run, so it is placed and not listed here.
+    """
     listing = queries.load("view_runs").strip().rstrip(";")
     for session_id in sessions(store):
         unplaced = {
             row[0]
             for row in store.execute(
-                f"SELECT run_id FROM ({listing}) WHERE spawn_turn_id IS NULL",
+                f"SELECT run_id FROM ({listing}) WHERE spawn_turn_id IS NULL"
+                f" AND (spawn_source IS NULL OR spawn_source NOT IN"
+                f" (SELECT run_id FROM ({listing})))",
                 {"session_id": session_id},
             ).fetchall()
         }
         page = client.get(f"/session/{session_id}").text
         assert set(values(page, "data-unattached")) == unplaced, session_id
+
+
+def test_a_run_spawned_by_a_call_in_no_turn_is_shown_once(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A run whose spawning call sits in no turn hangs under the run that spawned it, once.
+
+    The shape is real — a call the transcript never tied to a turn is exactly what the store
+    records as a NULL `turn_id` — but no recorded session carries an instance of it under a
+    *run*, so the test plants one by taking the turn away from the call that spawned a nested
+    run. Without the planting, the run would render twice: under its parent and in the
+    unattached list, which is the list for runs nothing places at all.
+    """
+    # The call one run made to spawn another, in the session whose runs nest...
+    parent_run, spawned, call_id = one(
+        store,
+        "SELECT tc.source, a.id, c.id FROM live_agent_runs a"
+        " JOIN live_tool_calls tc ON tc.session_id = a.session_id AND tc.id = a.tool_use_id"
+        "  AND tc.source <> a.id"
+        " JOIN live_api_calls c ON c.session_id = a.session_id AND c.source = tc.source"
+        "  AND c.id = tc.api_call_id"
+        " WHERE a.session_id = ? AND tc.source <> ? LIMIT 1",
+        [SPINE, MAIN],
+    )
+    # ...loses the turn it was made in.
+    path = plant(
+        (
+            "UPDATE api_calls SET turn_id = NULL WHERE session_id = ? AND source = ? AND id = ?",
+            [SPINE, parent_run, call_id],
+        )
+    )
+    with TestClient(build_app(path)) as planted:
+        page = planted.get(f"/session/{SPINE}").text
+    # The run it spawned still hangs under it, and appears nowhere else on the page.
+    assert spawned in inside(page, "data-chip", parent_run, "data-chip")
+    assert (values(page, "data-chip") + values(page, "data-unattached")).count(spawned) == 1
 
 
 def test_a_compaction_appears_in_the_timeline_where_it_happened(
