@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 from aiobserve.analyze import queries
 from aiobserve.analyze.queries import QUERIES, VIEW_PREFIX
 from aiobserve.view.app import (
-    PAGE_SESSIONS,
+    MAX_PAGE_SESSIONS,
     Fragment,
     Page,
     Value,
@@ -46,6 +46,10 @@ FAT = ("raw", "text", "thinking", "result", "input", "content")
 # the page a corpus grows, so `PAGE_SESSIONS` rows at `SESSION_BYTES` each have to fit.
 PAGE_BYTES = 350_000
 SESSION_BYTES = 2_000
+# What a row of the list really costs, measured against `data/traces.duckdb` on 2026-08-08:
+# 308,233 B for 300 sessions less 3,698 B of page chrome. The fixture rows are redacted down
+# to a few characters, so a projection off them alone says nothing about a real corpus.
+MEASURED_SESSION_BYTES = 1_015
 
 # How much of a turn's prompt the timeline shows, from `session_digest`'s own `substr`.
 PROMPT_CHARS = 300
@@ -177,8 +181,14 @@ def test_a_served_page_stays_under_its_ceiling(
     chrome = len(client.get("/?size=1").content)
     per_session = (listing - chrome) / (count - 1)
     assert per_session < SESSION_BYTES
-    # A full page is the most the list ever serves, and that is the number under the ceiling.
-    assert chrome + per_session * PAGE_SESSIONS < PAGE_BYTES
+    # The largest page anyone can ask for is the most the list ever serves, so that is the
+    # number under the ceiling — projecting the default instead leaves `?size=` above it
+    # unchecked, and a URL is what a reader pastes.
+    assert chrome + per_session * MAX_PAGE_SESSIONS < PAGE_BYTES
+    # The fixture rows are redacted and short, so the projection above is optimistic about a
+    # real corpus. `data/traces.duckdb` served 1,015 B a row on 2026-08-08 — measured, not
+    # assumed — which is what `MAX_PAGE_SESSIONS` was set from.
+    assert MAX_PAGE_SESSIONS * MEASURED_SESSION_BYTES < PAGE_BYTES
     for session_id in [row[0] for row in store.execute("SELECT id FROM sessions").fetchall()]:
         assert len(client.get(f"/session/{session_id}").content) < PAGE_BYTES, session_id
 

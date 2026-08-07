@@ -184,9 +184,11 @@ DEFAULT_DIRECTION = "desc"
 
 # How many sessions a page of the list holds, and the most it will hold on request. The list
 # is the one page that grows with the corpus: 575 sessions rendered whole came to 587 KB,
-# past the design's page ceiling, so the size is bound rather than assumed small.
+# past the design's page ceiling, so the size is bound rather than assumed small. The maximum
+# is what fits under that ceiling at the measured cost of a row, not a round number — a
+# `?size=` above it is a page the design's bound does not cover.
 PAGE_SESSIONS = 200
-MAX_PAGE_SESSIONS = 500
+MAX_PAGE_SESSIONS = 300
 
 # Every query-string key the session list reads: the filters, plus what orders and pages them.
 LIST_KEYS = frozenset(FILTERS) | {"sort", "direction", "page", "size"}
