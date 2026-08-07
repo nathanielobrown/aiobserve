@@ -12,6 +12,11 @@ dependencies = [
   "fastapi>=0.115", # the trace viewer's routes, and the test client the viewer tier drives
   "uvicorn>=0.34", # serves the viewer on localhost; nothing here is deployed
   "jinja2>=3.1", # the viewer's templates, autoescaping every value a transcript wrote
+  # Renders a transcript's markdown with HTML passthrough and the image rule off — see
+  # `view/render.py`, which is the only place the reader is configured.
+  "markdown-it-py>=3.0",
+  # Jinja's escaping, used directly: `view/render.py` returns HTML it has escaped itself.
+  "markupsafe>=3.0",
 ]
 
 [project.scripts]
