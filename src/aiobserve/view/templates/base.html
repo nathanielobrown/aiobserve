@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}aiobserve{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
+  {# htmx, vendored — the version is in the filename because that is where an upgrade has to
+     be seen. Fetched from https://unpkg.com/htmx.org@2.0.6/dist/htmx.min.js, sha256
+     b6768eed4f3af85b73a75054701bd60e17cac718aef2b7f6b254e5e0e2045616. No CDN: the viewer
+     reads private transcripts on a laptop that may be offline, and the CSP that keeps a
+     transcript from calling out would refuse a remote script anyway. #}
+  <script src="/static/htmx-2.0.6.min.js" defer></script>
 </head>
 <body>
   <nav id="masthead"><a href="/">aiobserve</a></nav>

@@ -4,6 +4,7 @@ Every expectation is derived from the store the app is serving rather than writt
 a fixture added to the corpus does not silently stop being covered.
 """
 
+import re
 from pathlib import Path
 
 import duckdb
@@ -19,6 +20,7 @@ from aiobserve.view.app import (
     MAX_PAGE_SESSIONS,
     PAGE_SESSIONS,
     SORTS,
+    TEMPLATES,
     build_app,
 )
 from tests.conftest import FORK_ORIGIN, FORK_RUN, RESUME, SPINE
@@ -340,6 +342,24 @@ def test_planted_markup_arrives_inert(plant: Planter) -> None:
             assert "alert(&#39;planted&#39;)" in page
             # ...and never as markup the browser would run.
             assert "<script>alert" not in page
+
+
+def test_every_asset_a_page_asks_for_is_one_the_viewer_ships(client: TestClient) -> None:
+    """No page reaches off the machine for an asset — the viewer works with the wifi off.
+
+    A CDN reference is also the one thing that would make the CSP fail loudly in a browser
+    and silently in this tier, so the check is on the templates rather than on a response.
+    """
+    # Every `src` and `href` a template writes is a path on this server...
+    for template in sorted(TEMPLATES.glob("*.html")):
+        remote = re.findall(r'(?:src|href)="(\w+:)?//[^"]*"', template.read_text())
+        assert remote == [], template.name
+    # ...and each asset the base page asks for is served, htmx included.
+    page = client.get("/").text
+    assets = re.findall(r'(?:src|href)="(/static/[^"]*)"', page)
+    assert any("htmx" in asset for asset in assets), page
+    for asset in assets:
+        assert client.get(asset).status_code == 200, asset
 
 
 def test_serving_the_store_leaves_it_read_only(corpus_db: Path, client: TestClient) -> None:
