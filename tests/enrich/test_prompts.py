@@ -10,6 +10,7 @@ the real ones.
 
 import dataclasses
 import os
+import shutil
 from pathlib import Path
 
 import pytest
@@ -509,13 +510,22 @@ def test_a_workflow_line_embeds_its_spawned_run(mutable_db: Path) -> None:
 @pytest.mark.skipif(
     LIVE_STORE not in os.environ, reason=f"set {LIVE_STORE} to a real trace store to run"
 )
-def test_no_real_item_renders_past_its_budget() -> None:
+def test_no_real_item_renders_past_its_budget(tmp_path: Path) -> None:
     """Every turn and run in a real store renders within the budget the enricher would send.
 
     The fixtures cannot show this: redaction leaves them two orders of magnitude short of
     the cap, so this is the only check that the default budgets hold on real text.
     """
-    with EnrichmentStore(Path(os.environ[LIVE_STORE])) as store:
+    # A copy, never the store itself: `AIOBSERVE_LIVE_STORE` names the archive (`docs/store.md`)
+    # and opening one runs the enrichment DDL against it. The write-ahead log comes along, or
+    # the copy would be the archive as of its last checkpoint.
+    archive = Path(os.environ[LIVE_STORE])
+    copy = tmp_path / archive.name
+    shutil.copy(archive, copy)
+    wal = archive.with_name(f"{archive.name}.wal")
+    if wal.exists():
+        shutil.copy(wal, copy.with_name(f"{copy.name}.wal"))
+    with EnrichmentStore(copy) as store:
         turn_items, run_items = store.turn_items(), store.run_items()
     assert turn_items, f"{LIVE_STORE} names a store with no turns in it"
     assert run_items, f"{LIVE_STORE} names a store with no agent runs in it"
