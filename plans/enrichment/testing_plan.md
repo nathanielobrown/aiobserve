@@ -97,19 +97,24 @@ Invented or planted data, each labeled where it is used, because no recorded ses
 
 - **`AnthropicBatchClient` maps all four batch result types: `succeeded` upserts, and `errored`, `canceled`, and `expired` each become a classified failure that writes nothing.** *Evidence:* mocked SDK responses (invented — labeled; an expired-unbilled result takes 24h to produce for real), one of each type in a single batch; assert one upsert, three failures, and that each failure's class names its own type. Bolded: `expired` is unbilled and silently normal at scale, and treating it as an error or as a success both corrupt the corpus's coverage story.
 - `submit()` builds one request per item with a `custom_id` that maps back to the item's primary key, and `collect()` restores that mapping. *Evidence:* mocked SDK; assert the round trip over a set of keys including a rootless run id and a slash-turn uuid.
+  - *As built:* a `custom_id` may hold `[a-zA-Z0-9_-]` up to 64 characters, and an item key carries pipes and a pair of uuids — so the id is `item_N` and the key travels only in the mapping `submit()` holds. The test asserts the ids against that charset as well as the round trip.
 - **Polling is bounded and names what it waited for.** *Evidence:* a mocked SDK that never reports the batch ended; assert the client raises with a deadline message inside the test's own timeout, rather than hanging. Bolded: an unbounded poll against a 24h batch is a job that burns its whole budget and prints no failure line.
 - `SyncClient` satisfies the same protocol over the Messages API and returns results in the same shape. *Evidence:* mocked SDK; run the same enricher assertions through both clients and assert the resulting DB rows are equal.
+  - *As built:* the equality test lives in `test_batches.py` beside the fake SDK, and compares every enrichment column but `enriched_at`, which is a clock reading. A refusal the SDK raises per request (`APIStatusError`) becomes `api_error` for that item alone, but an `AuthenticationError` or `PermissionDeniedError` propagates: it fails every item identically, and a crash summary listing the whole corpus would bury the cause.
 
 ### end-to-end (failure handling)
 
 - **A per-item failure crashes the run at the end with a summary that classifies by kind, names item keys, and contains no model output.** *Evidence:* a fake returning, in one round, an API error, a schema-invalid output, and a secret-bearing output — each carrying a unique sentinel string; assert the raised summary contains the three keys and the three kind labels, and assert every sentinel is absent from it. Bolded: this is the "keys only, never prose" privacy obligation, and a summary built by formatting the failed response is the natural implementation that violates it.
+  - *As built:* only the two output-bearing failures carry a sentinel. The API-error item has nowhere to put one — `Failed` holds a key and a kind, which is the mechanism the obligation is asking about.
 - A failure writes no row, so the item is still stale, and a rerun with a healthy fake fills it in. *Evidence:* the failing run leaves the key absent from `turn_enrichments`; the rerun submits exactly that key and writes it. This is the whole resume mechanism — assert there is no resume state on disk.
 - **A failed child's parents are skipped for that round and are not written.** *Evidence:* `spine/`, with the fake failing leaf run `af6473ae437c9608d`; assert no enrichment row exists for `ac461ef46b4bb8e32`, for the main turn that spawned it, or for the session, while `spine/`'s three other main turns are enriched normally. Bolded: writing a parent whose child failed bakes a hole into a description that the hash will then call current forever.
+  - *As built:* **not discharged in slice 2, and not discharged anywhere yet.** A run enriches one level today, so no item has a parent to skip and the mechanism has nothing to be written against. It belongs with slice 3's rounds — implement it there, with this leaf.
 - Siblings of a failure are still upserted. *Evidence:* the same run; assert the succeeded items' rows exist before the crash.
 
 ### opt-in live
 
 - One two-item live check reaches the real API through `SyncClient` and returns schema-conformant output. *Evidence:* `@pytest.mark.slow`, skipped unless an env var opts in **and** `ANTHROPIC_API_KEY` is set; two smallest-render items from the fixture DB; assert both results validate and that `mise run test` with the variable unset makes no network call. Mirrors the pipeline plan's opt-in census pattern. The batch client's own live round trip stays manual — see *Not covered*.
+  - *As built:* `AIOBSERVE_LIVE_API` is the opt-in, beside `test_prompts.py`'s `AIOBSERVE_LIVE_STORE`. Written and skipped, never run: the machine that built it held no `ANTHROPIC_API_KEY`, so the leaf is due a first green run — as is the manual batch check — before the clients are trusted.
 
 ## Slice 3 — agent runs
 

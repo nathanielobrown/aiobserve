@@ -83,7 +83,7 @@ Consumers query three views: `enriched_turns` (`live_turns` ⋈ `turn_enrichment
 src/aiobserve/enrich/
   __init__.py      NEW
   taxonomy.py      NEW  Category/Outcome StrEnums, TAXONOMY_VERSION
-  prompts.py       NEW  per-level render + input_hash, PROMPT_VERSION per level; budgets are render parameters, defaults defined here
+  prompts.py       NEW  per-level render + input_hash, PROMPT_VERSION per level; budgets are render parameters, defaults defined here; the forced output tool, whose schema PROMPT_VERSION covers
   store.py         NEW  enrichment DDL + views, staleness query, upsert (pipeline never touches these tables)
   batches.py       NEW  BatchClient protocol + AnthropicBatchClient (submit/poll/collect) + SyncClient (dev)
   enricher.py      NEW  enrich(): rounds, per-round staleness, zombie sweep, skip-parents-of-failures, crash summary
