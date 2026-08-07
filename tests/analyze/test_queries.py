@@ -24,6 +24,8 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     # The production floor of 3 sessions holds no pair on a 16-session store, so the smoke
     # run would exercise the filter and never the join under it.
     "co_occurrence": {"min_sessions": "1"},
+    # Every fixture agent type ran exactly once, so the production floor of 5 admits none.
+    "select_runs": {"min_runs": "1"},
     "records_slice": {"session_id": RESUME, "source": MAIN, "first_line": "1", "last_line": "5"},
     "run_digest": {"session_id": SPINE, "source": SPINE_RUN},
     "session_digest": {"session_id": SPINE},

@@ -243,15 +243,30 @@ def test_the_production_quotas_are_the_designed_reading_budget() -> None:
         "skill_threshold": 5,
         "seed": "aiobserve",
     }
+    # The run draw rides the same pin: its floor is what keeps a corpus of one-off agent
+    # names from turning a ~20-run reading budget into one run per name.
+    assert {name: spec.default for name, spec in QUERIES["select_runs"].params.items()} == {
+        "runs_per_stratum": 1,
+        "min_runs": 5,
+    }
 
 
 def test_every_agent_type_gives_up_its_worst_and_its_costliest_run(
     run_query: QueryRunner,
 ) -> None:
-    """Each agent definition is read every iteration, through its runs that went furthest."""
+    """A commonly used agent definition is read every iteration, through its furthest runs."""
     # If the corpus holds seven runs across seven distinct agent types, one of which hit a
-    # tool error...
-    output = run_query("select_runs", "--project", MYCELIA, "--as-of", AS_OF_WHOLE, "--csv")
+    # tool error, and the threshold is set low enough to admit all seven...
+    output = run_query(
+        "select_runs",
+        "--project",
+        MYCELIA,
+        "--as-of",
+        AS_OF_WHOLE,
+        "--param",
+        "min_runs=1",
+        "--csv",
+    )
     rows = list(zip(output.column("stratum"), output.column("agent_type"), strict=True))
     # ...then every type contributes exactly one run, tagged with the stratum that took it:
     # the errored run by its errors, and the rest by what they spent.
@@ -273,6 +288,20 @@ def test_every_agent_type_gives_up_its_worst_and_its_costliest_run(
             )
         ]
     )
+    # ...but `agent_type` is an open set — a session names its own subagents, and a name used
+    # once is not a definition worth a reading slot every iteration. Raise the threshold above
+    # every fixture type's run count and the same draw over the same runs comes back empty.
+    quiet = run_query(
+        "select_runs",
+        "--project",
+        MYCELIA,
+        "--as-of",
+        AS_OF_WHOLE,
+        "--param",
+        "min_runs=2",
+        "--csv",
+    )
+    assert len(quiet.csv_rows()) <= 1
 
 
 @pytest.fixture(scope="session")

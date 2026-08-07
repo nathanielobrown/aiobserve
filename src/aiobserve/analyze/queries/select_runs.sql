@@ -25,6 +25,11 @@ WITH agent_run AS (
     FROM project_sessions p
     JOIN corpus_agent_runs a USING (session_id)
     WHERE p.in_window
+), major_type AS (
+    -- `agent_type` is an open set: a session names its own subagents, and one-off names run
+    -- once and never again. Without a floor the draw hands a reading slot to every one of
+    -- them, which is how ~20 runs becomes 75. A definition earns its slot by being used.
+    SELECT agent_type FROM agent_run GROUP BY agent_type HAVING count(*) >= $min_runs
 ), worst AS (
     -- Only runs that actually erred: a `run-errors` tag on a clean run would lie, and a type
     -- whose runs all ran clean simply contributes nothing here.
@@ -32,7 +37,7 @@ WITH agent_run AS (
         row_number() OVER (
             PARTITION BY agent_type ORDER BY tool_errors DESC, session_id, agent_id
         ) AS rank
-    FROM agent_run WHERE tool_errors > 0
+    FROM agent_run JOIN major_type USING (agent_type) WHERE tool_errors > 0
 ), taken AS (
     SELECT * FROM worst WHERE rank <= $runs_per_stratum
 ), costliest AS (
@@ -43,6 +48,7 @@ WITH agent_run AS (
             PARTITION BY r.agent_type ORDER BY r.cost_usd DESC, r.session_id, r.agent_id
         ) AS rank
     FROM agent_run r
+    JOIN major_type m ON m.agent_type = r.agent_type
     WHERE r.cost_usd > 0
       AND NOT EXISTS (
           SELECT 1 FROM taken t

@@ -108,9 +108,16 @@ QUERIES: dict[str, Query] = {
     "run_digest": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID, "source": SOURCE}),
     "select_runs": Query(
         scope=Scope.CORPUS,
-        # How many runs each `agent_type` gives up per stratum. One apiece keeps the draw at
-        # roughly two runs per definition, which is the reading budget the design sized.
-        params={"runs_per_stratum": Param(type=ParamType.INTEGER, default=1)},
+        params={
+            # How many runs each `agent_type` gives up per stratum. One apiece keeps the draw
+            # at roughly two runs per definition, which is the reading budget the design
+            # sized.
+            "runs_per_stratum": Param(type=ParamType.INTEGER, default=1),
+            # In-window runs an `agent_type` needs before it earns a reading slot. Matches
+            # `select_sessions`'s skill threshold, and for the same reason: both sets are
+            # open, and a name used once is a session's invention, not a definition.
+            "min_runs": Param(type=ParamType.INTEGER, default=5),
+        },
     ),
     "select_sessions": Query(
         scope=Scope.CORPUS,
