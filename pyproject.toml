@@ -7,6 +7,8 @@ requires-python = ">=3.13"
 dependencies = [
   "duckdb>=1.5.5", # the local trace store — an embedded analytical DB, so no service to run
   "pytz>=2025.2",  # duckdb needs it to hand a TIMESTAMPTZ back to Python, but doesn't declare it
+  "anthropic>=0.75", # the enrichment client — Message Batches for a pass, Messages for dev runs
+  "python-dotenv>=1.1", # reads ANTHROPIC_API_KEY out of .env, which is gitignored
 ]
 
 [project.scripts]
@@ -57,6 +59,7 @@ timeout = 120
 addopts = "--strict-markers --durations=10"
 markers = [
   "slow: earned its runtime (real subprocess, network, or large corpus) — needs a why-comment",
+  "live: opts in to a real Anthropic API call — billed, so it needs an env var as well",
 ]
 
 [tool.pyrefly]
