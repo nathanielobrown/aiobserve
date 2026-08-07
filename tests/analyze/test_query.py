@@ -12,6 +12,7 @@ import duckdb
 import pytest
 
 from aiobserve.analyze import queries
+from aiobserve.export.duckdb import SCHEMA_VERSION
 from tests.analyze.conftest import AS_OF_PARTIAL, MYCELIA_SESSIONS, Output, QueryRunner, query
 from tests.conftest import (
     MAIN,
@@ -148,6 +149,23 @@ def test_an_unknown_query_or_parameter_names_what_it_did_not_recognize(
     # a silently ignored parameter produces a plausible wrong number and no signal.
     with pytest.raises(SystemExit, match="nonsense"):
         run_query("sessions", "--project", MYCELIA, "--param", "nonsense=1")
+
+
+def test_a_store_from_another_schema_is_refused_and_sends_the_reader_to_the_guide(
+    corpus_db: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A store these queries were not written against is refused, with what to do about it."""
+    # If the store holds a schema version this build does not read — stamped onto a copy,
+    # since every fixture store is written by the current schema...
+    path = tmp_path / "traces.duckdb"
+    path.write_bytes(corpus_db.read_bytes())
+    with duckdb.connect(str(path)) as connection:
+        connection.execute("UPDATE meta SET schema_version = ?", [SCHEMA_VERSION - 1])
+    # ...then the query refuses rather than reading tables it may not understand, and points
+    # at the store guide — a reader told to delete the store instead can destroy the only
+    # copy of a session Claude Code has since pruned from disk.
+    with pytest.raises(SystemExit, match="docs/store.md"):
+        query(path, capsys, "sessions", "--project", MYCELIA)
 
 
 def test_the_store_is_opened_read_only(

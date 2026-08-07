@@ -12,7 +12,7 @@ Deleting a store therefore destroys sessions no re-extract can recover. Re-parsi
 
 `EXTRACTOR_VERSION` (`src/aiobserve/extract/claude_code.py`) is folded into each session's fingerprint, so raising it makes the next refresh re-extract every session whose files are still on disk, into the same store. Nothing needs deleting, and pruned sessions keep whatever the parser of their day produced.
 
-`SCHEMA_VERSION` (`src/aiobserve/export/duckdb.py`) has no migrations while the project is early. Opening a store an older schema wrote refuses before it reads or writes a single table, and says to delete the store and re-extract. Run the check below first.
+`SCHEMA_VERSION` (`src/aiobserve/export/duckdb.py`) has no migrations while the project is early. Opening a store an older schema wrote refuses before it reads or writes a single table, and says to extract into a fresh one. Deleting the old store is a separate decision — run the check below first.
 
 ## Check the session set before deleting a store
 

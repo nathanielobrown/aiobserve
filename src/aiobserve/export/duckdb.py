@@ -37,8 +37,16 @@ from aiobserve.model import (
 )
 
 # Bumped whenever the DDL below changes. There are no migrations while the project is
-# early: a mismatch tells the operator to delete the DB and re-extract.
+# early: a mismatch refuses the store and says to extract into a fresh one.
 SCHEMA_VERSION = 7
+
+# The remedy every version-mismatch message carries, written once because getting it wrong is
+# expensive: a store can be the only copy of a session Claude Code has pruned from disk, so
+# the operator is sent to `docs/store.md` — which holds the check — rather than to `rm`.
+SCHEMA_MISMATCH_REMEDY = (
+    "Extract into a fresh store. This one may hold the only copy of a pruned session — "
+    "read docs/store.md before deleting it."
+)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -358,7 +366,7 @@ class DuckDbExporter:
         if row is not None and row[0] != SCHEMA_VERSION:
             raise SchemaVersionError(
                 f"{self.path} holds schema version {row[0]}, this build writes "
-                f"{SCHEMA_VERSION}. Delete the database and re-extract."
+                f"{SCHEMA_VERSION}. {SCHEMA_MISMATCH_REMEDY}"
             )
 
     def _stamp_schema_version(self) -> None:

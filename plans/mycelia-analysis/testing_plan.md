@@ -57,6 +57,7 @@ The CLI driven through `cli.main("query", …)` against a fixture-built store on
 - A bare invocation runs the manifest's production defaults, and an explicit `--param` overrides one without disturbing the rest. *Evidence:* run `select_sessions` with no `--param` and assert the citation reports the production quotas; run it again overriding one quota and assert only that binding changed. **As built,** discharged against `records_slice`'s `$max_chars`, since selection lands in the next slice; the quota pin below still owes its own leaf.
 - `--since` binds and filters, and omitting it means the full corpus. *Evidence:* `--since 2026-07-15` over the fixture store returns the 5 mycelia sessions started on or after that date; the same query with no `--since` returns 13.
 - An unknown query name, or a `--param` the query does not declare, exits with a message naming it. *Evidence:* assert `SystemExit` and that the message contains the offending name — a silently ignored `--param` produces a plausible wrong number and no signal.
+- A store stamped with another schema version is refused, and the message sends the reader to the store guide. *Evidence:* a copy of the fixture store with `meta.schema_version` decremented; assert the run exits naming `docs/store.md`. Added after the tier landed: nothing exercised the runner's schema check, and its remedy read "delete the database and re-extract" — advice that can destroy the only copy of a session Claude Code has pruned.
 - **The store is opened read-only.** *Evidence:* a query file written into `tmp_path` containing DDL; assert the run raises and that the store's table list is unchanged. Bolded: the design puts the analysis layer out of the mutation business by construction, and read-only is the whole mechanism.
 
 ## integration (library smoke) — `tests/analyze/test_queries.py`
@@ -156,10 +157,10 @@ Two residuals, both worth a sentence rather than a redesign:
 
 | Area | Obligations |
 | --- | --- |
-| integration (runner) | 9 |
+| integration (runner) | 10 |
 | integration (library smoke) | 5 |
 | integration (selection) | 13 |
 | integration (digests) | 5 |
 | integration (windows and trends) | 4 |
 | inspection (process artifacts) | 4 |
-| **Total** | **40** |
+| **Total** | **41** |

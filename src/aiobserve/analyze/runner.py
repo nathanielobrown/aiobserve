@@ -16,7 +16,11 @@ import duckdb
 
 from aiobserve.analyze import queries
 from aiobserve.analyze.queries import NoDefault, ParamType, ParamValue, Scope
-from aiobserve.export.duckdb import SCHEMA_VERSION, held_schema_version
+from aiobserve.export.duckdb import (
+    SCHEMA_MISMATCH_REMEDY,
+    SCHEMA_VERSION,
+    held_schema_version,
+)
 
 # The sessions `--project` selects, and the window flag every corpus query reads. Defined
 # here rather than in each file so the `/`-suffix trap — without it the predicate annexes
@@ -191,5 +195,5 @@ def _check_schema(db: Path, connection: duckdb.DuckDBPyConnection) -> None:
     if held != SCHEMA_VERSION:
         raise QueryError(
             f"{db} holds schema version {held or 'nothing'}, these queries read "
-            f"{SCHEMA_VERSION}. Delete the database and re-extract."
+            f"{SCHEMA_VERSION}. {SCHEMA_MISMATCH_REMEDY}"
         )

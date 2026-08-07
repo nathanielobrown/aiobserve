@@ -425,8 +425,9 @@ def test_a_schema_version_mismatch_refuses_to_open(db: Path):
     # If a store written by an older schema is opened...
     before = old_store(db)
 
-    # ...then it says which version it holds and what to do about it...
-    with pytest.raises(SchemaVersionError, match="re-extract"):
+    # ...then it says which version it holds and what to do about it — pointing at the store
+    # guide rather than at a delete, because this file may be a pruned session's only home...
+    with pytest.raises(SchemaVersionError, match="docs/store.md"):
         DuckDbExporter(db)
 
     # ...and not one table of it was written to.
@@ -451,5 +452,5 @@ def test_a_newer_schema_version_refuses_to_open(db: Path):
     with DuckDbExporter(db) as exporter:
         exporter.connection.execute("UPDATE meta SET schema_version = ?", [SCHEMA_VERSION + 1])
 
-    with pytest.raises(SchemaVersionError, match="re-extract"):
+    with pytest.raises(SchemaVersionError, match="docs/store.md"):
         DuckDbExporter(db)
