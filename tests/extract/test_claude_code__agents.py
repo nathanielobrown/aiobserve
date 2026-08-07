@@ -82,11 +82,13 @@ def test_a_teammate_message_opens_a_turn(fixture_source: SourceFactory):
         turn for turn in trace(fixture_source, "teammate", TEAM).turns if turn.source != MAIN_SOURCE
     ]
 
-    # ...then that instruction is its first turn, carried as recorded — attributes on the
-    # tag and all, which is how these differ from every other registered tag.
-    assert len(turns) == 1
-    assert turns[0].prompt.startswith('<teammate-message teammate_id="team-lead"')
-    assert (turns[0].command_name, turns[0].command_args) == (None, None)
+    # ...then each instruction opens a turn, carried as recorded — attributes on the tag and
+    # all, which is how these differ from every other registered tag. The lead came back with
+    # a second one, so the run is a conversation rather than a single task.
+    assert [turn.index for turn in turns] == [0, 1]
+    for turn in turns:
+        assert turn.prompt.startswith('<teammate-message teammate_id="team-lead"')
+        assert (turn.command_name, turn.command_args) == (None, None)
 
 
 def test_a_subagent_run_names_the_call_that_spawned_it(fixture_source: SourceFactory):
