@@ -28,7 +28,7 @@ from aiobserve.enrich.prompts import (
     TurnItem,
 )
 from aiobserve.enrich.validation import Enrichment
-from aiobserve.export.duckdb import SCHEMA_VERSION, SchemaVersionError
+from aiobserve.export.duckdb import SCHEMA_VERSION, SchemaVersionError, held_schema_version
 from aiobserve.model import MAIN_SOURCE
 
 # Every enrichment table holds the same columns; only the primary key differs.
@@ -209,13 +209,10 @@ class EnrichmentStore:
         Enrichment reads the pipeline's views by name and column, so a store written by
         another schema version is not a store this code can enrich.
         """
-        held = self.connection.execute(
-            "SELECT schema_version FROM duckdb_tables() t"
-            " LEFT JOIN meta ON true WHERE t.table_name = 'meta'"
-        ).fetchone()
-        if held is None or held[0] != SCHEMA_VERSION:
+        held = held_schema_version(self.connection)
+        if held != SCHEMA_VERSION:
             raise SchemaVersionError(
-                f"{self.path} holds schema version {held[0] if held else 'nothing'}, this "
+                f"{self.path} holds schema version {held or 'nothing'}, this "
                 f"build enriches {SCHEMA_VERSION}. Extract into it first, or point at the "
                 f"canonical store."
             )

@@ -286,6 +286,21 @@ class SchemaVersionError(Exception):
     """The DB on disk was written by a different version of this schema."""
 
 
+def held_schema_version(connection: duckdb.DuckDBPyConnection) -> int | None:
+    """The version stamped in an open store, or None when it carries no stamp at all.
+
+    None covers both a file that is not a trace store and one that crashed between its DDL
+    and its stamp, so every reader can say "holds nothing" instead of raising a catalog
+    error on someone else's database. The `duckdb_tables()` join is what makes that
+    possible: `SELECT ... FROM meta` on a foreign file crashes before the check can speak.
+    """
+    row = connection.execute(
+        "SELECT schema_version FROM duckdb_tables() t"
+        " LEFT JOIN meta ON true WHERE t.table_name = 'meta'"
+    ).fetchone()
+    return None if row is None else row[0]
+
+
 class DuckDbExporter:
     """Writes traces into one DuckDB file. Usable as a context manager."""
 

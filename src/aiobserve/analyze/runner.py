@@ -16,7 +16,7 @@ import duckdb
 
 from aiobserve.analyze import queries
 from aiobserve.analyze.queries import NoDefault, ParamType, ParamValue, Scope
-from aiobserve.export.duckdb import SCHEMA_VERSION
+from aiobserve.export.duckdb import SCHEMA_VERSION, held_schema_version
 
 # The sessions `--project` selects, and the window flag every corpus query reads. Defined
 # here rather than in each file so the `/`-suffix trap — without it the predicate annexes
@@ -188,11 +188,11 @@ def _parse(parameter: str, type_: ParamType, text: str) -> ParamValue:
 
 def _check_schema(db: Path, connection: duckdb.DuckDBPyConnection) -> None:
     """Refuse a store this build's queries were not written against."""
-    row = connection.execute("SELECT schema_version FROM meta").fetchone()
-    if row is None or row[0] != SCHEMA_VERSION:
+    held = held_schema_version(connection)
+    if held != SCHEMA_VERSION:
         raise QueryError(
-            f"{db} holds schema version {row and row[0]}, these queries read {SCHEMA_VERSION}. "
-            f"Delete the database and re-extract."
+            f"{db} holds schema version {held or 'nothing'}, these queries read "
+            f"{SCHEMA_VERSION}. Delete the database and re-extract."
         )
 
 
