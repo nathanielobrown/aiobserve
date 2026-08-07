@@ -45,6 +45,11 @@ WEEKS = {"2026-W27": 4, "2026-W28": 4, "2026-W29": 3, "2026-W30": 1, "2026-W31":
 AS_OF_PARTIAL = "2026-08-07"
 IN_WINDOW_AT_PARTIAL = 6
 AS_OF_WHOLE = "2026-07-28"
+# A third `$as_of`, inside the corpus, so the window's far edge has something to exclude:
+# 2026-07-19 opens at 2026-06-21, before the earliest session, and closes at the end of that
+# day — 11 sessions, the corpus minus the two recorded after it.
+AS_OF_MID = "2026-07-19"
+IN_WINDOW_AT_MID = 11
 
 
 @dataclass(frozen=True)

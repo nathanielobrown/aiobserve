@@ -16,8 +16,10 @@ from aiobserve.extract.claude_code import ClaudeCodeExtractor
 from aiobserve.pipeline import SessionSource
 from aiobserve.sessions import Session
 from tests.analyze.conftest import (
+    AS_OF_MID,
     AS_OF_PARTIAL,
     AS_OF_WHOLE,
+    IN_WINDOW_AT_MID,
     IN_WINDOW_AT_PARTIAL,
     MYCELIA_SESSIONS,
     WEEKS,
@@ -96,6 +98,23 @@ def test_as_of_alone_decides_the_window(run_query: QueryRunner) -> None:
     assert int(partial[TRAILING]["sessions"]) == IN_WINDOW_AT_PARTIAL
     # ...while the corpus row, which no window touches, does not move.
     assert whole[CORPUS] == partial[CORPUS]
+    # ...and moving `$as_of` back inside the corpus closes the window's far edge too: 2026-07-19
+    # still opens before the earliest session, so the only sessions it can drop are the two
+    # recorded after that day...
+    mid = _periods(run_query, "--as-of", AS_OF_MID)
+    assert int(mid[TRAILING]["sessions"]) == IN_WINDOW_AT_MID
+    # ...and the sessions listing agrees on which two: out of window is exactly started after
+    # `$as_of`, while the session recorded at 20:27 that same evening stays in, because the
+    # bound runs to the end of `$as_of`'s day. Drop the bound and a window rebound to an
+    # earlier date quietly reports sessions from its own future.
+    listing = _keyed(
+        run_query("sessions", "--project", MYCELIA, "--as-of", AS_OF_MID, "--csv"), "session_id"
+    )
+    excluded = {session for session, row in listing.items() if row["in_window"] == "False"}
+    assert excluded == {
+        session for session, row in listing.items() if row["started_at"][:10] > AS_OF_MID
+    }
+    assert len(excluded) == MYCELIA_SESSIONS - IN_WINDOW_AT_MID
 
 
 @pytest.fixture(scope="session")
