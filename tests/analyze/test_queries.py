@@ -28,6 +28,7 @@ from tests.conftest import (
     MAIN,
     MYCELIA,
     RESUME,
+    RESUME_LONG_RECORD,
     SERVER_TOOLS,
     SPINE,
     SPINE_RUN,
@@ -63,6 +64,10 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
         "source": FORK_ORIGIN_RUN,
         "api_call_id": DENSE_CALL,
     },
+    # The records browser, at the corpus's densest recorded thread — 47 archived records, so
+    # the default page of 100 answers with more than one row and the turn join with several.
+    "view_records": {"session_id": ANCESTOR, "source": MAIN},
+    "view_turn_records": {"session_id": ANCESTOR, "source": MAIN},
     # The per-value queries answer with one row apiece, whatever is bound.
     "view_call_text": {"session_id": ANCESTOR, "source": MAIN, "api_call_id": DENSE_TURN_CALL},
     "view_call_thinking": {"session_id": ANCESTOR, "source": MAIN, "api_call_id": DENSE_TURN_CALL},
@@ -71,6 +76,7 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
         "source": FORK_ORIGIN_RUN,
         "tool_call_id": DENSE_TOOL,
     },
+    "view_record": {"session_id": RESUME, "source": MAIN, "line_no": str(RESUME_LONG_RECORD)},
 }
 
 # The clock a query file may not read: a `current_date` filter goes green on a frozen

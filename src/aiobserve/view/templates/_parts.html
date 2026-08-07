@@ -22,7 +22,7 @@
 {# One thread's turns in order, its compactions between them, and the runs each turn spawned.
    `source` is `main` on a session page and the run's id on a run page; `attribute` is what
    the page calls the runs a turn spawned. #}
-{% macro timeline(entries, session_id, source, attribute) %}
+{% macro timeline(entries, session_id, source, attribute, lines) %}
 <section id="timeline">
   {# The way down to what this thread's transcript actually held, from the page that
      summarises it. Both pages get it here, because both render one thread. #}
@@ -46,6 +46,14 @@
       <span><span data-field="tool_calls">{{ entry.row.tool_calls }}</span> tools</span>
       <span><span data-field="tool_errors">{{ entry.row.tool_errors }}</span> errors</span>
       <span data-field="cost_usd">{{ entry.row.cost_usd | money }}</span>
+      {# Down to the transcript line this turn was read from. Absent for a turn whose record
+         the store does not hold — a continuation answers a prompt this thread never had. #}
+      {% set line = lines.get(entry.row.turn_id) %}
+      {% if line %}
+      <a data-record-link="{{ line }}"
+         href="/session/{{ session_id }}/records/{{ source }}?after={{ line - 1 }}#L{{ line }}"
+         >line {{ line }}</a>
+      {% endif %}
     </p>
     {% if entry.chips %}{{ run_list(entry.chips, attribute, session_id) }}{% endif %}
     {# The turn's api calls arrive on first open and not before: a turn is not a bounded

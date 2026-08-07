@@ -291,6 +291,9 @@ QUERIES: dict[str, Query] = {
             "page_calls": Param(type=ParamType.INTEGER, default=PAGE_CALLS),
         },
     ),
+    "view_turn_records": Query(
+        scope=Scope.KEYED, params={"session_id": SESSION_ID, "source": SOURCE}
+    ),
     "weekly_trend": Query(scope=Scope.CORPUS, params={}),
 }
 

@@ -160,6 +160,40 @@ def test_a_thread_page_links_to_the_transcript_behind_it(client: TestClient) -> 
         assert client.get(link[0]).status_code == 200
 
 
+def test_every_turn_links_to_the_record_it_was_read_from(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A turn on a session page reaches the transcript line the extractor read it from.
+
+    `turns.id` is a `raw_records.uuid` in the same `(session_id, source)` — the store's own
+    join, not a guess about line numbers — which is what makes the link derivable at all.
+    """
+    behind = {
+        turn_id: line_no
+        for turn_id, line_no in store.execute(
+            "SELECT t.id, r.line_no FROM live_turns t JOIN raw_records r"
+            " ON r.session_id = t.session_id AND r.source = t.source AND r.uuid = t.id"
+            " WHERE t.session_id = ? AND t.source = ?",
+            [SPINE, MAIN],
+        ).fetchall()
+    }
+    (turns,) = one(
+        store, "SELECT count(*) FROM live_turns WHERE session_id = ? AND source = ?", [SPINE, MAIN]
+    )
+    # Every turn of this thread was read from a record, so no turn on the page goes unlinked.
+    assert len(behind) == turns > 0, "the fixture session lost its turn-to-record join"
+    page = client.get(f"/session/{SPINE}").text
+    for turn_id, line_no in behind.items():
+        url = f"/session/{SPINE}/records/{MAIN}?after={line_no - 1}#L{line_no}"
+        # One link per turn, pointing at that turn's own line and no other's.
+        assert inside(page, "data-turn", turn_id, "data-record-link") == [str(line_no)], turn_id
+        assert url in inside(page, "data-turn", turn_id, "href"), turn_id
+    # And the link opens on the record, which is the whole point of deriving it this way.
+    line = next(iter(behind.values()))
+    landed = client.get(f"/session/{SPINE}/records/{MAIN}", params={"after": line - 1})
+    assert values(landed.text, "data-record")[0] == str(line)
+
+
 def test_a_record_the_store_does_not_hold_is_a_404(client: TestClient) -> None:
     """A thread or a line the store does not hold is a 404, not an empty browser."""
     for path in (

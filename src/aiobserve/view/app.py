@@ -210,6 +210,21 @@ def build_app(db_path: Path) -> FastAPI:
             },
         )
 
+    def turn_lines(
+        connection: duckdb.DuckDBPyConnection, session_id: str, source: str
+    ) -> dict[str, int]:
+        """Which transcript line each of a thread's turns was read from, keyed by turn id.
+
+        A turn whose record the store does not hold is absent rather than mapped to nothing,
+        so a template can ask `lines.get(turn_id)` and get a link or no link.
+        """
+        return {
+            row["turn_id"]: row["line_no"]
+            for row in page_rows(
+                connection, Page.TURN_RECORDS, session_id=session_id, source=source
+            )
+        }
+
     @app.get("/session/{session_id}")
     def session_page(request: Request, session_id: str) -> Response:
         with open_store(resolved) as connection:
@@ -221,7 +236,9 @@ def build_app(db_path: Path) -> FastAPI:
             markers = page_rows(
                 connection, Page.COMPACTIONS, session_id=session_id, source=MAIN_SOURCE
             )
+            lines = turn_lines(connection, session_id, MAIN_SOURCE)
         keyed: dict[str, ParamValue] = {"session_id": session_id}
+        at_source = keyed | {"source": MAIN_SOURCE}
         threads = session_threads(turns, runs, markers)
         return templates.TemplateResponse(
             request,
@@ -231,11 +248,18 @@ def build_app(db_path: Path) -> FastAPI:
                 "main": MAIN_SOURCE,
                 "timeline": threads.entries,
                 "unattached": threads.unattached,
+                "lines": lines,
                 "citations": {
                     page.value: queries.citation(
-                        page, keyed | ({"source": MAIN_SOURCE} if page is Page.COMPACTIONS else {})
+                        page, at_source if page in (Page.COMPACTIONS, Page.TURN_RECORDS) else keyed
                     )
-                    for page in (Page.SESSION_HEADER, Page.TIMELINE, Page.RUNS, Page.COMPACTIONS)
+                    for page in (
+                        Page.SESSION_HEADER,
+                        Page.TIMELINE,
+                        Page.RUNS,
+                        Page.COMPACTIONS,
+                        Page.TURN_RECORDS,
+                    )
                 },
             },
         )
@@ -251,6 +275,7 @@ def build_app(db_path: Path) -> FastAPI:
             # it are both read off the same set of links.
             runs = page_rows(connection, Page.RUNS, session_id=session_id)
             markers = page_rows(connection, Page.COMPACTIONS, session_id=session_id, source=run_id)
+            lines = turn_lines(connection, session_id, run_id)
         keyed: dict[str, ParamValue] = {"session_id": session_id}
         at_source = keyed | {"source": run_id}
         return templates.TemplateResponse(
@@ -262,6 +287,7 @@ def build_app(db_path: Path) -> FastAPI:
                 "trail": ancestry(run_id, runs),
                 "timeline": timeline(turns, runs, markers, run_id),
                 "children": children(run_id, runs),
+                "lines": lines,
                 "citations": {
                     Page.RUN_HEADER.value: queries.citation(
                         Page.RUN_HEADER, keyed | {"run_id": run_id}
@@ -269,6 +295,7 @@ def build_app(db_path: Path) -> FastAPI:
                     Page.RUN_TIMELINE.value: queries.citation(Page.RUN_TIMELINE, at_source),
                     Page.RUNS.value: queries.citation(Page.RUNS, keyed),
                     Page.COMPACTIONS.value: queries.citation(Page.COMPACTIONS, at_source),
+                    Page.TURN_RECORDS.value: queries.citation(Page.TURN_RECORDS, at_source),
                 },
             },
         )
