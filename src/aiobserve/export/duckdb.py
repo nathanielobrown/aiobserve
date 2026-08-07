@@ -38,7 +38,7 @@ from aiobserve.model import (
 
 # Bumped whenever the DDL below changes. There are no migrations while the project is
 # early: a mismatch tells the operator to delete the DB and re-extract.
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -77,6 +77,8 @@ CREATE TABLE IF NOT EXISTS api_calls (
     turn_id VARCHAR,
     "index" INTEGER NOT NULL,
     model VARCHAR NOT NULL,
+    -- NULL means no retry: the model asked for is the model that answered.
+    fallback_from VARCHAR,
     effort VARCHAR,
     stop_reason VARCHAR,
     attribution_skill VARCHAR,
@@ -104,6 +106,7 @@ CREATE TABLE IF NOT EXISTS tool_calls (
     api_call_id VARCHAR NOT NULL,
     "index" INTEGER NOT NULL,
     name VARCHAR NOT NULL,
+    server_side BOOLEAN NOT NULL,
     input VARCHAR NOT NULL,
     result VARCHAR,
     offload_file VARCHAR,

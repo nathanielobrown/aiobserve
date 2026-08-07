@@ -19,6 +19,14 @@ LONE = "toolu_01B6iTUMs3YrNvULzgRkwuar"
 # The `offload/` session, and the one Bash call whose output Claude Code moved to a file.
 OFFLOAD = "7e37bb35-4dcb-4e16-85be-55ac510c168e"
 OFFLOADED = "toolu_01JXs55LXLHvzWt8KczuYfyD"
+# The `server_tools/` session and its three `advisor` calls: one the service refused, one
+# whose answer came back encrypted, and one issued alongside two local calls and never
+# answered. See `tests/fixtures/server_tools/README.md`.
+SERVER_TOOLS = "088d63aa-71d3-4108-965e-5147e3eaddbd"
+REFUSED = "srvtoolu_01KUMaS97sNkE7Z12UW4HMEp"
+ENCRYPTED = "srvtoolu_01TK5pPoxEdDu3g975oMijMg"
+UNANSWERED = "srvtoolu_01FHMDigqBGzPfr9CkXyA91v"
+DELEGATION = "a3b37063695183556"
 
 
 def calls(fixture_source: SourceFactory, directory: str, stem: str) -> dict[str, ToolCall]:
@@ -40,6 +48,8 @@ def test_a_tool_call_carries_its_result(fixture_source: SourceFactory):
         api_call_id=BATCH,
         index=1,
         name="Read",
+        # ...run locally, as all but the `advisor` tool are...
+        server_side=False,
         # ...carrying the arguments as recorded, JSON and all...
         input='{"file_path": "[redacted]"}',
         # ...the flattened result text, which this fixture's redaction replaced...
@@ -86,6 +96,77 @@ def test_a_call_with_no_result_is_incomplete(fixture_source: SourceFactory):
     # ...then the call is there, marked incomplete, with no result and no end.
     assert (call.incomplete, call.result, call.ended_at) == (True, None, None)
     assert (call.name, call.api_call_id) == ("Read", "msg_011Cdmz3NQtuzwN3cqYvvkuN")
+
+
+def test_a_server_side_tool_call_is_a_call_like_any_other(fixture_source: SourceFactory):
+    """A tool Anthropic runs server-side lands in `tool_calls`, flagged as server-side.
+
+    Claude Code records these as `server_tool_use`, answered by a result block inside the
+    same message rather than by a user record. Left unread, an analysis would report that
+    a session used no server tools at all.
+    """
+    # If a session called the server-side `advisor` and the service refused...
+    call = calls(fixture_source, "server_tools", SERVER_TOOLS)[REFUSED]
+
+    # ...then the call is a row like any other, marked as one we did not run ourselves...
+    assert call == ToolCall(
+        id=REFUSED,
+        session_id=SERVER_TOOLS,
+        source=MAIN_SOURCE,
+        api_call_id="msg_01QippSuXCLtCz1UguYEA8tN",
+        index=1,
+        name="advisor",
+        server_side=True,
+        # ...taking no arguments, as every recorded `advisor` call does...
+        input="{}",
+        # ...reporting the refusal by its code, since the block carries no text...
+        result="unavailable",
+        offload_file=None,
+        is_error=True,
+        incomplete=False,
+        # ...and timed from its own record to the record that answered it.
+        started_at=at("2026-07-06T18:19:03.233"),
+        ended_at=at("2026-07-06T18:19:12.541"),
+        duration_synthetic=False,
+        replayed=False,
+    )
+
+    # And when the answer came back encrypted, the row says the call succeeded and
+    # carries no result: the transcript holds nothing readable to carry.
+    encrypted = calls(fixture_source, "server_tools", SERVER_TOOLS)[ENCRYPTED]
+    assert (encrypted.is_error, encrypted.result, encrypted.incomplete) == (False, None, False)
+    assert encrypted.ended_at == at("2026-07-05T20:43:49.574")
+
+
+def test_a_server_side_call_keeps_its_own_clock_beside_local_ones(fixture_source: SourceFactory):
+    """A server-side call in a message full of local calls is not timed as part of their batch.
+
+    Local calls in one message are written in execution order, so the batch shares a
+    synthetic start. The server-side call's own record is the request, so it keeps its
+    real start and says so.
+    """
+    # If one message issued two local calls and a server-side call...
+    batch = [
+        call
+        for call in calls(fixture_source, "server_tools", SERVER_TOOLS).values()
+        if call.source == DELEGATION
+    ]
+    local = [call for call in batch if not call.server_side]
+
+    # ...then the two local ones share the batch's synthetic start...
+    assert len(local) == 2
+    assert {call.started_at for call in local} == {at("2026-07-06T20:22:36.167")}
+    assert all(call.duration_synthetic for call in local)
+
+    # ...while the server-side call reports its own, and is incomplete because this
+    # message's `advisor` call was never answered — one of the 45 in the corpus is not.
+    server = next(call for call in batch if call.server_side)
+    assert (server.id, server.started_at, server.duration_synthetic) == (
+        UNANSWERED,
+        at("2026-07-06T20:22:49.761"),
+        False,
+    )
+    assert (server.incomplete, server.result, server.ended_at) == (True, None, None)
 
 
 def test_an_offloaded_result_names_the_file_holding_it(fixture_source: SourceFactory):

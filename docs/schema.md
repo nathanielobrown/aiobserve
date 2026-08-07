@@ -27,6 +27,9 @@ Every line of a transcript is a JSON object with a `type`. `aiobserve.extract.cl
 | `message.content` | `user` records | Either a string or a list of blocks. A block list can hold `text`, `image`, or `tool_result` — a `tool_result` block makes the record plumbing, not a prompt | `tests/fixtures/spine/`, CC 2.1.220 (block form) |
 | `tool_use` block | `assistant` records | One tool the model asked for: `id`, `name`, `input`. Usually one per record, but 23 records of the mycelia corpus hold two or more (scanned 2026-08-07), so a per-record reading undercounts | `tests/fixtures/spine/`, CC 2.1.221 |
 | `tool_result` block | `user` records | What came back, quoting the call's id in `tool_use_id`. `content` is a string or a list of `text`, `image` and `tool_reference` blocks. `is_error` is **absent on success** — 66,653 of the corpus's 154,169 result blocks omit it (scanned 2026-08-07) | `tests/fixtures/spine/`, CC 2.1.221 |
+| `server_tool_use` block | `assistant` records | A tool Anthropic ran server-side rather than Claude Code running it locally. Same fields as `tool_use`. All 45 in the corpus, across 5 sessions, name the `advisor` tool and carry an empty `input` (scanned 2026-08-07) | `tests/fixtures/server_tools/`, CC 2.1.201 |
+| `advisor_tool_result` block | `assistant` records | The answer to a `server_tool_use`, in the **same message** as the call — no user record answers one. Its `content.type` is `advisor_tool_result_error`, which names an `error_code`, or `advisor_redacted_result`, whose `encrypted_content` we cannot read. Either way the transcript records that the advisor answered and nothing of what it said. 44 answer the 45 calls; one call was never answered (scanned 2026-08-07) | `tests/fixtures/server_tools/`, CC 2.1.201 — both outcomes and the unanswered call |
+| `fallback` block | `assistant` records | Claude Code retried the request on another model: `from.model` and `to.model`. All 3 in the corpus, in one session, agree with their record's `message.model` on the `to` side, so only `from` carries new information (scanned 2026-08-07) | `tests/fixtures/server_tools/`, CC 2.1.206 |
 | `toolUseResult` | `user` records answering a tool | The tool's own structured report, beside the block. A dict on most results, a bare string on 3,590 and a list on 795 of the corpus's 137,255 (scanned 2026-08-07) | `tests/fixtures/offload/`, CC 2.1.220 |
 | `toolUseResult.persistedOutputPath` | `user` records answering a tool | Output too big for the transcript, written to `<session>/tool-results/<name>.txt` with only a preview left in `content`. 321 results carry it (scanned 2026-08-07). The path is absolute on the machine that recorded it; only the file name travels | `tests/fixtures/offload/`, CC 2.1.220 |
 | `message.id` | `assistant` records | The API reply's id, and the key that merges its records. **One reply spans several records** — one per content block — so a per-line parser triples the API-call count | `tests/fixtures/spine/`, CC 2.1.221 — 8 records, 2 replies |
@@ -68,6 +71,21 @@ So a batch's calls all start at the earliest timestamp in the batch, and carry
 its own timestamp and the flag is false.
 
 *Seen in* `tests/fixtures/spine/`, CC 2.1.221 — three calls under `msg_011CdmMjFXDofyYSMxYtXa5n`.
+
+### A server-side call is timed from its own record
+
+A `server_tool_use` sits in the same stream as the local calls, but it is not part of their batch:
+Claude Code did not run it, so its record is the request going out rather than a queue position. It
+keeps its own timestamp, `duration_synthetic` is false, and it ends when the `advisor_tool_result`
+block in the same message was written.
+
+The call becomes a `tool_calls` row like any other, flagged `server_side`. Anything else makes "which
+tools did this session use" answer wrongly — which is what happened while the block was unregistered:
+it produced no row, no text and no crash, so a session that used the advisor looked like a session
+that had not.
+
+*Seen in* `tests/fixtures/server_tools/`, CC 2.1.201 — a subagent message holding two local calls and
+one server-side call.
 
 ### A file can repeat a uuid
 

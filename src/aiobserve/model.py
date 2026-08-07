@@ -87,6 +87,9 @@ class ApiCall:
     turn_id: str | None
     index: int
     model: str
+    # The model Claude Code asked for first, when it retried the request on `model`
+    # instead. None — the usual case — means no retry: the model it asked for answered.
+    fallback_from: str | None
     # Opaque: the effort setting's values and meaning are not established (docs/schema.md).
     effort: str | None
     stop_reason: str | None
@@ -134,6 +137,10 @@ class ToolCall:
     # Position within this transcript, from 0.
     index: int
     name: str
+    # Anthropic ran this tool server-side and returned its result inside the same message
+    # (`server_tool_use`), rather than Claude Code running it locally. Every recorded one
+    # is the `advisor` tool, which takes no arguments.
+    server_side: bool
     # The tool's arguments, as recorded, serialised back to JSON.
     input: str
     # The result flattened to text: the block's string, or its text blocks joined. Images

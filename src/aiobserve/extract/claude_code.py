@@ -53,7 +53,7 @@ EXTRACTOR_NAME = "claude_code"
 JOURNAL_SOURCE = "journal"
 # Bump on any change to what this parser produces: the version is folded into every
 # fingerprint, so bumping it re-extracts the whole corpus on the next refresh.
-EXTRACTOR_VERSION = "6"
+EXTRACTOR_VERSION = "7"
 # Where a run whose meta names no spawn depth sorts among its siblings: after every run
 # that does, since the depths Claude Code writes are small.
 _UNKNOWN_DEPTH = 1_000_000
@@ -121,6 +121,39 @@ class SystemSubtype(StrEnum):
     API_ERROR = "api_error"
     AGENTS_KILLED = "agents_killed"
     STOP_HOOK_SUMMARY = "stop_hook_summary"
+
+
+class ContentBlock(StrEnum):
+    """Every kind of block a `message.content` list holds. An unregistered one crashes.
+
+    Assistant and user records are the only ones carrying such a list. Leaving the set
+    open is how server-side tool calls stayed invisible: they produced no row, no text and
+    no crash, so a session that used one looked like a session that had not.
+    """
+
+    TEXT = "text"
+    THINKING = "thinking"
+    TOOL_USE = "tool_use"
+    # A tool Anthropic runs server-side. Recorded like `tool_use`, but answered by an
+    # `advisor_tool_result` block in the same message rather than by a user record.
+    SERVER_TOOL_USE = "server_tool_use"
+    ADVISOR_TOOL_RESULT = "advisor_tool_result"
+    # Claude Code retried the request on another model; `from`/`to` name both.
+    FALLBACK = "fallback"
+    IMAGE = "image"
+    TOOL_RESULT = "tool_result"
+
+
+class AdvisorResult(StrEnum):
+    """What an `advisor_tool_result` block's own content says. An unregistered one crashes.
+
+    Neither shape carries readable output: an error names its code, and a completed call
+    comes back encrypted, so the transcript records that the advisor answered and nothing
+    of what it said.
+    """
+
+    ERROR = "advisor_tool_result_error"
+    REDACTED = "advisor_redacted_result"
 
 
 class ResultBlock(StrEnum):
@@ -208,7 +241,8 @@ class _Parsed(NamedTuple):
 class _Result:
     """What a `tool_result` record said about the call it answered."""
 
-    text: str
+    # None when the answer carried nothing readable — an encrypted server-side result.
+    text: str | None
     is_error: bool
     offload_file: str | None
     ended_at: datetime | None
@@ -609,7 +643,7 @@ def _read(path: Path, session_id: str) -> list[_Line]:
 
 
 def _check_type(record: dict[str, Any], session_id: str, line_no: int) -> None:
-    """Reject a record type or `system` subtype outside the registries."""
+    """Reject a record type, `system` subtype or content block outside the registries."""
     kind = record["type"]
     if kind == RecordType.SYSTEM:
         subtype = record["subtype"]
@@ -622,6 +656,14 @@ def _check_type(record: dict[str, Any], session_id: str, line_no: int) -> None:
         raise TranscriptSchemaError(
             f"Unknown record type {kind!r} in session {session_id}, line {line_no}"
         )
+    message = record.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    # A string content is a bare prompt, which has no blocks to register.
+    for block in content if isinstance(content, list) else []:
+        if block["type"] not in ContentBlock:
+            raise TranscriptSchemaError(
+                f"Unknown content block {block['type']!r} in session {session_id}, line {line_no}"
+            )
 
 
 def _resolve_duplicates(lines: list[_Line], session_id: str) -> list[_Line]:
@@ -906,6 +948,7 @@ def _api_calls(
                 turn_id=turn_by_line[first.line_no],
                 index=index,
                 model=message["model"],
+                fallback_from=_fallback_from(group),
                 effort=last.record.get("effort"),
                 stop_reason=message["stop_reason"],
                 # Present only while a skill was driving.
@@ -931,6 +974,19 @@ def _api_calls(
     return calls
 
 
+def _fallback_from(group: Iterable[_Line]) -> str | None:
+    """The model this message was first asked of, when Claude Code retried on another.
+
+    A `fallback` block names both ends; the one that answered is already `message.model`,
+    which every recorded fallback agrees with, so only the model asked for first is new.
+    """
+    for line in group:
+        for block in line.record["message"]["content"]:
+            if block["type"] == ContentBlock.FALLBACK:
+                return block["from"]["model"]
+    return None
+
+
 def _tool_calls(
     lines: list[_Line], session_id: str, source: str, replayed: set[int]
 ) -> list[ToolCall]:
@@ -939,22 +995,27 @@ def _tool_calls(
     A message issuing several calls writes one record per call, in the order Claude Code
     got round to running them — so the batch shares the earliest of those timestamps and
     says the start is synthetic, rather than reporting an execution order as a duration.
+
+    A server-side call sits in that same stream but is not part of that batch: its record
+    is the request itself, so it keeps its own start.
     """
-    results = _tool_results(lines, session_id)
+    results = _tool_results(lines, session_id) | _advisor_results(lines, session_id)
     issued = [
         (line, block)
         for line in lines
         if line.record["type"] == RecordType.ASSISTANT
         for block in line.record["message"]["content"]
-        if block["type"] == "tool_use"
+        if block["type"] in (ContentBlock.TOOL_USE, ContentBlock.SERVER_TOOL_USE)
     ]
     batches: dict[str, list[datetime]] = {}
-    for line, _ in issued:
-        message_id = line.record["message"]["id"]
-        batches.setdefault(message_id, []).append(_required_timestamp(line, session_id))
+    for line, block in issued:
+        if block["type"] == ContentBlock.TOOL_USE:
+            message_id = line.record["message"]["id"]
+            batches.setdefault(message_id, []).append(_required_timestamp(line, session_id))
     calls = []
     for index, (line, block) in enumerate(issued):
-        batch = batches[line.record["message"]["id"]]
+        server_side = block["type"] == ContentBlock.SERVER_TOOL_USE
+        batch = batches[line.record["message"]["id"]] if not server_side else []
         result = results.get(block["id"])
         calls.append(
             ToolCall(
@@ -964,12 +1025,13 @@ def _tool_calls(
                 api_call_id=line.record["message"]["id"],
                 index=index,
                 name=block["name"],
+                server_side=server_side,
                 input=json.dumps(block["input"]),
                 result=result.text if result else None,
                 offload_file=result.offload_file if result else None,
                 is_error=result.is_error if result else False,
                 incomplete=result is None,
-                started_at=min(batch),
+                started_at=_required_timestamp(line, session_id) if server_side else min(batch),
                 ended_at=result.ended_at if result else None,
                 duration_synthetic=len(batch) > 1,
                 # The issuing record decides: a fork copies the call and its answer together.
@@ -1006,6 +1068,36 @@ def _tool_results(lines: list[_Line], session_id: str) -> dict[str, _Result]:
                 is_error=bool(block.get("is_error")),
                 offload_file=PurePath(path).name if path else None,
                 ended_at=_timestamp(record),
+            )
+    return results
+
+
+def _advisor_results(lines: list[_Line], session_id: str) -> dict[str, _Result]:
+    """What each server-side tool said back, keyed by the call it answered.
+
+    Unlike a local tool, the answer rides inside the same assistant message as the request,
+    and it is never readable: a refusal names its error code, and a completed call comes
+    back encrypted. So the row records that the advisor answered, and what it cost in time.
+    """
+    results: dict[str, _Result] = {}
+    for line in lines:
+        if line.record["type"] != RecordType.ASSISTANT:
+            continue
+        for block in line.record["message"]["content"]:
+            if block["type"] != ContentBlock.ADVISOR_TOOL_RESULT:
+                continue
+            content = block["content"]
+            kind = content["type"]
+            if kind not in AdvisorResult:
+                raise TranscriptSchemaError(
+                    f"Unknown advisor result {kind!r} in session {session_id}, line {line.line_no}"
+                )
+            error = kind == AdvisorResult.ERROR
+            results[block["tool_use_id"]] = _Result(
+                text=content["error_code"] if error else None,
+                is_error=error,
+                offload_file=None,
+                ended_at=_timestamp(line.record),
             )
     return results
 

@@ -16,6 +16,8 @@ from tests.conftest import SourceFactory
 SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"
 ZOO = "registry-zoo-0000-0000-0000-000000000000"
 DUPS = "8ee00a94-b01a-4394-b447-b065f74b11af"
+# The session whose replies carry server-side tool calls and a model fallback.
+SERVER_TOOLS = "088d63aa-71d3-4108-965e-5147e3eaddbd"
 
 # The slash-command records the redactor kept intact, so a test can read the parsed halves.
 MODEL_COMMAND = (
@@ -133,6 +135,9 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             turn_id="30aad8e5-21f8-486d-b9d9-e118c703a5a1",
             index=0,
             model="claude-fable-5",
+            # ...answered by the model it was asked of, as all but three calls in the
+            # corpus were...
+            fallback_from=None,
             effort="high",
             stop_reason="tool_use",
             attribution_skill="night-run",
@@ -163,6 +168,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             turn_id="818588ad-3849-48fe-a546-573163768e04",
             index=1,
             model="claude-fable-5",
+            fallback_from=None,
             effort="high",
             stop_reason="tool_use",
             attribution_skill=None,
@@ -190,6 +196,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             turn_id="818588ad-3849-48fe-a546-573163768e04",
             index=2,
             model="claude-fable-5",
+            fallback_from=None,
             effort="high",
             stop_reason="tool_use",
             # ...and this one ran outside any skill, so it carries none.
@@ -218,6 +225,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             turn_id="8cdceb31-385c-42d4-9dae-137958b09b88",
             index=3,
             model="<synthetic>",
+            fallback_from=None,
             effort=None,
             stop_reason="stop_sequence",
             attribution_skill=None,
@@ -292,6 +300,23 @@ def test_a_message_split_across_records_merges_into_one_call(fixture_source: Sou
     # ...and the usage is counted once: all five chunks repeat the reply's numbers, so a
     # per-record sum would report 2,075 output tokens for a 415-token reply.
     assert merged.output_tokens == 415
+
+
+def test_a_call_that_fell_back_names_the_model_it_asked_for(fixture_source: SourceFactory):
+    """When Claude Code retries a request on another model, the call says which one it wanted.
+
+    The reply records only the model that answered, so without the `fallback` block a
+    forced downgrade reads as a deliberate model choice.
+    """
+    trace = ClaudeCodeExtractor().extract(fixture_source("server_tools", SERVER_TOOLS))
+
+    # If a reply carries a `fallback` block...
+    fell_back = next(c for c in trace.api_calls if c.id == "msg_011Ccua7MYguu6rjoiKNhYVh")
+
+    # ...then the call reports the model that answered and the one first asked for...
+    assert (fell_back.model, fell_back.fallback_from) == ("claude-opus-4-8", "claude-fable-5")
+    # ...and every ordinary call says it fell back from nothing.
+    assert [c.fallback_from for c in trace.api_calls if c.id != fell_back.id] == [None, None, None]
 
 
 def test_a_session_older_than_a_field_reports_it_absent(fixture_source: SourceFactory):
@@ -445,6 +470,21 @@ def test_an_unknown_system_subtype_crashes(fixture_source: SourceFactory):
 
     message = str(excinfo.value)
     assert "quantum_flux" in message and "line 2" in message
+    assert "SUPER-SECRET-PAYLOAD-9f2a" not in message
+
+
+def test_an_unknown_content_block_crashes(fixture_source: SourceFactory):
+    """A message content block of a kind we do not read stops the run.
+
+    INVENTED fixture — the eight block kinds the corpus holds are registered. Without the
+    crash a new kind is invisible: that is how 45 `server_tool_use` calls sat unread, and
+    an analysis would have reported the sessions used no server-side tools.
+    """
+    with pytest.raises(TranscriptSchemaError) as excinfo:
+        ClaudeCodeExtractor().extract(fixture_source("invented", "invented-unknown-block"))
+
+    message = str(excinfo.value)
+    assert "clairvoyance" in message and "line 2" in message
     assert "SUPER-SECRET-PAYLOAD-9f2a" not in message
 
 
