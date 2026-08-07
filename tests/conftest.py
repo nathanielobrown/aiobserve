@@ -20,6 +20,51 @@ from aiobserve.sessions import Session
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
+# The project every recorded fixture was captured under. `tests/fixtures/*/README.md` names
+# the session behind each one.
+MYCELIA = "/Users/nob/repos/mycelia"
+
+# The six transcripts under `invented/` that carry unknown record shapes crash on export by
+# design, so the corpus takes the two that do not by name. They are the only fixtures
+# recorded under another project, which is what makes the corpus predicate testable.
+CLEAN_INVENTED = ("invented-no-cache-creation", "invented-truncated-tail")
+# `/invented/project` and `/repo` respectively — outside the corpus whatever `--project` says.
+INVENTED_PROJECT_SESSION = "invented-no-cache-creation"
+OTHER_PROJECT_SESSION = "invented-truncated-tail"
+# `fork_byref`'s fork: NULL `project_dir` and NULL `started_at`, the recorded twin of the
+# store's zero-cost bookkeeping stubs. The corpus predicate cannot judge it either way.
+NO_PROJECT_SESSION = "07a769d7-828c-4edb-b3ce-af51e2712aa3"
+NON_CORPUS = (INVENTED_PROJECT_SESSION, OTHER_PROJECT_SESSION, NO_PROJECT_SESSION)
+
+# Sessions the tiers below name. `spine/` is the deepest run tree; `resume_pair/` holds the
+# resume whose api calls all sit under no turn; `server_tools/` carries an agent-source call
+# with no turn either.
+SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"
+SPINE_RUN = "ac461ef46b4bb8e32"
+SPINE_LEAF = "af6473ae437c9608d"
+RESUME = "0a76f771-5f5b-447e-852a-664fc972ea7c"
+# The line of `RESUME`'s longest recorded raw record, 3,054 chars — the one record past the
+# `records_slice` cap.
+RESUME_LONG_RECORD = 5
+SERVER_TOOLS = "088d63aa-71d3-4108-965e-5147e3eaddbd"
+# `server_tools/`'s one agent source, which carries a NULL-`turn_id` api call outside `main`.
+SERVER_TOOLS_RUN = "a3b37063695183556"
+# The source name of a session's own thread.
+MAIN = "main"
+# The two sessions `worktree_db` re-exports under a planted `project_dir`, chosen because no
+# other leaf asserts on them.
+WORKTREE_SESSION = "0b34d1b8-ebd3-40a6-bd89-f1881e1de2ba"
+SIBLING_SESSION = "4b443ab7-98f8-4c1d-859f-9bdcafbabdd3"
+
+# `ANCESTOR` is the session `RESUME` resumed, and one of the two pool sessions that compacted.
+# `FORK_ORIGIN` holds the fork whose spawning call sits in the fork's own transcript.
+ANCESTOR = "2352492b-1437-4427-ad51-70f35c75f663"
+FORK_ORIGIN = "5a88789c-1da7-4f32-b631-40a7e243334b"
+FORK_RUN = "a61a059e3610e6fb4"
+REGISTRY_ZOO = "registry-zoo-0000-0000-0000-000000000000"
+# The `deep-research` user, and the only session `pr-and-document` reaches from the pool.
+DEEP_RESEARCH_SESSION = "8d930c77-9e60-4784-9885-6d4c226280f7"
+
 SourceFactory = Callable[[str, str], SessionSource]
 TraceFactory = Callable[[str, str], SessionTrace]
 PlantedFactory = Callable[[str, str, dict[str, str]], SessionSource]
@@ -49,6 +94,28 @@ def build_store(path: Path, transcripts: Iterable[Path]) -> None:
                 id=transcript.stem, files=tuple(session.files()), fingerprint="fixture"
             )
             exporter.export(ClaudeCodeExtractor().extract(source), source.fingerprint)
+
+
+def corpus_transcripts() -> tuple[Path, ...]:
+    """Every fixture transcript that exports cleanly, discovered rather than listed."""
+    directories = sorted(
+        path.name for path in FIXTURES.iterdir() if path.is_dir() and path.name != "invented"
+    )
+    invented = tuple(FIXTURES / "invented" / f"{stem}.jsonl" for stem in CLEAN_INVENTED)
+    return fixture_transcripts(*directories) + invented
+
+
+@pytest.fixture(scope="session")
+def corpus_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The fixture corpus as one trace store: 13 mycelia sessions and three outside them.
+
+    Built once for the whole run and read by every tier that queries a store — the analysis
+    queries and the viewer's routes ask their questions of the same 16 sessions. Read-only:
+    a test that plants or deletes a row copies the file first.
+    """
+    path = tmp_path_factory.mktemp("corpus") / "traces.duckdb"
+    build_store(path, corpus_transcripts())
+    return path
 
 
 @pytest.fixture

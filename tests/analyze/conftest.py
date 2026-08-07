@@ -1,7 +1,7 @@
 """Scaffolding for the analysis tier: the fixture corpus as one read-only trace store.
 
 The queries are the subject here, so their evidence has to be rows the real pipeline wrote:
-`analyze_db` extracts every recorded fixture transcript into one DuckDB file, once per test
+`corpus_db` extracts every recorded fixture transcript into one DuckDB file, once per test
 session. Tests read it through `aiobserve query` and never write to it — a test that plants
 a row copies the file first, as `worktree_db` does.
 """
@@ -19,52 +19,7 @@ from aiobserve.export.duckdb import DuckDbExporter
 from aiobserve.extract.claude_code import ClaudeCodeExtractor
 from aiobserve.pipeline import SessionSource
 from aiobserve.sessions import Session
-from tests.conftest import FIXTURES, build_store, fixture_transcripts
-
-# The project every recorded fixture was captured under. `tests/fixtures/*/README.md` names
-# the session behind each one.
-MYCELIA = "/Users/nob/repos/mycelia"
-
-# The six transcripts under `invented/` that carry unknown record shapes crash on export by
-# design, so the corpus takes the two that do not by name. They are the only fixtures
-# recorded under another project, which is what makes the corpus predicate testable.
-CLEAN_INVENTED = ("invented-no-cache-creation", "invented-truncated-tail")
-# `/invented/project` and `/repo` respectively — outside the corpus whatever `--project` says.
-INVENTED_PROJECT_SESSION = "invented-no-cache-creation"
-OTHER_PROJECT_SESSION = "invented-truncated-tail"
-# `fork_byref`'s fork: NULL `project_dir` and NULL `started_at`, the recorded twin of the
-# store's zero-cost bookkeeping stubs. The corpus predicate cannot judge it either way.
-NO_PROJECT_SESSION = "07a769d7-828c-4edb-b3ce-af51e2712aa3"
-NON_CORPUS = (INVENTED_PROJECT_SESSION, OTHER_PROJECT_SESSION, NO_PROJECT_SESSION)
-
-# Sessions the leaves below name. `spine/` is the deepest run tree; `resume_pair/` holds the
-# resume whose api calls all sit under no turn; `server_tools/` carries an agent-source call
-# with no turn either.
-SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"
-SPINE_RUN = "ac461ef46b4bb8e32"
-SPINE_LEAF = "af6473ae437c9608d"
-RESUME = "0a76f771-5f5b-447e-852a-664fc972ea7c"
-# The line of `RESUME`'s longest recorded raw record, 3,054 chars — the one record past the
-# `records_slice` cap.
-RESUME_LONG_RECORD = 5
-SERVER_TOOLS = "088d63aa-71d3-4108-965e-5147e3eaddbd"
-# `server_tools/`'s one agent source, which carries a NULL-`turn_id` api call outside `main`.
-SERVER_TOOLS_RUN = "a3b37063695183556"
-# The source name of a session's own thread, which is the scope `session_digest` covers.
-MAIN = "main"
-# The two sessions `worktree_db` re-exports under a planted `project_dir`, chosen because no
-# other leaf asserts on them.
-WORKTREE_SESSION = "0b34d1b8-ebd3-40a6-bd89-f1881e1de2ba"
-SIBLING_SESSION = "4b443ab7-98f8-4c1d-859f-9bdcafbabdd3"
-
-# The sessions the selection leaves rank on. `ANCESTOR` is the session `RESUME` resumed:
-# fourth by cost, and one of the two pool sessions that compacted. `FORK_ORIGIN` is the other
-# session holding an error tool call, fifth by cost.
-ANCESTOR = "2352492b-1437-4427-ad51-70f35c75f663"
-FORK_ORIGIN = "5a88789c-1da7-4f32-b631-40a7e243334b"
-REGISTRY_ZOO = "registry-zoo-0000-0000-0000-000000000000"
-# The `deep-research` user, and the only session `pr-and-document` reaches from the pool.
-DEEP_RESEARCH_SESSION = "8d930c77-9e60-4784-9885-6d4c226280f7"
+from tests.conftest import FIXTURES, MYCELIA, RESUME, SIBLING_SESSION, WORKTREE_SESSION
 
 # Mycelia sessions `corpus_rollups` credits with no turns and no agent runs, so no stratum
 # may reach them. Two of them compacted, which is what makes the exclusion visible: a pool
@@ -90,23 +45,6 @@ WEEKS = {"2026-W27": 4, "2026-W28": 4, "2026-W29": 3, "2026-W30": 1, "2026-W31":
 AS_OF_PARTIAL = "2026-08-07"
 IN_WINDOW_AT_PARTIAL = 6
 AS_OF_WHOLE = "2026-07-28"
-
-
-def analyze_transcripts() -> tuple[Path, ...]:
-    """Every fixture transcript that exports cleanly, discovered rather than listed."""
-    directories = sorted(
-        path.name for path in FIXTURES.iterdir() if path.is_dir() and path.name != "invented"
-    )
-    invented = tuple(FIXTURES / "invented" / f"{stem}.jsonl" for stem in CLEAN_INVENTED)
-    return fixture_transcripts(*directories) + invented
-
-
-@pytest.fixture(scope="session")
-def analyze_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """The fixture corpus as one trace store: 13 mycelia sessions and three outside them."""
-    path = tmp_path_factory.mktemp("analysis") / "traces.duckdb"
-    build_store(path, analyze_transcripts())
-    return path
 
 
 @dataclass(frozen=True)
@@ -138,17 +76,17 @@ def query(db: Path, capsys: pytest.CaptureFixture[str], name: str, *arguments: s
 
 
 @pytest.fixture
-def run_query(analyze_db: Path, capsys: pytest.CaptureFixture[str]) -> QueryRunner:
+def run_query(corpus_db: Path, capsys: pytest.CaptureFixture[str]) -> QueryRunner:
     """Run `aiobserve query` against the fixture corpus, returning what it printed."""
 
     def run(name: str, *arguments: str) -> Output:
-        return query(analyze_db, capsys, name, *arguments)
+        return query(corpus_db, capsys, name, *arguments)
 
     return run
 
 
 @pytest.fixture(scope="session")
-def worktree_db(analyze_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+def worktree_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     """The corpus plus two sessions whose `project_dir` is planted, not recorded.
 
     No recorded fixture sits under `<project>/.claude/worktrees/`, and none sits under a
@@ -156,7 +94,7 @@ def worktree_db(analyze_db: Path, tmp_path_factory: pytest.TempPathFactory) -> P
     with the one column replaced — the value is invented, the rest of the session is not.
     """
     path = tmp_path_factory.mktemp("worktree") / "traces.duckdb"
-    path.write_bytes(analyze_db.read_bytes())
+    path.write_bytes(corpus_db.read_bytes())
     with DuckDbExporter(path) as exporter:
         for directory, stem, project_dir in (
             ("legacy_title", WORKTREE_SESSION, f"{MYCELIA}/.claude/worktrees/planted"),

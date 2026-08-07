@@ -19,15 +19,13 @@ from tests.analyze.conftest import (
     AS_OF_PARTIAL,
     AS_OF_WHOLE,
     IN_WINDOW_AT_PARTIAL,
-    MYCELIA,
     MYCELIA_SESSIONS,
-    NO_PROJECT_SESSION,
     WEEKS,
     Output,
     QueryRunner,
     query,
 )
-from tests.conftest import FIXTURES
+from tests.conftest import FIXTURES, MYCELIA, NO_PROJECT_SESSION
 
 CORPUS = "corpus"
 TRAILING = "trailing_window"
@@ -101,7 +99,7 @@ def test_as_of_alone_decides_the_window(run_query: QueryRunner) -> None:
 
 
 @pytest.fixture(scope="session")
-def undated_db(analyze_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+def undated_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     """The corpus with the undated session's `project_dir` planted, so the predicate places it.
 
     `fork_byref`'s fork is the recorded session with no `started_at`, and its `project_dir` is
@@ -109,7 +107,7 @@ def undated_db(analyze_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Pa
     The planted value is invented — the rest of the session is the recorded trace.
     """
     path = tmp_path_factory.mktemp("undated") / "traces.duckdb"
-    path.write_bytes(analyze_db.read_bytes())
+    path.write_bytes(corpus_db.read_bytes())
     transcript = FIXTURES / "fork_byref" / f"{NO_PROJECT_SESSION}.jsonl"
     session = Session(id=NO_PROJECT_SESSION, transcript=transcript)
     source = SessionSource(

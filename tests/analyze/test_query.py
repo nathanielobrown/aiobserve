@@ -12,20 +12,16 @@ import duckdb
 import pytest
 
 from aiobserve.analyze import queries
-from tests.analyze.conftest import (
-    AS_OF_PARTIAL,
+from tests.analyze.conftest import AS_OF_PARTIAL, MYCELIA_SESSIONS, Output, QueryRunner, query
+from tests.conftest import (
     MAIN,
     MYCELIA,
-    MYCELIA_SESSIONS,
     NO_PROJECT_SESSION,
     NON_CORPUS,
     RESUME,
     SIBLING_SESSION,
     SPINE,
     WORKTREE_SESSION,
-    Output,
-    QueryRunner,
-    query,
 )
 
 
@@ -155,7 +151,7 @@ def test_an_unknown_query_or_parameter_names_what_it_did_not_recognize(
 
 
 def test_the_store_is_opened_read_only(
-    analyze_db: Path,
+    corpus_db: Path,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
@@ -165,13 +161,13 @@ def test_the_store_is_opened_read_only(
     monkeypatch.setattr(queries, "QUERY_DIR", tmp_path)
     monkeypatch.setitem(queries.QUERIES, "ddl", queries.Query(scope=queries.Scope.KEYED, params={}))
     (tmp_path / "ddl.sql").write_text("CREATE TABLE planted (a INTEGER);")
-    before = _tables(analyze_db)
+    before = _tables(corpus_db)
     # ...then running it raises...
     with pytest.raises(duckdb.Error):
-        query(analyze_db, capsys, "ddl")
+        query(corpus_db, capsys, "ddl")
     # ...and the store is exactly as it was: the analysis layer is out of the mutation
     # business by construction, not by convention.
-    assert _tables(analyze_db) == before
+    assert _tables(corpus_db) == before
 
 
 def _bindings(output: Output) -> dict[str, str]:

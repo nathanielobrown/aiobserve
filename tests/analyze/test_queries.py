@@ -16,7 +16,8 @@ from aiobserve.analyze import queries
 from aiobserve.analyze.queries import QUERIES, Scope
 from aiobserve.analyze.runner import CORPUS_RELATIONS
 from aiobserve.export.duckdb import _TABLES
-from tests.analyze.conftest import MAIN, MYCELIA, RESUME, SPINE, SPINE_RUN, QueryRunner
+from tests.analyze.conftest import QueryRunner
+from tests.conftest import MAIN, MYCELIA, RESUME, SPINE, SPINE_RUN
 
 # Bindings that make a query return something on the fixture corpus, per query name. The
 # production defaults are pinned by their own leaves; these are the fixture-sized values.

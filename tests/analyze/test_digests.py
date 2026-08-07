@@ -13,7 +13,8 @@ from typing import Any
 import duckdb
 import pytest
 
-from tests.analyze.conftest import (
+from tests.analyze.conftest import Output, QueryRunner, query
+from tests.conftest import (
     MAIN,
     RESUME,
     RESUME_LONG_RECORD,
@@ -22,9 +23,6 @@ from tests.analyze.conftest import (
     SPINE,
     SPINE_LEAF,
     SPINE_RUN,
-    Output,
-    QueryRunner,
-    query,
 )
 
 # The marker a digest gives the row for api calls that sit under no turn.
@@ -40,13 +38,13 @@ SENTINEL = "planted prompt " * 30 + SENTINEL_TAIL
 
 
 def test_a_session_digest_accounts_for_api_calls_that_sit_under_no_turn(
-    analyze_db: Path, run_query: QueryRunner
+    corpus_db: Path, run_query: QueryRunner
 ) -> None:
     """Calls belonging to no turn get their own digest row, so the cost still adds up."""
     # If a resumed session's api calls all carry a NULL `turn_id` — no turn of its own owns
     # them, because the turns they answered live in the session it resumed...
     unattributed = _scalar(
-        analyze_db,
+        corpus_db,
         "SELECT count(*) FROM live_api_calls WHERE session_id = ? AND turn_id IS NULL",
         RESUME,
     )
@@ -58,21 +56,19 @@ def test_a_session_digest_accounts_for_api_calls_that_sit_under_no_turn(
     assert int(orphans[0]["api_calls"]) == unattributed
     # ...and the digest's total is the session's rollup cost, not the $0 a plain turn join
     # would report against a front matter quoting the real number.
-    rollup = _scalar(
-        analyze_db, "SELECT cost_usd FROM session_rollups WHERE session_id = ?", RESUME
-    )
+    rollup = _scalar(corpus_db, "SELECT cost_usd FROM session_rollups WHERE session_id = ?", RESUME)
     assert rollup > 0
     assert _total(rows, "cost_usd") == pytest.approx(rollup, abs=1e-4)
 
 
 def test_a_session_digest_totals_only_the_thread_it_lists(
-    analyze_db: Path, run_query: QueryRunner
+    corpus_db: Path, run_query: QueryRunner
 ) -> None:
     """A digest of the main thread reports the main thread's cost, not the session's."""
     # If a session spends part of its cost inside an agent run — here on a call under no turn
     # at all, the shape most likely to be swept into the wrong scope...
     scoped, elsewhere = _scalar(
-        analyze_db,
+        corpus_db,
         """SELECT
                coalesce(sum(cost_usd) FILTER (source = ?), 0),
                coalesce(sum(cost_usd) FILTER (source = ? AND turn_id IS NULL), 0)
@@ -89,7 +85,7 @@ def test_a_session_digest_totals_only_the_thread_it_lists(
     assert _total(rows, "cost_usd") == pytest.approx(scoped, abs=1e-4)
 
 
-def test_a_run_digest_holds_one_run_and_no_other(analyze_db: Path, run_query: QueryRunner) -> None:
+def test_a_run_digest_holds_one_run_and_no_other(corpus_db: Path, run_query: QueryRunner) -> None:
     """A run's digest counts that run's own turns and calls, not its children's."""
     # If a run spawned a leaf run of its own...
     rows = _rows(
@@ -104,7 +100,7 @@ def test_a_run_digest_holds_one_run_and_no_other(analyze_db: Path, run_query: Qu
     )
     # ...then its digest lists exactly its own turns...
     turns = _scalar(
-        analyze_db,
+        corpus_db,
         "SELECT count(*) FROM live_turns WHERE session_id = ? AND source = ?",
         SPINE,
         SPINE_RUN,
@@ -114,7 +110,7 @@ def test_a_run_digest_holds_one_run_and_no_other(analyze_db: Path, run_query: Qu
     # tree inflates every number a reader copies, and the totals still look plausible.
     for column, table in (("api_calls", "live_api_calls"), ("tool_calls", "live_tool_calls")):
         expected = _scalar(
-            analyze_db,
+            corpus_db,
             f"SELECT count(*) FROM {table} WHERE session_id = ? AND source = ?",  # noqa: S608
             SPINE,
             SPINE_RUN,
@@ -162,12 +158,12 @@ def test_records_slice_refuses_to_run_without_a_line_range(run_query: QueryRunne
 
 
 def test_records_slice_caps_the_raw_text_it_returns(
-    analyze_db: Path, run_query: QueryRunner
+    corpus_db: Path, run_query: QueryRunner
 ) -> None:
     """A raw record comes back bounded, whatever its length in the store."""
     # If the store holds a record longer than the cap...
     length = _scalar(
-        analyze_db,
+        corpus_db,
         "SELECT length(raw) FROM raw_records WHERE session_id = ? AND source = ? AND line_no = ?",
         RESUME,
         MAIN,
@@ -194,10 +190,10 @@ def test_records_slice_caps_the_raw_text_it_returns(
 
 
 @pytest.fixture(scope="session")
-def planted_prompt_db(analyze_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+def planted_prompt_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     """The corpus with one real turn's prompt replaced by an over-long invented sentinel."""
     path = tmp_path_factory.mktemp("prompt") / "traces.duckdb"
-    path.write_bytes(analyze_db.read_bytes())
+    path.write_bytes(corpus_db.read_bytes())
     connection = duckdb.connect(str(path))
     try:
         connection.execute(

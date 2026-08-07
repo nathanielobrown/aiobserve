@@ -17,24 +17,26 @@ import pytest
 from aiobserve.analyze.queries import QUERIES
 from tests.analyze.conftest import (
     AGENT_TYPES,
-    ANCESTOR,
     AS_OF_PARTIAL,
     AS_OF_WHOLE,
-    DEEP_RESEARCH_SESSION,
-    FORK_ORIGIN,
-    MYCELIA,
     NO_WORK_SESSIONS,
     POOL_AT_PARTIAL,
     POOL_AT_WHOLE,
+    Output,
+    QueryRunner,
+    query,
+)
+from tests.conftest import (
+    ANCESTOR,
+    DEEP_RESEARCH_SESSION,
+    FORK_ORIGIN,
+    MYCELIA,
     REGISTRY_ZOO,
     SERVER_TOOLS,
     SPINE,
-    Output,
-    QueryRunner,
-    analyze_transcripts,
-    query,
+    build_store,
+    corpus_transcripts,
 )
-from tests.conftest import build_store
 
 # A selected session as the report reads it: the stratum that took it, and which session.
 Pick = tuple[str, str]
@@ -308,7 +310,7 @@ def test_every_agent_type_gives_up_its_worst_and_its_costliest_run(
 def reversed_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """The same corpus, extracted in the opposite order — a different insertion order."""
     path = tmp_path_factory.mktemp("reversed") / "traces.duckdb"
-    build_store(path, tuple(reversed(analyze_transcripts())))
+    build_store(path, tuple(reversed(corpus_transcripts())))
     return path
 
 
