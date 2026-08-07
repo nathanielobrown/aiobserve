@@ -76,7 +76,9 @@ class Query:
 
 
 QUERIES: dict[str, Query] = {
+    "session_counts": Query(scope=Scope.CORPUS, params={}),
     "sessions": Query(scope=Scope.CORPUS, params={}),
+    "weekly_trend": Query(scope=Scope.CORPUS, params={}),
 }
 
 
