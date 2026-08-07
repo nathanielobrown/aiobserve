@@ -192,6 +192,26 @@ def test_a_message_split_across_records_merges_into_one_call(fixture_source: Sou
     assert merged.output_tokens == 415
 
 
+def test_a_session_older_than_a_field_reports_it_absent(fixture_source: SourceFactory):
+    """A session recorded before `entrypoint` existed extracts with that column null.
+
+    The corpus reaches back to Claude Code 1.0.128, and two of its 575 sessions predate
+    the field. Requiring it crashes the whole extract on the oldest sessions we have.
+    """
+    trace = ClaudeCodeExtractor().extract(
+        fixture_source("legacy_entrypoint", "4b443ab7-98f8-4c1d-859f-9bdcafbabdd3")
+    )
+
+    # If the record carrying the session's context has no `entrypoint`...
+    assert trace.session.entrypoint is None
+    # ...then everything beside it still lands, from that same record...
+    assert (trace.session.version, trace.session.git_branch) == ("1.0.128", "fixture-branch-1")
+    # ...and the reply, which carries neither `effort` nor `attributionSkill`, parses too.
+    call = trace.api_calls[0]
+    assert (call.effort, call.attribution_skill, call.stop_reason) == (None, None, None)
+    assert call.cache_read_tokens == 95331
+
+
 def test_machine_records_are_archived_but_never_turns(fixture_source: SourceFactory):
     """The XML Claude Code writes to itself — notifications, shell echoes — is not a prompt.
 

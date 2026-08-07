@@ -285,7 +285,8 @@ def _session(lines: list[_Line], session_id: str, transcript: Path) -> Session:
         # Absent when the project is not a git repository.
         git_branch=context.get("gitBranch") if context else None,
         version=context["version"] if context else None,
-        entrypoint=context["entrypoint"] if context else None,
+        # Absent on sessions older than the field — the corpus has 1.0.128 sessions.
+        entrypoint=context.get("entrypoint") if context else None,
         started_at=min(moments) if moments else None,
         ended_at=max(moments) if moments else None,
         active_ms=active_ms,
