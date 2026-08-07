@@ -98,6 +98,26 @@ QUERIES: dict[str, Query] = {
         },
     ),
     "run_digest": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID, "source": SOURCE}),
+    "select_runs": Query(
+        scope=Scope.CORPUS,
+        # How many runs each `agent_type` gives up per stratum. One apiece keeps the draw at
+        # roughly two runs per definition, which is the reading budget the design sized.
+        params={"runs_per_stratum": Param(type=ParamType.INTEGER, default=1)},
+    ),
+    "select_sessions": Query(
+        scope=Scope.CORPUS,
+        params={
+            "cost_quota": Param(type=ParamType.INTEGER, default=8),
+            "error_quota": Param(type=ParamType.INTEGER, default=5),
+            "compaction_quota": Param(type=ParamType.INTEGER, default=4),
+            "discovery_quota": Param(type=ParamType.INTEGER, default=8),
+            # A skill is major when this many in-window sessions used it.
+            "skill_threshold": Param(type=ParamType.INTEGER, default=5),
+            # Any fixed value serves; what matters is that the citation carries it, so the
+            # discovery draw can be re-run — and rotated when an iteration wants new ground.
+            "seed": Param(type=ParamType.TEXT, default="aiobserve"),
+        },
+    ),
     "session_counts": Query(scope=Scope.CORPUS, params={}),
     "session_digest": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
     "sessions": Query(scope=Scope.CORPUS, params={}),

@@ -57,6 +57,30 @@ MAIN = "main"
 WORKTREE_SESSION = "0b34d1b8-ebd3-40a6-bd89-f1881e1de2ba"
 SIBLING_SESSION = "4b443ab7-98f8-4c1d-859f-9bdcafbabdd3"
 
+# The sessions the selection leaves rank on. `ANCESTOR` is the session `RESUME` resumed:
+# fourth by cost, and one of the two pool sessions that compacted. `FORK_ORIGIN` is the other
+# session holding an error tool call, fifth by cost.
+ANCESTOR = "2352492b-1437-4427-ad51-70f35c75f663"
+FORK_ORIGIN = "5a88789c-1da7-4f32-b631-40a7e243334b"
+REGISTRY_ZOO = "registry-zoo-0000-0000-0000-000000000000"
+# The `deep-research` user, and the only session `pr-and-document` reaches from the pool.
+DEEP_RESEARCH_SESSION = "8d930c77-9e60-4784-9885-6d4c226280f7"
+
+# Mycelia sessions `corpus_rollups` credits with no turns and no agent runs, so no stratum
+# may reach them. Two of them compacted, which is what makes the exclusion visible: a pool
+# drawn on metrics alone would rank them.
+NO_WORK_SESSIONS = (
+    RESUME,
+    "8ee00a94-b01a-4394-b447-b065f74b11af",
+    "1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9",
+)
+
+# Measured on 2026-08-08: of the in-window sessions, the ones with any turn or agent run.
+POOL_AT_WHOLE = 10
+POOL_AT_PARTIAL = 5
+# Distinct `agent_type`s across the corpus's 7 agent runs — one run each.
+AGENT_TYPES = 7
+
 # Measured on 2026-08-08 by building the store below: 13 mycelia sessions between
 # 2026-06-30 and 2026-07-27, in five unevenly filled ISO weeks.
 MYCELIA_SESSIONS = 13
