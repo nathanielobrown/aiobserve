@@ -167,6 +167,16 @@ def stored_runs(store: EnrichmentStore) -> list[tuple[Any, ...]]:
     ).fetchall()
 
 
+def written_at(store: EnrichmentStore) -> list[tuple[Any, ...]]:
+    """Every enrichment row of every level, against the moment it was written."""
+    return store.connection.execute(
+        "SELECT turn_id, enriched_at FROM turn_enrichments"
+        " UNION ALL SELECT agent_run_id, enriched_at FROM agent_run_enrichments"
+        " UNION ALL SELECT session_id, enriched_at FROM session_enrichments"
+        " ORDER BY 1"
+    ).fetchall()
+
+
 def stored(store: EnrichmentStore) -> list[tuple[Any, ...]]:
     return store.connection.execute(
         "SELECT session_id, source, turn_id, description, category, outcome, friction,"
@@ -214,28 +224,25 @@ def test_a_run_writes_a_row_for_every_stale_item(store: EnrichmentStore) -> None
     ]
 
 
-def test_a_second_run_over_an_unchanged_store_sends_nothing(store: EnrichmentStore) -> None:
+def test_a_second_run_over_an_unchanged_store_sends_nothing(forest: EnrichmentStore) -> None:
     """Running again with nothing changed submits nothing and rewrites nothing.
 
-    This is what makes `enrich` safe to run beside `extract` on a schedule.
+    This is what makes `enrich` safe to run beside `extract` on a schedule. Over the forest
+    rather than the spine because `fork_origin/`'s fork replayed its own spawning call into
+    its transcript: a render that let that call carry a description would embed the fork's
+    description in the fork's own prompt, so the hash would never settle and the run would be
+    re-described — and re-billed — every night. 43 recorded runs hold such a self-copy.
     """
     # If a store is enriched, and then enriched again with nothing changed...
-    enrich(store, FakeClient())
-    before = store.connection.execute(
-        "SELECT turn_id, enriched_at FROM turn_enrichments ORDER BY turn_id"
-    ).fetchall()
+    enrich(forest, FakeClient())
+    before = written_at(forest)
     second = FakeClient()
-    report = enrich(store, second)
+    report = enrich(forest, second)
     # ...then the second run sends no batch at all — not an empty one...
     assert second.batches == []
     assert report == EnrichReport(swept=0, enriched=0)
-    # ...and every row is untouched, down to when it was written.
-    assert (
-        store.connection.execute(
-            "SELECT turn_id, enriched_at FROM turn_enrichments ORDER BY turn_id"
-        ).fetchall()
-        == before
-    )
+    # ...and every row of all three levels is untouched, down to when it was written.
+    assert written_at(forest) == before
 
 
 def test_a_prompt_version_bump_re_enriches_the_level(

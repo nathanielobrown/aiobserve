@@ -14,7 +14,14 @@ from aiobserve.enrich.prompts import Level, TurnItem
 from aiobserve.enrich.store import EnrichmentStore, Stamp
 from aiobserve.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
 from aiobserve.enrich.validation import Enrichment
-from tests.enrich.conftest import COMPACTION, DUP_UUID, SPINE, build_store
+from tests.enrich.conftest import (
+    COMPACTION,
+    DUP_UUID,
+    SPINE,
+    SPINE_LEAF,
+    SPINE_RUN,
+    build_store,
+)
 
 MODEL = "claude-haiku-4-5-20251001"
 
@@ -64,6 +71,32 @@ def test_a_project_filter_narrows_the_items(fixture_db: Path) -> None:
     with EnrichmentStore(fixture_db) as store:
         assert store.turn_items(project="/no/such/repo") == []
         assert store.turn_items() != []
+
+
+def test_a_run_naming_no_parent_agent_hangs_off_the_transcript_that_spawned_it(
+    mutable_db: Path,
+) -> None:
+    """A run the records name no parent agent for still hangs off the run that spawned it.
+
+    112 of 2,459 recorded runs are in this shape. Reading `parent_agent_id` alone calls every
+    one of them a root and sends it before the parent whose prompt embeds its description.
+    """
+    with EnrichmentStore(mutable_db) as store:
+        parents = store.item_parents()
+        # If `spine/`'s leaf run — which names a parent agent *and* was spawned by a call
+        # inside that agent's transcript — loses the named parent (planted, and labeled
+        # invented: every fixture run naming no parent agent was spawned from the main
+        # transcript or from nothing at all, so no fixture carries the recorded shape)...
+        store.connection.execute(
+            "UPDATE agent_runs SET parent_agent_id = NULL WHERE id = ?", [SPINE_LEAF]
+        )
+        # ...then nothing about the forest moves: the transcript holding the spawning call
+        # names the parent the deleted column named...
+        assert store.item_parents() == parents
+    # ...which is the run that spawned it, not the session and not a turn.
+    assert parents[f"{Level.agent_run}|{SPINE}|{SPINE_LEAF}"] == (
+        f"{Level.agent_run}|{SPINE}|{SPINE_RUN}"
+    )
 
 
 def test_the_tables_survive_a_re_export(mutable_db: Path) -> None:
