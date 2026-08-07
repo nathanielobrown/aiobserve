@@ -1,0 +1,21 @@
+{# One tool call whole: what it was asked, and what it answered. The largest single fetch the
+   viewer makes, which is why it is its own request rather than part of a page. #}
+<div class="value" data-tool-value="{{ row.tool_call_id }}" data-query="{{ citation }}">
+  <p class="numbers">
+    <span data-field="name" class="tool">{{ row.name }}</span>
+    {% if row.server_side %}<span data-field="server_side">server-side</span>{% endif %}
+    {% if row.is_error %}<span data-field="is_error">error</span>{% endif %}
+    <span data-field="started_at">{{ row.started_at | clock }}</span>
+    <span data-field="ended_at">{{ row.ended_at | clock }}</span>
+  </p>
+  <pre data-field="input">{{ row.input | pretty }}</pre>
+  {% if row.offload_file %}
+  {# The result was written to a file instead of the transcript, so the page names the file
+     rather than pretending the row holds what it holds. #}
+  <p data-field="offload_file" class="offload">result offloaded to {{ row.offload_file }}</p>
+  {% elif row.incomplete %}
+  <p data-field="incomplete">The session ended before this tool call returned.</p>
+  {% else %}
+  <pre data-field="result">{{ row.result | pretty }}</pre>
+  {% endif %}
+</div>

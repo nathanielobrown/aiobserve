@@ -81,10 +81,30 @@ class Query:
 # sensible default — a digest of "some session" is not a question anyone asked.
 SESSION_ID = Param(type=ParamType.TEXT, default=REQUIRED)
 SOURCE = Param(type=ParamType.TEXT, default=REQUIRED)
+# Which api call, and which tool call. Keys for the same reason, one level down.
+API_CALL_ID = Param(type=ParamType.TEXT, default=REQUIRED)
+TOOL_CALL_ID = Param(type=ParamType.TEXT, default=REQUIRED)
 
 # How much of one raw record `records_slice` returns. A cap, not a limit: a reader can raise
 # it, and the design says so — the mechanism here is that the number is stated and cited.
 RAW_CHARS = 2000
+
+# The viewer's page sizes. Every one of them is a bound parameter with a default here and
+# nowhere else, because the payload bound the design states is arithmetic over these numbers:
+# a page of calls carries at most `PAGE_CALLS` × (2 KB of text + `PAGE_TOOLS` tool rows).
+# `tests/view/test_bounds.py` pins both values and asserts the arithmetic still fits.
+PAGE_CALLS = 25
+PAGE_TOOLS = 40
+
+# The keyset cursor before the first row: "the last index already shown", and indexes start
+# at 0. Defaulted to it, so a bare invocation of a paging query returns its first page.
+FIRST_PAGE = -1
+AFTER = Param(type=ParamType.INTEGER, default=FIRST_PAGE)
+
+# The turn id `session_digest` and `run_digest` give the api calls that sit under no turn. A
+# sentinel rather than NULL so it can travel in a URL; `view_turn_calls` takes NULL for the
+# same rows, and the viewer translates at the route.
+UNATTRIBUTED = "(unattributed)"
 
 QUERIES: dict[str, Query] = {
     "agent_types": Query(scope=Scope.CORPUS, params={}),
@@ -160,12 +180,46 @@ QUERIES: dict[str, Query] = {
     # The `view_` family belongs to the trace viewer (`plans/trace-viewer/design.md`). They
     # are library queries like any other — runnable and citable — and the viewer composes
     # sort and filter around them rather than embedding SQL of its own.
+    "view_call_text": Query(
+        scope=Scope.KEYED,
+        params={"session_id": SESSION_ID, "source": SOURCE, "api_call_id": API_CALL_ID},
+    ),
+    "view_call_thinking": Query(
+        scope=Scope.KEYED,
+        params={"session_id": SESSION_ID, "source": SOURCE, "api_call_id": API_CALL_ID},
+    ),
+    "view_call_tools": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            "source": SOURCE,
+            "api_call_id": API_CALL_ID,
+            "after": AFTER,
+            "page_tools": Param(type=ParamType.INTEGER, default=PAGE_TOOLS),
+        },
+    ),
     "view_compactions": Query(
         scope=Scope.KEYED, params={"session_id": SESSION_ID, "source": SOURCE}
     ),
     "view_runs": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
     "view_session_header": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
     "view_sessions": Query(scope=Scope.KEYED, params={}),
+    "view_tool_value": Query(
+        scope=Scope.KEYED,
+        params={"session_id": SESSION_ID, "source": SOURCE, "tool_call_id": TOOL_CALL_ID},
+    ),
+    "view_turn_calls": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            "source": SOURCE,
+            # NULL is the real question "which calls sit under no turn", so the key is
+            # required rather than defaulted: absence cannot stand in for it.
+            "turn_id": Param(type=ParamType.TEXT, default=REQUIRED),
+            "after": AFTER,
+            "page_calls": Param(type=ParamType.INTEGER, default=PAGE_CALLS),
+        },
+    ),
     "weekly_trend": Query(scope=Scope.CORPUS, params={}),
 }
 

@@ -23,7 +23,19 @@ from aiobserve.view.app import (
     TEMPLATES,
     build_app,
 )
-from tests.conftest import FORK_ORIGIN, FORK_RUN, RESUME, SPINE
+from tests.conftest import (
+    ANCESTOR,
+    DENSE_CALL,
+    DENSE_CALL_SOURCE,
+    DENSE_TOOL,
+    DENSE_TURN,
+    DENSE_TURN_CALL,
+    FORK_ORIGIN,
+    FORK_RUN,
+    MAIN,
+    RESUME,
+    SPINE,
+)
 from tests.view.conftest import Planter, fields, inside, one, values
 
 # A session that does not exist, in the shape a session id has.
@@ -316,6 +328,9 @@ def test_a_session_the_store_does_not_hold_is_a_404(client: TestClient) -> None:
         "/?sort=bogus",
         f"/session/{SPINE}",
         f"/session/{MISSING}",
+        f"/fragment/turn/{ANCESTOR}/{MAIN}/{DENSE_TURN}",
+        f"/fragment/tool/{FORK_ORIGIN}/{DENSE_CALL_SOURCE}/{DENSE_TOOL}",
+        f"/fragment/tool/{FORK_ORIGIN}/{DENSE_CALL_SOURCE}/{MISSING}",
         "/static/style.css",
     ],
 )
@@ -325,23 +340,77 @@ def test_every_response_carries_the_content_security_policy(path: str, client: T
 
 
 def test_planted_markup_arrives_inert(plant: Planter) -> None:
-    """Text from a transcript is escaped everywhere it lands on a page.
+    """Text from a transcript is escaped everywhere it lands on a page or a fragment.
 
     The sentinels are invented — no redacted fixture carries markup — and each lands on a
-    real row, so this checks the template chain rather than a hand-built page.
+    real row, so this checks the template chain rather than a hand-built page. `render.py`'s
+    own leaves cannot stand in for this one: a template that piped a value through `|safe`
+    would bypass them entirely, and only a rendered response shows it.
     """
     sentinel = "<script>alert('planted')</script>"
     path = plant(
         ("UPDATE sessions SET title = ? WHERE id = ?", [sentinel, SPINE]),
         ('UPDATE turns SET prompt = ? WHERE session_id = ? AND "index" = 0', [sentinel, SPINE]),
         ("UPDATE agent_runs SET description = ? WHERE session_id = ?", [sentinel, SPINE]),
+        # The markdown path: what a model wrote, which is the one value the viewer renders
+        # rather than escapes, and the tool arguments beside it.
+        (
+            "UPDATE api_calls SET text = ?, thinking = ? WHERE session_id = ?",
+            [sentinel] * 2 + [ANCESTOR],
+        ),
+        (
+            "UPDATE tool_calls SET input = ?, result = ? WHERE session_id = ?",
+            [sentinel] * 2 + [FORK_ORIGIN],
+        ),
     )
     with TestClient(build_app(path)) as client:
-        for page in (client.get("/").text, client.get(f"/session/{SPINE}").text):
-            # The sentinel survives to the page as text...
-            assert "alert(&#39;planted&#39;)" in page
+        served = (
+            client.get("/").text,
+            client.get(f"/session/{SPINE}").text,
+            client.get(f"/fragment/turn/{ANCESTOR}/{MAIN}/{DENSE_TURN}").text,
+            client.get(f"/fragment/text/{ANCESTOR}/{MAIN}/{DENSE_TURN_CALL}").text,
+            client.get(f"/fragment/tool/{FORK_ORIGIN}/{DENSE_CALL_SOURCE}/{DENSE_TOOL}").text,
+        )
+        for page in served:
+            # The sentinel survives to the page as text — angle brackets escaped, the one form
+            # Jinja, markdown-it and markupsafe all agree on...
+            assert "&lt;script&gt;alert(" in page
             # ...and never as markup the browser would run.
             assert "<script>alert" not in page
+
+
+def test_a_per_value_fragment_returns_the_one_value_it_names(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """Opening one tool call fetches that call and nothing else from the same api call.
+
+    The per-value routes are the exception to the payload bound — they ship a fat column
+    whole — so what keeps the bound is that the unit really is one value. A fragment that
+    quietly carried its siblings would be a page of them under another name.
+    """
+    siblings = [
+        row[0]
+        for row in store.execute(
+            "SELECT id FROM live_tool_calls"
+            " WHERE session_id = ? AND source = ? AND api_call_id = ?",
+            [FORK_ORIGIN, DENSE_CALL_SOURCE, DENSE_CALL],
+        ).fetchall()
+    ]
+    assert DENSE_TOOL in siblings and len(siblings) > 1
+    served = client.get(f"/fragment/tool/{FORK_ORIGIN}/{DENSE_CALL_SOURCE}/{DENSE_TOOL}").text
+    # The value it was asked for is there, with what the tool returned...
+    assert values(served, "data-tool-value") == [DENSE_TOOL]
+    assert fields(served, "data-tool-value", DENSE_TOOL)["result"]
+    # ...and no sibling of the same call rode along with it.
+    for other in siblings:
+        assert other == DENSE_TOOL or other not in served
+
+
+def test_a_fragment_naming_nothing_is_a_404(client: TestClient) -> None:
+    """A per-value fragment for an id the store lacks is a 404, not an empty box."""
+    response = client.get(f"/fragment/tool/{FORK_ORIGIN}/{DENSE_CALL_SOURCE}/{MISSING}")
+    assert response.status_code == 404
+    assert MISSING not in response.text
 
 
 def test_every_asset_a_page_asks_for_is_one_the_viewer_ships(client: TestClient) -> None:

@@ -64,6 +64,14 @@
       <span data-field="cost_usd">{{ entry.row.cost_usd | money }}</span>
     </p>
     {% if entry.chips %}{{ run_list(entry.chips, 'data-chip') }}{% endif %}
+    {# The turn's api calls arrive on first open and not before: a turn is not a bounded
+       unit, so nothing about what it did rides on the page that lists it. #}
+    <details class="calls" data-expand="{{ entry.row.turn_id }}"
+             hx-get="/fragment/turn/{{ header.session_id }}/{{ main }}/{{ entry.row.turn_id }}"
+             hx-trigger="toggle once" hx-target="find .page">
+      <summary>{{ entry.row.api_calls }} api call(s)</summary>
+      <div class="page"></div>
+    </details>
   </article>
   {% else %}
   {# A compaction sits between the turns it fell between: what a later turn could still see

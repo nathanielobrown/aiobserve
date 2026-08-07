@@ -33,6 +33,7 @@ from aiobserve.analyze.queries import ParamValue
 from aiobserve.export.duckdb import SCHEMA_VERSION, held_schema_version
 from aiobserve.model import MAIN_SOURCE
 from aiobserve.view import format as fmt
+from aiobserve.view import render
 
 # Loopback only, and a port unlikely to be taken. Fixed rather than picked at startup so a
 # link pasted into a note opens the same page tomorrow.
@@ -62,6 +63,32 @@ class Page(StrEnum):
     TIMELINE = "session_digest"
     RUNS = "view_runs"
     COMPACTIONS = "view_compactions"
+
+
+class Fragment(StrEnum):
+    """The library queries htmx fetches a page of at a time, on expanding something."""
+
+    # One page of the api calls under a turn, and one page of the tool calls under a call.
+    TURN_CALLS = "view_turn_calls"
+    CALL_TOOLS = "view_call_tools"
+
+
+class Value(StrEnum):
+    """The library queries that fetch one whole value: the exception to the page bound.
+
+    Every other query truncates in SQL. These return a fat column untruncated because the
+    unit *is* one value — the bound is the largest single value in the store, not a page's
+    worth of them, and it is only reached when a reader opens that one value.
+    """
+
+    CALL_TEXT = "view_call_text"
+    CALL_THINKING = "view_call_thinking"
+    TOOL = "view_tool_value"
+
+
+# Any of the three, for the fetch helper they share. Declaring a query in one of the enums is
+# what puts it in reach of the payload scans, so the union is also the checklist.
+Library = Page | Fragment | Value
 
 
 # What the session list can be sorted by: a column of `view_sessions`, mapped to its header
@@ -108,6 +135,12 @@ DEFAULT_DIRECTION = "desc"
 # past the design's page ceiling, so the size is bound rather than assumed small.
 PAGE_SESSIONS = 200
 MAX_PAGE_SESSIONS = 500
+
+# The most a fragment will page at once, whatever a URL asks for. The payload bound the design
+# states is arithmetic over the *manifest defaults*; these ceilings are the coarser guard that
+# keeps a hand-typed `?calls=100000` from trying to render a whole session in one response.
+MAX_PAGE_CALLS = 100
+MAX_PAGE_TOOLS = 200
 
 Row = dict[str, Any]
 
@@ -180,7 +213,7 @@ def fetch(
 
 
 def page_rows(
-    connection: duckdb.DuckDBPyConnection, page: Page, **bindings: ParamValue
+    connection: duckdb.DuckDBPyConnection, page: Library, **bindings: ParamValue
 ) -> list[Row]:
     """The rows of one library query, bound as given."""
     return fetch(connection, queries.load(page), bindings)
@@ -191,6 +224,29 @@ class Listing(NamedTuple):
 
     rows: list[Row]
     more: bool
+
+
+class Paged(NamedTuple):
+    """One keyset page of a fragment: the rows, what is behind them, and where to resume."""
+
+    rows: list[Row]
+    # How many rows the cap cut, for the "+N more" the page shows instead of losing them.
+    more: int
+    # The `$after` cursor the next fetch binds, or None when this page is the last.
+    after: int | None
+
+
+def paged(rows: list[Row], matched: str, cursor: str) -> Paged:
+    """A page of rows and its continuation, from a query's own pre-LIMIT match count.
+
+    `matched` names the column carrying how many rows the cursor had ahead of it, which the
+    paging queries compute with a window function — so a page knows what it cut without a
+    second query, and cannot report "+0 more" for rows it silently dropped.
+    """
+    if not rows:
+        return Paged(rows, 0, None)
+    behind = rows[0][matched] - len(rows)
+    return Paged(rows, behind, rows[-1][cursor] if behind else None)
 
 
 def sorted_sessions(
@@ -218,6 +274,13 @@ def sorted_sessions(
         {"limit": size + 1, "offset": (page - 1) * size},
     )
     return Listing(rows[:size], len(rows) > size)
+
+
+def checked(size: int, ceiling: int) -> int:
+    """A page size from a query string, or a 400 — every route's sizes go through here."""
+    if not 1 <= size <= ceiling:
+        raise HTTPException(400, f"Ask for a page size between 1 and {ceiling}.")
+    return size
 
 
 def chips(runs: Sequence[Row], source: str, turn_id: str | None) -> tuple[Chip, ...]:
@@ -295,6 +358,10 @@ def build_app(db_path: Path) -> FastAPI:
         "when": fmt.when,
         "clock": fmt.clock,
         "duration": fmt.duration,
+        # The two filters that print what a transcript wrote. Both hand back escaped markup;
+        # `view/render.py` is where that escaping lives, and nothing here may add `|safe`.
+        "markdown": render.markdown,
+        "pretty": render.pretty,
     }
 
     def error(request: Request, status: int, message: str) -> Response:
@@ -404,6 +471,7 @@ def build_app(db_path: Path) -> FastAPI:
             "session.html",
             {
                 "header": header[0],
+                "main": MAIN_SOURCE,
                 "timeline": timeline(turns, runs, markers),
                 "unattached": unattached(runs),
                 "citations": {
@@ -413,6 +481,160 @@ def build_app(db_path: Path) -> FastAPI:
                     for page in (Page.SESSION_HEADER, Page.TIMELINE, Page.RUNS, Page.COMPACTIONS)
                 },
             },
+        )
+
+    def tools_under(
+        connection: duckdb.DuckDBPyConnection,
+        keyed: Mapping[str, ParamValue],
+        after: int,
+        size: int,
+    ) -> Paged:
+        """One page of the tool calls under one api call — the nested list and its "+N more".
+
+        The same query and the same page shape whether it arrives inline under a call or as
+        the continuation the indicator fetches, so the two can never disagree about the set.
+        """
+        return paged(
+            page_rows(connection, Fragment.CALL_TOOLS, **keyed, after=after, page_tools=size),
+            "matched_tool_calls",
+            "tool_index",
+        )
+
+    @app.get("/fragment/turn/{session_id}/{source}/{turn_id}")
+    def turn_calls(
+        request: Request,
+        session_id: str,
+        source: str,
+        turn_id: str,
+        after: int = queries.FIRST_PAGE,
+        calls: int = queries.PAGE_CALLS,
+        tools: int = queries.PAGE_TOOLS,
+    ) -> Response:
+        """One page of the api calls a turn made, each carrying a page of its tool calls."""
+        checked(calls, MAX_PAGE_CALLS)
+        checked(tools, MAX_PAGE_TOOLS)
+        keyed: dict[str, ParamValue] = {"session_id": session_id, "source": source}
+        # The digests name the calls that sit under no turn with a sentinel, because a URL
+        # cannot carry a NULL. The query asks for those rows with one.
+        turn: ParamValue = None if turn_id == queries.UNATTRIBUTED else turn_id
+        with open_store(resolved) as connection:
+            page = paged(
+                page_rows(
+                    connection,
+                    Fragment.TURN_CALLS,
+                    **keyed,
+                    turn_id=turn,
+                    after=after,
+                    page_calls=calls,
+                ),
+                "matched_api_calls",
+                "call_index",
+            )
+            # One fetch per call rather than a nested subquery: `view_call_tools` stays the
+            # single definition of what a page of tool rows is, and a turn page is 25 small
+            # keyed reads on a local file.
+            under = {
+                row["api_call_id"]: tools_under(
+                    connection,
+                    keyed | {"api_call_id": row["api_call_id"]},
+                    queries.FIRST_PAGE,
+                    tools,
+                )
+                for row in page.rows
+            }
+        return templates.TemplateResponse(
+            request,
+            "fragments/calls.html",
+            {
+                "session_id": session_id,
+                "source": source,
+                "turn_id": turn_id,
+                "page": page,
+                "under": under,
+                "tools": tools,
+                "calls": calls,
+                "citation": queries.citation(
+                    Fragment.TURN_CALLS,
+                    keyed | {"turn_id": turn, "after": after, "page_calls": calls},
+                ),
+            },
+        )
+
+    @app.get("/fragment/tools/{session_id}/{source}/{api_call_id}")
+    def call_tools(
+        request: Request,
+        session_id: str,
+        source: str,
+        api_call_id: str,
+        after: int = queries.FIRST_PAGE,
+        tools: int = queries.PAGE_TOOLS,
+    ) -> Response:
+        """One page of the tool calls under one api call."""
+        checked(tools, MAX_PAGE_TOOLS)
+        keyed: dict[str, ParamValue] = {
+            "session_id": session_id,
+            "source": source,
+            "api_call_id": api_call_id,
+        }
+        with open_store(resolved) as connection:
+            page = tools_under(connection, keyed, after, tools)
+        return templates.TemplateResponse(
+            request,
+            "fragments/tools.html",
+            {
+                "session_id": session_id,
+                "source": source,
+                "api_call_id": api_call_id,
+                "page": page,
+                "tools": tools,
+                "citation": queries.citation(
+                    Fragment.CALL_TOOLS, keyed | {"after": after, "page_tools": tools}
+                ),
+            },
+        )
+
+    def whole(
+        request: Request, value: Value, template: str, keyed: Mapping[str, ParamValue]
+    ) -> Response:
+        """One per-value fragment: the whole value, or a 404 when nothing is stored under it."""
+        with open_store(resolved) as connection:
+            rows = page_rows(connection, value, **keyed)
+        if not rows:
+            raise HTTPException(404, "Nothing in this store is stored under that id.")
+        return templates.TemplateResponse(
+            request,
+            f"fragments/{template}.html",
+            {"row": rows[0], "citation": queries.citation(value, keyed)},
+        )
+
+    @app.get("/fragment/text/{session_id}/{source}/{api_call_id}")
+    def call_text(request: Request, session_id: str, source: str, api_call_id: str) -> Response:
+        """What one api call said, whole."""
+        return whole(
+            request,
+            Value.CALL_TEXT,
+            "value",
+            {"session_id": session_id, "source": source, "api_call_id": api_call_id},
+        )
+
+    @app.get("/fragment/thinking/{session_id}/{source}/{api_call_id}")
+    def call_thinking(request: Request, session_id: str, source: str, api_call_id: str) -> Response:
+        """What one api call thought, whole."""
+        return whole(
+            request,
+            Value.CALL_THINKING,
+            "value",
+            {"session_id": session_id, "source": source, "api_call_id": api_call_id},
+        )
+
+    @app.get("/fragment/tool/{session_id}/{source}/{tool_call_id}")
+    def tool_value(request: Request, session_id: str, source: str, tool_call_id: str) -> Response:
+        """One tool call whole: the arguments it was given and what it returned."""
+        return whole(
+            request,
+            Value.TOOL,
+            "tool",
+            {"session_id": session_id, "source": source, "tool_call_id": tool_call_id},
         )
 
     return app

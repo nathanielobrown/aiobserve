@@ -17,7 +17,20 @@ from aiobserve.analyze.queries import QUERIES, Scope
 from aiobserve.analyze.runner import CORPUS_RELATIONS
 from aiobserve.export.duckdb import _TABLES
 from tests.analyze.conftest import QueryRunner
-from tests.conftest import ANCESTOR, MAIN, MYCELIA, RESUME, SPINE, SPINE_RUN
+from tests.conftest import (
+    ANCESTOR,
+    DENSE_CALL,
+    DENSE_CALL_SOURCE,
+    DENSE_TOOL,
+    DENSE_TURN,
+    DENSE_TURN_CALL,
+    FORK_ORIGIN,
+    MAIN,
+    MYCELIA,
+    RESUME,
+    SPINE,
+    SPINE_RUN,
+)
 
 # Bindings that make a query return something on the fixture corpus, per query name. The
 # production defaults are pinned by their own leaves; these are the fixture-sized values.
@@ -36,6 +49,22 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     "view_compactions": {"session_id": ANCESTOR, "source": MAIN},
     "view_runs": {"session_id": SPINE},
     "view_session_header": {"session_id": SPINE},
+    # The viewer's drill-down, bound at the corpus's densest shapes so each query answers
+    # with more than one row: the turn holding 4 api calls, and the call holding 4 tools.
+    "view_turn_calls": {"session_id": ANCESTOR, "source": MAIN, "turn_id": DENSE_TURN},
+    "view_call_tools": {
+        "session_id": FORK_ORIGIN,
+        "source": DENSE_CALL_SOURCE,
+        "api_call_id": DENSE_CALL,
+    },
+    # The per-value queries answer with one row apiece, whatever is bound.
+    "view_call_text": {"session_id": ANCESTOR, "source": MAIN, "api_call_id": DENSE_TURN_CALL},
+    "view_call_thinking": {"session_id": ANCESTOR, "source": MAIN, "api_call_id": DENSE_TURN_CALL},
+    "view_tool_value": {
+        "session_id": FORK_ORIGIN,
+        "source": DENSE_CALL_SOURCE,
+        "tool_call_id": DENSE_TOOL,
+    },
 }
 
 # The clock a query file may not read: a `current_date` filter goes green on a frozen

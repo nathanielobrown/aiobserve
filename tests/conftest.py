@@ -56,6 +56,16 @@ MAIN = "main"
 WORKTREE_SESSION = "0b34d1b8-ebd3-40a6-bd89-f1881e1de2ba"
 SIBLING_SESSION = "4b443ab7-98f8-4c1d-859f-9bdcafbabdd3"
 
+# The densest shapes the corpus records, which the viewer's paging leaves page *below* so
+# that a page boundary is a real overflow of recorded data rather than a staged one:
+# `DENSE_TURN` is `ANCESTOR`'s main-thread turn holding 4 api calls, and `DENSE_CALL` is the
+# api call in `FORK_ORIGIN`'s `DENSE_CALL_SOURCE` holding 4 tool calls.
+DENSE_TURN = "55309e59-0fae-4ef1-9251-877e27487bda"
+DENSE_TURN_CALL = "msg_011Ccs78BfVLQfyQqhkxnpkm"
+DENSE_CALL_SOURCE = "acbc29008a04b9702"
+DENSE_CALL = "msg_011CdFxfStgUUn3Q59b4RFii"
+DENSE_TOOL = "toolu_015wiqbosE2nUYZBYdd9urjA"
+
 # `ANCESTOR` is the session `RESUME` resumed, and one of the two pool sessions that compacted.
 # `FORK_ORIGIN` holds the fork whose spawning call sits in the fork's own transcript.
 ANCESTOR = "2352492b-1437-4427-ad51-70f35c75f663"

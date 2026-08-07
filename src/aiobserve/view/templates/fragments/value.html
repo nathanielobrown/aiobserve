@@ -1,0 +1,5 @@
+{# One whole value — an api call's text or its thinking — rendered as the markdown it was
+   written as. The per-value fetch is the one place a fat column crosses the wire whole. #}
+<div class="value" data-value="{{ (row.value or '') | length }}" data-query="{{ citation }}">
+  {{ row.value | markdown }}
+</div>
