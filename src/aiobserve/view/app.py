@@ -103,6 +103,12 @@ DIRECTIONS: dict[str, Direction] = {
 DEFAULT_SORT = "started_at"
 DEFAULT_DIRECTION = "desc"
 
+# How many sessions a page of the list holds, and the most it will hold on request. The list
+# is the one page that grows with the corpus: 575 sessions rendered whole came to 587 KB,
+# past the design's page ceiling, so the size is bound rather than assumed small.
+PAGE_SESSIONS = 200
+MAX_PAGE_SESSIONS = 500
+
 Row = dict[str, Any]
 
 
@@ -180,13 +186,22 @@ def page_rows(
     return fetch(connection, queries.load(page), bindings)
 
 
-def sorted_sessions(connection: duckdb.DuckDBPyConnection, sort: str, direction: str) -> list[Row]:
-    """The session list, ordered by one of `SORTS` — the closed composition the design names.
+class Listing(NamedTuple):
+    """One page of the session list, and whether the store holds another after it."""
 
-    The library query stays the citable core: it goes in a subquery untouched, and the only
-    thing wrapped around it is an ORDER BY built from two dictionary lookups. `session_id`
-    breaks ties in the same direction, which makes every sort a total order and its reverse
-    exact.
+    rows: list[Row]
+    more: bool
+
+
+def sorted_sessions(
+    connection: duckdb.DuckDBPyConnection, sort: str, direction: str, page: int, size: int
+) -> Listing:
+    """One page of the session list, ordered by one of `SORTS` — the design's composition.
+
+    The library query stays the citable core: it goes in a subquery untouched, and what is
+    wrapped around it is an ORDER BY built from two dictionary lookups and a LIMIT bound as
+    a parameter. `session_id` breaks ties in the same direction, which makes every sort a
+    total order, its reverse exact, and the page boundaries stable between requests.
     """
     # A sort key *is* a column name, so membership is the whole guard — and it is checked
     # here as well as at the route, because this is the function that builds SQL.
@@ -194,12 +209,15 @@ def sorted_sessions(connection: duckdb.DuckDBPyConnection, sort: str, direction:
         raise KeyError(sort)
     order = DIRECTIONS[direction]
     listing = queries.load(Page.SESSIONS).strip().rstrip(";")
-    return fetch(
+    # One row past the page: cheaper than a second query, and all a pager needs to know.
+    rows = fetch(
         connection,
         f"SELECT * FROM ({listing})"
-        f" ORDER BY {sort} {order.keyword} {order.nulls}, session_id {order.keyword}",
-        {},
+        f" ORDER BY {sort} {order.keyword} {order.nulls}, session_id {order.keyword}"
+        " LIMIT $limit OFFSET $offset",
+        {"limit": size + 1, "offset": (page - 1) * size},
     )
+    return Listing(rows[:size], len(rows) > size)
 
 
 def chips(runs: Sequence[Row], source: str, turn_id: str | None) -> tuple[Chip, ...]:
@@ -315,22 +333,33 @@ def build_app(db_path: Path) -> FastAPI:
 
     @app.get("/")
     def session_list(
-        request: Request, sort: str = DEFAULT_SORT, direction: str = DEFAULT_DIRECTION
+        request: Request,
+        sort: str = DEFAULT_SORT,
+        direction: str = DEFAULT_DIRECTION,
+        page: int = 1,
+        size: int = PAGE_SESSIONS,
     ) -> Response:
         if sort not in SORTS or direction not in DIRECTIONS:
             raise HTTPException(
                 400,
                 f"Sort by one of {', '.join(SORTS)}, in direction {' or '.join(DIRECTIONS)}.",
             )
+        if page < 1 or not 1 <= size <= MAX_PAGE_SESSIONS:
+            raise HTTPException(
+                400, f"Ask for page 1 or later, at a size between 1 and {MAX_PAGE_SESSIONS}."
+            )
         with open_store(resolved) as connection:
-            rows = sorted_sessions(connection, sort, direction)
+            rows, more = sorted_sessions(connection, sort, direction, page, size)
         # A header link flips the direction of the column already sorted by, and opens any
-        # other column at the direction that puts its largest values first.
+        # other column at the direction that puts its largest values first. Re-sorting starts
+        # from the first page: page 4 of one order says nothing about page 4 of another.
         flipped = "asc" if direction == "desc" else "desc"
+        held = f"&size={size}" if size != PAGE_SESSIONS else ""
         links = {
-            key: f"/?sort={key}&direction={flipped if key == sort else DEFAULT_DIRECTION}"
+            key: f"/?sort={key}&direction={flipped if key == sort else DEFAULT_DIRECTION}{held}"
             for key in SORTS
         }
+        step = f"/?sort={sort}&direction={direction}{held}&page="
         return templates.TemplateResponse(
             request,
             "sessions.html",
@@ -340,9 +369,19 @@ def build_app(db_path: Path) -> FastAPI:
                 "sort": sort,
                 "direction": direction,
                 "links": links,
+                "page": page,
+                "first": (page - 1) * size + 1,
+                "previous": f"{step}{page - 1}" if page > 1 else None,
+                "next": f"{step}{page + 1}" if more else None,
                 "citations": {
                     Page.SESSIONS.value: queries.citation(
-                        Page.SESSIONS, {"sort": sort, "direction": direction}
+                        Page.SESSIONS,
+                        {
+                            "sort": sort,
+                            "direction": direction,
+                            "limit": size,
+                            "offset": (page - 1) * size,
+                        },
                     )
                 },
             },

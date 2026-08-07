@@ -11,7 +11,16 @@ import pytest
 from fastapi.testclient import TestClient
 
 from aiobserve.analyze import queries
-from aiobserve.view.app import CSP, DEFAULT_DIRECTION, DEFAULT_SORT, DIRECTIONS, SORTS, build_app
+from aiobserve.view.app import (
+    CSP,
+    DEFAULT_DIRECTION,
+    DEFAULT_SORT,
+    DIRECTIONS,
+    MAX_PAGE_SESSIONS,
+    PAGE_SESSIONS,
+    SORTS,
+    build_app,
+)
 from tests.conftest import FORK_ORIGIN, FORK_RUN, RESUME, SPINE
 from tests.view.conftest import Planter, fields, inside, one, values
 
@@ -117,16 +126,53 @@ def test_an_unknown_sort_or_direction_is_refused(
     assert DEFAULT_SORT in response.text
 
 
-def test_the_list_footer_cites_its_query_and_the_sort_applied(client: TestClient) -> None:
-    """The page carries the query behind it, at the bindings this request ran."""
-    page = client.get("/", params={"sort": "cost_usd", "direction": "asc"}).text
+def test_the_list_footer_cites_its_query_and_what_was_composed_around_it(
+    client: TestClient,
+) -> None:
+    """The page carries the query behind it, at the sort and the page this request ran."""
+    page = client.get("/", params={"sort": "cost_usd", "direction": "asc", "size": 5}).text
     cited = fields(page, "id", "citation")
-    assert cited["view_sessions"] == "-- queries/view_sessions.sql sort=cost_usd direction=asc"
-    # An unsorted request cites the defaults, so a copied line reproduces what was seen.
+    assert cited["view_sessions"] == (
+        "-- queries/view_sessions.sql sort=cost_usd direction=asc limit=5 offset=0"
+    )
+    # A bare request cites the defaults, so a copied line reproduces what was seen.
     default = fields(client.get("/").text, "id", "citation")
     assert default["view_sessions"] == (
         f"-- queries/view_sessions.sql sort={DEFAULT_SORT} direction={DEFAULT_DIRECTION}"
+        f" limit={PAGE_SESSIONS} offset=0"
     )
+
+
+def test_the_list_is_served_a_page_at_a_time(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The pages of the list tile the store in order: no row twice, none missing."""
+    size = 5
+    seen: list[str] = []
+    # A size the fixture corpus needs four pages of, followed to the end...
+    for page in range(1, 10):
+        html = client.get("/", params={"size": size, "page": page}).text
+        rows = values(html, "data-session-id")
+        assert len(rows) <= size
+        seen += rows
+        if "next" not in values(html, "data-page"):
+            break
+    else:
+        pytest.fail("the pager never ran out of pages")
+    # ...holds every session once, in the order one long list would have had.
+    assert seen == sessions(store)
+    # Past the end is an empty page rather than an error: a stale link is not a fault.
+    assert values(client.get("/", params={"page": 99}).text, "data-session-id") == []
+
+
+@pytest.mark.parametrize("parameters", [{"page": 0}, {"page": -1}, {"size": 0}, {"size": 100_000}])
+def test_a_page_outside_the_bounds_is_refused(
+    parameters: dict[str, int], client: TestClient
+) -> None:
+    """The page size is bounded on both ends: a page cannot be asked to hold the store."""
+    response = client.get("/", params=parameters)
+    assert response.status_code == 400
+    assert str(MAX_PAGE_SESSIONS) in response.text
 
 
 def test_the_session_header_holds_what_the_store_says_about_it(
