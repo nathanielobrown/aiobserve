@@ -22,7 +22,8 @@ from aiobserve.enrich.batches import (
     Succeeded,
     SyncClient,
 )
-from aiobserve.enrich.enricher import EnrichmentFailed, EnrichReport, enrich
+from aiobserve.enrich.cost import Prompt, estimate
+from aiobserve.enrich.enricher import EnrichmentFailed, EnrichReport, enrich, plan
 from aiobserve.enrich.prompts import (
     PROMPT_VERSION,
     AgentRunItem,
@@ -373,8 +374,103 @@ def test_a_dry_run_writes_nothing_and_sends_nothing(
     cli.main("enrich", "--db", str(store.path), "--dry-run")
     # ...then it reports the two stale runs, the four stale turns and the session, and writes
     # no row.
-    assert "7 item(s) would be sent" in capsys.readouterr().out
+    printed = capsys.readouterr().out
+    assert "at most 7 item(s) would be sent" in printed
+    assert "2 agent_run, 4 turn, 1 session" in printed
     assert stored(store) == []
+
+
+def test_a_dry_run_counts_the_ancestors_of_what_is_stale(
+    store: EnrichmentStore, anthropic_env: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """One stale leaf is quoted as four items: itself and everything that embeds it.
+
+    Whether the cascade really reaches that far is unknowable before the answers come back,
+    which is why the report says "at most" rather than naming a price.
+    """
+    # If a fully enriched store has one leaf run made stale — by renaming a tool call only
+    # that run's prompt renders...
+    enrich(store, FakeClient())
+    store.connection.execute(
+        "UPDATE tool_calls SET name = 'Grep' WHERE id = 'toolu_01SzCMuLzJk8ag5BnK545sWY'"
+    )
+    # ...then a dry run quotes the leaf, the run that spawned it, the main turn that spawned
+    # *that*, and the session holding the turn — one per level of the chain above it.
+    planned = plan(store, MODEL, project=None, limit=None)
+    assert {entry.item.key for entry in planned} == {
+        key_of(store, SPINE_LEAF),
+        key_of(store, SPINE_RUN),
+        turn_key(store, "818588ad"),
+        session_key(store, SPINE),
+    }
+    cli.main("enrich", "--db", str(store.path), "--dry-run")
+    assert "at most 4 item(s) would be sent" in capsys.readouterr().out
+
+
+def test_a_dry_run_quotes_a_price_it_computed_itself(
+    store: EnrichmentStore, anthropic_env: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The quoted dollars are arithmetic over the prompts, checkable without a network.
+
+    The autouse network guard is what proves the "without a network" half: an implementation
+    that asked the API what it charges would raise here rather than print.
+    """
+    # If a dry run reports on a store nothing has enriched...
+    planned = plan(store, MODEL, project=None, limit=None)
+    cli.main("enrich", "--db", str(store.path), "--dry-run")
+    printed = capsys.readouterr().out
+    # ...then the price it printed is the one `estimate` derives from the same prompts...
+    quote = estimate([Prompt(entry.item.level, entry.rendered) for entry in planned], MODEL)
+    assert f"at most ${quote.batched_usd:.2f} batched" in printed
+    assert f"(${quote.unbatched_usd:.2f} with --no-batch)" in printed
+    # ...the batch path is quoted at half the direct one, which is why production batches...
+    assert quote.unbatched_usd == pytest.approx(quote.batched_usd * 2)
+    # ...and seven short fixture prompts cost a fraction of a cent, so the report has to
+    # carry the token counts to be worth reading at all.
+    assert f"~{quote.input_tokens:,} input" in printed
+
+
+def test_a_dry_run_works_on_both_paths(
+    store: EnrichmentStore, anthropic_env: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--dry-run` reports the same plan with or without `--no-batch`, building no client.
+
+    `build_client` is left alone in both calls: a dry run that constructed one would reach
+    for a key it has no business spending.
+    """
+    cli.main("enrich", "--db", str(store.path), "--dry-run")
+    batched = capsys.readouterr().out
+    cli.main("enrich", "--db", str(store.path), "--dry-run", "--no-batch")
+    # The plan does not depend on how it would be sent — only the price does, and both
+    # prices are quoted either way.
+    assert capsys.readouterr().out == batched
+
+
+def test_the_cli_writes_what_the_library_writes(
+    spine_store: Path, tmp_path: Path, anthropic_env: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`aiobserve enrich` leaves the same rows as calling `enrich` directly.
+
+    The command is a thin wrapper by intent; a check on the library alone would miss an
+    argument the CLI forgets to pass through.
+    """
+    # If the same store is enriched twice — once through the command, once through the
+    # function — with the same fake answering both...
+    through_cli, direct = tmp_path / "cli.duckdb", tmp_path / "direct.duckdb"
+    for copy in (through_cli, direct):
+        copy.write_bytes(spine_store.read_bytes())
+    monkeypatch.setattr(cli, "build_client", lambda model, *, batched: FakeClient())
+    cli.main("enrich", "--db", str(through_cli))
+    with EnrichmentStore(direct) as store:
+        enrich(store, FakeClient())
+        expected = stored(store) + [row[:3] for row in stored_runs(store)] + stored_sessions(store)
+    # ...then both stores hold the same rows at every level, `enriched_at` aside — the one
+    # column a second run cannot reproduce.
+    with EnrichmentStore(through_cli) as store:
+        assert (
+            stored(store) + [row[:3] for row in stored_runs(store)] + stored_sessions(store)
+            == expected
+        )
 
 
 def test_the_cli_limits_what_it_sends(

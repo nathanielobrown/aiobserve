@@ -2,6 +2,8 @@
 
 import argparse
 import os
+from collections import Counter
+from collections.abc import Sequence
 from pathlib import Path
 
 import anthropic
@@ -13,7 +15,8 @@ from aiobserve.enrich.batches import (
     BatchClient,
     SyncClient,
 )
-from aiobserve.enrich.enricher import enrich, plan
+from aiobserve.enrich.cost import Prompt, estimate
+from aiobserve.enrich.enricher import LEVELS, PlannedItem, enrich, plan
 from aiobserve.enrich.store import EnrichmentStore
 from aiobserve.export.duckdb import DuckDbExporter
 from aiobserve.extract.claude_code import ClaudeCodeExtractor
@@ -107,12 +110,28 @@ def _enrich(args: argparse.Namespace) -> None:
     project = str(args.project.resolve()) if args.project else None
     with EnrichmentStore(args.db) as store:
         if args.dry_run:
-            planned = plan(store, args.model, project=project, limit=args.limit)
-            print(f"at most {len(planned)} item(s) would be sent to {args.model}")
+            _report_plan(plan(store, args.model, project=project, limit=args.limit), args.model)
             return
         client = build_client(args.model, batched=not args.no_batch)
         report = enrich(store, client, project=project, limit=args.limit)
     print(f"{report.enriched} item(s) enriched, {report.swept} orphaned row(s) swept")
+
+
+def _report_plan(planned: Sequence[PlannedItem], model: str) -> None:
+    """Say what a run would send and what it would cost, per level and in total.
+
+    Every count here is an upper bound: the plan holds each stale item and every item whose
+    prompt embeds one, and a child re-described in the same words stops that cascade.
+    """
+    quote = estimate([Prompt(entry.item.level, entry.rendered) for entry in planned], model)
+    counts = Counter(entry.item.level for entry in planned)
+    breakdown = ", ".join(f"{counts[level]} {level}" for level in LEVELS)
+    print(f"at most {quote.items} item(s) would be sent to {model} — {breakdown}")
+    print(
+        f"at most ${quote.batched_usd:.2f} batched (${quote.unbatched_usd:.2f} with --no-batch): "
+        f"~{quote.input_tokens:,} input and ~{quote.output_tokens:,} output tokens, "
+        "counting no prompt caching"
+    )
 
 
 def _add_common_arguments(subcommand: argparse.ArgumentParser) -> None:
