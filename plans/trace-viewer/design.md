@@ -103,6 +103,17 @@ FastAPI `TestClient` over `build_app` pointed at a temp store the real extract p
 - Auth of any kind — localhost, one user
 - Live tailing/auto-refresh during extraction; multi-store switching
 
+## As built: slice 1
+
+What the implementation does differently from the paragraphs above. Everything else landed as designed.
+
+- **The list is paged.** Rendering all 575 sessions came to 587 KB (1,021 B a row, measured 2026-08-08), well past the ~350 KB ceiling — so "whole list server-rendered" was a latency claim that does not carry the payload. `/` takes `page` and `size`, bound by `PAGE_SESSIONS` (200) and `MAX_PAGE_SESSIONS` (500) in `src/aiobserve/view/app.py`, which is the design's own no-exceptions rule about page sizes. The join stays un-materialized; nothing about the growth threshold changes
+- **A direction carries its NULLs placement.** `asc` composes `ASC NULLS LAST` and `desc` `DESC NULLS FIRST`, with a same-direction `session_id` tie-break, so a sort and its reverse are exact opposites and the order is total. `<column> <direction>` alone is neither
+- **A run spawned from another run's turn nests under its parent's chip** rather than waiting for the run page. Without it the session page shows fewer runs than its own header counts; `timeline()` raises if any run cannot be placed
+- **CSP is app-level middleware**, not a per-route header, so 400s, 404s, the 503 page and the static files all carry it
+- **markdown-it-py and the vendored htmx are not in yet.** Slice 1 renders no markdown and fetches no fragment, so both would have been unused dependencies. They land with slice 2, along with `render.py` and its escaping unit tests
+- **The route-level planted-sentinel test landed early**, in slice 1 rather than with the markdown layer: a template piping a value through `|safe` is a slice-1 mistake as much as a slice-2 one
+
 ## Open questions
 
 - The manifest `scope: corpus | keyed` field extends the analysis design's runner contract from this design — the in-flight analysis implementer must adopt it (or propose better) before either side's slice 1 hardens the manifest shape

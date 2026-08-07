@@ -137,6 +137,14 @@ The amendment resolved all five findings this plan opened against the previous d
 - **A. The records browser's `LIMIT 100` was not parameterized with the other three.** Its densest fixture `(session, source)` holds 47 records, so the keyset page boundary is the one boundary no test can cross. The paging leaf above proves the walk, not the boundary. Same fix as the other three: a `$page_records` with a manifest default. Cheap, and it makes the parameter rule uniform — every page size in the viewer is bound, no exceptions to remember.
 - **B. The bound's arithmetic and its stated ceiling now disagree.** At the new defaults, ≤ 25 calls × (2 KB text + 40 tool rows × ~0.3 KB) = 25 × 14 KB ≈ **350 KB**, but both the turn-expand paragraph and the performance paragraph still state ~300 KB. Raising the cap from the observed 32 to 40 moved the product. Either restate the ceiling as ~350 KB or set `$page_tools` to 32, whichever the design means — the sweep leaf asserts against this number and cannot be written until it is settled.
 
+## As built: slice 1
+
+- **The 503 leaf carries no `slow` marker.** Holding the lock from a subprocess costs about 0.1 s, so the marker would have been unearned. The subprocess is still load-bearing, and for a second reason the plan does not name: a holder that does not keep the connection referenced is freed at once and never takes the lock at all
+- **Finding B is settled at ~350 KB.** `PAGE_BYTES` in `tests/view/test_bounds.py` is the one place the number lives, and the sweep covers the routes slice 1 exposes
+- **The ceiling leaf projects rather than measures.** The 16-session fixture corpus is smaller than one page, so its own weight says nothing about a full one. The leaf takes the marginal cost of a row — the list less the same page holding one session — and asserts `PAGE_SESSIONS` of them fit under the ceiling
+- **The fat-column scan carries its own instrument test**, on invented SQL: no shipped query selects a fat column, so a green sweep alone would not show the scan can see one
+- **The route-level sentinel leaf landed in slice 1**, ahead of the `render.py` unit leaves it is meant to back up
+
 ## Obligation count
 
 | Area | Obligations |
