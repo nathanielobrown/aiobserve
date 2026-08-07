@@ -23,7 +23,7 @@ Every line of a transcript is a JSON object with a `type`. `aiobserve.extract.cl
 | `cwd`, `gitBranch`, `version`, `entrypoint` | records that carry them | The session's project directory, branch, Claude Code version, and how it was launched. The first few records of a file are bookkeeping types that carry none of them, so a parser reading record 1 gets nulls. `entrypoint` postdates the oldest sessions in the corpus and is absent on 1.0.128 transcripts | `tests/fixtures/spine/` — lines 1–3 carry no `cwd`; `tests/fixtures/legacy_entrypoint/`, CC 1.0.128 |
 | `isMeta` | `user` records | Claude Code wrote this on the user's behalf — a caveat, a hook echo. Not a prompt | `tests/fixtures/spine/`, CC 2.1.221 |
 | `isCompactSummary` | `user` records | The summary written back into the transcript after a compaction. Not a prompt | `tests/fixtures/dup_uuid/`, CC 2.1.211 |
-| `isSidechain` | `user` and `assistant` records | The record belongs to a subagent's stream rather than the main one. `false` on every record of every main-transcript fixture here — the `true` case is not yet recorded | `tests/fixtures/spine/`, CC 2.1.221 |
+| `isSidechain` | `user` and `assistant` records | The record belongs to a subagent's stream rather than the main one. In a main transcript it marks delegated work the subagent's own file records better, so those records are skipped. Inside a subagent transcript **every** record carries it, so reading it as an exclusion there leaves the agent turnless | `tests/fixtures/spine/` — main and subagent sides, CC 2.1.221 |
 | `message.content` | `user` records | Either a string or a list of blocks. A block list can hold `text`, `image`, or `tool_result` — a `tool_result` block makes the record plumbing, not a prompt | `tests/fixtures/spine/`, CC 2.1.220 (block form) |
 | `tool_use` block | `assistant` records | One tool the model asked for: `id`, `name`, `input`. Usually one per record, but 23 records of the mycelia corpus hold two or more (scanned 2026-08-07), so a per-record reading undercounts | `tests/fixtures/spine/`, CC 2.1.221 |
 | `tool_result` block | `user` records | What came back, quoting the call's id in `tool_use_id`. `content` is a string or a list of `text`, `image` and `tool_reference` blocks. `is_error` is **absent on success** — 66,653 of the corpus's 154,169 result blocks omit it (scanned 2026-08-07) | `tests/fixtures/spine/`, CC 2.1.221 |
@@ -93,9 +93,9 @@ the directory within weeks and a skipped file is a schema change nobody sees.
 | Path under `<session-id>/` | Count | What it is | Archived as |
 | --- | --- | --- | --- |
 | `subagents/agent-<id>.jsonl` | 2275 | a subagent's own transcript | source `<id>` |
-| `subagents/agent-<id>.meta.json` | 2275 | what spawned that subagent — `toolUseId`, `agentType`, `spawnDepth` | not yet read |
+| `subagents/agent-<id>.meta.json` | 2275 | what spawned that subagent — `toolUseId`, `agentType`, `spawnDepth` | `agent_runs` |
 | `subagents/workflows/wf_<id>/agent-<id>.jsonl` | 180 | an agent of a parallel fan-out; same records, one level deeper | source `<id>` |
-| `subagents/workflows/wf_<id>/agent-<id>.meta.json` | 180 | only ever `agentType` and `spawnDepth` — a workflow agent has no spawning tool call | not yet read |
+| `subagents/workflows/wf_<id>/agent-<id>.meta.json` | 180 | only ever `agentType` and `spawnDepth` — a workflow agent has no spawning tool call | `agent_runs` |
 | `subagents/workflows/wf_<id>/journal.jsonl` | 6 | the fan-out's own log: `started` and `result` records keyed by agent | source `wf_<id>/journal` |
 | `tool-results/<name>` | 567 | a tool output too large for the transcript, named by `persistedOutputPath` | `offload_files` |
 | `workflows/wf_<id>.json` | 6 | the workflow definition | nothing reads it |
@@ -104,3 +104,29 @@ the directory within weeks and a skipped file is a schema change nobody sees.
 `<id>` in a subagent's file name is usually hex, but a session can name its agents (`agent-audit-pr291-79ea2c606313e623.jsonl`), so the source is the whole stem after `agent-`.
 
 *Seen in* `tests/fixtures/spine/` (a subagent), CC 2.1.221; `tests/fixtures/workflow/` (a fan-out and its journal), CC 2.1.207; `tests/fixtures/offload/` (a persisted result), CC 2.1.220.
+
+### A subagent's meta says why it ran
+
+Every subagent transcript has a `meta.json` beside it, and every meta a transcript: 2764 of each on this machine, none unpaired (scanned 2026-08-07). Half a pair is a shape we have never seen, so the extractor crashes on one.
+
+| Key | Metas carrying it | What it means |
+| --- | --- | --- |
+| `agentType` | 2764 | which agent definition ran — `general-purpose`, `auditor`, `workflow-subagent`, or a name the session invented. Not a closed set |
+| `spawnDepth` | 2763 | 1 for a run the session spawned itself, deeper for a subagent's subagent, 0 for a teammate. The one meta without it is a 2.1.186 session, so absence is a state, not a parse failure |
+| `description` | 2584 | the one-line task summary from the spawning call |
+| `toolUseId` | 2510 | the `Agent` call that asked for the run |
+| `model` | 753 | the alias the caller named, e.g. `opus` |
+| `parentAgentId` | 389 | the agent that spawned this one |
+| `isFork` | 52 | the run replays another transcript's history, or continues it by reference |
+| `taskKind`, `teamName`, `color`, `planModeRequired`, `permissionMode` | 71 | a teammate: `taskKind` is `in_process_teammate` |
+| `name`, `worktreePath`, `worktreeBranch`, `customAgentType`, `stoppedByUser` | 94, 86, 86, 39, 3 | not read yet |
+
+254 metas name no `toolUseId`: 180 workflow agents, 71 teammates, and 3 forks. A teammate is started by the team mechanism rather than by a tool call, so its run has no spawning call at all — recorded as such, with a warning, because dropping orphans is how the prior importer came to report 100% direct tool calls.
+
+*Seen in* `tests/fixtures/spine/` (a spawned run and a nested one), CC 2.1.221; `tests/fixtures/teammate/` (an orphan), CC 2.1.211.
+
+### A workflow agent joins through the run id its launcher reported
+
+A fan-out's agents are not spawned one at a time, so their metas name no call. The `Workflow` call that launched the run answers with `toolUseResult.runId`, and that id is the `wf_<id>` directory its agents write into — the only link from a fan-out's transcripts back to a tool call. All 6 workflow runs on this machine carry it (scanned 2026-08-07).
+
+*Seen in* `tests/fixtures/workflow/`, CC 2.1.207 — the `Workflow` call, its result, and the `wf_c30cc877-997` directory it names.
