@@ -1,0 +1,108 @@
+"""The library smoke tier: every shipped `.sql` runs, and every one obeys the house rules.
+
+Discovery, not enumeration — the leaves parametrize over `queries/*.sql`, so a query added
+by any consumer of the library (the analysis process, the viewer) is covered the moment it
+lands, and one shipped without a manifest entry fails here rather than at a reader's prompt.
+
+`FIXTURE_BINDINGS` is where a query says what to bind on a 16-session store. A query whose
+manifest marks a parameter required must appear there, or its leaf fails naming it.
+"""
+
+import re
+
+import pytest
+
+from aiobserve.analyze import queries
+from aiobserve.analyze.queries import QUERIES, Scope
+from aiobserve.export.duckdb import _TABLES
+from tests.analyze.conftest import MYCELIA, QueryRunner
+
+# Bindings that make a query return something on the fixture corpus, per query name. The
+# production defaults are pinned by their own leaves; these are the fixture-sized values.
+FIXTURE_BINDINGS: dict[str, dict[str, str]] = {}
+
+# The clock a query file may not read: a `current_date` filter goes green on a frozen
+# fixture store today and returns nothing next month.
+CLOCK = ("current_date", "current_timestamp", "now", "today", "get_current_timestamp")
+
+NAMES = sorted(path.stem for path in queries.QUERY_DIR.glob("*.sql"))
+
+
+def statement(name: str) -> str:
+    """One query's SQL with its comments cut — every rule below reads what runs."""
+    return re.sub(r"--[^\n]*", "", queries.load(name))
+
+
+def identifiers(name: str) -> set[str]:
+    """Every bare identifier in one query file, for the static rules below."""
+    return set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", statement(name)))
+
+
+def relations(name: str) -> set[str]:
+    """What a query reads: the identifier after each FROM or JOIN, CTE names included.
+
+    A rollup column is named after the table it counts (`turns`, `api_calls`), so a bare
+    identifier scan cannot tell a table read from a column selected.
+    """
+    return set(re.findall(r"\b(?:FROM|JOIN)\s+([A-Za-z_][A-Za-z0-9_]*)", statement(name)))
+
+
+def declared_parameters(name: str) -> set[str]:
+    """The `$name` parameters the SQL text itself references."""
+    return set(re.findall(r"\$([A-Za-z_][A-Za-z0-9_]*)", statement(name)))
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_every_query_runs(name: str, run_query: QueryRunner) -> None:
+    """Every shipped query executes against a real store — an empty result is fine."""
+    query = QUERIES[name]
+    # If a parameter is required with no default, this tier has to say what to bind...
+    bindings = FIXTURE_BINDINGS.get(name, {})
+    for parameter, spec in query.params.items():
+        assert spec.default is not queries.REQUIRED or parameter in bindings, (
+            f"{name} requires ${parameter}: add it to FIXTURE_BINDINGS"
+        )
+    arguments = [part for key, value in bindings.items() for part in ("--param", f"{key}={value}")]
+    if query.scope is Scope.CORPUS:
+        arguments += ["--project", MYCELIA]
+    # ...and the run completes, which is what catches a query a schema bump broke.
+    run_query(name, *arguments)
+
+
+def test_every_query_file_has_a_manifest_entry() -> None:
+    """The manifest and the directory hold the same set of queries."""
+    assert sorted(QUERIES) == NAMES
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_the_manifest_declares_exactly_the_parameters_the_sql_uses(name: str) -> None:
+    """No parameter goes unbound, and no manifest entry describes one that is gone."""
+    assert declared_parameters(name) == set(QUERIES[name].params)
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_a_cross_session_query_counts_through_the_corpus_views(name: str) -> None:
+    """A corpus query reads `corpus_*`, so a resumed session is counted once."""
+    if QUERIES[name].scope is not Scope.CORPUS:
+        pytest.skip("keyed queries fetch one session's own rows")
+    read = relations(name)
+    # The `live_*` family counts a resume's copied rows twice across sessions, and a base
+    # table counts a fork's replays as well. A corpus query reads neither: it joins the
+    # `corpus_*` views to `project_sessions`, which the runner builds from `--project`.
+    assert not {word for word in read if word.startswith("live_")}
+    assert not (read & set(_TABLES))
+    assert "project_sessions" in read
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_a_cost_is_never_reported_without_its_unpriced_count(name: str) -> None:
+    """A cost total says how many calls our price table left out."""
+    used = identifiers(name)
+    if "cost_usd" in used:
+        assert "unpriced_api_calls" in used
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_no_query_reads_the_clock(name: str) -> None:
+    """Anything time-relative rides `$as_of`, so a frozen store answers the same tomorrow."""
+    assert not (identifiers(name) & set(CLOCK))

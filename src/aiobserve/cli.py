@@ -1,14 +1,19 @@
 """The `aiobserve` command."""
 
 import argparse
+import csv
+import datetime as dt
 import os
+import sys
 from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import anthropic
 from dotenv import load_dotenv
 
+from aiobserve.analyze.runner import QueryError, Result, run
 from aiobserve.enrich.batches import (
     DEFAULT_MODEL,
     AnthropicBatchClient,
@@ -73,7 +78,40 @@ def main(*argv: str) -> None:
         help="Call the Messages API directly: minutes instead of hours, at full price",
     )
 
+    library = subcommands.add_parser("query", help="Run a library query against the trace store")
+    library.add_argument("name", help="The query to run — a file in analyze/queries/")
+    library.add_argument(
+        "--db", type=Path, default=DEFAULT_DB, help=f"The trace store (default: {DEFAULT_DB})"
+    )
+    library.add_argument(
+        "--project", type=Path, help="The analyzed repository — required by a corpus query"
+    )
+    library.add_argument(
+        "--since",
+        type=dt.date.fromisoformat,
+        help="Only count sessions started on or after this date (default: the whole corpus)",
+    )
+    library.add_argument(
+        "--as-of",
+        type=dt.date.fromisoformat,
+        default=dt.date.today(),
+        help="The date the trailing window is measured back from (default: today)",
+    )
+    library.add_argument(
+        "--param",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Bind one of the query's parameters, overriding its production default",
+    )
+    library.add_argument(
+        "--csv", action="store_true", help="Write CSV to stdout, commentary to stderr"
+    )
+
     args = parser.parse_args(argv or None)
+    if args.command == "query":
+        _query(args)
+        return
     if args.command == "enrich":
         _enrich(args)
         return
@@ -99,6 +137,61 @@ def build_client(model: str, *, batched: bool) -> BatchClient:
     if batched:
         return AnthropicBatchClient(client, model)
     return SyncClient(client, model)
+
+
+def _query(args: argparse.Namespace) -> None:
+    """Run one library query and print its citation, its commentary, and its rows."""
+    try:
+        params = dict(pair.split("=", 1) for pair in args.param)
+    except ValueError:
+        raise SystemExit("--param takes KEY=VALUE") from None
+    try:
+        result = run(
+            args.db,
+            args.name,
+            project=args.project,
+            since=args.since,
+            as_of=args.as_of,
+            params=params,
+        )
+    except QueryError as error:
+        raise SystemExit(str(error)) from error
+    # The count the corpus predicate could not place, and the citation under `--csv`, go to
+    # stderr: a piped analysis reads stdout, and a line of prose in it breaks silently.
+    if result.unplaceable_sessions is not None:
+        print(
+            f"excluded {result.unplaceable_sessions} session(s) with no project_dir",
+            file=sys.stderr,
+        )
+    print(result.citation, file=sys.stderr if args.csv else sys.stdout)
+    if args.csv:
+        writer = csv.writer(sys.stdout)
+        writer.writerow(result.columns)
+        writer.writerows(result.rows)
+        return
+    print(_table(result))
+
+
+def _table(result: Result) -> str:
+    """The rows as an aligned table, wide enough for the values it holds."""
+    cells = [[_cell(value) for value in row] for row in result.rows]
+    widths = [
+        max(len(column), *(len(row[index]) for row in cells)) if cells else len(column)
+        for index, column in enumerate(result.columns)
+    ]
+    lines = [
+        "  ".join(column.ljust(width) for column, width in zip(result.columns, widths, strict=True))
+    ]
+    lines.append("  ".join("-" * width for width in widths))
+    lines += [
+        "  ".join(value.ljust(width) for value, width in zip(row, widths, strict=True))
+        for row in cells
+    ]
+    return "\n".join(lines)
+
+
+def _cell(value: Any) -> str:
+    return "" if value is None else str(value)
 
 
 def _enrich(args: argparse.Namespace) -> None:
