@@ -89,6 +89,11 @@ TOOL_CALL_ID = Param(type=ParamType.TEXT, default=REQUIRED)
 # it, and the design says so — the mechanism here is that the number is stated and cited.
 RAW_CHARS = 2000
 
+# How much of a failed tool call's text `error_records` returns. Enough for the signature —
+# the sentence that names what went wrong — and short enough that a session's whole error
+# list stays a table rather than a transcript.
+ERROR_CHARS = 200
+
 # The viewer's page sizes. Every one of them is a bound parameter with a default here and
 # nowhere else, because the payload bound the design states is arithmetic over these numbers:
 # a page of calls carries at most `PAGE_CALLS` × (2 KB of text + `PAGE_TOOLS` tool rows).
@@ -115,6 +120,17 @@ QUERIES: dict[str, Query] = {
         params={"min_sessions": Param(type=ParamType.INTEGER, default=3)},
     ),
     "cost_distribution": Query(scope=Scope.CORPUS, params={}),
+    "error_records": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            # Every thread of the session unless the caller names one. Unlike the keys above,
+            # a sensible default exists and it is the question readers actually ask: where in
+            # this session did anything fail?
+            "source": Param(type=ParamType.TEXT, default=None),
+            "max_chars": Param(type=ParamType.INTEGER, default=ERROR_CHARS),
+        },
+    ),
     "records_slice": Query(
         scope=Scope.KEYED,
         params={

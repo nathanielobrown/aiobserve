@@ -28,6 +28,7 @@ from tests.conftest import (
     MAIN,
     MYCELIA,
     RESUME,
+    SERVER_TOOLS,
     SPINE,
     SPINE_RUN,
 )
@@ -40,6 +41,8 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     "co_occurrence": {"min_sessions": "1"},
     # Every fixture agent type ran exactly once, so the production floor of 5 admits none.
     "select_runs": {"min_runs": "1"},
+    # One of the two fixture sessions holding a failed tool call.
+    "error_records": {"session_id": SERVER_TOOLS},
     "records_slice": {"session_id": RESUME, "source": MAIN, "first_line": "1", "last_line": "5"},
     "run_digest": {"session_id": SPINE, "source": SPINE_RUN},
     "session_digest": {"session_id": SPINE},

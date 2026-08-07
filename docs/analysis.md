@@ -35,10 +35,11 @@ A reader's brief is bounded: the session id, its stratum, the template path, and
 
 Readers work through `aiobserve query` digests. `records_slice` is the only route to raw transcript text, and its line range and character cap are the context and privacy control — the cap is in the citation, so a report says how much raw text it opened.
 
-Three working rules, each bought by an iteration that lacked it:
+Four working rules, each bought by an iteration that lacked it:
 
 - Work in a `mktemp -d` scratch directory — concurrent readers sharing `/tmp` paths have collided
-- Enumerate the session's runs with `view_runs` before digging; a session's cost usually lives in its runs, not its main thread
+- Enumerate the session's runs with `view_runs` before digging; a session's cost usually lives in its runs, not its main thread. It carries each run's cost, tool errors and compactions, so ranking the runs takes no further query
+- List the session's failures with `error_records` before opening any raw record. It names the thread, the tool and the line each error sits at, so finding one is a query rather than a scan of a thousand records
 - Record roughly what context you spent in the report's "Context spent" line — the process review depends on it
 
 Both are convention rather than mechanism: a reader has Bash and could open the store directly. The mitigations are the bounded brief and the process-review checklist, which asks of each reader whether it stayed inside the digests and roughly what context it spent.

@@ -1,4 +1,4 @@
-"""The reading-support queries: `session_digest`, `run_digest`, `records_slice`.
+"""The reading-support queries: `session_digest`, `run_digest`, `error_records`, `records_slice`.
 
 A digest is what a reader sees instead of the transcript, so the leaves here are about
 agreement and containment: the digest's cost has to equal the rollup for the scope it
@@ -15,6 +15,7 @@ import pytest
 
 from tests.analyze.conftest import Output, QueryRunner, query
 from tests.conftest import (
+    FORK_ORIGIN,
     MAIN,
     RESUME,
     RESUME_LONG_RECORD,
@@ -27,14 +28,15 @@ from tests.conftest import (
 
 # The marker a digest gives the row for api calls that sit under no turn.
 UNATTRIBUTED = "(unattributed)"
-# The caps the design sets: a digest's prompt cell and a raw record slice.
+# The caps the design sets: a digest's prompt cell, a raw record slice, an error's text.
 PROMPT_CAP = 300
 RAW_CAP = 2000
+ERROR_CAP = 200
 
-# A prompt past the cap, with a tail the assertion can look for. Invented: fixture prompts are
-# redacted down to a few words, so nothing recorded exercises the cut.
+# A value past any of those caps, with a tail the assertions can look for. Invented: fixture
+# prompts and tool results are redacted down to a few words, so nothing recorded cuts.
 SENTINEL_TAIL = "TAIL"
-SENTINEL = "planted prompt " * 30 + SENTINEL_TAIL
+SENTINEL = "planted text " * 40 + SENTINEL_TAIL
 
 
 def test_a_session_digest_accounts_for_api_calls_that_sit_under_no_turn(
@@ -148,6 +150,102 @@ def test_a_digest_truncates_a_long_prompt(
     assert SENTINEL_TAIL not in prompts[0]
 
 
+def test_error_records_finds_a_run_s_errors_without_being_told_the_thread(
+    corpus_db: Path, run_query: QueryRunner
+) -> None:
+    """A session's failed tool calls come back whatever thread they happened in."""
+    # If a session's only error happened inside an agent run rather than on the main thread —
+    # the shape a reader cannot search for, because finding it means knowing the run first...
+    source, tool_call_id = _scalar(
+        corpus_db,
+        "SELECT source, id FROM live_tool_calls WHERE session_id = ? AND is_error",
+        FORK_ORIGIN,
+        columns=2,
+    )
+    assert source != MAIN
+    # ...then a query keyed on the session alone lists it, naming the thread it belongs to...
+    rows = _rows(run_query("error_records", "--param", f"session_id={FORK_ORIGIN}", "--csv"))
+    assert [(row["source"], row["tool_call_id"]) for row in rows] == [(source, tool_call_id)]
+    # ...and the line it gives is the record a reader can go read: `records_slice` at that
+    # line comes back holding the call. Locating errors by scanning raw records at a thousand
+    # lines a session is what this query exists to replace.
+    line_no = rows[0]["line_no"]
+    sliced = _rows(
+        run_query(
+            "records_slice",
+            "--param",
+            f"session_id={FORK_ORIGIN}",
+            "--param",
+            f"source={source}",
+            "--param",
+            f"first_line={line_no}",
+            "--param",
+            f"last_line={line_no}",
+            "--csv",
+        )
+    )
+    assert tool_call_id in sliced[0]["raw"]
+    # ...while binding the source narrows to that one thread, so the main thread holds none.
+    main_only = _rows(
+        run_query(
+            "error_records",
+            "--param",
+            f"session_id={FORK_ORIGIN}",
+            "--param",
+            f"source={MAIN}",
+            "--csv",
+        )
+    )
+    assert main_only == []
+
+
+def test_error_records_lists_the_failures_and_nothing_else(
+    corpus_db: Path, run_query: QueryRunner
+) -> None:
+    """Only the calls that came back an error are listed, each of them once."""
+    # If a session made both failing and succeeding tool calls, one of them server-side —
+    # whose result rides an assistant record rather than a user one...
+    failed, succeeded = _scalar(
+        corpus_db,
+        """SELECT count(*) FILTER (is_error), count(*) FILTER (NOT is_error)
+           FROM live_tool_calls WHERE session_id = ?""",
+        SERVER_TOOLS,
+        columns=2,
+    )
+    assert failed == 1
+    assert succeeded > 0
+    # ...then the errors come back one row apiece, with what the tool was and how long its
+    # result ran, whether or not a raw record could be found to cite.
+    rows = _rows(run_query("error_records", "--param", f"session_id={SERVER_TOOLS}", "--csv"))
+    assert len(rows) == failed
+    assert rows[0]["tool"] == "advisor"
+    assert int(rows[0]["error_chars"]) > 0
+
+
+def test_error_records_bounds_the_error_text_it_returns(
+    planted_error_db: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An error's text comes back cut, so listing a session's errors cannot flood a reader."""
+    # If a tool returned an error longer than the cap (planted: fixture results are redacted
+    # down to a word, so nothing recorded exercises the cut)...
+    rows = _rows(
+        query(
+            planted_error_db,
+            capsys,
+            "error_records",
+            "--param",
+            f"session_id={SERVER_TOOLS}",
+            "--csv",
+        )
+    )
+    # ...then the cell stops at the cap and reports the length it cut from, and the tail of a
+    # private result never reaches the reader's context.
+    assert len(rows) == 1
+    assert len(rows[0]["error"]) == ERROR_CAP
+    assert int(rows[0]["error_chars"]) == len(SENTINEL)
+    assert SENTINEL_TAIL not in rows[0]["error"]
+
+
 def test_records_slice_refuses_to_run_without_a_line_range(run_query: QueryRunner) -> None:
     """The raw-record query names what the caller has to decide instead of guessing it."""
     # If a reader asks for raw records without saying which lines...
@@ -187,6 +285,22 @@ def test_records_slice_caps_the_raw_text_it_returns(
     )
     assert len(rows) == 1
     assert len(rows[0]["raw"]) == RAW_CAP
+
+
+@pytest.fixture(scope="session")
+def planted_error_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The corpus with one real failed tool call's result replaced by an over-long sentinel."""
+    path = tmp_path_factory.mktemp("error") / "traces.duckdb"
+    path.write_bytes(corpus_db.read_bytes())
+    connection = duckdb.connect(str(path))
+    try:
+        connection.execute(
+            "UPDATE tool_calls SET result = ? WHERE session_id = ? AND is_error",
+            [SENTINEL, SERVER_TOOLS],
+        )
+    finally:
+        connection.close()
+    return path
 
 
 @pytest.fixture(scope="session")
