@@ -63,7 +63,8 @@ def main(*argv: str) -> None:
     enrichment.add_argument(
         "--dry-run",
         action="store_true",
-        help="Say what would be sent and stop, spending nothing (creates the empty enrichment tables if absent)",
+        help="Say what would be sent and stop, spending nothing "
+        "(creates the empty enrichment tables if absent)",
     )
     enrichment.add_argument("--limit", type=int, help="Send at most this many items")
     enrichment.add_argument(
