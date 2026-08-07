@@ -1,0 +1,109 @@
+# Design: the local trace viewer
+
+`aiobserve view` serves a browser UI over the canonical store so Nathaniel can orient across 575+ sessions and drill from a session to a turn, a subagent run, and a single raw record — locally, with DuckDB as the only backend.
+
+Designed against `data/traces.duckdb`, schema 7, probed 2026-08-07: 575 sessions, 3,962 turns (3,945 live), 127,510 api calls, 154,800 tool calls, 2,459 agent runs, 520,892 raw records (2.09 GB of raw text; max record 1.27 MB, p99 34.5 KB; the largest session holds 180 MB of raw). Page-level timings below come from the top-cost session `1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9` (268 turns, 240 runs, $1,268).
+
+## Problem
+
+The store answers SQL and the analysis process reads bounded digests, but nothing lets a human *look* at a session — no ranked overview, no conversation view, no way to follow a citation `(session_id, source, line_no)` to the record it names. Three constraints decide the shape:
+
+- **Local-first.** DuckDB is the backend; no external service, no ingestion pipeline, nothing leaves the machine
+- **Useful before enrichment.** The canonical store today holds **no** enrichment tables at all — `EnrichmentStore` creates them on first open, and it has never run here — so absence means missing tables, not empty ones. Descriptions/categories light up when they land
+- **Untrusted, private content.** Transcripts hold whatever was on screen. Render as text: no raw-HTML passthrough, no CDN assets, bind 127.0.0.1 only
+
+## Call paths, current → proposed
+
+Current: orientation is ad-hoc SQL in a Python REPL; reading a session means opening a transcript file that Claude Code prunes within weeks, or dumping unbounded `raw_records`. The `aiobserve query` runner (`plans/mycelia-analysis/design.md`) is designed but unbuilt — `src/aiobserve/analyze/` does not exist yet.
+
+Proposed: `aiobserve view` (`cli.py`) → `view.app.build_app(db_path)` → uvicorn on `127.0.0.1:8477` → `webbrowser.open`. Each route opens a short-lived `duckdb.connect(read_only=True)`, loads its SQL through `analyze.queries.load(name)`, renders Jinja; htmx `hx-get` fragments lazy-load anything heavy (turn detail, one raw record).
+
+## File-tree diff
+
+```
+src/aiobserve/view/
+  app.py                 build_app(db_path) -> FastAPI, all routes
+  render.py              markdown (HTML passthrough off), pretty-JSON, preview helpers
+  templates/*.html       Jinja, autoescape on
+  static/                vendored htmx.min.js + one stylesheet — no CDN
+src/aiobserve/analyze/queries.py     shared loader: load(name) -> str  (see seams)
+src/aiobserve/analyze/queries/*.sql  the viewer's queries join the analysis library
+src/aiobserve/cli.py     + `view` subcommand
+pyproject.toml           + fastapi, uvicorn, jinja2, markdown-it-py (each commented)
+docs/viewer.md           what the viewer shows and the URL contract; CLAUDE.md Layout line
+tests/view/test_app.py
+```
+
+## Key contracts
+
+**CLI.** `aiobserve view [--db PATH] [--port N] [--no-browser]`. `--db` defaults to `DEFAULT_DB` like the sibling commands. `--port` defaults to **8477, fixed** — a citable URL must survive a relaunch. On open the app checks `meta.schema_version` and refuses a store this build does not read, same message shape as `EnrichmentStore._check_base_schema` — a schema move crashes at launch, never degrades mid-page.
+
+**URLs are the citation surface.** `/session/{session_id}`, `/session/{session_id}/run/{run_id}`, `/session/{session_id}/records/{source}?after=N#L{line_no}`. All natural keys, so an analysis report's citation `(session_id, source, line_no–line_no)` maps to a records URL mechanically. Reports keep citing the tuple, not the URL — the URL is derived, so a port or route change breaks nothing stored.
+
+**Session list (`/`).** One row per session, whole list server-rendered — the full join (rollups + errors + skills + agent types + PRs) runs in under 30 ms for 575 rows (measured 23–27 ms warm), so no virtualization; growth point below. Columns and their sources: `started_at`, `title` (else id prefix; 398/575 titled), `project_dir` → `session_rollups`/`sessions`; cost as `usd` with a marker when `unpriced_api_calls > 0`, `turns`, `tool_calls`, `agent_runs`, `compactions`, `output_tokens` (hover: input/cache split), `active_ms` vs `wall_ms` → `session_rollups`; errors → `count(*) FROM live_tool_calls WHERE is_error GROUP BY session_id`; skills → `list(DISTINCT attribution_skill) FROM live_api_calls`; agent types → `list(DISTINCT agent_type) FROM live_agent_runs`; PRs → `list(DISTINCT pr_url) FROM pr_links`. Sortable by any column (`?sort=`) and filterable — project (distinct `project_dir` dropdown), date range, errors > 0, skill — through the composition wrapper the seams section defines; no user input ever reaches SQL as text. When `session_enrichments` exists, add `description`/`category`/`outcome` columns and their filters.
+
+**Session page.** Header: the `sessions` row (title, agent name, branch, CC version, entrypoint), wall vs active time, cost + unpriced count, token split, PR links, enrichment card when present. Then the **main-source turn timeline** in `"index"` order (the digest query verified at 5 ms): per turn — index, timestamp, `command_name` or `substr(prompt, 1, 300)`, api/tool/error counts, cost. Interleaved by timestamp: compaction markers (`compactions WHERE source='main'`; 192 corpus-wide) and **run chips** — the runs whose spawning call resolves to this turn via `agent_runs.tool_use_id → live_tool_calls.id → live_api_calls.turn_id`, **always with `tool_calls.source <> agent_runs.id`**: a fork's own transcript holds an un-replayed copy of the call that spawned it (43 runs corpus-wide), and without the exclusion the join double-matches those runs and a fork lists itself as its own child. `enrich/store.py:item_parents` already applies the same rule; with it, no run resolves to more than one turn and 2,404 of 2,459 resolve (verified). One **unattributed** row carries the NULL-`turn_id` calls, and an **unattached runs** section carries the 55 that resolve to no turn (teammates, workflow agents, forks) — dropping either would make the page's cost disagree with the header. Each turn links to its raw record: `turns.id` is a `raw_records.uuid` in the same `(session_id, source)` — verified 3,945/3,945 live turns. (`api_calls.id` is a message id, **not** a record uuid — 0/5,000 join — so there is no per-call raw link.)
+
+**Turn expand (fragment).** A turn is not a bounded unit — 994 live turns aggregate over 200 KB of text + thinking + inputs + results, 29 over 1 MB, the worst 3.25 MB across 973 tool calls (verified) — so the expand is previews all the way down, mirroring the records browser. `hx-get` pages the turn's api calls **25 per fetch** (keyset on `"index"`; worst turn holds 774 calls): per call — model, effort, stop_reason, tokens, `usd`, `substr(text, 1, 2000)` as markdown — with tool-call rows nested: name, `is_error` highlighted, `substr(input, 1, 200)`, result size, `offload_file` link. Every full value is its own per-value fragment fetched on first open of its `<details>`: full text, `thinking`, one tool result (`/fragment/tool/{sid}/{source}/{tool_call_id}`). Truncation is in SQL, so the page bound holds by construction: ≤ 25 calls × (2 KB text + ≤ 32 tool rows × ~0.3 KB — 32 is the corpus max per call) ≈ **300 KB worst-case per fragment page**, typically tens of KB; a per-value fetch tops out at the store's largest single value, 77 KB for a result.
+
+**Run page.** The session page's shape at `source = run_id`: meta from `agent_runs` (agent_type, description, model, spawn_depth, fork flags), breadcrumb to the parent (via `parent_agent_id`, else the spawning call's source — the two-rule linkage `enrich/store.py:item_parents` already implements), child runs listed the same way (run-under-run; the chip join's `source <> run_id` exclusion applies here too, or a fork appears as its own child), the run's own compactions (832 corpus-wide live in subagent sources), a **continuation** section for NULL-turn calls (a by-reference fork opens mid-conversation), and the run-level enrichment card when present.
+
+**Records browser.** Keyset paging, never OFFSET: `WHERE source = $source AND line_no > $after ORDER BY line_no LIMIT 100`, each row `line_no`, `type`, `timestamp`, `substr(raw, 1, 160)` escaped, anchored `#L{line_no}`. Clicking a row lazy-loads the single-record fragment — the only place a full `raw` value crosses the wire: `user`/`assistant` text blocks render as markdown, everything else as pretty-printed JSON in `<details>`. Image blocks render as a size placeholder, not the image.
+
+**Offload page.** `/session/{sid}/offload/{name}` serves `offload_files.content` in 100 KB chunks with a "load more" continuation — the largest file is 51.9 MB and 7 exceed 1 MB (verified), so whole-file render is never an option. `{name}` is transcript-controlled: URL-quoted in every href and matched as a path-tail, never trusted.
+
+**Rendering untrusted text.** Jinja autoescape everywhere; markdown via markdown-it-py **explicitly configured `html=False`** — the default `commonmark` preset sets `html=True` — with linkify off, so a transcript's `<script>` arrives as literal text. Markdown image syntax is its own exfiltration channel independent of HTML passthrough: `![](https://host/px?data)` renders an `<img>` the browser fetches on load, so the image rule is disabled (rendered as a link-text placeholder) **and** every response carries `Content-Security-Policy: default-src 'self'` as a second wall. All assets vendored; the server binds 127.0.0.1.
+
+**Enrichment light-up.** One presence check per request connection (`duckdb_tables()` contains `session_enrichments` — the enrichment DDL creates all three tables together, so one check covers them); present → queries switch to LEFT-JOIN variants (`*_enriched.sql`, the analysis design's convention), absent → base variants and a one-line "enrichment not run" hint. All three levels surface: session cards on list and session page, run cards on chips and run pages, and **turn enrichments as description/category chips on main-turn timeline rows** (only main turns are enriched, by the enrichment design). A row whose `(prompt_version, taxonomy_version, model)` differs from the current constants in `enrich/prompts.py` renders with a small `stale vN` marker — version mismatch only; input-hash staleness would mean re-rendering prompts per page view, so the viewer does not check it. Never `CREATE` from the viewer — it is read-only by construction.
+
+**Performance.** Measured, not assumed: rollup scans 30–50 ms, list join under 30 ms, every session-page query < 10 ms on the monster session. **No indexes, no materialized views** — at this scale they buy nothing. Payload bounds by construction: full pages ship scalars and SQL-truncated previews only — session list ~575 rows of scalars, session timeline ≤ 79 main turns (the corpus max) × 300-char previews — and every fragment page is capped as the turn-expand contract states. **Worst-case first paint: no page or fragment exceeds ~300 KB of HTML**; anything larger arrives only through a per-value fetch (≤ 77 KB for a tool result, ≤ 1.27 MB for one raw record) or a 100 KB offload chunk. The rules that make it hold: no query behind a page or list ever selects a fat column (`raw`, `text`, `thinking`, `result`, `input`, `content`) untruncated; one value per per-value fetch. Growth point: if the list join passes ~1 s (tens of thousands of sessions), materialize it — not now.
+
+**Concurrency with `extract`.** Connections are per-request read-only and closed immediately, so `aiobserve extract` can usually take the write lock between requests; a collision fails extract with DuckDB's lock error, documented in `docs/viewer.md` rather than retried. The reverse direction is handled, not deferred: while an extract holds the write lock, every viewer connect raises, and the connect wrapper turns that into a **503 "the store is being written — retry in a moment" page** instead of a raw traceback. The same wrapper re-checks `meta.schema_version` per request (one scalar read), so a delete-and-re-extract under a bumped schema while the viewer runs fails with the version message, not mid-page confusion. Launch on a taken port fails with a "kill the old `aiobserve view`" hint rather than a bare `EADDRINUSE`.
+
+## Integration seams
+
+**One SQL library, two consumers.** The viewer's queries live in `src/aiobserve/analyze/queries/*.sql` beside the analysis library and go through the same loader (`analyze/queries.py`: read file, return SQL), so `session_digest`/`run_digest` logic exists once and every viewer number stays a citable, runnable query. The seam's fine print, which is where the two in-flight implementations would otherwise collide:
+
+- **Manifest ownership.** Every `.sql` in the directory needs an entry in the runner's per-query manifest — the analysis smoke test executes all of them and fails on a missing entry. **The slice that adds a query adds its manifest entry**: viewer slices own the entries for viewer queries. A keyed query's entry marks its keys required-with-no-default (`$session_id`, `$source` for `run_digest` — the house rule for a choice the caller must make)
+- **Query scope.** The manifest gains a `scope` field: `corpus` queries take the runner's required `--project` and corpus predicate as designed; **`keyed` queries are exempt from both** — a corpus predicate on `WHERE session_id = $session_id` is noise. So `aiobserve query run_digest --param session_id=… --param source=…` works as-is, and "every viewer column is runnable" survives. This extends the analysis design's runner contract; the extension lives here and the in-flight analysis implementer needs to see it
+- **Sort and filter mechanism.** A `?sort=` column and optional filters cannot be bound parameters in static SQL. The library file stays the citable core — one plain SELECT with bound params — and `view/app.py` composes around it: `SELECT * FROM (<library sql>) WHERE <predicate> ORDER BY <column> <direction>`, where predicate, column, and direction come from a **closed dict mapping request-param names to fixed SQL fragments**, and user-supplied values (dates, a skill name) reach DuckDB only as bound parameters. An unknown key 400s. Nothing user-controlled is ever interpolated into SQL. The page footer cites the library query name, the resolved bindings, and the applied sort/filter keys — same claim-carries-its-query shape as the runner's citation header
+- **No-clock rule.** Shared-library files never read the clock, per the analysis design; the viewer's date-range filter is a composed predicate binding the user's dates, so the rule costs the viewer nothing
+- **Landing order.** With the above written down there is no ordering constraint: whichever of analysis slice 1 and viewer slice 1 lands first creates `analyze/queries.py` and the manifest shape; the second rebases onto it
+
+## Chosen test seam
+
+FastAPI `TestClient` over `build_app` pointed at a temp store the real extract pipeline built from checked-in fixtures — the same seam the analysis design chose. Route tests assert structure: the list holds the fixture sessions with their rollup counts, a session page shows its turns and run chips plus the unattributed row, sort/filter composition rejects an unknown key with 400, a records page pages by `line_no`, fragment pages stay within their cap and per-value routes return one value, the connect wrapper turns a locked store into the 503 page, and enrichment columns appear only after `EnrichmentStore` has created the tables. Fixtures redact every string, so escaping is unit-tested on `render.py` with invented sentinels (labeled invented — no recorded fixture can carry markup): a `<script>` must arrive as literal text and a `![](https://…)` must render no `<img>`. These tests land with the first markdown-rendering slice — they are the load-bearing check on the `html=False` pin.
+
+## Slices
+
+1. `view` subcommand, `build_app` with the connect wrapper (503 + per-request schema check), the query loader + manifest entries for its queries, sortable session list through the composition dict, session page header + turn timeline with run chips — proves the seam end to end. Verified by the list/session-page/503 route tests and `mise run check`, then a manual launch against the canonical store
+2. Turn-expand paging with per-value fragments, markdown rendering with the escaping sentinel tests, run page with run-under-run and the continuation section, list filters — fragment-cap and run-page tests
+3. Records browser, single-record fragment, per-turn raw links, chunked offload page, the citation→URL mapping documented in `docs/viewer.md` — paging and bounded-payload tests
+4. Enrichment light-up: conditional columns, cards at all three levels, stale markers, category/outcome filters — presence-check tests both ways
+
+## Decisions
+
+- **FastAPI + Jinja + htmx, no JS build step**, over Streamlit (runner-up) — Streamlit ships a list fastest, but its rerun-the-script model fights lazy tree drill-down, deep links are second-class, and citable URLs are the product. Also surveyed: Langfuse/Phoenix/OpenObserve (span-shaped, ingestion adapters, Langfuse needs Postgres+ClickHouse — an external service by another name), Datasette (SQLite-native, tables not conversations), Textual (no URLs to cite), static export (2 GB of content, no queries)
+- Conversation view reads the **modeled tables** (`turns`/`api_calls`/`tool_calls` already carry text, thinking, results), raw records as the escape hatch — not raw-first rendering, which would re-parse in the browser what the extractor parsed once
+- Shared `analyze/queries/` library over viewer-embedded SQL — the digest logic exists once, and every viewer number stays a runnable, citable query
+- Previews-plus-per-value-fragments over rendering a whole turn — a turn is unbounded (worst 3.25 MB); per-value maxima are the only hard bounds the store offers, so the fetch unit is one value
+- Sort/filter as a closed composition dict over per-variant `.sql` files or string interpolation — variants explode combinatorially, interpolation is an injection surface and breaks "citable as-is"; the dict keeps the library file the citable core
+- Markdown image rule off plus CSP over trusting the local context — an `<img src>` fetch is transcript-controlled egress even with HTML passthrough disabled; two independent walls
+- Whole list server-rendered over a virtualized JS table — under 30 ms measured at 575 rows; the growth threshold is named above
+- Fixed default port over an ephemeral one — relaunching must not rot yesterday's links
+- Per-request read-only connections over one held connection — a held read lock would block every `extract` for the viewer's whole lifetime
+- Enrichment presence = table existence, not empty-table reads — verified the canonical store lacks the tables entirely
+- Pages read `live_*`/`session_rollups` (what one session's files say), per the `export/duckdb.py` docstring; `corpus_*` appears only if a cross-session totals strip is added later
+
+## Out of scope
+
+- Annotation or any write from the UI — the viewer is read-only by construction
+- Full-text search over message content — an FTS index is a real feature with its own design; the records browser plus `aiobserve query` cover interim needs
+- Charts and trend dashboards — the analysis process owns aggregate findings; revisit with the dataviz skill if wanted
+- Auth of any kind — localhost, one user
+- Live tailing/auto-refresh during extraction; multi-store switching
+
+## Open questions
+
+- The manifest `scope: corpus | keyed` field extends the analysis design's runner contract from this design — the in-flight analysis implementer must adopt it (or propose better) before either side's slice 1 hardens the manifest shape
+- Whether the list should default to the analysis process's trailing-28-day window or to all sessions (currently: all, sorted `started_at` desc) — a one-parameter change once Nathaniel has used it
