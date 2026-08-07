@@ -32,8 +32,10 @@ class Scope(StrEnum):
     # Counts across sessions: takes `--project`, and reads the corpus predicate and the
     # trailing window through the runner's `project_sessions` table.
     CORPUS = "corpus"
-    # A fetch keyed by `session_id`/`source`. Exempt from both — a corpus predicate on
-    # `WHERE session_id = $session_id` is noise.
+    # Anything that is not a count across sessions: a fetch keyed by `session_id`/`source`,
+    # or the viewer's whole-store list. Exempt from both — a corpus predicate on
+    # `WHERE session_id = $session_id` is noise, and the viewer browses the store it is
+    # pointed at rather than one analyzed repository.
     KEYED = "keyed"
 
 
@@ -155,8 +157,21 @@ QUERIES: dict[str, Query] = {
     "skill_activity": Query(scope=Scope.CORPUS, params={}),
     "slash_commands": Query(scope=Scope.CORPUS, params={}),
     "tool_failures": Query(scope=Scope.CORPUS, params={}),
+    # The `view_` family belongs to the trace viewer (`plans/trace-viewer/design.md`). They
+    # are library queries like any other — runnable and citable — and the viewer composes
+    # sort and filter around them rather than embedding SQL of its own.
+    "view_compactions": Query(
+        scope=Scope.KEYED, params={"session_id": SESSION_ID, "source": SOURCE}
+    ),
+    "view_runs": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
+    "view_session_header": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
+    "view_sessions": Query(scope=Scope.KEYED, params={}),
     "weekly_trend": Query(scope=Scope.CORPUS, params={}),
 }
+
+# The prefix that marks a query as the viewer's. The viewer's payload bound is a property of
+# its queries, so its tier scans them as a set (`tests/view/test_bounds.py`).
+VIEW_PREFIX = "view_"
 
 
 def load(name: str) -> str:

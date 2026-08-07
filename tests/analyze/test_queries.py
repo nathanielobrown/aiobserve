@@ -17,7 +17,7 @@ from aiobserve.analyze.queries import QUERIES, Scope
 from aiobserve.analyze.runner import CORPUS_RELATIONS
 from aiobserve.export.duckdb import _TABLES
 from tests.analyze.conftest import QueryRunner
-from tests.conftest import MAIN, MYCELIA, RESUME, SPINE, SPINE_RUN
+from tests.conftest import ANCESTOR, MAIN, MYCELIA, RESUME, SPINE, SPINE_RUN
 
 # Bindings that make a query return something on the fixture corpus, per query name. The
 # production defaults are pinned by their own leaves; these are the fixture-sized values.
@@ -31,6 +31,11 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     "run_digest": {"session_id": SPINE, "source": SPINE_RUN},
     "session_digest": {"session_id": SPINE},
     "session_overview": {"session_id": SPINE},
+    # `spine/` is the fixture session with agent runs; its main thread never compacted, so
+    # the compaction markers come from the session that did.
+    "view_compactions": {"session_id": ANCESTOR, "source": MAIN},
+    "view_runs": {"session_id": SPINE},
+    "view_session_header": {"session_id": SPINE},
 }
 
 # The clock a query file may not read: a `current_date` filter goes green on a frozen
