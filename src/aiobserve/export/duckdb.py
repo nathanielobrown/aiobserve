@@ -17,11 +17,11 @@ from typing import Any
 
 import duckdb
 
-from aiobserve.model import ApiCall, RawRecord, Session, SessionTrace, Turn
+from aiobserve.model import ApiCall, RawRecord, Session, SessionTrace, ToolCall, Turn
 
 # Bumped whenever the DDL below changes. There are no migrations while the project is
 # early: a mismatch tells the operator to delete the DB and re-extract.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -73,6 +73,23 @@ CREATE TABLE IF NOT EXISTS api_calls (
     thinking VARCHAR NOT NULL,
     PRIMARY KEY (session_id, source, id)
 );
+CREATE TABLE IF NOT EXISTS tool_calls (
+    id VARCHAR NOT NULL,
+    session_id VARCHAR NOT NULL,
+    source VARCHAR NOT NULL,
+    api_call_id VARCHAR NOT NULL,
+    "index" INTEGER NOT NULL,
+    name VARCHAR NOT NULL,
+    input VARCHAR NOT NULL,
+    result VARCHAR,
+    offload_file VARCHAR,
+    is_error BOOLEAN NOT NULL,
+    incomplete BOOLEAN NOT NULL,
+    started_at TIMESTAMPTZ NOT NULL,
+    ended_at TIMESTAMPTZ,
+    duration_synthetic BOOLEAN NOT NULL,
+    PRIMARY KEY (session_id, source, id)
+);
 CREATE TABLE IF NOT EXISTS raw_records (
     session_id VARCHAR NOT NULL,
     source VARCHAR NOT NULL,
@@ -99,6 +116,7 @@ _TABLES: dict[str, type] = {
     "sessions": Session,
     "turns": Turn,
     "api_calls": ApiCall,
+    "tool_calls": ToolCall,
     "raw_records": RawRecord,
 }
 # `sessions` keys on the session id itself; every other table carries it as a column.
@@ -160,6 +178,7 @@ class DuckDbExporter:
             "sessions": [trace.session],
             "turns": trace.turns,
             "api_calls": trace.api_calls,
+            "tool_calls": trace.tool_calls,
             "raw_records": trace.raw_records,
         }
         self.connection.begin()

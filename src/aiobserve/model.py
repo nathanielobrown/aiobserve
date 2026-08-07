@@ -7,9 +7,9 @@ is globally unique: a resume copies its ancestor's records verbatim into a new s
 so every row is scoped by `session_id` and by `source` — the transcript inside the session
 that recorded it.
 
-Slice 1 of `plans/trace-pipeline/design.md` covers sessions, turns, API calls, and the raw
-archive. Tool calls, agent runs, compactions, PR links, offload files, cost, and the
-`replayed` flag arrive with the slices that populate them.
+Slices 1 and 2 of `plans/trace-pipeline/design.md` cover sessions, turns, API calls, tool
+calls, and the raw archive. Agent runs, compactions, PR links, cost, and the `replayed`
+flag arrive with the slices that populate them.
 """
 
 from dataclasses import dataclass
@@ -104,6 +104,40 @@ class ApiCall:
 
 
 @dataclass(frozen=True)
+class ToolCall:
+    """One tool the model asked for, and the result that came back."""
+
+    # The `tool_use` block's id, which the answering `tool_result` block quotes.
+    id: str
+    session_id: str
+    source: str
+    # `message.id` of the call that issued it.
+    api_call_id: str
+    # Position within this transcript, from 0.
+    index: int
+    name: str
+    # The tool's arguments, as recorded, serialised back to JSON.
+    input: str
+    # The result flattened to text: the block's string, or its text blocks joined. Images
+    # and tool references contribute nothing. None while the call is incomplete, and the
+    # short on-disk preview when `offload_file` names the full output.
+    result: str | None
+    # The `tool-results/` file holding the full output, when Claude Code moved it out of
+    # the transcript. Its content is in `OffloadFile`.
+    offload_file: str | None
+    is_error: bool
+    # No result record — the session ended, or was interrupted, mid-call.
+    incomplete: bool
+    started_at: datetime
+    # None while incomplete.
+    ended_at: datetime | None
+    # The start is shared with the rest of its batch rather than measured: one message
+    # issuing several calls writes their records in execution order, not issue order, so
+    # `ended_at - started_at` reads longer than the tool ran.
+    duration_synthetic: bool
+
+
+@dataclass(frozen=True)
 class RawRecord:
     """One line of one transcript, kept verbatim.
 
@@ -136,4 +170,5 @@ class SessionTrace:
     session: Session
     turns: list[Turn]
     api_calls: list[ApiCall]
+    tool_calls: list[ToolCall]
     raw_records: list[RawRecord]

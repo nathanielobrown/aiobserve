@@ -1,0 +1,2 @@
+[redacted] — the offloaded output of a Bash call, replaced wholesale.
+The real file was 30702 bytes; only its name and its role in the layout are needed here.

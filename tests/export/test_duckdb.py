@@ -22,6 +22,7 @@ TABLES = {
     "sessions": None,
     "turns": "turns",
     "api_calls": "api_calls",
+    "tool_calls": "tool_calls",
     "raw_records": "raw_records",
 }
 
@@ -62,7 +63,11 @@ def test_a_trace_round_trips(db: Path, fixture_trace: TraceFactory):
         assert rows(exporter, "sessions", type(trace.session)) == [
             dataclasses.astuple(trace.session)
         ]
-        for table, entities in (("turns", trace.turns), ("api_calls", trace.api_calls)):
+        for table, entities in (
+            ("turns", trace.turns),
+            ("api_calls", trace.api_calls),
+            ("tool_calls", trace.tool_calls),
+        ):
             assert rows(exporter, table, type(entities[0])) == sorted(
                 dataclasses.astuple(entity) for entity in entities
             )
@@ -84,6 +89,7 @@ def test_re_exporting_a_session_replaces_it_wholly(db: Path, fixture_trace: Trac
             "sessions": 1,
             "turns": 4,
             "api_calls": 2,
+            "tool_calls": 4,
             "raw_records": 25,
         }
 
@@ -92,6 +98,7 @@ def test_re_exporting_a_session_replaces_it_wholly(db: Path, fixture_trace: Trac
             trace,
             turns=trace.turns[:1],
             api_calls=trace.api_calls[:1],
+            tool_calls=trace.tool_calls[:1],
             raw_records=trace.raw_records[:3],
         )
         exporter.export(trimmed, "fingerprint-2")
@@ -101,6 +108,7 @@ def test_re_exporting_a_session_replaces_it_wholly(db: Path, fixture_trace: Trac
             "sessions": 1,
             "turns": 1,
             "api_calls": 1,
+            "tool_calls": 1,
             "raw_records": 3,
         }
         assert rows(exporter, "turns", type(trace.turns[0])) == [
@@ -119,7 +127,9 @@ def test_a_replace_leaves_other_sessions_alone(db: Path, fixture_trace: TraceFac
         before = rows(exporter, "raw_records", type(other.raw_records[0]), DUPS)
 
         # If the spine session is re-exported with everything but its session row dropped...
-        exporter.export(replace(spine, turns=[], api_calls=[], raw_records=[]), "fingerprint-2")
+        exporter.export(
+            replace(spine, turns=[], api_calls=[], tool_calls=[], raw_records=[]), "fingerprint-2"
+        )
 
         # ...then the other session keeps every row it had.
         assert rows(exporter, "raw_records", type(other.raw_records[0]), DUPS) == before

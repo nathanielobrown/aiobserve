@@ -15,17 +15,17 @@ from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any
 
-from aiobserve.model import MAIN_SOURCE, ApiCall, RawRecord, Session, SessionTrace, Turn
+from aiobserve.model import MAIN_SOURCE, ApiCall, RawRecord, Session, SessionTrace, ToolCall, Turn
 from aiobserve.pipeline import SessionSource
 from aiobserve.sessions import DEFAULT_PROJECTS_ROOT, encode_project_path, find_sessions
 
 EXTRACTOR_NAME = "claude_code"
 # Bump on any change to what this parser produces: the version is folded into every
 # fingerprint, so bumping it re-extracts the whole corpus on the next refresh.
-EXTRACTOR_VERSION = "1"
+EXTRACTOR_VERSION = "2"
 
 
 class TranscriptSchemaError(Exception):
@@ -89,6 +89,18 @@ class SystemSubtype(StrEnum):
     STOP_HOOK_SUMMARY = "stop_hook_summary"
 
 
+class ResultBlock(StrEnum):
+    """Block kinds a block-form `tool_result` is built from. An unregistered one crashes.
+
+    Only text carries into `ToolCall.result`: an image has none, and a tool reference names
+    a tool the result pointed at rather than saying anything.
+    """
+
+    TEXT = "text"
+    IMAGE = "image"
+    TOOL_REFERENCE = "tool_reference"
+
+
 class TurnTag(StrEnum):
     """Leading tags on a prompt string that still make it a prompt."""
 
@@ -123,6 +135,16 @@ class _Line:
     line_no: int
     record: dict[str, Any]
     raw: str
+
+
+@dataclass(frozen=True)
+class _Result:
+    """What a `tool_result` record said about the call it answered."""
+
+    text: str
+    is_error: bool
+    offload_file: str | None
+    ended_at: datetime | None
 
 
 @dataclass(frozen=True)
@@ -170,6 +192,7 @@ class ClaudeCodeExtractor:
             session=_session(kept, source.id, transcript),
             turns=turns,
             api_calls=_api_calls(kept, turn_by_line, source.id, MAIN_SOURCE),
+            tool_calls=_tool_calls(kept, source.id, MAIN_SOURCE),
             raw_records=raw_records,
         )
 
@@ -444,6 +467,97 @@ def _api_calls(
             )
         )
     return calls
+
+
+def _tool_calls(lines: list[_Line], session_id: str, source: str) -> list[ToolCall]:
+    """Every tool the transcript asked for, paired with the record that answered it.
+
+    A message issuing several calls writes one record per call, in the order Claude Code
+    got round to running them — so the batch shares the earliest of those timestamps and
+    says the start is synthetic, rather than reporting an execution order as a duration.
+    """
+    results = _tool_results(lines, session_id)
+    issued = [
+        (line, block)
+        for line in lines
+        if line.record["type"] == RecordType.ASSISTANT
+        for block in line.record["message"]["content"]
+        if block["type"] == "tool_use"
+    ]
+    batches: dict[str, list[datetime]] = {}
+    for line, _ in issued:
+        message_id = line.record["message"]["id"]
+        batches.setdefault(message_id, []).append(_required_timestamp(line, session_id))
+    calls = []
+    for index, (line, block) in enumerate(issued):
+        batch = batches[line.record["message"]["id"]]
+        result = results.get(block["id"])
+        calls.append(
+            ToolCall(
+                id=block["id"],
+                session_id=session_id,
+                source=source,
+                api_call_id=line.record["message"]["id"],
+                index=index,
+                name=block["name"],
+                input=json.dumps(block["input"]),
+                result=result.text if result else None,
+                offload_file=result.offload_file if result else None,
+                is_error=result.is_error if result else False,
+                incomplete=result is None,
+                started_at=min(batch),
+                ended_at=result.ended_at if result else None,
+                duration_synthetic=len(batch) > 1,
+            )
+        )
+    return calls
+
+
+def _tool_results(lines: list[_Line], session_id: str) -> dict[str, _Result]:
+    """What each tool said back, keyed by the call it answered.
+
+    A rewind can record an answer twice under one call id; the later record wins, as it
+    does everywhere else in the file.
+    """
+    results: dict[str, _Result] = {}
+    for line in lines:
+        record = line.record
+        if record["type"] != RecordType.USER:
+            continue
+        content = record["message"]["content"]
+        if not isinstance(content, list):
+            continue
+        # Present on tool-result records only, and a string on a few older ones, which
+        # carry no offload pointer.
+        details = record.get("toolUseResult")
+        path = details.get("persistedOutputPath") if isinstance(details, dict) else None
+        for block in content:
+            if block["type"] != "tool_result":
+                continue
+            results[block["tool_use_id"]] = _Result(
+                text=_result_text(block["content"], session_id, line.line_no),
+                # Absent on most results — absence means the tool succeeded.
+                is_error=bool(block.get("is_error")),
+                offload_file=PurePath(path).name if path else None,
+                ended_at=_timestamp(record),
+            )
+    return results
+
+
+def _result_text(content: Any, session_id: str, line_no: int) -> str:
+    """A result flattened to text, whether it was recorded as a string or as blocks."""
+    if isinstance(content, str):
+        return content
+    parts = []
+    for block in content:
+        kind = block["type"]
+        if kind not in ResultBlock:
+            raise TranscriptSchemaError(
+                f"Unknown tool result block {kind!r} in session {session_id}, line {line_no}"
+            )
+        if kind == ResultBlock.TEXT:
+            parts.append(block["text"])
+    return "".join(parts)
 
 
 def _blocks(group: Iterable[_Line], kind: str, field: str) -> str:

@@ -25,6 +25,10 @@ Every line of a transcript is a JSON object with a `type`. `aiobserve.extract.cl
 | `isCompactSummary` | `user` records | The summary written back into the transcript after a compaction. Not a prompt | `tests/fixtures/dup_uuid/`, CC 2.1.211 |
 | `isSidechain` | `user` and `assistant` records | The record belongs to a subagent's stream rather than the main one. `false` on every record of every main-transcript fixture here — the `true` case is not yet recorded | `tests/fixtures/spine/`, CC 2.1.221 |
 | `message.content` | `user` records | Either a string or a list of blocks. A block list can hold `text`, `image`, or `tool_result` — a `tool_result` block makes the record plumbing, not a prompt | `tests/fixtures/spine/`, CC 2.1.220 (block form) |
+| `tool_use` block | `assistant` records | One tool the model asked for: `id`, `name`, `input`. Usually one per record, but 23 records of the mycelia corpus hold two or more (scanned 2026-08-07), so a per-record reading undercounts | `tests/fixtures/spine/`, CC 2.1.221 |
+| `tool_result` block | `user` records | What came back, quoting the call's id in `tool_use_id`. `content` is a string or a list of `text`, `image` and `tool_reference` blocks. `is_error` is **absent on success** — 66,653 of the corpus's 154,169 result blocks omit it (scanned 2026-08-07) | `tests/fixtures/spine/`, CC 2.1.221 |
+| `toolUseResult` | `user` records answering a tool | The tool's own structured report, beside the block. A dict on most results, a bare string on 3,590 and a list on 795 of the corpus's 137,255 (scanned 2026-08-07) | `tests/fixtures/offload/`, CC 2.1.220 |
+| `toolUseResult.persistedOutputPath` | `user` records answering a tool | Output too big for the transcript, written to `<session>/tool-results/<name>.txt` with only a preview left in `content`. 321 results carry it (scanned 2026-08-07). The path is absolute on the machine that recorded it; only the file name travels | `tests/fixtures/offload/`, CC 2.1.220 |
 | `message.id` | `assistant` records | The API reply's id, and the key that merges its records. **One reply spans several records** — one per content block — so a per-line parser triples the API-call count | `tests/fixtures/spine/`, CC 2.1.221 — 8 records, 2 replies |
 | `message.usage` | `assistant` records | Tokens for the whole reply. **Every chunk of one `message.id` repeats the same numbers**, so summing per record multiplies a reply's tokens by its chunk count | `tests/fixtures/spine/`, CC 2.1.221 — five identical copies under one id |
 | `usage.cache_creation` | `assistant` records | The cache-creation total split by TTL: `ephemeral_5m_input_tokens` and `ephemeral_1h_input_tokens`. Present on every assistant record in the mycelia corpus (scanned 2026-08-07), so the absent shape is unrecorded | `tests/fixtures/spine/`, CC 2.1.221 |
@@ -43,6 +47,20 @@ A `user` record whose content is a string often opens with an XML-ish tag, and t
 Counting every string `user` record as a turn inflates the turn count several-fold — the mycelia corpus holds 2,157 `<task-notification>` records against 968 real prompts ([the trace-pipeline design](../plans/trace-pipeline/design.md)). The extractor crashes on an unregistered tag rather than guessing, because the next machine tag would re-inflate the count silently.
 
 *Seen in* `tests/fixtures/spine/` — both slash-command orderings at CC 2.1.221, `<bash-input>`/`<bash-stdout>` at CC 2.1.212.
+
+### A parallel batch's timestamps rank by execution, not by issue
+
+One assistant message can issue several tool calls at once, and Claude Code writes a record per
+call in the order it got round to running them. The records therefore carry different timestamps
+for calls the model issued together: of 23,371 multi-call messages in the mycelia corpus, 156 wrote
+one shared timestamp (scanned 2026-08-07). Reading a record's own timestamp as the call's start
+turns queue position into duration.
+
+So a batch's calls all start at the earliest timestamp in the batch, and carry
+`ToolCall.duration_synthetic` to say the start was assigned rather than measured. A lone call keeps
+its own timestamp and the flag is false.
+
+*Seen in* `tests/fixtures/spine/`, CC 2.1.221 — three calls under `msg_011CdmMjFXDofyYSMxYtXa5n`.
 
 ### A file can repeat a uuid
 
