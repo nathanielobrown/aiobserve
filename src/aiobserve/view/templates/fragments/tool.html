@@ -12,7 +12,10 @@
   {% if row.offload_file %}
   {# The result was written to a file instead of the transcript, so the page names the file
      rather than pretending the row holds what it holds. #}
-  <p data-field="offload_file" class="offload">result offloaded to {{ row.offload_file }}</p>
+  <p class="offload">result offloaded to
+    <a data-field="offload_file"
+       href="/session/{{ session_id }}/offload/{{ row.offload_file | urlencode }}"
+       >{{ row.offload_file }}</a></p>
   {% elif row.incomplete %}
   <p data-field="incomplete">The session ended before this tool call returned.</p>
   {% else %}

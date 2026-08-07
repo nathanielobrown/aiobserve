@@ -17,17 +17,19 @@ from fastapi.testclient import TestClient
 
 from aiobserve.analyze import queries
 from aiobserve.analyze.queries import QUERIES, VIEW_PREFIX
-from aiobserve.view.app import MAX_PAGE_RECORDS, build_app
+from aiobserve.view.app import MAX_CHUNK_CHARS, MAX_PAGE_RECORDS, build_app
 from aiobserve.view.listing import MAX_PAGE_SESSIONS
 from aiobserve.view.store import Fragment, Page, Value
 from tests.conftest import (
     ANCESTOR,
+    CONFIG_ONLY,
     DENSE_CALL,
     DENSE_TOOL,
     DENSE_TURN,
     DENSE_TURN_CALL,
     FORK_ORIGIN,
     FORK_ORIGIN_RUN,
+    OFFLOAD_FILE,
     SPINE,
     SPINE_RUN,
 )
@@ -59,6 +61,13 @@ TOOL_ROW_BYTES = 300
 # 2026-08-08: 83,659 B for a 100-record page less 1,865 B of chrome, over the 99 rows between.
 # The fixture records are redacted to a few characters, so they project nothing about this.
 MEASURED_RECORD_BYTES = 826
+
+# The most one character of offloaded content can weigh on the page that shows it. An offload
+# holds whatever a tool wrote, so unlike every other value here it has no shape at all: the
+# bound has to hold for the worst character rather than the measured average. Markupsafe's
+# longest escape is five bytes (`&amp;`, `&#34;`, `&#39;`), and the longest UTF-8 encoding is
+# four, so five bytes a character covers both.
+ESCAPED_CHAR_BYTES = 5
 
 
 # What a query may wrap a fat column in and still be bounded: a fixed-width prefix of it, or
@@ -127,12 +136,16 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     assert QUERIES["view_call_tools"].params["page_tools"].default == 40
     assert QUERIES["view_records"].params["page_records"].default == 100
     assert QUERIES["view_records"].params["preview_chars"].default == 160
+    assert QUERIES["view_offload"].params["chunk_chars"].default == 50_000
     # And they are the numbers the design's own arithmetic uses: a page of calls carries at
     # most this much text plus this many tool rows, which is what `PAGE_BYTES` was set from.
     assert queries.PAGE_CALLS * (TEXT_CHARS + queries.PAGE_TOOLS * TOOL_ROW_BYTES) <= PAGE_BYTES
     # The records browser's ceiling is the same arithmetic against a measured row: what a
     # `?size=` at the top of the range serves, not what the default does.
     assert MAX_PAGE_RECORDS * MEASURED_RECORD_BYTES < PAGE_BYTES
+    # The offload page's ceiling is arithmetic over the worst character rather than a measured
+    # one, because the content is a file some tool wrote and nothing constrains what is in it.
+    assert MAX_CHUNK_CHARS * ESCAPED_CHAR_BYTES < PAGE_BYTES
 
 
 def limits(sql: str) -> list[str]:
@@ -222,6 +235,7 @@ ROUTES: dict[str, str] = {
     ),
     "/session/{session_id}/records/{source}": f"/session/{ANCESTOR}/records/main",
     "/fragment/record/{session_id}/{source}/{line_no}": f"/fragment/record/{ANCESTOR}/main/1",
+    "/session/{session_id}/offload/{name:path}": f"/session/{CONFIG_ONLY}/offload/{OFFLOAD_FILE}",
 }
 
 
@@ -320,6 +334,30 @@ def test_the_tool_cap_truncates_the_list_and_says_how_much_it_cut(
     assert len(rest) == 2
     assert set(shown) & set(rest) == set()
     assert len(set(shown) | set(rest)) == total
+
+
+def test_an_offload_of_nothing_but_escapes_still_serves_under_the_ceiling(
+    plant: Planter,
+) -> None:
+    """The largest chunk anyone can ask for stays under the ceiling however the file escapes.
+
+    Every other bound here rests on a measured cost per row. An offload can't: it holds a file
+    a tool wrote, and a chunk of pure `&` weighs five times what the same chunk of prose does.
+    The content is invented for exactly that reason — no recorded offload is adversarial, and
+    the point of the leaf is the character no corpus happens to contain.
+    """
+    escapes = "&" * MAX_CHUNK_CHARS
+    path = plant(
+        ("UPDATE offload_files SET content = ? WHERE session_id = ?", [escapes, CONFIG_ONLY])
+    )
+    with TestClient(build_app(path)) as planted:
+        page = planted.get(
+            f"/session/{CONFIG_ONLY}/offload/{OFFLOAD_FILE}", params={"size": MAX_CHUNK_CHARS}
+        )
+    assert page.status_code == 200
+    # Served whole — the chunk is not silently cut — and still under the ceiling.
+    assert page.text.count("&amp;") == MAX_CHUNK_CHARS
+    assert len(page.content) < PAGE_BYTES
 
 
 def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(

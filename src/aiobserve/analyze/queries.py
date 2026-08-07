@@ -107,6 +107,11 @@ PAGE_CALLS = 25
 PAGE_TOOLS = 40
 PAGE_RECORDS = 100
 
+# How much of an offloaded tool result one chunk of the offload page carries. The only value
+# the viewer serves with no ceiling behind it — `offload_files.content` is whatever a tool
+# wrote, and the canonical store holds one over 50 MB — so the page is a walk, not a fetch.
+CHUNK_CHARS = 50_000
+
 # How much of a raw record one browser row shows. Long enough to tell a `user` record from an
 # `assistant` one and to recognise a line already read; short enough that a hundred of them
 # is a page rather than a transcript.
@@ -250,6 +255,17 @@ QUERIES: dict[str, Query] = {
         scope=Scope.KEYED,
         # The run's id is also the source its rows carry, so one key answers both questions.
         params={"session_id": SESSION_ID, "run_id": Param(type=ParamType.TEXT, default=REQUIRED)},
+    ),
+    "view_offload": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            # Which file. Required for the same reason the session is: a default would pick
+            # some session's offloaded tool output at random.
+            "name": Param(type=ParamType.TEXT, default=REQUIRED),
+            "after_chars": Param(type=ParamType.INTEGER, default=0),
+            "chunk_chars": Param(type=ParamType.INTEGER, default=CHUNK_CHARS),
+        },
     ),
     "view_projects": Query(scope=Scope.KEYED, params={}),
     "view_record": Query(

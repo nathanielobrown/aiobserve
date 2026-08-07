@@ -19,6 +19,7 @@ from aiobserve.export.duckdb import _TABLES
 from tests.analyze.conftest import QueryRunner
 from tests.conftest import (
     ANCESTOR,
+    CONFIG_ONLY,
     DENSE_CALL,
     DENSE_TOOL,
     DENSE_TURN,
@@ -27,6 +28,7 @@ from tests.conftest import (
     FORK_ORIGIN_RUN,
     MAIN,
     MYCELIA,
+    OFFLOAD_FILE,
     RESUME,
     RESUME_LONG_RECORD,
     SERVER_TOOLS,
@@ -68,6 +70,8 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     # the default page of 100 answers with more than one row and the turn join with several.
     "view_records": {"session_id": ANCESTOR, "source": MAIN},
     "view_turn_records": {"session_id": ANCESTOR, "source": MAIN},
+    # The corpus holds exactly one offloaded tool result, and this is it.
+    "view_offload": {"session_id": CONFIG_ONLY, "name": OFFLOAD_FILE},
     # The per-value queries answer with one row apiece, whatever is bound.
     "view_call_text": {"session_id": ANCESTOR, "source": MAIN, "api_call_id": DENSE_TURN_CALL},
     "view_call_thinking": {"session_id": ANCESTOR, "source": MAIN, "api_call_id": DENSE_TURN_CALL},

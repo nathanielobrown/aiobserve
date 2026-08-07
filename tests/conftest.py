@@ -79,6 +79,12 @@ REGISTRY_ZOO = "registry-zoo-0000-0000-0000-000000000000"
 # The pool session no other leaf asserts on, so a copied store can strip its api calls and
 # leave it the shape a `/model`-only session has: one turn, nothing the model answered.
 CONFIG_ONLY = "7e37bb35-4dcb-4e16-85be-55ac510c168e"
+# The corpus's one offloaded tool result — Claude Code wrote the output to a file beside the
+# transcript instead of into it. `CONFIG_ONLY` recorded it: a 159-character file, and the tool
+# call it belongs to. The name is Claude Code's, not ours, which is the reason it is untrusted.
+OFFLOAD_FILE = "bosvr1kjx.txt"
+OFFLOAD_CHARS = 159
+OFFLOAD_TOOL = "toolu_01JXs55LXLHvzWt8KczuYfyD"
 # The `deep-research` user, and the only session `pr-and-document` reaches from the pool.
 DEEP_RESEARCH_SESSION = "8d930c77-9e60-4784-9885-6d4c226280f7"
 

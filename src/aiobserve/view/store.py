@@ -48,6 +48,8 @@ class Page(StrEnum):
     # the thread's turns was read from — what turns a timeline row into a link into it.
     RECORDS = "view_records"
     TURN_RECORDS = "view_turn_records"
+    # One chunk of a tool result written to a file beside the transcript.
+    OFFLOAD = "view_offload"
 
 
 class Fragment(StrEnum):

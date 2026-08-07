@@ -79,6 +79,9 @@ CSP = "default-src 'self'"
 MAX_PAGE_CALLS = 100
 MAX_PAGE_TOOLS = 200
 MAX_PAGE_RECORDS = 300
+# The offload ceiling is the one set by escaping rather than by row count: the content is a
+# file some tool wrote, and a chunk of nothing but `&` weighs five bytes a character.
+MAX_CHUNK_CHARS = 60_000
 
 
 def checked(size: int, ceiling: int) -> int:
@@ -338,6 +341,48 @@ def build_app(db_path: Path) -> FastAPI:
             },
         )
 
+    @app.get("/session/{session_id}/offload/{name:path}")
+    def offload_page(
+        request: Request,
+        session_id: str,
+        name: str,
+        after: int = 0,
+        size: int = queries.CHUNK_CHARS,
+    ) -> Response:
+        """One chunk of a tool result Claude Code wrote to a file beside the transcript.
+
+        `name` is the transcript's own file name, so it may hold anything a tool named a file
+        — spaces, percent signs, something shaped like a path. It is a key into the store and
+        never a path the server opens, which is what makes the shape of it uninteresting.
+        """
+        checked(size, MAX_CHUNK_CHARS)
+        if after < 0:
+            raise HTTPException(400, "Ask for an offset of 0 or more.")
+        bound: dict[str, ParamValue] = {
+            "session_id": session_id,
+            "name": name,
+            "after_chars": after,
+            "chunk_chars": size,
+        }
+        with open_store(resolved) as connection:
+            rows = page_rows(connection, Page.OFFLOAD, **bound)
+        if not rows:
+            raise HTTPException(404, "No offloaded result of that name is in this session.")
+        row = rows[0]
+        served = after + len(row["chunk"])
+        return templates.TemplateResponse(
+            request,
+            "offload.html",
+            {
+                "session_id": session_id,
+                "row": row,
+                "size": size,
+                # Where the next chunk starts, or None when this one reached the end.
+                "after": served if served < row["content_chars"] else None,
+                "citations": {Page.OFFLOAD.value: queries.citation(Page.OFFLOAD, bound)},
+            },
+        )
+
     def tools_under(
         connection: duckdb.DuckDBPyConnection,
         keyed: Mapping[str, ParamValue],
@@ -456,10 +501,12 @@ def build_app(db_path: Path) -> FastAPI:
             rows = page_rows(connection, value, **keyed)
         if not rows:
             raise HTTPException(404, "Nothing in this store is stored under that id.")
+        # The keys travel into the context as well: a fragment that links anywhere needs the
+        # session and thread it was fetched for, and they are exactly what keyed it.
         return templates.TemplateResponse(
             request,
             f"fragments/{template}.html",
-            {"row": rows[0], "citation": queries.citation(value, keyed)},
+            dict(keyed) | {"row": rows[0], "citation": queries.citation(value, keyed)},
         )
 
     @app.get("/fragment/text/{session_id}/{source}/{api_call_id}")
