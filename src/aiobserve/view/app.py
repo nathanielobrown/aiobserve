@@ -110,10 +110,12 @@ def build_app(db_path: Path) -> FastAPI:
         "when": fmt.when,
         "clock": fmt.clock,
         "duration": fmt.duration,
-        # The two filters that print what a transcript wrote. Both hand back escaped markup;
-        # `view/render.py` is where that escaping lives, and nothing here may add `|safe`.
+        # The three filters that print what a transcript wrote. Each hands back escaped
+        # markup; `view/render.py` is where that escaping lives, and nothing here may add
+        # `|safe`.
         "markdown": render.markdown,
         "pretty": render.pretty,
+        "link": render.link,
     }
 
     def error(request: Request, status: int, message: str) -> Response:

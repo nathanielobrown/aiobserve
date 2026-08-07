@@ -531,6 +531,33 @@ def test_planted_markup_arrives_inert(plant: Planter) -> None:
             assert "<script>alert" not in page
 
 
+def test_a_pr_link_is_a_link_only_when_a_browser_should_follow_it(plant: Planter) -> None:
+    """A session's PR links are followable URLs; anything else on that list renders as text.
+
+    A `pr_url` is the one transcript value that reaches an attribute the browser acts on, so
+    escaping alone does not settle it — an escaped `javascript:` URL is still a `javascript:`
+    URL in an `href`. Both values are planted and invented: the recorded sessions carry PR
+    links redaction flattened to a placeholder.
+    """
+    followable = "https://example.test/org/repo/pull/1"
+    unfollowable = "javascript:alert('planted')"
+    path = plant(
+        (
+            "INSERT INTO pr_links VALUES"
+            " (?, 900001, 1, ?, 'planted/repo', '2026-01-01T00:00:00Z'),"
+            " (?, 900002, 2, ?, 'planted/repo', '2026-01-01T00:00:00Z')",
+            [SPINE, followable, SPINE, unfollowable],
+        ),
+    )
+    with TestClient(build_app(path)) as planted:
+        page = planted.get(f"/session/{SPINE}").text
+    # The http URL is a link the reader can click...
+    assert inside(page, "data-pr", followable, "href") == [followable]
+    # ...and the other reaches no href at all, while still being shown for what it is.
+    assert inside(page, "data-pr", unfollowable, "href") == []
+    assert "javascript:alert(&#39;planted&#39;)" in page
+
+
 def test_a_per_value_fragment_returns_the_one_value_it_names(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:

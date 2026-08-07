@@ -94,7 +94,24 @@ def test_a_value_that_is_not_json_is_shown_as_it_was_stored() -> None:
     assert "at line 3" in shown
 
 
+def test_only_an_http_url_becomes_a_link() -> None:
+    """A URL a browser should follow is a link; every other scheme is shown as text."""
+    # An http or https URL reaches the `href`, upper-case scheme and all...
+    assert 'href="https://example.test/pr/1"' in render.link("https://example.test/pr/1")
+    assert 'href="HTTP://example.test/"' in render.link("HTTP://example.test/")
+    # ...while a scheme that runs or reads something local never does, though the reader still
+    # sees what the transcript wrote.
+    for url in ("javascript:alert(1)", "data:text/html,<script>alert(1)</script>", "file:///etc"):
+        shown = render.link(url)
+        assert "href" not in shown
+        assert "<script>" not in shown
+        assert url.split(":")[0] in shown
+    # A quote in a URL cannot close the attribute it lands in.
+    assert 'href="https://example.test/?q=&#34;' in render.link('https://example.test/?q="')
+
+
 def test_an_absent_value_renders_to_nothing() -> None:
     """A NULL column reaches the template as None, and an empty block beats a crash."""
     assert render.markdown(None) == ""
     assert render.pretty(None) == ""
+    assert render.link(None) == ""

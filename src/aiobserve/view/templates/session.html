@@ -27,7 +27,7 @@
   </dl>
   {% if header.pr_urls %}
   <ul class="prs">
-    {% for url in header.pr_urls %}<li><a href="{{ url }}">{{ url }}</a></li>{% endfor %}
+    {% for url in header.pr_urls %}<li data-pr="{{ url }}">{{ url | link }}</li>{% endfor %}
   </ul>
   {% endif %}
 </section>
