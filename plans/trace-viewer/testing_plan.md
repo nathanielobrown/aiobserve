@@ -145,6 +145,13 @@ The amendment resolved all five findings this plan opened against the previous d
 - **The fat-column scan carries its own instrument test**, on invented SQL: no shipped query selects a fat column, so a green sweep alone would not show the scan can see one
 - **The route-level sentinel leaf landed in slice 1**, ahead of the `render.py` unit leaves it is meant to back up
 
+## As built: slice 2
+
+- **Finding A is answered by a rule rather than by the parameter.** The records browser is slice 3 and its query does not exist, so there is nothing to add `$page_records` to. Instead a leaf reads every `view_*` query and asserts each `LIMIT` is a `$parameter` declared in that query's manifest entry, with its own instrument test on invented SQL. That covers `$page_records` and `$chunk_bytes` before either is written, and it cannot go stale the way a list of three names can
+- **The filter leaves check a proper, non-empty cut.** A filter that matched every row would pass a subset assertion while filtering nothing, and one that matched no row would pass it vacuously; the leaf asserts the narrowed list is a strict subset and not empty. The sample values are read off the fixture corpus, and a leaf asserts every `FILTERS` key has one, so a filter added without a case fails rather than going untested
+- **The run page's parent-rule leaf carries a fork whose trail is empty.** The corpus holds a fork whose spawning call is in files the store does not hold — both parent rules come back empty — so the leaf pins "the trail stops rather than guessing `main`" on recorded data rather than on a planted row
+- **A new query joined the smoke tier by landing.** `view_projects.sql` needed no new leaf: the library tier parametrizes over `queries/*.sql`, so it ran, was scoped, and was checked against its manifest entry the moment the file appeared
+
 ## Obligation count
 
 | Area | Obligations |
