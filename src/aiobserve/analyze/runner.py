@@ -36,6 +36,20 @@ WHERE (project_dir = $project OR starts_with(project_dir, $project || '/'))
   AND ($since::DATE IS NULL OR started_at >= $since::DATE)
 """
 
+# The two windows every count is reported in, as rows a count can group by. Written here for
+# the same reason as the predicate above: a query that filtered its own window would be a
+# second implementation of the recency rule, free to drift from the total it restricts.
+_SESSION_PERIODS = """
+CREATE OR REPLACE TEMP VIEW session_period AS
+SELECT session_id, 'corpus' AS period FROM project_sessions
+UNION ALL
+SELECT session_id, 'trailing_window' AS period FROM project_sessions WHERE in_window
+"""
+
+# What the runner puts in scope for a corpus query. A query that reads neither is not scoped
+# to `--project` at all, whatever its manifest says.
+CORPUS_RELATIONS = ("project_sessions", "session_period")
+
 # Sessions no project predicate can place. They are excluded from every corpus count, so the
 # runner reports how many there were rather than leaving the gap silent.
 _UNPLACEABLE = "SELECT count(*) FROM sessions WHERE project_dir IS NULL"
@@ -131,6 +145,7 @@ def _build_project_sessions(
         "window_days": queries.WINDOW_DAYS,
     }
     connection.execute(_PROJECT_SESSIONS, bindings)
+    connection.execute(_SESSION_PERIODS)
     return bindings
 
 

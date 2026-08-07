@@ -14,12 +14,16 @@ import pytest
 
 from aiobserve.analyze import queries
 from aiobserve.analyze.queries import QUERIES, Scope
+from aiobserve.analyze.runner import CORPUS_RELATIONS
 from aiobserve.export.duckdb import _TABLES
 from tests.analyze.conftest import MAIN, MYCELIA, RESUME, SPINE, SPINE_RUN, QueryRunner
 
 # Bindings that make a query return something on the fixture corpus, per query name. The
 # production defaults are pinned by their own leaves; these are the fixture-sized values.
 FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
+    # The production floor of 3 sessions holds no pair on a 16-session store, so the smoke
+    # run would exercise the filter and never the join under it.
+    "co_occurrence": {"min_sessions": "1"},
     "records_slice": {"session_id": RESUME, "source": MAIN, "first_line": "1", "last_line": "5"},
     "run_digest": {"session_id": SPINE, "source": SPINE_RUN},
     "session_digest": {"session_id": SPINE},
@@ -69,8 +73,11 @@ def test_every_query_runs(name: str, run_query: QueryRunner) -> None:
     arguments = [part for key, value in bindings.items() for part in ("--param", f"{key}={value}")]
     if query.scope is Scope.CORPUS:
         arguments += ["--project", MYCELIA]
-    # ...and the run completes, which is what catches a query a schema bump broke.
-    run_query(name, *arguments)
+    # ...and the run completes, which is what catches a query a schema bump broke...
+    printed = run_query(name, "--csv", *arguments)
+    # ...having answered with rows. A query that returns nothing on this corpus runs green
+    # while asking its question of no data at all, which is the failure this tier is for.
+    assert len(printed.csv_rows()) > 1, f"{name} returned no rows: bind it in FIXTURE_BINDINGS"
 
 
 def test_every_query_file_has_a_manifest_entry() -> None:
@@ -92,10 +99,10 @@ def test_a_cross_session_query_counts_through_the_corpus_views(name: str) -> Non
     read = relations(name)
     # The `live_*` family counts a resume's copied rows twice across sessions, and a base
     # table counts a fork's replays as well. A corpus query reads neither: it joins the
-    # `corpus_*` views to `project_sessions`, which the runner builds from `--project`.
+    # `corpus_*` views to one of the relations the runner builds from `--project`.
     assert not {word for word in read if word.startswith("live_")}
     assert not (read & set(_TABLES))
-    assert "project_sessions" in read
+    assert read & set(CORPUS_RELATIONS)
 
 
 @pytest.mark.parametrize("name", NAMES)

@@ -85,6 +85,14 @@ SOURCE = Param(type=ParamType.TEXT, default=REQUIRED)
 RAW_CHARS = 2000
 
 QUERIES: dict[str, Query] = {
+    "agent_types": Query(scope=Scope.CORPUS, params={}),
+    "co_occurrence": Query(
+        scope=Scope.CORPUS,
+        # A pair seen in one or two sessions is noise on any corpus worth counting. The floor
+        # is bound rather than fixed because a young corpus has nothing above it.
+        params={"min_sessions": Param(type=ParamType.INTEGER, default=3)},
+    ),
+    "cost_distribution": Query(scope=Scope.CORPUS, params={}),
     "records_slice": Query(
         scope=Scope.KEYED,
         params={
@@ -120,7 +128,25 @@ QUERIES: dict[str, Query] = {
     ),
     "session_counts": Query(scope=Scope.CORPUS, params={}),
     "session_digest": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
+    "session_shapes": Query(
+        scope=Scope.CORPUS,
+        # The classifier's cut points. Every one is a starting guess, which is why they are
+        # bound: a shape that swallows half the corpus is a threshold to move, not a finding.
+        params={
+            # Share of a session's api calls one skill has to carry to own the session. A
+            # percentage, because a bound parameter is an integer, a date, or text.
+            "skill_share_pct": Param(type=ParamType.INTEGER, default=50),
+            "delegating_runs": Param(type=ParamType.INTEGER, default=3),
+            "editing_calls": Param(type=ParamType.INTEGER, default=5),
+            # Below this a session is conversational; at or above it with no edits it is
+            # analysis. One threshold, so the two shapes cannot overlap or leave a gap.
+            "busy_tool_calls": Param(type=ParamType.INTEGER, default=5),
+        },
+    ),
     "sessions": Query(scope=Scope.CORPUS, params={}),
+    "skill_activity": Query(scope=Scope.CORPUS, params={}),
+    "slash_commands": Query(scope=Scope.CORPUS, params={}),
+    "tool_failures": Query(scope=Scope.CORPUS, params={}),
     "weekly_trend": Query(scope=Scope.CORPUS, params={}),
 }
 
