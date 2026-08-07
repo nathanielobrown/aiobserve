@@ -8,17 +8,19 @@
 </th>
 {% endmacro %}
 
-{% macro pager() %}
-<nav class="pager">
+{# The list carries the same pager above and below the table; `place` tells them apart. #}
+{% macro pager(place) %}
+<nav class="pager" data-pager="{{ place }}">
   {% if previous %}<a data-page="previous" href="{{ previous }}">← newer page</a>{% endif %}
-  <span data-field="range">Sessions {{ first }}–{{ first + (sessions | length) - 1 }}</span>
+  <span data-field="range">{% if sessions %}Sessions {{ first }}–{{ first + (sessions | length) - 1
+    }}{% else %}No sessions{% endif %}</span>
   {% if next %}<a data-page="next" href="{{ next }}">older page →</a>{% endif %}
 </nav>
 {% endmacro %}
 
 {% block main %}
 <h1>Sessions</h1>
-{{ pager() }}
+{{ pager('top') }}
 <table id="sessions">
   <thead>
     <tr>
@@ -66,5 +68,5 @@
     {% endfor %}
   </tbody>
 </table>
-{{ pager() }}
+{{ pager('bottom') }}
 {% endblock %}

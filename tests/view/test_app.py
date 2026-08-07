@@ -161,8 +161,11 @@ def test_the_list_is_served_a_page_at_a_time(
         pytest.fail("the pager never ran out of pages")
     # ...holds every session once, in the order one long list would have had.
     assert seen == sessions(store)
-    # Past the end is an empty page rather than an error: a stale link is not a fault.
-    assert values(client.get("/", params={"page": 99}).text, "data-session-id") == []
+    # Past the end is an empty page rather than an error: a stale link is not a fault...
+    beyond = client.get("/", params={"page": 99}).text
+    assert values(beyond, "data-session-id") == []
+    # ...and it says so, rather than counting a range that ends before it starts.
+    assert fields(beyond, "data-pager", "top")["range"] == "No sessions"
 
 
 @pytest.mark.parametrize("parameters", [{"page": 0}, {"page": -1}, {"size": 0}, {"size": 100_000}])
