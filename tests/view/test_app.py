@@ -36,10 +36,7 @@ from tests.conftest import (
     RESUME,
     SPINE,
 )
-from tests.view.conftest import Planter, fields, inside, one, values
-
-# A session that does not exist, in the shape a session id has.
-MISSING = "00000000-0000-0000-0000-000000000000"
+from tests.view.conftest import MISSING, Planter, fields, inside, one, values
 
 
 def sessions(store: duckdb.DuckDBPyConnection) -> list[str]:
@@ -470,6 +467,9 @@ def test_planted_markup_arrives_inert(plant: Planter) -> None:
             "UPDATE tool_calls SET input = ?, result = ? WHERE session_id = ?",
             [sentinel] * 2 + [FORK_ORIGIN],
         ),
+        # The transcript itself, which the records browser previews and serves whole. Raw
+        # records are the least filtered thing the viewer shows: what Claude Code wrote.
+        ("UPDATE raw_records SET raw = ? WHERE session_id = ?", [sentinel, ANCESTOR]),
     )
     with TestClient(build_app(path)) as client:
         served = (
@@ -478,6 +478,8 @@ def test_planted_markup_arrives_inert(plant: Planter) -> None:
             client.get(f"/fragment/turn/{ANCESTOR}/{MAIN}/{DENSE_TURN}").text,
             client.get(f"/fragment/text/{ANCESTOR}/{MAIN}/{DENSE_TURN_CALL}").text,
             client.get(f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}").text,
+            client.get(f"/session/{ANCESTOR}/records/{MAIN}").text,
+            client.get(f"/fragment/record/{ANCESTOR}/{MAIN}/1").text,
         )
         for page in served:
             # The sentinel survives to the page as text — angle brackets escaped, the one form

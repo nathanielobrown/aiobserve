@@ -25,6 +25,10 @@ from aiobserve.view.app import build_app
 Statement = tuple[str, Sequence[str | int]]
 Planter = Callable[..., Path]
 
+# An id that matches nothing, in the shape a session id has. Every "the store does not hold
+# it" leaf asks for this one, whatever kind of id the route takes.
+MISSING = "00000000-0000-0000-0000-000000000000"
+
 
 @pytest.fixture(scope="session")
 def client(corpus_db: Path) -> Iterator[TestClient]:

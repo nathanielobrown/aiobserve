@@ -44,6 +44,8 @@ class Page(StrEnum):
     RUN_TIMELINE = "run_digest"
     RUNS = "view_runs"
     COMPACTIONS = "view_compactions"
+    # One page of a thread's raw transcript, previewed a record per row.
+    RECORDS = "view_records"
 
 
 class Fragment(StrEnum):
@@ -65,6 +67,7 @@ class Value(StrEnum):
     CALL_TEXT = "view_call_text"
     CALL_THINKING = "view_call_thinking"
     TOOL = "view_tool_value"
+    RECORD = "view_record"
 
 
 # Any of the three, for the fetch helper they share.

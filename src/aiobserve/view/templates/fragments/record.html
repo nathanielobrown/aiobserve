@@ -1,0 +1,13 @@
+{# One raw transcript record whole. A record is JSON, so it is indented rather than rendered
+   as markdown — what a reader wants here is the shape Claude Code wrote, field by field. #}
+<div class="value" data-record-value="{{ row.line_no }}" data-query="{{ citation }}">
+  <p class="numbers">
+    <span data-field="type" class="type">{{ row.type }}</span>
+    {# Not every record carries one: a summary record has no uuid, and a turn links to the
+       record whose uuid is the turn's id. #}
+    {% if row.uuid %}<span data-field="uuid">{{ row.uuid }}</span>{% endif %}
+    <span data-field="timestamp">{{ row.timestamp | clock }}</span>
+    <span><span data-field="raw_chars">{{ row.raw_chars }}</span> chars</span>
+  </p>
+  <pre data-field="raw">{{ row.raw | pretty }}</pre>
+</div>

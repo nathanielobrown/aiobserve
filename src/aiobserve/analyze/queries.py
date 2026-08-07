@@ -105,6 +105,12 @@ SIGNATURE_CHARS = 120
 # `tests/view/test_bounds.py` pins both values and asserts the arithmetic still fits.
 PAGE_CALLS = 25
 PAGE_TOOLS = 40
+PAGE_RECORDS = 100
+
+# How much of a raw record one browser row shows. Long enough to tell a `user` record from an
+# `assistant` one and to recognise a line already read; short enough that a hundred of them
+# is a page rather than a transcript.
+RECORD_PREVIEW = 160
 
 # The keyset cursor before the first row: "the last index already shown", and indexes start
 # at 0. Defaulted to it, so a bare invocation of a paging query returns its first page.
@@ -246,6 +252,26 @@ QUERIES: dict[str, Query] = {
         params={"session_id": SESSION_ID, "run_id": Param(type=ParamType.TEXT, default=REQUIRED)},
     ),
     "view_projects": Query(scope=Scope.KEYED, params={}),
+    "view_record": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            "source": SOURCE,
+            # Which line. A key like the two above: "some record of this thread" is not a
+            # question anyone asked, and the answer would be private transcript either way.
+            "line_no": Param(type=ParamType.INTEGER, default=REQUIRED),
+        },
+    ),
+    "view_records": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            "source": SOURCE,
+            "after": AFTER,
+            "page_records": Param(type=ParamType.INTEGER, default=PAGE_RECORDS),
+            "preview_chars": Param(type=ParamType.INTEGER, default=RECORD_PREVIEW),
+        },
+    ),
     "view_runs": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
     "view_session_header": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
     "view_sessions": Query(scope=Scope.KEYED, params={}),

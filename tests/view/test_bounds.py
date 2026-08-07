@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 
 from aiobserve.analyze import queries
 from aiobserve.analyze.queries import QUERIES, VIEW_PREFIX
-from aiobserve.view.app import build_app
+from aiobserve.view.app import MAX_PAGE_RECORDS, build_app
 from aiobserve.view.listing import MAX_PAGE_SESSIONS
 from aiobserve.view.store import Fragment, Page, Value
 from tests.conftest import (
@@ -54,6 +54,11 @@ TEXT_CHARS = 2_000
 INPUT_CHARS = 200
 # What one rendered tool row costs, from the design's arithmetic for the payload bound.
 TOOL_ROW_BYTES = 300
+# What a row of the records browser really costs — the preview plus the row's own markup, most
+# of it the `hx-get` that fetches the record whole. Measured against `data/traces.duckdb` on
+# 2026-08-08: 83,659 B for a 100-record page less 1,865 B of chrome, over the 99 rows between.
+# The fixture records are redacted to a few characters, so they project nothing about this.
+MEASURED_RECORD_BYTES = 826
 
 
 # What a query may wrap a fat column in and still be bounded: a fixed-width prefix of it, or
@@ -120,9 +125,14 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     """
     assert QUERIES["view_turn_calls"].params["page_calls"].default == 25
     assert QUERIES["view_call_tools"].params["page_tools"].default == 40
+    assert QUERIES["view_records"].params["page_records"].default == 100
+    assert QUERIES["view_records"].params["preview_chars"].default == 160
     # And they are the numbers the design's own arithmetic uses: a page of calls carries at
     # most this much text plus this many tool rows, which is what `PAGE_BYTES` was set from.
     assert queries.PAGE_CALLS * (TEXT_CHARS + queries.PAGE_TOOLS * TOOL_ROW_BYTES) <= PAGE_BYTES
+    # The records browser's ceiling is the same arithmetic against a measured row: what a
+    # `?size=` at the top of the range serves, not what the default does.
+    assert MAX_PAGE_RECORDS * MEASURED_RECORD_BYTES < PAGE_BYTES
 
 
 def limits(sql: str) -> list[str]:
@@ -210,6 +220,8 @@ ROUTES: dict[str, str] = {
     "/fragment/tool/{session_id}/{source}/{tool_call_id}": (
         f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}"
     ),
+    "/session/{session_id}/records/{source}": f"/session/{ANCESTOR}/records/main",
+    "/fragment/record/{session_id}/{source}/{line_no}": f"/fragment/record/{ANCESTOR}/main/1",
 }
 
 

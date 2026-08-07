@@ -78,6 +78,7 @@ CSP = "default-src 'self'"
 # keeps a hand-typed `?calls=100000` from trying to render a whole session in one response.
 MAX_PAGE_CALLS = 100
 MAX_PAGE_TOOLS = 200
+MAX_PAGE_RECORDS = 300
 
 
 def checked(size: int, ceiling: int) -> int:
@@ -272,6 +273,44 @@ def build_app(db_path: Path) -> FastAPI:
             },
         )
 
+    @app.get("/session/{session_id}/records/{source}")
+    def records_page(
+        request: Request,
+        session_id: str,
+        source: str,
+        after: int = queries.FIRST_PAGE,
+        size: int = queries.PAGE_RECORDS,
+    ) -> Response:
+        """One page of a thread's raw transcript — where a report's citation lands.
+
+        A citation names `(session_id, source, line_no)`; the URL for it is this path with
+        `?after={line_no - 1}#L{line_no}`, so the cited record is the first row on the page.
+        """
+        checked(size, MAX_PAGE_RECORDS)
+        keyed: dict[str, ParamValue] = {"session_id": session_id, "source": source}
+        bound = keyed | {"after": after, "page_records": size}
+        with open_store(resolved) as connection:
+            page = paged(
+                page_rows(connection, Page.RECORDS, **bound, preview_chars=queries.RECORD_PREVIEW),
+                "matched_records",
+                "line_no",
+            )
+        # A thread the store never held and a cursor past the end of one it does are the same
+        # answer — nothing at this URL. Neither is a page worth rendering empty.
+        if not page.rows:
+            raise HTTPException(404, "This store holds no records for that thread at that line.")
+        return templates.TemplateResponse(
+            request,
+            "records.html",
+            {
+                "session_id": session_id,
+                "source": source,
+                "page": page,
+                "size": size,
+                "citations": {Page.RECORDS.value: queries.citation(Page.RECORDS, bound)},
+            },
+        )
+
     def tools_under(
         connection: duckdb.DuckDBPyConnection,
         keyed: Mapping[str, ParamValue],
@@ -414,6 +453,16 @@ def build_app(db_path: Path) -> FastAPI:
             Value.CALL_THINKING,
             "value",
             {"session_id": session_id, "source": source, "api_call_id": api_call_id},
+        )
+
+    @app.get("/fragment/record/{session_id}/{source}/{line_no}")
+    def record_value(request: Request, session_id: str, source: str, line_no: int) -> Response:
+        """One raw transcript record whole, as the browser's preview was cut from."""
+        return whole(
+            request,
+            Value.RECORD,
+            "record",
+            {"session_id": session_id, "source": source, "line_no": line_no},
         )
 
     @app.get("/fragment/tool/{session_id}/{source}/{tool_call_id}")

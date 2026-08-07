@@ -24,6 +24,11 @@
    the page calls the runs a turn spawned. #}
 {% macro timeline(entries, session_id, source, attribute) %}
 <section id="timeline">
+  {# The way down to what this thread's transcript actually held, from the page that
+     summarises it. Both pages get it here, because both render one thread. #}
+  <p class="thread">
+    <a data-field="records" href="/session/{{ session_id }}/records/{{ source }}">raw records</a>
+  </p>
   {% for entry in entries %}
   {% if entry.kind == 'turn' %}
   <article data-turn="{{ entry.row.turn_id }}"
