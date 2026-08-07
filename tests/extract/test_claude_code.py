@@ -59,8 +59,9 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
         transcript_path=str(source.files[0]),
     )
 
-    # ...four of the ten `user` records open a turn...
-    assert trace.turns == [
+    # ...four of the ten `user` records in its own transcript open a turn (its subagent's
+    # rows carry that agent's source, and are asserted in `test_claude_code__agents.py`)...
+    assert [turn for turn in trace.turns if turn.source == MAIN_SOURCE] == [
         # ...a slash command leading with `<command-name>`...
         Turn(
             id="5b848af7-f86e-4950-b474-cd98125fad24",
@@ -112,7 +113,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
     ]
 
     # ...the eight assistant records collapse into the two messages they belong to...
-    assert trace.api_calls == [
+    assert [call for call in trace.api_calls if call.source == MAIN_SOURCE] == [
         ApiCall(
             id="msg_011CdmMjFXDofyYSMxYtXa5n",
             session_id=SPINE,
@@ -184,8 +185,9 @@ def test_a_message_split_across_records_merges_into_one_call(fixture_source: Sou
     )
     # ...then two API calls come back, each spanning from the record it answers to its
     # last chunk, with the thinking and the text it was split across both present.
-    assert len(trace.api_calls) == 2
-    merged = trace.api_calls[0]
+    main = [call for call in trace.api_calls if call.source == MAIN_SOURCE]
+    assert len(main) == 2
+    merged = main[0]
     assert (merged.started_at, merged.ended_at) == (
         at("2026-08-06T10:44:27.629"),
         at("2026-08-06T10:44:33.590"),
@@ -238,7 +240,7 @@ def test_machine_records_are_archived_but_never_turns(fixture_source: SourceFact
     assert machine == {t: 1 for t in machine}
     # ...then each is archived, and none of them opened a turn.
     assert not [turn for turn in trace.turns if turn.prompt.startswith("<task")]
-    assert len(trace.turns) == 4
+    assert len([turn for turn in trace.turns if turn.source == MAIN_SOURCE]) == 4
 
 
 def test_a_meta_record_is_not_a_turn(fixture_source: SourceFactory):

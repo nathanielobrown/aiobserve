@@ -146,7 +146,8 @@ def test_a_grown_session_is_replaced_rather_than_appended(
     corpus.add("spine", SPINE, lines=18)
     extractor = corpus.extractor()
     refresh(corpus.project, extractor=extractor, exporter=exporter)
-    assert len(table(exporter, "turns", SPINE)) == 3
+    # Three turns of its own, plus the two its subagent's transcript holds.
+    assert len(table(exporter, "turns", SPINE)) == 5
 
     # ...and then it resumed, growing by seven more records...
     corpus.add("spine", SPINE)
@@ -157,7 +158,7 @@ def test_a_grown_session_is_replaced_rather_than_appended(
         refresh(corpus.project, extractor=extractor, exporter=fresh)
         for name in ("sessions", "turns", "api_calls", "raw_records"):
             assert table(exporter, name, SPINE) == table(fresh, name, SPINE)
-    assert len(table(exporter, "turns", SPINE)) == 4
+    assert len(table(exporter, "turns", SPINE)) == 6
 
 
 def test_a_new_subagent_file_re_extracts_its_session(corpus: Corpus, exporter: DuckDbExporter):

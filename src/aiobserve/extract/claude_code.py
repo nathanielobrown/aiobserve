@@ -44,6 +44,8 @@ from aiobserve.sessions import (
 )
 
 EXTRACTOR_NAME = "claude_code"
+# The `source` a workflow journal records under, after its `wf_<id>/` directory.
+JOURNAL_SOURCE = "journal"
 # Bump on any change to what this parser produces: the version is folded into every
 # fingerprint, so bumping it re-extracts the whole corpus on the next refresh.
 EXTRACTOR_VERSION = "3"
@@ -144,7 +146,9 @@ class MachineTag(StrEnum):
     BASH_INPUT = "bash-input"
 
 
-_LEADING_TAG = re.compile(r"<([A-Za-z0-9_-]+)>")
+# A leading tag, with or without attributes: `<teammate-message teammate_id="...">` names
+# who sent it, so the name ends at whitespace as well as at the closing bracket.
+_LEADING_TAG = re.compile(r"<([A-Za-z0-9_-]+)(?=[\s>])")
 _COMMAND_NAME = re.compile(r"<command-name>(.*?)</command-name>", re.DOTALL)
 _COMMAND_ARGS = re.compile(r"<command-args>(.*?)</command-args>", re.DOTALL)
 
@@ -162,9 +166,20 @@ class _SessionFiles(NamedTuple):
     """One session's files, sorted by what reads them."""
 
     transcript: Path
-    # Every other transcript the session wrote, paired with the `source` it records under.
-    archived: list[tuple[str, Path]]
+    # Each subagent's transcript, paired with the agentId it records under.
+    agents: list[tuple[str, Path]]
+    # Each workflow journal, paired with its `wf_<id>/journal` source. Archive only: the
+    # runs it logs write their own transcripts.
+    journals: list[tuple[str, Path]]
     offloads: list[Path]
+
+
+class _Parsed(NamedTuple):
+    """What one transcript — the session's own or a subagent's — yielded."""
+
+    turns: list[Turn]
+    api_calls: list[ApiCall]
+    tool_calls: list[ToolCall]
 
 
 @dataclass(frozen=True)
@@ -208,27 +223,45 @@ class ClaudeCodeExtractor:
         return sources
 
     def extract(self, source: SessionSource) -> SessionTrace:
-        """Parse every file of one session into a trace."""
+        """Parse every file of one session into a trace.
+
+        Every transcript the session wrote — its own and each subagent's — runs through the
+        same parser, distinguished only by the `source` its rows carry.
+        """
         files = _classify(source)
-        lines = _read(files.transcript, source.id)
+        transcripts = [(MAIN_SOURCE, files.transcript), *files.agents]
+        lines = {name: _read(path, source.id) for name, path in transcripts}
+        journals = {name: _read(path, source.id) for name, path in files.journals}
         # The archive keeps every line of every file, duplicates included; the normalized
-        # tables below read the main transcript's deduplicated view. The subagents' own
-        # turns and calls arrive with slice 3.
-        raw_records = [_raw_record(source.id, MAIN_SOURCE, line) for line in lines]
-        for name, path in files.archived:
-            raw_records += [_raw_record(source.id, name, line) for line in _read(path, source.id)]
-        kept = _resolve_duplicates(lines, source.id)
-        turns, turn_by_line = _turns(kept, source.id, MAIN_SOURCE)
+        # tables below read each transcript's deduplicated view.
+        raw_records = [
+            _raw_record(source.id, name, line)
+            for name, rows in (*lines.items(), *journals.items())
+            for line in rows
+        ]
+        main = _resolve_duplicates(lines[MAIN_SOURCE], source.id)
+        parsed = [_parse(rows, source.id, name) for name, rows in lines.items()]
         return SessionTrace(
             extractor=EXTRACTOR_NAME,
             extractor_version=EXTRACTOR_VERSION,
-            session=_session(kept, source.id, files.transcript),
-            turns=turns,
-            api_calls=_api_calls(kept, turn_by_line, source.id, MAIN_SOURCE),
-            tool_calls=_tool_calls(kept, source.id, MAIN_SOURCE),
+            session=_session(main, source.id, files.transcript),
+            turns=[turn for one in parsed for turn in one.turns],
+            api_calls=[call for one in parsed for call in one.api_calls],
+            tool_calls=[call for one in parsed for call in one.tool_calls],
             offload_files=[_offload_file(path, source.id) for path in files.offloads],
             raw_records=raw_records,
         )
+
+
+def _parse(lines: list[_Line], session_id: str, source: str) -> _Parsed:
+    """Turns, calls and tools from one transcript, keyed to the source that wrote it."""
+    kept = _resolve_duplicates(lines, session_id)
+    turns, turn_by_line = _turns(kept, session_id, source)
+    return _Parsed(
+        turns=turns,
+        api_calls=_api_calls(kept, turn_by_line, session_id, source),
+        tool_calls=_tool_calls(kept, session_id, source),
+    )
 
 
 def _classify(source: SessionSource) -> _SessionFiles:
@@ -239,7 +272,8 @@ def _classify(source: SessionSource) -> _SessionFiles:
     """
     transcript = _transcript_of(source)
     directory = transcript.with_suffix("")
-    archived: list[tuple[str, Path]] = []
+    agents: list[tuple[str, Path]] = []
+    journals: list[tuple[str, Path]] = []
     offloads: list[Path] = []
     for path in source.files:
         if path == transcript:
@@ -249,9 +283,10 @@ def _classify(source: SessionSource) -> _SessionFiles:
             offloads.append(path)
             continue
         name = _archived_source(parts, source.id)
-        if name is not None:
-            archived.append((name, path))
-    return _SessionFiles(transcript=transcript, archived=archived, offloads=offloads)
+        if name is None:
+            continue
+        (journals if name.endswith(f"/{JOURNAL_SOURCE}") else agents).append((name, path))
+    return _SessionFiles(transcript=transcript, agents=agents, journals=journals, offloads=offloads)
 
 
 def _archived_source(parts: tuple[str, ...], session_id: str) -> str | None:
@@ -278,7 +313,7 @@ def _archived_source(parts: tuple[str, ...], session_id: str) -> str | None:
     if name.endswith(META_SUFFIX):
         return None
     if workflow and name == JOURNAL_NAME:
-        return f"{workflow}/journal"
+        return f"{workflow}/{JOURNAL_SOURCE}"
     if name.startswith(AGENT_PREFIX) and name.endswith(TRANSCRIPT_SUFFIX):
         return name[len(AGENT_PREFIX) : -len(TRANSCRIPT_SUFFIX)]
     raise unknown
@@ -440,7 +475,7 @@ def _turns(
     spans: dict[str, list[datetime]] = {}
     turns: list[Turn] = []
     for line in lines:
-        prompt = _prompt(line, session_id)
+        prompt = _prompt(line, session_id, source)
         if prompt is not None:
             open_turn = line.record["uuid"]
             spans[open_turn] = []
@@ -475,7 +510,7 @@ def _required_timestamp(line: _Line, session_id: str) -> datetime:
     return moment
 
 
-def _prompt(line: _Line, session_id: str) -> _Prompt | None:
+def _prompt(line: _Line, session_id: str, source: str) -> _Prompt | None:
     """Whether this record opens a turn, and the prompt if it does.
 
     The filters run before the tag registry: `isMeta` records carry tags of their own that
@@ -484,8 +519,12 @@ def _prompt(line: _Line, session_id: str) -> _Prompt | None:
     record = line.record
     if record["type"] != RecordType.USER:
         return None
-    # These three flags are absent on ordinary prompts — absence means "no".
-    if record.get("isMeta") or record.get("isCompactSummary") or record.get("isSidechain"):
+    # These flags are absent on ordinary prompts — absence means "no". `isSidechain` marks
+    # delegated work, and excludes it only in the main transcript, where the subagent's own
+    # file states it better; inside that file every record is sidechain.
+    if record.get("isMeta") or record.get("isCompactSummary"):
+        return None
+    if source == MAIN_SOURCE and record.get("isSidechain"):
         return None
     content = record["message"]["content"]
     if isinstance(content, list):

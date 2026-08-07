@@ -58,9 +58,10 @@ def test_the_archive_holds_every_line_of_every_file(fixture_source: SourceFactor
     # If a session spawned a subagent, then both files are in the archive, each line
     # under the transcript that recorded it — the main one as "main", the subagent's
     # under its bare agentId...
-    assert lines_by_source(trace) == Counter({MAIN_SOURCE: 25, SPINE_AGENT: 6})
+    assert lines_by_source(trace) == Counter({MAIN_SOURCE: 25, SPINE_AGENT: 7})
     # ...numbered from 1 within its own file, so a row points back at a line...
-    assert [r.line_no for r in trace.raw_records if r.source == SPINE_AGENT] == [1, 2, 3, 4, 5, 6]
+    agent = [r.line_no for r in trace.raw_records if r.source == SPINE_AGENT]
+    assert agent == [1, 2, 3, 4, 5, 6, 7]
     # ...and nothing else in the directory became a source, though the walk found it: the
     # third file is the subagent's `meta.json`, linkage that agent runs read, not records.
     assert len(source.files) == 3

@@ -46,7 +46,9 @@ A `user` record whose content is a string often opens with an XML-ish tag, and t
 
 Counting every string `user` record as a turn inflates the turn count several-fold — the mycelia corpus holds 2,157 `<task-notification>` records against 968 real prompts ([the trace-pipeline design](../plans/trace-pipeline/design.md)). The extractor crashes on an unregistered tag rather than guessing, because the next machine tag would re-inflate the count silently.
 
-*Seen in* `tests/fixtures/spine/` — both slash-command orderings at CC 2.1.221, `<bash-input>`/`<bash-stdout>` at CC 2.1.212.
+A tag can carry attributes: `<teammate-message teammate_id="team-lead" summary="…">`. So the name ends at whitespace as well as at `>`, and the whole opening tag stays in `Turn.prompt` — the sender is part of what the record says. `<teammate-message>` appears only in subagent transcripts (132 records, one mycelia session, scanned 2026-08-07), which is why a main-transcript census misses it.
+
+*Seen in* `tests/fixtures/spine/` — both slash-command orderings at CC 2.1.221, `<bash-input>`/`<bash-stdout>` at CC 2.1.212, `<teammate-message>` at CC 2.1.211.
 
 ### A parallel batch's timestamps rank by execution, not by issue
 
