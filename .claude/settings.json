@@ -1,0 +1,94 @@
+{
+  "permissions": {
+    "allow": [
+      "Edit(/handoffs/**)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr status:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh pr edit:*)",
+      "Bash(gh pr ready:*)",
+      "Bash(gh pr comment:*)",
+      "Bash(gh pr review:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh pr close:*)",
+      "Bash(gh pr reopen:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue create:*)",
+      "Bash(gh issue edit:*)",
+      "Bash(gh issue comment:*)",
+      "Bash(gh issue close:*)",
+      "Bash(gh issue reopen:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run watch:*)",
+      "Bash(gh repo view:*)",
+      "Bash(gh label:*)",
+      "Bash(gh search:*)",
+      "Bash(gh api:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git switch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git branch:*)",
+      "Bash(git rebase:*)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(git push:*)",
+      "Bash(git reset:*)",
+      "Bash(git stash:*)",
+      "Bash(git worktree:*)"
+    ],
+    "deny": [
+      "Bash(gh repo delete:*)",
+      "Bash(gh repo archive:*)",
+      "Bash(gh release delete:*)",
+      "Bash(gh secret:*)",
+      "Bash(gh auth:*)",
+      "Bash(gh api -X DELETE:*)",
+      "Bash(gh api --method DELETE:*)",
+      "Read(./.env)",
+      "Read(./data/**)",
+      "NotebookEdit",
+      "Workflow",
+      "ShareOnboardingGuide",
+      "PowerShell",
+      "Artifact"
+    ]
+  },
+  "skillOverrides": {
+    "dataviz": "name-only",
+    "claude-api": "name-only",
+    "update-config": "name-only",
+    "schedule": "name-only",
+    "loop": "off",
+    "keybindings-help": "off",
+    "init": "off",
+    "artifact-design": "off",
+    "artifact-capabilities": "off",
+    "security-review": "off",
+    "hn-summarize": "off",
+    "run": "off",
+    "tooling-quality-check": "name-only",
+    "codebase-design": "name-only",
+    "claude-in-chrome": "name-only",
+    "diagnosing-bugs": "user-invocable-only",
+    "fewer-permission-prompts": "user-invocable-only"
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/ruff-fix.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

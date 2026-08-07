@@ -1,0 +1,60 @@
+[project]
+name = "aiobserve"
+version = "0.1.0"
+description = "Analyze AI coding agents from their telemetry to find ways to make them better"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+aiobserve = "aiobserve.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.4",
+  "pytest-timeout>=2.4", # backs the `timeout` setting below
+
+  "pyrefly>=0.24",
+  "ruff>=0.12",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+# Ruff formats Python inside Markdown code blocks. Our guides use those blocks for
+# illustration — placeholder pseudo-code, deliberate ❌/✅ pairs — so leave them alone.
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle
+  "F",   # pyflakes
+  "I",   # isort — one import order, enforced rather than argued about
+  "UP",  # pyupgrade — keep syntax current with the pinned interpreter
+  "B",   # bugbear
+  "SIM", # simplify
+  "TID", # tidy-imports — bans relative imports (see flake8-tidy-imports below)
+]
+# Unused imports are never auto-removed: the ruff-fix hook runs `--fix` on every
+# Claude edit, and silently deleting an import mid-refactor hides the mistake.
+unfixable = ["F401"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# A hung test with no ceiling burns the whole run and prints no failure line.
+# This is a backstop; individual waits carry their own deadlines.
+timeout = 120
+addopts = "--strict-markers --durations=10"
+markers = [
+  "slow: earned its runtime (real subprocess, network, or large corpus) — needs a why-comment",
+]
+
+[tool.pyrefly]
+project-includes = ["src", "tests"]

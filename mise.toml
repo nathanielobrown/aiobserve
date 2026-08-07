@@ -1,0 +1,80 @@
+# Task conventions
+#
+# mise's own flags must come BEFORE the task name — `mise run --force check`, not
+# `mise run check --force`. A flag that trails the task name is passed to the task
+# as an argument and silently does nothing. Only the `diagram-*` tasks take an
+# argument, and they declare it, so a trailing flag anywhere else is a mistake.
+#
+# `mise run a ::: b` runs a and b in parallel.
+
+[tools]
+python = "3.13"
+uv = "latest"
+
+[settings]
+python.uv_venv_auto = true
+
+[tasks.sync]
+description = "Install/refresh the virtualenv from uv.lock"
+run = "uv sync --all-groups"
+
+[tasks.format]
+description = "Format Python with ruff"
+run = "uv run ruff format ."
+
+[tasks.format-check]
+description = "Check Python formatting without writing"
+run = "uv run ruff format --check ."
+
+[tasks.lint]
+description = "Lint Python with ruff, applying safe fixes"
+run = "uv run ruff check --fix ."
+
+[tasks.lint-check]
+description = "Lint Python with ruff, no fixes (the CI shape)"
+run = "uv run ruff check ."
+
+[tasks.typecheck]
+description = "Type-check with pyrefly"
+run = "uv run pyrefly check"
+
+[tasks.lint-shell]
+description = "Lint the Claude Code hook scripts with shellcheck"
+# The hooks run on every tool call; a syntax error there is invisible until it
+# silently stops firing. Skipped when shellcheck isn't installed.
+run = """
+if command -v shellcheck >/dev/null; then
+  shellcheck .claude/hooks/*.sh
+else
+  echo 'shellcheck not installed — skipping (brew install shellcheck)'
+fi
+"""
+
+[tasks.diagram-check]
+description = "Validate a Mermaid file or Markdown's ```mermaid blocks by rendering it"
+# mmdc validates by rendering, so a non-zero exit is a syntax error. Deliberately
+# out of `check` — it needs network on first run and a Chrome; call it when you
+# author a diagram (docs/mermaid-guide.md).
+run = """
+out="$(mktemp -d)/check.svg"
+npx -y @mermaid-js/mermaid-cli -i {{arg(name="file")}} -o "$out" >/dev/null && echo 'diagram-check: valid'
+"""
+
+[tasks.diagram-render]
+description = "Render a Mermaid file to a PNG and print its path, for layout inspection"
+run = """
+out="$(mktemp -d)/diagram.png"
+npx -y @mermaid-js/mermaid-cli -s 2 -i {{arg(name="file")}} -o "$out" >/dev/null && echo "$out"
+"""
+
+[tasks.test]
+description = "Run the test suite"
+run = "uv run pytest"
+
+[tasks.check-fast]
+description = "Format, lint, and type-check — the loop to run while iterating"
+depends = ["format", "lint", "typecheck"]
+
+[tasks.check]
+description = "Every gate. Run before opening a PR."
+depends = ["format-check", "lint-check", "typecheck", "lint-shell", "test"]

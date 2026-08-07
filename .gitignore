@@ -1,0 +1,36 @@
+# Virtual environments
+.venv/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.pyrefly_cache/
+
+# Secrets: telemetry backend ingest keys (see README.md)
+.env
+
+# Subagent → dispatcher handoffs (conventions: docs/handoffs.md). Per-run
+# scratch, regenerable, and never a durable authority.
+/handoffs/
+
+# Claude Code agent worktrees — each is a full checkout; ignore so linters
+# don't scan them
+.claude/worktrees/
+
+# Local-only Claude Code settings (permissions accumulated per machine)
+.claude/settings.local.json
+
+# Extracted telemetry and analysis scratch — raw session data can be large and
+# contains whatever the agent read. Committed reports live in reports/.
+/data/
+
+.DS_Store
