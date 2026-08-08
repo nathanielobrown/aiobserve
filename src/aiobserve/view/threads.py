@@ -23,11 +23,13 @@ from aiobserve.view.store import Row
 # — so this is the composed one, and `tests/view/test_bounds.py` pins it with the arithmetic.
 PAGE_TURNS = 20
 PAGE_CHIPS = 8
-# The most chips one page renders however the two sizes are split. A reader can spend the whole
-# budget on a single turn (`?turns=1&chips=160`) but not on twenty, which is what stops the
-# largest recorded forest — 94 runs under one turn — from being a page nobody can open.
-CHIP_BUDGET = 160
-MAX_PAGE_CHIPS = CHIP_BUDGET
+# The most run rows one page renders however the two sizes are split. The unattached list is
+# capped at `chips` and rides every page, so a page buys `turns + 1` lists of that size and the
+# route checks that product — 200 is what leaves the defaults room.
+CHIP_BUDGET = 200
+# The most a single list may hold, reachable at `?turns=1&chips=100`: enough for the largest
+# forest the corpus records (94 runs under one turn), so no run is out of a reader's reach.
+MAX_PAGE_CHIPS = 100
 # What one page renders of a thread's compactions. Not a size a URL carries: the most any
 # session's main thread holds is 18, so this is the arithmetic's backstop rather than a knob.
 PAGE_MARKS = 25
@@ -51,13 +53,28 @@ class Chip:
     children: tuple["Chip", ...]
 
 
+class Capped[T](NamedTuple):
+    """What one budget let through, and what it left behind.
+
+    Every list of runs a page renders is bounded this way rather than by what the corpus
+    happens to hold, and a page that cut something says so — `cut` is what the "+N more" link
+    is minted from, `total` what a heading counts.
+    """
+
+    shown: tuple[T, ...]
+    # Rows the budget left out: nodes of the forest, not top-level items.
+    cut: int
+    # Rows the whole list holds, cut or not.
+    total: int
+
+
 @dataclass(frozen=True)
 class Entry:
     """One row of a thread's timeline: a turn with its runs, or a compaction marker."""
 
     kind: EntryKind
     row: Row
-    chips: tuple[Chip, ...] = ()
+    chips: Capped[Chip] = Capped((), 0, 0)
 
     @property
     def continuation(self) -> bool:
@@ -85,14 +102,47 @@ def _under_turns(runs: Sequence[Row], source: str) -> tuple[Chip, ...]:
     return tuple(chip for turn_id in turns for chip in chips(runs, source, turn_id))
 
 
+def capped(forest: Sequence[Chip], budget: int) -> Capped[Chip]:
+    """A run forest cut to `budget` nodes, counting what it cut.
+
+    The cut takes the first `budget` nodes of a pre-order walk, so a rendered run's parent is
+    always rendered — a top-level cap would bound nothing, since three chips can carry fifty
+    nodes between them.
+    """
+    total = sum(1 for _ in _walk(forest))
+    shown, _ = _take(forest, budget)
+    return Capped(shown, max(total - budget, 0), total)
+
+
+def _take(forest: Sequence[Chip], budget: int) -> tuple[tuple[Chip, ...], int]:
+    """The first `budget` nodes of a pre-order walk, and what is left of the budget."""
+    kept: list[Chip] = []
+    for chip in forest:
+        if budget <= 0:
+            break
+        children, budget = _take(chip.children, budget - 1)
+        kept.append(Chip(chip.run, children))
+    return tuple(kept), budget
+
+
+def cut_to[T](items: Sequence[T], budget: int) -> Capped[T]:
+    """A flat list cut to `budget` rows — the forest cap's case for rows that do not nest."""
+    return Capped(tuple(items[:budget]), max(len(items) - budget, 0), len(items))
+
+
 def timeline(
-    turns: Sequence[Row], runs: Sequence[Row], compactions: Sequence[Row], source: str
+    turns: Sequence[Row],
+    runs: Sequence[Row],
+    compactions: Sequence[Row],
+    source: str,
+    budget: int,
 ) -> list[Entry]:
     """One thread's turns in order, with the runs it spawned chipped on and its compactions
     interleaved.
 
     `source` is `main` for a session page and a run id for a run page: the same shape either
-    way, because a run's transcript is a thread like the session's own.
+    way, because a run's transcript is a thread like the session's own. `budget` is how many
+    runs one turn may render before the rest become a "+N more".
     """
     entries: list[Entry] = []
     pending = list(compactions)
@@ -101,7 +151,8 @@ def timeline(
         # A compaction that ran before this turn started belongs after the previous one.
         while pending and started is not None and pending[0]["timestamp"] <= started:
             entries.append(Entry(EntryKind.COMPACTION, pending.pop(0)))
-        entries.append(Entry(EntryKind.TURN, turn, chips(runs, source, turn["turn_id"])))
+        forest = capped(chips(runs, source, turn["turn_id"]), budget)
+        entries.append(Entry(EntryKind.TURN, turn, forest))
     return entries + [Entry(EntryKind.COMPACTION, row) for row in pending]
 
 
@@ -152,7 +203,10 @@ class Threads(NamedTuple):
     """A session page's two run-bearing parts, which together hold every run it recorded."""
 
     entries: list[Entry]
-    unattached: tuple[Chip, ...]
+    unattached: Capped[Chip]
+    # The page's compaction markers, already interleaved into `entries` — carried for the
+    # count the page shows when the cap cut some.
+    marks: Capped[Row]
 
 
 def session_threads(
@@ -160,6 +214,8 @@ def session_threads(
     thread_turn_ids: Sequence[str],
     runs: Sequence[Row],
     compactions: Sequence[Row],
+    chip_budget: int,
+    mark_budget: int,
 ) -> Threads:
     """The main thread's timeline and the unattached list, checked to cover every run.
 
@@ -169,9 +225,11 @@ def session_threads(
 
     `turns` is the page; `thread_turn_ids` is every turn the session holds. The check is over
     the thread, because a run whose spawning turn is on another page is placed — just not
-    here — and computing it from the page would raise for every one of them.
+    here — and computing it from the page would raise for every one of them. The two budgets
+    bound what renders, never what is checked: a run the cap cut is still a placed run.
     """
-    entries = timeline(turns, runs, compactions, MAIN_SOURCE)
+    marks = cut_to(compactions, mark_budget)
+    entries = timeline(turns, runs, marks.shown, MAIN_SOURCE, chip_budget)
     loose = unattached(runs)
     placed = {
         chip.run["run_id"]
@@ -182,7 +240,7 @@ def session_threads(
     missing = {run["run_id"] for run in runs} - placed
     if missing:
         raise ValueError(f"{len(missing)} run(s) hang off no turn and no run: {sorted(missing)}")
-    return Threads(entries, loose)
+    return Threads(entries, capped(loose, chip_budget), marks)
 
 
 def parent_of(run: Row) -> str | None:

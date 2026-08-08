@@ -119,6 +119,12 @@ PAGE_RECORDS = 100
 # wrote, and the canonical store holds one over 50 MB — so the page is a walk, not a fetch.
 CHUNK_CHARS = 50_000
 
+# How much of an agent run's three display columns a chip carries, and of a compaction's
+# trigger. The corpus maxima are 60, 22 and 15 characters, but a maximum is an observation:
+# a page whose size is arithmetic needs the number bound, not noticed.
+CHIP_CHARS = 60
+CHIP_CHARS_PARAM = Param(type=ParamType.INTEGER, default=CHIP_CHARS)
+
 # How much of a raw record one browser row shows. Long enough to tell a `user` record from an
 # `assistant` one and to recognise a line already read; short enough that a hundred of them
 # is a page rather than a transcript.
@@ -268,7 +274,8 @@ QUERIES: dict[str, Query] = {
         },
     ),
     "view_compactions": Query(
-        scope=Scope.KEYED, params={"session_id": SESSION_ID, "source": SOURCE}
+        scope=Scope.KEYED,
+        params={"session_id": SESSION_ID, "source": SOURCE, "chip_chars": CHIP_CHARS_PARAM},
     ),
     "view_run_header": Query(
         scope=Scope.KEYED,
@@ -307,7 +314,9 @@ QUERIES: dict[str, Query] = {
             "preview_chars": Param(type=ParamType.INTEGER, default=RECORD_PREVIEW),
         },
     ),
-    "view_runs": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
+    "view_runs": Query(
+        scope=Scope.KEYED, params={"session_id": SESSION_ID, "chip_chars": CHIP_CHARS_PARAM}
+    ),
     "view_session_header": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
     "view_sessions": Query(scope=Scope.KEYED, params={}),
     "view_tool_value": Query(

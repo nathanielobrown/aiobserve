@@ -42,14 +42,15 @@
   </dl>
 </section>
 
-{{ parts.timeline(timeline, header.session_id, header.run_id, 'data-child', lines) }}
+{{ parts.timeline(timeline, header.session_id, header.run_id, 'data-child', lines, marks, none) }}
 
-{% if children %}
+{% if children.total %}
 <section id="children">
   {# The runs this one spawned that no turn of its own timeline claims — a fork, or a run
      whose spawning call the store does not hold. Listed here rather than dropped. #}
-  <h2>{{ children | length }} run(s) under no turn of this one</h2>
-  {{ parts.run_list(children, 'data-child', header.session_id) }}
+  <h2><span data-field="runs">{{ children.total }}</span> run(s) under no turn of this one</h2>
+  {{ parts.run_list(children.shown, 'data-child', header.session_id) }}
+  {{ parts.cut_line(children.cut, none) }}
 </section>
 {% endif %}
 {% endblock %}

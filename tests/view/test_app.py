@@ -22,7 +22,7 @@ from aiobserve.view.listing import (
     PAGE_SESSIONS,
     SORTS,
 )
-from aiobserve.view.threads import CHIP_BUDGET, MAX_PAGE_CHIPS, PAGE_CHIPS, PAGE_TURNS
+from aiobserve.view.threads import CHIP_BUDGET, MAX_PAGE_CHIPS, PAGE_TURNS
 from tests.conftest import (
     ANCESTOR,
     DENSE_CALL,
@@ -387,7 +387,7 @@ def test_every_session_page_accounts_for_all_of_its_runs(
     page has to stay placed rather than raise, and no page may show one twice.
     """
     for session_id in sessions(store):
-        pages = walk(client, session_id, turns=turns, chips=CHIP_BUDGET // turns)
+        pages = walk(client, session_id, turns=turns, chips=CHIP_BUDGET // (turns + 1))
         shown = [values(page, "data-chip") + values(page, "data-unattached") for page in pages]
         runs = {
             row[0]
@@ -400,6 +400,66 @@ def test_every_session_page_accounts_for_all_of_its_runs(
         assert {run for page in shown for run in page} == runs, session_id
         for page in shown:
             assert len(page) == len(set(page)), session_id
+
+
+def test_a_turns_chips_are_capped_by_the_nodes_of_its_forest(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A turn renders as many runs as the page's chip size allows, counts the rest, links to them.
+
+    The cap counts every node of the forest and not its top level: a run under a run is a row
+    on the page and costs what any other row costs.
+    """
+    # The recorded pair where one run spawned another, and the main turn that spawned the
+    # first of them — three top-level chips can carry fifty nodes, so this is the shape a
+    # top-level cap bounds nothing about...
+    listing = queries.load("view_runs").strip().rstrip(";")
+    ((child, parent, turn_id),) = store.execute(
+        f"SELECT child.run_id, parent.run_id, parent.spawn_turn_id FROM ({listing}) child"
+        f" JOIN ({listing}) parent ON child.spawn_source = parent.run_id"
+        f" WHERE parent.spawn_source = '{MAIN}' AND parent.spawn_turn_id IS NOT NULL",
+        {"session_id": SPINE, "chip_chars": queries.CHIP_CHARS},
+    ).fetchall()
+    # ...renders the top of the forest and nothing under it when the page has room for one...
+    narrow = client.get(f"/session/{SPINE}?chips=1").text
+    assert inside(narrow, "data-turn", turn_id, "data-chip") == [parent]
+    # ...says how many it cut...
+    assert fields(narrow, "data-turn", turn_id)["cut"] == "1"
+    # ...and the link it mints opens a page holding that turn with the whole forest.
+    (wider,) = inside(narrow, "data-turn", turn_id, "data-more-chips")
+    assert inside(client.get(wider).text, "data-turn", turn_id, "data-chip") == [parent, child]
+
+
+def test_the_unattached_list_is_capped_and_counts_what_the_session_holds(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The runs under no turn are capped like a turn's chips, under a heading that counts them all.
+
+    The list rides every page, so it is one of the sizes that multiply. Cutting it silently
+    would put the header's run count and the runs a reader can reach back out of agreement,
+    which is the disagreement this section exists to end.
+    """
+    # The fixture session listing the most runs under no turn...
+    listed = {
+        session_id: values(client.get(f"/session/{session_id}").text, "data-unattached")
+        for session_id in sessions(store)
+    }
+    session_id = max(listed, key=lambda name: len(listed[name]))
+    assert len(listed[session_id]) > 1, "no fixture session has a list long enough to cut"
+    whole = client.get(f"/session/{session_id}").text
+    nodes = [
+        run
+        for attribute in ("data-unattached", "data-chip")
+        for run in inside(whole, "id", "unattached", attribute)
+    ]
+    # ...renders one of them when the page has room for one chip...
+    narrow = client.get(f"/session/{session_id}?chips=1").text
+    assert values(narrow, "data-unattached") == listed[session_id][:1]
+    # ...counts every run the list holds in its heading, cap or no cap...
+    assert fields(narrow, "id", "unattached")["runs"] == str(len(nodes))
+    # ...and the link it mints opens a page holding the whole list.
+    (wider,) = inside(narrow, "id", "unattached", "data-more-chips")
+    assert values(client.get(wider).text, "data-unattached") == listed[session_id]
 
 
 def test_the_unattached_section_is_the_chip_joins_complement(
@@ -418,7 +478,7 @@ def test_the_unattached_section_is_the_chip_joins_complement(
                 f"SELECT run_id FROM ({listing}) WHERE spawn_turn_id IS NULL"
                 f" AND (spawn_source IS NULL OR spawn_source NOT IN"
                 f" (SELECT run_id FROM ({listing})))",
-                {"session_id": session_id},
+                {"session_id": session_id, "chip_chars": queries.CHIP_CHARS},
             ).fetchall()
         }
         page = client.get(f"/session/{session_id}").text
@@ -653,8 +713,9 @@ def test_a_turns_permalink_opens_the_page_that_turn_starts(client: TestClient) -
         f"turns={PAGE_TURNS + 1}",
         "chips=0",
         f"chips={MAX_PAGE_CHIPS + 1}",
-        # Each size is inside its own ceiling; what they multiply into is not.
-        f"turns={PAGE_TURNS}&chips={PAGE_CHIPS + 1}",
+        # Each size is inside its own ceiling; what they multiply into is not. The unattached
+        # list rides every page at the same size, so the budget buys `turns + 1` of them.
+        f"turns={PAGE_TURNS}&chips={CHIP_BUDGET // (PAGE_TURNS + 1) + 1}",
         f"turns=2&chips={MAX_PAGE_CHIPS}",
     ],
 )

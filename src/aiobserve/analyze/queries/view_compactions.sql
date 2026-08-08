@@ -3,7 +3,8 @@
 SELECT
     k.id AS compaction_id,
     k.timestamp,
-    k.trigger,
+    -- Cut like a chip's columns are: a marker is a row of a page whose size is arithmetic.
+    substr(k.trigger, 1, $chip_chars) AS trigger,
     k.pre_tokens,
     k.post_tokens,
     k.duration_ms

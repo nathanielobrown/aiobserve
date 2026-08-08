@@ -64,10 +64,13 @@ from aiobserve.view.threads import (
     CHIP_BUDGET,
     MAX_PAGE_CHIPS,
     PAGE_CHIPS,
+    PAGE_MARKS,
     PAGE_TURNS,
     TURN_CURSOR,
     ancestry,
+    capped,
     children,
+    cut_to,
     marks_on_page,
     session_threads,
     timeline,
@@ -262,8 +265,11 @@ def build_app(db_path: Path) -> FastAPI:
         """
         checked(turns, PAGE_TURNS)
         checked(chips, MAX_PAGE_CHIPS)
-        if turns * chips > CHIP_BUDGET:
-            raise HTTPException(400, f"Ask for at most {CHIP_BUDGET} chips a page: turns × chips.")
+        # The unattached list is a list of `chips` like a turn's, and it rides every page.
+        if (turns + 1) * chips > CHIP_BUDGET:
+            raise HTTPException(
+                400, f"Ask for at most {CHIP_BUDGET} run rows a page: (turns + 1) × chips."
+            )
         with open_store(resolved) as connection:
             header = page_rows(connection, Page.SESSION_HEADER, session_id=session_id)
             if not header:
@@ -279,9 +285,15 @@ def build_app(db_path: Path) -> FastAPI:
                 if page.after is None
                 else []
             )
-            runs = page_rows(connection, Page.RUNS, session_id=session_id)
+            runs = page_rows(
+                connection, Page.RUNS, session_id=session_id, chip_chars=queries.CHIP_CHARS
+            )
             markers = page_rows(
-                connection, Page.COMPACTIONS, session_id=session_id, source=MAIN_SOURCE
+                connection,
+                Page.COMPACTIONS,
+                session_id=session_id,
+                source=MAIN_SOURCE,
+                chip_chars=queries.CHIP_CHARS,
             )
             lines = turn_lines(connection, session_id, MAIN_SOURCE)
         # A cursor past the last turn and a thread that was never there are the same answer.
@@ -304,6 +316,8 @@ def build_app(db_path: Path) -> FastAPI:
             [row["turn_id"] for row in outline],
             runs,
             marks_on_page(markers, outline, rows),
+            chips,
+            PAGE_MARKS,
         )
         return templates.TemplateResponse(
             request,
@@ -313,9 +327,12 @@ def build_app(db_path: Path) -> FastAPI:
                 "main": MAIN_SOURCE,
                 "timeline": threads.entries,
                 "unattached": threads.unattached,
+                "marks": threads.marks,
                 "lines": lines,
                 "page": page,
-                "sizes": {"turns": turns, "chips": chips},
+                # What the page's own links carry: the sizes it was served at, and the widest
+                # one list may be — the size a "+N more" link asks for.
+                "sizes": {"turns": turns, "chips": chips, "widest": MAX_PAGE_CHIPS},
                 "citations": {
                     named.value: queries.citation(named, bound.get(named, keyed))
                     for named in (
@@ -338,9 +355,18 @@ def build_app(db_path: Path) -> FastAPI:
             turns = page_rows(connection, Page.RUN_TIMELINE, session_id=session_id, source=run_id)
             # The session's runs, not this one's: the trail above the run and the runs under
             # it are both read off the same set of links.
-            runs = page_rows(connection, Page.RUNS, session_id=session_id)
-            markers = page_rows(connection, Page.COMPACTIONS, session_id=session_id, source=run_id)
+            runs = page_rows(
+                connection, Page.RUNS, session_id=session_id, chip_chars=queries.CHIP_CHARS
+            )
+            markers = page_rows(
+                connection,
+                Page.COMPACTIONS,
+                session_id=session_id,
+                source=run_id,
+                chip_chars=queries.CHIP_CHARS,
+            )
             lines = turn_lines(connection, session_id, run_id)
+        marks = cut_to(markers, PAGE_MARKS)
         keyed: dict[str, ParamValue] = {"session_id": session_id}
         at_source = keyed | {"source": run_id}
         return templates.TemplateResponse(
@@ -350,8 +376,12 @@ def build_app(db_path: Path) -> FastAPI:
                 "header": header[0],
                 "main": MAIN_SOURCE,
                 "trail": ancestry(run_id, runs),
-                "timeline": timeline(turns, runs, markers, run_id),
-                "children": children(run_id, runs),
+                # A run's own thread is short — 8 turns at the corpus maximum — so it is
+                # unpaged; its run lists are the same multiplicand a session page has, and
+                # they take the same caps.
+                "timeline": timeline(turns, runs, marks.shown, run_id, PAGE_CHIPS),
+                "marks": marks,
+                "children": capped(children(run_id, runs), PAGE_CHIPS),
                 "lines": lines,
                 "citations": {
                     Page.RUN_HEADER.value: queries.citation(

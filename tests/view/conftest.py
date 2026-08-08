@@ -55,8 +55,14 @@ def plant(corpus_db: Path, tmp_path: Path) -> Planter:
     against fixtures whose strings redaction already flattened.
     """
 
+    # One file per call, so a leaf that needs two stores — the same page with a row and without
+    # it — can plant both and measure the difference between them.
+    planted = 0
+
     def build(*statements: Statement) -> Path:
-        path = tmp_path / "planted.duckdb"
+        nonlocal planted
+        planted += 1
+        path = tmp_path / f"planted-{planted}.duckdb"
         path.write_bytes(corpus_db.read_bytes())
         connection = duckdb.connect(str(path))
         try:

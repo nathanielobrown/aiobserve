@@ -26,6 +26,13 @@ from aiobserve.view.app import (
 )
 from aiobserve.view.listing import MAX_PAGE_SESSIONS
 from aiobserve.view.store import Fragment, Page, Value
+from aiobserve.view.threads import (
+    CHIP_BUDGET,
+    MAX_PAGE_CHIPS,
+    PAGE_CHIPS,
+    PAGE_MARKS,
+    PAGE_TURNS,
+)
 from tests.conftest import (
     ANCESTOR,
     CONFIG_ONLY,
@@ -37,9 +44,10 @@ from tests.conftest import (
     FORK_ORIGIN_RUN,
     OFFLOAD_FILE,
     SPINE,
+    SPINE_LEAF,
     SPINE_RUN,
 )
-from tests.view.conftest import Planter, fields, one, values
+from tests.view.conftest import Planter, Statement, fields, one, values
 
 # The columns that hold whatever the agent read or wrote: one of them can be megabytes, and
 # none of them belongs on a page whole. `raw` is a transcript line, `result` a tool's output,
@@ -75,6 +83,23 @@ MEASURED_CALL_ROW_MARKUP = 2_000
 # The fixture records are redacted to a few characters, so they project nothing about this.
 MEASURED_RECORD_BYTES = 826
 
+# What the markup around one row of a session timeline costs, with the row's own content taken
+# off. Measured through the app with `&` planted at every cap, which is what the leaf at the
+# bottom of this file re-measures so none of the three can go stale: 1,313 B for a turn row and
+# 264 B for the "+N more" line one turn may carry, 311 B for a run row — the nested kind, the
+# dearer of the two — and 266 B for a compaction row.
+MEASURED_TURN_ROW_MARKUP = 1_700
+MEASURED_CHIP_ROW_MARKUP = 400
+MEASURED_MARK_ROW_MARKUP = 300
+# What a session page weighs before its timeline: the header's facts, the citations, the page
+# chrome. Measured against `data/traces.duckdb` on 2026-08-07 as the smallest window a session
+# serves — 5,586 B, one turn row and one run row included, so the figure errs high.
+MEASURED_SESSION_CHROME = 6_000
+# The parameter every truncated column of a run row is cut to. Counted per query rather than
+# listed, so a fourth column added to a chip shows up in the arithmetic instead of quietly
+# spending the ceiling `CHIP_BUDGET` times over.
+CHIP_HEAD = "$chip_chars"
+
 # The most one character of a transcript's own content can weigh on the page that shows it.
 # Content has no shape at all — a tool wrote the file, a model wrote the text — so every bound
 # over it holds for the worst character rather than the measured average. Markupsafe's longest
@@ -91,6 +116,49 @@ def worst_call_bytes(page_tools: int) -> int:
     """
     tool_row = MEASURED_TOOL_ROW_MARKUP + INPUT_CHARS * ESCAPED_CHAR_BYTES
     return MEASURED_CALL_ROW_MARKUP + TEXT_CHARS * ESCAPED_CHAR_BYTES + page_tools * tool_row
+
+
+def heads(name: str) -> int:
+    """How many of a query's columns are cut to `$chip_chars` — what one of its rows carries."""
+    return re.sub(r"--[^\n]*", " ", queries.load(name)).count(CHIP_HEAD)
+
+
+def worst_turn_bytes() -> int:
+    """What one turn row of a session timeline can weigh: its markup, the "+N more" line it may
+    carry, and a prompt head of nothing but `&`."""
+    return MEASURED_TURN_ROW_MARKUP + PROMPT_CHARS * ESCAPED_CHAR_BYTES
+
+
+def worst_chip_bytes() -> int:
+    """What one run row can weigh: its markup, and every head it shows all `&`."""
+    return MEASURED_CHIP_ROW_MARKUP + heads(Page.RUNS) * queries.CHIP_CHARS * ESCAPED_CHAR_BYTES
+
+
+def worst_mark_bytes() -> int:
+    """What one compaction row can weigh: its markup, and its trigger all `&`."""
+    return (
+        MEASURED_MARK_ROW_MARKUP + heads(Page.COMPACTIONS) * queries.CHIP_CHARS * ESCAPED_CHAR_BYTES
+    )
+
+
+def worst_session_bytes() -> int:
+    """The largest session page any pair of sizes a URL can carry produces.
+
+    A search over the pairs the route allows, not the product of the two maxima: the sizes
+    trade against each other, so 20 turns of 100 runs each is not a page anyone can ask for.
+    The `+ 1` is the unattached list, which is a list of `chips` like a turn's and rides every
+    page. The marks are not a size a URL carries, so they cost the same on any of them.
+    """
+    return (
+        MEASURED_SESSION_CHROME
+        + PAGE_MARKS * worst_mark_bytes()
+        + max(
+            turns * worst_turn_bytes() + (turns + 1) * chips * worst_chip_bytes()
+            for turns in range(1, PAGE_TURNS + 1)
+            for chips in range(1, MAX_PAGE_CHIPS + 1)
+            if (turns + 1) * chips <= CHIP_BUDGET
+        )
+    )
 
 
 def worst_record_bytes() -> int:
@@ -169,18 +237,32 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     assert QUERIES["view_records"].params["page_records"].default == 100
     assert QUERIES["view_records"].params["preview_chars"].default == 160
     assert QUERIES["view_offload"].params["chunk_chars"].default == 50_000
+    # How much of a run row's three columns a chip shows. `session_digest` keeps no LIMIT of
+    # its own — a report quotes the whole digest — so the timeline's *sizes* are the ones the
+    # viewer composes around it, and they are checked as arithmetic below rather than pinned.
+    assert QUERIES["view_runs"].params["chip_chars"].default == 60
+    assert QUERIES["view_compactions"].params["chip_chars"].default == 60
     # Every ceiling is projected at the largest page a URL can ask for, because a size is
     # something a reader types. The turn fragment's two sizes multiply, so its ceiling is
     # spent by the defaults themselves and `?calls=` only goes down from here.
     assert MAX_PAGE_CALLS * worst_call_bytes(MAX_PAGE_TOOLS) < PAGE_BYTES
     assert MAX_PAGE_RECORDS * worst_record_bytes() < PAGE_BYTES
     assert MAX_CHUNK_CHARS * ESCAPED_CHAR_BYTES < PAGE_BYTES
+    # The session timeline is the page whose caps this arithmetic sets rather than checks: its
+    # run rows are most of what the ceiling buys, and `CHIP_BUDGET` is what that leaves room for.
+    assert worst_session_bytes() < PAGE_BYTES
     # And no default asks for more than its own ceiling allows, which nothing else checks: a
     # default above the ceiling serves a 400 to a reader who typed no size at all.
     assert queries.PAGE_CALLS <= MAX_PAGE_CALLS
     assert queries.PAGE_TOOLS <= MAX_PAGE_TOOLS
     assert queries.PAGE_RECORDS <= MAX_PAGE_RECORDS
     assert queries.CHUNK_CHARS <= MAX_CHUNK_CHARS
+    assert PAGE_CHIPS <= MAX_PAGE_CHIPS
+    assert (PAGE_TURNS + 1) * PAGE_CHIPS <= CHIP_BUDGET
+    # And every run is reachable: one turn's runs, or the unattached list, fits a page of its
+    # own at `?turns=1&chips={MAX_PAGE_CHIPS}` — which the widest forest the corpus records,
+    # 94 runs under one turn, needs to be more than a "+N more" nobody can open.
+    assert (1 + 1) * MAX_PAGE_CHIPS <= CHIP_BUDGET
 
 
 def limits(sql: str) -> list[str]:
@@ -243,8 +325,13 @@ def test_a_served_page_stays_under_its_ceiling(
     # real corpus. `data/traces.duckdb` served 1,015 B a row on 2026-08-08 — measured, not
     # assumed — which is what `MAX_PAGE_SESSIONS` was set from.
     assert MAX_PAGE_SESSIONS * MEASURED_SESSION_BYTES < PAGE_BYTES
+    # Every session page at the defaults, and at the widest single list a URL can ask for —
+    # a different shape rather than a larger one, and the shape the arithmetic above bounds.
     for session_id in [row[0] for row in store.execute("SELECT id FROM sessions").fetchall()]:
-        assert len(client.get(f"/session/{session_id}").content) < PAGE_BYTES, session_id
+        for sizes in ({}, {"turns": 1, "chips": MAX_PAGE_CHIPS}):
+            page = client.get(f"/session/{session_id}", params=sizes)
+            assert page.status_code == 200, (session_id, sizes)
+            assert len(page.content) < PAGE_BYTES, (session_id, sizes)
 
 
 # One real URL per route the app exposes, keyed by the route's own path template. The sweep
@@ -424,6 +511,62 @@ def test_a_turn_fragment_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
         tool_rows = served(tools, tools=4) - served(tools, tools=1)
     assert call_row <= worst_call_bytes(1)
     assert tool_rows / 3 <= MEASURED_TOOL_ROW_MARKUP + INPUT_CHARS * ESCAPED_CHAR_BYTES
+
+
+def test_a_session_timeline_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A turn row, a run row and a compaction row weigh no more than the arithmetic gives them.
+
+    These are the costs the session page's ceiling is computed from, and a run row is the one
+    the caps multiply two hundred times — so a template that grows one past its budget puts the
+    ceiling out by that much. Every head is planted full of `&`, the character that escapes to
+    five bytes, because no recorded row is adversarial. Two stores, because the marginal cost
+    of a row is the same page with the row and without it.
+    """
+    (marks,) = one(store, "SELECT count(*) FROM compactions WHERE session_id = ?", [ANCESTOR])
+    assert marks == 1, "the compaction fixture moved: re-pick the session this measures"
+    heads_full = "&" * queries.CHIP_CHARS
+    content: tuple[Statement, ...] = (
+        ("UPDATE turns SET prompt = ? WHERE session_id = ?", ["&" * PROMPT_CHARS, SPINE]),
+        (
+            "UPDATE agent_runs SET agent_type = ?, description = ?, model = ? WHERE session_id = ?",
+            [heads_full, heads_full, heads_full, SPINE],
+        ),
+        ("UPDATE compactions SET trigger = ? WHERE session_id = ?", [heads_full, ANCESTOR]),
+    )
+    whole = plant(*content)
+    # The same corpus less the run nested under `SPINE`'s one chipped turn, and less the
+    # compaction `ANCESTOR` recorded — each of which a page above renders and this one does not.
+    without = plant(
+        *content,
+        ("DELETE FROM agent_runs WHERE session_id = ? AND id = ?", [SPINE, SPINE_LEAF]),
+        ("DELETE FROM compactions WHERE session_id = ?", [ANCESTOR]),
+    )
+
+    def served(path: Path, url: str, **params: int) -> int:
+        with TestClient(build_app(path)) as planted:
+            response = planted.get(url, params=params)
+            assert response.status_code == 200, response.text[:200]
+            return len(response.content)
+
+    spine = f"/session/{SPINE}"
+    # `SPINE`'s first two turns spawned nothing, so one more of them is a turn row and nothing
+    # else. Its third spawned the pair, so the page holding that turn is where the rest is
+    # measured: both runs, one run and the "+N more" line, and one run alone.
+    turn_row = served(whole, spine, after=-1, turns=2, chips=1) - served(
+        whole, spine, after=-1, turns=1, chips=1
+    )
+    pair = served(whole, spine, after=1, turns=1, chips=2)
+    cut = served(whole, spine, after=1, turns=1, chips=1)
+    alone = served(without, spine, after=1, turns=1, chips=2)
+    mark_row = served(whole, f"/session/{ANCESTOR}") - served(without, f"/session/{ANCESTOR}")
+    # A turn row costs its markup, its prompt head, and the "+N more" line it may carry...
+    assert turn_row + (cut - alone) <= worst_turn_bytes()
+    # ...a run row its markup and every head it shows, nested where a run row is dearest...
+    assert pair - alone <= worst_chip_bytes()
+    # ...and a compaction row its markup and its trigger.
+    assert mark_row <= worst_mark_bytes()
 
 
 def test_a_deeply_nested_value_is_served_at_the_size_it_was_stored(plant: Planter) -> None:

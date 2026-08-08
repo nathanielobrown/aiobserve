@@ -32,7 +32,7 @@
   {% endif %}
 </section>
 
-{{ parts.timeline(timeline, header.session_id, main, 'data-chip', lines, sizes) }}
+{{ parts.timeline(timeline, header.session_id, main, 'data-chip', lines, marks, sizes) }}
 
 {# Forward only, and the cursor is the last index shown — so a link a reader saved opens the
    same turns tomorrow, whatever the session grew in between. #}
@@ -43,12 +43,15 @@
 </p>
 {% endif %}
 
-{% if unattached %}
+{% if unattached.total %}
 <section id="unattached">
   {# The chip join's complement. Listed rather than dropped, so the run count in the header
-     and the runs on the page agree. #}
-  <h2>{{ unattached | length }} run(s) under no turn</h2>
-  {{ parts.run_list(unattached, 'data-unattached', header.session_id) }}
+     and the runs on the page agree — and the heading counts the whole list, not the page's
+     share of it, which is what keeps that agreement when the cap bites. #}
+  <h2><span data-field="runs">{{ unattached.total }}</span> run(s) under no turn</h2>
+  {{ parts.run_list(unattached.shown, 'data-unattached', header.session_id) }}
+  {{ parts.cut_line(unattached.cut, '/session/' ~ header.session_id ~ '?turns=1&chips='
+                    ~ sizes.widest) }}
 </section>
 {% endif %}
 {% endblock %}
