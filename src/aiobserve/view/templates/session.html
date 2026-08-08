@@ -23,11 +23,15 @@
     {{ parts.fact('cost_usd', header.cost_usd | money) }}
     {{ parts.fact('unpriced_api_calls', header.unpriced_api_calls) }}
     {{ parts.fact('output_tokens', header.output_tokens | count) }}
-    {{ parts.fact('skills', (header.skills or []) | join(', ')) }}
+    {# Both lists grow with the session, so the query cuts them and says how many it left:
+       a header is the one part of a page no size a reader types bounds. #}
+    {{ parts.fact('skills', (header.skills or []) | join(', ')
+                  ~ (' and %d more' % header.skills_cut if header.skills_cut else '')) }}
   </dl>
   {% if header.pr_urls %}
   <ul class="prs">
     {% for url in header.pr_urls %}<li data-pr="{{ url }}">{{ url | link }}</li>{% endfor %}
+    {% if header.pr_urls_cut %}<li data-field="prs_cut">and {{ header.pr_urls_cut }} more</li>{% endif %}
   </ul>
   {% endif %}
 </section>

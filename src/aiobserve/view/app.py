@@ -272,7 +272,14 @@ def build_app(db_path: Path) -> FastAPI:
                 400, f"Ask for at most {CHIP_BUDGET} run rows a page: (turns + 1) × chips."
             )
         with open_store(resolved) as connection:
-            header = page_rows(connection, Page.SESSION_HEADER, session_id=session_id)
+            header = page_rows(
+                connection,
+                Page.SESSION_HEADER,
+                session_id=session_id,
+                head_chars=queries.HEADER_CHARS,
+                item_chars=queries.HEADER_ITEM_CHARS,
+                head_items=queries.HEADER_ITEMS,
+            )
             if not header:
                 raise HTTPException(404, "No session with that id is in this store.")
             page = window(

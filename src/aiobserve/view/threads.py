@@ -38,7 +38,9 @@ MAX_PAGE_CHIPS = 100
 PAGE_CURSORLESS = 1
 # What one page renders of a thread's compactions. Not a size a URL carries: the most any
 # session's main thread holds is 18, so this is the arithmetic's backstop rather than a knob.
-PAGE_MARKS = 25
+# Set just above that maximum because the bytes it does not spend are the header's, which is
+# the one part of a page no size a reader types bounds.
+PAGE_MARKS = 20
 # The digests' keyset column: where a turn's prompt sat in its thread, unique and ascending,
 # which is what lets `after` mean "the last index already shown" instead of an offset.
 TURN_CURSOR = "turn_index"

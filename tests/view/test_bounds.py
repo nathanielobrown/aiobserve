@@ -94,10 +94,11 @@ MEASURED_RECORD_BYTES = 826
 MEASURED_TURN_ROW_MARKUP = 1_700
 MEASURED_CHIP_ROW_MARKUP = 400
 MEASURED_MARK_ROW_MARKUP = 300
-# What a session page weighs before its timeline: the header's facts, the citations, the page
-# chrome. Measured against `data/traces.duckdb` on 2026-08-07 as the smallest window a session
-# serves — 5,586 B, one turn row and one run row included, so the figure errs high.
-MEASURED_SESSION_CHROME = 6_000
+# What a session page weighs apart from the rows above: the header, the page's own markup, and
+# the lines a cut list mints. Measured through the app by the leaf at the bottom of this file,
+# with `&` planted at every cap the header carries — 11,136 B, which is a page's worst case
+# rather than a corpus observation, because everything in a header is now cut in SQL.
+MEASURED_SESSION_CHROME = 12_000
 # The parameter every truncated column of a run row is cut to. Counted per query rather than
 # listed, so a fourth column added to a chip shows up in the arithmetic instead of quietly
 # spending the ceiling `CHIP_BUDGET` times over.
@@ -250,6 +251,12 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     # viewer composes around it, and they are checked as arithmetic below rather than pinned.
     assert QUERIES["view_runs"].params["chip_chars"].default == 60
     assert QUERIES["view_compactions"].params["chip_chars"].default == 60
+    # And what a session header shows of each string and each list it carries. The header is
+    # the page's one unbounded surface — a session's PR links grow with every PR it opens — so
+    # these three are what turn `MEASURED_SESSION_CHROME` into a worst case.
+    assert QUERIES["view_session_header"].params["head_chars"].default == 100
+    assert QUERIES["view_session_header"].params["item_chars"].default == 60
+    assert QUERIES["view_session_header"].params["head_items"].default == 5
     # Every ceiling is projected at the largest page a URL can ask for, because a size is
     # something a reader types. The turn fragment's two sizes multiply, so its ceiling is
     # spent by the defaults themselves and `?calls=` only goes down from here.
@@ -575,6 +582,95 @@ def test_a_session_timeline_of_nothing_but_escapes_costs_what_the_ceiling_budget
     assert pair - alone <= worst_chip_bytes()
     # ...and a compaction row its markup and its trigger.
     assert mark_row <= worst_mark_bytes()
+
+
+# What the session arithmetic counts row by row, which chrome is the page without: a turn row
+# with the runs and cut line it carries, a run list of the page's own, a compaction row. Cut
+# innermost first, because a run list nests inside a run list.
+COUNTED_ROWS = (
+    r'<article id="turn-.*?</article>',
+    r'<ul class="runs">.*?</ul>',
+    r'<div class="compaction".*?</div>',
+)
+
+
+def chrome(html: str) -> str:
+    """A session page with every row `worst_session_bytes` counts separately taken out."""
+    for pattern in COUNTED_ROWS:
+        while (stripped := re.sub(pattern, "", html, count=1, flags=re.S)) != html:
+            html = stripped
+    # The strip is the instrument, so it is checked both ways: a row left in is a cost counted
+    # twice, and a wrapper taken out hides part of the page this measures.
+    assert not values(html, "data-turn") and not values(html, "data-chip")
+    assert not values(html, "data-compaction")
+    assert 'id="session-header"' in html and 'id="timeline"' in html
+    return html
+
+
+def test_a_session_page_of_nothing_but_escapes_carries_the_chrome_the_ceiling_budgets(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """What a session page holds outside its counted rows fits the allowance the ceiling gives it.
+
+    The header is the part of a page no size a reader types bounds: every string in it is one a
+    transcript wrote, and its two lists grow with the session — one recorded session opened 32
+    PRs, which alone was 6 KB of a 6 KB allowance. So the query cuts all of them, and this
+    measures what the cuts leave: `&` planted at every cap, on every session, because the widest
+    chrome belongs to whichever page carries an unattached list, a "+N more" turn link and a cut
+    compaction list as well as a header.
+    """
+    head = "&" * queries.HEADER_CHARS
+    # Distinct values that agree on their first `$item_chars` characters, which is what makes
+    # them the worst case: the list cuts to `$item_chars` of `&` a member, five bytes apiece.
+    item = "&" * queries.HEADER_ITEM_CHARS
+    over = queries.HEADER_ITEMS + 2
+    path = plant(
+        (
+            "UPDATE sessions SET title = ?, agent_name = ?, project_dir = ?, git_branch = ?,"
+            " version = ?, entrypoint = ?",
+            [head] * 6,
+        ),
+        # A skill rides an api call, so the plant clones a live one per session rather than
+        # inventing a row: `live_api_calls` is the population the header's list counts.
+        (
+            "INSERT INTO api_calls (SELECT c.* REPLACE (c.id || '-planted-' || i AS id,"
+            " ? || i AS attribution_skill)"
+            " FROM (SELECT DISTINCT ON (l.session_id) l.* FROM live_api_calls l) c,"
+            " range(1, ?) t(i))",
+            [item, over + 1],
+        ),
+        (
+            "INSERT INTO pr_links (SELECT s.id, 900000 + i, i, ? || i, 'planted/repo',"
+            " '2026-01-01T00:00:00Z' FROM sessions s, range(1, ?) t(i))",
+            [item, over + 1],
+        ),
+        # More compactions than a page renders, all before the first turn, so the line the
+        # marks cap mints is part of the chrome this measures too.
+        (
+            "INSERT INTO compactions (SELECT 'planted-' || i, s.id, 'main',"
+            " '1970-01-01T00:00:00Z', ?, 1, 1, 1 FROM sessions s, range(1, ?) t(i))",
+            ["&" * queries.CHIP_CHARS, PAGE_MARKS + 2],
+        ),
+    )
+    sessions = [row[0] for row in store.execute("SELECT id FROM sessions").fetchall()]
+    with TestClient(build_app(path)) as planted:
+        # Every session, at the defaults and at the widest single list a URL can ask for.
+        pages = [
+            planted.get(f"/session/{session_id}", params=sizes).text
+            for session_id in sessions
+            for sizes in ({}, {"turns": 1, "chips": MAX_PAGE_CHIPS})
+        ]
+    widest = max((chrome(page) for page in pages), key=lambda page: len(page.encode()))
+    assert len(widest.encode()) <= MEASURED_SESSION_CHROME
+    # The plant reached every cap on the page that measured worst, which is what makes the
+    # number a worst case: each string cut to its head, each list cut to its first members and
+    # saying how many it left, and the compaction cap's own line rendered.
+    facts = fields(widest, "id", "session-header")
+    assert len(facts["title"]) == len(facts["git_branch"]) == queries.HEADER_CHARS
+    assert facts["skills"].count(item) == queries.HEADER_ITEMS
+    assert facts["skills"].endswith("more") and facts["prs_cut"].startswith("and")
+    assert values(widest, "data-pr") == [item.replace("&", "&amp;")] * queries.HEADER_ITEMS
+    assert values(widest, "data-more-marks") != []
 
 
 def test_the_digest_rows_no_window_reaches_are_capped_at_what_a_page_budgets(

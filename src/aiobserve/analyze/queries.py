@@ -125,6 +125,15 @@ CHUNK_CHARS = 50_000
 CHIP_CHARS = 60
 CHIP_CHARS_PARAM = Param(type=ParamType.INTEGER, default=CHIP_CHARS)
 
+# What a session header shows of each string it carries, of each member of the two lists it
+# carries, and how many members of a list it shows before it says how many it left. The
+# header is the part of a page no size a reader types bounds, so these are what the ceiling
+# budgets it: 100 covers the longest title the canonical store holds (81) and 60 a PR url
+# (51), while the lists grow with the session — one has recorded 32 PR links.
+HEADER_CHARS = 100
+HEADER_ITEM_CHARS = 60
+HEADER_ITEMS = 5
+
 # How much of a raw record one browser row shows. Long enough to tell a `user` record from an
 # `assistant` one and to recognise a line already read; short enough that a hundred of them
 # is a page rather than a transcript.
@@ -317,7 +326,15 @@ QUERIES: dict[str, Query] = {
     "view_runs": Query(
         scope=Scope.KEYED, params={"session_id": SESSION_ID, "chip_chars": CHIP_CHARS_PARAM}
     ),
-    "view_session_header": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
+    "view_session_header": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            "head_chars": Param(type=ParamType.INTEGER, default=HEADER_CHARS),
+            "item_chars": Param(type=ParamType.INTEGER, default=HEADER_ITEM_CHARS),
+            "head_items": Param(type=ParamType.INTEGER, default=HEADER_ITEMS),
+        },
+    ),
     "view_sessions": Query(scope=Scope.KEYED, params={}),
     "view_tool_value": Query(
         scope=Scope.KEYED,
