@@ -14,10 +14,16 @@ import duckdb
 import pytest
 
 from aiobserve.export.duckdb import open_trace_store
-from aiobserve.export.otlp import AmbiguousCompactionError, census, session_spans
+from aiobserve.export.otlp import (
+    AmbiguousCompactionError,
+    SpanKey,
+    census,
+    session_spans,
+    span_id,
+)
 from aiobserve.extract.store import StoreSource
 from aiobserve.model import SessionTrace
-from tests.conftest import FORK_ORIGIN, FORK_RUN, MYCELIA
+from tests.conftest import FORK_ORIGIN, FORK_RUN, MYCELIA, SPINE, SPINE_RUN
 
 # The store a dry run reads when one is named, mirroring the pipeline plan's census pattern:
 # the leaf skips rather than inventing a corpus, since no fixture set is the real one.
@@ -27,21 +33,26 @@ CORPUS_PROJECT_ENV = "AIOBSERVE_CENSUS_PROJECT"
 
 # What the mapper emits per session, spelled independently in SQL. Kept as the formula rather
 # than today's total so the leaf does not rot as fixtures land: one root per shipped session,
-# every live turn, api call and tool call, every run whose spawning tool call this trace does
-# not hold live (a matched pair collapses into the run's own span), and every compaction that
-# survives the copied-prefix replay rule — a fork-source compaction at or before its run's
-# `started_at`, or in a fork run that started at no recorded time, is a copy.
+# every live turn and api call, every live tool call *no run named as its launch*, every agent
+# run, and every compaction that survives the copied-prefix replay rule — a fork-source
+# compaction at or before its run's `started_at`, or in a fork run that started at no recorded
+# time, is a copy.
+#
+# The two middle terms are where a plausible formula goes wrong. Suppression is keyed by tool
+# call *id*, so a run whose call the session records twice suppresses both rows, and a
+# workflow fan-out that spawns many runs from one call suppresses that one row while emitting
+# a span per run. Counting a matched pair as one call traded for one run — the shape a
+# hand-written formula reaches for — undercounts a fan-out by every run past the first.
 MAPPING = """
 SELECT
     (SELECT count(*) FROM extract_state WHERE session_id IN $ids)
   + (SELECT count(*) FROM turns WHERE session_id IN $ids AND NOT replayed)
   + (SELECT count(*) FROM api_calls WHERE session_id IN $ids AND NOT replayed)
-  + (SELECT count(*) FROM tool_calls WHERE session_id IN $ids AND NOT replayed)
-  + (SELECT count(*) FROM agent_runs run WHERE run.session_id IN $ids AND NOT EXISTS (
-        SELECT 1 FROM tool_calls call
-        WHERE call.session_id = run.session_id
-          AND call.id = run.tool_use_id
-          AND NOT call.replayed))
+  + (SELECT count(*) FROM tool_calls call
+     WHERE call.session_id IN $ids AND NOT call.replayed AND NOT EXISTS (
+        SELECT 1 FROM agent_runs run
+        WHERE run.session_id = call.session_id AND run.tool_use_id = call.id))
+  + (SELECT count(*) FROM agent_runs WHERE session_id IN $ids)
   + (SELECT count(*) FROM compactions compaction
      LEFT JOIN agent_runs run
        ON run.session_id = compaction.session_id AND run.id = compaction.source
@@ -181,3 +192,49 @@ def test_the_census_holds_over_a_real_corpus() -> None:
         assert census(shipped).spans == mapping_true(connection, shipped)
     finally:
         connection.close()
+
+
+# Planted, synthetic: no recorded fixture holds a workflow fan-out, and the canonical corpus
+# holds six groups of runs sharing one spawning call — the largest 93 runs from a single
+# `Workflow` call.
+FANOUT_RUN = "planted-fanout-run"
+
+
+def test_one_call_shared_by_many_runs_is_suppressed_once(
+    counted: duckdb.DuckDBPyConnection,
+) -> None:
+    """A fan-out costs one span per run, and the call that launched them all costs none."""
+    # If a second run names the same spawning tool call as one the corpus already records...
+    counted.execute(
+        "INSERT INTO agent_runs SELECT * REPLACE (? AS id) FROM agent_runs"
+        " WHERE session_id = ? AND id = ?",
+        [FANOUT_RUN, SPINE, SPINE_RUN],
+    )
+    shipped = traces(counted)
+    spine = next(trace for trace in shipped if trace.session.id == SPINE)
+    spawn = next(
+        call
+        for call in spine.tool_calls
+        if call.id == next(run.tool_use_id for run in spine.agent_runs if run.id == SPINE_RUN)
+    )
+    spans = session_spans(spine)
+    # ...then the shared call emits no `execute_tool` span at all: suppression is keyed by the
+    # call's id, so one row goes however many runs named it...
+    identifiers = {span.span_id for span in spans}
+    assert span_id(SPINE, SpanKey.tool_call, spawn.source, spawn.id) not in identifiers
+    # ...both runs emit their own `invoke_agent` span, hanging off the model call that made
+    # the request...
+    launched = [
+        span
+        for span in spans
+        if span.span_id
+        in {span_id(SPINE, SpanKey.agent_run, "", run) for run in (SPINE_RUN, FANOUT_RUN)}
+    ]
+    assert [span.name for span in launched] == ["invoke_agent claude"] * 2
+    assert {span.parent_span_id for span in launched} == {
+        span_id(SPINE, SpanKey.api_call, spawn.source, spawn.api_call_id)
+    }
+    # ...and the census still agrees with the store's own rows. A formula that trades each
+    # suppressed call for one run undercounts this session by every run past the first, which
+    # is a shape only a real corpus holds.
+    assert census(shipped).spans == mapping_true(counted, shipped)
