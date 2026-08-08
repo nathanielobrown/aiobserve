@@ -22,7 +22,7 @@ from aiobserve.view.listing import (
     PAGE_SESSIONS,
     SORTS,
 )
-from aiobserve.view.threads import CHIP_BUDGET, MAX_PAGE_CHIPS, PAGE_TURNS
+from aiobserve.view.threads import CHIP_BUDGET, MAX_PAGE_CHIPS, PAGE_MARKS, PAGE_TURNS
 from tests.conftest import (
     ANCESTOR,
     DENSE_CALL,
@@ -593,6 +593,38 @@ def test_a_compaction_rides_the_page_of_the_turn_it_precedes(
     assert marks[-1][-1] == trailing
     # ...and between them the pages hold what the unpaged timeline holds, no mark twice.
     assert [mark for page in marks for mark in page] == unpaged
+
+
+def test_a_thread_with_more_compactions_than_a_page_holds_says_how_many_it_cut(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A timeline renders `PAGE_MARKS` compactions and counts the rest rather than dropping them.
+
+    Compactions are not a size a URL carries, so this cap is the payload arithmetic's backstop:
+    without it a thread's markers are however many the session ran, and the ceiling budgets a
+    fixed number of them. The overflow is planted — the densest recorded thread holds 18, which
+    is why the cap sits where it does — and each planted mark precedes every turn, so they all
+    land on the one page this reads.
+    """
+    (recorded,) = one(
+        store,
+        "SELECT count(*) FROM live_compactions WHERE session_id = ? AND source = ?",
+        [SPINE, MAIN],
+    )
+    over = PAGE_MARKS + 3
+    path = plant(
+        (
+            "INSERT INTO compactions (SELECT 'planted-' || i, ?, ?,"
+            " '1970-01-01T00:00:00Z', 'planted', 1, 1, 1 FROM range(1, ?) t(i))",
+            [SPINE, MAIN, over + 1],
+        ),
+    )
+    with TestClient(build_app(path)) as planted:
+        page = planted.get(f"/session/{SPINE}").text
+    # The page shows the cap's worth of markers...
+    assert len(values(page, "data-compaction")) == PAGE_MARKS
+    # ...and says how many of the thread's own it left, so a cut list is never a silent one.
+    assert values(page, "data-more-marks") == [str(recorded + over - PAGE_MARKS)]
 
 
 # The most pages a walk of one fixture session may take. The longest fixture thread holds a
