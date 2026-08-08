@@ -17,6 +17,12 @@ dependencies = [
   "markdown-it-py>=3.0",
   # Jinja's escaping, used directly: `view/render.py` returns HTML it has escaped itself.
   "markupsafe>=3.0",
+  # The OTLP wire types only — `TracesData` and `ExportTraceServiceResponse`. Deliberately
+  # not `opentelemetry-sdk`: its BatchSpanProcessor queue drops spans silently, and its
+  # exporter discards `partial_success` (plans/otlp-export/design.md).
+  "opentelemetry-proto>=1.30",
+  # POSTs the OTLP batches. Already transitive via anthropic; named here because we call it.
+  "httpx>=0.28",
 ]
 
 [project.scripts]
@@ -32,8 +38,6 @@ dev = [
   "pytest-timeout>=2.4", # backs the `timeout` setting below
   "pyrefly>=0.24",
   "ruff>=0.12",
-  "httpx>=0.28", # what `fastapi.testclient` calls the app through
-
 ]
 
 [tool.ruff]
