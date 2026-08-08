@@ -14,6 +14,8 @@ Deleting a store therefore destroys sessions no re-extract can recover. Re-parsi
 
 `SCHEMA_VERSION` (`src/aiobserve/export/duckdb.py`) has no migrations while the project is early. Opening a store an older schema wrote refuses before it reads or writes a single table, and says to extract into a fresh one. Deleting the old store is a separate decision — run the check below first.
 
+A fresh store also starts with an empty `otlp_delivery`, the table `export-otlp` writes to record what a backend confirmed. The next export therefore re-sends every session to every backend ([the OTLP export guide](otlp-export.md)).
+
 ## Check the session set before deleting a store
 
 An older store is safe to delete once the canonical store holds every session it holds:
