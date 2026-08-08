@@ -32,7 +32,7 @@ Five places tests run. Each leaf sits at the level closest to real behavior its 
   `fixture_trace`, no store and no HTTP; assertions on the span list the mapper builds. This is
   the only tier that can drive a session the source filter excludes
 - **integration (receiver)** — `tests/export/test_otlp__delivery.py`. The design's seam: stdlib
-  `http.server` on an ephemeral port, decoding `TracesData`, recording every request, scriptable
+  `http.server` on an ephemeral port, decoding `ExportTraceServiceRequest`, recording every request, scriptable
   to return `partial_success`, 429 or 500. Real httpx, real protobuf, real gzip, a real store
 - **end-to-end (refresh + CLI)** — the same receiver, driven through `refresh()` and
   `cli.main("export-otlp", …)` over a fixture-populated store: the exact production path
@@ -92,7 +92,10 @@ used:
 - **A `/`-bearing id component** — a recorded agentId with a slash inserted, for the id
   function's crash
 - **A childless NULL-`project_dir` session** — `fork_byref/`'s main transcript built *without*
-  its subagent file. A trim of recorded data, not an invention
+  its subagent file. A trim of recorded data, not an invention. As built, "childless" means
+  free of *work* rows: every recorded transcript leaves `raw_records`, and the trimmed main
+  transcript leaves 3, so `ARCHIVE_TABLES` in `src/aiobserve/extract/store.py` carves the
+  archive tables out and only a work-table row trips the crash
 
 ---
 
@@ -123,8 +126,9 @@ used:
   /Users/nob/repos/mycelia`. A string-prefix filter passes the first half and fails here.
 - **A NULL-`project_dir` session is excluded when childless and crashes when it holds content.**
   *Evidence:* both arms on recorded rows — the exclusion from a store built on `fork_byref/`'s
-  main transcript alone (a childless NULL-project session), the crash from the same session with
-  its subagent file, which holds 2 api calls, 2 tool calls, 1 agent run and 10 raw records;
+  main transcript alone (a childless NULL-project session — childless of work rows; it keeps 3
+  `raw_records`), the crash from the same session with its subagent file, which holds 2 api
+  calls, 2 tool calls, 1 agent run and 10 raw records;
   assert the message names the session and the row counts, and that it carries no transcript
   text. Bolded: this is the whole bounded-absence claim, and it is the one design rule the
   shared fixture corpus trips on today (finding B).
@@ -373,7 +377,7 @@ used:
   comes from the injected callable — a backoff that reaches for the module clock directly would
   pass every assertion above while sleeping for real in CI.
 - Requests are gzipped and the endpoint receives valid protobuf. *Evidence:* the receiver
-  asserts `Content-Encoding: gzip`, inflates, and parses `TracesData` — a receiver that accepted
+  asserts `Content-Encoding: gzip`, inflates, and parses `ExportTraceServiceRequest` — a receiver that accepted
   plain bytes would hide a missing encode step.
 - The backend registry resolves endpoint, key variable and header name per backend. *Evidence:*
   drive honeycomb and logfire with their endpoints overridden to the receiver; assert the
