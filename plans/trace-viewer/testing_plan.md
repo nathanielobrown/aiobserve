@@ -170,6 +170,18 @@ Four leaves added after an audit of the shipped viewer, three of them planted be
 - **A run can be placed by a run as well as by a turn.** The unattached list is the chip join's complement, and its expectation SQL said so as `spawn_turn_id IS NULL` — which also catches a run whose spawning call names a run but no turn, a run the page already nests under its parent. Every recorded NULL-turn run was spawned from `main`, so the double render was invisible: the leaf plants it by taking the turn away from the call that spawned a nested run
 - **A `pr_url` is a link only when its scheme is one a browser should follow.** Everything else on a session page is escaped text; a URL is the one value that reaches an attribute the browser acts on. The leaf plants a `javascript:` URL beside an `https:` one on the same session
 
+## As built: timeline paging
+
+Ten leaves against `handoffs/design-timeline-paging.md` — nine on the routes, one on the bounds arithmetic. They close the audit residual above: the session timeline was the one page the corpus bounded rather than construction.
+
+- **Walking the pages is the obligation, and the whole digest is the expectation.** `?after=` is the last turn index already shown, so a leaf walks a session at two page sizes and asserts the pages partition the digest's turns exactly. A window that skips a turn or shows one twice fails whatever its arithmetic looks like
+- **Two shapes a window breaks that one whole page never could.** A compaction hangs off the turn it precedes, so a leaf asserts each mark lands on exactly one page of a walk; the row for calls under no turn has no index to window on, so it rides the last page and no other. Both are computed over the thread rather than over the page, and both leaves fail if that moves
+- **A run whose spawning turn is off the page is still placed.** The guard raises on a run it cannot place, and what it is checked against is now a window — so the run-accounting leaf runs at a page size of one as well as at the default, where every turn but one is off the page
+- **A permalink opens the page its turn starts.** The leaf follows the link the page rendered and asserts that turn is first on the page it lands on — the citation shape the records browser already owed, at `?after={turn_index - 1}#turn-{turn_id}`
+- **Both caps are proved on recorded shapes.** A turn's runs are cut by a pre-order walk of the forest, not by its top-level rows, so a leaf takes the corpus's one nested pair, asks for one chip, and asserts the parent renders under a "+1 more" whose link opens both. The unattached list has the twin leaf: cut to `chips`, counted whole in the heading, and restored by its own link
+- **The refusal is the product, and the budget is reachable.** A pair inside both ceilings but past `CHIP_BUDGET` is a 400, and one turn at `?chips=100` renders a hundred run rows rather than being refused — the leaf that would fail if the cap were bought and never spent
+- **The row costs are re-measured on every run.** The design budgeted a turn row at 977 B and it costs 1,577: slice 1's permalink and this slice's "+N more" line grew it. A planted all-`&` page now measures a turn row, a run row, a cut line and a compaction row against the budgets the ceiling is computed from — two stores, because the marginal cost of a row is the same page with it and without it. The `plant` fixture names a file per call for that reason. The ceiling sweep runs at the widest sizes a URL can carry as well as at the defaults
+
 ## Obligation count
 
 | Area | Obligations |
@@ -180,4 +192,6 @@ Four leaves added after an audit of the shipped viewer, three of them planted be
 | integration (enrichment light-up) | 5 |
 | integration (store lifecycle) | 4 |
 | integration (query library) | 4 |
-| **Total** | **39** |
+| the payload audit (as built) | 4 |
+| timeline paging (as built) | 10 |
+| **Total** | **53** |
