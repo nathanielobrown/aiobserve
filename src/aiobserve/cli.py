@@ -23,8 +23,16 @@ from aiobserve.enrich.batches import (
 from aiobserve.enrich.cost import Prompt, estimate
 from aiobserve.enrich.enricher import LEVELS, PlannedItem, enrich, plan
 from aiobserve.enrich.store import EnrichmentStore
-from aiobserve.export.duckdb import DuckDbExporter
+from aiobserve.export.duckdb import DuckDbExporter, open_trace_store
+from aiobserve.export.otlp import (
+    ENDPOINT_ENV,
+    GENERIC,
+    ConfigurationError,
+    OtlpExporter,
+    generic_backend,
+)
 from aiobserve.extract.claude_code import ClaudeCodeExtractor
+from aiobserve.extract.store import StoreSource
 from aiobserve.pipeline import refresh
 from aiobserve.sessions import DEFAULT_PROJECTS_ROOT, find_sessions
 from aiobserve.view.app import PORT, serve
@@ -79,6 +87,25 @@ def main(*argv: str) -> None:
         help="Call the Messages API directly: minutes instead of hours, at full price",
     )
 
+    otlp = subcommands.add_parser(
+        "export-otlp", help="Ship the store's sessions to an OTLP backend as spans"
+    )
+    otlp.add_argument("project", type=Path, help="Path to the analyzed repository")
+    otlp.add_argument(
+        "--db", type=Path, default=DEFAULT_DB, help=f"The trace store (default: {DEFAULT_DB})"
+    )
+    otlp.add_argument(
+        "--backend",
+        choices=[GENERIC],
+        default=GENERIC,
+        help="Which backend's delivery ledger this run reads and writes "
+        f"(default: {GENERIC}, configured by {ENDPOINT_ENV})",
+    )
+    otlp.add_argument(
+        "--service-name",
+        help="Send every session to this service instead of one named for its project directory",
+    )
+
     library = subcommands.add_parser("query", help="Run a library query against the trace store")
     library.add_argument("name", help="The query to run — a file in analyze/queries/")
     library.add_argument(
@@ -129,6 +156,9 @@ def main(*argv: str) -> None:
         return
     if args.command == "enrich":
         _enrich(args)
+        return
+    if args.command == "export-otlp":
+        _export_otlp(args)
         return
     if args.command == "extract":
         extractor = ClaudeCodeExtractor(projects_root=args.projects_root)
@@ -225,6 +255,26 @@ def _enrich(args: argparse.Namespace) -> None:
         client = build_client(args.model, batched=not args.no_batch)
         report = enrich(store, client, project=project, limit=args.limit)
     print(f"{report.enriched} item(s) enriched, {report.swept} orphaned row(s) swept")
+
+
+def _export_otlp(args: argparse.Namespace) -> None:
+    """Ship every session of a project that this backend has not already confirmed."""
+    load_dotenv()
+    # Before the store is opened: a run with nowhere to ship refuses now rather than after
+    # reading a corpus. `generic` is the only backend today, so the choice picks no branch.
+    try:
+        backend = generic_backend(os.environ)
+    except ConfigurationError as error:
+        raise SystemExit(str(error)) from error
+    # One connection for both halves — DuckDB admits a single writer, and the exporter needs
+    # to write its ledger into the store the source is reading.
+    connection = open_trace_store(args.db, read_only=False)
+    try:
+        with OtlpExporter(backend, connection, service_name=args.service_name) as exporter:
+            result = refresh(args.project, extractor=StoreSource(connection), exporter=exporter)
+    finally:
+        connection.close()
+    print(f"{len(result.extracted)} session(s) exported, {len(result.skipped)} unchanged")
 
 
 def _report_plan(planned: Sequence[PlannedItem], model: str) -> None:
