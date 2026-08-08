@@ -7,9 +7,14 @@ names its source session and Claude Code version.
 """
 
 import shutil
-from collections.abc import Callable, Iterable
+import subprocess
+import sys
+import time
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
+import duckdb
 import pytest
 
 from aiobserve.export.duckdb import DuckDbExporter
@@ -140,6 +145,39 @@ def exportable_transcripts() -> tuple[Path, ...]:
     )
 
 
+# What a writer does to the store: opens it read-write and holds it. The connection has to
+# stay referenced — an unnamed one is freed at once, and the lock goes with it.
+_HOLDER = "import duckdb, sys, time; held = duckdb.connect(sys.argv[1]); time.sleep(30)"
+
+# How long to wait for that subprocess to take the lock before giving up on the test.
+LOCK_TIMEOUT = 10.0
+
+
+@contextmanager
+def locked(path: Path) -> Iterator[None]:
+    """Hold a store's write lock from another process for the length of the block.
+
+    A subprocess, not a second connection here: DuckDB answers the same process's second
+    open differently from the file lock it takes across processes, so an in-process holder
+    tests the wrong failure.
+    """
+    holder = subprocess.Popen([sys.executable, "-c", _HOLDER, str(path)])
+    try:
+        deadline = time.monotonic() + LOCK_TIMEOUT
+        while True:
+            try:
+                duckdb.connect(str(path), read_only=True).close()
+            except duckdb.IOException:
+                break
+            if time.monotonic() > deadline:
+                pytest.fail(f"nothing took the lock on {path} within {LOCK_TIMEOUT}s")
+            time.sleep(0.05)
+        yield
+    finally:
+        holder.terminate()
+        holder.wait(timeout=LOCK_TIMEOUT)
+
+
 @pytest.fixture(scope="session")
 def corpus_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """The fixture corpus as one trace store: 13 mycelia sessions and three outside them.
@@ -150,6 +188,19 @@ def corpus_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """
     path = tmp_path_factory.mktemp("corpus") / "traces.duckdb"
     build_store(path, corpus_transcripts())
+    return path
+
+
+@pytest.fixture(scope="session")
+def exportable_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The fixture corpus minus the session the OTLP source filter refuses to place.
+
+    `fork_byref/`'s session carries no `project_dir` and holds rows, so `StoreSource.sessions()`
+    crashes on any store holding it — by design. A store meant to be listed or shipped leaves
+    that one out. Read-only: copy the file before planting a row.
+    """
+    path = tmp_path_factory.mktemp("exportable") / "traces.duckdb"
+    build_store(path, exportable_transcripts())
     return path
 
 

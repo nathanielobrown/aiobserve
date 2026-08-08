@@ -29,7 +29,6 @@ from tests.conftest import (
     TraceFactory,
     build_store,
     corpus_transcripts,
-    exportable_transcripts,
 )
 
 # A worktree of the analyzed repository, and a repository whose path merely starts with the
@@ -71,22 +70,10 @@ def store(corpus_db: Path) -> Iterator[duckdb.DuckDBPyConnection]:
     connection.close()
 
 
-@pytest.fixture(scope="module")
-def listable_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """The fixture corpus minus the session the source filter refuses to place.
-
-    `fork_byref/`'s session carries no `project_dir` and holds rows, so `sessions()` crashes
-    on any store holding it — by design, and tested below. A store meant to be *listed*
-    leaves it out (finding B, `plans/otlp-export/testing_plan.md`).
-    """
-    path = tmp_path_factory.mktemp("listable") / "traces.duckdb"
-    build_store(path, exportable_transcripts())
-    return path
-
-
 @pytest.fixture
-def listable(listable_db: Path) -> Iterator[duckdb.DuckDBPyConnection]:
-    connection = open_trace_store(listable_db, read_only=True)
+def listable(exportable_db: Path) -> Iterator[duckdb.DuckDBPyConnection]:
+    """The corpus the source filter can place, open read-only (`exportable_db`)."""
+    connection = open_trace_store(exportable_db, read_only=True)
     yield connection
     connection.close()
 
@@ -151,7 +138,7 @@ def test_sessions_carry_the_fingerprint_the_store_holds(
 
 
 def test_the_filter_takes_the_project_and_what_sits_under_it(
-    listable_db: Path, tmp_path: Path
+    exportable_db: Path, tmp_path: Path
 ) -> None:
     """A worktree of the project is in scope; a repository whose name merely starts the
     same way is not."""
@@ -159,7 +146,7 @@ def test_the_filter_takes_the_project_and_what_sits_under_it(
     # and another into a sibling repository beside it — both planted, since the recorded
     # corpus holds neither shape...
     path = tmp_path / "planted.duckdb"
-    shutil.copyfile(listable_db, path)
+    shutil.copyfile(exportable_db, path)
     with duckdb.connect(str(path)) as connection:
         connection.execute(
             "UPDATE sessions SET project_dir = ? WHERE id = ?", [UNDER_PROJECT, SIBLING_SESSION]
