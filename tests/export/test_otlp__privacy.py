@@ -17,22 +17,27 @@ import pytest
 from opentelemetry.proto.trace.v1 import trace_pb2
 
 from aiobserve.export.duckdb import open_trace_store
+from aiobserve.export.otlp import TextPolicy
 from tests.conftest import MYCELIA
 from tests.export.conftest import Receiver, any_value, deliver
 
 # Every column holding text the agent or the user wrote, and a distinct planted value for
-# each — distinct so a failure names the field that leaked. Invented strings, planted onto
-# real rows of a copied store: the recorded values were redacted away.
+# each — distinct so a failure names the field that leaked, and every one longer than
+# `TRUNCATED` so the widening leaf below can tell a truncated value from a whole one.
+# Invented strings, planted onto real rows of a copied store: the recorded values were
+# redacted away.
 EXCLUDED = {
     ("sessions", "title"): "planted-leak-session-title",
     ("sessions", "agent_name"): "planted-leak-session-agent-name",
     ("turns", "prompt"): "planted-leak-turn-prompt",
+    # The name of a slash command is structure; what the user typed after it is not.
+    ("turns", "command_args"): "planted-leak-turn-command-args",
     ("api_calls", "text"): "planted-leak-api-call-text",
     ("api_calls", "thinking"): "planted-leak-api-call-thinking",
     ("tool_calls", "input"): "planted-leak-tool-call-input",
     ("tool_calls", "result"): "planted-leak-tool-call-result",
     ("agent_runs", "description"): "planted-leak-agent-run-description",
-    ("pr_links", "pr_url"): "planted-leak-pr-url",
+    ("pr_links", "pr_url"): "planted-leak-pr-link-url",
     ("pr_links", "pr_repository"): "planted-leak-pr-repository",
 }
 
@@ -124,3 +129,60 @@ def test_the_default_ship_set_carries_metadata_and_no_transcript_text(
                 )
             )
         )
+
+
+# The attribute key each excluded column ships under when text is opted in.
+TEXT_KEYS = {
+    "claude_code.session.title",
+    "claude_code.session.agent_name",
+    "claude_code.turn.prompt",
+    "claude_code.turn.command_args",
+    "claude_code.api_call.text",
+    "claude_code.api_call.thinking",
+    "claude_code.tool_call.input",
+    "claude_code.tool_call.result",
+    "claude_code.agent_run.description",
+    "claude_code.pr_link.url",
+    "claude_code.pr_link.repository",
+}
+
+# Characters kept per field in the widening pass. Shorter than every sentinel, so a whole
+# planted value cannot pass for a truncated one.
+TRUNCATED = 20
+
+
+def keys(receiver: Receiver) -> set[str]:
+    """Every attribute key the payload carries — span and event alike, since PR links are
+    events and a key-set sweep that read only spans would miss them."""
+    return {attribute.key for span in receiver.spans for attribute in span.attributes} | {
+        attribute.key
+        for span in receiver.spans
+        for event in span.events
+        for attribute in event.attributes
+    }
+
+
+def test_include_text_widens_the_ship_set_by_exactly_the_named_fields(
+    planted: duckdb.DuckDBPyConnection, receiver: Receiver
+) -> None:
+    """Opting text in adds the excluded fields and nothing else, each cut to the ceiling."""
+    # If the planted corpus ships once under the default policy...
+    assert deliver(planted, receiver).extracted, "nothing was exported, so nothing below holds"
+    metadata = keys(receiver)
+    # ...and again with text opted in and a cut far shorter than any sentinel — the delivery
+    # rows cleared first, since a second pass otherwise skips what it already shipped...
+    receiver.bodies.clear()
+    planted.execute("DELETE FROM otlp_delivery")
+    widening = TextPolicy(include=True, max_chars=TRUNCATED)
+    assert deliver(planted, receiver, text=widening).extracted
+    widened = keys(receiver)
+    # ...then the flag adds exactly the fields the design names and drops nothing, so a field
+    # added to a span next month is either metadata or is listed here...
+    assert widened - metadata == TEXT_KEYS
+    assert metadata - widened == set()
+    # ...and every one of them arrives cut to the ceiling: truncation is not redaction, and
+    # what a reader of this data gets is a prefix, never the whole recorded value.
+    for sentinel in EXCLUDED.values():
+        prefix = sentinel[:TRUNCATED].encode()
+        assert any(prefix in body for body in receiver.bodies), f"{sentinel} never shipped"
+        assert not any(sentinel.encode() in body for body in receiver.bodies), sentinel

@@ -27,7 +27,17 @@ from opentelemetry.proto.common.v1 import common_pb2
 from opentelemetry.proto.resource.v1 import resource_pb2
 from opentelemetry.proto.trace.v1 import trace_pb2
 
-from aiobserve.model import MAIN_SOURCE, ApiCall, Session, SessionTrace, Turn
+from aiobserve.model import (
+    MAIN_SOURCE,
+    AgentRun,
+    ApiCall,
+    Compaction,
+    PrLink,
+    Session,
+    SessionTrace,
+    ToolCall,
+    Turn,
+)
 
 # The span-shaping version. A row in `otlp_delivery` recorded under an older one is treated
 # as undelivered, so a shaping change re-sends the corpus the way an extractor upgrade
@@ -63,6 +73,11 @@ DELIMITER = "/"
 # A span with no positive duration renders as an invisible sliver, and the store holds
 # plenty (a turn whose only record is its prompt). One millisecond is the floor.
 MINIMUM_DURATION = dt.timedelta(milliseconds=1)
+
+# How much of an opted-in text field ships. Attributes are an ingest and a context cost, and
+# a whole tool result can be megabytes. Truncation is not redaction — a credential fits in
+# 200 characters — which is why text is opt-in rather than truncated-by-default.
+DEFAULT_MAX_CHARS = 500
 
 _EPOCH = dt.datetime(1970, 1, 1, tzinfo=dt.UTC)
 
@@ -108,11 +123,29 @@ def span_id(session_id: str, kind: SpanKey, source: str, natural_id: str) -> byt
     return hashlib.sha256(DELIMITER.join(components).encode()).digest()[:8]
 
 
-def session_spans(trace: SessionTrace) -> list[trace_pb2.Span]:
+@dataclass(frozen=True)
+class TextPolicy:
+    """Whether transcript-derived text ships, and how much of each field.
+
+    Text is untrusted and POSTing it to a third party publishes it, so the default policy
+    sends none of it. `--include-text` swaps in an including one.
+    """
+
+    include: bool
+    # Characters kept per field, applied only when `include` is set.
+    max_chars: int
+
+
+METADATA_ONLY = TextPolicy(include=False, max_chars=DEFAULT_MAX_CHARS)
+
+
+def session_spans(trace: SessionTrace, text: TextPolicy = METADATA_ONLY) -> list[trace_pb2.Span]:
     """Every span one session becomes, root first.
 
-    Metadata only: nothing here carries transcript text. Slice 1 ships the session, its
-    turns and its model calls; tool calls, agent runs, compactions and PR events follow.
+    Replayed rows emit nothing: a fork's copy of its parent's transcript would double-count
+    in every backend aggregation. Compactions carry no such flag, so `copied_compaction`
+    derives one. A tool call that started a subagent becomes that subagent's span rather than
+    a span of its own.
     """
     session = trace.session
     if session.started_at is None or session.ended_at is None:
@@ -121,18 +154,36 @@ def session_spans(trace: SessionTrace) -> list[trace_pb2.Span]:
             f"filter excludes the sessions that hold none, so this is schema drift."
         )
     turns = {(turn.source, turn.id): turn for turn in trace.turns}
+    runs = {run.id: run for run in trace.agent_runs}
+    live_tools = [call for call in trace.tool_calls if not call.replayed]
+    # The live tool call each run named as its launch, if this trace holds one. Replayed
+    # copies are excluded first: matching one would collapse a span that never ships.
+    launched = {run.tool_use_id for run in trace.agent_runs if run.tool_use_id is not None}
+    spawns = {call.id: call for call in live_tools if call.id in launched}
     children = [
-        *(_turn_span(session, turn) for turn in trace.turns if not turn.replayed),
-        *(_chat_span(session, call, turns) for call in trace.api_calls if not call.replayed),
+        *(_turn_span(session, turn, text) for turn in trace.turns if not turn.replayed),
+        *(_chat_span(session, call, turns, text) for call in trace.api_calls if not call.replayed),
+        *(_tool_span(session, call, text) for call in live_tools if call.id not in spawns),
+        *(
+            _run_span(session, run, spawns.get(run.tool_use_id or ""), runs, text)
+            for run in trace.agent_runs
+        ),
+        *(
+            _compaction_span(session, compaction)
+            for compaction in trace.compactions
+            if not copied_compaction(compaction, runs.get(compaction.source))
+        ),
     ]
-    return [_root_span(trace, children), *children]
+    return [_root_span(trace, children, text), *children]
 
 
 class TimelessSessionError(Exception):
     """A session with no recorded times reached the mapper, which cannot time its root."""
 
 
-def _root_span(trace: SessionTrace, children: list[trace_pb2.Span]) -> trace_pb2.Span:
+def _root_span(
+    trace: SessionTrace, children: list[trace_pb2.Span], text: TextPolicy
+) -> trace_pb2.Span:
     """The session's root span, stretched to cover work that outlived the main transcript.
 
     `Session.ended_at` reads the main transcript only, and a subagent can run past it — a
@@ -165,13 +216,33 @@ def _root_span(trace: SessionTrace, children: list[trace_pb2.Span]) -> trace_pb2
             "claude_code.session.ended_at": session.ended_at.isoformat(),
             "aiobserve.extractor": trace.extractor,
             "aiobserve.extractor.version": trace.extractor_version,
+            # Model-written from the conversation, so it counts as transcript text.
+            "claude_code.session.title": _text(text, session.title),
+            "claude_code.session.agent_name": _text(text, session.agent_name),
             # Ids, never the title: `ai-title` is model-written from the conversation.
             "logfire.msg": f"session {session.id}",
         },
+        events=[_pr_event(link, text) for link in trace.pr_links],
     )
 
 
-def _turn_span(session: Session, turn: Turn) -> trace_pb2.Span:
+def _pr_event(link: PrLink, text: TextPolicy) -> trace_pb2.Span.Event:
+    """One pull request the session touched — an instant on the root, not a span."""
+    return trace_pb2.Span.Event(
+        time_unix_nano=_nanos(link.timestamp),
+        name="claude_code.pr_link",
+        attributes=_attributes(
+            {
+                "claude_code.pr_link.number": link.pr_number,
+                # Both name a repository that may be private, so they stay home by default.
+                "claude_code.pr_link.url": _text(text, link.pr_url),
+                "claude_code.pr_link.repository": _text(text, link.pr_repository),
+            }
+        ),
+    )
+
+
+def _turn_span(session: Session, turn: Turn, text: TextPolicy) -> trace_pb2.Span:
     """One prompt and the work it drove. Under the root on `main`, under its run otherwise."""
     return _span(
         session_id=session.id,
@@ -187,13 +258,15 @@ def _turn_span(session: Session, turn: Turn) -> trace_pb2.Span:
             "claude_code.source": turn.source,
             # The command's name only — its arguments are user-typed text.
             "claude_code.turn.command_name": turn.command_name,
+            "claude_code.turn.prompt": _text(text, turn.prompt),
+            "claude_code.turn.command_args": _text(text, turn.command_args),
             "logfire.msg": f"turn {turn.id}",
         },
     )
 
 
 def _chat_span(
-    session: Session, call: ApiCall, turns: dict[tuple[str, str], Turn]
+    session: Session, call: ApiCall, turns: dict[tuple[str, str], Turn], text: TextPolicy
 ) -> trace_pb2.Span:
     """One model response, under the turn that drove it."""
     return _span(
@@ -224,9 +297,191 @@ def _chat_span(
             "claude_code.api_call.cost_usd": call.cost_usd,
             # A placeholder reply Claude Code wrote itself: no tokens, no cost, not a call.
             "aiobserve.synthetic": call.synthetic or None,
+            "claude_code.api_call.text": _text(text, call.text),
+            "claude_code.api_call.thinking": _text(text, call.thinking),
             "logfire.msg": f"chat {call.model}",
         },
     )
+
+
+def _tool_span(session: Session, call: ToolCall, text: TextPolicy) -> trace_pb2.Span:
+    """One tool the model asked for, under the model call that asked."""
+    return _span(
+        session_id=session.id,
+        span=span_id(session.id, SpanKey.tool_call, call.source, call.id),
+        parent=span_id(session.id, SpanKey.api_call, call.source, call.api_call_id),
+        name=f"execute_tool {call.name}",
+        kind=INTERNAL,
+        started_at=call.started_at,
+        # A call the session never saw finish ends where it started rather than running to
+        # the end of the transcript; `_span` floors it to the minimum.
+        ended_at=call.ended_at if call.ended_at is not None else call.started_at,
+        attributes={
+            "gen_ai.operation.name": "execute_tool",
+            "gen_ai.tool.name": call.name,
+            "gen_ai.conversation.id": session.id,
+            "claude_code.tool_call.id": call.id,
+            "claude_code.source": call.source,
+            "claude_code.tool_call.index": call.index,
+            "claude_code.api_call.id": call.api_call_id,
+            # Anthropic ran it; no local transcript records the work it did.
+            "claude_code.tool_call.server_side": call.server_side or None,
+            # The start is the batch's, not this call's — flagged, never invented away.
+            "claude_code.tool_call.duration_synthetic": call.duration_synthetic or None,
+            "claude_code.tool_call.is_error": call.is_error or None,
+            # The archived file the output went to, which stays local.
+            "claude_code.tool_call.offload_file": call.offload_file,
+            "aiobserve.incomplete": call.ended_at is None or None,
+            "claude_code.tool_call.input": _text(text, call.input),
+            "claude_code.tool_call.result": _text(text, call.result),
+            "logfire.msg": f"execute_tool {call.name}",
+        },
+    )
+
+
+def _run_span(
+    session: Session,
+    run: AgentRun,
+    spawn: ToolCall | None,
+    runs: dict[str, AgentRun],
+    text: TextPolicy,
+) -> trace_pb2.Span:
+    """One subagent, timed to its own work rather than to the launch acknowledgement.
+
+    The id comes from the run's own key, never the tool call's: children in the run's
+    transcript know only their `source`, and a run that flips between matched and orphan
+    across extracts must keep the span id it already shipped under.
+    """
+    if run.started_at is None or run.ended_at is None:
+        raise TimelessRunError(
+            f"Agent run {run.id} of session {session.id} records no timestamps, so its span "
+            f"cannot be timed. The model permits it and no recorded run does it."
+        )
+    parent, orphan = _run_parent(session.id, run, spawn, runs)
+    return _span(
+        session_id=session.id,
+        span=span_id(session.id, SpanKey.agent_run, "", run.id),
+        parent=parent,
+        name=f"invoke_agent {run.agent_type}",
+        kind=INTERNAL,
+        started_at=run.started_at,
+        ended_at=run.ended_at,
+        attributes={
+            "gen_ai.operation.name": "invoke_agent",
+            "gen_ai.agent.name": run.agent_type,
+            "gen_ai.conversation.id": session.id,
+            "claude_code.agent_run.id": run.id,
+            "claude_code.agent_run.parent_agent_id": run.parent_agent_id,
+            # Kept even when it placed nothing, so an orphan that named a call and one that
+            # named none are told apart in the data rather than by a second flag.
+            "claude_code.agent_run.tool_use_id": run.tool_use_id,
+            "claude_code.agent_run.model": run.model,
+            "claude_code.agent_run.workflow_id": run.workflow_id,
+            "claude_code.agent_run.spawn_depth": run.spawn_depth,
+            # A continuation of another run, carrying a copy of its transcript's prefix.
+            "claude_code.agent_run.is_fork": run.is_fork or None,
+            "claude_code.agent_run.description": _text(text, run.description),
+            # No tool call in this trace placed it, so it hangs off the root.
+            "aiobserve.orphan": orphan or None,
+            "logfire.msg": f"invoke_agent {run.agent_type}",
+        },
+    )
+
+
+class TimelessRunError(Exception):
+    """A subagent run with no recorded times, whose span therefore cannot be placed in time."""
+
+
+def _run_parent(
+    session_id: str, run: AgentRun, spawn: ToolCall | None, runs: dict[str, AgentRun]
+) -> tuple[bytes, bool]:
+    """Where a run's span hangs, and whether it is an orphan.
+
+    A fork's spawning call is copied into the fork's own transcript, so hanging the run off
+    that call's span would make the run its own ancestor. Those fall back to the lineage the
+    run already records, which is the one place above it that cannot be inside it.
+    """
+    if spawn is None:
+        return span_id(session_id, SpanKey.session, "", session_id), True
+    if _inside(run.id, spawn.source, runs):
+        return _source_parent(session_id, run.parent_agent_id or MAIN_SOURCE), False
+    return span_id(session_id, SpanKey.api_call, spawn.source, spawn.api_call_id), False
+
+
+def _inside(run_id: str, source: str, runs: dict[str, AgentRun]) -> bool:
+    """Whether a source is a run itself or something that run spawned."""
+    walked: set[str] = set()
+    while source != MAIN_SOURCE and source not in walked:
+        if source == run_id:
+            return True
+        walked.add(source)
+        run = runs.get(source)
+        if run is None:
+            return False
+        source = run.parent_agent_id or MAIN_SOURCE
+    return False
+
+
+def _compaction_span(session: Session, compaction: Compaction) -> trace_pb2.Span:
+    """One point where Claude Code summarised the conversation, as long as that took."""
+    return _span(
+        session_id=session.id,
+        span=span_id(session.id, SpanKey.compaction, compaction.source, compaction.id),
+        parent=_source_parent(session.id, compaction.source),
+        name="claude_code.compaction",
+        kind=INTERNAL,
+        started_at=compaction.timestamp,
+        ended_at=compaction.timestamp + dt.timedelta(milliseconds=compaction.duration_ms),
+        attributes={
+            "claude_code.compaction.id": compaction.id,
+            "claude_code.source": compaction.source,
+            "claude_code.compaction.trigger": compaction.trigger,
+            # Either side of the summary: where the session's account of itself gets lossy.
+            "claude_code.compaction.pre_tokens": compaction.pre_tokens,
+            "claude_code.compaction.post_tokens": compaction.post_tokens,
+            "logfire.msg": f"compaction {compaction.trigger}",
+        },
+    )
+
+
+def copied_compaction(compaction: Compaction, run: AgentRun | None) -> bool:
+    """Whether a compaction is one a fork copied in with its prefix, and so ships no span.
+
+    `compactions` carries no `replayed` column, so the rule reads the same prefix shape the
+    extractor's flags read: `AgentRun.started_at` is by contract the first record no earlier
+    transcript already held, so anything in a fork at or before it came from the parent. A
+    tie is a copy — a fork cannot compact at the instant of its own first record, and when
+    the copied prefix ends at the compaction the two share a millisecond.
+
+    `run` is the run a compaction's `source` names, or None on the main thread, which comes
+    first in the extractor's ordering and can hold no copies.
+    """
+    if run is None:
+        return False
+    if not run.is_fork:
+        if run.started_at is not None and compaction.timestamp < run.started_at:
+            raise CompactionBeforeRunError(
+                f"Compaction {compaction.id} of session {compaction.session_id} is timestamped "
+                f"{compaction.timestamp.isoformat()}, before its non-fork run "
+                f"{compaction.source} started at {run.started_at.isoformat()}. Only a fork can "
+                f"hold a copy, so this is schema drift."
+            )
+        return False
+    # It copied everything it holds, so nothing in it is its own.
+    if run.started_at is None:
+        return True
+    return compaction.timestamp <= run.started_at
+
+
+class CompactionBeforeRunError(Exception):
+    """A compaction predates the run that recorded it, where no copied prefix explains it."""
+
+
+def _text(policy: TextPolicy, value: str | None) -> str | None:
+    """One transcript-derived string, truncated — or nothing at all, which is the default."""
+    if not policy.include or value is None:
+        return None
+    return value[: policy.max_chars]
 
 
 def _source_parent(session_id: str, source: str) -> bytes:
@@ -271,6 +526,7 @@ def _span(
     started_at: dt.datetime,
     ended_at: dt.datetime,
     attributes: dict[str, Any],
+    events: list[trace_pb2.Span.Event] | None = None,
 ) -> trace_pb2.Span:
     """One span, with its duration floored and its empty attributes dropped."""
     return trace_pb2.Span(
@@ -282,6 +538,7 @@ def _span(
         start_time_unix_nano=_nanos(started_at),
         end_time_unix_nano=_nanos(max(ended_at, started_at + MINIMUM_DURATION)),
         attributes=_attributes(attributes),
+        events=events or [],
     )
 
 
@@ -407,6 +664,7 @@ class OtlpExporter:
         connection: duckdb.DuckDBPyConnection,
         *,
         service_name: str | None = None,
+        text: TextPolicy = METADATA_ONLY,
         batch_spans: int = DEFAULT_BATCH_SPANS,
         sleep: Callable[[float], None] = time.sleep,
         timeout: float = DEFAULT_TIMEOUT,
@@ -415,6 +673,8 @@ class OtlpExporter:
         self.connection = connection
         # None routes each session to a service named for its project directory.
         self.service_name = service_name
+        # Transcript text stays home unless the caller opts it in.
+        self.text = text
         self.batch_spans = batch_spans
         # A seam, so a test asserts the delay a retry *asked* for instead of waiting it out.
         self.sleep = sleep
@@ -451,7 +711,7 @@ class OtlpExporter:
 
     def export(self, trace: SessionTrace, fingerprint: str) -> None:
         """Ship one session, and record it only once every batch came back confirmed."""
-        spans = session_spans(trace)
+        spans = session_spans(trace, self.text)
         resource = self._resource(trace.session)
         sent = 0
         for index, batch in enumerate(_batches(spans, self.batch_spans)):

@@ -6,6 +6,8 @@ way a backend under load does — a partial rejection, a 429, a 500 — which is
 test the failure paths the prior importer's data loss came from.
 """
 
+import datetime as dt
+import hashlib
 import shutil
 import threading
 from collections.abc import Iterator
@@ -22,7 +24,7 @@ from opentelemetry.proto.resource.v1 import resource_pb2
 from opentelemetry.proto.trace.v1 import trace_pb2
 
 from aiobserve.export.duckdb import open_trace_store
-from aiobserve.export.otlp import Backend, OtlpExporter
+from aiobserve.export.otlp import METADATA_ONLY, Backend, OtlpExporter, TextPolicy
 from aiobserve.extract.store import StoreSource
 from aiobserve.model import SessionTrace
 from aiobserve.pipeline import RefreshResult, SessionSource, refresh
@@ -104,6 +106,33 @@ def any_value(value: common_pb2.AnyValue) -> Any:
     which = value.WhichOneof("value")
     assert which is not None, "an attribute arrived carrying no value at all"
     return getattr(value, which)
+
+
+def attributes(span: trace_pb2.Span) -> dict[str, Any]:
+    """One span's attributes as a plain dict, so a leaf can compare the whole set at once."""
+    return {attribute.key: any_value(attribute.value) for attribute in span.attributes}
+
+
+def digest(session_id: str, kind: str, source: str, natural_id: str) -> bytes:
+    """The span id the design specifies, recomputed here rather than imported.
+
+    Digest **bytes** sliced to 8 — `hexdigest()[:8]` is also 8 bytes and would pass any
+    length-only assertion while giving 32-bit ids.
+    """
+    return hashlib.sha256(f"{session_id}/{kind}/{source}/{natural_id}".encode()).digest()[:8]
+
+
+def one(spans: list[trace_pb2.Span], span: bytes) -> trace_pb2.Span:
+    """The single span carrying an id, so a miss reads as a missing span, not an index error."""
+    found = [candidate for candidate in spans if candidate.span_id == span]
+    assert len(found) == 1, f"expected one span keyed {span.hex()}, found {len(found)}"
+    return found[0]
+
+
+def nanos(value: dt.datetime) -> int:
+    """A timestamp in the units a span carries it, in integers — a float loses microseconds."""
+    delta = value - dt.datetime(1970, 1, 1, tzinfo=dt.UTC)
+    return (delta.days * 86_400 + delta.seconds) * 1_000_000_000 + delta.microseconds * 1_000
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -192,6 +221,7 @@ def deliver(
     backend: str = "generic",
     delays: list[float] | None = None,
     service_name: str | None = None,
+    text: TextPolicy = METADATA_ONLY,
 ) -> RefreshResult:
     """One `export-otlp` pass over the store, exactly as the CLI runs it.
 
@@ -199,7 +229,9 @@ def deliver(
     """
     target = Backend(name=backend, endpoint=receiver.url, headers={"x-key": KEY_SENTINEL})
     recorded = delays if delays is not None else []
-    with OtlpExporter(target, store, service_name=service_name, sleep=recorded.append) as exporter:
+    with OtlpExporter(
+        target, store, service_name=service_name, text=text, sleep=recorded.append
+    ) as exporter:
         return refresh(Path(MYCELIA), extractor=StoreSource(store), exporter=exporter)
 
 

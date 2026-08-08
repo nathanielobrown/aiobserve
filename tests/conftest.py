@@ -92,6 +92,12 @@ OFFLOAD_CHARS = 159
 OFFLOAD_TOOL = "toolu_01JXs55LXLHvzWt8KczuYfyD"
 # The `deep-research` user, and the only session `pr-and-document` reaches from the pool.
 DEEP_RESEARCH_SESSION = "8d930c77-9e60-4784-9885-6d4c226280f7"
+# `teammate/`'s session and the `architect` run the team mechanism started inside it: the
+# corpus's one orphan, a run with no spawning tool call behind it.
+TEAMMATE = "10d0349d-0705-4e23-aa64-5b1b97698b2e"
+TEAMMATE_RUN = "aarchitect-5144001ac50718bc"
+# `compaction/`'s session, which holds two recorded main-thread compactions.
+COMPACTED = "1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9"
 
 SourceFactory = Callable[[str, str], SessionSource]
 TraceFactory = Callable[[str, str], SessionTrace]
