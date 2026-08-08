@@ -402,6 +402,57 @@ def test_every_session_page_accounts_for_all_of_its_runs(
             assert len(page) == len(set(page)), session_id
 
 
+@pytest.mark.parametrize("turns", [PAGE_TURNS, 1])
+def test_a_run_the_page_cannot_place_stops_the_page(
+    plant: Planter, store: duckdb.DuckDBPyConnection, turns: int
+) -> None:
+    """A run that lands on no turn and in no list crashes the page instead of vanishing from it.
+
+    The complement of the leaf above, and the reason its guarantee is worth anything: the page
+    counts every run in its header, so one the layout cannot place would be a number with no
+    row behind it. The shape is planted and invented — no recorded session has a spawning call
+    naming a turn its own thread does not hold — and it is checked at one turn a page as well,
+    where placement is still computed over the whole thread and not over the page.
+    """
+    # The run whose spawning call sits under a turn of the main thread...
+    run_id, call_id = one(
+        store,
+        "SELECT a.id, c.id FROM live_agent_runs a"
+        " JOIN live_tool_calls tc ON tc.session_id = a.session_id AND tc.id = a.tool_use_id"
+        "  AND tc.source <> a.id"
+        " JOIN live_api_calls c ON c.session_id = a.session_id AND c.source = tc.source"
+        "  AND c.id = tc.api_call_id"
+        " WHERE a.session_id = ? AND c.source = ? AND c.turn_id IS NOT NULL"
+        " ORDER BY a.id LIMIT 1",
+        [SPINE, MAIN],
+    )
+    # ...answers a turn no thread of the session holds, so the chip join has nothing to hang it
+    # on and the unattached list does not want it either: its spawning turn is not missing, it
+    # is unknown.
+    path = plant(
+        (
+            "UPDATE api_calls SET turn_id = 'planted-turn-nothing-holds'"
+            " WHERE session_id = ? AND source = ? AND id = ?",
+            [SPINE, MAIN, call_id],
+        ),
+    )
+    with (
+        TestClient(build_app(path)) as planted,
+        pytest.raises(ValueError, match="hang off no turn and no run") as raised,
+    ):
+        planted.get(f"/session/{SPINE}", params={"turns": turns, "chips": 1})
+    # The unplaceable run, and the run it spawned — which the page could only have reached
+    # through it, so an unmoored run takes its subtree with it.
+    under = {
+        row[0]
+        for row in store.execute(
+            "SELECT id FROM live_agent_runs WHERE session_id = ? AND parent_agent_id = ?",
+            [SPINE, run_id],
+        ).fetchall()
+    }
+    assert re.findall(r"'([^']+)'", str(raised.value)) == sorted({run_id} | under)
+
+
 def test_a_turns_chips_are_capped_by_the_nodes_of_its_forest(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
