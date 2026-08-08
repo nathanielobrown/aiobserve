@@ -7,6 +7,7 @@ test the failure paths the prior importer's data loss came from.
 """
 
 import datetime as dt
+import gzip
 import hashlib
 import shutil
 import threading
@@ -17,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
+import httpx
 import pytest
 from opentelemetry.proto.collector.trace.v1 import trace_service_pb2
 from opentelemetry.proto.common.v1 import common_pb2
@@ -24,7 +26,14 @@ from opentelemetry.proto.resource.v1 import resource_pb2
 from opentelemetry.proto.trace.v1 import trace_pb2
 
 from aiobserve.export.duckdb import open_trace_store
-from aiobserve.export.otlp import METADATA_ONLY, Backend, OtlpExporter, TextPolicy
+from aiobserve.export.otlp import (
+    DEFAULT_BATCH_SPANS,
+    DEFAULT_RATE,
+    METADATA_ONLY,
+    Backend,
+    OtlpExporter,
+    TextPolicy,
+)
 from aiobserve.extract.store import StoreSource
 from aiobserve.model import SessionTrace
 from aiobserve.pipeline import RefreshResult, SessionSource, refresh
@@ -41,6 +50,13 @@ SECOND = SPINE
 # Planted onto the backend's headers, so a leak of the key has a distinct string to find.
 KEY_SENTINEL = "planted-key-not-a-real-credential"
 
+# Names the backend an opt-in live send ships to. Unset, every leaf here stays on this machine.
+LIVE_ENV = "AIOBSERVE_LIVE_OTLP"
+
+# The only hosts a test may reach. Anything else is a real backend: billed, and handed a
+# transcript.
+LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
+
 
 @dataclass
 class Reply:
@@ -56,12 +72,48 @@ class Reply:
 
 
 @dataclass
+class Clock:
+    """The injected time seam: every wait the exporter asked for, and a clock that honors it.
+
+    Tests assert the delays *requested*, never wall-clock elapsed time, so a pacing leaf is
+    exact and costs nothing.
+    """
+
+    delays: list[float] = field(default_factory=list)
+    now: float = 0.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.delays.append(seconds)
+        self.now += seconds
+
+
+class RefusedWait(Exception):
+    """Raised by a clock that refuses to wait, to prove a waiter went through the seam."""
+
+
+class RefusingClock(Clock):
+    """A clock that crashes instead of waiting. A waiter reaching `time.sleep` directly
+    misses it entirely — and sleeps for real in CI."""
+
+    def sleep(self, seconds: float) -> None:
+        raise RefusedWait(f"the exporter asked to wait {seconds}s")
+
+
+@dataclass
 class Receiver:
     """A running OTLP endpoint: its URL, every request body it took, and what it answers."""
 
     url: str
     server: ThreadingHTTPServer
+    # Inflated, so a leaf sweeping the payload for a leaked string reads plaintext.
     bodies: list[bytes] = field(default_factory=list)
+    # Exactly what arrived, before the receiver decoded the transfer encoding.
+    raw_bodies: list[bytes] = field(default_factory=list)
+    # Answered in order, one per request, before `reply` takes over for the rest.
+    replies: list[Reply] = field(default_factory=list)
     # One entry per request, so a leaf can prove the key it asserts absent elsewhere was
     # in fact sent — otherwise that assertion passes on an exporter that sends no headers.
     sent_headers: list[dict[str, str]] = field(default_factory=list)
@@ -140,9 +192,12 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802 — the name `http.server` dispatches on
         receiver: Receiver = self.server.receiver  # pyrefly: ignore[missing-attribute]
-        receiver.bodies.append(self.rfile.read(int(self.headers["Content-Length"])))
+        arrived = self.rfile.read(int(self.headers["Content-Length"]))
+        receiver.raw_bodies.append(arrived)
+        encoding = self.headers.get("Content-Encoding")
+        receiver.bodies.append(gzip.decompress(arrived) if encoding == "gzip" else arrived)
         receiver.sent_headers.append({name.lower(): value for name, value in self.headers.items()})
-        reply = receiver.reply
+        reply = receiver.replies.pop(0) if receiver.replies else receiver.reply
         body = trace_service_pb2.ExportTraceServiceResponse(
             partial_success=trace_service_pb2.ExportTracePartialSuccess(
                 rejected_spans=reply.rejected_spans, error_message=reply.error_message
@@ -158,6 +213,32 @@ class _Handler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args: Any) -> None:
         """Silence the per-request line `http.server` prints to stderr."""
+
+
+class OffMachineRequestError(Exception):
+    """A test tried to reach a host that is not this machine's loopback."""
+
+
+@pytest.fixture(autouse=True)
+def offline(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Refuse any request that leaves this machine, unless the leaf is marked `live`.
+
+    Without this the offline guarantee rests on review, and the failure mode is expensive in
+    both directions: it bills a real backend and hands it a transcript.
+    """
+    if request.node.get_closest_marker("live"):
+        return
+    send = httpx.Client.send
+
+    def guarded(client: httpx.Client, outgoing: httpx.Request, **kwargs: Any) -> httpx.Response:
+        if outgoing.url.host not in LOOPBACK:
+            raise OffMachineRequestError(
+                f"a test tried to reach {outgoing.url.host}. Only {sorted(LOOPBACK)} are "
+                f"allowed; a real backend needs the `live` marker and {LIVE_ENV}."
+            )
+        return send(client, outgoing, **kwargs)
+
+    monkeypatch.setattr(httpx.Client, "send", guarded)
 
 
 @pytest.fixture
@@ -219,18 +300,30 @@ def deliver(
     receiver: Receiver,
     *,
     backend: str = "generic",
-    delays: list[float] | None = None,
+    target: Backend | None = None,
+    clock: Clock | None = None,
+    batch_spans: int = DEFAULT_BATCH_SPANS,
+    rate: float = DEFAULT_RATE,
     service_name: str | None = None,
     text: TextPolicy = METADATA_ONLY,
 ) -> RefreshResult:
     """One `export-otlp` pass over the store, exactly as the CLI runs it.
 
-    Time is injected: a retry sleeps into `delays` rather than into the test's wall clock.
+    Time is injected: every wait goes into `clock` rather than into the test's wall clock.
     """
-    target = Backend(name=backend, endpoint=receiver.url, headers={"x-key": KEY_SENTINEL})
-    recorded = delays if delays is not None else []
+    shipping = target or Backend(
+        name=backend, endpoint=receiver.url, headers={"x-key": KEY_SENTINEL}
+    )
+    waited = clock or Clock()
     with OtlpExporter(
-        target, store, service_name=service_name, text=text, sleep=recorded.append
+        shipping,
+        store,
+        service_name=service_name,
+        text=text,
+        batch_spans=batch_spans,
+        rate=rate,
+        monotonic=waited.monotonic,
+        sleep=waited.sleep,
     ) as exporter:
         return refresh(Path(MYCELIA), extractor=StoreSource(store), exporter=exporter)
 

@@ -25,11 +25,16 @@ from aiobserve.enrich.enricher import LEVELS, PlannedItem, enrich, plan
 from aiobserve.enrich.store import EnrichmentStore
 from aiobserve.export.duckdb import DuckDbExporter, open_trace_store
 from aiobserve.export.otlp import (
+    BACKEND_NAMES,
+    DEFAULT_MAX_CHARS,
+    DEFAULT_RATE,
     ENDPOINT_ENV,
     GENERIC,
     ConfigurationError,
     OtlpExporter,
-    generic_backend,
+    TextPolicy,
+    census,
+    named_backend,
 )
 from aiobserve.extract.claude_code import ClaudeCodeExtractor
 from aiobserve.extract.store import StoreSource
@@ -96,14 +101,38 @@ def main(*argv: str) -> None:
     )
     otlp.add_argument(
         "--backend",
-        choices=[GENERIC],
+        choices=BACKEND_NAMES,
         default=GENERIC,
-        help="Which backend's delivery ledger this run reads and writes "
-        f"(default: {GENERIC}, configured by {ENDPOINT_ENV})",
+        help="Where to ship, and whose delivery ledger this run reads and writes "
+        f"(default: {GENERIC}, configured by {ENDPOINT_ENV}). A named backend reads its own "
+        f"key variable, and {ENDPOINT_ENV} overrides its endpoint",
     )
     otlp.add_argument(
         "--service-name",
         help="Send every session to this service instead of one named for its project directory",
+    )
+    otlp.add_argument(
+        "--rate",
+        type=float,
+        default=DEFAULT_RATE,
+        help=f"Spans per second, across the whole run (default: {DEFAULT_RATE:g})",
+    )
+    otlp.add_argument(
+        "--include-text",
+        action="store_true",
+        help="Also send prompts, model text, tool arguments and results — untrusted "
+        "transcript content, published to a third party",
+    )
+    otlp.add_argument(
+        "--max-chars",
+        type=int,
+        default=DEFAULT_MAX_CHARS,
+        help=f"Characters kept per included text field (default: {DEFAULT_MAX_CHARS})",
+    )
+    otlp.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Count what a send would ship and send nothing. Needs no backend and no key",
     )
 
     library = subcommands.add_parser("query", help="Run a library query against the trace store")
@@ -260,21 +289,40 @@ def _enrich(args: argparse.Namespace) -> None:
 def _export_otlp(args: argparse.Namespace) -> None:
     """Ship every session of a project that this backend has not already confirmed."""
     load_dotenv()
+    text = TextPolicy(include=args.include_text, max_chars=args.max_chars)
+    if args.dry_run:
+        _census_otlp(args, text)
+        return
     # Before the store is opened: a run with nowhere to ship refuses now rather than after
-    # reading a corpus. `generic` is the only backend today, so the choice picks no branch.
+    # reading a corpus.
     try:
-        backend = generic_backend(os.environ)
+        backend = named_backend(args.backend, os.environ)
     except ConfigurationError as error:
         raise SystemExit(str(error)) from error
     # One connection for both halves — DuckDB admits a single writer, and the exporter needs
     # to write its ledger into the store the source is reading.
     connection = open_trace_store(args.db, read_only=False)
     try:
-        with OtlpExporter(backend, connection, service_name=args.service_name) as exporter:
+        with OtlpExporter(
+            backend, connection, service_name=args.service_name, text=text, rate=args.rate
+        ) as exporter:
             result = refresh(args.project, extractor=StoreSource(connection), exporter=exporter)
     finally:
         connection.close()
     print(f"{len(result.extracted)} session(s) exported, {len(result.skipped)} unchanged")
+
+
+def _census_otlp(args: argparse.Namespace, text: TextPolicy) -> None:
+    """Say what a send would ship, without a backend, a key, or the store's write lock."""
+    connection = open_trace_store(args.db, read_only=True)
+    try:
+        source = StoreSource(connection)
+        counts = census(
+            (source.extract(session) for session in source.sessions(args.project)), text
+        )
+    finally:
+        connection.close()
+    print(f"{counts.sessions} session(s) and {counts.spans} span(s) would ship — nothing sent")
 
 
 def _report_plan(planned: Sequence[PlannedItem], model: str) -> None:

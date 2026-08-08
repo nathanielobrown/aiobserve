@@ -8,6 +8,7 @@ operator actually runs.
 import shutil
 import traceback
 from pathlib import Path
+from typing import Any
 
 import duckdb
 import pytest
@@ -21,11 +22,13 @@ from aiobserve.export.otlp import (
     Backend,
     DeliveryError,
     OtlpExporter,
+    TextPolicy,
+    census,
 )
 from aiobserve.extract.store import StoreSource
 from aiobserve.pipeline import refresh
 from tests.conftest import MYCELIA, locked
-from tests.export.conftest import KEY_SENTINEL, Receiver, delivery_rows
+from tests.export.conftest import KEY_SENTINEL, Receiver, attributes, delivery_rows
 
 
 @pytest.fixture
@@ -139,3 +142,97 @@ def test_a_locked_store_fails_fast(store_path: Path, receiver: Receiver, configu
     # ...then nothing was shipped: a run that cannot record what it delivered must not
     # deliver, or the next run duplicates the corpus.
     assert receiver.bodies == []
+
+
+@pytest.fixture
+def unconfigured(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No endpoint, no key, and no `.env` — nowhere for a run to ship."""
+    monkeypatch.setattr(cli, "load_dotenv", lambda: None)
+    monkeypatch.delenv(ENDPOINT_ENV, raising=False)
+    monkeypatch.delenv(HEADERS_ENV, raising=False)
+
+
+def test_a_dry_run_counts_without_a_backend(
+    store_path: Path,
+    receiver: Receiver,
+    unconfigured: None,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`--dry-run` says what a send would ship, and needs neither a key nor a send."""
+    # If the store is counted rather than shipped...
+    cli.main("export-otlp", MYCELIA, "--db", str(store_path), "--dry-run")
+    # ...then the printed count is the mapper's own, session for session and span for span...
+    connection = open_trace_store(store_path, read_only=True)
+    source = StoreSource(connection)
+    counted = census([source.extract(session) for session in source.sessions(Path(MYCELIA))])
+    connection.close()
+    assert (
+        capsys.readouterr().out.strip()
+        == f"{counted.sessions} session(s) and {counted.spans} span(s) would ship — nothing sent"
+    )
+    # ...and the run reached no backend and refused nothing for want of a key: a dry run is
+    # what an operator does *before* they have one. It leaves the store as it found it,
+    # without even the ledger table an export creates, and never takes the write lock.
+    assert receiver.bodies == []
+    check = open_trace_store(store_path, read_only=True)
+    assert check.execute(
+        "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'otlp_delivery'"
+    ).fetchone() == (0,)
+    check.close()
+
+
+def test_the_delivery_flags_reach_the_exporter(
+    store_path: Path, receiver: Receiver, configured: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every flag that shapes or paces a send arrives at the exporter that performs it."""
+    # If a run names a rate and opts transcript text in...
+    captured: dict[str, object] = {}
+
+    class Recording(OtlpExporter):
+        def __init__(self, backend: Backend, connection: duckdb.DuckDBPyConnection, **kwargs: Any):
+            captured.update(kwargs)
+            super().__init__(backend, connection, **kwargs)
+
+    monkeypatch.setattr(cli, "OtlpExporter", Recording)
+    cli.main(
+        "export-otlp",
+        MYCELIA,
+        "--db",
+        str(store_path),
+        # A rate the fixture sessions cannot reach, so the leaf pays no real wait for it.
+        "--rate",
+        "100000",
+        "--include-text",
+        "--max-chars",
+        "20",
+    )
+    # ...then the whole set arrives, compared whole so a flag the wiring drops fails here...
+    assert captured == {
+        "service_name": None,
+        "text": TextPolicy(include=True, max_chars=20),
+        "rate": 100_000.0,
+    }
+    # ...and the text policy is honored rather than merely passed: the excluded fields ship,
+    # cut to the length the flag named.
+    prompts = [
+        value
+        for span in receiver.spans
+        for key, value in attributes(span).items()
+        if key == "claude_code.turn.prompt"
+    ]
+    assert prompts and all(len(prompt) <= 20 for prompt in prompts)
+
+
+def test_a_named_backend_refuses_without_its_key(
+    store_path: Path, receiver: Receiver, unconfigured: None
+) -> None:
+    """A run naming a backend whose key is unset stops at the command, naming the variable."""
+    # If a backend is named but nothing holds its key...
+    with pytest.raises(SystemExit, match="HONEYCOMB_API_KEY"):
+        cli.main("export-otlp", MYCELIA, "--db", str(store_path), "--backend", "honeycomb")
+    # ...then nothing was read and nothing was sent...
+    assert receiver.bodies == []
+    # ...and a backend the registry does not hold is refused by the parser itself, so no run
+    # ever reaches an endpoint we never verified.
+    with pytest.raises(SystemExit):
+        cli.main("export-otlp", MYCELIA, "--db", str(store_path), "--backend", "jaeger")

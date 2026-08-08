@@ -72,7 +72,7 @@ timeout = 120
 addopts = "--strict-markers --durations=10"
 markers = [
   "slow: earned its runtime (real subprocess, network, or large corpus) — needs a why-comment",
-  "live: opts in to a real Anthropic API call — billed, so it needs an env var as well",
+  "live: opts in to a real remote call (Anthropic API, an OTLP backend) — billed, so it needs an env var as well",
 ]
 
 [tool.pyrefly]

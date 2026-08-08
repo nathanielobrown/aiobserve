@@ -11,9 +11,11 @@ party publishes it, so prompts, model text, tool arguments and results stay home
 """
 
 import datetime as dt
+import gzip
 import hashlib
 import time
-from collections.abc import Callable, Iterator, Mapping
+from collections import Counter
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -54,6 +56,11 @@ CLIENT: SpanKind = trace_pb2.Span.SpanKind.SPAN_KIND_CLIENT
 # batch boundary on a recorded session.
 DEFAULT_BATCH_SPANS = 2_000
 
+# Spans per second, across a whole run. Prior art measured ~40% silent server-side loss with
+# no limiter and none at this rate (issue #6); it puts the full corpus at ~16 minutes, which
+# is a backfill's price for not losing two spans in five.
+DEFAULT_RATE = 300.0
+
 # Per request. A backend that has not answered by then is down, not slow.
 DEFAULT_TIMEOUT = 30.0
 
@@ -66,6 +73,9 @@ BACKOFF_SECONDS = 1.0
 GENERIC = "generic"
 ENDPOINT_ENV = "OTLP_ENDPOINT"
 HEADERS_ENV = "OTLP_HEADERS"
+
+# The span name every compaction gets, which is also how a census recognizes one.
+COMPACTION_SPAN = "claude_code.compaction"
 
 # The delimiter the id keys join on, and the invariant every component must hold to.
 DELIMITER = "/"
@@ -428,7 +438,7 @@ def _compaction_span(session: Session, compaction: Compaction) -> trace_pb2.Span
         session_id=session.id,
         span=span_id(session.id, SpanKey.compaction, compaction.source, compaction.id),
         parent=_source_parent(session.id, compaction.source),
-        name="claude_code.compaction",
+        name=COMPACTION_SPAN,
         kind=INTERNAL,
         started_at=compaction.timestamp,
         ended_at=compaction.timestamp + dt.timedelta(milliseconds=compaction.duration_ms),
@@ -625,6 +635,60 @@ class RejectedSpansError(Exception):
     """The backend took the request and kept only part of it — a mapper bug we need to see."""
 
 
+@dataclass(frozen=True)
+class BackendSpec:
+    """A named backend: where it takes spans, and how its key travels.
+
+    Endpoints and header names verified against prior art
+    (`/Users/nob/repos/mac_settings/claude-otel/import_transcripts.py:114`).
+    """
+
+    endpoint: str
+    # The environment variable holding the key, and the header it goes in *bare* — Logfire
+    # refuses an `authorization: Bearer …`, and the failure is a 401 an hour into a backfill.
+    key_env: str
+    header: str
+
+
+BACKENDS: dict[str, BackendSpec] = {
+    "honeycomb": BackendSpec(
+        endpoint="https://api.honeycomb.io/v1/traces",
+        key_env="HONEYCOMB_API_KEY",
+        header="x-honeycomb-team",
+    ),
+    "logfire": BackendSpec(
+        endpoint="https://logfire-us.pydantic.dev/v1/traces",
+        key_env="LOGFIRE_API_KEY",
+        header="authorization",
+    ),
+}
+
+# What `--backend` takes. Discovered from the registry, so adding an entry is one edit.
+BACKEND_NAMES = (GENERIC, *BACKENDS)
+
+
+def named_backend(name: str, environ: Mapping[str, str]) -> Backend:
+    """Where `--backend <name>` ships, resolved from the environment.
+
+    Validated here rather than at the first POST, so a misconfigured run refuses before it
+    reads a session. `OTLP_ENDPOINT` overrides a named backend's endpoint — the way a run
+    reaches a collector standing in front of the real thing.
+    """
+    if name == GENERIC:
+        return generic_backend(environ)
+    spec = BACKENDS[name]
+    key = environ.get(spec.key_env, "").strip()
+    if not key:
+        raise ConfigurationError(
+            f"{spec.key_env} is unset or empty. Put it in .env or the environment"
+        )
+    return Backend(
+        name=name,
+        endpoint=environ.get(ENDPOINT_ENV, "").strip() or spec.endpoint,
+        headers={spec.header: key},
+    )
+
+
 def generic_backend(environ: Mapping[str, str]) -> Backend:
     """The base-case backend: any OTLP/HTTP endpoint, with optional headers.
 
@@ -644,6 +708,32 @@ def _headers(value: str) -> dict[str, str]:
     if any("=" not in pair for pair in pairs):
         raise ConfigurationError(f"{HEADERS_ENV} takes comma-separated name=value pairs")
     return dict(pair.split("=", 1) for pair in pairs)
+
+
+class _Pacer:
+    """A token bucket over spans, so a run cannot outrun what a backend will really keep.
+
+    Waits through the injected clock rather than `time.sleep`, which is what lets a test
+    assert the delay a send *asked* for instead of measuring one.
+    """
+
+    def __init__(
+        self, rate: float, monotonic: Callable[[], float], sleep: Callable[[float], None]
+    ) -> None:
+        if rate <= 0:
+            raise ConfigurationError(f"a rate of {rate} spans/s would never send anything")
+        self.rate = rate
+        self.monotonic = monotonic
+        self.sleep = sleep
+        self.ready = monotonic()
+
+    def wait(self, spans: int) -> None:
+        """Block until this many spans may leave, then charge them to the bucket."""
+        now = self.monotonic()
+        if now < self.ready:
+            self.sleep(self.ready - now)
+            now = self.ready
+        self.ready = now + spans / self.rate
 
 
 class OtlpExporter:
@@ -666,6 +756,8 @@ class OtlpExporter:
         service_name: str | None = None,
         text: TextPolicy = METADATA_ONLY,
         batch_spans: int = DEFAULT_BATCH_SPANS,
+        rate: float = DEFAULT_RATE,
+        monotonic: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
         timeout: float = DEFAULT_TIMEOUT,
     ) -> None:
@@ -676,8 +768,10 @@ class OtlpExporter:
         # Transcript text stays home unless the caller opts it in.
         self.text = text
         self.batch_spans = batch_spans
-        # A seam, so a test asserts the delay a retry *asked* for instead of waiting it out.
+        # Time is a seam: both the rate bucket and the retry backoff wait through these, so a
+        # test asserts the delay a send *asked* for instead of waiting it out.
         self.sleep = sleep
+        self.pacer = _Pacer(rate, monotonic, sleep)
         self.client = httpx.Client(timeout=timeout)
         self.connection.execute(_DELIVERY_SCHEMA)
 
@@ -768,9 +862,19 @@ class OtlpExporter:
                 )
             ]
         ).SerializeToString()
-        headers = {"Content-Type": "application/x-protobuf", **self.backend.headers}
+        # Compressed here rather than by httpx: the payload is protobuf, it is large, and a
+        # fixed mtime keeps the same batch encoding to the same bytes.
+        body = gzip.compress(payload, mtime=0)
+        headers = {
+            "Content-Type": "application/x-protobuf",
+            "Content-Encoding": "gzip",
+            **self.backend.headers,
+        }
         for attempt in range(1, MAX_ATTEMPTS + 1):
-            response = self.client.post(self.backend.endpoint, content=payload, headers=headers)
+            # Every attempt is charged, including a retry: what a backend throttles on is
+            # what actually arrives, not what we meant to send once.
+            self.pacer.wait(len(batch))
+            response = self.client.post(self.backend.endpoint, content=body, headers=headers)
             if response.is_success:
                 self._check_rejections(session_id, index, response.content)
                 return
@@ -809,6 +913,62 @@ def _backoff(retry_after: str | None, attempt: int) -> float:
     if retry_after is not None and retry_after.strip().isdigit():
         return float(retry_after)
     return BACKOFF_SECONDS * 2 ** (attempt - 1)
+
+
+@dataclass(frozen=True)
+class Census:
+    """What a run would ship, counted by shaping every session and sending nothing."""
+
+    sessions: int
+    spans: int
+    # Compactions that survive the copied-prefix replay rule. `live_compactions` does not
+    # reproduce this number — it keeps the copies a fork inherited — so a census that read
+    # the view would over-report every fork copy in the corpus.
+    compactions: int
+
+
+class AmbiguousCompactionError(Exception):
+    """One compaction appears twice in a session and the copied-prefix rule keeps both.
+
+    A duplicated id is a fork's copy of its parent's compaction, so exactly one copy is the
+    live one. Two would ship one compaction as two spans, which is a rule we can no longer
+    apply rather than a count to fudge.
+    """
+
+
+def census(traces: Iterable[SessionTrace], text: TextPolicy = METADATA_ONLY) -> Census:
+    """Count what a send would put on the wire, without sending it.
+
+    Shapes each session exactly as `export()` does, so the total is the mapper's own answer
+    rather than a SQL approximation of it, and crashes on a session whose duplicated
+    compactions the replay rule cannot separate.
+    """
+    sessions = spans = compactions = 0
+    for trace in traces:
+        _check_one_live_copy(trace)
+        shaped = session_spans(trace, text)
+        sessions += 1
+        spans += len(shaped)
+        compactions += sum(1 for span in shaped if span.name == COMPACTION_SPAN)
+    return Census(sessions=sessions, spans=spans, compactions=compactions)
+
+
+def _check_one_live_copy(trace: SessionTrace) -> None:
+    """Every compaction id a session holds twice must keep exactly one live copy."""
+    runs = {run.id: run for run in trace.agent_runs}
+    held: Counter[str] = Counter(compaction.id for compaction in trace.compactions)
+    live: Counter[str] = Counter(
+        compaction.id
+        for compaction in trace.compactions
+        if not copied_compaction(compaction, runs.get(compaction.source))
+    )
+    for compaction_id, count in held.items():
+        if count > 1 and live[compaction_id] != 1:
+            raise AmbiguousCompactionError(
+                f"session {trace.session.id} holds compaction {compaction_id} {count} time(s) "
+                f"and the copied-prefix rule keeps {live[compaction_id]} of them. Exactly one "
+                f"copy is live; a fork shape this rule cannot separate has landed."
+            )
 
 
 def _batches(spans: list[trace_pb2.Span], size: int) -> Iterator[list[trace_pb2.Span]]:
