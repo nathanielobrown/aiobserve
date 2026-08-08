@@ -179,8 +179,17 @@ Ten leaves against `handoffs/design-timeline-paging.md` — nine on the routes, 
 - **A run whose spawning turn is off the page is still placed.** The guard raises on a run it cannot place, and what it is checked against is now a window — so the run-accounting leaf runs at a page size of one as well as at the default, where every turn but one is off the page
 - **A permalink opens the page its turn starts.** The leaf follows the link the page rendered and asserts that turn is first on the page it lands on — the citation shape the records browser already owed, at `?after={turn_index - 1}#turn-{turn_id}`
 - **Both caps are proved on recorded shapes.** A turn's runs are cut by a pre-order walk of the forest, not by its top-level rows, so a leaf takes the corpus's one nested pair, asks for one chip, and asserts the parent renders under a "+1 more" whose link opens both. The unattached list has the twin leaf: cut to `chips`, counted whole in the heading, and restored by its own link
-- **The refusal is the product, and the budget is reachable.** A pair inside both ceilings but past `CHIP_BUDGET` is a 400, and one turn at `?chips=100` renders a hundred run rows rather than being refused — the leaf that would fail if the cap were bought and never spent
+- **The refusal is the product, and the budget is asked for.** A pair inside both ceilings but past `CHIP_BUDGET` is a 400, and one turn at `?chips=100` is a 200 rather than a refusal. Reachability was the claim and a status code was the check — no fixture turn holds a hundred runs — until the audit round below planted one
 - **The row costs are re-measured on every run.** The design budgeted a turn row at 977 B and it costs 1,577: slice 1's permalink and this slice's "+N more" line grew it. A planted all-`&` page now measures a turn row, a run row, a cut line and a compaction row against the budgets the ceiling is computed from — two stores, because the marginal cost of a row is the same page with it and without it. The `plant` fixture names a file per call for that reason. The ceiling sweep runs at the widest sizes a URL can carry as well as at the defaults
+
+## As built: the paging audit
+
+Four leaves against `handoffs/audit-timeline-paging.md`, three of them planted, plus one strengthened above. Each closes a place where the ceiling still rested on what the corpus happens to hold.
+
+- **The chrome allowance is measured now, not remembered.** `MEASURED_SESSION_CHROME` was pinned at 6,000 B against 9,215 B served, and setting it to 500 left the tier green — load-bearing in one direction only. The header is cut in SQL for it, and the leaf measures what the cuts leave: every cap on every session planted full of `&`, the rows the arithmetic counts stripped out with a regex the leaf checks both ways, and the widest page's own instrument assertions that the plant reached each cap. It fails on a wrong constant and on a list that stops being cut
+- **A cap nothing crossed is a cap nothing tested.** The compaction cap never bit — the densest recorded thread holds 18 of 25 — so a planted thread past it reads the rows the page renders and the count of what it left. The cap is 20 now; the bytes went to the header
+- **The run the page cannot place.** The guard that refuses to serve a page holding an unplaceable run survived `raise` → `pass`: the shape it names exists in no recorded session. Planted by taking the spawning call's turn away, at one turn a page as well as at the default, and the message names the unmoored run and the subtree that went with it. The bullet above claimed this plant when the slice landed; what it named was the run-accounting leaf at one turn a page, which widens the guard's input without testing the guard
+- **The rows no window reaches are bounded, not counted afterwards.** A digest row with no turn index rides the last page whatever `turns` a reader typed. The leaf binds the cap down to zero against the session whose calls all answer turns it resumed, so the boundary a recorded digest never crosses is one a test does
 
 ## Obligation count
 
@@ -194,4 +203,5 @@ Ten leaves against `handoffs/design-timeline-paging.md` — nine on the routes, 
 | integration (query library) | 4 |
 | the payload audit (as built) | 4 |
 | timeline paging (as built) | 10 |
-| **Total** | **53** |
+| the paging audit (as built) | 4 |
+| **Total** | **57** |
