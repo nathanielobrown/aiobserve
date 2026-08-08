@@ -53,7 +53,6 @@ from aiobserve.view.store import (
     StoreLocked,
     Value,
     cursorless_rows,
-    fetch,
     open_store,
     page_rows,
     paged,
@@ -193,7 +192,12 @@ def build_app(db_path: Path) -> FastAPI:
         given = {key: request.query_params.get(key, "") for key in FILTERS}
         with open_store(resolved) as connection:
             rows, more = sorted_sessions(connection, sort, direction, page, size, filters)
-            projects = fetch(connection, queries.load(Page.PROJECTS), {})
+            projects = page_rows(
+                connection,
+                Page.PROJECTS,
+                head_chars=queries.LIST_CHARS,
+                head_projects=queries.LIST_PROJECTS,
+            )
         # A header link flips the direction of the column already sorted by, and opens any
         # other column at the direction that puts its largest values first. Re-sorting starts
         # from the first page: page 4 of one order says nothing about page 4 of another.
@@ -228,6 +232,12 @@ def build_app(db_path: Path) -> FastAPI:
                             "direction": direction,
                             "limit": size,
                             "offset": (page - 1) * size,
+                            # What the page shows of each row, which is composed around the
+                            # query like the paging is: re-running the file alone answers
+                            # with whole titles, paths and skill lists.
+                            "head_chars": queries.LIST_CHARS,
+                            "item_chars": queries.LIST_ITEM_CHARS,
+                            "head_items": queries.LIST_ITEMS,
                             **filters,
                         },
                     )

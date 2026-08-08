@@ -106,10 +106,25 @@ DEFAULT_DIRECTION = "desc"
 # How many sessions a page of the list holds, and the most it will hold on request. The list
 # is the one page that grows with the corpus: 575 sessions rendered whole came to 587 KB,
 # past the design's page ceiling, so the size is bound rather than assumed small. The maximum
-# is what fits under that ceiling at the measured cost of a row, not a round number — a
-# `?size=` above it is a page the design's bound does not cover.
-PAGE_SESSIONS = 200
-MAX_PAGE_SESSIONS = 300
+# is what fits under that ceiling at the *worst* cost of a row rather than the measured one —
+# every character of a title or a path can escape to five bytes — so the two are the same
+# number and `?size=` only goes down from here. `tests/view/test_bounds.py` does the
+# arithmetic; the row it multiplies is `SHOWN` below.
+PAGE_SESSIONS = 125
+MAX_PAGE_SESSIONS = 125
+
+# What one row of the list shows of the values a transcript wrote: each string cut to a head,
+# the skills cut to their first names with a count of what was left, and the two lists the
+# page has no column for dropped. Composed here rather than cut in the query because the
+# list's filters read the whole values — a `project` matched against a cut path would miss
+# every session under a longer one, and a `skill` outside the first few would find nothing —
+# and applied outside the window, so it cuts the rows one page shows and nothing else.
+SHOWN = """SELECT * EXCLUDE (agent_types, pr_urls) REPLACE (
+    substr(title, 1, $head_chars) AS title,
+    substr(project_dir, 1, $head_chars) AS project_dir,
+    list_transform(list_slice(coalesce(skills, []), 1, $head_items),
+        name -> substr(name, 1, $item_chars)) AS skills
+), greatest(len(coalesce(skills, [])) - $head_items, 0) AS skills_cut FROM"""
 
 # Every query-string key the session list reads: the filters, plus what orders and pages them.
 LIST_KEYS = frozenset(FILTERS) | {"sort", "direction", "page", "size"}
@@ -134,9 +149,10 @@ def sorted_sessions(
 
     The library query stays the citable core: it goes in a subquery untouched, and what is
     wrapped around it is a WHERE of `FILTERS` predicates, an ORDER BY built from two
-    dictionary lookups, and a LIMIT — every value a request supplied bound as a parameter.
-    `session_id` breaks ties in the same direction, which makes every sort a total order,
-    its reverse exact, and the page boundaries stable between requests.
+    dictionary lookups, a LIMIT, and `SHOWN` over the rows that survive all three — every
+    value a request supplied bound as a parameter. `session_id` breaks ties in the same
+    direction, which makes every sort a total order, its reverse exact, and the page
+    boundaries stable between requests.
     """
     # A sort or filter key *is* part of a SQL fragment, so membership is the whole guard —
     # and it is checked here as well as at the route, because this builds the SQL.
@@ -151,10 +167,17 @@ def sorted_sessions(
     # One row past the page: cheaper than a second query, and all a pager needs to know.
     rows = fetch(
         connection,
-        f"SELECT * FROM ({listing}){where}"
+        f"{SHOWN} (SELECT * FROM ({listing}){where}"
         f" ORDER BY {sort} {order.keyword} {order.nulls}, session_id {order.keyword}"
-        " LIMIT $limit OFFSET $offset",
-        {"limit": size + 1, "offset": (page - 1) * size, **filters},
+        " LIMIT $limit OFFSET $offset)",
+        {
+            "limit": size + 1,
+            "offset": (page - 1) * size,
+            "head_chars": queries.LIST_CHARS,
+            "item_chars": queries.LIST_ITEM_CHARS,
+            "head_items": queries.LIST_ITEMS,
+            **filters,
+        },
     )
     return Listing(rows[:size], len(rows) > size)
 

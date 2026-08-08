@@ -40,6 +40,13 @@ from tests.conftest import (
 )
 from tests.view.conftest import MISSING, Planter, fields, inside, one, values
 
+# What every list citation says about the display cut, which the viewer composes around the
+# query the same way it composes the paging: re-running the file alone answers whole values.
+CUT = (
+    f"head_chars={queries.LIST_CHARS} item_chars={queries.LIST_ITEM_CHARS}"
+    f" head_items={queries.LIST_ITEMS}"
+)
+
 
 def sessions(store: duckdb.DuckDBPyConnection) -> list[str]:
     """Every session in the store in the list's default order: newest first.
@@ -146,13 +153,13 @@ def test_the_list_footer_cites_its_query_and_what_was_composed_around_it(
     page = client.get("/", params={"sort": "cost_usd", "direction": "asc", "size": 5}).text
     cited = fields(page, "id", "citation")
     assert cited["view_sessions"] == (
-        "-- queries/view_sessions.sql sort=cost_usd direction=asc limit=5 offset=0"
+        f"-- queries/view_sessions.sql sort=cost_usd direction=asc limit=5 offset=0 {CUT}"
     )
     # A bare request cites the defaults, so a copied line reproduces what was seen.
     default = fields(client.get("/").text, "id", "citation")
     assert default["view_sessions"] == (
         f"-- queries/view_sessions.sql sort={DEFAULT_SORT} direction={DEFAULT_DIRECTION}"
-        f" limit={PAGE_SESSIONS} offset=0"
+        f" limit={PAGE_SESSIONS} offset=0 {CUT}"
     )
 
 
@@ -295,7 +302,8 @@ def test_a_filter_rides_the_links_and_the_citation(client: TestClient) -> None:
         assert "skill=grill-me" in link
     # ...and the citation carries it too, after the paging, so the line reproduces the rows.
     assert fields(page, "id", "citation")["view_sessions"] == (
-        "-- queries/view_sessions.sql sort=cost_usd direction=desc limit=1 offset=0 skill=grill-me"
+        "-- queries/view_sessions.sql sort=cost_usd direction=desc limit=1 offset=0"
+        f" {CUT} skill=grill-me"
     )
 
 

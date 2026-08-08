@@ -83,7 +83,10 @@
       <td data-field="output_tokens" class="number">{{ row.output_tokens | count }}</td>
       <td data-field="wall_ms" class="number">{{ row.wall_ms | duration }}</td>
       <td data-field="active_ms" class="number">{{ row.active_ms | duration }}</td>
-      <td data-field="skills" class="names">{{ (row.skills or []) | join(', ') }}</td>
+      {# The skills a session ran grow with it, so the query cuts the list and says how many
+         it left: a row of the list is multiplied by the size of the page. #}
+      <td data-field="skills" class="names">{{ (row.skills or []) | join(', ')
+        ~ (' and %d more' % row.skills_cut if row.skills_cut else '') }}</td>
     </tr>
     {% endfor %}
   </tbody>

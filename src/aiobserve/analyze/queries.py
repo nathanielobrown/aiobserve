@@ -134,6 +134,20 @@ HEADER_CHARS = 100
 HEADER_ITEM_CHARS = 60
 HEADER_ITEMS = 5
 
+# The same three for one row of the session list, which the viewer composes rather than the
+# query (`view/listing.py`): the list's filters read the whole values. 100 covers the longest
+# title the canonical store holds (81) and its longest project path (58); 4 skills of 20 cover
+# the busiest session recorded, whose longest skill name is 18. A skill name is not a PR url,
+# which is why the header's 60 does not carry over — the list multiplies its row by the page.
+LIST_CHARS = 100
+LIST_ITEM_CHARS = 20
+LIST_ITEMS = 4
+
+# How many projects the list's filter box suggests, and the longest path it offers. The
+# suggestions grow with the corpus the way the rows do, so the box is bound too. A path is
+# offered whole or left out: a suggestion cut to its head filters to nothing.
+LIST_PROJECTS = 10
+
 # How much of a raw record one browser row shows. Long enough to tell a `user` record from an
 # `assistant` one and to recognise a line already read; short enough that a hundred of them
 # is a page rather than a transcript.
@@ -302,7 +316,13 @@ QUERIES: dict[str, Query] = {
             "chunk_chars": Param(type=ParamType.INTEGER, default=CHUNK_CHARS),
         },
     ),
-    "view_projects": Query(scope=Scope.KEYED, params={}),
+    "view_projects": Query(
+        scope=Scope.KEYED,
+        params={
+            "head_chars": Param(type=ParamType.INTEGER, default=LIST_CHARS),
+            "head_projects": Param(type=ParamType.INTEGER, default=LIST_PROJECTS),
+        },
+    ),
     "view_record": Query(
         scope=Scope.KEYED,
         params={

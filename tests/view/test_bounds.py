@@ -24,7 +24,7 @@ from aiobserve.view.app import (
     MAX_PAGE_TOOLS,
     build_app,
 )
-from aiobserve.view.listing import MAX_PAGE_SESSIONS
+from aiobserve.view.listing import MAX_PAGE_SESSIONS, PAGE_SESSIONS, SHOWN
 from aiobserve.view.store import Fragment, Page, Value, cursorless_rows
 from aiobserve.view.threads import (
     CHIP_BUDGET,
@@ -57,14 +57,20 @@ from tests.view.conftest import Planter, Statement, fields, one, values
 # `input` its arguments, `text` and `thinking` a model's answer.
 FAT = ("raw", "text", "thinking", "result", "input", "content")
 
-# What a page may weigh, and what one session's row in the list may add to it. The list is
-# the page a corpus grows, so `PAGE_SESSIONS` rows at `SESSION_BYTES` each have to fit.
+# What a page may weigh. The list is the page a corpus grows, so `MAX_PAGE_SESSIONS` rows of
+# what one row can hold have to fit under it.
 PAGE_BYTES = 350_000
-SESSION_BYTES = 2_000
-# What a row of the list really costs, measured against `data/traces.duckdb` on 2026-08-08:
-# 308,233 B for 300 sessions less 3,698 B of page chrome. The fixture rows are redacted down
-# to a few characters, so a projection off them alone says nothing about a real corpus.
-MEASURED_SESSION_BYTES = 1_015
+# What the markup around one row of the list costs, with the content the row carries taken off.
+# Measured against `data/traces.duckdb` on 2026-08-07 as the marginal cost of one more row —
+# 308,233 B for 300 sessions less 4,708 B for one, over the 299 rows between, which is 1,015 B
+# — less the 43 characters of title, project path and skill names those rows averaged. The
+# fixture rows are redacted down to a few characters and project nothing about a real corpus.
+MEASURED_SESSION_ROW_MARKUP = 1_000
+# What a list page weighs apart from its rows: the filter form, the project suggestions, the
+# table head and the two pagers. Measured through the app by the leaf at the bottom of this
+# file, with `&` planted in every suggestion and the box at its cap — 8,622 B, a worst case
+# rather than a corpus observation, because the box is bound in SQL like everything else.
+MEASURED_LIST_CHROME = 10_000
 
 # How much of a turn's prompt the timeline shows, from `session_digest`'s own `substr`.
 PROMPT_CHARS = 300
@@ -103,6 +109,10 @@ MEASURED_SESSION_CHROME = 12_000
 # listed, so a fourth column added to a chip shows up in the arithmetic instead of quietly
 # spending the ceiling `CHIP_BUDGET` times over.
 CHIP_HEAD = "$chip_chars"
+# The same two for one row of the session list, whose cuts the viewer composes around the
+# query rather than making in it: a string's head, and a skill name's.
+LIST_HEAD = "$head_chars"
+LIST_ITEM_HEAD = "$item_chars"
 
 # The most one character of a transcript's own content can weigh on the page that shows it.
 # Content has no shape at all — a tool wrote the file, a model wrote the text — so every bound
@@ -122,9 +132,21 @@ def worst_call_bytes(page_tools: int) -> int:
     return MEASURED_CALL_ROW_MARKUP + TEXT_CHARS * ESCAPED_CHAR_BYTES + page_tools * tool_row
 
 
-def heads(name: str) -> int:
-    """How many of a query's columns are cut to `$chip_chars` — what one of its rows carries."""
-    return re.sub(r"--[^\n]*", " ", queries.load(name)).count(CHIP_HEAD)
+def heads(sql: str, parameter: str) -> int:
+    """How many of a statement's columns are cut to `parameter` — what one of its rows carries."""
+    return re.sub(r"--[^\n]*", " ", sql).count(parameter)
+
+
+def worst_session_row_bytes() -> int:
+    """What one row of the session list can weigh: its markup, and every head it shows all `&`.
+
+    The heads are counted off the composition rather than listed, so a column added to what a
+    row shows lands in the arithmetic instead of quietly spending the ceiling
+    `MAX_PAGE_SESSIONS` times over.
+    """
+    strings = heads(SHOWN, LIST_HEAD) * queries.LIST_CHARS
+    names = heads(SHOWN, LIST_ITEM_HEAD) * queries.LIST_ITEMS * queries.LIST_ITEM_CHARS
+    return MEASURED_SESSION_ROW_MARKUP + (strings + names) * ESCAPED_CHAR_BYTES
 
 
 def worst_turn_bytes() -> int:
@@ -135,13 +157,15 @@ def worst_turn_bytes() -> int:
 
 def worst_chip_bytes() -> int:
     """What one run row can weigh: its markup, and every head it shows all `&`."""
-    return MEASURED_CHIP_ROW_MARKUP + heads(Page.RUNS) * queries.CHIP_CHARS * ESCAPED_CHAR_BYTES
+    return MEASURED_CHIP_ROW_MARKUP + (
+        heads(queries.load(Page.RUNS), CHIP_HEAD) * queries.CHIP_CHARS * ESCAPED_CHAR_BYTES
+    )
 
 
 def worst_mark_bytes() -> int:
     """What one compaction row can weigh: its markup, and its trigger all `&`."""
-    return (
-        MEASURED_MARK_ROW_MARKUP + heads(Page.COMPACTIONS) * queries.CHIP_CHARS * ESCAPED_CHAR_BYTES
+    return MEASURED_MARK_ROW_MARKUP + (
+        heads(queries.load(Page.COMPACTIONS), CHIP_HEAD) * queries.CHIP_CHARS * ESCAPED_CHAR_BYTES
     )
 
 
@@ -257,12 +281,21 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     assert QUERIES["view_session_header"].params["head_chars"].default == 100
     assert QUERIES["view_session_header"].params["item_chars"].default == 60
     assert QUERIES["view_session_header"].params["head_items"].default == 5
+    # The same for the list, whose row the viewer cuts in its own composition — the filters
+    # read the whole values — and whose project suggestions the query itself caps.
+    assert (queries.LIST_CHARS, queries.LIST_ITEM_CHARS, queries.LIST_ITEMS) == (100, 20, 4)
+    assert QUERIES["view_projects"].params["head_chars"].default == 100
+    assert QUERIES["view_projects"].params["head_projects"].default == 10
     # Every ceiling is projected at the largest page a URL can ask for, because a size is
     # something a reader types. The turn fragment's two sizes multiply, so its ceiling is
     # spent by the defaults themselves and `?calls=` only goes down from here.
     assert MAX_PAGE_CALLS * worst_call_bytes(MAX_PAGE_TOOLS) < PAGE_BYTES
     assert MAX_PAGE_RECORDS * worst_record_bytes() < PAGE_BYTES
     assert MAX_CHUNK_CHARS * ESCAPED_CHAR_BYTES < PAGE_BYTES
+    # The list is the page a corpus grows, so its ceiling is the widest page a URL can ask for
+    # plus the chrome that rides every page — both bound by construction now, not by how long
+    # the titles this corpus happens to hold are.
+    assert MEASURED_LIST_CHROME + MAX_PAGE_SESSIONS * worst_session_row_bytes() < PAGE_BYTES
     # The session timeline is the page whose caps this arithmetic sets rather than checks: its
     # run rows are most of what the ceiling buys, and `CHIP_BUDGET` is what that leaves room for.
     assert worst_session_bytes() < PAGE_BYTES
@@ -272,6 +305,7 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     assert queries.PAGE_TOOLS <= MAX_PAGE_TOOLS
     assert queries.PAGE_RECORDS <= MAX_PAGE_RECORDS
     assert queries.CHUNK_CHARS <= MAX_CHUNK_CHARS
+    assert PAGE_SESSIONS <= MAX_PAGE_SESSIONS
     assert PAGE_CHIPS <= MAX_PAGE_CHIPS
     assert (PAGE_TURNS + 1) * PAGE_CHIPS <= CHIP_BUDGET
     # And every run is reachable: one turn's runs, or the unattached list, fits a page of its
@@ -328,18 +362,12 @@ def test_a_served_page_stays_under_its_ceiling(
     assert listing < PAGE_BYTES
     # The fixture corpus is smaller than a page, so its own weight proves nothing about a
     # large one. What does is the marginal cost of a row — the whole list less the same page
-    # holding one session — which is what a growing corpus multiplies.
+    # holding one session — which is what a growing corpus multiplies. The rows here are
+    # redacted down to a few characters, so this is a smoke check: the worst case a real
+    # corpus can reach is the arithmetic above, and the planted leaf below re-measures it.
     chrome = len(client.get("/?size=1").content)
     per_session = (listing - chrome) / (count - 1)
-    assert per_session < SESSION_BYTES
-    # The largest page anyone can ask for is the most the list ever serves, so that is the
-    # number under the ceiling — projecting the default instead leaves `?size=` above it
-    # unchecked, and a URL is what a reader pastes.
     assert chrome + per_session * MAX_PAGE_SESSIONS < PAGE_BYTES
-    # The fixture rows are redacted and short, so the projection above is optimistic about a
-    # real corpus. `data/traces.duckdb` served 1,015 B a row on 2026-08-08 — measured, not
-    # assumed — which is what `MAX_PAGE_SESSIONS` was set from.
-    assert MAX_PAGE_SESSIONS * MEASURED_SESSION_BYTES < PAGE_BYTES
     # Every session page at the defaults, and at the widest single list a URL can ask for —
     # a different shape rather than a larger one, and the shape the arithmetic above bounds.
     for session_id in [row[0] for row in store.execute("SELECT id FROM sessions").fetchall()]:
@@ -673,6 +701,67 @@ def test_a_session_page_of_nothing_but_escapes_carries_the_chrome_the_ceiling_bu
     assert values(widest, "data-more-marks") != []
 
 
+def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A list row and the chrome around it weigh no more than the arithmetic gives them.
+
+    The list is the page a corpus grows: every string in a row is one a transcript wrote, and
+    its skills and the filter box's project suggestions both grow with what the store holds.
+    So `&` is planted at every cap — the character that escapes to five bytes — and both halves
+    of the ceiling are measured against it: one more row, and the page with no rows at all.
+    """
+    head = "&" * queries.LIST_CHARS
+    name = "&" * queries.LIST_ITEM_CHARS
+    over = queries.LIST_ITEMS + 2
+    path = plant(
+        # A project path per session, each one the longest the filter box offers, so the box
+        # has more suggestions than it shows. The two digits that tell them apart are the only
+        # characters on the page that are not an escape...
+        (
+            "UPDATE sessions SET title = ?, project_dir = ? || printf('%02d', r.n)"
+            " FROM (SELECT id, row_number() OVER (ORDER BY id) AS n FROM sessions) r"
+            " WHERE r.id = sessions.id",
+            [head, head[:-2]],
+        ),
+        # ...and every session runs more skills than a row shows, cloning a live api call rather
+        # than inventing one: `live_api_calls` is the population a row's skill list counts.
+        (
+            "INSERT INTO api_calls (SELECT c.* REPLACE (c.id || '-planted-' || i AS id,"
+            " ? || i AS attribution_skill)"
+            " FROM (SELECT DISTINCT ON (l.session_id) l.* FROM live_api_calls l) c,"
+            " range(1, ?) t(i))",
+            [name, over + 1],
+        ),
+    )
+    (sessions,) = one(store, "SELECT count(*) FROM sessions")
+    assert sessions > queries.LIST_PROJECTS, "the fixture corpus no longer fills the filter box"
+    with TestClient(build_app(path)) as planted:
+
+        def served(size: int) -> str:
+            response = planted.get("/", params={"size": size})
+            assert response.status_code == 200, response.text[:200]
+            return response.text
+
+        one_row, two_rows = served(1), served(2)
+    # One more row costs its markup and every head it shows, all `&`...
+    assert len(two_rows.encode()) - len(one_row.encode()) <= worst_session_row_bytes()
+    # ...and what the page carries whatever its size fits the allowance the ceiling gives it,
+    # with the row the arithmetic counts separately stripped out.
+    chrome = re.sub(r"<tr data-session-id=.*?</tr>", "", one_row, flags=re.S)
+    assert not values(chrome, "data-session-id") and 'id="sessions"' in chrome
+    assert len(chrome.encode()) <= MEASURED_LIST_CHROME
+    # The plant reached every cap, which is what makes those two numbers a worst case: each
+    # string cut to its head, the skills cut to their first names and saying how many were
+    # left, and the filter box offering as many projects as it has room for.
+    row = fields(two_rows, "data-session-id", values(two_rows, "data-session-id")[0])
+    assert len(row["title"]) == len(row["project_dir"]) == queries.LIST_CHARS
+    assert row["skills"].count(name) == queries.LIST_ITEMS
+    assert row["skills"].endswith("more")
+    options = re.findall(r'<option value="([^"]*)"', one_row)
+    assert len(options) == queries.LIST_PROJECTS
+
+
 def test_the_digest_rows_no_window_reaches_are_capped_at_what_a_page_budgets(
     store: duckdb.DuckDBPyConnection,
 ) -> None:
@@ -721,12 +810,12 @@ def test_a_deeply_nested_value_is_served_at_the_size_it_was_stored(plant: Plante
 def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     plant: Planter, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """Every preview is truncated in the query, so no one huge value can bloat what shows it.
+    """Every preview is truncated before it reaches a page, so no one huge value can bloat it.
 
-    The three previews the viewer renders — a turn's prompt on the session page, an api
-    call's text and a tool call's arguments in the turn fragment — checked at once against
-    one planted store. The oversized values are invented: redaction flattened every recorded
-    string to a few characters, so no fixture reaches a cap.
+    The previews the viewer renders — a session's title and project on the list, a turn's
+    prompt on the session page, an api call's text and a tool call's arguments in the turn
+    fragment — checked at once against one planted store. The oversized values are invented:
+    redaction flattened every recorded string to a few characters, so no fixture reaches a cap.
     """
     turn_id, _ = one(
         store,
@@ -736,15 +825,24 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # Each value is planted well past its own cap, onto the real row a fixture recorded...
     long = "x" * 5_000
     path: Path = plant(
+        ("UPDATE sessions SET title = ?, project_dir = ? WHERE id = ?", [long, long, SPINE]),
         ("UPDATE turns SET prompt = ? WHERE session_id = ? AND id = ?", [long, SPINE, turn_id]),
         ("UPDATE api_calls SET text = ? WHERE session_id = ?", [long, ANCESTOR]),
         ("UPDATE tool_calls SET input = ? WHERE session_id = ?", [long, FORK_ORIGIN]),
     )
     with TestClient(build_app(path)) as planted:
+        listing = planted.get("/").text
         page = planted.get(f"/session/{SPINE}").text
         turn = planted.get(f"/fragment/turn/{ANCESTOR}/main/{DENSE_TURN}").text
         tools = planted.get(f"/fragment/tools/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}").text
-    # ...and what each of them shows is its cap, not the value.
+    # ...and what each of them shows is its cap, not the value. The list's cuts are the
+    # viewer's own composition rather than its query's, because its filters read the whole
+    # values — a project path cut to a head would match no session under a longer one.
+    row = fields(listing, "data-session-id", SPINE)
+    assert len(row["title"]) == len(row["project_dir"]) == queries.LIST_CHARS
+    # A path too long for the filter box to suggest whole is left out of it rather than cut:
+    # half a path fills the filter in with a value that matches nothing.
+    assert not [path for path in re.findall(r'<option value="([^"]*)"', listing) if "x" in path]
     assert len(fields(page, "data-turn", turn_id)["prompt"]) == PROMPT_CHARS
     assert len(fields(turn, "data-api-call", DENSE_TURN_CALL)["text_head"]) == TEXT_CHARS
     assert len(fields(tools, "data-tool-call", DENSE_TOOL)["input_head"]) == INPUT_CHARS
