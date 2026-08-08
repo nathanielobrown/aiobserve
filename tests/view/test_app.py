@@ -6,6 +6,7 @@ a fixture added to the corpus does not silently stop being covered.
 
 import re
 from pathlib import Path
+from typing import NamedTuple
 
 import duckdb
 import pytest
@@ -402,6 +403,39 @@ def test_every_session_page_accounts_for_all_of_its_runs(
             assert len(page) == len(set(page)), session_id
 
 
+class Chipped(NamedTuple):
+    """A recorded run that chips onto a turn, and everything a plant needs to move it."""
+
+    run_id: str
+    # The api call the run was spawned from, and the turn that call answers.
+    call_id: str
+    turn_id: str
+    # Where that turn sits in its thread, which is the cursor a page of one turn opens at.
+    turn_index: int
+
+
+def chipped(store: duckdb.DuckDBPyConnection) -> Chipped:
+    """The first run of `SPINE` the chip join hangs on a turn of the main thread.
+
+    The join `view_runs` makes, in the expectation's own SQL: a run is a chip when its
+    `tool_use_id` names a tool call outside its own transcript, whose api call sits under a
+    turn. Read from the store rather than pinned, so a re-recorded fixture moves it.
+    """
+    run_id, call_id, turn_id, turn_index = one(
+        store,
+        'SELECT a.id, c.id, t.id, t."index" FROM live_agent_runs a'
+        " JOIN live_tool_calls tc ON tc.session_id = a.session_id AND tc.id = a.tool_use_id"
+        "  AND tc.source <> a.id"
+        " JOIN live_api_calls c ON c.session_id = a.session_id AND c.source = tc.source"
+        "  AND c.id = tc.api_call_id"
+        " JOIN live_turns t ON t.session_id = a.session_id AND t.source = c.source"
+        "  AND t.id = c.turn_id"
+        " WHERE a.session_id = ? AND c.source = ? ORDER BY a.id LIMIT 1",
+        [SPINE, MAIN],
+    )
+    return Chipped(run_id, call_id, turn_id, turn_index)
+
+
 @pytest.mark.parametrize("turns", [PAGE_TURNS, 1])
 def test_a_run_the_page_cannot_place_stops_the_page(
     plant: Planter, store: duckdb.DuckDBPyConnection, turns: int
@@ -415,17 +449,7 @@ def test_a_run_the_page_cannot_place_stops_the_page(
     where placement is still computed over the whole thread and not over the page.
     """
     # The run whose spawning call sits under a turn of the main thread...
-    run_id, call_id = one(
-        store,
-        "SELECT a.id, c.id FROM live_agent_runs a"
-        " JOIN live_tool_calls tc ON tc.session_id = a.session_id AND tc.id = a.tool_use_id"
-        "  AND tc.source <> a.id"
-        " JOIN live_api_calls c ON c.session_id = a.session_id AND c.source = tc.source"
-        "  AND c.id = tc.api_call_id"
-        " WHERE a.session_id = ? AND c.source = ? AND c.turn_id IS NOT NULL"
-        " ORDER BY a.id LIMIT 1",
-        [SPINE, MAIN],
-    )
+    run = chipped(store)
     # ...answers a turn no thread of the session holds, so the chip join has nothing to hang it
     # on and the unattached list does not want it either: its spawning turn is not missing, it
     # is unknown.
@@ -433,7 +457,7 @@ def test_a_run_the_page_cannot_place_stops_the_page(
         (
             "UPDATE api_calls SET turn_id = 'planted-turn-nothing-holds'"
             " WHERE session_id = ? AND source = ? AND id = ?",
-            [SPINE, MAIN, call_id],
+            [SPINE, MAIN, run.call_id],
         ),
     )
     with (
@@ -447,10 +471,10 @@ def test_a_run_the_page_cannot_place_stops_the_page(
         row[0]
         for row in store.execute(
             "SELECT id FROM live_agent_runs WHERE session_id = ? AND parent_agent_id = ?",
-            [SPINE, run_id],
+            [SPINE, run.run_id],
         ).fetchall()
     }
-    assert re.findall(r"'([^']+)'", str(raised.value)) == sorted({run_id} | under)
+    assert re.findall(r"'([^']+)'", str(raised.value)) == sorted({run.run_id} | under)
 
 
 def test_a_turns_chips_are_capped_by_the_nodes_of_its_forest(
@@ -811,9 +835,45 @@ def test_a_timeline_size_outside_its_bounds_is_refused(sizes: str, client: TestC
     assert client.get(f"/session/{SPINE}?{sizes}").status_code == 400
 
 
-def test_the_whole_chip_budget_is_reachable_on_one_turn(client: TestClient) -> None:
-    """A reader who wants a turn's whole run forest can have it, one turn at a time."""
-    assert client.get(f"/session/{SPINE}?turns=1&chips={MAX_PAGE_CHIPS}").status_code == 200
+def test_the_whole_chip_budget_is_reachable_on_one_turn(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A reader who wants a turn's whole run forest can have it, one turn at a time.
+
+    `MAX_PAGE_CHIPS` is sized for the widest forest the corpus records — 94 runs under one turn
+    — so that no run sits behind a "+N more" nobody can open. No fixture session has a turn
+    that wide, so the leaf plants one past the cap: the rows are what the ceiling bought, and a
+    page that refused them, or rendered fewer than it was asked for, would leave the budget
+    spent on nothing.
+    """
+    run = chipped(store)
+    path = plant(
+        (
+            "INSERT INTO agent_runs (SELECT a.* REPLACE (a.id || '-planted-' || i AS id)"
+            " FROM agent_runs a, range(1, ?) t(i) WHERE a.session_id = ? AND a.id = ?)",
+            [MAX_PAGE_CHIPS + 1, SPINE, run.run_id],
+        ),
+    )
+    # A clone of a chipped run is a chip on the same turn: what the join reads is the tool call
+    # it names, and the clones name the one the recorded run does.
+    (forest,) = one(
+        store,
+        "SELECT count(*) FROM live_agent_runs WHERE session_id = ? AND parent_agent_id = ?",
+        [SPINE, run.run_id],
+    )
+    planted_rows = 1 + MAX_PAGE_CHIPS + forest
+    with TestClient(build_app(path)) as served:
+        # The page of that one turn, opened at the cursor its permalink carries.
+        page = served.get(
+            f"/session/{SPINE}",
+            params={"after": run.turn_index - 1, "turns": 1, "chips": MAX_PAGE_CHIPS},
+        )
+    assert page.status_code == 200
+    # The turn renders the whole budget the URL asked for...
+    assert values(page.text, "data-turn")[0] == run.turn_id
+    assert len(values(page.text, "data-chip")) == MAX_PAGE_CHIPS
+    # ...and counts what is still behind it, so the widest list is a page and not a ceiling.
+    assert fields(page.text, "data-turn", run.turn_id)["cut"] == str(planted_rows - MAX_PAGE_CHIPS)
 
 
 def test_a_session_the_store_does_not_hold_is_a_404(client: TestClient) -> None:
