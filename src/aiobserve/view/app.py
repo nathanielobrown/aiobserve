@@ -52,12 +52,26 @@ from aiobserve.view.store import (
     SchemaMoved,
     StoreLocked,
     Value,
+    cursorless_rows,
     fetch,
     open_store,
     page_rows,
     paged,
+    thread_outline,
+    window,
 )
-from aiobserve.view.threads import ancestry, children, session_threads, timeline
+from aiobserve.view.threads import (
+    CHIP_BUDGET,
+    MAX_PAGE_CHIPS,
+    PAGE_CHIPS,
+    PAGE_TURNS,
+    TURN_CURSOR,
+    ancestry,
+    children,
+    marks_on_page,
+    session_threads,
+    timeline,
+)
 
 # Loopback only, and a port unlikely to be taken. Fixed rather than picked at startup so a
 # link pasted into a note opens the same page tomorrow.
@@ -233,20 +247,64 @@ def build_app(db_path: Path) -> FastAPI:
         }
 
     @app.get("/session/{session_id}")
-    def session_page(request: Request, session_id: str) -> Response:
+    def session_page(
+        request: Request,
+        session_id: str,
+        after: int = queries.FIRST_PAGE,
+        turns: int = PAGE_TURNS,
+        chips: int = PAGE_CHIPS,
+    ) -> Response:
+        """One page of a session's timeline: its turns in order, with the runs they spawned.
+
+        `after` is *the last turn index already shown*, the records browser's semantics — so
+        the turn at index N opens on `?after={N - 1}`, first row on the page. The two sizes
+        multiply, which is why their product is checked as well as each of them.
+        """
+        checked(turns, PAGE_TURNS)
+        checked(chips, MAX_PAGE_CHIPS)
+        if turns * chips > CHIP_BUDGET:
+            raise HTTPException(400, f"Ask for at most {CHIP_BUDGET} chips a page: turns × chips.")
         with open_store(resolved) as connection:
             header = page_rows(connection, Page.SESSION_HEADER, session_id=session_id)
             if not header:
                 raise HTTPException(404, "No session with that id is in this store.")
-            turns = page_rows(connection, Page.TIMELINE, session_id=session_id)
+            page = window(
+                connection, Page.TIMELINE, TURN_CURSOR, after, turns, session_id=session_id
+            )
+            outline = thread_outline(connection, Page.TIMELINE, TURN_CURSOR, session_id=session_id)
+            # The row for calls under no turn has no index to window on, so it rides the last
+            # page — where the unpaged digest puts it.
+            tail = (
+                cursorless_rows(connection, Page.TIMELINE, TURN_CURSOR, session_id=session_id)
+                if page.after is None
+                else []
+            )
             runs = page_rows(connection, Page.RUNS, session_id=session_id)
             markers = page_rows(
                 connection, Page.COMPACTIONS, session_id=session_id, source=MAIN_SOURCE
             )
             lines = turn_lines(connection, session_id, MAIN_SOURCE)
+        # A cursor past the last turn and a thread that was never there are the same answer.
+        # Page one is not: a session with no turns of its own still has its header and spend.
+        if after != queries.FIRST_PAGE and not page.rows:
+            raise HTTPException(404, "This session has no turns after that one.")
+        rows = page.rows + tail
         keyed: dict[str, ParamValue] = {"session_id": session_id}
         at_source = keyed | {"source": MAIN_SOURCE}
-        threads = session_threads(turns, runs, markers)
+        # What each query on this page was bound with, defaulting to the session key. The
+        # digest's entry carries what the viewer composed around it, which is as much a part
+        # of what produced the page as a bound parameter is.
+        bound: dict[Page, dict[str, ParamValue]] = {
+            Page.COMPACTIONS: at_source,
+            Page.TURN_RECORDS: at_source,
+            Page.TIMELINE: keyed | {"after": after, "limit": turns},
+        }
+        threads = session_threads(
+            rows,
+            [row["turn_id"] for row in outline],
+            runs,
+            marks_on_page(markers, outline, rows),
+        )
         return templates.TemplateResponse(
             request,
             "session.html",
@@ -256,11 +314,11 @@ def build_app(db_path: Path) -> FastAPI:
                 "timeline": threads.entries,
                 "unattached": threads.unattached,
                 "lines": lines,
+                "page": page,
+                "sizes": {"turns": turns, "chips": chips},
                 "citations": {
-                    page.value: queries.citation(
-                        page, at_source if page in (Page.COMPACTIONS, Page.TURN_RECORDS) else keyed
-                    )
-                    for page in (
+                    named.value: queries.citation(named, bound.get(named, keyed))
+                    for named in (
                         Page.SESSION_HEADER,
                         Page.TIMELINE,
                         Page.RUNS,

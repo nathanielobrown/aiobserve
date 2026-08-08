@@ -32,7 +32,16 @@
   {% endif %}
 </section>
 
-{{ parts.timeline(timeline, header.session_id, main, 'data-chip', lines) }}
+{{ parts.timeline(timeline, header.session_id, main, 'data-chip', lines, sizes) }}
+
+{# Forward only, and the cursor is the last index shown — so a link a reader saved opens the
+   same turns tomorrow, whatever the session grew in between. #}
+{% if page.after is not none %}
+<p class="more" data-more-turns="{{ page.after }}">
+  <a href="/session/{{ header.session_id }}?after={{ page.after }}&turns={{ sizes.turns }}&chips={{ sizes.chips }}"
+     >+{{ page.more }} more turn(s)</a>
+</p>
+{% endif %}
 
 {% if unattached %}
 <section id="unattached">

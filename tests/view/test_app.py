@@ -22,6 +22,7 @@ from aiobserve.view.listing import (
     PAGE_SESSIONS,
     SORTS,
 )
+from aiobserve.view.threads import CHIP_BUDGET, MAX_PAGE_CHIPS, PAGE_CHIPS, PAGE_TURNS
 from tests.conftest import (
     ANCESTOR,
     DENSE_CALL,
@@ -328,6 +329,8 @@ def test_the_timeline_is_the_sessions_turns_in_order(
         ).fetchall()
     ]
     assert values(page, "data-turn") == turns
+    # A thread that fits one page mints no pager: it is the page it was before paging landed.
+    assert values(page, "data-more-turns") == []
 
 
 def test_calls_under_no_turn_get_their_own_row(
@@ -373,20 +376,30 @@ def test_a_fork_does_not_chip_onto_a_turn_of_its_own_timeline(client: TestClient
     assert FORK_RUN not in values(page, "data-chip")
 
 
+@pytest.mark.parametrize("turns", [PAGE_TURNS, 1])
 def test_every_session_page_accounts_for_all_of_its_runs(
-    client: TestClient, store: duckdb.DuckDBPyConnection
+    client: TestClient, store: duckdb.DuckDBPyConnection, turns: int
 ) -> None:
-    """Across the corpus, every agent run appears on its session's page exactly once."""
+    """Across the corpus, every agent run is reachable from its session's pages, once a page.
+
+    At one turn a page as well as at the default, because placement is checked over the
+    session's whole thread rather than over the page: a run whose spawning turn is on another
+    page has to stay placed rather than raise, and no page may show one twice.
+    """
     for session_id in sessions(store):
-        page = client.get(f"/session/{session_id}").text
-        shown = values(page, "data-chip") + values(page, "data-unattached")
-        runs = [
+        pages = walk(client, session_id, turns=turns, chips=CHIP_BUDGET // turns)
+        shown = [values(page, "data-chip") + values(page, "data-unattached") for page in pages]
+        runs = {
             row[0]
             for row in store.execute(
                 "SELECT id FROM live_agent_runs WHERE session_id = ?", [session_id]
             ).fetchall()
-        ]
-        assert sorted(shown) == sorted(runs), session_id
+        }
+        # The unattached list rides every page, so a run can be reached from more than one —
+        # but never twice from the same one.
+        assert {run for page in shown for run in page} == runs, session_id
+        for page in shown:
+            assert len(page) == len(set(page)), session_id
 
 
 def test_the_unattached_section_is_the_chip_joins_complement(
@@ -459,6 +472,200 @@ def test_a_compaction_appears_in_the_timeline_where_it_happened(
     )
     page = client.get(f"/session/{session_id}").text
     assert compaction_id in values(page, "data-compaction")
+
+
+def test_a_compaction_rides_the_page_of_the_turn_it_precedes(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """Paging a timeline moves no compaction and loses none: each lands on exactly one page.
+
+    A mark hangs off the turn it precedes, because what that turn could still see depends on
+    it — so a mark between two turns rides the page holding the later one, and a mark after
+    every turn rides the last page.
+    """
+    # Two turns of the session long enough to page, in index order and ascending in time...
+    first, second, started = one(
+        store,
+        'SELECT a."index", b."index", b.started_at FROM live_turns a JOIN live_turns b'
+        ' ON b.session_id = a.session_id AND b.source = a.source AND b."index" = a."index" + 1'
+        " WHERE a.session_id = ? AND a.source = ? AND a.started_at < b.started_at"
+        ' ORDER BY a."index" LIMIT 1',
+        [SPINE, MAIN],
+    )
+    assert first == 0, "the pair is no longer SPINE's first two turns, so an earlier turn may claim"
+    turn_id, *_ = one(
+        store,
+        'SELECT id FROM live_turns WHERE session_id = ? AND source = ? AND "index" = ?',
+        [SPINE, MAIN, second],
+    )
+    # ...take two recorded compactions off threads that are not this one, and move them here:
+    # one landing a hair before the second turn, one an hour after every turn.
+    (at, over, between), (from_at, from_over, trailing) = store.execute(
+        "SELECT session_id, source, id FROM live_compactions"
+        " WHERE NOT (session_id = ? AND source = ?) ORDER BY session_id, source, id LIMIT 2",
+        [SPINE, MAIN],
+    ).fetchall()
+    # A compaction id is unique within its thread and not across the store, so the row a plant
+    # moves is named by all three of its key columns.
+    move = (
+        "UPDATE compactions SET session_id = ?, source = ?, timestamp = "
+        " (SELECT {when} FROM live_turns WHERE session_id = ? AND source = ?{at}) {shift}"
+        " WHERE session_id = ? AND source = ? AND id = ?"
+    )
+    path = plant(
+        (
+            move.format(when="started_at", at=' AND "index" = ?', shift="- INTERVAL 1 MICROSECOND"),
+            [SPINE, MAIN, SPINE, MAIN, second, at, over, between],
+        ),
+        (
+            move.format(when="max(started_at)", at="", shift="+ INTERVAL 1 HOUR"),
+            [SPINE, MAIN, SPINE, MAIN, from_at, from_over, trailing],
+        ),
+    )
+    assert started is not None
+    with TestClient(build_app(path)) as planted:
+        pages = walk(planted, SPINE, turns=1, chips=1)
+        unpaged = values(planted.get(f"/session/{SPINE}").text, "data-compaction")
+    marks = [values(page, "data-compaction") for page in pages]
+    # The mark between two turns opens the page of the turn it precedes...
+    assert marks[[values(page, "data-turn")[0] for page in pages].index(turn_id)] == [between]
+    # ...the mark after every turn closes the last page...
+    assert marks[-1][-1] == trailing
+    # ...and between them the pages hold what the unpaged timeline holds, no mark twice.
+    assert [mark for page in marks for mark in page] == unpaged
+
+
+# The most pages a walk of one fixture session may take. The longest fixture thread holds a
+# handful of turns, so a walk that runs past this is a pager that never ends rather than a
+# session that is large.
+WALK_CEILING = 20
+
+
+def digest(store: duckdb.DuckDBPyConnection, session_id: str) -> list[str]:
+    """The turn ids of a session's whole digest, in the order the unpaged query gives them.
+
+    What the pages of the timeline have to add up to — read off the library query itself
+    rather than written down, so the expectation moves with the digest.
+    """
+    listing = queries.load("session_digest").strip().rstrip(";")
+    return [
+        row[0]
+        for row in store.execute(
+            f"SELECT turn_id FROM ({listing}) ORDER BY turn_index NULLS LAST",
+            {"session_id": session_id},
+        ).fetchall()
+    ]
+
+
+def walk(client: TestClient, session_id: str, turns: int, chips: int) -> list[str]:
+    """Every page of one session's timeline, followed the way a reader follows it.
+
+    The cursor comes off the page's own pager, so nothing here assembles a URL the viewer
+    does not mint.
+    """
+    after, served = queries.FIRST_PAGE, []
+    while len(served) < WALK_CEILING:
+        served.append(
+            client.get(f"/session/{session_id}?after={after}&turns={turns}&chips={chips}").text
+        )
+        cursor = values(served[-1], "data-more-turns")
+        if not cursor:
+            return served
+        after = int(cursor[0])
+    raise AssertionError(f"{session_id} is still paging after {WALK_CEILING} pages")
+
+
+def test_walking_the_timeline_covers_the_whole_digest_once(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The pages of a session's timeline hold every row of its digest, once, in digest order."""
+    # Bound to one turn a page against the longest main thread the fixtures record, so the
+    # page boundary is a real overflow of recorded turns rather than a staged one...
+    rows = digest(store, SPINE)
+    assert len(rows) > 2, "SPINE no longer holds enough turns for the boundary to bite"
+    pages = walk(client, SPINE, turns=1, chips=1)
+    # ...and what the pages carry between them is the digest, in the digest's own order.
+    assert [turn for page in pages for turn in values(page, "data-turn")] == rows
+
+
+def test_the_unattributed_row_lands_on_the_last_page_and_no_other(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The row for calls under no turn sits after the last turn, so it rides the last page.
+
+    The shape is real — a resume's calls answer turns it does not hold — but no recorded
+    fixture has both turns of its own and calls under none, so the test takes the turn away
+    from one main call of the session whose thread is long enough to page.
+    """
+    (call_id,) = one(
+        store,
+        "SELECT id FROM live_api_calls WHERE session_id = ? AND source = ?"
+        " AND turn_id IS NOT NULL ORDER BY id LIMIT 1",
+        [SPINE, MAIN],
+    )
+    path = plant(
+        (
+            "UPDATE api_calls SET turn_id = NULL WHERE session_id = ? AND source = ? AND id = ?",
+            [SPINE, MAIN, call_id],
+        )
+    )
+    with TestClient(build_app(path)) as planted:
+        pages = [values(page, "data-turn") for page in walk(planted, SPINE, turns=1, chips=1)]
+    # It has no turn index, so it cannot ride the window — it is fetched on the last page...
+    assert pages[-1][-1] == queries.UNATTRIBUTED
+    # ...and on no other, which is what a second fetch of it would quietly break.
+    assert [row for page in pages for row in page].count(queries.UNATTRIBUTED) == 1
+
+
+def test_a_cursor_past_the_last_turn_is_a_404(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A cursor beyond a session's turns answers nothing; page one of a short session answers.
+
+    A thread that was never there and a cursor past the end of one that is are the same
+    answer — the records browser's rule. Page one is not: 102 of the canonical store's 575
+    sessions hold no main turn at all, and their spend is still on the page.
+    """
+    assert client.get(f"/session/{SPINE}?after={len(digest(store, SPINE)) + 99}").status_code == 404
+    # RESUME answers turns that live in the session it resumed, so it has none of its own.
+    served = client.get(f"/session/{RESUME}")
+    assert served.status_code == 200
+    assert fields(served.text, "id", "session-header")["session_id"] == RESUME
+
+
+def test_a_turns_permalink_opens_the_page_that_turn_starts(client: TestClient) -> None:
+    """The link a turn row mints opens a page whose first row is that turn."""
+    page = client.get(f"/session/{SPINE}").text
+    turns, links = values(page, "data-turn"), values(page, "data-permalink")
+    # Every row but the continuation one mints a link: that row has no index to cursor from.
+    assert len(links) == len([turn for turn in turns if turn != queries.UNATTRIBUTED])
+    for turn_id, link in zip(turns, links, strict=False):
+        opened = client.get(link).text
+        assert values(opened, "data-turn")[0] == turn_id
+        # ...and the anchor the fragment names is on the page it opens.
+        assert f'id="turn-{turn_id}"' in opened
+
+
+@pytest.mark.parametrize(
+    "sizes",
+    [
+        "turns=0",
+        f"turns={PAGE_TURNS + 1}",
+        "chips=0",
+        f"chips={MAX_PAGE_CHIPS + 1}",
+        # Each size is inside its own ceiling; what they multiply into is not.
+        f"turns={PAGE_TURNS}&chips={PAGE_CHIPS + 1}",
+        f"turns=2&chips={MAX_PAGE_CHIPS}",
+    ],
+)
+def test_a_timeline_size_outside_its_bounds_is_refused(sizes: str, client: TestClient) -> None:
+    """Both sizes are checked against their own ceiling and against the budget they multiply."""
+    assert client.get(f"/session/{SPINE}?{sizes}").status_code == 400
+
+
+def test_the_whole_chip_budget_is_reachable_on_one_turn(client: TestClient) -> None:
+    """A reader who wants a turn's whole run forest can have it, one turn at a time."""
+    assert client.get(f"/session/{SPINE}?turns=1&chips={MAX_PAGE_CHIPS}").status_code == 200
 
 
 def test_a_session_the_store_does_not_hold_is_a_404(client: TestClient) -> None:

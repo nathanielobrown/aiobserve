@@ -18,6 +18,23 @@ from aiobserve.analyze import queries
 from aiobserve.model import MAIN_SOURCE
 from aiobserve.view.store import Row
 
+# The session timeline's two page sizes, which multiply: `turns` rows, each carrying up to
+# `chips` run rows. `session_digest` has no LIMIT of its own — a report quotes the whole digest
+# — so this is the composed one, and `tests/view/test_bounds.py` pins it with the arithmetic.
+PAGE_TURNS = 20
+PAGE_CHIPS = 8
+# The most chips one page renders however the two sizes are split. A reader can spend the whole
+# budget on a single turn (`?turns=1&chips=160`) but not on twenty, which is what stops the
+# largest recorded forest — 94 runs under one turn — from being a page nobody can open.
+CHIP_BUDGET = 160
+MAX_PAGE_CHIPS = CHIP_BUDGET
+# What one page renders of a thread's compactions. Not a size a URL carries: the most any
+# session's main thread holds is 18, so this is the arithmetic's backstop rather than a knob.
+PAGE_MARKS = 25
+# The digests' keyset column: where a turn's prompt sat in its thread, unique and ascending,
+# which is what lets `after` mean "the last index already shown" instead of an offset.
+TURN_CURSOR = "turn_index"
+
 
 class EntryKind(StrEnum):
     """What one row of a session timeline is."""
@@ -88,6 +105,49 @@ def timeline(
     return entries + [Entry(EntryKind.COMPACTION, row) for row in pending]
 
 
+def marks_on_page(
+    compactions: Sequence[Row], outline: Sequence[Row], page: Sequence[Row]
+) -> list[Row]:
+    """The compactions one page of a thread renders: those `timeline` hangs on its own turns.
+
+    A mark hangs off the turn it precedes — the first turn of the thread that had not started
+    when it ran — so which page it belongs to is a property of the whole thread, computed
+    here against `outline` and not against the page. Windowing by time instead would show a
+    mark twice or lose it wherever a thread's clocks run backwards, which a resumed
+    transcript's do.
+    """
+    if not outline:
+        # Nothing to hang a mark on, which is one page: every mark trails the thread.
+        return list(compactions)
+    if not page:
+        return []
+    at = {row["turn_index"]: position for position, row in enumerate(outline)}
+    start, stop = at[page[0]["turn_index"]], at[page[-1]["turn_index"]] + 1
+    # The last page is open at its end, so the marks that trail every turn land on it.
+    trailing = stop == len(outline)
+    return [
+        mark
+        for mark in compactions
+        if start <= (fell := _lands(mark, outline)) < stop or (trailing and fell == stop)
+    ]
+
+
+def _lands(mark: Row, outline: Sequence[Row]) -> int:
+    """Where in a thread one compaction falls: the position of the turn it precedes.
+
+    `len(outline)` when no turn of the thread started after it — the marks that trail the
+    timeline, which is what `timeline` leaves to the end.
+    """
+    return next(
+        (
+            position
+            for position, turn in enumerate(outline)
+            if turn["started_at"] is not None and turn["started_at"] >= mark["timestamp"]
+        ),
+        len(outline),
+    )
+
+
 class Threads(NamedTuple):
     """A session page's two run-bearing parts, which together hold every run it recorded."""
 
@@ -96,17 +156,28 @@ class Threads(NamedTuple):
 
 
 def session_threads(
-    turns: Sequence[Row], runs: Sequence[Row], compactions: Sequence[Row]
+    turns: Sequence[Row],
+    thread_turn_ids: Sequence[str],
+    runs: Sequence[Row],
+    compactions: Sequence[Row],
 ) -> Threads:
     """The main thread's timeline and the unattached list, checked to cover every run.
 
     Built together because the guarantee is about the pair: a run lands on a turn, under the
     run that spawned it, or in the unattached list. One this cannot place is a shape we have
     not seen, so it raises rather than vanishing from a page that still counts it.
+
+    `turns` is the page; `thread_turn_ids` is every turn the session holds. The check is over
+    the thread, because a run whose spawning turn is on another page is placed — just not
+    here — and computing it from the page would raise for every one of them.
     """
     entries = timeline(turns, runs, compactions, MAIN_SOURCE)
     loose = unattached(runs)
-    placed = {chip.run["run_id"] for entry in entries for chip in _walk(entry.chips)}
+    placed = {
+        chip.run["run_id"]
+        for turn_id in thread_turn_ids
+        for chip in _walk(chips(runs, MAIN_SOURCE, turn_id))
+    }
     placed |= {chip.run["run_id"] for chip in _walk(loose)}
     missing = {run["run_id"] for run in runs} - placed
     if missing:

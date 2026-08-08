@@ -138,6 +138,67 @@ class Paged(NamedTuple):
     after: int | None
 
 
+# What the composed window counts its pre-LIMIT matches into. A name of the composition and
+# not of any library query, which is what lets the query stay unlimited and citable.
+MATCHED_ROWS = "matched_rows"
+
+
+def _core(page: Library) -> str:
+    """One library query as a subquery: its own text, unchanged, ready to be wrapped."""
+    return queries.load(page).strip().rstrip(";")
+
+
+def window(
+    connection: duckdb.DuckDBPyConnection,
+    page: Library,
+    cursor: str,
+    after: int,
+    size: int,
+    **bindings: ParamValue,
+) -> Paged:
+    """One keyset page of a library query that limits nothing itself.
+
+    The session list's composition (`view/listing.py`) for the other case: a query whose
+    whole result a report quotes cannot carry a viewer's LIMIT, so the viewer wraps it. Rows
+    come back ordered by `cursor`, which is a column name this package supplies — never
+    request text — while `after` and `size` bind.
+    """
+    rows = fetch(
+        connection,
+        f"SELECT *, count(*) OVER () AS {MATCHED_ROWS} FROM ({_core(page)})"
+        f" WHERE {cursor} > $after ORDER BY {cursor} LIMIT $size",
+        {"after": after, "size": size, **bindings},
+    )
+    return paged(rows, MATCHED_ROWS, cursor)
+
+
+def thread_outline(
+    connection: duckdb.DuckDBPyConnection, page: Library, cursor: str, **bindings: ParamValue
+) -> list[Row]:
+    """A whole thread in outline — a digest's rows, id and cursor and clock only.
+
+    Two questions need the thread and not the page: which runs the session could place, and
+    which page each compaction falls on. Both are cheap here because the projection is three
+    scalars; neither can be answered from a window without changing what the answer means.
+    """
+    return fetch(
+        connection,
+        f"SELECT turn_id, {cursor}, started_at FROM ({_core(page)}) ORDER BY {cursor} NULLS LAST",
+        bindings,
+    )
+
+
+def cursorless_rows(
+    connection: duckdb.DuckDBPyConnection, page: Library, cursor: str, **bindings: ParamValue
+) -> list[Row]:
+    """The rows a paged query gives no cursor value, which no window can reach.
+
+    The digests' unattributed row is the case: it stands for the calls that answer no turn,
+    so it has no turn index and rides the last page instead.
+    """
+    return fetch(connection, f"SELECT * FROM ({_core(page)}) WHERE {cursor} IS NULL", bindings)
+
+
 def paged(rows: list[Row], matched: str, cursor: str) -> Paged:
     """A page of rows and its continuation, from a query's own pre-LIMIT match count.
 
