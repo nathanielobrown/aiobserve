@@ -99,6 +99,11 @@ ERROR_CHARS = 200
 # does not split one recurring error into a group per call site.
 SIGNATURE_CHARS = 120
 
+# How much of a command line `command_failures` groups on. The grouping already keeps only
+# the command word and the bare words after it, so this is the backstop: a command line is
+# private text, and no run of it may reach a table a report quotes.
+COMMAND_HEAD_CHARS = 60
+
 # The viewer's page sizes. Every one of them is a bound parameter with a default here and
 # nowhere else, because the payload bound the design states is arithmetic over these numbers:
 # a page of calls carries at most `PAGE_CALLS` × (2 KB of text + `PAGE_TOOLS` tool rows), and
@@ -137,6 +142,18 @@ QUERIES: dict[str, Query] = {
         # A pair seen in one or two sessions is noise on any corpus worth counting. The floor
         # is bound rather than fixed because a young corpus has nothing above it.
         params={"min_sessions": Param(type=ParamType.INTEGER, default=3)},
+    ),
+    "command_failures": Query(
+        scope=Scope.CORPUS,
+        params={
+            # Keep only command lines holding this text. NULL — every command — is the survey;
+            # binding it is how a command buried in a pipeline gets counted at all.
+            "mentions": Param(type=ParamType.TEXT, default=None),
+            # Calls a shape needs to be listed, matching the other floors in this file.
+            "min_occurrences": Param(type=ParamType.INTEGER, default=5),
+            "head_chars": Param(type=ParamType.INTEGER, default=COMMAND_HEAD_CHARS),
+            "signature_chars": Param(type=ParamType.INTEGER, default=SIGNATURE_CHARS),
+        },
     ),
     "cost_distribution": Query(scope=Scope.CORPUS, params={}),
     "error_records": Query(

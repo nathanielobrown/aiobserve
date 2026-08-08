@@ -115,6 +115,7 @@ The digest and error-listing queries through the CLI, against the fixture store;
 - **`agent_compactions` counts every compaction under the thread that had it, and no compaction goes uncounted.** *Evidence:* a copied store with a recorded compaction copied onto `5a88789c…`'s `auditor` run under a fresh id (invented placement: no fixture run compacted, and a fresh id keeps the `corpus_*` first-seen rule from preferring a twin); assert the run's definition carries it and that the `compactions` column sums to the store's own total for the project. Bolded: the query carries no floor precisely so the sum holds, and a floor is the obvious thing for a later edit to add.
 - The main thread rides in as its own row, counted over every session in the period rather than only the ones that compacted, and thread count stays separate from compaction count. *Evidence:* the fixture's five recorded main-thread compactions over four sessions, one of which compacted twice; assert the row's `threads`, `compacting_threads` and `compactions`, and that a definition that never compacted still gets a row.
 - A bound `$signature` counts a phrase anywhere in the error text, and `$min_occurrences` bounds the listing. *Evidence:* the planted signature beside the two recorded one-off errors; assert the floor of 2 leaves only the planted group, and that binding a phrase that appears only in the planted tails returns that group with its full count.
+- **`command_failures` groups failures by the command that ran, so a bare `Exit code 1` is attributable.** *Evidence:* a copied store rewriting the eight `Read` calls of `4208c1bd…` and `5a88789c…` as Bash calls carrying invented command lines — invented because fixture redaction replaces every tool input, and shaped after the canonical store, where 839 of the window's 1,487 failed Bash commands open with a `cd … &&` wrapper; assert that four wrapped `grep` failures and two bare `grep` successes reach one head, that `gh pr checks` keeps its subcommands, and that the successes come back under a NULL signature as the denominator. Bolded: the head is what makes the table publishable — no flag, path or quoted argument may reach it, and `$head_chars` is the backstop, asserted by binding it down to four characters.
 
 ## integration (windows and trends) — `tests/analyze/test_windows.py`
 
@@ -176,7 +177,7 @@ Two residuals, both worth a sentence rather than a redesign:
 | integration (library smoke) | 5 |
 | integration (selection) | 14 |
 | integration (digests) | 9 |
-| integration (corpus counts) | 5 |
+| integration (corpus counts) | 6 |
 | integration (windows and trends) | 4 |
 | inspection (process artifacts) | 4 |
-| **Total** | **46** |
+| **Total** | **47** |

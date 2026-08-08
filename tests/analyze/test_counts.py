@@ -1,14 +1,17 @@
 """The corpus counts that promote a recurring observation to a counted finding.
 
 `error_signatures` answers "how often did this error happen, and to which tool";
+`command_failures` answers "which command produced it" when the text does not say;
 `agent_compactions` answers "which kinds of thread run out of context". The leaves here are
-about what a group holds: which rows fall into one signature, which thread a compaction is
-counted under, and what the trailing window leaves out.
+about what a group holds: which rows fall into one signature or one command shape, which
+thread a compaction is counted under, and what the trailing window leaves out.
 
-Both need a population the recorded corpus lacks — every recorded error is a one-off redacted
-down to a word, and no recorded run compacted — so each plants one onto real rows and says so.
+All three need a population the recorded corpus lacks — every recorded error is a one-off
+redacted down to a word, every tool input is redacted whole, and no recorded run compacted —
+so each plants one onto real rows and says so.
 """
 
+import json
 from pathlib import Path
 
 import duckdb
@@ -42,6 +45,30 @@ PLANTED_IN_SHORT_WINDOW = 4
 # The two recorded errors, each in a session of its own: an `Agent` call and a server-side
 # `advisor` call, whose results redaction left as one word apiece.
 RECORDED_SIGNATURES = ["[redacted]", "unavailable"]
+
+# Command lines planted onto real calls so `command_failures` has command text to shape. They
+# are invented — every fixture tool input is `[redacted]` — but the shapes are the canonical
+# store's: over `--project mycelia --as-of 2026-08-07`, 839 of the window's 1,487 failed Bash
+# commands open with a `cd … &&` wrapper, so the head after the wrapper is what attribution
+# needs, and `gh pr checks` is one of the two benign patterns iteration 1 could not count.
+WRAPPED_GREP = 'cd /tmp/fixture-worktree && grep -rn "pattern" src/ | head -20'
+BARE_GREP = "grep -c pattern README.md"
+GH_CHECKS = "gh pr checks --watch"
+# What each of those lines has to reduce to: the command word plus the bare words after it,
+# with the wrapper, the flags, the quoted pattern and the paths gone.
+GREP_HEAD = "grep"
+GH_HEAD = "gh pr checks"
+# The two exit codes the plant fails with. Bare codes, which is the whole problem: `Exit code
+# 1` names nothing, so the command shape is the only thing left to attribute it to.
+EXIT_1 = "Exit code 1"
+EXIT_8 = "Exit code 8"
+# How the plant is spread: `SPINE`'s four `Read` calls, over its two threads, become wrapped
+# grep failures; `FORK_ORIGIN`'s four become two `gh pr checks` failures and two grep calls
+# that succeeded — the denominator an error count is read against.
+WRAPPED_GREP_CALLS = 4
+WRAPPED_GREP_THREADS = 2
+GH_CHECKS_CALLS = 2
+BARE_GREP_CALLS = 2
 
 # The row `agent_compactions` gives a session's own thread, so a definition's rate has the
 # thing it has to beat beside it. The query writes the sentinel; nothing in Python reads it.
@@ -114,6 +141,44 @@ def test_error_signatures_narrows_to_a_bound_phrase_and_a_floor(
     bound = _signatures(planted_query, {"min_occurrences": 1, "signature": "tail for "})
     assert [row["signature"] for row in bound] == [SIGNATURE]
     assert int(bound[0]["errors"]) == PLANTED_ERRORS
+
+
+def test_command_failures_groups_by_the_shape_of_the_command_line(
+    planted_commands_db: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Failures of one command are counted together however the command line was wrapped."""
+
+    def planted_query(name: str, *arguments: str) -> Output:
+        return query(planted_commands_db, capsys, name, *arguments)
+
+    rows = _command_failures(planted_query, {"min_occurrences": 1})
+    shapes = {(row["command_head"], row["signature"]): row for row in rows}
+    # If four calls failed with a bare `Exit code 1` behind a `cd … &&` wrapper...
+    wrapped = shapes[GREP_HEAD, EXIT_1]
+    # ...then the wrapper, the flags, the quoted pattern and the paths are all gone, and what
+    # is left is the command word — which is the attribution the error text cannot give...
+    assert int(wrapped["calls"]) == WRAPPED_GREP_CALLS
+    assert int(wrapped["threads"]) == WRAPPED_GREP_THREADS
+    # ...with the head marked as standing for a chain, so nobody reads it as the whole command.
+    assert int(wrapped["chained"]) == WRAPPED_GREP_CALLS
+    # ...and two calls of the same command that succeeded come back as their own row, under a
+    # NULL signature: the denominator that says whether the failures are the norm for it...
+    assert int(shapes[GREP_HEAD, ""]["calls"]) == BARE_GREP_CALLS
+    assert int(shapes[GREP_HEAD, ""]["chained"]) == 0
+    # ...while the head's error total rides on both rows, so ranking shapes by failures takes
+    # no arithmetic.
+    assert {int(shapes[GREP_HEAD, key]["head_errors"]) for key in (EXIT_1, "")} == {
+        WRAPPED_GREP_CALLS
+    }
+    # ...and a command whose subcommands name what it did keeps them, because `gh` alone
+    # would put `gh pr checks` and `gh pr create` in one group.
+    assert int(shapes[GH_HEAD, EXIT_8]["calls"]) == GH_CHECKS_CALLS
+    # Nothing else reaches the output: no head carries a flag, a path, or a quoted argument...
+    assert not [row for row in rows if set(row["command_head"]) & set("-/\"'")]
+    # ...and `$head_chars` cuts whatever is left, which is the backstop under that rule — a
+    # command line is private text, and a shape nobody anticipated must not carry a run of it.
+    capped = _command_failures(planted_query, {"min_occurrences": 1, "head_chars": 4})
+    assert max(len(row["command_head"]) for row in capped) == 4
 
 
 def test_agent_compactions_counts_a_compaction_under_the_thread_that_had_it(
@@ -199,6 +264,70 @@ def planted_failures_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactor
     finally:
         connection.close()
     return path
+
+
+@pytest.fixture(scope="session")
+def planted_commands_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The corpus with eight real calls rewritten as Bash calls carrying a command line.
+
+    Invented text, and it has to be: fixture redaction replaces every tool input, so the
+    recorded corpus holds eight `[redacted]` command lines and no failed one at all. What is
+    real here is the rows — their sessions, threads and periods — and the shapes the lines
+    were drawn from, which are the canonical store's (see the constants above).
+    """
+    path = tmp_path_factory.mktemp("commands") / "traces.duckdb"
+    path.write_bytes(corpus_db.read_bytes())
+    connection = duckdb.connect(str(path))
+    try:
+        # `SPINE`'s reads become the wrapped failures, spread over the two threads it has...
+        connection.execute(
+            """UPDATE tool_calls SET name = 'Bash', input = ?, is_error = true, result = ?
+               WHERE name = ? AND session_id = ?""",
+            [json.dumps({"command": WRAPPED_GREP}), EXIT_1, PLANTED_TOOL, SPINE],
+        )
+        # ...and `FORK_ORIGIN`'s split into the failing `gh` calls and the succeeding ones.
+        # Its fork replays every call under a second source, so only the live rows are rewritten.
+        ids = [
+            row[0]
+            for row in connection.execute(
+                """SELECT id FROM tool_calls
+                   WHERE name = ? AND session_id = ? AND NOT replayed ORDER BY id""",
+                [PLANTED_TOOL, FORK_ORIGIN],
+            ).fetchall()
+        ]
+        assert len(ids) == GH_CHECKS_CALLS + BARE_GREP_CALLS
+        for call_id, (command, error) in zip(
+            ids,
+            [(GH_CHECKS, EXIT_8)] * GH_CHECKS_CALLS + [(BARE_GREP, None)] * BARE_GREP_CALLS,
+            strict=True,
+        ):
+            connection.execute(
+                """UPDATE tool_calls SET name = 'Bash', input = ?, is_error = ?, result = ?
+                   WHERE id = ? AND session_id = ? AND NOT replayed""",
+                [
+                    json.dumps({"command": command}),
+                    error is not None,
+                    error,
+                    call_id,
+                    FORK_ORIGIN,
+                ],
+            )
+    finally:
+        connection.close()
+    return path
+
+
+def _command_failures(
+    run: QueryRunner, bindings: dict[str, int | str], *, period: str = "corpus"
+) -> list[dict[str, str]]:
+    """`command_failures` over the fixture project, as one column mapping per row of a period."""
+    arguments = [
+        part for name, value in bindings.items() for part in ("--param", f"{name}={value}")
+    ]
+    output = run(
+        "command_failures", "--project", MYCELIA, "--as-of", AS_OF_WHOLE, "--csv", *arguments
+    )
+    return [row for row in mappings(output) if row["period"] == period]
 
 
 def _signatures(
