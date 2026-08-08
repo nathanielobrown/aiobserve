@@ -128,6 +128,18 @@ def corpus_transcripts() -> tuple[Path, ...]:
     return fixture_transcripts(*directories) + invented
 
 
+def exportable_transcripts() -> tuple[Path, ...]:
+    """Every fixture transcript the OTLP source filter can place, discovered rather than listed.
+
+    `fork_byref/`'s session records no `project_dir` and holds rows, so listing a store that
+    holds it is a crash by design (`plans/otlp-export/design.md`). A store meant to be listed
+    or exported leaves that one transcript out and keeps everything else.
+    """
+    return tuple(
+        transcript for transcript in corpus_transcripts() if transcript.stem != NO_PROJECT_SESSION
+    )
+
+
 @pytest.fixture(scope="session")
 def corpus_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """The fixture corpus as one trace store: 13 mycelia sessions and three outside them.

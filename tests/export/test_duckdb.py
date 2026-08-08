@@ -12,8 +12,8 @@ import duckdb
 import pytest
 
 from aiobserve.export.duckdb import (
-    _TABLES,
     SCHEMA_VERSION,
+    TABLES,  # every table a session owns — read off the exporter so a new one cannot slip past
     DuckDbExporter,
     SchemaVersionError,
 )
@@ -29,10 +29,6 @@ COMPACTED = "1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9"
 # A session and the resume that copied its history forward — see `tests/fixtures/resume_pair/`.
 ANCESTOR = "2352492b-1437-4427-ad51-70f35c75f663"
 RESUMED = "0a76f771-5f5b-447e-852a-664fc972ea7c"
-
-# Every table a session owns, read from the exporter's own list so a table added there and
-# forgotten here cannot slip past the count-everything assertions.
-TABLES = list(_TABLES)
 
 
 @pytest.fixture

@@ -15,7 +15,7 @@ import pytest
 from aiobserve.analyze import queries
 from aiobserve.analyze.queries import QUERIES, Scope
 from aiobserve.analyze.runner import CORPUS_RELATIONS
-from aiobserve.export.duckdb import _TABLES
+from aiobserve.export.duckdb import TABLES
 from tests.analyze.conftest import QueryRunner
 from tests.conftest import (
     ANCESTOR,
@@ -158,7 +158,7 @@ def test_a_cross_session_query_counts_through_the_corpus_views(name: str) -> Non
     # table counts a fork's replays as well. A corpus query reads neither: it joins the
     # `corpus_*` views to one of the relations the runner builds from `--project`.
     assert not {word for word in read if word.startswith("live_")}
-    assert not (read & set(_TABLES))
+    assert not (read & set(TABLES))
     assert read & set(CORPUS_RELATIONS)
 
 

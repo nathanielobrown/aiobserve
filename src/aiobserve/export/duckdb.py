@@ -5,7 +5,7 @@ weeks, so a session stays here after its files are gone.
 
 Writing is per-session replace inside one transaction — delete every row this session owns,
 then insert the new ones. That makes re-extraction idempotent whatever changed, and it is
-why a table added in a later slice must be added to `_TABLES` too: a table left out of the
+why a table added in a later slice must be added to `TABLES` too: a table left out of the
 delete would keep stale rows forever.
 
 Count through the rollup views rather than the base tables. The tables hold what each file
@@ -274,8 +274,9 @@ _VIEWS = "".join(
 )
 
 # Table name to the dataclass whose fields are its columns, in order. Every table a
-# session owns belongs here — this list drives both the insert and the delete.
-_TABLES: dict[str, type] = {
+# session owns belongs here — this list drives both the insert and the delete, and
+# `extract/store.py` reads the same rows back off it, so a new column reaches both sides.
+TABLES: dict[str, type] = {
     "sessions": Session,
     "turns": Turn,
     "api_calls": ApiCall,
@@ -287,7 +288,7 @@ _TABLES: dict[str, type] = {
     "raw_records": RawRecord,
 }
 # `sessions` keys on the session id itself; every other table carries it as a column.
-_SESSION_KEY = {"sessions": "id"}
+SESSION_KEY = {"sessions": "id"}
 
 
 class SchemaVersionError(Exception):
@@ -307,6 +308,28 @@ def held_schema_version(connection: duckdb.DuckDBPyConnection) -> int | None:
         " LEFT JOIN meta ON true WHERE t.table_name = 'meta'"
     ).fetchone()
     return None if row is None else row[0]
+
+
+def open_trace_store(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnection:
+    """Open a store an extract already wrote, for a reader or a writer that comes after one.
+
+    Creates nothing: a path with no store behind it is a typo rather than a new store, and
+    `DuckDbExporter` stays the only thing that writes the DDL. `read_only` has no default
+    because DuckDB admits one writer at a time — a reader that takes the write lock by
+    accident locks the viewer out.
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"{path} holds no trace store. Run `aiobserve extract` first.")
+    connection = duckdb.connect(str(path), read_only=read_only)
+    connection.execute("SET TimeZone='UTC'")
+    held = held_schema_version(connection)
+    if held != SCHEMA_VERSION:
+        connection.close()
+        raise SchemaVersionError(
+            f"{path} holds schema version {held or 'nothing'}, this build reads "
+            f"{SCHEMA_VERSION}. {SCHEMA_MISMATCH_REMEDY}"
+        )
+    return connection
 
 
 class DuckDbExporter:
@@ -382,17 +405,17 @@ class DuckDbExporter:
     def export(self, trace: SessionTrace, fingerprint: str) -> None:
         """Replace everything held for this session, or roll back leaving it untouched."""
         session_id = trace.session.id
-        # Read off `_TABLES` rather than listed again: a table named there and forgotten
+        # Read off `TABLES` rather than listed again: a table named there and forgotten
         # here would be deleted on every export and never inserted. Each table's name is
         # its `SessionTrace` list, except `sessions`, which is the one row the rest hang off.
         rows = {
             table: [trace.session] if table == "sessions" else getattr(trace, table)
-            for table in _TABLES
+            for table in TABLES
         }
         self.connection.begin()
         try:
-            for table in _TABLES:
-                key = _SESSION_KEY.get(table, "session_id")
+            for table in TABLES:
+                key = SESSION_KEY.get(table, "session_id")
                 self.connection.execute(f"DELETE FROM {table} WHERE {key} = ?", [session_id])
             self.connection.execute("DELETE FROM extract_state WHERE session_id = ?", [session_id])
             for table, entities in rows.items():
@@ -416,7 +439,7 @@ class DuckDbExporter:
     def _insert(self, table: str, entities: list[Any]) -> None:
         if not entities:
             return
-        columns = [field.name for field in fields(_TABLES[table])]
+        columns = [field.name for field in fields(TABLES[table])]
         quoted = ", ".join(f'"{column}"' for column in columns)
         placeholders = ", ".join("?" for _ in columns)
         self.connection.executemany(
