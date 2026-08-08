@@ -64,6 +64,7 @@ from aiobserve.view.threads import (
     CHIP_BUDGET,
     MAX_PAGE_CHIPS,
     PAGE_CHIPS,
+    PAGE_CURSORLESS,
     PAGE_MARKS,
     PAGE_TURNS,
     TURN_CURSOR,
@@ -281,7 +282,13 @@ def build_app(db_path: Path) -> FastAPI:
             # The row for calls under no turn has no index to window on, so it rides the last
             # page — where the unpaged digest puts it.
             tail = (
-                cursorless_rows(connection, Page.TIMELINE, TURN_CURSOR, session_id=session_id)
+                cursorless_rows(
+                    connection,
+                    Page.TIMELINE,
+                    TURN_CURSOR,
+                    PAGE_CURSORLESS,
+                    session_id=session_id,
+                )
                 if page.after is None
                 else []
             )

@@ -30,6 +30,12 @@ CHIP_BUDGET = 200
 # The most a single list may hold, reachable at `?turns=1&chips=100`: enough for the largest
 # forest the corpus records (94 runs under one turn), so no run is out of a reader's reach.
 MAX_PAGE_CHIPS = 100
+# The rows a page renders that no cursor reaches, on top of the `turns` it was asked for.
+# `session_digest` gives one — the calls that answer no turn are a single group — and it
+# rides the last page, outside the window and outside the size a reader typed. Bound here
+# because a page renders it: the ceiling budgets a turn row for it, and a digest answering
+# with more raises rather than serving a row nothing counted.
+PAGE_CURSORLESS = 1
 # What one page renders of a thread's compactions. Not a size a URL carries: the most any
 # session's main thread holds is 18, so this is the arithmetic's backstop rather than a knob.
 PAGE_MARKS = 25

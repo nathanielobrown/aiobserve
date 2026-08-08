@@ -189,14 +189,28 @@ def thread_outline(
 
 
 def cursorless_rows(
-    connection: duckdb.DuckDBPyConnection, page: Library, cursor: str, **bindings: ParamValue
+    connection: duckdb.DuckDBPyConnection,
+    page: Library,
+    cursor: str,
+    limit: int,
+    **bindings: ParamValue,
 ) -> list[Row]:
     """The rows a paged query gives no cursor value, which no window can reach.
 
     The digests' unattributed row is the case: it stands for the calls that answer no turn,
-    so it has no turn index and rides the last page instead.
+    so it has no turn index and rides the last page instead. `limit` is what the page that
+    renders them budgeted; a query answering with more raises, because these rows arrive
+    outside the size the reader asked for and a page that serves them anyway is a page whose
+    ceiling was computed against something else.
     """
-    return fetch(connection, f"SELECT * FROM ({_core(page)}) WHERE {cursor} IS NULL", bindings)
+    rows = fetch(
+        connection,
+        f"SELECT * FROM ({_core(page)}) WHERE {cursor} IS NULL LIMIT $cursorless",
+        {"cursorless": limit + 1, **bindings},
+    )
+    if len(rows) > limit:
+        raise ValueError(f"{page} gave more than {limit} row(s) with no {cursor}")
+    return rows
 
 
 def paged(rows: list[Row], matched: str, cursor: str) -> Paged:

@@ -25,13 +25,15 @@ from aiobserve.view.app import (
     build_app,
 )
 from aiobserve.view.listing import MAX_PAGE_SESSIONS
-from aiobserve.view.store import Fragment, Page, Value
+from aiobserve.view.store import Fragment, Page, Value, cursorless_rows
 from aiobserve.view.threads import (
     CHIP_BUDGET,
     MAX_PAGE_CHIPS,
     PAGE_CHIPS,
+    PAGE_CURSORLESS,
     PAGE_MARKS,
     PAGE_TURNS,
+    TURN_CURSOR,
 )
 from tests.conftest import (
     ANCESTOR,
@@ -43,6 +45,7 @@ from tests.conftest import (
     FORK_ORIGIN,
     FORK_ORIGIN_RUN,
     OFFLOAD_FILE,
+    RESUME,
     SPINE,
     SPINE_LEAF,
     SPINE_RUN,
@@ -146,14 +149,19 @@ def worst_session_bytes() -> int:
 
     A search over the pairs the route allows, not the product of the two maxima: the sizes
     trade against each other, so 20 turns of 100 runs each is not a page anyone can ask for.
-    The `+ 1` is the unattached list, which is a list of `chips` like a turn's and rides every
-    page. The marks are not a size a URL carries, so they cost the same on any of them.
+    The turn rows are `turns` plus the rows no cursor reaches, which ride the last page
+    outside the size a reader asked for; the run-row `+ 1` is the unattached list, a list of
+    `chips` like a turn's that rides every page. The rows the window cannot reach add no run
+    rows of their own: the digest gives them `queries.UNATTRIBUTED` for a turn id, which no
+    run's `spawn_turn_id` carries. The marks are not a size a URL carries, so they cost the
+    same on any page.
     """
     return (
         MEASURED_SESSION_CHROME
         + PAGE_MARKS * worst_mark_bytes()
         + max(
-            turns * worst_turn_bytes() + (turns + 1) * chips * worst_chip_bytes()
+            (turns + PAGE_CURSORLESS) * worst_turn_bytes()
+            + (turns + 1) * chips * worst_chip_bytes()
             for turns in range(1, PAGE_TURNS + 1)
             for chips in range(1, MAX_PAGE_CHIPS + 1)
             if (turns + 1) * chips <= CHIP_BUDGET
@@ -567,6 +575,25 @@ def test_a_session_timeline_of_nothing_but_escapes_costs_what_the_ceiling_budget
     assert pair - alone <= worst_chip_bytes()
     # ...and a compaction row its markup and its trigger.
     assert mark_row <= worst_mark_bytes()
+
+
+def test_the_digest_rows_no_window_reaches_are_capped_at_what_a_page_budgets(
+    store: duckdb.DuckDBPyConnection,
+) -> None:
+    """The rows that ride the last page outside its window are bounded, not counted afterwards.
+
+    A digest row with no turn index cannot be windowed, so it arrives on the last page
+    whatever `turns` a reader asked for — which is why the arithmetic above budgets
+    `PAGE_CURSORLESS` turn rows on top of the size the route admits. `RESUME` answers turns
+    that live in the session it resumed, so every one of its api calls is unattributed and
+    its digest carries exactly this row. The cap is bound down to zero to reach a boundary no
+    recorded digest crosses: more of these rows than the ceiling budgets raises rather than
+    riding a page nothing counted them on.
+    """
+    rows = cursorless_rows(store, Page.TIMELINE, TURN_CURSOR, PAGE_CURSORLESS, session_id=RESUME)
+    assert [row["turn_id"] for row in rows] == [queries.UNATTRIBUTED]
+    with pytest.raises(ValueError, match="more than 0"):
+        cursorless_rows(store, Page.TIMELINE, TURN_CURSOR, 0, session_id=RESUME)
 
 
 def test_a_deeply_nested_value_is_served_at_the_size_it_was_stored(plant: Planter) -> None:

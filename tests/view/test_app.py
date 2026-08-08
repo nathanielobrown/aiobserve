@@ -670,11 +670,15 @@ def test_the_unattributed_row_lands_on_the_last_page_and_no_other(
         )
     )
     with TestClient(build_app(path)) as planted:
-        pages = [values(page, "data-turn") for page in walk(planted, SPINE, turns=1, chips=1)]
+        served = walk(planted, SPINE, turns=1, chips=1)
+    pages = [values(page, "data-turn") for page in served]
     # It has no turn index, so it cannot ride the window — it is fetched on the last page...
     assert pages[-1][-1] == queries.UNATTRIBUTED
     # ...and on no other, which is what a second fetch of it would quietly break.
     assert [row for page in pages for row in page].count(queries.UNATTRIBUTED) == 1
+    # It costs a turn row and no run rows, which is what the ceiling budgets for it: the
+    # digest gives it a sentinel turn id, and no run's spawning call names that turn.
+    assert inside(served[-1], "data-turn", queries.UNATTRIBUTED, "data-chip") == []
 
 
 def test_a_cursor_past_the_last_turn_is_a_404(
