@@ -1,12 +1,13 @@
 ---
-template_version: 2
+template_version: 3
 iteration: YYYY_MM_DD
 # A run is keyed by both: an agent id is unique inside its session, not across the corpus.
 session_id:
 agent_id:
 agent_type:
-# `run-errors` or `run-cost` from `select_runs`, or the session stratum when the session's
-# reader flagged this run rather than the run draw picking it.
+# Where this run came from: `run-errors` or `run-cost` from `select_runs`, the session
+# stratum when the session's reader flagged it, or `synthesis-draw` when neither drew it and
+# a person or a synthesis pass named it — say in the Narrative what it was chosen for.
 stratum:
 extract_fingerprint:
 cost_usd:
