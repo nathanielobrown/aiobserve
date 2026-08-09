@@ -2,13 +2,15 @@
 
 `error_signatures` answers "how often did this error happen, and to which tool";
 `command_failures` answers "which command produced it" when the text does not say;
-`agent_compactions` answers "which kinds of thread run out of context". The leaves here are
+`agent_compactions` answers "which kinds of thread run out of context"; `context_reloads`
+answers "what did a thread pay to rebuild a context it already had". The leaves here are
 about what a group holds: which rows fall into one signature or one command shape, which
 thread a compaction is counted under, and what the trailing window leaves out.
 
-All three need a population the recorded corpus lacks — every recorded error is a one-off
-redacted down to a word, every tool input is redacted whole, and no recorded run compacted —
-so each plants one onto real rows and says so.
+The first three need a population the recorded corpus lacks — every recorded error is a
+one-off redacted down to a word, every tool input is redacted whole, and no recorded run
+compacted — so each plants one onto real rows and says so. `context_reloads` needs no plant:
+two recorded fixture threads rebuilt their whole context mid-run.
 """
 
 import json
@@ -26,7 +28,7 @@ from tests.analyze.conftest import (
     query,
     scalar,
 )
-from tests.conftest import FORK_ORIGIN, MYCELIA, SPINE
+from tests.conftest import FORK_ORIGIN, MAIN, MYCELIA, SPINE
 
 # The first line every planted failure shares, and the tail that differs between them. A
 # recurring error is one signature over many bodies — "File has not been read yet" ahead of a
@@ -75,6 +77,20 @@ BARE_GREP_CALLS = 2
 MAIN_THREAD = "(main thread)"
 # The agent definition the planted compaction lands under.
 PLANTED_DEFINITION = "auditor"
+
+# The two threads of the recorded corpus that rebuilt their context mid-run, and what each
+# rebuilt (measured 2026-08-09 by building the store below). `ARCHITECT_RUN` is the sharper
+# case: both of its calls read nothing back, so its opening load is a rebuild in every
+# respect except being the one the thread started with.
+ARCHITECT_RUN = "aarchitect-5144001ac50718bc"
+ARCHITECT_SESSION = "10d0349d-0705-4e23-aa64-5b1b97698b2e"
+ARCHITECT_DEFINITION = "architect"
+ARCHITECT_OPENING_TOKENS = 23_444
+ARCHITECT_RELOAD_TOKENS = 89_383
+# `SPINE`'s main thread went 23,773 seconds — 6h36m — between two calls and rebuilt 94,194
+# tokens on the far side, so its gap is what a rebound `$idle_seconds` can be walked past.
+SPINE_RELOAD_TOKENS = 94_194
+SPINE_IDLE_SECONDS = 23_773
 
 
 def test_error_signatures_counts_one_signature_over_many_bodies(
@@ -245,6 +261,70 @@ def test_agent_compactions_separates_how_many_threads_from_how_often(
     assert quiet
 
 
+def test_context_reloads_leaves_out_the_context_a_thread_loaded_to_start(
+    run_query: QueryRunner, corpus_db: Path
+) -> None:
+    """A thread's opening load is not a reload, however cold it was."""
+    # If a run's first call read nothing back and wrote its whole prompt to the cache — the
+    # shape of a reload, and above the floor one has to clear...
+    opening = scalar(
+        corpus_db,
+        """SELECT cache_read_tokens, cache_creation_tokens FROM api_calls
+           WHERE session_id = ? AND source = ? ORDER BY "index" LIMIT 1""",
+        ARCHITECT_SESSION,
+        ARCHITECT_RUN,
+        columns=2,
+    )
+    assert opening == (0, ARCHITECT_OPENING_TOKENS)
+    # ...then it is the later rebuild alone that the run's row counts, because a thread that
+    # loads its context once has not started over...
+    row = _threads(_reloads(run_query, {}))[ARCHITECT_SESSION, ARCHITECT_RUN]
+    assert (int(row["reloads"]), int(row["rebuilt_tokens"])) == (1, ARCHITECT_RELOAD_TOKENS)
+    # ...filed under the definition that ran it and the session that spawned it, which is the
+    # row a report cites when it names a run...
+    assert row["agent_type"] == ARCHITECT_DEFINITION
+    # ...and what the whole run cost rides beside it, so the rebuild is readable as a share of
+    # the spend it taxed rather than as a number with no denominator.
+    assert 0 < float(row["reload_cost_usd"]) < float(row["thread_cost_usd"])
+
+
+def test_context_reloads_says_which_reloads_an_expired_cache_explains(
+    run_query: QueryRunner,
+) -> None:
+    """The idle gap classifies a reload; it never decides whether one is counted."""
+    # If a thread went hours between two calls and rebuilt everything on the far side...
+    row = _threads(_reloads(run_query, {}))[SPINE, MAIN]
+    assert (int(row["reloads"]), int(row["rebuilt_tokens"])) == (1, SPINE_RELOAD_TOKENS)
+    # ...then at the five minutes a cache entry lives, the gap accounts for the miss...
+    assert int(row["idle_reloads"]) == 1
+    # ...while asking for a gap longer than the thread's leaves the reload counted and no
+    # longer accounted for — which is the reading the column exists to keep honest, since a
+    # miss with the thread still working is a miss the transcript cannot explain.
+    patient = _threads(_reloads(run_query, {"idle_seconds": SPINE_IDLE_SECONDS + 1}))[SPINE, MAIN]
+    assert (int(patient["reloads"]), int(patient["idle_reloads"])) == (1, 0)
+
+
+@pytest.mark.parametrize("period", ["corpus", "trailing_window"])
+def test_context_reloads_totals_the_threads_it_lists(run_query: QueryRunner, period: str) -> None:
+    """The corpus row of a period is the sum of that period's thread rows."""
+    # If a period holds several affected threads across several sessions...
+    rows = _reloads(run_query, {}, period=period)
+    threads = _threads(rows)
+    assert len(threads) > 1
+    # ...then the row above them totals the threads rather than the events, so no thread's
+    # cost is counted once per reload it happened to hold...
+    (total,) = [row for row in rows if row["grain"] == "corpus"]
+    assert int(total["threads"]) == len(threads)
+    assert float(total["thread_cost_usd"]) == sum(
+        float(row["thread_cost_usd"]) for row in threads.values()
+    )
+    # ...and the counts a finding would quote add up the same way, which is what a session
+    # sitting in both periods must not disturb.
+    for column in ("reloads", "idle_reloads", "rebuilt_tokens"):
+        assert int(total[column]) == sum(int(row[column]) for row in threads.values())
+    assert int(total["sessions"]) == len({session for session, _ in threads})
+
+
 @pytest.fixture(scope="session")
 def planted_failures_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     """The corpus with one tool's calls in two sessions marked failed, sharing a first line.
@@ -343,6 +423,24 @@ def _signatures(
     ]
     output = run("error_signatures", "--project", MYCELIA, "--as-of", as_of, "--csv", *arguments)
     return [row for row in mappings(output) if row["period"] == period]
+
+
+def _reloads(
+    run: QueryRunner, bindings: dict[str, int | str], *, period: str = "corpus"
+) -> list[dict[str, str]]:
+    """`context_reloads` over the fixture project, as one column mapping per row of a period."""
+    arguments = [
+        part for name, value in bindings.items() for part in ("--param", f"{name}={value}")
+    ]
+    output = run(
+        "context_reloads", "--project", MYCELIA, "--as-of", AS_OF_WHOLE, "--csv", *arguments
+    )
+    return [row for row in mappings(output) if row["period"] == period]
+
+
+def _threads(rows: list[dict[str, str]]) -> dict[tuple[str, str], dict[str, str]]:
+    """The thread-grain rows of one `context_reloads` result, by session and source."""
+    return {(row["session_id"], row["source"]): row for row in rows if row["grain"] == "thread"}
 
 
 def _compactions(run: QueryRunner, *, period: str = "corpus") -> dict[str, dict[str, str]]:

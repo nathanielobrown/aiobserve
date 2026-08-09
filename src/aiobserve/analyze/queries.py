@@ -172,6 +172,19 @@ QUERIES: dict[str, Query] = {
         # is bound rather than fixed because a young corpus has nothing above it.
         params={"min_sessions": Param(type=ParamType.INTEGER, default=3)},
     ),
+    "context_reloads": Query(
+        scope=Scope.CORPUS,
+        params={
+            # What a call has to write before it counts as starting over, and how much of
+            # what it sent that has to be. The share is the detector; the floor only keeps
+            # trivia out. Both are tuned in the query's header against the mycelia corpus.
+            "min_rebuilt_tokens": Param(type=ParamType.INTEGER, default=20_000),
+            "min_rebuilt_pct": Param(type=ParamType.INTEGER, default=90),
+            # The gap that makes a miss explainable: Claude Code's default cache entry lives
+            # 5 minutes, so a thread idle that long had no cache left to hit.
+            "idle_seconds": Param(type=ParamType.INTEGER, default=300),
+        },
+    ),
     "command_failures": Query(
         scope=Scope.CORPUS,
         params={
