@@ -325,6 +325,29 @@ def test_context_reloads_totals_the_threads_it_lists(run_query: QueryRunner, per
     assert int(total["sessions"]) == len({session for session, _ in threads})
 
 
+def test_context_reloads_reads_a_call_once_however_many_periods_hold_it(
+    run_query: QueryRunner,
+) -> None:
+    """A session that sits in both periods is measured once, not once per period."""
+    # If every session of the corpus is also inside the trailing window, so both periods hold
+    # exactly the same threads...
+    threads = _threads(_reloads(run_query, {}, period="corpus"))
+    window = _threads(_reloads(run_query, {}, period="trailing_window"))
+    assert threads.keys() == window.keys()
+    # ...then the two periods report identical numbers for every one of them. The gap and the
+    # thread's first call are read from the calls of one thread, and `session_period` carries
+    # an in-window session twice — so a query that fanned the periods out before measuring
+    # would sit each call next to its own copy and report gaps of zero. DuckDB is free to
+    # compute the windows before the join, which hides that mistake on some runs, so read this
+    # leaf as a probabilistic guard on the join order and the query's own note as the rule.
+    for key, thread in threads.items():
+        assert {name: value for name, value in window[key].items() if name != "period"} == {
+            name: value for name, value in thread.items() if name != "period"
+        }
+    # ...and at least one of those threads had a gap to measure, so the agreement is evidence.
+    assert any(int(row["idle_reloads"]) > 0 for row in threads.values())
+
+
 @pytest.fixture(scope="session")
 def planted_failures_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     """The corpus with one tool's calls in two sessions marked failed, sharing a first line.
