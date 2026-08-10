@@ -121,6 +121,8 @@ class SystemSubtype(StrEnum):
     API_ERROR = "api_error"
     AGENTS_KILLED = "agents_killed"
     STOP_HOOK_SUMMARY = "stop_hook_summary"
+    # The harness ran the session on another model because the one asked for was unavailable.
+    MODEL_CONSENT_FALLBACK = "model_consent_fallback"
 
 
 class ContentBlock(StrEnum):

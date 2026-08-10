@@ -1,7 +1,7 @@
 # `registry_zoo/` — one record of every type the corpus contains
 
 A synthetic *file* built from real *records*: one redacted record of every parsed type, every
-archive-only type, and all nine `system` subtypes, each lifted from a real session under
+archive-only type, and all ten `system` subtypes, each lifted from a real session under
 `~/.claude/projects/-Users-nob-repos-mycelia/` and rewritten to one fixture session id. Nothing about
 a record's own fields is invented.
 
@@ -23,6 +23,7 @@ that show them in their native files.
 | `system/scheduled_task_fire` | `17e0f606-7988-46b9-b3aa-ecc0cf2325da.jsonl` | 2.1.212 |
 | `system/api_error` | `…--claude-worktrees-bridge-cse-01U6WqpfSie9fWQr1W96vT3G/52f75c33-a08d-4776-8971-7202f1e5b27f.jsonl` | 2.1.206 |
 | `system/stop_hook_summary` | `4f16ec79-1afc-45f9-8095-370c7cd66cfd.jsonl` | 2.1.205 |
+| `system/model_consent_fallback` | `cb76d8e4-cb08-4693-bbec-d4bfa97b1f5c.jsonl` line 5598 | 2.1.221 |
 | `fork-context-ref` | `07a769d7…/subagents/agent-afa3946951a08a798.jsonl` | 2.1.202 |
 | `started`, `result` | `426e7c0f…/subagents/workflows/wf_266c06f9-6ae/journal.jsonl` | no `version` field |
 

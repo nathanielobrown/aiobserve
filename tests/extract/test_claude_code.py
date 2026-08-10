@@ -5,6 +5,7 @@ names the source session and the Claude Code version that wrote it. The handful 
 invented fixtures live under `fixtures/invented/` and are called out at every use.
 """
 
+import json
 from datetime import UTC, datetime
 
 import pytest
@@ -15,6 +16,9 @@ from tests.conftest import SourceFactory
 
 SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"
 ZOO = "registry-zoo-0000-0000-0000-000000000000"
+# The zoo's `system/model_consent_fallback` record. Archive-only, so proving where it does
+# *not* land takes its uuid.
+CONSENT_FALLBACK = "8a87c47a-66fd-47c7-a643-28ebe3914883"
 DUPS = "8ee00a94-b01a-4394-b447-b065f74b11af"
 # The session whose replies carry server-side tool calls and a model fallback.
 SERVER_TOOLS = "088d63aa-71d3-4108-965e-5147e3eaddbd"
@@ -408,10 +412,42 @@ def test_every_record_type_the_corpus_holds_parses(fixture_source: SourceFactory
     trace = ClaudeCodeExtractor().extract(fixture_source("registry_zoo", ZOO))
 
     # ...then extraction returns, and every line lands in the archive with its type intact.
-    assert len(trace.raw_records) == 30
+    assert len(trace.raw_records) == 31
     types = {record.type for record in trace.raw_records}
     assert "worktree-state" in types and "fork-context-ref" in types and "summary" in types
-    assert len([r for r in trace.raw_records if r.type == "system"]) == 9
+    assert len([r for r in trace.raw_records if r.type == "system"]) == 10
+
+
+def test_the_notice_that_the_harness_switched_models_is_archived_only(
+    fixture_source: SourceFactory,
+):
+    """When Claude Code falls back to another model for the session, it says so and nothing more.
+
+    The notice is a UI message about the harness, not about the work: it opens no turn,
+    answers no call, and has no children. The archive keeps it; no parsed table does.
+    """
+    trace = ClaudeCodeExtractor().extract(fixture_source("registry_zoo", ZOO))
+
+    # If a session records the harness swapping the model it was asked for...
+    archived = [record for record in trace.raw_records if record.uuid == CONSENT_FALLBACK]
+    assert [record.type for record in archived] == ["system"]
+    # ...then the whole record is archived, carrying what was swapped and whether it stuck...
+    recorded = json.loads(archived[0].raw)
+    assert recorded["subtype"] == "model_consent_fallback"
+    assert (recorded["originalModel"], recorded["fallbackModel"]) == (
+        "claude-fable-5",
+        "claude-opus-5[1m]",
+    )
+    assert recorded["persistedAsDefault"] is False
+    # ...and no parsed row is keyed by it.
+    parsed = (
+        trace.turns,
+        trace.api_calls,
+        trace.tool_calls,
+        trace.agent_runs,
+        trace.compactions,
+    )
+    assert CONSENT_FALLBACK not in {row.id for rows in parsed for row in rows}
 
 
 def test_a_duplicate_uuid_resolves_to_its_last_occurrence(fixture_source: SourceFactory):
