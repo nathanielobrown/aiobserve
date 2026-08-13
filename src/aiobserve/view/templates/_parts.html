@@ -13,10 +13,21 @@
 {% endif %}
 {% endmacro %}
 
+{# What an enrichment pass said an item was and how it went. The vocabularies are closed
+   (`enrich/taxonomy.py`); `stale` says the row was written under a prompt or taxonomy version
+   this build has moved past, which is a reason to re-run a pass and not a reason to distrust
+   the words. #}
+{% macro tags(described) %}
+<span class="tag" data-field="category">{{ described.category }}</span>
+<span class="tag" data-field="outcome">{{ described.outcome }}</span>
+{%- if described.stale %}<span class="tag stale" data-field="stale">stale</span>{% endif %}
+{% endmacro %}
+
 {# One run and the runs under it. `attribute` marks the top level — a chip hangs off a turn,
    an unattached run hangs off nothing, a child hangs off the run whose page this is — and
-   everything nested is a chip either way. #}
-{% macro run_list(chips, attribute, session_id) %}
+   everything nested is a chip either way. `runs` is what the pass said about each of them,
+   keyed by run id and empty over a store no pass has touched. #}
+{% macro run_list(chips, attribute, session_id, runs) %}
 <ul class="runs">
   {% for chip in chips %}
   <li {{ attribute }}="{{ chip.run.run_id }}">
@@ -25,7 +36,13 @@
     <span data-field="description">{{ chip.run.description }}</span>
     <span data-field="model" class="model">{{ chip.run.model }}</span>
     {% if chip.run.is_fork %}<span class="fork">fork</span>{% endif %}
-    {% if chip.children %}{{ run_list(chip.children, 'data-chip', session_id) }}{% endif %}
+    {# Tags only: what the model said the run did is on the run's own page, which the link
+       above already goes to. #}
+    {% set described = runs.get(chip.run.run_id) %}
+    {% if described %}
+    <span class="enrichment" data-enrichment="{{ described.item_id }}">{{ tags(described) }}</span>
+    {% endif %}
+    {% if chip.children %}{{ run_list(chip.children, 'data-chip', session_id, runs) }}{% endif %}
   </li>
   {% endfor %}
 </ul>
@@ -33,8 +50,9 @@
 
 {# One thread's turns in order, its compactions between them, and the runs each turn spawned.
    `source` is `main` on a session page and the run's id on a run page; `attribute` is what
-   the page calls the runs a turn spawned. #}
-{% macro timeline(entries, session_id, source, attribute, lines, marks, sizes) %}
+   the page calls the runs a turn spawned; `enrichment` is what a pass said about this
+   thread's turns and the session's runs, empty when no pass has described any of them. #}
+{% macro timeline(entries, session_id, source, attribute, lines, marks, sizes, enrichment) %}
 <section id="timeline">
   {# The way down to what this thread's transcript actually held, from the page that
      summarises it. Both pages get it here, because both render one thread. #}
@@ -74,7 +92,17 @@
          href="{{ permalink }}#turn-{{ entry.row.turn_id }}">permalink</a>
       {% endif %}
     </p>
-    {% if entry.chips.shown %}{{ run_list(entry.chips.shown, attribute, session_id) }}{% endif %}
+    {# What the model said this turn did, beside what it cost. A turn has no page of its own,
+       so the description sits here rather than a click away. #}
+    {% set described = enrichment.turns.get(entry.row.turn_id) %}
+    {% if described %}
+    <p class="enrichment" data-enrichment="{{ described.item_id }}">
+      <span data-field="description">{{ described.description }}</span>
+      {{ tags(described) }}
+    </p>
+    {% endif %}
+    {% if entry.chips.shown %}
+    {{ run_list(entry.chips.shown, attribute, session_id, enrichment.runs) }}{% endif %}
     {# The whole forest of one turn is a page of its own: one turn, the widest list allowed. #}
     {% if sizes and entry.row.turn_index is not none %}
     {{ cut_line(entry.chips.cut, "/session/" ~ session_id ~ "?after=" ~ (entry.row.turn_index - 1)
@@ -105,6 +133,18 @@
      arithmetic's backstop rather than a knob, and it says when it bit. #}
   {% if marks.cut %}
   <p class="more" data-more-marks="{{ marks.cut }}">{{ marks.cut }} more compaction(s)</p>
+  {% endif %}
+</section>
+{% endmacro %}
+
+{# What a pass said about the item whose page this is, beside the header counting what it did.
+   Model-written from a private transcript, so it is text like any other the viewer renders. #}
+{% macro summary(described) %}
+<section class="enrichment" data-enrichment="{{ described.item_id }}">
+  <p data-field="description">{{ described.description }}</p>
+  <p class="tags">{{ tags(described) }}</p>
+  {% if described.friction %}
+  <p class="friction" data-field="friction">{{ described.friction }}</p>
   {% endif %}
 </section>
 {% endmacro %}

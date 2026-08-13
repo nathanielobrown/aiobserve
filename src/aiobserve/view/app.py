@@ -31,6 +31,7 @@ from aiobserve.export.duckdb import SCHEMA_VERSION
 from aiobserve.model import MAIN_SOURCE
 from aiobserve.view import format as fmt
 from aiobserve.view import render
+from aiobserve.view.enrichment import described
 from aiobserve.view.listing import (
     CONTROLS,
     DEFAULT_DIRECTION,
@@ -320,6 +321,7 @@ def build_app(db_path: Path) -> FastAPI:
                 chip_chars=queries.CHIP_CHARS,
             )
             lines = turn_lines(connection, session_id, MAIN_SOURCE)
+            enrichment = described(connection, session_id, MAIN_SOURCE)
         # A cursor past the last turn and a thread that was never there are the same answer.
         # Page one is not: a session with no turns of its own still has its header and spend.
         if after != queries.FIRST_PAGE and not page.rows:
@@ -333,6 +335,7 @@ def build_app(db_path: Path) -> FastAPI:
         bound: dict[Page, dict[str, ParamValue]] = {
             Page.COMPACTIONS: at_source,
             Page.TURN_RECORDS: at_source,
+            Page.ENRICHMENT: at_source,
             Page.TIMELINE: keyed | {"after": after, "limit": turns},
         }
         threads = session_threads(
@@ -353,6 +356,7 @@ def build_app(db_path: Path) -> FastAPI:
                 "unattached": threads.unattached,
                 "marks": threads.marks,
                 "lines": lines,
+                "enrichment": enrichment,
                 "page": page,
                 # What the page's own links carry: the sizes it was served at, and the widest
                 # one list may be — the size a "+N more" link asks for.
@@ -365,6 +369,9 @@ def build_app(db_path: Path) -> FastAPI:
                         Page.RUNS,
                         Page.COMPACTIONS,
                         Page.TURN_RECORDS,
+                        # Only when the store held the tables to ask: a page cites what it
+                        # ran, and over an un-enriched store this query is not one of them.
+                        *((Page.ENRICHMENT,) if enrichment.queried else ()),
                     )
                 },
             },
@@ -390,6 +397,7 @@ def build_app(db_path: Path) -> FastAPI:
                 chip_chars=queries.CHIP_CHARS,
             )
             lines = turn_lines(connection, session_id, run_id)
+            enrichment = described(connection, session_id, run_id)
         marks = cut_to(markers, PAGE_MARKS)
         keyed: dict[str, ParamValue] = {"session_id": session_id}
         at_source = keyed | {"source": run_id}
@@ -407,6 +415,7 @@ def build_app(db_path: Path) -> FastAPI:
                 "marks": marks,
                 "children": capped(children(run_id, runs), PAGE_CHIPS),
                 "lines": lines,
+                "enrichment": enrichment,
                 "citations": {
                     Page.RUN_HEADER.value: queries.citation(
                         Page.RUN_HEADER, keyed | {"run_id": run_id}
@@ -415,6 +424,13 @@ def build_app(db_path: Path) -> FastAPI:
                     Page.RUNS.value: queries.citation(Page.RUNS, keyed),
                     Page.COMPACTIONS.value: queries.citation(Page.COMPACTIONS, at_source),
                     Page.TURN_RECORDS.value: queries.citation(Page.TURN_RECORDS, at_source),
+                    # Absent over a store no enrichment pass has written to, where the query
+                    # never ran (`view/enrichment.py`).
+                    **(
+                        {Page.ENRICHMENT.value: queries.citation(Page.ENRICHMENT, at_source)}
+                        if enrichment.queried
+                        else {}
+                    ),
                 },
             },
         )

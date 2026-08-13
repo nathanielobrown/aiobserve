@@ -44,6 +44,9 @@ class Page(StrEnum):
     RUN_TIMELINE = "run_digest"
     RUNS = "view_runs"
     COMPACTIONS = "view_compactions"
+    # What an enrichment pass said about the session, its turns and its runs. Absent from a
+    # store no pass has written to, which is why `view/enrichment.py` asks before it runs.
+    ENRICHMENT = "view_enrichment"
     # One page of a thread's raw transcript, previewed a record per row, and the line each of
     # the thread's turns was read from — what turns a timeline row into a link into it.
     RECORDS = "view_records"

@@ -46,9 +46,25 @@ def store(corpus_db: Path) -> Iterator[duckdb.DuckDBPyConnection]:
     connection.close()
 
 
-@pytest.fixture
-def plant(corpus_db: Path, tmp_path: Path) -> Planter:
-    """A copy of the corpus with statements run against it, for a planted sentinel.
+@pytest.fixture(scope="session")
+def enriched_client(enriched_db: Path) -> Iterator[TestClient]:
+    """The viewer over the corpus an enrichment pass has written to, described but for one
+    item of each level — the partly-described store every page has to render."""
+    with TestClient(build_app(enriched_db)) as served:
+        yield served
+
+
+@pytest.fixture(scope="session")
+def enriched_store(enriched_db: Path) -> Iterator[duckdb.DuckDBPyConnection]:
+    """A read-only connection to the described corpus, for what its pages are checked against."""
+    connection = duckdb.connect(str(enriched_db), read_only=True)
+    connection.execute("SET TimeZone='UTC'")
+    yield connection
+    connection.close()
+
+
+def planter(base: Path, tmp_path: Path) -> Planter:
+    """Copies of one store with statements run against them, for a planted sentinel.
 
     Every plant lands on a real row: the recorded session stays what it was and one column
     carries an invented value. It is the only way to test markup or an oversized field
@@ -63,7 +79,7 @@ def plant(corpus_db: Path, tmp_path: Path) -> Planter:
         nonlocal planted
         planted += 1
         path = tmp_path / f"planted-{planted}.duckdb"
-        path.write_bytes(corpus_db.read_bytes())
+        path.write_bytes(base.read_bytes())
         connection = duckdb.connect(str(path))
         try:
             for sql, parameters in statements:
@@ -75,8 +91,20 @@ def plant(corpus_db: Path, tmp_path: Path) -> Planter:
     return build
 
 
+@pytest.fixture
+def plant(corpus_db: Path, tmp_path: Path) -> Planter:
+    """Planted copies of the fixture corpus, which holds no enrichment table at all."""
+    return planter(corpus_db, tmp_path)
+
+
+@pytest.fixture
+def enriched_plant(enriched_db: Path, tmp_path: Path) -> Planter:
+    """Planted copies of the described corpus, for what a page shows beside an item."""
+    return planter(enriched_db, tmp_path)
+
+
 def one(
-    store: duckdb.DuckDBPyConnection, sql: str, parameters: Sequence[str] = ()
+    store: duckdb.DuckDBPyConnection, sql: str, parameters: Sequence[str | int] = ()
 ) -> tuple[Any, ...]:
     """The single row an expectation reads from the store; no row means the test is wrong."""
     row = store.execute(sql, list(parameters)).fetchone()

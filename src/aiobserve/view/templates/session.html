@@ -34,9 +34,11 @@
     {% if header.pr_urls_cut %}<li data-field="prs_cut">and {{ header.pr_urls_cut }} more</li>{% endif %}
   </ul>
   {% endif %}
+  {% if enrichment.session %}{{ parts.summary(enrichment.session) }}{% endif %}
 </section>
 
-{{ parts.timeline(timeline, header.session_id, main, 'data-chip', lines, marks, sizes) }}
+{{ parts.timeline(timeline, header.session_id, main, 'data-chip', lines, marks, sizes,
+                  enrichment) }}
 
 {# Forward only, and the cursor is the last index shown — so a link a reader saved opens the
    same turns tomorrow, whatever the session grew in between. #}
@@ -53,7 +55,7 @@
      and the runs on the page agree — and the heading counts the whole list, not the page's
      share of it, which is what keeps that agreement when the cap bites. #}
   <h2><span data-field="runs">{{ unattached.total }}</span> run(s) under no turn</h2>
-  {{ parts.run_list(unattached.shown, 'data-unattached', header.session_id) }}
+  {{ parts.run_list(unattached.shown, 'data-unattached', header.session_id, enrichment.runs) }}
   {{ parts.cut_line(unattached.cut, '/session/' ~ header.session_id ~ '?turns=1&chips='
                     ~ sizes.widest) }}
 </section>

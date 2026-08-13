@@ -148,6 +148,13 @@ LIST_ITEMS = 4
 # offered whole or left out: a suggestion cut to its head filters to nothing.
 LIST_PROJECTS = 10
 
+# How much of a model-written description or friction line a page shows, and how much of a
+# taxonomy value one tag carries. The taxonomy is closed and its longest member is 9
+# characters, but a page whose size is arithmetic needs the number bound rather than noticed —
+# and a description is only as short as the schema the model answered under asked for.
+ENRICHMENT_CHARS = 200
+TAG_CHARS = 20
+
 # How much of a raw record one browser row shows. Long enough to tell a `user` record from an
 # `assistant` one and to recognise a line already read; short enough that a hundred of them
 # is a page rather than a transcript.
@@ -333,6 +340,18 @@ QUERIES: dict[str, Query] = {
             "api_call_id": API_CALL_ID,
             "after": AFTER,
             "page_tools": Param(type=ParamType.INTEGER, default=PAGE_TOOLS),
+        },
+    ),
+    "view_enrichment": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            # Which thread's turns to describe. Required like every other source: the turn
+            # keys are `(session, source, turn)`, so a default would silently answer for the
+            # main thread on a run's page.
+            "source": SOURCE,
+            "description_chars": Param(type=ParamType.INTEGER, default=ENRICHMENT_CHARS),
+            "tag_chars": Param(type=ParamType.INTEGER, default=TAG_CHARS),
         },
     ),
     "view_compactions": Query(

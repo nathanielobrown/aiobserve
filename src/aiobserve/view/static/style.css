@@ -57,6 +57,17 @@ ul.runs { margin: 0.4rem 0 0; padding-left: 1.2rem; }
 ul.runs li { list-style: none; }
 .fork { color: var(--dim); font-size: 0.8rem; }
 
+/* What an enrichment pass said, beside what the store recorded. Dimmed throughout: these are
+   a model's words about the transcript, and the transcript is what a reader came for. */
+.enrichment { color: var(--dim); margin: 0.3rem 0; }
+section.enrichment { border-left: 2px solid var(--line); padding-left: 0.6rem; }
+.friction { font-style: italic; }
+.tag { border: 1px solid var(--line); border-radius: 0.7rem; padding: 0 0.5rem;
+  font-size: 0.8rem; margin-right: 0.3rem; white-space: nowrap; }
+/* Quiet rather than alarming: a stale row is a reason to re-run a pass, not a reason to
+   distrust what it says. */
+.tag.stale { border-style: dashed; }
+
 /* The records browser. One line per record, so a page of them scans as a transcript does. */
 ol.records { margin: 0.5rem 0; padding: 0; list-style: none; }
 ol.records li { border-top: 1px solid var(--line); padding: 0.3rem 0; }

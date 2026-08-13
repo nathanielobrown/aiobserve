@@ -89,6 +89,9 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     # the level holding the most planted rows.
     "enrichment_digest": {"session_id": SPINE},
     "select_enrichments": {"level": "agent_run"},
+    # The viewer's own read of the three tables, at the thread a session page renders: the
+    # plant describes `spine/` at every level, so all three arms of the union answer.
+    "view_enrichment": {"session_id": SPINE, "source": MAIN},
 }
 
 # The relations only a store an enrichment pass has written to holds: the pipeline creates

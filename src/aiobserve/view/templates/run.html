@@ -40,16 +40,19 @@
     {{ parts.fact('unpriced_api_calls', header.unpriced_api_calls) }}
     {{ parts.fact('output_tokens', header.output_tokens | count) }}
   </dl>
+  {% set described = enrichment.runs.get(header.run_id) %}
+  {% if described %}{{ parts.summary(described) }}{% endif %}
 </section>
 
-{{ parts.timeline(timeline, header.session_id, header.run_id, 'data-child', lines, marks, none) }}
+{{ parts.timeline(timeline, header.session_id, header.run_id, 'data-child', lines, marks, none,
+                  enrichment) }}
 
 {% if children.total %}
 <section id="children">
   {# The runs this one spawned that no turn of its own timeline claims — a fork, or a run
      whose spawning call the store does not hold. Listed here rather than dropped. #}
   <h2><span data-field="runs">{{ children.total }}</span> run(s) under no turn of this one</h2>
-  {{ parts.run_list(children.shown, 'data-child', header.session_id) }}
+  {{ parts.run_list(children.shown, 'data-child', header.session_id, enrichment.runs) }}
   {{ parts.cut_line(children.cut, none) }}
 </section>
 {% endif %}

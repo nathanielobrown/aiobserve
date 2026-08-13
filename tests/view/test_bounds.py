@@ -58,8 +58,11 @@ from tests.view.conftest import Planter, Statement, fields, one, values
 FAT = ("raw", "text", "thinking", "result", "input", "content")
 
 # What a page may weigh. The list is the page a corpus grows, so `MAX_PAGE_SESSIONS` rows of
-# what one row can hold have to fit under it.
-PAGE_BYTES = 350_000
+# what one row can hold have to fit under it. Raised from 350,000 when the pages began showing
+# what an enrichment pass said: a described run row costs half again what a bare one does, and
+# `CHIP_BUDGET` multiplies that 200 times. The alternative was cutting `CHIP_BUDGET`, which
+# would put the widest forest the corpus records behind a "+N more" nobody can open.
+PAGE_BYTES = 500_000
 # What the markup around one row of the list costs, with the content the row carries taken off.
 # Measured against `data/traces.duckdb` on 2026-08-07 as the marginal cost of one more row —
 # 308,233 B for 300 sessions less 4,708 B for one, over the 299 rows between, which is 1,015 B
@@ -100,11 +103,18 @@ MEASURED_RECORD_BYTES = 826
 MEASURED_TURN_ROW_MARKUP = 1_700
 MEASURED_CHIP_ROW_MARKUP = 400
 MEASURED_MARK_ROW_MARKUP = 300
+# What the markup around one item's enrichment costs on top of those, with the model's own
+# words taken off — the block beside a turn, and the tags beside a run. Measured the same way,
+# with every enrichment field planted full of `&` and every row stamped stale so the third tag
+# renders too: 314 B for a turn and 244 B for a run.
+MEASURED_TURN_ENRICHMENT_MARKUP = 400
+MEASURED_CHIP_ENRICHMENT_MARKUP = 300
 # What a session page weighs apart from the rows above: the header, the page's own markup, and
 # the lines a cut list mints. Measured through the app by the leaf at the bottom of this file,
-# with `&` planted at every cap the header carries — 11,136 B, which is a page's worst case
-# rather than a corpus observation, because everything in a header is now cut in SQL.
-MEASURED_SESSION_CHROME = 12_000
+# with `&` planted at every cap the header carries and the session described at every one of
+# its own — 13,779 B, which is a page's worst case rather than a corpus observation, because
+# everything in a header is now cut in SQL.
+MEASURED_SESSION_CHROME = 15_000
 # The parameter every truncated column of a run row is cut to. Counted per query rather than
 # listed, so a fourth column added to a chip shows up in the arithmetic instead of quietly
 # spending the ceiling `CHIP_BUDGET` times over.
@@ -149,16 +159,43 @@ def worst_session_row_bytes() -> int:
     return MEASURED_SESSION_ROW_MARKUP + (strings + names) * ESCAPED_CHAR_BYTES
 
 
+def worst_tag_bytes() -> int:
+    """What the taxonomy tags beside a described item can weigh, all `&`.
+
+    Two of them — category and outcome — and the third says the row is stale, which is words
+    of ours rather than of the store's and rides in the markup measured above.
+    """
+    return 2 * queries.TAG_CHARS * ESCAPED_CHAR_BYTES
+
+
 def worst_turn_bytes() -> int:
     """What one turn row of a session timeline can weigh: its markup, the "+N more" line it may
-    carry, and a prompt head of nothing but `&`."""
-    return MEASURED_TURN_ROW_MARKUP + PROMPT_CHARS * ESCAPED_CHAR_BYTES
+    carry, a prompt head of nothing but `&`, and what a pass said about the turn.
+
+    A turn has no page of its own, so its description rides the row that lists it — the one
+    place a described item costs a page more than a link would.
+    """
+    return (
+        MEASURED_TURN_ROW_MARKUP
+        + PROMPT_CHARS * ESCAPED_CHAR_BYTES
+        + MEASURED_TURN_ENRICHMENT_MARKUP
+        + queries.ENRICHMENT_CHARS * ESCAPED_CHAR_BYTES
+        + worst_tag_bytes()
+    )
 
 
 def worst_chip_bytes() -> int:
-    """What one run row can weigh: its markup, and every head it shows all `&`."""
-    return MEASURED_CHIP_ROW_MARKUP + (
-        heads(queries.load(Page.RUNS), CHIP_HEAD) * queries.CHIP_CHARS * ESCAPED_CHAR_BYTES
+    """What one run row can weigh: its markup, every head it shows all `&`, and its tags.
+
+    Tags and no description: what a pass said a run did is on the run's own page, which the
+    row already links to. The row is the one the caps multiply two hundred times, so the
+    description it doesn't carry is most of what the ceiling above buys back.
+    """
+    return (
+        MEASURED_CHIP_ROW_MARKUP
+        + heads(queries.load(Page.RUNS), CHIP_HEAD) * queries.CHIP_CHARS * ESCAPED_CHAR_BYTES
+        + MEASURED_CHIP_ENRICHMENT_MARKUP
+        + worst_tag_bytes()
     )
 
 
@@ -200,6 +237,41 @@ def worst_record_bytes() -> int:
         MEASURED_RECORD_BYTES - queries.RECORD_PREVIEW + queries.RECORD_PREVIEW * ESCAPED_CHAR_BYTES
     )
 
+
+# Describing every item of a store at every cap: a row per turn, per run and per session, each
+# field full of `&` and each stamped under version 0 so the stale tag renders too. `enriched_db`
+# describes most of its items and no plant can reach the rest, so the rows go in wholesale —
+# a marginal cost measured between a described row and an undescribed one is not one.
+def _described_at_every_cap() -> tuple[Statement, ...]:
+    payload: list[str | int] = [
+        "&" * queries.ENRICHMENT_CHARS,
+        "&" * queries.TAG_CHARS,
+        "&" * queries.TAG_CHARS,
+        "&" * queries.ENRICHMENT_CHARS,
+    ]
+    stamp = "'planted', 0, 0, 'planted', '1970-01-01T00:00:00Z'"
+    return (
+        ("DELETE FROM turn_enrichments", []),
+        (
+            "INSERT INTO turn_enrichments"
+            f" SELECT t.session_id, t.source, t.id, ?, ?, ?, ?, {stamp} FROM live_turns t",
+            payload,
+        ),
+        ("DELETE FROM agent_run_enrichments", []),
+        (
+            "INSERT INTO agent_run_enrichments"
+            f" SELECT r.session_id, r.id, ?, ?, ?, ?, {stamp} FROM live_agent_runs r",
+            payload,
+        ),
+        ("DELETE FROM session_enrichments", []),
+        (
+            f"INSERT INTO session_enrichments SELECT s.id, ?, ?, ?, ?, {stamp} FROM sessions s",
+            payload,
+        ),
+    )
+
+
+DESCRIBED_AT_EVERY_CAP = _described_at_every_cap()
 
 # What a query may wrap a fat column in and still be bounded: a fixed-width prefix of it, or
 # a count of what it holds. Anything else puts the whole value on the page.
@@ -281,6 +353,11 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     assert QUERIES["view_session_header"].params["head_chars"].default == 100
     assert QUERIES["view_session_header"].params["item_chars"].default == 60
     assert QUERIES["view_session_header"].params["head_items"].default == 5
+    # And how much of what a pass wrote an item shows. The taxonomy is closed and its longest
+    # member is nine characters (`enrich/taxonomy.py`), so the tag cut bounds a hand-edited row
+    # rather than anything a pass writes.
+    assert QUERIES["view_enrichment"].params["description_chars"].default == 200
+    assert QUERIES["view_enrichment"].params["tag_chars"].default == 20
     # The same for the list, whose row the viewer cuts in its own composition — the filters
     # read the whole values — and whose project suggestions the query itself caps.
     assert (queries.LIST_CHARS, queries.LIST_ITEM_CHARS, queries.LIST_ITEMS) == (100, 20, 4)
@@ -557,7 +634,7 @@ def test_a_turn_fragment_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
 
 
 def test_a_session_timeline_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
-    plant: Planter, store: duckdb.DuckDBPyConnection
+    enriched_plant: Planter, store: duckdb.DuckDBPyConnection
 ) -> None:
     """A turn row, a run row and a compaction row weigh no more than the arithmetic gives them.
 
@@ -577,11 +654,12 @@ def test_a_session_timeline_of_nothing_but_escapes_costs_what_the_ceiling_budget
             [heads_full, heads_full, heads_full, SPINE],
         ),
         ("UPDATE compactions SET trigger = ? WHERE session_id = ?", [heads_full, ANCESTOR]),
+        *DESCRIBED_AT_EVERY_CAP,
     )
-    whole = plant(*content)
+    whole = enriched_plant(*content)
     # The same corpus less the run nested under `SPINE`'s one chipped turn, and less the
     # compaction `ANCESTOR` recorded — each of which a page above renders and this one does not.
-    without = plant(
+    without = enriched_plant(
         *content,
         ("DELETE FROM agent_runs WHERE session_id = ? AND id = ?", [SPINE, SPINE_LEAF]),
         ("DELETE FROM compactions WHERE session_id = ?", [ANCESTOR]),
@@ -636,7 +714,7 @@ def chrome(html: str) -> str:
 
 
 def test_a_session_page_of_nothing_but_escapes_carries_the_chrome_the_ceiling_budgets(
-    plant: Planter, store: duckdb.DuckDBPyConnection
+    enriched_plant: Planter, store: duckdb.DuckDBPyConnection
 ) -> None:
     """What a session page holds outside its counted rows fits the allowance the ceiling gives it.
 
@@ -645,14 +723,15 @@ def test_a_session_page_of_nothing_but_escapes_carries_the_chrome_the_ceiling_bu
     PRs, which alone was 6 KB of a 6 KB allowance. So the query cuts all of them, and this
     measures what the cuts leave: `&` planted at every cap, on every session, because the widest
     chrome belongs to whichever page carries an unattached list, a "+N more" turn link and a cut
-    compaction list as well as a header.
+    compaction list as well as a header. The session's own enrichment sits in the header and is
+    planted with it — two more capped strings, and the only place `friction` reaches a page.
     """
     head = "&" * queries.HEADER_CHARS
     # Distinct values that agree on their first `$item_chars` characters, which is what makes
     # them the worst case: the list cuts to `$item_chars` of `&` a member, five bytes apiece.
     item = "&" * queries.HEADER_ITEM_CHARS
     over = queries.HEADER_ITEMS + 2
-    path = plant(
+    path = enriched_plant(
         (
             "UPDATE sessions SET title = ?, agent_name = ?, project_dir = ?, git_branch = ?,"
             " version = ?, entrypoint = ?",
@@ -679,6 +758,7 @@ def test_a_session_page_of_nothing_but_escapes_carries_the_chrome_the_ceiling_bu
             " '1970-01-01T00:00:00Z', ?, 1, 1, 1 FROM sessions s, range(1, ?) t(i))",
             ["&" * queries.CHIP_CHARS, PAGE_MARKS + 2],
         ),
+        *DESCRIBED_AT_EVERY_CAP,
     )
     sessions = [row[0] for row in store.execute("SELECT id FROM sessions").fetchall()]
     with TestClient(build_app(path)) as planted:
@@ -699,6 +779,11 @@ def test_a_session_page_of_nothing_but_escapes_carries_the_chrome_the_ceiling_bu
     assert facts["skills"].endswith("more") and facts["prs_cut"].startswith("and")
     assert values(widest, "data-pr") == [item.replace("&", "&amp;")] * queries.HEADER_ITEMS
     assert values(widest, "data-more-marks") != []
+    # The enrichment reached its own two caps as well, stale tag and all — the header holds a
+    # session's description and its friction, so both are part of what this measures.
+    described = fields(widest, "data-enrichment", values(widest, "data-enrichment")[0])
+    assert len(described["description"]) == len(described["friction"]) == queries.ENRICHMENT_CHARS
+    assert described["stale"] == "stale"
 
 
 def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
