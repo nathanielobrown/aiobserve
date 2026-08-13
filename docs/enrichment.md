@@ -25,6 +25,8 @@ The query library ships three named questions over these rows, each runnable wit
 
 All three read tables an enrichment pass writes. A store no pass has touched does not hold them, and the query fails saying so.
 
+[The viewer](viewer.md) shows the same rows beside what they describe. It reads the three tables rather than the views — a described item and an undescribed one render differently — and asks whether the tables exist at all, so a store no pass has touched still serves every page.
+
 ## Descriptions go up, text never does
 
 Every prompt embeds its children's **descriptions**, not their text. A session prompt carries one line per thing the session did; it never carries a transcript. That is the whole reason the corpus is affordable — tool results alone run to hundreds of megabytes — and it is why the levels are described bottom-up:
