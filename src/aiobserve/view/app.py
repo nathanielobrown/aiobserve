@@ -380,7 +380,13 @@ def build_app(db_path: Path) -> FastAPI:
     @app.get("/session/{session_id}/run/{run_id}")
     def run_page(request: Request, session_id: str, run_id: str) -> Response:
         with open_store(resolved) as connection:
-            header = page_rows(connection, Page.RUN_HEADER, session_id=session_id, run_id=run_id)
+            header = page_rows(
+                connection,
+                Page.RUN_HEADER,
+                session_id=session_id,
+                run_id=run_id,
+                head_chars=queries.HEADER_CHARS,
+            )
             if not header:
                 raise HTTPException(404, "No run with that id is in this session.")
             turns = page_rows(connection, Page.RUN_TIMELINE, session_id=session_id, source=run_id)

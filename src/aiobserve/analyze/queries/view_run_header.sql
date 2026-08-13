@@ -10,7 +10,9 @@ SELECT
     a.id AS run_id,
     a.session_id,
     a.agent_type,
-    a.description,
+    -- Whatever the spawning agent typed in the Agent tool's `description`, cut like every
+    -- other string a header carries: nothing on the far side bounds it.
+    substr(a.description, 1, $head_chars) AS description,
     a.model,
     a.spawn_depth,
     a.is_fork,

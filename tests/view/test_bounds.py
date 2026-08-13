@@ -54,8 +54,10 @@ from tests.view.conftest import Planter, Statement, fields, one, values
 
 # The columns that hold whatever the agent read or wrote: one of them can be megabytes, and
 # none of them belongs on a page whole. `raw` is a transcript line, `result` a tool's output,
-# `input` its arguments, `text` and `thinking` a model's answer.
-FAT = ("raw", "text", "thinking", "result", "input", "content")
+# `input` its arguments, `text` and `thinking` a model's answer, and `description` the line a
+# run was spawned with or the one a pass wrote about an item — prose either way, and nothing
+# bounds what a caller passes the Agent tool.
+FAT = ("raw", "text", "thinking", "result", "input", "content", "description")
 
 # What a page may weigh. The list is the page a corpus grows, so `MAX_PAGE_SESSIONS` rows of
 # what one row can hold have to fit under it. Raised from 350,000 when the pages began showing
@@ -279,9 +281,14 @@ BOUNDING = ("substr", "length")
 
 
 def unbounded(sql: str) -> set[str]:
-    """The fat columns a statement selects outside a bounding call — what a page can't afford."""
+    """The fat columns a statement selects outside a bounding call — what a page can't afford.
+
+    An output name is not a selected column, so `AS` and what follows it comes out first: a
+    cut column keeps the name of the column it cuts, and the cut is what the page shows.
+    """
     without_comments = re.sub(r"--[^\n]*", " ", sql)
-    truncated = re.sub(rf"(?:{'|'.join(BOUNDING)})\s*\([^()]*\)", " ", without_comments)
+    named = re.sub(r"\bAS\s+[A-Za-z_][A-Za-z0-9_]*", " ", without_comments, flags=re.IGNORECASE)
+    truncated = re.sub(rf"(?:{'|'.join(BOUNDING)})\s*\([^()]*\)", " ", named)
     return {word for word in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", truncated) if word in FAT}
 
 
@@ -295,6 +302,10 @@ def test_the_fat_column_scan_catches_one() -> None:
     assert unbounded("SELECT substr(r.raw, 1, 200) AS raw_head FROM raw_records r") == set()
     # A count of a value is a number, and a page can afford any number.
     assert unbounded("SELECT length(r.raw) AS raw_chars FROM raw_records r") == set()
+    # A cut column may keep the name of the column it cuts, and the name is not the value...
+    assert unbounded("SELECT substr(e.description, 1, 200) AS description FROM turns e") == set()
+    # ...but the column under that name still counts.
+    assert unbounded("SELECT e.description AS description FROM turns e") == {"description"}
 
 
 @pytest.mark.parametrize("name", sorted(Page) + sorted(Fragment))
@@ -353,6 +364,9 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     assert QUERIES["view_session_header"].params["head_chars"].default == 100
     assert QUERIES["view_session_header"].params["item_chars"].default == 60
     assert QUERIES["view_session_header"].params["head_items"].default == 5
+    # A run header carries one string of the same kind — the line the run was spawned with,
+    # which is whatever the spawning agent typed — so it is cut to the same head.
+    assert QUERIES["view_run_header"].params["head_chars"].default == 100
     # And how much of what a pass wrote an item shows. The taxonomy is closed and its longest
     # member is nine characters (`enrich/taxonomy.py`), so the tag cut bounds a hand-edited row
     # rather than anything a pass writes.
@@ -898,9 +912,10 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     """Every preview is truncated before it reaches a page, so no one huge value can bloat it.
 
     The previews the viewer renders — a session's title and project on the list, a turn's
-    prompt on the session page, an api call's text and a tool call's arguments in the turn
-    fragment — checked at once against one planted store. The oversized values are invented:
-    redaction flattened every recorded string to a few characters, so no fixture reaches a cap.
+    prompt on the session page, a run's own description on its page, an api call's text and a
+    tool call's arguments in the turn fragment — checked at once against one planted store. The
+    oversized values are invented: redaction flattened every recorded string to a few
+    characters, so no fixture reaches a cap.
     """
     turn_id, _ = one(
         store,
@@ -912,12 +927,14 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     path: Path = plant(
         ("UPDATE sessions SET title = ?, project_dir = ? WHERE id = ?", [long, long, SPINE]),
         ("UPDATE turns SET prompt = ? WHERE session_id = ? AND id = ?", [long, SPINE, turn_id]),
+        ("UPDATE agent_runs SET description = ? WHERE session_id = ?", [long, SPINE]),
         ("UPDATE api_calls SET text = ? WHERE session_id = ?", [long, ANCESTOR]),
         ("UPDATE tool_calls SET input = ? WHERE session_id = ?", [long, FORK_ORIGIN]),
     )
     with TestClient(build_app(path)) as planted:
         listing = planted.get("/").text
         page = planted.get(f"/session/{SPINE}").text
+        run = planted.get(f"/session/{SPINE}/run/{SPINE_RUN}").text
         turn = planted.get(f"/fragment/turn/{ANCESTOR}/main/{DENSE_TURN}").text
         tools = planted.get(f"/fragment/tools/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}").text
     # ...and what each of them shows is its cap, not the value. The list's cuts are the
@@ -929,5 +946,8 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # half a path fills the filter in with a value that matches nothing.
     assert not [path for path in re.findall(r'<option value="([^"]*)"', listing) if "x" in path]
     assert len(fields(page, "data-turn", turn_id)["prompt"]) == PROMPT_CHARS
+    # A run page shows one description and links to the rest, so the head it shows is a
+    # header's rather than a chip's.
+    assert len(fields(run, "id", "run-header")["description"]) == queries.HEADER_CHARS
     assert len(fields(turn, "data-api-call", DENSE_TURN_CALL)["text_head"]) == TEXT_CHARS
     assert len(fields(tools, "data-tool-call", DENSE_TOOL)["input_head"]) == INPUT_CHARS

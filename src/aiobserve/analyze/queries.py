@@ -125,11 +125,12 @@ CHUNK_CHARS = 50_000
 CHIP_CHARS = 60
 CHIP_CHARS_PARAM = Param(type=ParamType.INTEGER, default=CHIP_CHARS)
 
-# What a session header shows of each string it carries, of each member of the two lists it
-# carries, and how many members of a list it shows before it says how many it left. The
-# header is the part of a page no size a reader types bounds, so these are what the ceiling
-# budgets it: 100 covers the longest title the canonical store holds (81) and 60 a PR url
-# (51), while the lists grow with the session — one has recorded 32 PR links.
+# What a header shows of each string it carries, of each member of the two lists a session's
+# carries, and how many members of a list it shows before it says how many it left. A header
+# is the part of a page no size a reader types bounds, so these are what the ceiling budgets
+# it: 100 covers the longest title the canonical store holds (81) and 60 a PR url (51), while
+# the lists grow with the session — one has recorded 32 PR links. A run header carries one
+# string of its own, the line the run was spawned with, and takes the same head.
 HEADER_CHARS = 100
 HEADER_ITEM_CHARS = 60
 HEADER_ITEMS = 5
@@ -361,7 +362,11 @@ QUERIES: dict[str, Query] = {
     "view_run_header": Query(
         scope=Scope.KEYED,
         # The run's id is also the source its rows carry, so one key answers both questions.
-        params={"session_id": SESSION_ID, "run_id": Param(type=ParamType.TEXT, default=REQUIRED)},
+        params={
+            "session_id": SESSION_ID,
+            "run_id": Param(type=ParamType.TEXT, default=REQUIRED),
+            "head_chars": Param(type=ParamType.INTEGER, default=HEADER_CHARS),
+        },
     ),
     "view_offload": Query(
         scope=Scope.KEYED,
