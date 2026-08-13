@@ -7,7 +7,9 @@ uv run aiobserve enrich ~/repos/mycelia --dry-run   # what it would send, and wh
 uv run aiobserve enrich ~/repos/mycelia             # describe everything stale
 ```
 
-`--dry-run` spends nothing, calls nothing, and needs no `ANTHROPIC_API_KEY` — a real run refuses to start without one. Every flag lives in `src/aiobserve/cli.py`; `--limit` buys a cheap dev pass, `--no-batch` trades the batch discount for minutes instead of hours.
+Enrichment spends the Claude Code subscription. It shells out to `claude -p` once per item, so there is no API key to hold and nothing billed separately — log in with `claude` first. A run that would spend asks `claude auth status` before it renders anything and refuses on a logged-out CLI, a login with no subscription behind it, or no `claude` on `PATH`. `--dry-run` asks nothing, because quoting spends nothing and whoever prices a pass is not always whoever is logged in.
+
+Every flag lives in `src/aiobserve/cli.py`; `--limit` buys a cheap dev pass, and `--concurrency` sets how many `claude` processes a round runs at once, four by default.
 
 ## What a row holds
 
@@ -40,9 +42,30 @@ That is why a dry run's count is an upper bound. It quotes every stale item plus
 
 There is no resume state on disk. A failed item writes no row, so it is still stale next time and rerunning is the retry. An item whose child failed writes nothing either — a description built around a hole would be hashed as current forever, which is the one failure a rerun cannot heal.
 
+## How a round runs
+
+One `claude -p` per item, over a thread pool `--concurrency` wide. Each call carries the level's instructions on `--system-prompt`, the rendered content on stdin, and the answer's shape on `--json-schema`. Tools, settings, MCP and slash commands are all off, and the cwd is a temp directory: a render is untrusted transcript text, and nothing it says may reach a tool or leave a session behind in an extractable project.
+
+The subprocess environment is **constructed, not inherited** — `HOME`, `PATH`, `USER`, and `MAX_THINKING_TOKENS=0`, nothing else. `USER` is load-bearing: the OAuth token lives in the keychain, and without it every call reports itself logged out. A stray `ANTHROPIC_API_KEY` or `ANTHROPIC_BASE_URL` cannot divert the run off the subscription, because it never reaches the child. `preflight` asks its auth question under that same environment, so what it validates is the process shape the items spend under.
+
+The round's first item runs alone as a **canary**, and is the only call allowed to crash the run. Everything after it is spending: the enricher writes a round's rows only once `submit` returns, so a raise mid-round would forfeit answers already paid for. Five consecutive failures trip the **breaker** — nothing further starts, the unsent remainder comes back `Failed(aborted)`, the answers already in hand are written, and the run crashes at the end naming both.
+
+### The envelope, pinned at claude 2.1.221
+
+`--output-format json` answers with one object, of which this build reads four fields. Everything else the CLI writes is ignored, so a new field is not drift:
+
+- `is_error` and a nonzero exit — the call failed. Retried once, then recorded as `api_error`
+- `stop_reason` — anything but a normal end is a failure, not a truncated answer worth storing
+- `modelUsage` — keyed by model id. A key that is not the model asked for means the CLI substituted one, which would make the staleness `model` axis a lie
+- `structured_output` — the answer itself. Its **absence is not drift**: the CLI omits it whenever the model produced nothing conforming, as the recorded logged-out envelope shows, so it is `invalid_output`
+
+A missing contract field is drift. On the canary that raises `EnvelopeDrift` for the price of one item, rather than describing thousands against a shape nobody has read; past the canary it is one more per-item failure. Claude Code owns this envelope and changes it without notice — re-record `tests/enrich/fixtures/` when it moves, and say which version did.
+
 ## What it costs
 
-`src/aiobserve/enrich/cost.py` holds the rate table and the arithmetic: rendered characters over a chars-per-token ratio, plus each level's instructions, at list price halved for the batch path. It counts prompt caching at zero, so it reads high there. A full pass over the mycelia corpus is single-digit dollars on Haiku.
+`src/aiobserve/enrich/cost.py` holds the rate table and the arithmetic: rendered characters over a chars-per-token ratio, plus each level's instructions, plus a flat per-item transport constant — the CLI's own framing and the `--json-schema` payload, which a fresh subprocess pays for every time. There is one price, list price: the batch discount went with the API. Prompt caching counts as zero, so the quote reads high. A full pass over the mycelia corpus is single-digit dollars on Haiku.
+
+It costs time rather than money. At the ~4s per item measured on 2026-08-13, four at a time, a full corpus pass is over an hour of four `claude` processes against an allowance this project's own agents share. `--limit` is the only pacing lever, and it is manual.
 
 Prices move and models get added. An unpriced model crashes rather than quoting zero.
 
