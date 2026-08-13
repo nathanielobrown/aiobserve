@@ -23,6 +23,13 @@ class FailureKind(StrEnum):
     expired = "expired"
     # The batch was cancelled before the item ran.
     canceled = "canceled"
+    # The call was still running at the client's per-item deadline.
+    timeout = "timeout"
+    # The CLI's answer envelope was not the shape the client is pinned to. Only after the
+    # round's canary has proved the shape once — the canary itself crashes the run.
+    drift = "drift"
+    # Never attempted: the client's breaker ended the round before this item was sent.
+    aborted = "aborted"
     # The model answered, but not in the shape the output schema requires.
     invalid_output = "invalid_output"
     # The answer carried something shaped like a credential.

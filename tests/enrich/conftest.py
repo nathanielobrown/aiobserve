@@ -7,6 +7,7 @@ it costs an extraction per fixture, so `fixture_db` builds once per test session
 """
 
 import shutil
+import subprocess
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -96,6 +97,36 @@ def refuse_network(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(httpx.Client, "send", refuse)
     monkeypatch.setattr(httpx.AsyncClient, "send", refuse)
+
+
+class SubprocessForbidden(Exception):
+    """A test tried to start a process.
+
+    A plain `Exception`: nothing in the enrichment path catches broadly, so this reaches the
+    test runner as itself.
+    """
+
+
+@pytest.fixture(autouse=True)
+def refuse_subprocess(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make any process an enrichment test starts raise, unless the test is marked `live`.
+
+    `CliClient` spends the subscription allowance one `claude -p` at a time, so an accidental
+    real call is billed work that looks exactly like a passing test. Both doors are shut:
+    `subprocess.run` is the one the client uses, and `Popen` is a door already in use
+    elsewhere in the suite (`tests/conftest.py`).
+    """
+    if request.node.get_closest_marker("live"):
+        return
+
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        raise SubprocessForbidden(
+            "a test tried to start a process — enrichment tests fake `subprocess.run`; "
+            "mark the test `live` if it is the opt-in check"
+        )
+
+    monkeypatch.setattr(subprocess, "run", refuse)
+    monkeypatch.setattr(subprocess, "Popen", refuse)
 
 
 @pytest.fixture
