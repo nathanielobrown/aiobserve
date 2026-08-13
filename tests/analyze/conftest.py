@@ -51,7 +51,7 @@ POOL_AT_PARTIAL = 5
 AGENT_TYPES = 7
 
 # Measured on 2026-08-13 by building the store below: 14 mycelia sessions between
-# 2026-06-30 and 2026-07-24, in five unevenly filled ISO weeks.
+# 2026-06-30 and 2026-07-27, in five unevenly filled ISO weeks.
 MYCELIA_SESSIONS = 14
 WEEKS = {
     "2026-W27": 4,
@@ -68,7 +68,7 @@ IN_WINDOW_AT_PARTIAL = 7
 AS_OF_WHOLE = "2026-07-28"
 # A third `$as_of`, inside the corpus, so the window's far edge has something to exclude:
 # 2026-07-19 opens at 2026-06-21, before the earliest session, and closes at the end of that
-# day — 11 sessions, the corpus minus the two recorded after it.
+# day — 11 sessions, the corpus minus the three recorded after it (07-20, 07-21, 07-27).
 AS_OF_MID = "2026-07-19"
 IN_WINDOW_AT_MID = 11
 

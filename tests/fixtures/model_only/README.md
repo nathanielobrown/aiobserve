@@ -9,14 +9,16 @@ the shape under test — a session whose turns drove no model response at all.
 and enrichment used to describe every one of them from a render with no work in it. The gate in
 `src/aiobserve/enrich/store.py` skips them; this recording is what proves it.
 
-Four recordings carry the shape. This one was picked for its date: 2026-07-20 falls inside the
-window every `$as_of` in `tests/analyze/conftest.py` opens over the whole corpus, so the corpus keeps
-a window wider than itself and the session reaches the coverage denominator.
+Four recordings carry the shape. This one was picked for its date: 2026-07-20 falls inside
+`AS_OF_WHOLE`, the one `$as_of` in `tests/analyze/conftest.py` whose 28-day window covers the whole
+corpus. A later recording would stretch the corpus past 28 days and leave no `$as_of` able to cover
+it, which is what the analyze tier's window constants rest on. `AS_OF_MID` excludes this session, as
+it excludes everything recorded after 2026-07-19.
 
-The nine records left behind are bookkeeping and an earlier `/context` turn — `mode`,
-`permission-mode`, two `file-history-snapshot`, two `bridge-session`, and the three the `/context`
-command wrote. The first kept record's `parentUuid` still points at one of them; a trimmed fixture
-dangles there by design, and the extractor threads the turn regardless.
+The nine records left behind are bookkeeping and one earlier turn: `mode`, `permission-mode`, two
+`file-history-snapshot`, two `bridge-session`, two `system`, and a 1,722-character plain-text `user`
+prompt. The first kept record's `parentUuid` still points at that prompt; a trimmed fixture dangles
+there by design, and the extractor threads the turn regardless.
 
 ## Redaction
 

@@ -171,25 +171,33 @@ def test_every_level_carries_the_rules_for_choosing_between_members() -> None:
     Guidance, not vocabulary: the rules sit past the definitions, so no `TAXONOMY_VERSION`
     bump is implied and a row written under the old prompt stays comparable.
     """
+    # Each rule is checked by a phrase only that rule's own wording can produce. Bare member
+    # names would not do it: `implement`, `design`, `review` and `debug` are all printed by
+    # the vocabulary block above, so a test spelling those passes with the rules deleted —
+    # and the direction of a tie-break is the whole content of one, so the phrase carries it.
+    rules = (
+        "implement over design when the item produced the working thing",
+        "configure for a turn the CLI handled by itself",
+        "review over debug when the work judges a change someone else made",
+        "end_turn means the model finished its answer",
+    )
     # If each level's instructions are rendered...
     for level in Level:
         rendered = instructions(level)
-        # ...then all four tie-breaks are there: implement over design when the thing got
-        # built, `configure` for the settings commands the CLI answered by itself, review
-        # over debug when the work judges someone else's change...
-        assert "implement" in rendered and "design" in rendered
+        # ...then every tie-break is there, in the direction it was decided...
+        for rule in rules:
+            assert rule in rendered
+        # ...the configure rule names all three settings commands the CLI answers by itself...
         for command in ("/model", "/effort", "/clear"):
             assert command in rendered
-        assert "review" in rendered and "debug" in rendered
-        # ...and what a clean ending means for the outcome axis.
-        assert "end_turn" in rendered
-        # Every one of them sits after the last vocabulary line, where a reader looking for
-        # the definition of a member still finds only the definition.
+        # ...and every one of them sits past the last vocabulary line, so a reader looking up
+        # what a member means still finds only the definition. That is what makes this
+        # guidance rather than a taxonomy edit, and what leaves `TAXONOMY_VERSION` at 1.
         vocabulary_end = rendered.rindex(
             f"- {Outcome.unclear}: {OUTCOME_DEFINITIONS[Outcome.unclear]}"
         )
-        assert rendered.index("/model") > vocabulary_end
-        assert rendered.index("end_turn") > vocabulary_end
+        for text in (*rules, "/model", "/effort", "/clear"):
+            assert rendered.index(text) > vocabulary_end
 
 
 def test_a_plain_main_turn_renders_its_prompt_then_its_calls(fixture_db: Path) -> None:
