@@ -158,6 +158,10 @@ RECORD_PREVIEW = 160
 FIRST_PAGE = -1
 AFTER = Param(type=ParamType.INTEGER, default=FIRST_PAGE)
 
+# What every seeded draw hashes its keys with. Any fixed value serves; what matters is that
+# the citation carries it, so a draw can be re-run — and rotated when a read wants new ground.
+DRAW_SEED = Param(type=ParamType.TEXT, default="aiobserve")
+
 # The turn id `session_digest` and `run_digest` give the api calls that sit under no turn. A
 # sentinel rather than NULL so it can travel in a URL; `view_turn_calls` takes NULL for the
 # same rows, and the viewer translates at the route.
@@ -198,6 +202,18 @@ QUERIES: dict[str, Query] = {
         },
     ),
     "cost_distribution": Query(scope=Scope.CORPUS, params={}),
+    # The enrichment family reads tables an enrichment pass writes (`docs/enrichment.md`). A
+    # store no pass has touched does not hold them, and these queries fail on it saying so.
+    "enrichment_coverage": Query(scope=Scope.CORPUS, params={}),
+    "enrichment_digest": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            # One level, or NULL for all three. A real default, not a missing key: the sheet
+            # a reader opens first is the whole session, at every level it was described at.
+            "level": Param(type=ParamType.TEXT, default=None),
+        },
+    ),
     "error_records": Query(
         scope=Scope.KEYED,
         params={
@@ -247,6 +263,18 @@ QUERIES: dict[str, Query] = {
             "min_runs": Param(type=ParamType.INTEGER, default=5),
         },
     ),
+    "select_enrichments": Query(
+        scope=Scope.CORPUS,
+        params={
+            # Which level to check. No default: the three are different populations — 2,500
+            # runs, 1,400 turns, 470 sessions — and a draw over "some level" answers nobody.
+            "level": Param(type=ParamType.TEXT, default=REQUIRED),
+            # Items per category. Two apiece over a fourteen-member taxonomy is a sitting's
+            # worth of reading, and every member gets a reader.
+            "per_category": Param(type=ParamType.INTEGER, default=2),
+            "seed": DRAW_SEED,
+        },
+    ),
     "select_sessions": Query(
         scope=Scope.CORPUS,
         params={
@@ -256,9 +284,7 @@ QUERIES: dict[str, Query] = {
             "discovery_quota": Param(type=ParamType.INTEGER, default=8),
             # A skill is major when this many in-window sessions used it.
             "skill_threshold": Param(type=ParamType.INTEGER, default=5),
-            # Any fixed value serves; what matters is that the citation carries it, so the
-            # discovery draw can be re-run — and rotated when an iteration wants new ground.
-            "seed": Param(type=ParamType.TEXT, default="aiobserve"),
+            "seed": DRAW_SEED,
             # Api calls a session needs before it is worth a reading slot. One keeps out the
             # `/model`-only sessions that took three of iteration 1's eight discovery draws;
             # it is bound rather than fixed because the filter is part of what the draw

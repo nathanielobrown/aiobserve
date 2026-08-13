@@ -17,6 +17,14 @@ One row per described item, in `turn_enrichments`, `agent_run_enrichments`, and 
 
 Query through the `enriched_turns`, `enriched_agent_runs`, and `enriched_sessions` views, which left-join the descriptions onto the live base rows. A `NULL` description there means "not described yet", and counting them is how you read coverage honestly. `enriched_agent_runs` renames the run's own recorded task to `task_description` and its model to `agent_model`, so `description` means the enrichment's in all three views.
 
+The query library ships three named questions over these rows, each runnable with `aiobserve query` and citable in a report:
+
+- `enrichment_coverage` — what share of each level is described, split by category, outcome, model and prompt version. The row with no category is the gap
+- `enrichment_digest` — one session's descriptions, keyed so they sit beside `session_digest`, `run_digest` and `view_runs`
+- `select_enrichments` — a seeded draw of described items, so many per category, for checking descriptions against the records they came from
+
+All three read tables an enrichment pass writes. A store no pass has touched does not hold them, and the query fails saying so.
+
 ## Descriptions go up, text never does
 
 Every prompt embeds its children's **descriptions**, not their text. A session prompt carries one line per thing the session did; it never carries a transcript. That is the whole reason the corpus is affordable — tool results alone run to hundreds of megabytes — and it is why the levels are described bottom-up:

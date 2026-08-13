@@ -15,6 +15,7 @@ import pytest
 from aiobserve.analyze import queries
 from aiobserve.analyze.queries import QUERIES, Scope
 from aiobserve.analyze.runner import CORPUS_RELATIONS
+from aiobserve.enrich.store import LEVELS
 from aiobserve.export.duckdb import TABLES
 from tests.analyze.conftest import QueryRunner
 from tests.conftest import (
@@ -84,7 +85,17 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
         "tool_call_id": DENSE_TOOL,
     },
     "view_record": {"session_id": RESUME, "source": MAIN, "line_no": str(RESUME_LONG_RECORD)},
+    # The enrichment family, at the fixture session the plant describes at every level and
+    # the level holding the most planted rows.
+    "enrichment_digest": {"session_id": SPINE},
+    "select_enrichments": {"level": "agent_run"},
 }
+
+# The relations only a store an enrichment pass has written to holds: the pipeline creates
+# none of them, so a query reading one runs against the planted store instead of the bare
+# corpus. Derived from the level table map rather than listed, so a fourth level is covered.
+ENRICHMENT_TABLES = {spec.table for spec in LEVELS.values()}
+ENRICHMENT_VIEWS = "enriched_"
 
 # The clock a query file may not read: a `current_date` filter goes green on a frozen
 # fixture store today and returns nothing next month.
@@ -112,15 +123,24 @@ def relations(name: str) -> set[str]:
     return set(re.findall(r"\b(?:FROM|JOIN)\s+([A-Za-z_][A-Za-z0-9_]*)", statement(name)))
 
 
+def reads_enrichment(name: str) -> bool:
+    """Whether a query needs a store an enrichment pass has already written to."""
+    read = relations(name)
+    return bool(read & ENRICHMENT_TABLES) or any(
+        relation.startswith(ENRICHMENT_VIEWS) for relation in read
+    )
+
+
 def declared_parameters(name: str) -> set[str]:
     """The `$name` parameters the SQL text itself references."""
     return set(re.findall(r"\$([A-Za-z_][A-Za-z0-9_]*)", statement(name)))
 
 
 @pytest.mark.parametrize("name", NAMES)
-def test_every_query_runs(name: str, run_query: QueryRunner) -> None:
+def test_every_query_runs(name: str, run_query: QueryRunner, enriched_query: QueryRunner) -> None:
     """Every shipped query executes against a real store — an empty result is fine."""
     query = QUERIES[name]
+    runner = enriched_query if reads_enrichment(name) else run_query
     # If a parameter is required with no default, this tier has to say what to bind...
     bindings = FIXTURE_BINDINGS.get(name, {})
     for parameter, spec in query.params.items():
@@ -131,7 +151,7 @@ def test_every_query_runs(name: str, run_query: QueryRunner) -> None:
     if query.scope is Scope.CORPUS:
         arguments += ["--project", MYCELIA]
     # ...and the run completes, which is what catches a query a schema bump broke...
-    printed = run_query(name, "--csv", *arguments)
+    printed = runner(name, "--csv", *arguments)
     # ...having answered with rows. A query that returns nothing on this corpus runs green
     # while asking its question of no data at all, which is the failure this tier is for.
     assert len(printed.csv_rows()) > 1, f"{name} returned no rows: bind it in FIXTURE_BINDINGS"
