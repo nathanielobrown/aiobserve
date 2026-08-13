@@ -19,12 +19,11 @@ import pytest
 
 from tests.analyze.conftest import (
     AS_OF_WHOLE,
-    PLANTED_MODELS,
     QueryRunner,
     mappings,
     scalar,
 )
-from tests.conftest import MYCELIA, SPINE
+from tests.conftest import MYCELIA, PLANTED_MODELS, SPINE
 
 # The level names the three queries share, as `enrich/prompts.py` spells them.
 TURN = "turn"

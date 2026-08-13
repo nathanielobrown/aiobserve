@@ -17,10 +17,6 @@ import duckdb
 import pytest
 
 from aiobserve import cli
-from aiobserve.enrich.prompts import PROMPT_VERSION, Level
-from aiobserve.enrich.store import EnrichmentStore, Stamp
-from aiobserve.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
-from aiobserve.enrich.validation import Enrichment
 from aiobserve.export.duckdb import DuckDbExporter
 from aiobserve.extract.claude_code import ClaudeCodeExtractor
 from aiobserve.pipeline import SessionSource
@@ -47,14 +43,6 @@ NO_WORK_SESSIONS = (
 
 # The id the planted agent-run compaction carries, so no first-seen twin can own it.
 PLANTED_COMPACTION = "planted-compaction"
-
-# What the planted enrichment rows say. Invented, and it has to be: the four fields are a
-# model's words about a private transcript, and no fixture records one. The queries under
-# test group and draw on these values rather than reading them, so what matters is that the
-# cycles below vary independently — see `enriched_db`.
-PLANTED_CATEGORIES = (Category.implement, Category.test, Category.debug)
-PLANTED_OUTCOMES = (Outcome.completed, Outcome.partial, Outcome.failed)
-PLANTED_MODELS = ("claude-haiku-4-5-20251001", "claude-sonnet-4-5-20250929")
 
 # Measured on 2026-08-08: of the in-window sessions, the ones with any turn or agent run.
 POOL_AT_WHOLE = 10
@@ -141,50 +129,6 @@ def enriched_query(enriched_db: Path, capsys: pytest.CaptureFixture[str]) -> Que
         return query(enriched_db, capsys, name, *arguments)
 
     return run
-
-
-@pytest.fixture(scope="session")
-def enriched_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """The fixture corpus with an enrichment row on every item but the last of each level.
-
-    The pipeline writes no enrichment row, so the enrichment queries have nothing to read
-    until a pass has run. Rows go in through `EnrichmentStore.upsert` over the items the
-    store itself lists, so the keys are the ones a real pass writes; only the four
-    model-written fields are invented, and they have to be — no fixture records a model
-    answer. The last item of each level is left undescribed, which is the gap coverage
-    reports.
-    """
-    path = tmp_path_factory.mktemp("enriched") / "traces.duckdb"
-    path.write_bytes(corpus_db.read_bytes())
-    with EnrichmentStore(path) as store:
-        for level in Level:
-            for index, item in enumerate(store.items(level)[:-1]):
-                store.upsert(item, planted_enrichment(index), planted_stamp(level, index))
-    return path
-
-
-def planted_enrichment(index: int) -> Enrichment:
-    """What the planted row says, cycling so a distribution has something to distribute."""
-    return Enrichment(
-        description=f"Planted description {index}.",
-        category=PLANTED_CATEGORIES[index % len(PLANTED_CATEGORIES)],
-        outcome=PLANTED_OUTCOMES[(index // len(PLANTED_CATEGORIES)) % len(PLANTED_OUTCOMES)],
-        # Every fourth row, which is coprime with both cycles above: friction that tracked a
-        # category could not tell a count of one from a count of the other.
-        friction="Planted friction." if index % 4 == 0 else None,
-    )
-
-
-def planted_stamp(level: Level, index: int) -> Stamp:
-    """What the planted row was written under — real versions, so nothing reads as drift."""
-    return Stamp(
-        input_hash=f"planted-{level}-{index}",
-        # A version behind on every fifth row: the stamp breakdown splits on the model and on
-        # the prompt version, and axes that moved together could not say which.
-        prompt_version=PROMPT_VERSION[level] - (1 if index % 5 == 0 else 0),
-        taxonomy_version=TAXONOMY_VERSION,
-        model=PLANTED_MODELS[index % len(PLANTED_MODELS)],
-    )
 
 
 @pytest.fixture(scope="session")

@@ -17,6 +17,10 @@ from pathlib import Path
 import duckdb
 import pytest
 
+from aiobserve.enrich.prompts import PROMPT_VERSION, Level
+from aiobserve.enrich.store import EnrichmentStore, Stamp
+from aiobserve.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
+from aiobserve.enrich.validation import Enrichment
 from aiobserve.export.duckdb import DuckDbExporter
 from aiobserve.extract.claude_code import ClaudeCodeExtractor
 from aiobserve.model import SessionTrace
@@ -98,6 +102,14 @@ TEAMMATE = "10d0349d-0705-4e23-aa64-5b1b97698b2e"
 TEAMMATE_RUN = "aarchitect-5144001ac50718bc"
 # `compaction/`'s session, which holds two recorded main-thread compactions.
 COMPACTED = "1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9"
+
+# What the planted enrichment rows say. Invented, and it has to be: the four fields are a
+# model's words about a private transcript, and no fixture records one. The tiers under test
+# group, draw on and render these values rather than reading them, so what matters is that
+# the cycles vary independently — see `enriched_db`.
+PLANTED_CATEGORIES = (Category.implement, Category.test, Category.debug)
+PLANTED_OUTCOMES = (Outcome.completed, Outcome.partial, Outcome.failed)
+PLANTED_MODELS = ("claude-haiku-4-5-20251001", "claude-sonnet-4-5-20250929")
 
 SourceFactory = Callable[[str, str], SessionSource]
 TraceFactory = Callable[[str, str], SessionTrace]
@@ -208,6 +220,52 @@ def exportable_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     path = tmp_path_factory.mktemp("exportable") / "traces.duckdb"
     build_store(path, exportable_transcripts())
     return path
+
+
+@pytest.fixture(scope="session")
+def enriched_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The fixture corpus with an enrichment row on every item but the last of each level.
+
+    The pipeline writes no enrichment row, so anything that reads one — the enrichment
+    queries, the viewer's pages — has nothing to read until a pass has run. Rows go in
+    through `EnrichmentStore.upsert` over the items the store itself lists, so the keys are
+    the ones a real pass writes; only the four model-written fields are invented, and they
+    have to be — no fixture records a model answer. The last item of each level is left
+    undescribed, which is both the gap coverage reports and the partly-enriched store the
+    viewer has to render.
+    """
+    path = tmp_path_factory.mktemp("enriched") / "traces.duckdb"
+    path.write_bytes(corpus_db.read_bytes())
+    with EnrichmentStore(path) as store:
+        for level in Level:
+            for index, item in enumerate(store.items(level)[:-1]):
+                store.upsert(item, planted_enrichment(index), planted_stamp(level, index))
+    return path
+
+
+def planted_enrichment(index: int) -> Enrichment:
+    """What the planted row says, cycling so a distribution has something to distribute."""
+    return Enrichment(
+        description=f"Planted description {index}.",
+        category=PLANTED_CATEGORIES[index % len(PLANTED_CATEGORIES)],
+        outcome=PLANTED_OUTCOMES[(index // len(PLANTED_CATEGORIES)) % len(PLANTED_OUTCOMES)],
+        # Every fourth row, which is coprime with both cycles above: friction that tracked a
+        # category could not tell a count of one from a count of the other.
+        friction="Planted friction." if index % 4 == 0 else None,
+    )
+
+
+def planted_stamp(level: Level, index: int) -> Stamp:
+    """What the planted row was written under — real versions, so nothing reads as drift."""
+    return Stamp(
+        input_hash=f"planted-{level}-{index}",
+        # A version behind on every fifth row: the stamp breakdown splits on the model and on
+        # the prompt version, axes that moved together could not say which, and the viewer's
+        # stale tag needs a row on each side of the current version.
+        prompt_version=PROMPT_VERSION[level] - (1 if index % 5 == 0 else 0),
+        taxonomy_version=TAXONOMY_VERSION,
+        model=PLANTED_MODELS[index % len(PLANTED_MODELS)],
+    )
 
 
 @pytest.fixture
