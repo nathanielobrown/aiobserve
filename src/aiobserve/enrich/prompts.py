@@ -30,7 +30,7 @@ class Level(StrEnum):
 
 # Per level, covering what `input_hash` cannot see: the instructions and the output schema.
 # Bump one and that level re-enriches; its parents follow through the hash.
-PROMPT_VERSION: dict[Level, int] = {Level.turn: 2, Level.agent_run: 2, Level.session: 2}
+PROMPT_VERSION: dict[Level, int] = {Level.turn: 3, Level.agent_run: 3, Level.session: 3}
 
 # What each level is looking at. The rest of the instructions is the same everywhere, so a
 # level reads differently only where it should.
@@ -60,6 +60,21 @@ taken and undone, a tool that would not answer — or null when the records show
 
 Never quote a credential, key or token, whatever it appears in. Never copy code or file \
 contents into the description."""
+
+# The ties a QC pass over described items found the model getting wrong, each settled the way
+# the sampled records read. Guidance rather than vocabulary: editing `CATEGORY_DEFINITIONS`
+# would record a taxonomy change that did not happen, and cost a `TAXONOMY_VERSION` bump that
+# would make every stored row incomparable rather than merely stale.
+_CHOOSING = """Choosing between them:
+
+- implement over design when the item produced the working thing. design is for work that \
+produced a decision or a plan for one, even when that plan is written down
+- configure for a turn the CLI handled by itself — /model, /effort, /clear — which changes \
+how the agent is set up, not what it is working on
+- review over debug when the work judges a change someone else made, even while it hunts \
+defects in that change
+- the records say how each item ended. end_turn means the model finished its answer: do not \
+report partial or failed unless the records name what did not land"""
 
 # The output contract itself: passed to `--json-schema`, so the model cannot answer out of
 # vocabulary in the first place. An edit here is a `PROMPT_VERSION` bump, since `input_hash`
@@ -91,7 +106,7 @@ def instructions(level: Level) -> str:
             *(f"- {member}: {text}" for member, text in OUTCOME_DEFINITIONS.items()),
         ]
     )
-    return "\n\n".join([_SUBJECT[level], _ANSWER, vocabulary])
+    return "\n\n".join([_SUBJECT[level], _ANSWER, vocabulary, _CHOOSING])
 
 
 @dataclass(frozen=True)

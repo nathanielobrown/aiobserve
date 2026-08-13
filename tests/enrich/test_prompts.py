@@ -33,7 +33,13 @@ from aiobserve.enrich.prompts import (
     render_turn,
 )
 from aiobserve.enrich.store import EnrichmentStore, Stamp
-from aiobserve.enrich.taxonomy import Category, Outcome
+from aiobserve.enrich.taxonomy import (
+    CATEGORY_DEFINITIONS,
+    OUTCOME_DEFINITIONS,
+    TAXONOMY_VERSION,
+    Category,
+    Outcome,
+)
 from aiobserve.enrich.validation import Enrichment
 from tests.conftest import MODEL_ONLY
 from tests.enrich.conftest import (
@@ -130,18 +136,60 @@ def test_the_output_schema_is_the_taxonomy_the_validator_enforces() -> None:
 
 
 def test_every_level_asks_for_json_at_the_same_version() -> None:
-    """All three levels are at prompt version 2 — the version that answers in JSON.
+    """All three levels are at prompt version 3 — the version that says how to choose.
 
-    Version 1 asked for a forced tool call through the Batches API. The instructions and the
-    schema are what `input_hash` cannot see, so the bump is the whole mechanism by which the
-    corpus gets re-described under the new transport.
+    Version 1 asked for a forced tool call through the Batches API; version 2 answered in
+    JSON. The instructions and the schema are what `input_hash` cannot see, so the bump is
+    the whole mechanism by which the corpus gets re-described under new guidance.
     """
-    assert {Level.turn: 2, Level.agent_run: 2, Level.session: 2} == PROMPT_VERSION
+    assert {Level.turn: 3, Level.agent_run: 3, Level.session: 3} == PROMPT_VERSION
+    # The vocabulary did not change with it, so a version-2 row stays comparable to a
+    # version-3 one — which is the whole reason the guidance went in the prompt.
+    assert TAXONOMY_VERSION == 1
     # Every level's instructions ask for the JSON object the schema describes, and none of
     # them still names a tool to call.
     for level in Level:
         assert "Answer with one JSON object" in instructions(level)
         assert "calling" not in instructions(level)
+
+
+def test_every_level_names_every_taxonomy_member() -> None:
+    """A level's instructions carry the whole vocabulary, each member with its definition."""
+    # If a member reached `OUTPUT_SCHEMA` alone, the model could answer it without ever being
+    # told what it means, so every definition `taxonomy.py` holds must reach every level...
+    definitions = {**CATEGORY_DEFINITIONS, **OUTCOME_DEFINITIONS}
+    for level in Level:
+        rendered = instructions(level)
+        # ...verbatim, as the line the prompt is written from.
+        for member, text in definitions.items():
+            assert f"- {member}: {text}" in rendered
+
+
+def test_every_level_carries_the_rules_for_choosing_between_members() -> None:
+    """Each level is told how to break the ties a QC pass found the model getting wrong.
+
+    Guidance, not vocabulary: the rules sit past the definitions, so no `TAXONOMY_VERSION`
+    bump is implied and a row written under the old prompt stays comparable.
+    """
+    # If each level's instructions are rendered...
+    for level in Level:
+        rendered = instructions(level)
+        # ...then all four tie-breaks are there: implement over design when the thing got
+        # built, `configure` for the settings commands the CLI answered by itself, review
+        # over debug when the work judges someone else's change...
+        assert "implement" in rendered and "design" in rendered
+        for command in ("/model", "/effort", "/clear"):
+            assert command in rendered
+        assert "review" in rendered and "debug" in rendered
+        # ...and what a clean ending means for the outcome axis.
+        assert "end_turn" in rendered
+        # Every one of them sits after the last vocabulary line, where a reader looking for
+        # the definition of a member still finds only the definition.
+        vocabulary_end = rendered.rindex(
+            f"- {Outcome.unclear}: {OUTCOME_DEFINITIONS[Outcome.unclear]}"
+        )
+        assert rendered.index("/model") > vocabulary_end
+        assert rendered.index("end_turn") > vocabulary_end
 
 
 def test_a_plain_main_turn_renders_its_prompt_then_its_calls(fixture_db: Path) -> None:
