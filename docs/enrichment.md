@@ -57,7 +57,7 @@ The round's first item runs alone as a **canary**, and is the only call allowed 
 `--output-format json` answers with one object, of which this build reads four fields. Everything else the CLI writes is ignored, so a new field is not drift:
 
 - `is_error` and a nonzero exit — the call failed. Retried once, then recorded as `api_error`
-- `stop_reason` — anything but a normal end is a failure, not a truncated answer worth storing
+- `stop_reason` — `max_tokens` means the answer was cut off at the cap, so it is `invalid_output` rather than a truncated answer worth storing. Every other value is left to `structured_output` to judge
 - `modelUsage` — keyed by model id. A key that is not the model asked for means the CLI substituted one, which would make the staleness `model` axis a lie
 - `structured_output` — the answer itself. Its **absence is not drift**: the CLI omits it whenever the model produced nothing conforming, as the recorded logged-out envelope shows, so it is `invalid_output`
 

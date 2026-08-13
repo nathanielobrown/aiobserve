@@ -29,6 +29,7 @@ from aiobserve.enrich.client import (
     ATTEMPTS,
     BREAKER_BOUND,
     CLAUDE,
+    DEFAULT_MODEL,
     ITEM_TIMEOUT,
     CliClient,
     EnrichRequest,
@@ -48,6 +49,10 @@ from tests.enrich.conftest import LIVE_CLI
 FIXTURES = Path(__file__).parent / "fixtures"
 
 MODEL = "claude-haiku-4-5-20251001"
+
+# A second model id, for the tests where agreeing with `DEFAULT_MODEL` by accident would hide
+# a client that ignored the model it was built with.
+OTHER_MODEL = "claude-sonnet-4-5-20250929"
 
 # Short stand-ins for the real per-level instructions: the client forwards whatever it is
 # given, so the text only has to be recognizable in an argv assertion.
@@ -76,6 +81,10 @@ def without(*fields: str) -> dict[str, Any]:
     return envelope
 
 
+# The recorded call's own usage numbers, re-keyed below to stand for a substituted model.
+RECORDED_USAGE = recorded("envelope_success")["modelUsage"][MODEL]
+
+
 def content_of(key: str) -> str:
     """What the item with this key renders to. The fake keys its script on this."""
     return f"# Main turn\n\nrender for {key}"
@@ -101,7 +110,12 @@ class Reply:
         """Whether this reply carries a usable envelope — what ends the serial canary phase."""
         if self.raises is not None or self.returncode != 0:
             return False
-        return not json.loads(self.stdout).get("is_error", True)
+        try:
+            envelope = json.loads(self.stdout)
+        except json.JSONDecodeError:
+            # Stdout the client cannot read is no more an answer than an errored call is.
+            return False
+        return not envelope.get("is_error", True)
 
 
 def succeeds() -> Reply:
@@ -250,8 +264,8 @@ def test_an_errored_envelope_fails_its_item(fake: Install) -> None:
         # The recorded logged-out call: exit 1 with a full envelope behind it...
         errors(),
         # ...and, invented because no crash was recorded, a CLI that dies before printing
-        # anything. The exit code has to decide on its own here: read as an envelope, empty
-        # stdout is drift, and drift on the round's first item crashes the whole run.
+        # anything. The exit code decides alone: nothing is parsed once it is nonzero, so
+        # empty stdout never reaches the envelope reader.
         Reply(returncode=1),
     ],
     ids=["logged-out", "printed-nothing"],
@@ -275,14 +289,25 @@ def test_a_hung_call_times_out_and_is_retried_once(fake: Install) -> None:
     assert [call["timeout"] for call in cli.calls] == [300, 300] == [ITEM_TIMEOUT] * 2
 
 
-def test_an_unusable_answer_fails_without_a_retry(fake: Install) -> None:
-    """An answer with no structured output is not worth resending."""
-    # Derived: the CLI omits `structured_output` when the model produced nothing conforming,
-    # which is what the recorded logged-out envelope shows it doing.
-    fake({content_of("item-0"): Reply(stdout=json.dumps(without("structured_output")))})
-    cli_client = CliClient(MODEL)
-    results = cli_client.submit(requests_for("item-0"))
+@pytest.mark.parametrize(
+    "envelope",
+    [
+        # Derived: the CLI omits `structured_output` when the model produced nothing
+        # conforming, which is what the recorded logged-out envelope shows it doing...
+        without("structured_output"),
+        # ...and, invented, an answer that is present but is not an object. `validate` reads
+        # it by key, so a list would fail there — one item later, having already been stored.
+        mutated(structured_output=[{"description": "not an object"}]),
+    ],
+    ids=["absent", "not-an-object"],
+)
+def test_an_unusable_answer_fails_without_a_retry(fake: Install, envelope: dict[str, Any]) -> None:
+    """An answer carrying no usable structured output is not worth resending."""
+    cli = fake({content_of("item-0"): Reply(stdout=json.dumps(envelope))})
+    results = CliClient(MODEL).submit(requests_for("item-0"))
     assert results == [Failed(key="item-0", kind=FailureKind.invalid_output)]
+    # A second identical send cannot improve a bad answer.
+    assert len(cli.calls) == 1
 
 
 def test_a_truncated_answer_is_an_invalid_output(fake: Install) -> None:
@@ -314,26 +339,45 @@ def test_only_transport_failures_are_retried(
     assert len(cli.calls) == 1 + calls
 
 
-def test_a_first_item_missing_a_contract_field_raises(fake: Install) -> None:
-    """A CLI that stops writing a contracted field crashes the run on the first item."""
-    # Derived: `modelUsage` removed. One item's spend is the whole price of the crash.
-    fake({content_of("item-0"): Reply(stdout=json.dumps(without("modelUsage")))})
-    with pytest.raises(EnvelopeDrift, match="modelUsage"):
+# Written out rather than read from `_CONTRACT_FIELDS`, so a field dropped from that tuple
+# fails here instead of silently shrinking this test to the fields that are left.
+@pytest.mark.parametrize("field", ["is_error", "stop_reason", "modelUsage"])
+def test_a_first_item_missing_a_contract_field_raises(fake: Install, field: str) -> None:
+    """A CLI that stops writing any contracted field crashes the run on the first item."""
+    # Derived: one field removed. One item's spend is the whole price of the crash — and an
+    # unread field would otherwise surface as a `KeyError` mid-round, forfeiting the paid work.
+    fake({content_of("item-0"): Reply(stdout=json.dumps(without(field)))})
+    with pytest.raises(EnvelopeDrift, match=field):
         CliClient(MODEL).submit(requests_for("item-0"))
 
 
-def test_a_substituted_model_key_raises_on_the_canary(fake: Install) -> None:
-    """A run answered by a model nobody asked for crashes rather than mislabels its rows."""
-    # Derived: the usage map rekeyed to another model, as a silent fallback would leave it.
-    usage = recorded("envelope_success")["modelUsage"]["claude-haiku-4-5-20251001"]
-    fake(
-        {
-            content_of("item-0"): Reply(
-                stdout=json.dumps(mutated(modelUsage={"claude-sonnet-4-5-20250929": usage}))
-            )
-        }
-    )
-    with pytest.raises(EnvelopeDrift, match="claude-sonnet-4-5-20250929"):
+def test_stdout_that_is_not_json_raises_on_the_canary(fake: Install) -> None:
+    """A first call that printed something other than JSON crashes the run."""
+    # Invented, because no such call was recorded: `--output-format json` promises one JSON
+    # document, so a *zero* exit that printed anything else is the flag no longer meaning what
+    # it means — and every later item in the round would be unreadable the same way.
+    fake({content_of("item-0"): Reply(stdout="Usage: claude [options] [command]\n")})
+    with pytest.raises(EnvelopeDrift, match="not JSON"):
+        CliClient(MODEL).submit(requests_for("item-0"))
+
+
+@pytest.mark.parametrize(
+    "usage",
+    [
+        # The usage map rekeyed to another model, as a silent substitution would leave it...
+        {OTHER_MODEL: RECORDED_USAGE},
+        # ...and one naming the model asked for *and* another, which is the shape a mid-call
+        # fallback really takes: the asked-for model is present, and still not what answered.
+        {MODEL: RECORDED_USAGE, OTHER_MODEL: RECORDED_USAGE},
+    ],
+    ids=["substituted", "two-models"],
+)
+def test_a_usage_map_naming_another_model_raises_on_the_canary(
+    fake: Install, usage: dict[str, Any]
+) -> None:
+    """A run any other model had a hand in crashes rather than mislabels its rows."""
+    fake({content_of("item-0"): Reply(stdout=json.dumps(mutated(modelUsage=usage)))})
+    with pytest.raises(EnvelopeDrift, match=OTHER_MODEL):
         CliClient(MODEL).submit(requests_for("item-0"))
 
 
@@ -623,9 +667,19 @@ def test_the_child_env_is_constructed_not_inherited(
 
 
 def test_every_call_carries_the_isolation_flags(fake: Install) -> None:
-    """Every item runs with no tools, no settings, no MCP and no session on disk."""
-    cli = fake({content_of("item-0"): succeeds()})
-    CliClient(MODEL).submit(requests_for("item-0"))
+    """Every item runs as the model it was asked for, with no tools, settings, MCP or session."""
+    # Built with a model that is not the default, so a client that ignored what it was given
+    # would fail here rather than agree with `--model` by coincidence...
+    assert OTHER_MODEL != DEFAULT_MODEL
+    # ...answered by a usage map naming that model, which is what keeps the canary quiet.
+    cli = fake(
+        {
+            content_of("item-0"): Reply(
+                stdout=json.dumps(mutated(modelUsage={OTHER_MODEL: RECORDED_USAGE}))
+            )
+        }
+    )
+    CliClient(OTHER_MODEL).submit(requests_for("item-0"))
     call = cli.calls[0]
     assert call["argv"] == [
         CLAUDE,
@@ -633,7 +687,7 @@ def test_every_call_carries_the_isolation_flags(fake: Install) -> None:
         "--output-format",
         "json",
         "--model",
-        MODEL,
+        OTHER_MODEL,
         "--system-prompt",
         INSTRUCTIONS,
         "--json-schema",
@@ -730,10 +784,16 @@ def test_preflight_accepts_a_recorded_subscription(
     assert capsys.readouterr().out == ""
 
 
+# A string condition rather than a boolean, so pytest evaluates it at collection under the
+# environment of the run instead of freezing it at import — which is also what lets the leaf
+# at the bottom of this file read it in both directions.
+LIVE_GATE = f"{LIVE_CLI!r} not in os.environ"
+
+
 @pytest.mark.live
 # Two real `claude` calls, each ~4s of process boot and API time.
 @pytest.mark.slow
-@pytest.mark.skipif(LIVE_CLI not in os.environ, reason=f"set {LIVE_CLI} to spend on two items")
+@pytest.mark.skipif(LIVE_GATE, reason=f"set {LIVE_CLI} to spend on two items")
 def test_two_real_items_come_back_valid(mutable_db: Path) -> None:
     """Two items through the real CLI land two rows the validator accepts.
 
@@ -767,7 +827,9 @@ def test_two_real_items_come_back_valid(mutable_db: Path) -> None:
         )
 
 
-def test_the_live_smoke_is_gated_by_its_environment_variable() -> None:
+def test_the_live_smoke_is_gated_by_its_environment_variable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The live smoke skips when it is not opted into, rather than passing without running.
 
     A `live` test that silently became a no-op would report green while proving nothing about
@@ -776,7 +838,12 @@ def test_the_live_smoke_is_gated_by_its_environment_variable() -> None:
     # `pytestmark` is written onto the function by the decorators, so it is untyped here.
     marks: list[pytest.Mark] = cast(Any, test_two_real_items_come_back_valid).pytestmark
     assert {"live", "slow"} <= {mark.name for mark in marks}
-    # The skip condition tracks the opt-in in both directions: set, the smoke runs; unset —
-    # which is what a bare `mise run test` sees — it skips.
+    # The smoke is gated on this one condition and nothing else...
     skipif = next(mark for mark in marks if mark.name == "skipif")
-    assert skipif.args == (LIVE_CLI not in os.environ,)
+    assert skipif.args == (LIVE_GATE,)
+    # ...and the condition, evaluated as pytest evaluates it, tracks the opt-in in both
+    # directions: unset — what a bare `mise run test` sees — it skips; set, the smoke runs.
+    monkeypatch.delenv(LIVE_CLI, raising=False)
+    assert eval(LIVE_GATE, {"os": os}) is True
+    monkeypatch.setenv(LIVE_CLI, "1")
+    assert eval(LIVE_GATE, {"os": os}) is False
