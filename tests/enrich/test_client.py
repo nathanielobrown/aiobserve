@@ -12,6 +12,7 @@ mutation of the success, labelled where it is built.
 
 import json
 import os
+import signal
 import subprocess
 import tempfile
 import threading
@@ -23,6 +24,7 @@ from typing import Any, cast
 import pytest
 
 from aiobserve import cli
+from aiobserve.enrich import client
 from aiobserve.enrich.client import (
     ATTEMPTS,
     BREAKER_BOUND,
@@ -462,6 +464,114 @@ def test_the_breaker_counts_completions_across_workers(fake: Install) -> None:
     # item never sent.
     aborted = {key for key, kind in kinds(results).items() if kind is FailureKind.aborted}
     assert aborted == {"pool-13"}
+
+
+def test_a_process_the_machine_could_not_start_fails_one_item(fake: Install) -> None:
+    """A `claude` that never launched costs its own item, not the answers around it."""
+    # Invented, because no such run was recorded: `subprocess.run` raises `OSError` before the
+    # child exists — no file descriptor left at concurrency 4, no memory to fork with, the
+    # binary gone mid-round. Three items are already paid for when it happens...
+    keys = [f"item-{index}" for index in range(6)]
+    replies = {content_of(key): succeeds() for key in keys}
+    replies[content_of("item-3")] = Reply(raises=OSError(24, "Too many open files"))
+    cli = fake(replies)
+    results = CliClient(MODEL, concurrency=1).submit(requests_for(*keys))
+    # ...and they all come back, with the refused item one classified failure among them
+    # rather than an exception that forfeits the round.
+    assert kinds(results) == {
+        "item-0": None,
+        "item-1": None,
+        "item-2": None,
+        "item-3": FailureKind.api_error,
+        "item-4": None,
+        "item-5": None,
+        # Five of these in a row would trip the breaker, which is the shape a machine that
+        # has stopped being able to start processes takes here.
+    }
+    # It is a transport failure, so it was sent twice before it was given up on.
+    assert len(cli.calls) == len(keys) + 1
+
+
+@pytest.mark.parametrize(
+    ("interrupt_the_drain", "in_flight_kind"),
+    # One Ctrl-C: the answers in the air are waited out and written...
+    [(False, None), (True, FailureKind.aborted)],
+    ids=["drained", "interrupted-again"],
+)
+def test_an_interrupt_ends_the_round_without_forfeiting_it(
+    fake: Install,
+    monkeypatch: pytest.MonkeyPatch,
+    interrupt_the_drain: bool,
+    in_flight_kind: FailureKind | None,
+) -> None:
+    """Ctrl-C hands back everything the round already paid for, and stops the run after it."""
+    # If Ctrl-C reaches the collecting thread — where a terminal sends it, and the thread that
+    # would otherwise write the round — while two pool items are still in flight...
+    sibling_started = threading.Event()
+    collecting_gave_up = threading.Event()
+    collecting = threading.main_thread().ident
+    assert collecting is not None
+    # ...held there by the two items, which return only once the collecting thread has given
+    # up and started draining. That is the one wake-up in this test: an item finishing first
+    # would wake the collector on its own, and the interrupt would land somewhere else.
+    real_drain = client._drain
+
+    def release_the_pool_then_drain(*args: Any) -> None:
+        collecting_gave_up.set()
+        if interrupt_the_drain:
+            # ...and where the second Ctrl-C of an impatient operator lands, giving up on
+            # them. The round still comes back, one result per key.
+            raise KeyboardInterrupt("interrupted again")
+        real_drain(*args)
+
+    monkeypatch.setattr(client, "_drain", release_the_pool_then_drain)
+
+    def interrupt_once_both_run(key: str) -> None:
+        if key == content_of("item-1"):
+            sibling_started.set()
+        if key == content_of("item-0"):
+            assert sibling_started.wait(GATE_TIMEOUT), "the sibling item never started"
+            signal.pthread_kill(collecting, signal.SIGINT)
+        if key in (content_of("item-0"), content_of("item-1")):
+            assert collecting_gave_up.wait(GATE_TIMEOUT), "the interrupt never landed"
+
+    # The two items ahead of them warm the pool, so the collector is waiting on answers when
+    # the signal arrives rather than starting a worker thread, which is also interruptible.
+    keys = ["canary", "warm-0", "warm-1", "item-0", "item-1", "item-2"]
+    cli = fake({content_of(key): succeeds() for key in keys}, gate=interrupt_once_both_run)
+    cli_client = CliClient(MODEL, concurrency=2)
+    results = cli_client.submit(requests_for(*keys))
+    # ...then the round returns instead of raising, and every answer already bought is there
+    # for `enricher._round` to write — a raise would have thrown away the whole round, up to
+    # ~1,900 items in the deepest one. The item never sent is `aborted`, and so is anything
+    # the second interrupt gave up on: one result per key either way...
+    assert kinds(results) == {
+        "canary": None,
+        "warm-0": None,
+        "warm-1": None,
+        "item-0": in_flight_kind,
+        "item-1": in_flight_kind,
+        "item-2": FailureKind.aborted,
+    }
+    assert content_of("item-2") not in cli.started
+    # ...and the interrupt is delivered at the next round, which is the first moment the paid
+    # work is written and the first moment stopping costs nothing.
+    with pytest.raises(KeyboardInterrupt):
+        cli_client.submit(requests_for("next-round"))
+    assert content_of("next-round") not in cli.started
+
+
+@pytest.mark.parametrize("concurrency", [0, -1])
+def test_a_pool_narrower_than_one_item_is_refused_before_it_spends(
+    fake: Install, concurrency: int
+) -> None:
+    """A concurrency no pool can honour is refused at construction rather than mid-round."""
+    cli = fake({content_of("item-0"): succeeds()})
+    with pytest.raises(ValueError, match="at least 1"):
+        CliClient(MODEL, concurrency=concurrency)
+    # The canary runs before the pool opens, so the same check inside `submit` would have
+    # spent an item first and then raised it away.
+    assert cli.started == []
 
 
 def test_every_request_gets_exactly_one_result(fake: Install) -> None:

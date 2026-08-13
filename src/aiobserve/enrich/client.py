@@ -10,7 +10,8 @@ Two properties shape the client:
 - **A round never raises once it is spending.** `enricher._round` upserts only after `submit`
   returns, so a raise mid-round forfeits every item already paid for. The one exception is
   the round's first item, run alone as a canary: envelope drift crashes there, for the price
-  of one item, and is a `Failed(drift)` everywhere after
+  of one item, and is a `Failed(drift)` everywhere after. Ctrl-C is no exception — it ends
+  the round, not the answers, and stops the run at the next round boundary
 - **The child process cannot act on what it reads.** Renders carry untrusted transcript text,
   so tools, settings, MCP and slash commands are all switched off, the environment is
   constructed rather than inherited, and the cwd is a temp directory
@@ -199,15 +200,25 @@ class CliClient:
     """One enrichment round through `claude -p`, one subprocess per item over a thread pool.
 
     `submit` runs the round's first item alone as a canary, fans the rest out, and returns
-    whatever it has — including after the breaker ends the round early, when the unsent
-    remainder comes back as `Failed(aborted)`. It raises only from the canary.
+    whatever it has — including after the breaker or a Ctrl-C ends the round early, when
+    everything with no answer to its name comes back as `Failed(aborted)`. It raises only from
+    the canary, and at the start of a round that follows an interrupted one.
     """
 
     def __init__(self, model: str, *, concurrency: int = DEFAULT_CONCURRENCY) -> None:
+        if concurrency < 1:
+            # Refused here rather than by the pool, which would raise one paid item in.
+            raise ValueError(f"concurrency must be at least 1, not {concurrency}")
         self.model = model
         self.concurrency = concurrency
+        # Set by a Ctrl-C, and read at the top of the next round. See `submit`.
+        self._interrupted = False
 
     def submit(self, requests: Sequence[EnrichRequest]) -> list[Result]:
+        # Where an interrupt is finally delivered: the round it landed in has been written by
+        # now, and starting another would spend against an operator who asked to stop.
+        if self._interrupted:
+            raise KeyboardInterrupt("interrupted during the previous round")
         results: list[Result] = []
         breaker = _Breaker()
         # Consumed from the front by both phases below; whatever is left was never sent.
@@ -215,10 +226,26 @@ class CliClient:
         # `sessions.py` keys the projects directory on the cwd, so running here is what keeps
         # any session the CLI still writes out of every extractable project.
         with tempfile.TemporaryDirectory(prefix="aiobserve-enrich-") as cwd:
-            self._canary(pending, results, breaker, cwd)
-            if pending and not breaker.tripped:
-                self._fan_out(pending, results, breaker, cwd)
-        results += [Failed(key=request.key, kind=FailureKind.aborted) for request in pending]
+            try:
+                self._canary(pending, results, breaker, cwd)
+                if pending and not breaker.tripped:
+                    self._fan_out(pending, results, breaker, cwd)
+            except KeyboardInterrupt:
+                # Ctrl-C is expected operation on a pass that runs for hours, and a raise here
+                # would throw away everything the round had already bought. So the round ends
+                # the way a tripped breaker ends it — paid answers back, the rest `aborted` —
+                # and the run stops at the next round instead.
+                self._interrupted = True
+        # One result per request, whatever ended the round: `enricher._round` pairs them by
+        # key. Read off the results rather than off `pending`, so an item whose answer was
+        # still in the air when a Ctrl-C landed comes back here too — its spend is lost, the
+        # round is not.
+        answered = {result.key for result in results}
+        results += [
+            Failed(key=request.key, kind=FailureKind.aborted)
+            for request in requests
+            if request.key not in answered
+        ]
         return results
 
     def _canary(
@@ -255,18 +282,25 @@ class CliClient:
         """
         with ThreadPoolExecutor(max_workers=self.concurrency) as pool:
             in_flight: dict[Future[Result], EnrichRequest] = {}
-            while True:
-                while pending and len(in_flight) < self.concurrency and not breaker.tripped:
-                    request = pending.popleft()
-                    in_flight[pool.submit(self._one, request, cwd, canary=False)] = request
-                if not in_flight:
-                    return
-                # One at a time, so the breaker advances in the order answers land.
-                finished = next(as_completed(in_flight))
-                del in_flight[finished]
-                result = finished.result()
-                results.append(result)
-                breaker.record(result)
+            try:
+                while True:
+                    while pending and len(in_flight) < self.concurrency and not breaker.tripped:
+                        request = pending.popleft()
+                        in_flight[pool.submit(self._one, request, cwd, canary=False)] = request
+                    if not in_flight:
+                        return
+                    # One at a time, so the breaker advances in the order answers land.
+                    finished = next(as_completed(in_flight))
+                    del in_flight[finished]
+                    result = finished.result()
+                    results.append(result)
+                    breaker.record(result)
+            except KeyboardInterrupt:
+                # Ctrl-C lands in this thread while the workers are mid-call. Their spend has
+                # landed either way, so wait them out — one item's timeout at worst — and
+                # record them before the interrupt goes on to end the round.
+                _drain(in_flight, results, breaker)
+                raise
 
     def _one(self, request: EnrichRequest, cwd: str, *, canary: bool) -> Result:
         """One item, sent again only when the transport rather than the model was what failed."""
@@ -291,6 +325,11 @@ class CliClient:
             )
         except subprocess.TimeoutExpired:
             return Failed(key=request.key, kind=FailureKind.timeout)
+        except OSError:
+            # `subprocess.run`'s own failure set: no file descriptor, no memory to fork with,
+            # no binary. One item's failure while the round is spending, not the round's —
+            # five in a row trip the breaker, which is the shape a broken machine takes here.
+            return Failed(key=request.key, kind=FailureKind.api_error)
         if done.returncode != 0:
             # Where the CLI's own refusals land — a logged-out call exits 1.
             return Failed(key=request.key, kind=FailureKind.api_error)
@@ -328,6 +367,18 @@ class CliClient:
             # A render full of private transcript text is never written under `~/.claude`.
             "--no-session-persistence",
         ]
+
+
+def _drain(
+    in_flight: Mapping[Future[Result], EnrichRequest],
+    results: list[Result],
+    breaker: _Breaker,
+) -> None:
+    """Wait out the calls already running and record what they answered. Nothing new starts."""
+    for finished in as_completed(list(in_flight)):
+        result = finished.result()
+        results.append(result)
+        breaker.record(result)
 
 
 def _answer(key: str, stdout: str, model: str) -> Result:

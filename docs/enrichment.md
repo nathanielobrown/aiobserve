@@ -50,6 +50,8 @@ The subprocess environment is **constructed, not inherited** — `HOME`, `PATH`,
 
 The round's first item runs alone as a **canary**, and is the only call allowed to crash the run. Everything after it is spending: the enricher writes a round's rows only once `submit` returns, so a raise mid-round would forfeit answers already paid for. Five consecutive failures trip the **breaker** — nothing further starts, the unsent remainder comes back `Failed(aborted)`, the answers already in hand are written, and the run crashes at the end naming both.
 
+**Ctrl-C ends the round, not the answers.** A pass runs for hours and `--limit` is the only pacing lever, so stopping one is expected. The round it lands in waits out the calls already running, writes what it bought, and the run stops at the next round instead of mid-write; press it again and it gives up on the answers still in the air, which come back `aborted` like anything else with no answer to its name.
+
 ### The envelope, pinned at claude 2.1.221
 
 `--output-format json` answers with one object, of which this build reads four fields. Everything else the CLI writes is ignored, so a new field is not drift:
