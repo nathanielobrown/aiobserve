@@ -7,6 +7,8 @@ rows without a request leaving the machine. Its answers are invented, as model o
 be — there is no recorded session to draw them from.
 """
 
+import json
+import subprocess
 from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -15,13 +17,13 @@ import duckdb
 import pytest
 
 from aiobserve import cli
-from aiobserve.enrich.batches import (
-    AnthropicBatchClient,
+from aiobserve.enrich.client import (
+    DEFAULT_CONCURRENCY,
+    CliClient,
     EnrichRequest,
     Failed,
     Result,
     Succeeded,
-    SyncClient,
 )
 from aiobserve.enrich.cost import Prompt, estimate
 from aiobserve.enrich.enricher import EnrichmentFailed, EnrichReport, enrich, plan
@@ -48,6 +50,9 @@ from tests.enrich.conftest import (
 
 MODEL = "claude-haiku-4-5-20251001"
 
+# The recorded `claude` envelopes, shared with `test_client.py`.
+FIXTURES = Path(__file__).parent / "fixtures"
+
 # An invented credential, in a shape the screen knows, for the answer that must be refused.
 FAKE_SECRET = "AKIAIOSFODNN7EXAMPLE"
 
@@ -57,7 +62,7 @@ FAKE_CATEGORY = "SENTINEL-5c1a-out-of-vocabulary"
 
 
 class FakeClient:
-    """Answers every request, records every batch, and never touches the network.
+    """Answers every request, records every round, and never starts a process.
 
     `answers` overrides the reply for one key — a failure, or an answer the validator will
     refuse. Everything else gets a well-formed description naming its own key, so a row can
@@ -67,10 +72,10 @@ class FakeClient:
     def __init__(self, model: str = MODEL, answers: Mapping[str, Result] | None = None) -> None:
         self.model = model
         self.answers = answers or {}
-        self.batches: list[tuple[EnrichRequest, ...]] = []
+        self.rounds: list[tuple[EnrichRequest, ...]] = []
 
     def submit(self, requests: Sequence[EnrichRequest]) -> list[Result]:
-        self.batches.append(tuple(requests))
+        self.rounds.append(tuple(requests))
         return [
             self.answers.get(request.key, Succeeded(key=request.key, output=answer(request.key)))
             for request in requests
@@ -79,7 +84,7 @@ class FakeClient:
     @property
     def keys(self) -> list[str]:
         """Every key the client was asked about, in the order it was asked."""
-        return [request.key for batch in self.batches for request in batch]
+        return [request.key for round in self.rounds for request in round]
 
 
 def answer(key: str, **overrides: object) -> dict[str, Any]:
@@ -128,6 +133,18 @@ def forest(forest_store: Path, tmp_path: Path) -> Iterator[EnrichmentStore]:
     copy.write_bytes(forest_store.read_bytes())
     with EnrichmentStore(copy) as opened:
         yield opened
+
+
+@pytest.fixture
+def logged_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Answer the CLI's auth question without asking it.
+
+    Every real run preflights, which starts a process the autouse guard refuses. The real
+    call is pinned in `test_a_dry_run_asks_no_auth_question` and
+    `test_the_auth_blob_never_reaches_the_output`; everything else here is about what the run
+    does afterwards.
+    """
+    monkeypatch.setattr(cli, "preflight", lambda: None)
 
 
 def turns(store: EnrichmentStore) -> list[TurnItem]:
@@ -239,8 +256,8 @@ def test_a_second_run_over_an_unchanged_store_sends_nothing(forest: EnrichmentSt
     before = written_at(forest)
     second = FakeClient()
     report = enrich(forest, second)
-    # ...then the second run sends no batch at all — not an empty one...
-    assert second.batches == []
+    # ...then the second run sends no round at all — not an empty one...
+    assert second.rounds == []
     assert report == EnrichReport(swept=0, enriched=0)
     # ...and every row of all three levels is untouched, down to when it was written.
     assert written_at(forest) == before
@@ -297,15 +314,17 @@ def test_a_round_of_mixed_failures_crashes_naming_keys_and_kinds(store: Enrichme
     Nothing the model wrote reaches the summary — the natural implementation, formatting the
     failed response into the message, is the one that leaks a credential out of a transcript.
     """
-    # If one round fails three ways at once — a request the API could not answer, an answer
+    # If one round fails three ways at once — an item the breaker abandoned unsent, an answer
     # outside the taxonomy, and an answer carrying something shaped like a credential...
     items = turns(store)
-    dropped, invalid, refused = items[0], items[1], items[2]
+    abandoned, invalid, refused = items[0], items[1], items[2]
     client = FakeClient(
         answers={
-            # The API-error item carries no sentinel because `Failed` has no field to put one
-            # in: a failure record cannot repeat model output it never received.
-            dropped.key: Failed(dropped.key, FailureKind.api_error),
+            # The abandoned item carries no sentinel because `Failed` has no field to put one
+            # in: a failure record cannot repeat model output it never received. It is also
+            # the kind that makes the round-level claim below matter — a breaker trip returns
+            # the paid answers alongside the abandoned ones rather than raising over them.
+            abandoned.key: Failed(abandoned.key, FailureKind.aborted),
             invalid.key: Succeeded(
                 key=invalid.key,
                 output=answer(invalid.key, category=f"refactoring-{FAKE_CATEGORY}"),
@@ -322,10 +341,10 @@ def test_a_round_of_mixed_failures_crashes_naming_keys_and_kinds(store: Enrichme
         enrich(store, client)
     summary = str(failure.value)
     # ...the summary names each item and how it failed...
-    assert [key in summary for key in (dropped.key, invalid.key, refused.key)] == [True] * 3
+    assert [key in summary for key in (abandoned.key, invalid.key, refused.key)] == [True] * 3
     assert [
         kind in summary
-        for kind in (FailureKind.api_error, FailureKind.invalid_output, FailureKind.secret_shape)
+        for kind in (FailureKind.aborted, FailureKind.invalid_output, FailureKind.secret_shape)
     ] == [True] * 3
     # ...and carries nothing either answer said...
     assert FAKE_SECRET not in summary
@@ -337,15 +356,17 @@ def test_a_round_of_mixed_failures_crashes_naming_keys_and_kinds(store: Enrichme
 
 
 def test_a_failed_request_leaves_its_item_stale(store: EnrichmentStore, tmp_path: Path) -> None:
-    """An item the API could not answer writes nothing, and the next run picks it up again.
+    """An item the CLI could not answer writes nothing, and the next run picks it up again.
 
     Staleness is the whole resume mechanism: there is no state to keep, so a crashed run
-    leaves nothing behind to clean up or to go stale itself.
+    leaves nothing behind to clean up or to go stale itself. `timeout` is the kind that makes
+    the point — the client already retried this item and gave up, so the only retry left is
+    the rerun below.
     """
     items = turns(store)
     dropped = items[0]
     with pytest.raises(EnrichmentFailed):
-        enrich(store, FakeClient(answers={dropped.key: Failed(dropped.key, FailureKind.expired)}))
+        enrich(store, FakeClient(answers={dropped.key: Failed(dropped.key, FailureKind.timeout)}))
     # If the next run is the retry, it asks about exactly the item that failed — and about the
     # session it belongs to, which the first run refused to describe from a hole...
     client = FakeClient()
@@ -356,39 +377,45 @@ def test_a_failed_request_leaves_its_item_stale(store: EnrichmentStore, tmp_path
     assert {path.name for path in tmp_path.iterdir()} <= {"traces.duckdb", "traces.duckdb.wal"}
 
 
-def test_the_cli_refuses_without_a_key(
-    store: EnrichmentStore, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A run that would spend refuses at command start when the API key is missing or empty."""
-    # A developer's real `.env` must not decide this test.
-    monkeypatch.setattr(cli, "load_dotenv", lambda: None)
-    for absent in ("", "   ", None):
-        if absent is None:
-            monkeypatch.delenv("ANTHROPIC_API_KEY")
-        else:
-            monkeypatch.setenv("ANTHROPIC_API_KEY", absent)
-        with pytest.raises(SystemExit, match="ANTHROPIC_API_KEY"):
-            cli.main("enrich", "--db", str(store.path))
-    # ...and it refuses before it renders anything, let alone writes a row.
-    assert stored(store) == []
-
-
-def test_a_dry_run_prices_a_store_with_no_key_at_all(
+def test_a_dry_run_asks_no_auth_question(
     store: EnrichmentStore, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Quoting a run needs no API key, because quoting spends nothing and calls nothing.
+    """Quoting a run asks nothing about auth; a run that would spend asks before it renders.
 
-    Whoever decides whether to pay for a pass is not always whoever holds the key.
+    Whoever decides whether to pay for a pass is not always whoever is logged in. The autouse
+    subprocess guard is the assertion for the first half: `preflight` shells out to `claude`,
+    so a dry run that checked would raise here instead of printing a quote.
     """
-    monkeypatch.setattr(cli, "load_dotenv", lambda: None)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    # If a store is priced with `preflight` left alone...
     cli.main("enrich", "--db", str(store.path), "--dry-run")
+    # ...then it quotes the plan and writes no row...
     assert "at most 7 item(s) would be sent" in capsys.readouterr().out
     assert stored(store) == []
+    # ...and a real run over the same store asks first: the auth question comes before the
+    # client that would spend, so a logged-out machine fails before it renders a prompt.
+    order: list[str] = []
+
+    def client(model: str, *, concurrency: int) -> FakeClient:
+        order.append("client")
+        return FakeClient()
+
+    monkeypatch.setattr(cli, "preflight", lambda: order.append("preflight"))
+    monkeypatch.setattr(cli, "build_client", client)
+    cli.main("enrich", "--db", str(store.path), "--limit", "1")
+    assert order == ["preflight", "client"]
+
+
+def test_the_removed_batch_flag_is_rejected(store: EnrichmentStore) -> None:
+    """`--no-batch` is gone: a script still passing it stops rather than silently batching.
+
+    There is one path now, and it is neither of the two the flag chose between.
+    """
+    with pytest.raises(SystemExit):
+        cli.main("enrich", "--db", str(store.path), "--no-batch")
 
 
 def test_a_dry_run_creates_the_enrichment_tables_it_finds_missing(
-    spine_store: Path, tmp_path: Path, anthropic_env: str, capsys: pytest.CaptureFixture[str]
+    spine_store: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A dry run over a store nothing has enriched leaves its three tables behind, empty.
 
@@ -413,11 +440,10 @@ def test_a_dry_run_creates_the_enrichment_tables_it_finds_missing(
 
 
 def test_a_dry_run_writes_nothing_and_sends_nothing(
-    store: EnrichmentStore, anthropic_env: str, capsys: pytest.CaptureFixture[str]
+    store: EnrichmentStore, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """`--dry-run` says how much a run would send, without building a client at all."""
-    # If a dry run is asked for — with `build_client` left as it is, so constructing one
-    # would fail the test rather than pass it...
+    """`--dry-run` says how much a run would send, broken down by level."""
+    # If a dry run is asked for...
     cli.main("enrich", "--db", str(store.path), "--dry-run")
     # ...then it reports the two stale runs, the four stale turns and the session, and writes
     # no row.
@@ -428,7 +454,7 @@ def test_a_dry_run_writes_nothing_and_sends_nothing(
 
 
 def test_a_dry_run_counts_the_ancestors_of_what_is_stale(
-    store: EnrichmentStore, anthropic_env: str, capsys: pytest.CaptureFixture[str]
+    store: EnrichmentStore, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """One stale leaf is quoted as four items: itself and everything that embeds it.
 
@@ -455,58 +481,41 @@ def test_a_dry_run_counts_the_ancestors_of_what_is_stale(
 
 
 def test_a_dry_run_quotes_a_price_it_computed_itself(
-    store: EnrichmentStore, anthropic_env: str, capsys: pytest.CaptureFixture[str]
+    store: EnrichmentStore, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """The quoted dollars are arithmetic over the prompts, checkable without a network.
 
-    The autouse network guard is what proves the "without a network" half: an implementation
-    that asked the API what it charges would raise here rather than print.
+    The autouse subprocess guard is what proves the "without a network" half: an
+    implementation that asked the model what it charges would raise here rather than print.
     """
     # If a dry run reports on a store nothing has enriched...
     planned = plan(store, MODEL, project=None, limit=None)
     cli.main("enrich", "--db", str(store.path), "--dry-run")
     printed = capsys.readouterr().out
-    # ...then the price it printed is the one `estimate` derives from the same prompts...
+    # ...then the price it printed is the one `estimate` derives from the same prompts —
+    # one figure now, because there is one way to send an item...
     quote = estimate([Prompt(entry.item.level, entry.rendered) for entry in planned], MODEL)
-    assert f"at most ${quote.batched_usd:.2f} batched" in printed
-    assert f"(${quote.unbatched_usd:.2f} with --no-batch)" in printed
-    # ...the batch path is quoted at half the direct one, which is why production batches...
-    assert quote.unbatched_usd == pytest.approx(quote.batched_usd * 2)
+    assert f"at most ${quote.usd:.2f}" in printed
     # ...and seven short fixture prompts cost a fraction of a cent, so the report has to
     # carry the token counts to be worth reading at all.
     assert f"~{quote.input_tokens:,} input" in printed
 
 
-def test_a_dry_run_works_on_both_paths(
-    store: EnrichmentStore, anthropic_env: str, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """`--dry-run` reports the same plan with or without `--no-batch`, building no client.
-
-    `build_client` is left alone in both calls: a dry run that constructed one would reach
-    for a key it has no business spending.
-    """
-    cli.main("enrich", "--db", str(store.path), "--dry-run")
-    batched = capsys.readouterr().out
-    cli.main("enrich", "--db", str(store.path), "--dry-run", "--no-batch")
-    # The plan does not depend on how it would be sent — only the price does, and both
-    # prices are quoted either way.
-    assert capsys.readouterr().out == batched
-
-
 def test_the_cli_writes_what_the_library_writes(
-    spine_store: Path, tmp_path: Path, anthropic_env: str, monkeypatch: pytest.MonkeyPatch
+    spine_store: Path, tmp_path: Path, logged_in: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`aiobserve enrich` leaves the same rows as calling `enrich` directly.
+    """`aiobserve enrich` leaves the same rows as calling `enrich` directly, and needs no key.
 
     The command is a thin wrapper by intent; a check on the library alone would miss an
     argument the CLI forgets to pass through.
     """
     # If the same store is enriched twice — once through the command, once through the
-    # function — with the same fake answering both...
+    # function — with the same fake answering both, on a machine holding no API key at all...
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     through_cli, direct = tmp_path / "cli.duckdb", tmp_path / "direct.duckdb"
     for copy in (through_cli, direct):
         copy.write_bytes(spine_store.read_bytes())
-    monkeypatch.setattr(cli, "build_client", lambda model, *, batched: FakeClient())
+    monkeypatch.setattr(cli, "build_client", lambda model, *, concurrency: FakeClient())
     cli.main("enrich", "--db", str(through_cli))
     with EnrichmentStore(direct) as store:
         enrich(store, FakeClient())
@@ -521,11 +530,11 @@ def test_the_cli_writes_what_the_library_writes(
 
 
 def test_the_cli_limits_what_it_sends(
-    store: EnrichmentStore, anthropic_env: str, monkeypatch: pytest.MonkeyPatch
+    store: EnrichmentStore, logged_in: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`--limit N` sends at most N items, which is what makes a dev run cheap."""
     client = FakeClient()
-    monkeypatch.setattr(cli, "build_client", lambda model, *, batched: client)
+    monkeypatch.setattr(cli, "build_client", lambda model, *, concurrency: client)
     cli.main("enrich", "--db", str(store.path), "--limit", "2")
     assert len(client.keys) == 2
     # The limit is spent from the deepest round outwards, so it buys the two agent runs
@@ -534,49 +543,60 @@ def test_the_cli_limits_what_it_sends(
     assert stored(store) == []
 
 
-def test_the_batch_flag_picks_the_client(
-    store: EnrichmentStore, anthropic_env: str, monkeypatch: pytest.MonkeyPatch
+def test_the_concurrency_flag_reaches_the_client(
+    store: EnrichmentStore, logged_in: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The default run batches at half price; `--no-batch` takes the dev path instead."""
-    # If the one place a client is built is asked for each path, it answers with the real
-    # client for that path, holding the model the rows will be stamped with...
-    batched = cli.build_client(MODEL, batched=True)
-    direct = cli.build_client(MODEL, batched=False)
-    assert isinstance(batched, AnthropicBatchClient)
-    assert isinstance(direct, SyncClient)
-    assert [batched.model, direct.model] == [MODEL] * 2
-    # ...and the flag is what decides which it is asked for.
-    asked: list[bool] = []
+    """`--concurrency N` sets how many `claude` processes a round runs at once, defaulting to 4."""
+    # If the one place a client is built is asked for one, it answers with the real client,
+    # holding the model the rows will be stamped with and the width it was given...
+    built = cli.build_client(MODEL, concurrency=2)
+    assert isinstance(built, CliClient)
+    assert (built.model, built.concurrency) == (MODEL, 2)
+    # ...and the flag is what decides that width, with a default a bare run can afford.
+    asked: list[int] = []
 
-    def record(model: str, *, batched: bool) -> FakeClient:
-        asked.append(batched)
+    def record(model: str, *, concurrency: int) -> FakeClient:
+        asked.append(concurrency)
         return FakeClient()
 
     monkeypatch.setattr(cli, "build_client", record)
     cli.main("enrich", "--db", str(store.path), "--limit", "1")
-    cli.main("enrich", "--db", str(store.path), "--limit", "1", "--no-batch")
-    assert asked == [True, False]
+    cli.main("enrich", "--db", str(store.path), "--limit", "1", "--concurrency", "2")
+    assert asked == [DEFAULT_CONCURRENCY, 2]
+    assert DEFAULT_CONCURRENCY == 4
 
 
-def test_the_key_never_reaches_the_output(
+def test_the_auth_blob_never_reaches_the_output(
     store: EnrichmentStore,
-    anthropic_env: str,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Nothing prints the API key, including the failure path."""
+    """Nothing prints what the CLI said about the account, including on the failure path.
+
+    `preflight` really runs here, over the recorded logged-in envelope, so the account blob
+    is in the process rather than assumed absent — an email, an org id and an org name that
+    would leak from any implementation echoing what the auth check read.
+    """
+    status = json.loads((FIXTURES / "auth_status_logged_in.json").read_text())
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, json.dumps(status), ""),
+    )
 
     # If every item fails, which is the noisiest a run gets...
-    def failing(model: str, *, batched: bool) -> FakeClient:
+    def failing(model: str, *, concurrency: int) -> FakeClient:
         keys = [item.key for item in turns(store)]
         return FakeClient(answers={key: Failed(key, FailureKind.api_error) for key in keys})
 
     monkeypatch.setattr(cli, "build_client", failing)
     with pytest.raises(EnrichmentFailed) as failure:
         cli.main("enrich", "--db", str(store.path))
-    # ...then the key is in none of what the run said, and none of what it raised.
+    # ...then no value the envelope carried is in what the run said, or in what it raised.
     printed = capsys.readouterr()
-    assert anthropic_env not in printed.out + printed.err + str(failure.value)
+    said = printed.out + printed.err + str(failure.value)
+    blobs = [status["email"], status["orgId"], status["orgName"]]
+    assert [blob in said for blob in blobs] == [False] * 3
 
 
 def test_rounds_send_children_before_parents(forest: EnrichmentStore) -> None:
@@ -589,8 +609,8 @@ def test_rounds_send_children_before_parents(forest: EnrichmentStore) -> None:
     # an auditor under no turn at all, and a run nothing spawned...
     client = FakeClient()
     enrich(forest, client)
-    # ...then the batches are the levels of the forest, deepest first: every leaf run...
-    assert [set(request.key for request in batch) for batch in client.batches] == [
+    # ...then the rounds are the levels of the forest, deepest first: every leaf run...
+    assert [set(request.key for request in round) for round in client.rounds] == [
         {key_of(forest, SPINE_LEAF), key_of(forest, ORIGIN_RUN), key_of(forest, TEAM_RUN)},
         # ...then the runs that spawned them...
         {key_of(forest, SPINE_RUN), key_of(forest, AUDITOR_RUN)},
@@ -610,7 +630,7 @@ def test_a_rootless_run_is_a_root(forest: EnrichmentStore) -> None:
     """
     client = FakeClient()
     enrich(forest, client)
-    first = {request.key for request in client.batches[0]}
+    first = {request.key for request in client.rounds[0]}
     # The teammate run, which names neither a spawning call nor a parent agent, goes in the
     # first round; a run that does name a parent waits for it.
     assert key_of(forest, TEAM_RUN) in first

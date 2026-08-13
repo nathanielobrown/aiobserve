@@ -18,24 +18,30 @@ import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
-from aiobserve.enrich.batches import EnrichRequest, Failed, Result, Succeeded
+from aiobserve import cli
 from aiobserve.enrich.client import (
     ATTEMPTS,
     BREAKER_BOUND,
     CLAUDE,
     ITEM_TIMEOUT,
     CliClient,
+    EnrichRequest,
     EnvelopeDrift,
+    Failed,
+    Result,
+    Succeeded,
     build_env,
     preflight,
 )
-from aiobserve.enrich.prompts import OUTPUT_TOOL
+from aiobserve.enrich.prompts import OUTPUT_SCHEMA
+from aiobserve.enrich.store import EnrichmentStore
 from aiobserve.enrich.taxonomy import Category, Outcome
 from aiobserve.enrich.validation import Enrichment, FailureKind, validate
+from tests.enrich.conftest import LIVE_CLI
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -521,7 +527,7 @@ def test_every_call_carries_the_isolation_flags(fake: Install) -> None:
         "--system-prompt",
         INSTRUCTIONS,
         "--json-schema",
-        json.dumps(OUTPUT_TOOL["input_schema"]),
+        json.dumps(OUTPUT_SCHEMA),
         "--tools",
         "",
         "--setting-sources",
@@ -612,3 +618,55 @@ def test_preflight_accepts_a_recorded_subscription(
     fake({AUTH_CALL: Reply(stdout=json.dumps(recorded("auth_status_logged_in")))})
     preflight()
     assert capsys.readouterr().out == ""
+
+
+@pytest.mark.live
+# Two real `claude` calls, each ~4s of process boot and API time.
+@pytest.mark.slow
+@pytest.mark.skipif(LIVE_CLI not in os.environ, reason=f"set {LIVE_CLI} to spend on two items")
+def test_two_real_items_come_back_valid(mutable_db: Path) -> None:
+    """Two items through the real CLI land two rows the validator accepts.
+
+    The only check that the pinned envelope, the keychain OAuth the constructed env reaches,
+    and `MAX_THINKING_TOKENS=0` all still behave — everything else here reads a recording.
+    Run it by hand once per Claude Code release; drift shows up as `EnvelopeDrift` from the
+    canary, which is the crash the recordings cannot produce.
+    """
+    # If the smallest run that opens the pool is spent on a real store...
+    cli.main("enrich", "--db", str(mutable_db), "--limit", "2")
+    # ...then two rows landed — the deepest round first, so both are agent runs...
+    with EnrichmentStore(mutable_db) as store:
+        rows = store.connection.execute(
+            "SELECT description, category, outcome, friction FROM agent_run_enrichments"
+        ).fetchall()
+    assert len(rows) == 2
+    # ...and each one is an answer the validator accepts on its own, out of the store.
+    for description, category, outcome, friction in rows:
+        assert validate(
+            {
+                "description": description,
+                "category": category,
+                "outcome": outcome,
+                "friction": friction,
+            }
+        ) == Enrichment(
+            description=description,
+            category=Category(category),
+            outcome=Outcome(outcome),
+            friction=friction,
+        )
+
+
+def test_the_live_smoke_is_gated_by_its_environment_variable() -> None:
+    """The live smoke skips when it is not opted into, rather than passing without running.
+
+    A `live` test that silently became a no-op would report green while proving nothing about
+    the CLI — and unmarked, it would trip the subprocess guard instead of spending.
+    """
+    # `pytestmark` is written onto the function by the decorators, so it is untyped here.
+    marks: list[pytest.Mark] = cast(Any, test_two_real_items_come_back_valid).pytestmark
+    assert {"live", "slow"} <= {mark.name for mark in marks}
+    # The skip condition tracks the opt-in in both directions: set, the smoke runs; unset —
+    # which is what a bare `mise run test` sees — it skips.
+    skipif = next(mark for mark in marks if mark.name == "skipif")
+    assert skipif.args == (LIVE_CLI not in os.environ,)

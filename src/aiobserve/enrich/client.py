@@ -1,10 +1,11 @@
-"""Enrichment through the Claude Code CLI: one `claude -p` subprocess per item.
+"""The seam between the enricher and the model, and the one client behind it.
 
-The subscription authenticates only through the CLI's OAuth, so this is the transport a
-corpus pass really runs on. It satisfies the same `BatchClient` protocol the API clients do —
-a round in, one result per key out — and everything above that seam is unchanged.
+Everything above this line is pure and testable without a process: the enricher renders,
+hands over a round, and reads back one result per key. Below it, `CliClient` runs `claude -p`
+once per item — the subscription authenticates only through the CLI's OAuth, so this is the
+transport a corpus pass really runs on.
 
-Two properties shape the code:
+Two properties shape the client:
 
 - **A round never raises once it is spending.** `enricher._round` upserts only after `submit`
   returns, so a raise mid-round forfeits every item already paid for. The one exception is
@@ -23,10 +24,14 @@ from collections import deque
 from collections.abc import Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from typing import Any, Protocol
 
-from aiobserve.enrich.batches import EnrichRequest, Failed, Result, Succeeded
-from aiobserve.enrich.prompts import OUTPUT_TOOL
+from aiobserve.enrich.prompts import OUTPUT_SCHEMA
 from aiobserve.enrich.validation import FailureKind
+
+# Cheap enough to enrich the whole corpus, and the classification is a short judgement over
+# text a bigger model would not read differently.
+DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 
 # Resolved on PATH rather than pinned: the CLI updates itself, and the env below carries the
 # PATH the parent was launched with.
@@ -59,8 +64,51 @@ _TRANSPORT_FAILURES = frozenset({FailureKind.api_error, FailureKind.timeout})
 # it whenever the model produced nothing conforming, which is a bad answer, not drift.
 _CONTRACT_FIELDS = ("is_error", "stop_reason", "modelUsage")
 
-# The output contract, as the CLI takes it. The same schema the API path forced as a tool.
-_JSON_SCHEMA = json.dumps(OUTPUT_TOOL["input_schema"])
+# The output contract, as `--json-schema` takes it: one JSON document on the command line.
+_JSON_SCHEMA = json.dumps(OUTPUT_SCHEMA)
+
+
+@dataclass(frozen=True)
+class EnrichRequest:
+    """One item to describe."""
+
+    # The item's key, echoed back on the result — a round answers in completion order.
+    key: str
+    instructions: str
+    content: str
+
+
+@dataclass(frozen=True)
+class Succeeded:
+    """The model answered. The output is unvalidated: `validation.validate` is next."""
+
+    key: str
+    output: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class Failed:
+    """The request did not produce an answer. Carries no model output, by construction."""
+
+    key: str
+    kind: FailureKind
+
+
+Result = Succeeded | Failed
+
+
+class BatchClient(Protocol):
+    """Runs one round of requests to completion, whatever "completion" costs.
+
+    `submit` returns exactly one result per request, in any order, and raises only when the
+    whole round failed — a single item's failure comes back as `Failed`. The enricher is
+    written to this, not to `CliClient`, which is what lets a test drive a round with a fake.
+    """
+
+    # The model the results were produced by, which is part of what makes a row stale.
+    model: str
+
+    def submit(self, requests: Sequence[EnrichRequest]) -> list[Result]: ...
 
 
 class EnvelopeDrift(Exception):

@@ -11,18 +11,12 @@ import re
 from dataclasses import dataclass
 from enum import StrEnum
 
-from anthropic.types import ToolParam
-
 from aiobserve.enrich.taxonomy import (
     CATEGORY_DEFINITIONS,
     OUTCOME_DEFINITIONS,
     Category,
     Outcome,
 )
-
-# The one tool the model may call. Both clients force it, so an answer is a JSON object or
-# it is a failure — there is no prose to parse.
-OUTPUT_TOOL_NAME = "record_enrichment"
 
 
 class Level(StrEnum):
@@ -35,7 +29,7 @@ class Level(StrEnum):
 
 # Per level, covering what `input_hash` cannot see: the instructions and the output schema.
 # Bump one and that level re-enriches; its parents follow through the hash.
-PROMPT_VERSION: dict[Level, int] = {Level.turn: 1, Level.agent_run: 1, Level.session: 1}
+PROMPT_VERSION: dict[Level, int] = {Level.turn: 2, Level.agent_run: 2, Level.session: 2}
 
 # What each level is looking at. The rest of the instructions is the same everywhere, so a
 # level reads differently only where it should.
@@ -54,7 +48,7 @@ _SUBJECT: dict[Level, str] = {
     ),
 }
 
-_ANSWER = f"""Answer by calling `{OUTPUT_TOOL_NAME}` once, and say nothing else:
+_ANSWER = """Answer with one JSON object recording what you just read, and say nothing else:
 
 - description: one or two sentences saying what was done, and to what. Name the files, \
 commands and subjects concretely. Do not judge the work, and do not restate the category
@@ -66,27 +60,23 @@ taken and undone, a tool that would not answer — or null when the records show
 Never quote a credential, key or token, whatever it appears in. Never copy code or file \
 contents into the description."""
 
-# The tool the answer arrives as. Its input schema *is* the output contract, so the model
-# cannot answer out of vocabulary in the first place — and an edit here is a
-# `PROMPT_VERSION` bump, since `input_hash` cannot see it.
-OUTPUT_TOOL = ToolParam(
-    name=OUTPUT_TOOL_NAME,
-    description="Record what the item you just read was doing.",
-    input_schema={
-        "type": "object",
-        "properties": {
-            "description": {"type": "string", "description": "One or two sentences"},
-            "category": {"type": "string", "enum": [str(member) for member in Category]},
-            "outcome": {"type": "string", "enum": [str(member) for member in Outcome]},
-            "friction": {
-                "type": ["string", "null"],
-                "description": "One line naming visible struggle, or null when there was none",
-            },
+# The output contract itself: passed to `--json-schema`, so the model cannot answer out of
+# vocabulary in the first place. An edit here is a `PROMPT_VERSION` bump, since `input_hash`
+# cannot see it.
+OUTPUT_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "properties": {
+        "description": {"type": "string", "description": "One or two sentences"},
+        "category": {"type": "string", "enum": [str(member) for member in Category]},
+        "outcome": {"type": "string", "enum": [str(member) for member in Outcome]},
+        "friction": {
+            "type": ["string", "null"],
+            "description": "One line naming visible struggle, or null when there was none",
         },
-        # `friction` included: the model must decide there was none, not forget to say.
-        "required": ["description", "category", "outcome", "friction"],
     },
-)
+    # `friction` included: the model must decide there was none, not forget to say.
+    "required": ["description", "category", "outcome", "friction"],
+}
 
 
 def instructions(level: Level) -> str:

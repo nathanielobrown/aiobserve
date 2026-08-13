@@ -10,15 +10,15 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-import anthropic
 from dotenv import load_dotenv
 
 from aiobserve.analyze.runner import QueryError, Result, run
-from aiobserve.enrich.batches import (
+from aiobserve.enrich.client import (
+    DEFAULT_CONCURRENCY,
     DEFAULT_MODEL,
-    AnthropicBatchClient,
     BatchClient,
-    SyncClient,
+    CliClient,
+    preflight,
 )
 from aiobserve.enrich.cost import Prompt, estimate
 from aiobserve.enrich.enricher import LEVELS, PlannedItem, enrich, plan
@@ -44,9 +44,6 @@ from aiobserve.view.app import PORT, serve
 
 # Gitignored, so an extract never lands in a commit.
 DEFAULT_DB = Path("data") / "traces.duckdb"
-
-# Read from `.env` or the environment, and validated before `enrich` reads anything else.
-API_KEY = "ANTHROPIC_API_KEY"
 
 
 def main(*argv: str) -> None:
@@ -87,9 +84,11 @@ def main(*argv: str) -> None:
     )
     enrichment.add_argument("--limit", type=int, help="Send at most this many items")
     enrichment.add_argument(
-        "--no-batch",
-        action="store_true",
-        help="Call the Messages API directly: minutes instead of hours, at full price",
+        "--concurrency",
+        type=int,
+        default=DEFAULT_CONCURRENCY,
+        help=f"How many `claude` processes run at once (default: {DEFAULT_CONCURRENCY}). "
+        "They spend the same 5-hour allowance this machine's own agents do",
     )
 
     otlp = subcommands.add_parser(
@@ -200,17 +199,12 @@ def main(*argv: str) -> None:
         print(f"{session.id}\t{subagents} subagent(s)\t{session.transcript}")
 
 
-def build_client(model: str, *, batched: bool) -> BatchClient:
-    """The client an enrichment run calls — batched for a corpus pass, direct for a dev run.
+def build_client(model: str, *, concurrency: int) -> BatchClient:
+    """The client an enrichment run calls: `claude -p`, that many processes at a time.
 
     The one place a real client is built, so a test can put a fake in its place.
     """
-    # Reads the same key `_enrich` validated a moment ago, from the environment `load_dotenv`
-    # populated.
-    client = anthropic.Anthropic()
-    if batched:
-        return AnthropicBatchClient(client, model)
-    return SyncClient(client, model)
+    return CliClient(model, concurrency=concurrency)
 
 
 def _query(args: argparse.Namespace) -> None:
@@ -270,18 +264,17 @@ def _cell(value: Any) -> str:
 
 def _enrich(args: argparse.Namespace) -> None:
     """Describe the store's stale items, or say what a run would send and stop."""
-    load_dotenv()
-    # Before anything reads the store or renders a prompt: a run that would fail on its first
-    # request fails now instead. A dry run makes no request, so it needs no key — whoever
-    # decides whether to pay for a pass is not always whoever holds the key.
-    if not args.dry_run and not os.environ.get(API_KEY, "").strip():
-        raise SystemExit(f"{API_KEY} is unset or empty. Put it in .env or the environment")
+    # Before anything reads the store or renders a prompt: a run whose CLI cannot spend the
+    # subscription fails now instead of on its first item. A dry run asks nothing — whoever
+    # decides whether to pay for a pass is not always whoever is logged in.
+    if not args.dry_run:
+        preflight()
     project = str(args.project.resolve()) if args.project else None
     with EnrichmentStore(args.db) as store:
         if args.dry_run:
             _report_plan(plan(store, args.model, project=project, limit=args.limit), args.model)
             return
-        client = build_client(args.model, batched=not args.no_batch)
+        client = build_client(args.model, concurrency=args.concurrency)
         report = enrich(store, client, project=project, limit=args.limit)
     print(f"{report.enriched} item(s) enriched, {report.swept} orphaned row(s) swept")
 
@@ -336,9 +329,8 @@ def _report_plan(planned: Sequence[PlannedItem], model: str) -> None:
     breakdown = ", ".join(f"{counts[level]} {level}" for level in LEVELS)
     print(f"at most {quote.items} item(s) would be sent to {model} — {breakdown}")
     print(
-        f"at most ${quote.batched_usd:.2f} batched (${quote.unbatched_usd:.2f} with --no-batch): "
-        f"~{quote.input_tokens:,} input and ~{quote.output_tokens:,} output tokens, "
-        "counting no prompt caching"
+        f"at most ${quote.usd:.2f}: ~{quote.input_tokens:,} input and "
+        f"~{quote.output_tokens:,} output tokens, counting no prompt caching"
     )
 
 

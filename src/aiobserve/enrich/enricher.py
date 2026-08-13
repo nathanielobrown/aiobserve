@@ -8,7 +8,7 @@ crash.
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from aiobserve.enrich.batches import BatchClient, EnrichRequest, Failed, Succeeded
+from aiobserve.enrich.client import BatchClient, EnrichRequest, Failed, Succeeded
 from aiobserve.enrich.prompts import (
     PROMPT_VERSION,
     Item,

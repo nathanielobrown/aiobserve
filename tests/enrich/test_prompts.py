@@ -16,14 +16,18 @@ from pathlib import Path
 import pytest
 
 from aiobserve.enrich.prompts import (
+    OUTPUT_SCHEMA,
+    PROMPT_VERSION,
     RUN_BUDGETS,
     SESSION_BUDGETS,
     TURN_BUDGETS,
     AgentRunItem,
     Item,
+    Level,
     SessionItem,
     TurnItem,
     input_hash,
+    instructions,
     render_run,
     render_session,
     render_turn,
@@ -91,6 +95,46 @@ def describe(store: EnrichmentStore, item: Item, description: str) -> None:
         # The stamp decides re-enrichment, which no render reads.
         Stamp(input_hash="unused", prompt_version=1, taxonomy_version=1, model="fake"),
     )
+
+
+def test_the_output_schema_is_the_taxonomy_the_validator_enforces() -> None:
+    """The schema the model answers under names the same four fields `validate` accepts.
+
+    It travels to `--json-schema`, so it is the first screen on the answer and the validator
+    is the second. A vocabulary that drifted between them would fail every item after the
+    model obeyed the prompt.
+    """
+    assert {
+        "type": "object",
+        "properties": {
+            "description": {"type": "string", "description": "One or two sentences"},
+            # Both enums are derived from the taxonomy rather than spelled out, here and in
+            # the schema, so a new member cannot reach one side alone.
+            "category": {"type": "string", "enum": [str(member) for member in Category]},
+            "outcome": {"type": "string", "enum": [str(member) for member in Outcome]},
+            "friction": {
+                "type": ["string", "null"],
+                "description": "One line naming visible struggle, or null when there was none",
+            },
+        },
+        # `friction` is required, nullable: the model must decide there was none.
+        "required": ["description", "category", "outcome", "friction"],
+    } == OUTPUT_SCHEMA
+
+
+def test_every_level_asks_for_json_at_the_same_version() -> None:
+    """All three levels are at prompt version 2 — the version that answers in JSON.
+
+    Version 1 asked for a forced tool call through the Batches API. The instructions and the
+    schema are what `input_hash` cannot see, so the bump is the whole mechanism by which the
+    corpus gets re-described under the new transport.
+    """
+    assert {Level.turn: 2, Level.agent_run: 2, Level.session: 2} == PROMPT_VERSION
+    # Every level's instructions ask for the JSON object the schema describes, and none of
+    # them still names a tool to call.
+    for level in Level:
+        assert "Answer with one JSON object" in instructions(level)
+        assert "calling" not in instructions(level)
 
 
 def test_a_plain_main_turn_renders_its_prompt_then_its_calls(fixture_db: Path) -> None:

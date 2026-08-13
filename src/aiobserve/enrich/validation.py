@@ -17,12 +17,8 @@ from aiobserve.enrich.taxonomy import Category, Outcome
 class FailureKind(StrEnum):
     """Why an item produced no row. The crash summary groups by these."""
 
-    # The API refused or errored on the request.
+    # The CLI refused or errored on the request.
     api_error = "api_error"
-    # The Batches API dropped the request at its 24h limit, unbilled.
-    expired = "expired"
-    # The batch was cancelled before the item ran.
-    canceled = "canceled"
     # The call was still running at the client's per-item deadline.
     timeout = "timeout"
     # The CLI's answer envelope was not the shape the client is pinned to. Only after the

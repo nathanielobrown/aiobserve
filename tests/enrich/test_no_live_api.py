@@ -1,29 +1,13 @@
-"""The guards that keep the suite off the Anthropic API and off the real `claude` binary."""
+"""The guard that keeps the suite off the real `claude` binary and the allowance it spends."""
 
 import os
 import subprocess
 import sys
 
-import anthropic
 import pytest
 
-from aiobserve.enrich.batches import EnrichRequest
-from aiobserve.enrich.client import CliClient
-from tests.enrich.conftest import LiveApiForbidden, SubprocessForbidden
-
-# The opt-in for anything that really runs a process. Set it and the `live` tests run.
-LIVE_CLI = "AIOBSERVE_LIVE_CLI"
-
-
-def test_the_sdk_cannot_reach_the_network() -> None:
-    """An SDK call from an unmarked test raises instead of billing an account."""
-    client = anthropic.Anthropic(api_key="not-a-real-key")
-    with pytest.raises(LiveApiForbidden, match="tried to reach the network"):
-        client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=1,
-            messages=[{"role": "user", "content": "hello"}],
-        )
+from aiobserve.enrich.client import CliClient, EnrichRequest
+from tests.enrich.conftest import LIVE_CLI, SubprocessForbidden
 
 
 @pytest.mark.parametrize("door", ["run", "Popen"])

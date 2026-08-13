@@ -8,10 +8,10 @@ counts the planner already holds — so a dry run costs nothing and works offlin
 import pytest
 
 from aiobserve.enrich.cost import (
-    BATCH_DISCOUNT,
     CHARS_PER_TOKEN,
     OUTPUT_TOKENS,
     PRICES,
+    TRANSPORT_TOKENS,
     Estimate,
     Prompt,
     estimate,
@@ -22,13 +22,16 @@ MODEL = "claude-haiku-4-5-20251001"
 
 
 def test_an_estimate_is_multiplication_a_reader_can_redo() -> None:
-    """The quoted price is the rendered characters, the instructions, and the rate table."""
+    """The quoted price is the rendered characters, the instructions, the scaffold, and rates."""
     # If a run would send two prompts — one turn and one session, of known length...
     prompts = [Prompt(Level.turn, "x" * 1_000), Prompt(Level.session, "y" * 3_000)]
     # ...then every number is derived from those lengths: each prompt pays for its content and
-    # for the instructions its level carries, because nothing here counts caching...
+    # for the instructions its level carries, since a fresh subprocess caches nothing...
     characters = 4_000 + len(instructions(Level.turn)) + len(instructions(Level.session))
-    input_tokens = int(characters / CHARS_PER_TOKEN)
+    # ...plus the transport scaffold, which is a flat count per item and holds no instructions
+    # of its own — priced with a tiny system prompt for exactly that reason, so summing it
+    # here on top of the characters above counts nothing twice...
+    input_tokens = int(characters / CHARS_PER_TOKEN) + 2 * TRANSPORT_TOKENS
     output_tokens = 2 * OUTPUT_TOKENS
     rates = PRICES[MODEL]
     full = (input_tokens * rates.input_usd + output_tokens * rates.output_usd) / 1_000_000
@@ -36,23 +39,25 @@ def test_an_estimate_is_multiplication_a_reader_can_redo() -> None:
     # ...the token counts are exact — the dollars are lifted here and checked below, because
     # float arithmetic is the one thing a whole-object compare cannot state...
     assert quote == Estimate(
-        items=2,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        batched_usd=quote.batched_usd,
-        unbatched_usd=quote.unbatched_usd,
+        items=2, input_tokens=input_tokens, output_tokens=output_tokens, usd=quote.usd
     )
-    # ...and the price is those tokens at the table's rate, halved on the batch path. That
-    # discount is the reason production runs batched at all, so a dry run quotes both.
-    assert quote.unbatched_usd == pytest.approx(full)
-    assert quote.batched_usd == pytest.approx(full * BATCH_DISCOUNT)
+    # ...and the price is those tokens at the table's rate. There is one price now: every item
+    # is a `claude -p` call at list rate, and the batch discount went with the API.
+    assert quote.usd == pytest.approx(full)
+
+
+def test_the_measured_constants_are_pinned_to_their_probe() -> None:
+    """The two numbers no arithmetic derives: both came off the 2026-08-13 CLI probes.
+
+    Every other assertion here spends them symbolically, so an edit to either would leave the
+    suite green while every quote moved. Changing one means re-measuring first.
+    """
+    assert (TRANSPORT_TOKENS, OUTPUT_TOKENS) == (700, 230)
 
 
 def test_an_empty_plan_costs_nothing() -> None:
     """A run with nothing stale quotes zero rather than a floor price."""
-    assert estimate([], MODEL) == Estimate(
-        items=0, input_tokens=0, output_tokens=0, batched_usd=0.0, unbatched_usd=0.0
-    )
+    assert estimate([], MODEL) == Estimate(items=0, input_tokens=0, output_tokens=0, usd=0.0)
 
 
 def test_an_unpriced_model_crashes() -> None:

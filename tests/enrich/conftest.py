@@ -1,4 +1,4 @@
-"""Scaffolding for the enrichment tier: a store built from recorded fixtures, and no network.
+"""Scaffolding for the enrichment tier: a store built from recorded fixtures, and no `claude`.
 
 The enrichment renders read rows, so their evidence is a real DuckDB built by running the
 existing pipeline over `tests/fixtures/` — the same keys the pipeline really writes. Building
@@ -8,10 +8,8 @@ it costs an extraction per fixture, so `fixture_db` builds once per test session
 
 import shutil
 import subprocess
-from collections.abc import Iterator
 from pathlib import Path
 
-import httpx
 import pytest
 
 from tests.conftest import build_store, fixture_transcripts
@@ -69,34 +67,8 @@ def mutable_db(fixture_db: Path, tmp_path: Path) -> Path:
     return copy
 
 
-class LiveApiForbidden(BaseException):
-    """A test tried to reach the network.
-
-    Deliberately not an `Exception`: the Anthropic SDK catches `Exception` around every
-    request, wraps it as a connection error and retries it, which would both hide this
-    message and make an accidental live call slow rather than loud.
-    """
-
-
-@pytest.fixture(autouse=True)
-def refuse_network(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Make any HTTP the Anthropic SDK attempts raise, unless the test is marked `live`.
-
-    "No test calls the real API" is otherwise a convention held up by review alone: nothing
-    stops a test from constructing a real client, and a billed call that quietly succeeds
-    looks exactly like a passing test.
-    """
-    if request.node.get_closest_marker("live"):
-        return
-
-    def refuse(*_args: object, **_kwargs: object) -> None:
-        raise LiveApiForbidden(
-            "a test tried to reach the network — enrichment tests drive a fake BatchClient; "
-            "mark the test `live` if it is the opt-in check"
-        )
-
-    monkeypatch.setattr(httpx.Client, "send", refuse)
-    monkeypatch.setattr(httpx.AsyncClient, "send", refuse)
+# The opt-in for anything that really runs a process. Set it and the `live` tests run.
+LIVE_CLI = "AIOBSERVE_LIVE_CLI"
 
 
 class SubprocessForbidden(Exception):
@@ -127,11 +99,3 @@ def refuse_subprocess(request: pytest.FixtureRequest, monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(subprocess, "run", refuse)
     monkeypatch.setattr(subprocess, "Popen", refuse)
-
-
-@pytest.fixture
-def anthropic_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
-    """A stand-in API key in the environment, so a test reaches past key validation."""
-    key = "sk-ant-fixture-key-not-real"
-    monkeypatch.setenv("ANTHROPIC_API_KEY", key)
-    yield key
