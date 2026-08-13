@@ -63,6 +63,13 @@ CREATE TABLE IF NOT EXISTS session_enrichments (
   {_ENRICHMENT_COLUMNS}
   PRIMARY KEY (session_id)
 );
+-- The sessions enrichment describes, named once so the reader and the sweep cannot drift
+-- apart: a session with no main turn and no agent run has nothing to describe, and one whose
+-- turns drove no api call has no model response to describe. 45 recorded sessions are in the
+-- second state — `/model` and `/effort` turns the CLI answered by itself — and the QC pass
+-- found the model inventing work for them rather than reporting none.
+CREATE OR REPLACE VIEW describable_sessions AS
+SELECT * FROM session_rollups WHERE (turns > 0 OR agent_runs > 0) AND api_calls > 0;
 -- LEFT join, so an un-enriched turn still appears and coverage reads honestly. The
 -- enrichment's own model is renamed: `agent_runs` carries a `model` of its own, and the
 -- three views answer the same question the same way.
@@ -122,8 +129,11 @@ LEVELS: dict[Level, LevelSpec] = {
     Level.session: LevelSpec(
         table="session_enrichments",
         keys=("session_id",),
-        base="sessions",
-        base_keys=("id",),
+        # `describable_sessions`, not `sessions`: a row for a session the pass will never
+        # refresh again is a zombie by the same definition as one whose session is gone, and
+        # 45 such rows are already on disk from before the gate existed.
+        base="describable_sessions",
+        base_keys=("session_id",),
     ),
 }
 
@@ -390,8 +400,8 @@ class EnrichmentStore:
     def session_items(self, project: str | None = None) -> list[SessionItem]:
         """Every session worth describing, with what it cost and what its children did.
 
-        A session with no main turn and no agent run is skipped rather than enriched — there
-        is nothing to describe, and 102 of 575 recorded sessions are in that state.
+        `describable_sessions` decides which those are: 102 of 575 recorded sessions hold no
+        main turn and no agent run, and 45 more drove no api call under the turns they hold.
         """
         children = self._session_children(project)
         return [
@@ -423,8 +433,8 @@ class EnrichmentStore:
                 f"""SELECT r.session_id, s.title, s.git_branch, r.wall_ms, r.active_ms,
                            r.input_tokens, r.output_tokens, r.cache_read_tokens,
                            r.cache_creation_tokens, r.cost_usd
-                    FROM session_rollups r JOIN sessions s ON s.id = r.session_id
-                    WHERE (r.turns > 0 OR r.agent_runs > 0){_project_clause(project)}
+                    FROM describable_sessions r JOIN sessions s ON s.id = r.session_id
+                    WHERE true{_project_clause(project)}
                     ORDER BY r.session_id""",
                 _project_parameters(project),
             ).fetchall()

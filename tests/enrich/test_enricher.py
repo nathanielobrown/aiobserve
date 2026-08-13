@@ -38,17 +38,19 @@ from aiobserve.enrich.prompts import (
 from aiobserve.enrich.store import EnrichmentStore
 from aiobserve.enrich.taxonomy import TAXONOMY_VERSION
 from aiobserve.enrich.validation import FailureKind
-from tests.conftest import build_store, fixture_transcripts
+from tests.conftest import MODEL_ONLY, build_store, fixture_transcripts
 from tests.enrich.conftest import (
     AUDITOR_RUN,
+    MODEL,
     ORIGIN_RUN,
     SPINE,
     SPINE_LEAF,
     SPINE_RUN,
     TEAM_RUN,
+    enrichment,
+    session_item,
+    stamp,
 )
-
-MODEL = "claude-haiku-4-5-20251001"
 
 # The recorded `claude` envelopes, shared with `test_client.py`.
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -240,6 +242,33 @@ def test_a_run_writes_a_row_for_every_stale_item(store: EnrichmentStore) -> None
         # Stored rows come back by turn id; the run sent them in the order they happened.
         for item in sorted(items, key=lambda item: item.turn_id)
     ]
+
+
+def test_a_pass_never_sends_a_gated_session_and_reports_the_row_it_deleted(
+    tmp_path: Path,
+) -> None:
+    """A session with no model response is not described, and the row it had is swept away.
+
+    The whole of the gate as an operator meets it: 45 rows the corpus already holds go, the
+    count reaches the console through `EnrichReport.swept`, and nothing is billed to replace
+    them. Neither half is visible from the store alone.
+    """
+    path = tmp_path / "gated.duckdb"
+    build_store(path, fixture_transcripts("spine", "model_only"))
+    with EnrichmentStore(path) as store:
+        # If a store holds a session whose turns drove no api call, described by an earlier
+        # pass that had no gate...
+        store.upsert(session_item(MODEL_ONLY), enrichment(), stamp())
+        client = FakeClient()
+        report = enrich(store, client)
+        # ...then the run sweeps that row and says so — the one place a reader learns the
+        # rows went...
+        assert report.swept == 1
+        assert [session_id for session_id, *_ in stored_sessions(store)] == [SPINE]
+        # ...and the gated session was never sent, so nothing is billed to describe it again.
+        assert f"{Level.session}|{MODEL_ONLY}" not in client.keys
+        # ...while its `/model` turn was, since turns are not gated.
+        assert any(key.startswith(f"{Level.turn}|{MODEL_ONLY}|") for key in client.keys)
 
 
 def test_a_second_run_over_an_unchanged_store_sends_nothing(forest: EnrichmentStore) -> None:

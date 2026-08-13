@@ -12,7 +12,14 @@ from pathlib import Path
 
 import pytest
 
+from aiobserve.enrich.prompts import SessionItem
+from aiobserve.enrich.store import Stamp
+from aiobserve.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
+from aiobserve.enrich.validation import Enrichment
 from tests.conftest import build_store, fixture_transcripts
+
+# The model the fake answers are attributed to, at both doors that write rows.
+MODEL = "claude-haiku-4-5-20251001"
 
 # The fixture directories enrichment reads, and the session ids their transcripts carry.
 # `plans/enrichment/testing_plan.md` maps each one to the shapes it carries; the rest of
@@ -54,6 +61,43 @@ ENRICHMENT_FIXTURES = (
     "model_only",
     "legacy_title",
 )
+
+
+def stamp(input_hash: str = "hash-1") -> Stamp:
+    """What a planted row was written under, at a version nothing reads as drift."""
+    return Stamp(
+        input_hash=input_hash,
+        prompt_version=1,
+        taxonomy_version=TAXONOMY_VERSION,
+        model=MODEL,
+    )
+
+
+def enrichment(description: str = "Read two files and ran the suite.") -> Enrichment:
+    """What a planted row says. Invented, as any model answer in a test must be."""
+    return Enrichment(
+        description=description,
+        category=Category.test,
+        outcome=Outcome.completed,
+        friction=None,
+    )
+
+
+def session_item(session_id: str) -> SessionItem:
+    """A session item built by hand, for a session the store will not hand one out for."""
+    return SessionItem(
+        session_id=session_id,
+        title=None,
+        git_branch=None,
+        wall_ms=None,
+        active_ms=None,
+        input_tokens=0,
+        output_tokens=0,
+        cache_read_tokens=0,
+        cache_creation_tokens=0,
+        cost_usd=0.0,
+        children=(),
+    )
 
 
 @pytest.fixture(scope="session")

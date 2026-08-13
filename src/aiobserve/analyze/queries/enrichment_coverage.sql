@@ -5,8 +5,9 @@
 -- moving is the other health signal: rows written by two models, or under two prompt
 -- versions, are a pass someone stopped halfway.
 -- The denominators are the items a pass would describe, which is not every row of a level:
--- enrichment describes main turns, every agent run, and the sessions that did any work
--- (`src/aiobserve/enrich/store.py`). Counting the rest would report a permanent shortfall.
+-- enrichment describes main turns, every agent run, and the sessions that drove a model
+-- response (`src/aiobserve/enrich/store.py`). Counting the rest would report a permanent
+-- shortfall.
 -- Counts through the `corpus_*` family like everything else here, rather than the
 -- `enriched_*` views, which are LEFT joins over `live_*`: a resume's copied turn is enriched
 -- under the copy's own key, so dropping the copy drops its enrichment row with it.
@@ -41,9 +42,11 @@ WITH item AS (
     FROM session_period p
     JOIN corpus_rollups r USING (session_id)
     LEFT JOIN session_enrichments e ON e.session_id = r.session_id
-    -- The skip rule, as `session_items` applies it: a session with no main turn and no agent
-    -- run has nothing to describe.
-    WHERE r.turns > 0 OR r.agent_runs > 0
+    -- Mirrors the `describable_sessions` view enrichment reads: a session with no main turn
+    -- and no agent run has nothing to describe, and one whose turns drove no api call has no
+    -- model response to describe. Its own copy of the rule, since this counts over
+    -- `corpus_rollups` while enrichment reads the live view.
+    WHERE (r.turns > 0 OR r.agent_runs > 0) AND r.api_calls > 0
 )
 SELECT
     period,

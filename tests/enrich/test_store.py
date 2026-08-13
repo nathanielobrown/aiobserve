@@ -12,36 +12,18 @@ import pytest
 
 from aiobserve.enrich.prompts import Level, TurnItem
 from aiobserve.enrich.store import EnrichmentStore, Stamp
-from aiobserve.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
-from aiobserve.enrich.validation import Enrichment
-from tests.conftest import build_store, fixture_transcripts
+from tests.conftest import MODEL_ONLY, build_store, fixture_transcripts
 from tests.enrich.conftest import (
     COMPACTION,
     DUP_UUID,
+    FORK_BYREF,
     SPINE,
     SPINE_LEAF,
     SPINE_RUN,
+    enrichment,
+    session_item,
+    stamp,
 )
-
-MODEL = "claude-haiku-4-5-20251001"
-
-
-def stamp(input_hash: str = "hash-1") -> Stamp:
-    return Stamp(
-        input_hash=input_hash,
-        prompt_version=1,
-        taxonomy_version=TAXONOMY_VERSION,
-        model=MODEL,
-    )
-
-
-def enrichment(description: str = "Read two files and ran the suite.") -> Enrichment:
-    return Enrichment(
-        description=description,
-        category=Category.test,
-        outcome=Outcome.completed,
-        friction=None,
-    )
 
 
 def spine_turns(store: EnrichmentStore) -> list[TurnItem]:
@@ -205,7 +187,7 @@ def test_a_session_with_no_turn_and_no_run_is_never_enriched(fixture_db: Path) -
     """A session holding nothing to describe is skipped, not enriched and not failed.
 
     102 of 575 recorded sessions are in this state — compactions and duplicate-uuid records
-    with no work of their own — so coverage is 473, not 575.
+    with no work of their own — which leaves 473 holding work, and 428 after the api-call gate.
     """
     with EnrichmentStore(fixture_db) as store:
         described = {item.session_id for item in store.session_items()}
@@ -220,7 +202,69 @@ def test_a_session_with_no_turn_and_no_run_is_never_enriched(fixture_db: Path) -
     # other session of the fixture corpus is.
     assert empty == {COMPACTION, DUP_UUID}
     assert described & empty == set()
-    assert len(described) == 8
+    assert len(described) == 7
+
+
+def test_a_session_whose_turns_drove_no_api_call_is_never_enriched(fixture_db: Path) -> None:
+    """A session that only set an option has no model response to describe, so nothing sends it.
+
+    45 of the 473 sessions with work in them are in this state — `/model` and `/effort` turns
+    that the CLI answered by itself — and every description written for one was invented.
+    """
+    with EnrichmentStore(fixture_db) as store:
+        described = {item.session_id for item in store.session_items()}
+        # If the recorded `/model` session drove no api call under its one turn...
+        assert store.connection.execute(
+            "SELECT turns, agent_runs, api_calls FROM session_rollups WHERE session_id = ?",
+            [MODEL_ONLY],
+        ).fetchone() == (1, 0, 0)
+        # ...then it is not an item, while a session whose only work is a subagent's — no turn
+        # of its own, and its api calls all under the run — still is: the gate counts calls
+        # across every source, not just the main transcript.
+        assert MODEL_ONLY not in described
+        assert FORK_BYREF in described
+        # ...its `/model` turn is still an item of its own, since turns are deliberately not
+        # gated and the `configure` census reads `turns.command_name` off exactly these...
+        assert MODEL_ONLY in {item.session_id for item in store.turn_items()}
+        # ...and the sessions view still carries it, with nothing described — which is what
+        # makes the viewer render no enrichment block, as a never-described session does.
+        assert store.connection.execute(
+            "SELECT description FROM enriched_sessions WHERE session_id = ?", [MODEL_ONLY]
+        ).fetchall() == [(None,)]
+
+
+def test_a_row_already_written_for_a_gated_session_is_swept(mutable_db: Path) -> None:
+    """An enrichment of a session nothing will describe again is deleted, not left as current."""
+    with EnrichmentStore(mutable_db) as store:
+        # If a row was written for a gated session before the gate existed — as 45 were...
+        store.upsert(session_item(MODEL_ONLY), enrichment(), stamp())
+        # ...then the sweep takes it, because a row no pass will ever refresh is a zombie by
+        # the same definition a row whose session was deleted is. Skipping the item alone
+        # would leave it on disk and rendered as current forever.
+        assert store.sweep_zombies() == 1
+        assert store.connection.execute("SELECT count(*) FROM session_enrichments").fetchone() == (
+            0,
+        )
+
+
+def test_the_gate_and_the_sweep_read_one_population(mutable_db: Path) -> None:
+    """Whatever the store hands out to describe is exactly what the sweep leaves alone.
+
+    Two names for the population would bill a row every night: the pass describes a session
+    and the next sweep deletes it, forever, and no coverage number would ever show it.
+    """
+    with EnrichmentStore(mutable_db) as store:
+        # If every session in the store is enriched, gated or not...
+        for (session_id,) in store.connection.execute("SELECT id FROM sessions").fetchall():
+            store.upsert(session_item(session_id), enrichment(), stamp())
+        store.sweep_zombies()
+        # ...then what survives the sweep is precisely what the store hands out to describe.
+        assert {
+            session_id
+            for (session_id,) in store.connection.execute(
+                "SELECT session_id FROM session_enrichments"
+            ).fetchall()
+        } == {item.session_id for item in store.session_items()}
 
 
 def test_the_run_and_session_views_left_join_too(mutable_db: Path) -> None:

@@ -92,16 +92,22 @@ def test_coverage_counts_the_items_a_pass_could_have_described(
 def test_coverage_leaves_out_the_sessions_enrichment_never_describes(
     enriched_query: QueryRunner, enriched_db: Path
 ) -> None:
-    """A session with no turn and no agent run is out of the denominator, not a permanent gap."""
-    # If the corpus holds sessions that did no work of their own, which a pass skips...
-    total, enrichable = scalar(
+    """A session enrichment skips is out of the denominator, not a permanent gap in coverage."""
+    # If the corpus holds sessions that did no work of their own, and sessions whose turns
+    # drove no model response — both of which a pass skips...
+    total, enrichable, silent = scalar(
         enriched_db,
-        "SELECT count(*), count(*) FILTER (r.turns > 0 OR r.agent_runs > 0)"
+        "SELECT count(*),"
+        " count(*) FILTER ((r.turns > 0 OR r.agent_runs > 0) AND r.api_calls > 0),"
+        " count(*) FILTER (r.turns > 0 AND r.api_calls = 0)"
         " FROM corpus_rollups r WHERE starts_with(r.project_dir, ?)",
         MYCELIA,
-        columns=2,
+        columns=3,
     )
     assert enrichable < total
+    # ...the second kind being what makes this leaf discriminate at all: without one in scope
+    # the denominator reads the same whether the api-call filter is there or not.
+    assert silent > 0
     # ...then the session level counts the ones it would describe and no others.
     rows = coverage(enriched_query, SESSION)
     assert {int(row["level_items"]) for row in rows} == {enrichable}

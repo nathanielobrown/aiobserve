@@ -40,7 +40,9 @@ flowchart BT
 
 Agent runs go out in rounds, deepest first, so no parent is ever described from a hole. A run's parent is the agent named in `parent_agent_id` where there is one, and otherwise whatever transcript holds the tool call that spawned it. A session's direct children are its main turns plus **the runs nothing else embeds** — teammates the team mechanism started, and runs spawned by a call belonging to no turn. Nothing may be dropped silently, so that set is derived from the same parent rule the rounds order by rather than from a rule of its own.
 
-A session with no main turn and no agent run is skipped, not enriched: there is nothing to describe. Compaction records and duplicate-uuid sessions are the recorded cases.
+Two kinds of session are skipped rather than enriched, both held by the `describable_sessions` view. One has no main turn and no agent run — there is nothing to describe, and compaction records and duplicate-uuid sessions are the recorded cases. The other holds turns that drove no api call: a `/model` or `/effort` turn the CLI answered by itself, leaving no model response to describe. A QC pass found the enrichment model inventing work for those rather than reporting none, so the fix is not to ask.
+
+The view is also what `sweep_zombies` measures a session row against, so rows written before the gate are deleted on the next run and `aiobserve enrich` reports the count. Turns are not gated — a turn that drove no api call keeps its row.
 
 ## Staleness is the whole resume mechanism
 
