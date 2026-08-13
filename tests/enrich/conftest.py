@@ -29,6 +29,9 @@ FORK_ORIGIN = "5a88789c-1da7-4f32-b631-40a7e243334b"
 # enrichment skips them rather than sending an empty prompt.
 COMPACTION = "1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9"
 DUP_UUID = "8ee00a94-b01a-4394-b447-b065f74b11af"
+# The session holding a main turn whose last api call stopped `end_turn` — the one recorded
+# value the `Ended:` line exists for, and no other enrichment fixture carries it.
+LEGACY_TITLE = "0b34d1b8-ebd3-40a6-bd89-f1881e1de2ba"
 # The agent runs the render and rounds leaves are built on, one per shape: a multi-turn
 # teammate, a subagent and the leaf it spawned in turn, a turnless fork, a fork whose only
 # turn is a replay, and the run that really ran that turn.
@@ -48,6 +51,8 @@ ENRICHMENT_FIXTURES = (
     "fork_origin",
     "compaction",
     "dup_uuid",
+    "model_only",
+    "legacy_title",
 )
 
 

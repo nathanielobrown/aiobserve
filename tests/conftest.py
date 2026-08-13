@@ -88,6 +88,10 @@ REGISTRY_ZOO = "registry-zoo-0000-0000-0000-000000000000"
 # The pool session no other leaf asserts on, so a copied store can strip its api calls and
 # leave it the shape a `/model`-only session has: one turn, nothing the model answered.
 CONFIG_ONLY = "7e37bb35-4dcb-4e16-85be-55ac510c168e"
+# `model_only/`: that same shape as recorded rather than planted — one `/model` turn and no
+# api call under it. 45 mycelia sessions are in this shape, and it is the one the enrichment
+# gate exists for.
+MODEL_ONLY = "bec99999-cbb7-4d11-9a58-3ad3d0e1c8cf"
 # The corpus's one offloaded tool result — Claude Code wrote the output to a file beside the
 # transcript instead of into it. `CONFIG_ONLY` recorded it: a 159-character file, and the tool
 # call it belongs to. The name is Claude Code's, not ours, which is the reason it is untrusted.
@@ -107,8 +111,20 @@ COMPACTED = "1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9"
 # model's words about a private transcript, and no fixture records one. The tiers under test
 # group, draw on and render these values rather than reading them, so what matters is that
 # the cycles vary independently — see `enriched_db`.
-PLANTED_CATEGORIES = (Category.implement, Category.test, Category.debug)
+# Five slots over three categories, so two of them are twice as common as the third whatever
+# the corpus holds: a stratified draw only proves anything against uneven strata, and a cycle
+# that divided the items evenly would prove it by accident of the corpus's size.
+PLANTED_CATEGORIES = (
+    Category.implement,
+    Category.test,
+    Category.debug,
+    Category.implement,
+    Category.test,
+)
 PLANTED_OUTCOMES = (Outcome.completed, Outcome.partial, Outcome.failed)
+# How many rows an outcome holds for before the cycle advances. Its own constant, so the
+# outcome cycle keeps its period when the category cycle's length changes.
+PLANTED_OUTCOME_RUN = 3
 PLANTED_MODELS = ("claude-haiku-4-5-20251001", "claude-sonnet-4-5-20250929")
 
 SourceFactory = Callable[[str, str], SessionSource]
@@ -248,7 +264,7 @@ def planted_enrichment(index: int) -> Enrichment:
     return Enrichment(
         description=f"Planted description {index}.",
         category=PLANTED_CATEGORIES[index % len(PLANTED_CATEGORIES)],
-        outcome=PLANTED_OUTCOMES[(index // len(PLANTED_CATEGORIES)) % len(PLANTED_OUTCOMES)],
+        outcome=PLANTED_OUTCOMES[(index // PLANTED_OUTCOME_RUN) % len(PLANTED_OUTCOMES)],
         # Every fourth row, which is coprime with both cycles above: friction that tracked a
         # category could not tell a count of one from a count of the other.
         friction="Planted friction." if index % 4 == 0 else None,

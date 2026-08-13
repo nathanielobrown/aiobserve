@@ -32,6 +32,7 @@ from tests.conftest import (
     CONFIG_ONLY,
     DEEP_RESEARCH_SESSION,
     FORK_ORIGIN,
+    MODEL_ONLY,
     MYCELIA,
     REGISTRY_ZOO,
     SERVER_TOOLS,
@@ -230,19 +231,20 @@ def test_a_session_whose_turns_made_no_api_call_is_outside_the_pool(
         return query(config_only_db, capsys, name, *arguments)
 
     # If a session holds a turn but no api call — the shape a `/model` or `/effort` session
-    # has, planted here by stripping one real session's calls, since every recorded fixture
-    # answered its turns — then the whole-pool draw comes back one session shorter...
+    # has, carried here twice: `MODEL_ONLY` recorded it, and `CONFIG_ONLY` is a second one
+    # planted by stripping a real session's calls — then the whole-pool draw comes back
+    # without either, one session shorter than a pool that never held `MODEL_ONLY` anyway...
     exhausted: dict[str, int | str] = {"discovery_quota": 20}
     picks = _select(config_only_query, exhausted)
     assert len(picks) == POOL_AT_WHOLE - 1
-    assert CONFIG_ONLY not in {session for _, session in picks}
-    # ...and it is the api-call floor that excluded it, not the missing rows: bind the floor
-    # to zero and the session is back in the pool. Iteration 1 spent three of eight discovery
+    assert not ({CONFIG_ONLY, MODEL_ONLY} & {session for _, session in picks})
+    # ...and it is the api-call floor that excluded them, not the missing rows: bind the floor
+    # to zero and both are back in the pool. Iteration 1 spent three of eight discovery
     # slots on sessions like this, and the binding is in the citation so a report says which
     # pool it drew from.
     admitted = _select(config_only_query, {**exhausted, "min_api_calls": 0})
-    assert len(admitted) == POOL_AT_WHOLE
-    assert CONFIG_ONLY in {session for _, session in admitted}
+    assert len(admitted) == POOL_AT_WHOLE + 1
+    assert {CONFIG_ONLY, MODEL_ONLY} <= {session for _, session in admitted}
 
 
 def test_the_selection_window_rides_as_of(run_query: QueryRunner) -> None:

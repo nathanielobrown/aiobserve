@@ -50,14 +50,21 @@ POOL_AT_PARTIAL = 5
 # Distinct `agent_type`s across the corpus's 7 agent runs — one run each.
 AGENT_TYPES = 7
 
-# Measured on 2026-08-08 by building the store below: 13 mycelia sessions between
-# 2026-06-30 and 2026-07-27, in five unevenly filled ISO weeks.
-MYCELIA_SESSIONS = 13
-WEEKS = {"2026-W27": 4, "2026-W28": 4, "2026-W29": 3, "2026-W30": 1, "2026-W31": 1}
+# Measured on 2026-08-13 by building the store below: 14 mycelia sessions between
+# 2026-06-30 and 2026-07-24, in five unevenly filled ISO weeks.
+MYCELIA_SESSIONS = 14
+WEEKS = {
+    "2026-W27": 4,
+    "2026-W28": 4,
+    "2026-W29": 3,
+    # Two, since `model_only/` — the recording that carries a turn and no api call — landed here.
+    "2026-W30": 2,
+    "2026-W31": 1,
+}
 # `$as_of` values with a window each side of the corpus: 2026-08-07 opens the trailing 28
-# days at 2026-07-10 and covers 6 sessions; 2026-07-28 opens at 2026-06-30 and covers all 13.
+# days at 2026-07-10 and covers 7 sessions; 2026-07-28 opens at 2026-06-30 and covers all 14.
 AS_OF_PARTIAL = "2026-08-07"
-IN_WINDOW_AT_PARTIAL = 6
+IN_WINDOW_AT_PARTIAL = 7
 AS_OF_WHOLE = "2026-07-28"
 # A third `$as_of`, inside the corpus, so the window's far edge has something to exclude:
 # 2026-07-19 opens at 2026-06-21, before the earliest session, and closes at the end of that

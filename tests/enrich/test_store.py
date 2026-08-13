@@ -220,7 +220,7 @@ def test_a_session_with_no_turn_and_no_run_is_never_enriched(fixture_db: Path) -
     # other session of the fixture corpus is.
     assert empty == {COMPACTION, DUP_UUID}
     assert described & empty == set()
-    assert len(described) == 6
+    assert len(described) == 8
 
 
 def test_the_run_and_session_views_left_join_too(mutable_db: Path) -> None:
@@ -247,7 +247,7 @@ def test_the_run_and_session_views_left_join_too(mutable_db: Path) -> None:
         # ...and the sessions view reads coverage honestly for a corpus nothing has described.
         assert store.connection.execute(
             "SELECT count(*), count(description) FROM enriched_sessions"
-        ).fetchone() == (8, 0)
+        ).fetchone() == (10, 0)
 
 
 def test_zombies_are_swept_at_all_three_levels(mutable_db: Path) -> None:
