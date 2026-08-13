@@ -35,9 +35,11 @@ from aiobserve.enrich.prompts import (
 from aiobserve.enrich.store import EnrichmentStore, Stamp
 from aiobserve.enrich.taxonomy import Category, Outcome
 from aiobserve.enrich.validation import Enrichment
+from tests.conftest import MODEL_ONLY
 from tests.enrich.conftest import (
     AUDITOR_RUN,
     BYREF_RUN,
+    LEGACY_TITLE,
     ORIGIN_RUN,
     SERVER_TOOLS,
     SPINE,
@@ -73,6 +75,11 @@ def run(store: EnrichmentStore, agent_run_id: str) -> AgentRunItem:
     items = [item for item in store.run_items() if item.agent_run_id == agent_run_id]
     assert len(items) == 1, f"{agent_run_id} named {len(items)} runs"
     return items[0]
+
+
+def ended(rendered: str) -> str:
+    """The render's last line — the one that says how the item ended."""
+    return rendered.rsplit("\n", 1)[-1]
 
 
 def session(store: EnrichmentStore, session_id: str) -> SessionItem:
@@ -158,8 +165,55 @@ def test_a_plain_main_turn_renders_its_prompt_then_its_calls(fixture_db: Path) -
         "\n"
         "## Response\n"
         "[redacted]\n"
-        '- Read (input 27 chars, unanswered) {"file_path": "[redacted]"}'
+        '- Read (input 27 chars, unanswered) {"file_path": "[redacted]"}\n'
+        "\n"
+        "## Ended: tool_use"
     )
+
+
+def test_a_turn_says_how_it_ended(fixture_db: Path) -> None:
+    """Every turn ends with a line naming how the model stopped — or that it never answered.
+
+    The one thing a render must never leave to inference. A run graded `partial` and
+    "truncated mid-sentence" by the QC pass had in fact stopped `end_turn`; the render had
+    simply not said so, and a missing section is what the model reads absence from.
+    """
+    with EnrichmentStore(fixture_db) as store:
+        # If a turn's last api call recorded why generation stopped, that value is the last
+        # line, verbatim — `end_turn` is the one the fix exists for, and `stop_sequence` is
+        # the rarest of the recorded values...
+        assert ended(render_turn(turn(store, LEGACY_TITLE, "7d30c171"))) == "## Ended: end_turn"
+        assert ended(render_turn(turn(store, SPINE, "8cdceb31"))) == "## Ended: stop_sequence"
+        # ...if it recorded none, the line says so rather than going missing: `server_tools/`'s
+        # turn made three calls, stopping `end_turn`, `tool_use` and NULL in that order, so the
+        # null is the one that decides...
+        assert ended(render_turn(turn(store, SERVER_TOOLS, "9ae45aaa"))) == "## Ended: not recorded"
+        # ...and a turn the model never answered at all says that, which is the whole fix for
+        # turns: `/model` and `/coordinator` are handled by the CLI, and turns are not gated.
+        for session_id, prefix in (
+            (SPINE, "5b848af7"),
+            (TEAMMATE, "97d6f3d4"),
+            (MODEL_ONLY, "264ef04d"),
+        ):
+            assert ended(render_turn(turn(store, session_id, prefix))) == (
+                "## Ended: no model response"
+            )
+
+
+def test_a_run_says_how_it_ended_once(fixture_db: Path) -> None:
+    """A run ends with one line saying how it stopped, after its last section — not per response."""
+    with EnrichmentStore(fixture_db) as store:
+        # If a run's calls recorded no stop reason — `spine/`'s outer run made two, both
+        # NULL — then the run says so once, after everything it did...
+        outer = render_run(run(store, SPINE_RUN))
+        assert ended(outer) == "## Ended: not recorded"
+        # ...and a run whose last call recorded one carries it verbatim, also once. 51 of the
+        # 69 recorded stop reasons are `tool_use`, which is why the design put the line at the
+        # end rather than beside every response.
+        leaf = render_run(run(store, SPINE_LEAF))
+        assert ended(leaf) == "## Ended: tool_use"
+        for rendered in (outer, leaf):
+            assert rendered.count("## Ended:") == 1
 
 
 def test_a_slash_turn_renders_the_command_not_its_tags(fixture_db: Path) -> None:
@@ -275,7 +329,9 @@ def test_an_over_budget_turn_drops_the_middle_of_its_work(fixture_db: Path) -> N
         elided = render_turn(item, dataclasses.replace(TURN_BUDGETS, total=200))
     # ...then the render fits, and what it kept is the prompt, the start of the work and the
     # last thing the turn did — the two ends a description is written from. The middle went,
-    # and the gap counts itself rather than reading as the whole sequence.
+    # and the gap counts itself rather than reading as the whole sequence. The `Ended:` line
+    # is the tail of the elidable sequence, not part of the protected head, so a budget this
+    # small keeps it the same way it keeps the last tool call.
     assert elided == (
         "# Main turn\n"
         "\n"
@@ -284,8 +340,10 @@ def test_an_over_budget_turn_drops_the_middle_of_its_work(fixture_db: Path) -> N
         "\n"
         "## Response\n"
         "[redacted]\n"
-        "[… 2 of 6 lines elided …]\n"
-        '- Read (input 27 chars, unanswered) {"file_path": "[redacted]"}'
+        "[… 2 of 8 lines elided …]\n"
+        '- Read (input 27 chars, unanswered) {"file_path": "[redacted]"}\n'
+        "\n"
+        "## Ended: tool_use"
     )
     assert len(elided) <= 200
 
@@ -316,7 +374,9 @@ def test_a_multi_turn_run_renders_every_instruction_in_sequence(fixture_db: Path
         "## Response\n"
         "[redacted]\n"
         '- Bash (input 54 chars, result 10 chars) {"command": "[redacted]", "description": '
-        '"[redacted]"}'
+        '"[redacted]"}\n'
+        "\n"
+        "## Ended: tool_use"
     )
     # The wrapper the transcript stores an instruction in is markup, and would read as
     # content — the attributes especially, which no other turn opener carries.
@@ -360,7 +420,9 @@ def test_a_zero_turn_run_renders_as_a_continuation(fixture_db: Path) -> None:
         "\n"
         "## Response\n"
         '- Bash (input 54 chars, result 10 chars) {"command": "[redacted]", "description": '
-        '"[redacted]"}'
+        '"[redacted]"}\n'
+        "\n"
+        "## Ended: tool_use"
     )
 
 
@@ -380,14 +442,17 @@ def test_a_replayed_turn_is_not_the_runs_task(fixture_db: Path) -> None:
     # ...and the fork renders as a continuation, with no task at all...
     assert fork.startswith("# Agent run: fork\n\n## Continuation\n")
     assert "## Task" not in fork
-    # ...while still carrying its own work, error tail and unanswered call included.
+    # ...while still carrying its own work, error tail and unanswered call included, under the
+    # line that says how it ended.
     assert fork.endswith(
         "## Response\n"
         "[redacted]\n"
         '- Agent (input 84 chars, result 10 chars, ERROR) {"description": "[redacted]", '
         '"subagent_type": "[redacted]", "prompt": "[redacted]"} | error tail: [redacted]\n'
         '- Agent (input 84 chars, unanswered) {"description": "[redacted]", "subagent_type": '
-        '"[redacted]", "prompt": "[redacted]"}'
+        '"[redacted]", "prompt": "[redacted]"}\n'
+        "\n"
+        "## Ended: tool_use"
     )
 
 
@@ -419,7 +484,9 @@ def test_a_spawning_call_with_no_run_renders_plainly(mutable_db: Path) -> None:
     assert rendered.count(" | subagent: ") == 1
     assert rendered.endswith(
         '- Agent (input 112 chars, result 10 chars) {"description": "[redacted]", '
-        '"subagent_type": "[redacted]", "run_in_background": false, "prompt": "[redacted]"}'
+        '"subagent_type": "[redacted]", "run_in_background": false, "prompt": "[redacted]"}\n'
+        "\n"
+        "## Ended: not recorded"
     )
 
 
@@ -431,7 +498,7 @@ def test_an_over_budget_run_drops_the_middle_of_its_work(fixture_db: Path) -> No
     with EnrichmentStore(fixture_db) as store:
         elided = render_run(run(store, SPINE_RUN), dataclasses.replace(RUN_BUDGETS, total=300))
     # ...then the task and the start of the work survive, the last thing the run did
-    # survives, and the gap between them counts itself.
+    # survives, the gap between them counts itself, and the `Ended:` line rides the tail.
     assert elided == (
         "# Agent run: claude\n"
         "\n"
@@ -440,9 +507,11 @@ def test_an_over_budget_run_drops_the_middle_of_its_work(fixture_db: Path) -> No
         "\n"
         "## Response\n"
         "[redacted]\n"
-        "[… 4 of 8 lines elided …]\n"
+        "[… 4 of 10 lines elided …]\n"
         '- Agent (input 112 chars, result 10 chars) {"description": "[redacted]", '
-        '"subagent_type": "[redacted]", "run_in_background": false, "prompt": "[redacted]"}'
+        '"subagent_type": "[redacted]", "run_in_background": false, "prompt": "[redacted]"}\n'
+        "\n"
+        "## Ended: not recorded"
     )
     assert len(elided) <= 300
 
@@ -552,7 +621,9 @@ def test_a_workflow_line_embeds_its_spawned_run(mutable_db: Path) -> None:
     # start a run, and the one a rule keyed on the `Agent` name alone would miss.
     assert rendered.endswith(
         '- Workflow (input 47 chars, result 10 chars) {"name": "deep-research", '
-        '"args": "[redacted]"} | subagent: Researched the question.'
+        '"args": "[redacted]"} | subagent: Researched the question.\n'
+        "\n"
+        "## Ended: tool_use"
     )
 
 

@@ -205,6 +205,20 @@ def test_a_session_with_no_turn_and_no_run_is_never_enriched(fixture_db: Path) -
     assert len(described) == 7
 
 
+def test_an_api_call_carries_the_stop_reason_as_recorded(fixture_db: Path) -> None:
+    """Why generation stopped travels from the store to the render, nulls kept as nulls.
+
+    A null is a recorded state, not a missing row — 26 of the 69 stop reasons in the fixtures
+    are null — so the render can say "not recorded" rather than say nothing.
+    """
+    with EnrichmentStore(fixture_db) as store:
+        # If a turn's three recorded calls stopped `end_turn`, `tool_use` and nothing...
+        item = next(item for item in store.turn_items() if item.turn_id.startswith("9ae45aaa"))
+    # ...then the items carry all three values in the order they were recorded, so no render
+    # of the three states rests on an invented row.
+    assert [call.stop_reason for call in item.api_calls] == ["end_turn", "tool_use", None]
+
+
 def test_a_session_whose_turns_drove_no_api_call_is_never_enriched(fixture_db: Path) -> None:
     """A session that only set an option has no model response to describe, so nothing sends it.
 

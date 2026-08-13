@@ -8,6 +8,7 @@ of the real budgets and elision could not otherwise be tested at all.
 
 import hashlib
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -148,7 +149,22 @@ class ApiCallRow:
     """One model response and the tools it asked for. `thinking` is deliberately absent."""
 
     text: str
+    # Why generation stopped, as recorded. None is a real recorded state — 26 of the 69 stop
+    # reasons in the fixtures are null — and renders as "not recorded", never as absence.
+    stop_reason: str | None
     tool_calls: tuple[ToolCallRow, ...]
+
+
+def _ended_line(calls: Sequence[ApiCallRow]) -> str:
+    """How an item ended, in the one line that keeps the model from inferring it.
+
+    Last, once, and never per response: `tool_use` is what a call requesting a tool always
+    says, so 51 of 69 recorded values would be noise beside every response.
+    """
+    if not calls:
+        return "## Ended: no model response"
+    reason = calls[-1].stop_reason
+    return f"## Ended: {reason if reason is not None else 'not recorded'}"
 
 
 class Item:
@@ -213,6 +229,9 @@ def render_turn(item: TurnItem, budgets: Budgets = TURN_BUDGETS) -> str:
         if text:
             lines.append(text)
         lines += [_tool_line(tool, budgets) for tool in call.tool_calls]
+    # In the elidable sequence, not the head: `_fit` protects both of its ends, so the line
+    # survives elision without spending head budget a long turn needs.
+    lines += ["", _ended_line(item.api_calls)]
     return _fit("\n".join(head), lines, budgets.total)
 
 
@@ -270,6 +289,8 @@ def render_run(item: AgentRunItem, budgets: Budgets = RUN_BUDGETS) -> str:
             if text:
                 lines.append(text)
             lines += [_tool_line(tool, budgets) for tool in call.tool_calls]
+    # Once, after the last section — the run's last call, wherever it sat.
+    lines += ["", _ended_line([call for section in item.sections for call in section.api_calls])]
     return _fit("\n".join(head), lines, budgets.total)
 
 

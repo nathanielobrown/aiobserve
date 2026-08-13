@@ -359,8 +359,8 @@ class EnrichmentStore:
                 )
             )
         calls: dict[tuple[str, str], list[tuple[str | None, ApiCallRow]]] = {}
-        for session_id, source, turn_id, api_call_id, text in self.connection.execute(
-            f"""SELECT a.session_id, a.source, a.turn_id, a.id, a.text
+        for session_id, source, turn_id, api_call_id, text, stop_reason in self.connection.execute(
+            f"""SELECT a.session_id, a.source, a.turn_id, a.id, a.text, a.stop_reason
                 FROM live_api_calls a JOIN sessions s ON s.id = a.session_id
                 WHERE {_source_clause("a", main=main)}{_project_clause(project)}
                 ORDER BY a.session_id, a.source, a."index" """,
@@ -371,6 +371,7 @@ class EnrichmentStore:
                     turn_id,
                     ApiCallRow(
                         text=text,
+                        stop_reason=stop_reason,
                         tool_calls=tuple(tools.get((session_id, source, api_call_id), ())),
                     ),
                 )
