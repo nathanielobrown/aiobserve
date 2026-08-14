@@ -245,6 +245,17 @@ QUERIES: dict[str, Query] = {
             "signature_chars": Param(type=ParamType.INTEGER, default=SIGNATURE_CHARS),
         },
     ),
+    "path_failures": Query(
+        scope=Scope.CORPUS,
+        params={
+            # Failures a directory needs to be listed, matching the other floors in this file.
+            "min_occurrences": Param(type=ParamType.INTEGER, default=5),
+            # Path segments the group key keeps. One is the aggregating default: it is what
+            # makes a directory count the same number whichever copy of the repository the
+            # call reached into, which is the whole point of grouping paths this way.
+            "tail_segments": Param(type=ParamType.INTEGER, default=1),
+        },
+    ),
     "records_slice": Query(
         scope=Scope.KEYED,
         params={

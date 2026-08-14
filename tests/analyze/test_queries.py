@@ -52,6 +52,9 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     "error_records": {"session_id": SERVER_TOOLS},
     # Both fixture errors are one-offs, so the production floor of 5 lists neither.
     "error_signatures": {"min_occurrences": "1"},
+    # Redaction cuts every recorded `file_path` to `[redacted]`, so the corpus holds one
+    # directory — the bucket for a path with none — and no failing call in it at all.
+    "path_failures": {"min_occurrences": "0"},
     "records_slice": {"session_id": RESUME, "source": MAIN, "first_line": "1", "last_line": "5"},
     "run_digest": {"session_id": SPINE, "source": SPINE_RUN},
     "session_digest": {"session_id": SPINE},
