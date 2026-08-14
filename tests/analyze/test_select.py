@@ -60,6 +60,9 @@ OFF: dict[str, int | str] = {
     "discovery_quota": 0,
     # Above every fixture skill's user count, so no skill qualifies unless a leaf lowers it.
     "skill_threshold": 99,
+    # Below every fixture session's api-call count, so discovery's substance floor admits the
+    # whole pool: the fixture corpus's busiest session made 7 calls, the production floor is 10.
+    "min_discovery_api_calls": 0,
 }
 
 
@@ -210,6 +213,21 @@ def test_discovery_is_a_function_of_its_seed_and_never_re_picks(run_query: Query
         assert not (ranked & discovered)
 
 
+def test_discovery_passes_over_a_session_with_almost_nothing_in_it(run_query: QueryRunner) -> None:
+    """A session that barely did anything cannot take a discovery slot, but is still ranked."""
+    # If discovery is asked for the whole pool with the substance floor at four api calls...
+    picks = _select(run_query, {"discovery_quota": 20, "min_discovery_api_calls": 4})
+    # ...then it draws the three pool sessions that made at least that many, and passes over
+    # the seven that made one to three. On mycelia's 2026-08-13 window, four of the eight
+    # discovery draws had gone to sessions of 1, 4, 4 and 9 api calls.
+    assert {session for _, session in picks} == {SERVER_TOOLS, SPINE, ANCESTOR}
+    assert {stratum for stratum, _ in picks} == {DISCOVERY}
+    # ...while the floor is discovery's alone: a ranked stratum still reaches the thinnest
+    # session in the corpus, because what it ranks on is the reason to read it.
+    ranked = _select(run_query, {"compaction_quota": 2, "min_discovery_api_calls": 4})
+    assert (COMPACTIONS, REGISTRY_ZOO) in ranked
+
+
 def test_a_session_that_did_no_work_of_its_own_is_outside_the_pool(
     run_query: QueryRunner,
 ) -> None:
@@ -273,6 +291,7 @@ def test_the_production_quotas_are_the_designed_reading_budget() -> None:
         "skill_threshold": 5,
         "seed": "aiobserve",
         "min_api_calls": 1,
+        "min_discovery_api_calls": 10,
     }
     # The run draw rides the same pin: its floor is what keeps a corpus of one-off agent
     # names from turning a ~20-run reading budget into one run per name.

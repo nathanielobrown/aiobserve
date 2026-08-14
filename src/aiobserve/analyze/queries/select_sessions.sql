@@ -16,6 +16,7 @@ WITH RECURSIVE pool AS (
         p.session_id,
         r.started_at,
         r.turns,
+        r.api_calls,
         r.agent_runs,
         r.tool_calls,
         coalesce(e.tool_errors, 0) AS tool_errors,
@@ -81,9 +82,13 @@ WITH RECURSIVE pool AS (
     UNION ALL
     -- Discovery surfaces friction no ranked metric points at. The seed is bound, so the draw
     -- is one anyone can re-run and an iteration can rotate.
+    -- It is also the one stratum with a substance floor, because it is the one that picks
+    -- without a reason: a ranked stratum's metric says why the session is worth an hour,
+    -- while a seeded draw over the whole pool spent half of iteration 3's discovery slots on
+    -- sessions of nine api calls or fewer (`reports/2026_08_13_mycelia_iteration_3.md`).
     SELECT 5, '', 'discovery', session_id,
         row_number() OVER (ORDER BY hash(session_id || $seed), session_id)
-    FROM pool
+    FROM pool WHERE api_calls >= $min_discovery_api_calls
 ), ordered AS (
     SELECT
         row_number() OVER (ORDER BY o.phase, o.skill, o.rank) AS n,

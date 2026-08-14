@@ -26,6 +26,7 @@ Three properties decide how a selection may be read:
 - The pool is in-window sessions that did work of their own. Sessions with no turns and no agent runs are excluded, and so are sessions whose turns made no api call — a `/model` turn reads as work and is not. Together they are a large minority of any window
 - A ranked stratum takes only sessions whose metric is nonzero, and stops short when the metric runs out. A `tool-errors` tag on an error-free session would be a lie, so the tags stay honest and the stratum's realized size does not
 - Unused ranked slots pass to discovery, so the realized set is the smaller of the quota sum and the pool. What varies between iterations is the composition, not the count — report the realized composition, never the target
+- Discovery draws only from sessions above a substance floor, because it is the one stratum that picks without a reason. A ranked stratum's metric says why a session is worth an hour; a seeded draw over the whole pool spent half of iteration 3's discovery slots on sessions of nine api calls or fewer
 
 `select_runs` adds agent runs on top: the highest error count and the highest cost per `agent_type`. Session strata rank whole sessions, so a rarely used agent definition can go unread for iterations; this draw is what gets every commonly used definition looked at.
 

@@ -293,11 +293,17 @@ QUERIES: dict[str, Query] = {
             # A skill is major when this many in-window sessions used it.
             "skill_threshold": Param(type=ParamType.INTEGER, default=5),
             "seed": DRAW_SEED,
-            # Api calls a session needs before it is worth a reading slot. One keeps out the
+            # Api calls a session needs to be in the pool at all. One keeps out the
             # `/model`-only sessions that took three of iteration 1's eight discovery draws;
             # it is bound rather than fixed because the filter is part of what the draw
             # claims, and a citation that omits it describes a pool nobody can reconstruct.
             "min_api_calls": Param(type=ParamType.INTEGER, default=1),
+            # Api calls a session needs on top of that before *discovery* will draw it. A
+            # ranked stratum is exempt: what it ranks on is the reason to read the session.
+            # Ten sits in the gap the corpus itself leaves — of the 117 in-window pool
+            # sessions on 2026-08-13, 47 made between 1 and 9 calls and the next made 12 —
+            # and it is what half of iteration 3's discovery draw fell below.
+            "min_discovery_api_calls": Param(type=ParamType.INTEGER, default=10),
         },
     ),
     "session_counts": Query(scope=Scope.CORPUS, params={}),
