@@ -107,6 +107,15 @@ ARCHITECT_RELOAD_TOKENS = 89_383
 # tokens on the far side, so its gap is what a rebound `$idle_seconds` can be walked past.
 SPINE_RELOAD_TOKENS = 94_194
 SPINE_IDLE_SECONDS = 23_773
+# The shortest silence the recorded corpus has over the five-minute floor, and what pins the
+# measure: 319 seconds passed between the two requests, 281 between the first one's reply and
+# the second request. A cache entry ages from the request that wrote it, so this gap clears a
+# 300-second floor — measured end to start it would fall out of the table.
+SHORTEST_IDLE_SECONDS = 319
+# How many silences over that floor the recorded corpus holds: five in main threads, one in an
+# agent run. The raw table holds two more — `corpus_api_calls` hides a resumed thread's
+# replayed rows, and a gap between two of them is not the corpus's to count.
+RECORDED_IDLE_GAPS = 6
 
 
 def test_error_signatures_counts_one_signature_over_many_bodies(
@@ -402,6 +411,66 @@ def test_context_reloads_reads_a_call_once_however_many_periods_hold_it(
     assert any(int(row["idle_reloads"]) > 0 for row in threads.values())
 
 
+def test_idle_gaps_gives_the_wait_that_context_reloads_only_flags(
+    run_query: QueryRunner,
+) -> None:
+    """A silence the other query marks idle arrives here as its length in seconds."""
+    # If a thread went hours between two calls and rebuilt everything on the far side, so
+    # `context_reloads` counts one idle reload against it...
+    assert int(_threads(_reloads(run_query, {}))[SPINE, MAIN]["idle_reloads"]) == 1
+    # ...then that silence has a row of its own here, carrying the wait itself — the number a
+    # reader needs to ask how much of a population sits under a break-even...
+    thread = [
+        row for row in _gaps(run_query, {}) if (row["session_id"], row["source"]) == (SPINE, MAIN)
+    ]
+    (idle,) = [row for row in thread if row["reloaded"] == "True"]
+    assert int(idle["idle_seconds"]) == SPINE_IDLE_SECONDS
+    # ...beside what the call that broke it rebuilt and which kind of thread waited, so a gap
+    # can be priced without going back to the query that flagged it.
+    assert int(idle["rebuilt_tokens"]) == SPINE_RELOAD_TOKENS
+    assert idle["agent_type"] == MAIN_THREAD
+    # ...and beside the lifetime the wait was racing, since the call before it had paid for
+    # hour-long cache entries — a six-hour silence outlives those too, but a threshold read
+    # without that column would put every gap against the five-minute default.
+    assert idle["cached_1h"] == "True"
+
+
+def test_idle_gaps_keeps_the_silences_that_ended_in_no_rebuild(run_query: QueryRunner) -> None:
+    """A wait nothing rebuilt is a row too: it is the denominator of the waits that did."""
+    # If the corpus holds waits over the floor that cost nothing on the far side...
+    gaps = _gaps(run_query, {})
+    assert [row for row in gaps if row["reloaded"] == "False"]
+    # ...then each is listed once however many periods hold its session, because a detail row
+    # counted twice is a population sized twice...
+    keys = [(row["session_id"], row["source"], row["gap_start"]) for row in gaps]
+    assert len(set(keys)) == len(keys) == RECORDED_IDLE_GAPS
+    # ...each one measured request to request, the interval a cache entry ages over: the
+    # shortest silence in the table ran 319 seconds between requests and 281 from the first
+    # reply, and it is the request pair that decides it clears the five-minute floor...
+    assert min(int(row["idle_seconds"]) for row in gaps) == SHORTEST_IDLE_SECONDS
+    # ...and the floor is the caller's: dropped to nothing it admits the short waits no cache
+    # could have expired over, and raised past the longest silence it admits none.
+    assert len(_gaps(run_query, {"min_idle_seconds": 0})) > len(gaps)
+    longest = max(int(row["idle_seconds"]) for row in gaps)
+    assert _gaps(run_query, {"min_idle_seconds": longest + 1}) == []
+
+
+@pytest.mark.parametrize("rebuilt_pct", [90, 50])
+def test_idle_gaps_calls_the_same_waits_idle_that_context_reloads_does(
+    run_query: QueryRunner, rebuilt_pct: int
+) -> None:
+    """The gaps that ended in a rebuild are exactly the idle reloads the other query counts."""
+    # If both queries are asked what a rebuild is on the same terms — the shared detector, at
+    # its production share and at a looser one...
+    bindings: dict[str, int | str] = {"min_rebuilt_pct": rebuilt_pct}
+    reloaded = [row for row in _gaps(run_query, bindings) if row["reloaded"] == "True"]
+    (corpus,) = [row for row in _reloads(run_query, bindings) if row["grain"] == "corpus"]
+    # ...then the silences this one says were followed by a rebuild are, one for one, the
+    # `idle_reloads` the other counts. The two answer one question at two grains, so a reader
+    # who thresholds these lengths is narrowing that count rather than a different one.
+    assert len(reloaded) == int(corpus["idle_reloads"]) > 0
+
+
 @pytest.fixture(scope="session")
 def planted_failures_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     """The corpus with two recurring errors planted: one splitting after its first line, one
@@ -522,6 +591,15 @@ def _reloads(
         "context_reloads", "--project", MYCELIA, "--as-of", AS_OF_WHOLE, "--csv", *arguments
     )
     return [row for row in mappings(output) if row["period"] == period]
+
+
+def _gaps(run: QueryRunner, bindings: dict[str, int | str]) -> list[dict[str, str]]:
+    """`idle_gaps` over the fixture project, as one column mapping per silence."""
+    arguments = [
+        part for name, value in bindings.items() for part in ("--param", f"{name}={value}")
+    ]
+    output = run("idle_gaps", "--project", MYCELIA, "--as-of", AS_OF_WHOLE, "--csv", *arguments)
+    return mappings(output)
 
 
 def _threads(rows: list[dict[str, str]]) -> dict[tuple[str, str], dict[str, str]]:

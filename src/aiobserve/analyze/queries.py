@@ -197,6 +197,19 @@ QUERIES: dict[str, Query] = {
             "idle_seconds": Param(type=ParamType.INTEGER, default=300),
         },
     ),
+    "idle_gaps": Query(
+        scope=Scope.CORPUS,
+        params={
+            # Shortest silence worth a row. 300 seconds is Claude Code's default cache
+            # lifetime — below it nothing had expired — and it is `context_reloads`'s
+            # `idle_seconds`, so the two queries call the same waits idle.
+            "min_idle_seconds": Param(type=ParamType.INTEGER, default=300),
+            # The reload detector, at `context_reloads`'s production values: the `reloaded`
+            # column has to mean what that query's counts mean.
+            "min_rebuilt_tokens": Param(type=ParamType.INTEGER, default=20_000),
+            "min_rebuilt_pct": Param(type=ParamType.INTEGER, default=90),
+        },
+    ),
     "command_failures": Query(
         scope=Scope.CORPUS,
         params={
