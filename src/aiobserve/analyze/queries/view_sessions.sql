@@ -27,7 +27,9 @@ SELECT
     -- session opened. Sorted, so two runs of the same query print the same row.
     (SELECT list_sort(list(DISTINCT c.attribution_skill)) FROM live_api_calls c
         WHERE c.session_id = r.session_id AND c.attribution_skill IS NOT NULL) AS skills,
-    (SELECT list_sort(list(DISTINCT a.agent_type)) FROM live_agent_runs a
+    -- A definition's name is cut where the list cuts a skill name: the row the viewer composes
+    -- drops this column, but a name nobody bounds is one row of the list away from a page.
+    (SELECT list_sort(list(DISTINCT substr(a.agent_type, 1, $item_chars))) FROM live_agent_runs a
         WHERE a.session_id = r.session_id) AS agent_types,
     (SELECT list_sort(list(DISTINCT p.pr_url)) FROM pr_links p
         WHERE p.session_id = r.session_id) AS pr_urls

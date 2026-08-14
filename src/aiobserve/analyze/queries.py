@@ -475,7 +475,13 @@ QUERIES: dict[str, Query] = {
             "head_items": Param(type=ParamType.INTEGER, default=HEADER_ITEMS),
         },
     ),
-    "view_sessions": Query(scope=Scope.KEYED, params={}),
+    "view_sessions": Query(
+        scope=Scope.KEYED,
+        # How much of each agent definition's name a row's list carries. The viewer composes
+        # the rest of a row's cuts around this query (`view/listing.py`) because its filters
+        # read whole values; nothing filters on this one, so it is cut in the file.
+        params={"item_chars": Param(type=ParamType.INTEGER, default=LIST_ITEM_CHARS)},
+    ),
     "view_tool_value": Query(
         scope=Scope.KEYED,
         params={"session_id": SESSION_ID, "source": SOURCE, "tool_call_id": TOOL_CALL_ID},
@@ -490,6 +496,8 @@ QUERIES: dict[str, Query] = {
             "turn_id": Param(type=ParamType.TEXT, default=REQUIRED),
             "after": AFTER,
             "page_calls": Param(type=ParamType.INTEGER, default=PAGE_CALLS),
+            # The two model names a call row shows, cut like a run chip's strings.
+            "chip_chars": CHIP_CHARS_PARAM,
         },
     ),
     "view_turn_records": Query(

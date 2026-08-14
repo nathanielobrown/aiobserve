@@ -564,6 +564,7 @@ def build_app(db_path: Path) -> FastAPI:
                     turn_id=turn,
                     after=after,
                     page_calls=calls,
+                    chip_chars=queries.CHIP_CHARS,
                 ),
                 "matched_api_calls",
                 "call_index",

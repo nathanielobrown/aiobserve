@@ -105,7 +105,12 @@ def test_every_sort_key_names_a_column_the_query_returns(
 ) -> None:
     """No sort key can reach past the library query into SQL of its own."""
     listing = queries.load("view_sessions").strip().rstrip(";")
-    returned = {row[0] for row in store.execute(f"DESCRIBE ({listing})").fetchall()}
+    # At the query's own defaults, read off the manifest rather than listed: what a sort key
+    # names is a column, and no binding the file takes changes which columns it returns.
+    defaults = {
+        name: spec.default for name, spec in queries.QUERIES["view_sessions"].params.items()
+    }
+    returned = {row[0] for row in store.execute(f"DESCRIBE ({listing})", defaults).fetchall()}
     assert set(SORTS) <= returned
 
 

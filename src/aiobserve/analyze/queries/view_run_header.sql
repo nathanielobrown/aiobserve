@@ -9,11 +9,13 @@
 SELECT
     a.id AS run_id,
     a.session_id,
-    a.agent_type,
-    -- Whatever the spawning agent typed in the Agent tool's `description`, cut like every
-    -- other string a header carries: nothing on the far side bounds it.
+    -- The three strings a header carries from the transcript, each cut to the same head:
+    -- whatever the spawning agent typed in the Agent tool's `description`, the definition it
+    -- named, and the model the run answered on. Nothing on the far side of any of them bounds
+    -- what it holds — an agent definition is named by whoever writes it.
+    substr(a.agent_type, 1, $head_chars) AS agent_type,
     substr(a.description, 1, $head_chars) AS description,
-    a.model,
+    substr(a.model, 1, $head_chars) AS model,
     a.spawn_depth,
     a.is_fork,
     a.parent_agent_id,

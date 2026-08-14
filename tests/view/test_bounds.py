@@ -56,8 +56,20 @@ from tests.view.conftest import Planter, Statement, fields, one, values
 # none of them belongs on a page whole. `raw` is a transcript line, `result` a tool's output,
 # `input` its arguments, `text` and `thinking` a model's answer, and `description` the line a
 # run was spawned with or the one a pass wrote about an item — prose either way, and nothing
-# bounds what a caller passes the Agent tool.
-FAT = ("raw", "text", "thinking", "result", "input", "content", "description")
+# bounds what a caller passes the Agent tool. `agent_type` and `model` are short in every
+# session recorded so far and short by nothing: an agent definition is named by whoever writes
+# it, and a model name is a string an api request carried.
+FAT = (
+    "raw",
+    "text",
+    "thinking",
+    "result",
+    "input",
+    "content",
+    "description",
+    "agent_type",
+    "model",
+)
 
 # What a page may weigh. The list is the page a corpus grows, so `MAX_PAGE_SESSIONS` rows of
 # what one row can hold have to fit under it. Raised from 350,000 when the pages began showing
@@ -134,19 +146,24 @@ LIST_ITEM_HEAD = "$item_chars"
 ESCAPED_CHAR_BYTES = 5
 
 
-def worst_call_bytes(page_tools: int) -> int:
-    """What one call row of a turn fragment can weigh: markup, text head, and its tool rows.
-
-    Markup is measured, because it is ours; the two content heads are counted at the worst
-    character, because a call's `text` and a tool's `input` are whatever the session held.
-    """
-    tool_row = MEASURED_TOOL_ROW_MARKUP + INPUT_CHARS * ESCAPED_CHAR_BYTES
-    return MEASURED_CALL_ROW_MARKUP + TEXT_CHARS * ESCAPED_CHAR_BYTES + page_tools * tool_row
-
-
 def heads(sql: str, parameter: str) -> int:
     """How many of a statement's columns are cut to `parameter` — what one of its rows carries."""
     return re.sub(r"--[^\n]*", " ", sql).count(parameter)
+
+
+def worst_call_bytes(page_tools: int) -> int:
+    """What one call row of a turn fragment can weigh: markup, its heads, and its tool rows.
+
+    Markup is measured, because it is ours; every content head is counted at the worst
+    character, because a call's `text`, its model names and a tool's `input` are whatever the
+    session held. The model names are counted off the query rather than listed, so a fourth
+    string added to a call row lands here instead of quietly spending the ceiling ten times over.
+    """
+    tool_row = MEASURED_TOOL_ROW_MARKUP + INPUT_CHARS * ESCAPED_CHAR_BYTES
+    names = heads(queries.load(Fragment.TURN_CALLS), CHIP_HEAD) * queries.CHIP_CHARS
+    return (
+        MEASURED_CALL_ROW_MARKUP + (TEXT_CHARS + names) * ESCAPED_CHAR_BYTES + page_tools * tool_row
+    )
 
 
 def worst_session_row_bytes() -> int:
@@ -358,15 +375,21 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     # viewer composes around it, and they are checked as arithmetic below rather than pinned.
     assert QUERIES["view_runs"].params["chip_chars"].default == 60
     assert QUERIES["view_compactions"].params["chip_chars"].default == 60
+    # A call row is multiplied by the page the same way, and carries two model names — which
+    # an api request wrote, so their length is Claude Code's to change and not ours.
+    assert QUERIES["view_turn_calls"].params["chip_chars"].default == 60
     # And what a session header shows of each string and each list it carries. The header is
     # the page's one unbounded surface — a session's PR links grow with every PR it opens — so
     # these three are what turn `MEASURED_SESSION_CHROME` into a worst case.
     assert QUERIES["view_session_header"].params["head_chars"].default == 100
     assert QUERIES["view_session_header"].params["item_chars"].default == 60
     assert QUERIES["view_session_header"].params["head_items"].default == 5
-    # A run header carries one string of the same kind — the line the run was spawned with,
-    # which is whatever the spawning agent typed — so it is cut to the same head.
+    # A run header carries three strings of the same kind — the line the run was spawned with,
+    # the agent definition that ran, and the model it ran on — so they take the same head.
     assert QUERIES["view_run_header"].params["head_chars"].default == 100
+    # The list's rows drop the agent types a session spawned, but the query behind them still
+    # gathers the names, so a member is cut where the list cuts a skill name.
+    assert QUERIES["view_sessions"].params["item_chars"].default == queries.LIST_ITEM_CHARS
     # And how much of what a pass wrote an item shows. The taxonomy is closed and its longest
     # member is nine characters (`enrich/taxonomy.py`), so the tag cut bounds a hand-edited row
     # rather than anything a pass writes.
@@ -912,8 +935,9 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     """Every preview is truncated before it reaches a page, so no one huge value can bloat it.
 
     The previews the viewer renders — a session's title and project on the list, a turn's
-    prompt on the session page, a run's own description on its page, an api call's text and a
-    tool call's arguments in the turn fragment — checked at once against one planted store. The
+    prompt on the session page, a run's own description, definition and model on its page, an
+    api call's text and model and a tool call's arguments in the turn fragment — checked at
+    once against one planted store. The
     oversized values are invented: redaction flattened every recorded string to a few
     characters, so no fixture reaches a cap.
     """
@@ -927,8 +951,11 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     path: Path = plant(
         ("UPDATE sessions SET title = ?, project_dir = ? WHERE id = ?", [long, long, SPINE]),
         ("UPDATE turns SET prompt = ? WHERE session_id = ? AND id = ?", [long, SPINE, turn_id]),
-        ("UPDATE agent_runs SET description = ? WHERE session_id = ?", [long, SPINE]),
-        ("UPDATE api_calls SET text = ? WHERE session_id = ?", [long, ANCESTOR]),
+        (
+            "UPDATE agent_runs SET description = ?, agent_type = ?, model = ? WHERE session_id = ?",
+            [long, long, long, SPINE],
+        ),
+        ("UPDATE api_calls SET text = ?, model = ? WHERE session_id = ?", [long, long, ANCESTOR]),
         ("UPDATE tool_calls SET input = ? WHERE session_id = ?", [long, FORK_ORIGIN]),
     )
     with TestClient(build_app(path)) as planted:
@@ -946,8 +973,15 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # half a path fills the filter in with a value that matches nothing.
     assert not [path for path in re.findall(r'<option value="([^"]*)"', listing) if "x" in path]
     assert len(fields(page, "data-turn", turn_id)["prompt"]) == PROMPT_CHARS
-    # A run page shows one description and links to the rest, so the head it shows is a
-    # header's rather than a chip's.
-    assert len(fields(run, "id", "run-header")["description"]) == queries.HEADER_CHARS
-    assert len(fields(turn, "data-api-call", DENSE_TURN_CALL)["text_head"]) == TEXT_CHARS
+    # A run page shows one run's strings and links to the rest, so the heads it shows are a
+    # header's rather than a chip's — the definition it ran under and its model with the
+    # description, because a page has no more idea what those hold than what a prompt does.
+    header = fields(run, "id", "run-header")
+    assert {len(header[field]) for field in ("description", "agent_type", "model")} == {
+        queries.HEADER_CHARS
+    }
+    # A call row is one of ten on a fragment, so its model is cut where a chip's strings are.
+    call = fields(turn, "data-api-call", DENSE_TURN_CALL)
+    assert len(call["text_head"]) == TEXT_CHARS
+    assert len(call["model"]) == queries.CHIP_CHARS
     assert len(fields(tools, "data-tool-call", DENSE_TOOL)["input_head"]) == INPUT_CHARS
