@@ -48,6 +48,9 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     # Redaction leaves every recorded command line as `[redacted]`, and the handful that
     # survive into the corpus views sit below the production floor of 5.
     "command_failures": {"min_occurrences": "1"},
+    # Where to split the fixture corpus's two idle reloads, which followed silences of 6,035
+    # and 23,773 seconds: anything between them puts one on each side of the bound.
+    "reload_cost_split": {"short_gap_seconds": "10000"},
     # One of the two fixture sessions holding a failed tool call.
     "error_records": {"session_id": SERVER_TOOLS},
     # Both fixture errors are one-offs, so the production floor of 5 lists neither.

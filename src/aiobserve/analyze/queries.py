@@ -210,6 +210,20 @@ QUERIES: dict[str, Query] = {
             "min_rebuilt_pct": Param(type=ParamType.INTEGER, default=90),
         },
     ),
+    "reload_cost_split": Query(
+        scope=Scope.CORPUS,
+        params={
+            # Where the split falls. No default: the bound is the claim the query makes, and
+            # it moves with the pricing table a break-even was computed from and with the
+            # cache lifetime a wait was racing. A defaulted one would be quoted as ours.
+            "short_gap_seconds": Param(type=ParamType.INTEGER, default=REQUIRED),
+            # The floor and the detector, at `idle_gaps`'s values: this splits that query's
+            # population, so it has to admit and flag the same silences.
+            "min_idle_seconds": Param(type=ParamType.INTEGER, default=300),
+            "min_rebuilt_tokens": Param(type=ParamType.INTEGER, default=20_000),
+            "min_rebuilt_pct": Param(type=ParamType.INTEGER, default=90),
+        },
+    ),
     "command_failures": Query(
         scope=Scope.CORPUS,
         params={

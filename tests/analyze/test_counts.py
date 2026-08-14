@@ -91,6 +91,9 @@ BARE_GREP_CALLS = 2
 # The row `agent_compactions` gives a session's own thread, so a definition's rate has the
 # thing it has to beat beside it. The query writes the sentinel; nothing in Python reads it.
 MAIN_THREAD = "(main thread)"
+# The sentinel a rolled-up row carries where a thread kind would sit, `context_reloads`'s and
+# `reload_cost_split`'s alike.
+ALL_THREAD_KINDS = "(all)"
 # The agent definition the planted compaction lands under.
 PLANTED_DEFINITION = "auditor"
 
@@ -103,6 +106,10 @@ ARCHITECT_SESSION = "10d0349d-0705-4e23-aa64-5b1b97698b2e"
 ARCHITECT_DEFINITION = "architect"
 ARCHITECT_OPENING_TOKENS = 23_444
 ARCHITECT_RELOAD_TOKENS = 89_383
+# The silence its rebuild followed: 6,035 seconds, an hour and forty minutes. Shorter than
+# the main thread's below, which is what puts the corpus's two idle reloads either side of a
+# bound and lets a split be read.
+ARCHITECT_IDLE_SECONDS = 6_035
 # `SPINE`'s main thread went 23,773 seconds — 6h36m — between two calls and rebuilt 94,194
 # tokens on the far side, so its gap is what a rebound `$idle_seconds` can be walked past.
 SPINE_RELOAD_TOKENS = 94_194
@@ -471,6 +478,66 @@ def test_idle_gaps_calls_the_same_waits_idle_that_context_reloads_does(
     assert len(reloaded) == int(corpus["idle_reloads"]) > 0
 
 
+def test_reload_cost_split_says_what_share_of_a_rebuild_bill_short_waits_ran_up(
+    run_query: QueryRunner,
+) -> None:
+    """The tokens rebuilt after short silences, as a share of everything idle waits rebuilt."""
+    # If the corpus's two idle reloads sit either side of a bound — a main thread's six-hour
+    # wait over it, an agent run's hour and forty minutes under it...
+    reloaded = {row["agent_type"]: row for row in _gaps(run_query, {}) if row["reloaded"] == "True"}
+    assert {name: int(row["idle_seconds"]) for name, row in reloaded.items()} == {
+        MAIN_THREAD: SPINE_IDLE_SECONDS,
+        ARCHITECT_DEFINITION: ARCHITECT_IDLE_SECONDS,
+    }
+    # ...then splitting at the longer of the two puts one reload on each side...
+    rows = _split(run_query, {"short_gap_seconds": SPINE_IDLE_SECONDS})
+    corpus = rows[ALL_THREAD_KINDS]
+    assert (int(corpus["reloads"]), int(corpus["short_reloads"])) == (2, 1)
+    # ...and the query's two shares come out as different numbers, which is the whole reason
+    # it exists: an even split of the events is not an even split of the bill.
+    assert float(corpus["short_reload_pct"]) == 50.0
+    assert int(corpus["rebuilt_tokens"]) == SPINE_RELOAD_TOKENS + ARCHITECT_RELOAD_TOKENS
+    assert int(corpus["short_rebuilt_tokens"]) == ARCHITECT_RELOAD_TOKENS
+    share = 100 * ARCHITECT_RELOAD_TOKENS / (SPINE_RELOAD_TOKENS + ARCHITECT_RELOAD_TOKENS)
+    assert float(corpus["short_token_pct"]) == round(share, 1) != 50.0
+    # ...filed under the kind of thread that waited, so a recommendation scoped to short gaps
+    # can say which threads it would apply to instead of inferring it from a corpus total.
+    assert int(rows[ARCHITECT_DEFINITION]["short_rebuilt_tokens"]) == ARCHITECT_RELOAD_TOKENS
+    assert int(rows[MAIN_THREAD]["short_rebuilt_tokens"]) == 0
+
+
+def test_reload_cost_split_counts_the_silences_that_rebuilt_nothing(run_query: QueryRunner) -> None:
+    """Every wait is in the split, not only the ones that ended in a rebuild."""
+    # If the corpus holds more silences than reloads — the denominator a keep-warm heartbeat
+    # would fire over, since it pays on the waits that would have cost nothing too...
+    gaps = _gaps(run_query, {})
+    rows = _split(run_query, {"short_gap_seconds": SPINE_IDLE_SECONDS})
+    corpus = rows[ALL_THREAD_KINDS]
+    assert int(corpus["gaps"]) == len(gaps) == RECORDED_IDLE_GAPS > int(corpus["reloads"])
+    short = [row for row in gaps if int(row["idle_seconds"]) < SPINE_IDLE_SECONDS]
+    assert int(corpus["short_gaps"]) == len(short)
+    # ...and the thread kinds under it partition that population, so no wait is counted twice
+    # or dropped between them.
+    kinds = [row for name, row in rows.items() if name != ALL_THREAD_KINDS]
+    assert sum(int(row["gaps"]) for row in kinds) == RECORDED_IDLE_GAPS
+
+
+def test_reload_cost_split_is_bound_at_the_length_the_caller_names(run_query: QueryRunner) -> None:
+    """The bound is the caller's, and a wait is short only when it ran strictly under it."""
+    # If the bound is raised by one second past the longest reloaded wait...
+    inclusive = _split(run_query, {"short_gap_seconds": SPINE_IDLE_SECONDS + 1})
+    # ...then that wait joins the short side and the whole bill sits on it — which is what
+    # pins the comparison as strict rather than inclusive, since the bound at the wait's own
+    # length left it out above.
+    assert int(inclusive[ALL_THREAD_KINDS]["short_reloads"]) == 2
+    assert float(inclusive[ALL_THREAD_KINDS]["short_token_pct"]) == 100.0
+    # ...while a bound under every recorded silence reports a share of zero rather than an
+    # empty one: no short reload is a number, not a missing answer.
+    none = _split(run_query, {"short_gap_seconds": SHORTEST_IDLE_SECONDS})[ALL_THREAD_KINDS]
+    assert (int(none["short_gaps"]), int(none["short_reloads"])) == (0, 0)
+    assert float(none["short_token_pct"]) == float(none["short_reload_pct"]) == 0.0
+
+
 @pytest.fixture(scope="session")
 def planted_failures_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     """The corpus with two recurring errors planted: one splitting after its first line, one
@@ -600,6 +667,19 @@ def _gaps(run: QueryRunner, bindings: dict[str, int | str]) -> list[dict[str, st
     ]
     output = run("idle_gaps", "--project", MYCELIA, "--as-of", AS_OF_WHOLE, "--csv", *arguments)
     return mappings(output)
+
+
+def _split(
+    run: QueryRunner, bindings: dict[str, int | str], *, period: str = "corpus"
+) -> dict[str, dict[str, str]]:
+    """`reload_cost_split` over the fixture project, by thread kind, for one period."""
+    arguments = [
+        part for name, value in bindings.items() for part in ("--param", f"{name}={value}")
+    ]
+    output = run(
+        "reload_cost_split", "--project", MYCELIA, "--as-of", AS_OF_WHOLE, "--csv", *arguments
+    )
+    return {row["agent_type"]: row for row in mappings(output) if row["period"] == period}
 
 
 def _threads(rows: list[dict[str, str]]) -> dict[tuple[str, str], dict[str, str]]:
