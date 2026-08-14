@@ -147,12 +147,50 @@ def test_every_level_asks_for_json_at_the_same_version() -> None:
     assert {Level.turn: 4, Level.agent_run: 4, Level.session: 4} == PROMPT_VERSION
     # Both stamps in one place: a pass that bumped one and not the other would describe the
     # corpus under a mixed key, and no query could tell the halves apart afterwards.
-    assert TAXONOMY_VERSION == 1
+    assert TAXONOMY_VERSION == 2
     # Every level's instructions ask for the JSON object the schema describes, and none of
     # them still names a tool to call.
     for level in Level:
         assert "Answer with one JSON object" in instructions(level)
         assert "calling" not in instructions(level)
+
+
+def test_version_2_of_the_taxonomy_moved_two_borders_and_no_member() -> None:
+    """The taxonomy bump rewrote what `debug` and `review` mean, and changed no member.
+
+    That pair is the whole comparability claim: a version-1 `debug` row and a version-2 one
+    count the same member under different words, so a query may add them up. A member added
+    or dropped would make the two versions two different vocabularies.
+    """
+    # If the members are spelled out — a literal list, so an edit to `Category` must be
+    # written here too rather than following silently...
+    members = [
+        "design",
+        "implement",
+        "fix_bug",
+        "refactor",
+        "test",
+        "debug",
+        "review",
+        "analyze",
+        "document",
+        "configure",
+        "vcs_ops",
+        "explore",
+        "chat",
+        "other",
+    ]
+    # ...then they are the fourteen the corpus is counted by, at both doors the model meets.
+    assert [str(member) for member in Category] == members
+    properties = OUTPUT_SCHEMA["properties"]
+    assert isinstance(properties, dict)
+    assert properties["category"] == {"type": "string", "enum": members}
+    # ...and the two definitions that moved say where the border between them now runs: a
+    # QC pass found `debug` swallowing every review that went looking for defects.
+    assert (
+        "Not searching a change for defects it might have" in CATEGORY_DEFINITIONS[Category.debug]
+    )
+    assert CATEGORY_DEFINITIONS[Category.review].startswith("Judging a change someone else made")
 
 
 def test_every_level_names_every_taxonomy_member() -> None:
@@ -200,7 +238,8 @@ def test_every_level_carries_the_rules_for_choosing_between_members() -> None:
             assert command in rendered
         # ...and every one of them sits past the last vocabulary line, so a reader looking up
         # what a member means still finds only the definition. That is what makes this
-        # guidance rather than a taxonomy edit, and what leaves `TAXONOMY_VERSION` at 1.
+        # guidance rather than a taxonomy edit — the rules carry no `TAXONOMY_VERSION` of
+        # their own, so a row written before them stays comparable to one written after.
         vocabulary_end = rendered.rindex(
             f"- {Outcome.unclear}: {OUTCOME_DEFINITIONS[Outcome.unclear]}"
         )

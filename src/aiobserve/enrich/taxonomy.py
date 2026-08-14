@@ -48,8 +48,13 @@ CATEGORY_DEFINITIONS: dict[Category, str] = {
     Category.fix_bug: "Making broken behaviour correct, with the fix already known.",
     Category.refactor: "Changing structure without changing behaviour.",
     Category.test: "Writing or fixing tests, and running suites.",
-    Category.debug: "Hunting an unknown cause: reproducing, instrumenting, bisecting.",
-    Category.review: "Reading someone else's change and judging it.",
+    Category.debug: (
+        "Hunting the cause of a failure that already happened — reproducing, instrumenting, "
+        "bisecting. Not searching a change for defects it might have."
+    ),
+    Category.review: (
+        "Judging a change someone else made — reading it, probing it, testing it for defects."
+    ),
     Category.analyze: "Answering a question from data or code — measurement, census, findings.",
     Category.document: "Writing prose: docs, comments, commit messages, reports.",
     Category.configure: "Tooling, dependencies, CI, environment, editor and agent settings.",
@@ -70,4 +75,4 @@ OUTCOME_DEFINITIONS: dict[Outcome, str] = {
 
 # Bumped whenever a member above changes meaning, arrives, or leaves. Rows record the
 # version they were written under, so a bump re-enriches rather than corrupting a mixed set.
-TAXONOMY_VERSION = 1
+TAXONOMY_VERSION = 2
