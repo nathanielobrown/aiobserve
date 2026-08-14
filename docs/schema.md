@@ -60,6 +60,21 @@ A tag can carry attributes: `<teammate-message teammate_id="team-lead" summary="
 
 *Seen in* `tests/fixtures/spine/` — both slash-command orderings at CC 2.1.221, `<bash-input>`/`<bash-stdout>` at CC 2.1.212, `<teammate-message>` at CC 2.1.211.
 
+### A slash command's own output is archived against the turn that ran it
+
+`<local-command-stdout>` is not a turn, but it is the answer to one: Claude Code writes what a slash command printed into a record whose `parentUuid` is the command turn's uuid. Most command turns drive no model response at all, so that record is the only trace of what happened.
+
+It arrives in two shapes, and a reader must take both:
+
+- a `user` record carrying the tag at `message.content` — 279 of the mycelia corpus's 316 (scanned 2026-08-13)
+- a `system` record with `subtype: local_command` carrying it at `content` — the other 37
+
+The body between the tags may be empty, and that is a state rather than an absence: all 21 recorded `/clear` outputs are empty, against a median body of 71 characters and a longest of 2,038. It may also run to several lines, so a reader that stops at the first one finds nothing.
+
+The same record is replayed into a resumed session against the plain turn it now hangs off — 183 records in the corpus — so a `parentUuid` naming a turn that ran no command means the output belongs to no turn here, not that the archive is malformed.
+
+*Seen in* `tests/fixtures/spine/` at CC 2.1.221 (`user` carrier), `tests/fixtures/model_only/` at CC 2.1.215 (`system` carrier, and an empty `/clear` body), and `tests/fixtures/resume_pair/` at CC 2.1.202 (the replay).
+
 ### A parallel batch's timestamps rank by execution, not by issue
 
 One assistant message can issue several tool calls at once, and Claude Code writes a record per

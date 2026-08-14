@@ -42,6 +42,8 @@ Agent runs go out in rounds, deepest first, so no parent is ever described from 
 
 Two kinds of session are skipped rather than enriched, both held by the `describable_sessions` view. One has no main turn and no agent run — there is nothing to describe, and compaction records and duplicate-uuid sessions are the recorded cases. The other holds turns that drove no api call: a `/model` or `/effort` turn the CLI answered by itself, leaving no model response to describe. A QC pass found the enrichment model inventing work for those rather than reporting none, so the fix is not to ask.
 
+A main turn that ran a slash command carries **what the CLI printed** beside the command, capped at 2,000 characters. Where the turn drove no api call it is the only account of what happened, and most such turns carry one — 272 of 280 in the mycelia corpus (2026-08-13). The render distinguishes three states rather than leaving the model to infer one: the output; "the command printed nothing", which every recorded `/clear` is; and "not recorded", for a turn nothing archived an answer for. Claude Code archives that output in either of two record shapes ([schema](schema.md)) — one in a third shape stops the pass rather than reading as an empty answer.
+
 The view is also what `sweep_zombies` measures a session row against, so rows written before the gate are deleted on the next run and `aiobserve enrich` reports the count. Turns are not gated — a turn that drove no api call keeps its row.
 
 ## Staleness is the whole resume mechanism
@@ -88,7 +90,7 @@ Prices move and models get added. An unpriced model crashes rather than quoting 
 Both are re-buys, and both are deliberate:
 
 - Editing a level's instructions means bumping `PROMPT_VERSION[level]` in `src/aiobserve/enrich/prompts.py` — the hash cannot see instructions, so nothing else would notice
-- Adding or renaming a taxonomy member means bumping `TAXONOMY_VERSION`, which re-describes every level
+- Adding a taxonomy member, renaming one, or changing what one means — the definitions are what the model classifies by — means bumping `TAXONOMY_VERSION`, which re-describes every level
 
 A run-level bump cascades upward through every round, so price it with `--dry-run` first.
 
