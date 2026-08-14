@@ -17,6 +17,7 @@ from tests.enrich.conftest import (
     COMPACTION,
     DUP_UUID,
     FORK_BYREF,
+    RESUME,
     SPINE,
     SPINE_LEAF,
     SPINE_RUN,
@@ -199,10 +200,11 @@ def test_a_session_with_no_turn_and_no_run_is_never_enriched(fixture_db: Path) -
             ).fetchall()
         }
     # ...then it is not an item, so nothing ever sends it or writes a row for it, while every
-    # other session of the fixture corpus is.
-    assert empty == {COMPACTION, DUP_UUID}
+    # other session of the fixture corpus is. `resume_pair/`'s resume is the third: its api
+    # calls all sit under a turn its ancestor ran, so it opened none of its own.
+    assert empty == {COMPACTION, DUP_UUID, RESUME}
     assert described & empty == set()
-    assert len(described) == 7
+    assert len(described) == 8
 
 
 def test_an_api_call_carries_the_stop_reason_as_recorded(fixture_db: Path) -> None:
@@ -227,11 +229,12 @@ def test_a_session_whose_turns_drove_no_api_call_is_never_enriched(fixture_db: P
     """
     with EnrichmentStore(fixture_db) as store:
         described = {item.session_id for item in store.session_items()}
-        # If the recorded `/model` session drove no api call under its one turn...
+        # If the recorded `/model` session drove no api call under any of its three turns —
+        # `/model`, `/clear` and `/reload-skills`, all answered by the CLI itself...
         assert store.connection.execute(
             "SELECT turns, agent_runs, api_calls FROM session_rollups WHERE session_id = ?",
             [MODEL_ONLY],
-        ).fetchone() == (1, 0, 0)
+        ).fetchone() == (3, 0, 0)
         # ...then it is not an item, while a session whose only work is a subagent's — no turn
         # of its own, and its api calls all under the run — still is: the gate counts calls
         # across every source, not just the main transcript.
@@ -305,7 +308,7 @@ def test_the_run_and_session_views_left_join_too(mutable_db: Path) -> None:
         # ...and the sessions view reads coverage honestly for a corpus nothing has described.
         assert store.connection.execute(
             "SELECT count(*), count(description) FROM enriched_sessions"
-        ).fetchone() == (10, 0)
+        ).fetchone() == (12, 0)
 
 
 def test_zombies_are_swept_at_all_three_levels(mutable_db: Path) -> None:

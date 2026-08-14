@@ -39,6 +39,14 @@ DUP_UUID = "8ee00a94-b01a-4394-b447-b065f74b11af"
 # The session holding a main turn whose last api call stopped `end_turn` — the one recorded
 # value the `Ended:` line exists for, and no other enrichment fixture carries it.
 LEGACY_TITLE = "0b34d1b8-ebd3-40a6-bd89-f1881e1de2ba"
+# `resume_pair/`'s ancestor session and the plain turn its `local-command-stdout` record hangs
+# off: the recorded negative for the archive read, since a command's output attached to a turn
+# that ran no command belongs to no turn's prompt. 183 recorded records are in this shape.
+RESUME_ANCESTOR = "2352492b-1437-4427-ad51-70f35c75f663"
+RESUME_PLAIN_TURN = "55309e59-0fae-4ef1-9251-877e27487bda"
+# The resume itself: every api call it holds sits under no turn of its own, so it is the third
+# session with nothing of its own to describe.
+RESUME = "0a76f771-5f5b-447e-852a-664fc972ea7c"
 # The agent runs the render and rounds leaves are built on, one per shape: a multi-turn
 # teammate, a subagent and the leaf it spawned in turn, a turnless fork, a fork whose only
 # turn is a replay, and the run that really ran that turn.
@@ -60,6 +68,7 @@ ENRICHMENT_FIXTURES = (
     "dup_uuid",
     "model_only",
     "legacy_title",
+    "resume_pair",
 )
 
 

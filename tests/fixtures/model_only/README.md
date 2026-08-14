@@ -1,9 +1,10 @@
-# `model_only/` — a session that ran a slash command and nothing else
+# `model_only/` — a session that ran slash commands and nothing else
 
 Redacted excerpt of `bec99999-cbb7-4d11-9a58-3ad3d0e1c8cf.jsonl`, **Claude Code 2.1.215**, from
 `~/.claude/projects/-Users-nob-repos-mycelia/`. Lines 9–11 of 12: the three `user` records that make
-the session's one `/model` turn. It extracts to `turns = 1, agent_runs = 0, api_calls = 0`, which is
-the shape under test — a session whose turns drove no model response at all.
+the session's one `/model` turn, plus four **borrowed** records below. It extracts to
+`turns = 3, agent_runs = 0, api_calls = 0`, which is the shape under test — a session whose turns
+drove no model response at all.
 
 45 of the 571 recorded mycelia sessions are in this shape (`aiobserve query sessions`, 2026-08-13),
 and enrichment used to describe every one of them from a render with no work in it. The gate in
@@ -20,6 +21,20 @@ The nine records left behind are bookkeeping and one earlier turn: `mode`, `perm
 prompt. The first kept record's `parentUuid` still points at that prompt; a trimmed fixture dangles
 there by design, and the extractor threads the turn regardless.
 
+## The borrowed records
+
+Lines 4–7 are two more CLI-answered command turns, each with the record that archived what the
+command printed. Both were recorded on the same day as the host session and carry the two states a
+`/model` turn cannot show: an output that is empty, and an output carried by a `system` record
+rather than by a `user` one. Their `sessionId` was rewritten to the host session and each turn's
+`parentUuid` rechained onto the record before it; every stdout record still names its own command
+turn, which is the link the prompt reads.
+
+| Records | Source session | CC version | Shape it carries |
+| --- | --- | --- | --- |
+| `/clear` turn + its stdout (lines 4–5) | `15289f02-a0fc-41d6-992a-a363e51e8f8c` lines 4–5 | 2.1.215 | the record exists and printed nothing — all 21 recorded `/clear` bodies are empty |
+| `/reload-skills` turn + its stdout (lines 6–7) | `cce5af1e-4e2f-4f2c-8b4d-47a85289826a` lines 6–7 | 2.1.215 | the second carrier: `type: system`, `subtype: local_command`, body at `$.content` rather than `$.message.content` (37 recorded instances) |
+
 ## Redaction
 
 Every string outside the structural keep-list is `[redacted]`; `gitBranch` is pseudonymised to
@@ -28,3 +43,8 @@ do — a record's tag is what makes it a command turn rather than a prompt, so f
 change the shape. The command *name* survives for the same reason; its argument does not. `cwd`
 stays, since `project_dir` is what puts the session inside the mycelia corpus the analyze tier
 filters on.
+
+`data/redact.py` flattens a tag wrapper to `[redacted]`, tag and all, so every wrapper here was
+restored by hand after the scrub. The `/clear` body is the one string that survives as recorded,
+because it is empty: a body redacted to `[redacted]` is the state the empty one has to be told
+apart from.
