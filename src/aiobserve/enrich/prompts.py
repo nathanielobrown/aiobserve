@@ -127,6 +127,9 @@ class Budgets:
     input_head: int = 120
     # The tail of a *failed* tool result. No other result content travels at all.
     error_tail: int = 300
+    # A slash command's own printed output — for most command turns, the whole of what
+    # happened. 315 of the 316 recorded bodies fit it; the median is 71 characters.
+    command_result: int = 2_000
 
 
 TURN_BUDGETS = Budgets(total=30_000)
@@ -217,6 +220,10 @@ class TurnItem(Item):
     prompt: str
     command_name: str | None
     command_args: str | None
+    # What the CLI itself printed for a slash command. None means no record archived an
+    # answer; "" means one did and it printed nothing. Most command turns drive no model
+    # response, so this is the only thing the render can say about what happened.
+    command_result: str | None
     api_calls: tuple[ApiCallRow, ...]
 
     @property
@@ -228,6 +235,19 @@ class TurnItem(Item):
         return (self.session_id, self.source, self.turn_id)
 
 
+def _command_result_block(result: str | None, budgets: Budgets) -> str:
+    """What the CLI printed, or which of the two ways it printed nothing.
+
+    Three deliberately distinguished states: an unsaid one reads as an unanswered command,
+    which is the inference this block exists to remove.
+    """
+    if result is None:
+        return "## Command result: not recorded"
+    if not result:
+        return "## Command result: the command printed nothing"
+    return f"## Command result\n{_cap(result, budgets.command_result)}"
+
+
 def render_turn(item: TurnItem, budgets: Budgets = TURN_BUDGETS) -> str:
     """One main turn as the model sees it: what was asked, and what the session then did."""
     head = ["# Main turn", ""]
@@ -235,6 +255,7 @@ def render_turn(item: TurnItem, budgets: Budgets = TURN_BUDGETS) -> str:
         # The `prompt` column keeps the command tags; forwarding it would spend budget on
         # markup and read as content.
         head += ["## Command", " ".join(filter(None, (item.command_name, item.command_args)))]
+        head += ["", _command_result_block(item.command_result, budgets)]
     else:
         head += ["## Prompt", _cap(item.prompt, budgets.prompt)]
     lines: list[str] = []

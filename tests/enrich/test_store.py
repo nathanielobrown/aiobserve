@@ -5,6 +5,7 @@ the ones the pipeline really writes. Assertions are SQL against a real DuckDB fi
 """
 
 import dataclasses
+import json
 from pathlib import Path
 
 import duckdb
@@ -38,6 +39,10 @@ def test_turn_items_are_the_live_main_turns(fixture_db: Path) -> None:
     # If `spine/` recorded four main turns, two of them slash commands...
     assert [item.turn_id[:8] for item in items] == ["5b848af7", "30aad8e5", "818588ad", "8cdceb31"]
     assert [item.command_name for item in items] == ["/model", "/night-run", None, None]
+    # ...then what the CLI printed for each comes with it, read out of the archive: the
+    # `/model` turn's stdout record names it as its `parentUuid`, and nothing archived an
+    # answer for the other three, which is None rather than an empty string.
+    assert [item.command_result for item in items] == ["[redacted]", None, None, None]
     # ...then each turn carries the api calls it drove, and each call its tool calls —
     # turn 818588ad drove two calls, one asking for an Agent and one for a Read.
     third = items[2]
@@ -47,6 +52,82 @@ def test_turn_items_are_the_live_main_turns(fixture_db: Path) -> None:
     # failure record carry.
     assert third.level is Level.turn
     assert third.key == f"turn|{SPINE}|main|{third.turn_id}"
+
+
+# A record the archive filter catches whose body no carrier holds. Both are invented, and
+# have to be: a shape we have seen is a shape the reader handles, so the only way to exercise
+# the guard is to write down one we have not. `spine/`'s `/model` turn is the parent, so each
+# row reaches the classification rather than being dropped for hanging off nothing.
+UNREADABLE_CARRIERS = {
+    # The tag is in the record but in neither field a carrier has ever used: the `coalesce`
+    # yields NULL, which `string_agg` would have skipped without a word.
+    "no carrier field": {
+        "parentUuid": "5b848af7-f86e-4950-b474-cd98125fad24",
+        "type": "user",
+        "toolUseResult": "<local-command-stdout>printed</local-command-stdout>",
+    },
+    # A carrier that holds no tag: the extract yields '', which is the empty-body state — an
+    # unread record would render as "the command printed nothing".
+    "carrier without the tag": {
+        "parentUuid": "5b848af7-f86e-4950-b474-cd98125fad24",
+        "type": "system",
+        "content": "printed, in a shape with no tag around it",
+        "toolUseResult": "<local-command-stdout>printed</local-command-stdout>",
+    },
+}
+
+
+def plant_record(store: EnrichmentStore, session_id: str, line_no: int, record: object) -> None:
+    """Add one raw transcript record to a session's archive, at a line of its own."""
+    store.connection.execute(
+        "INSERT INTO raw_records (session_id, source, line_no, uuid, timestamp, type, raw)"
+        " VALUES (?, 'main', ?, ?, now(), 'user', ?)",
+        [session_id, line_no, f"planted-{line_no}", json.dumps(record)],
+    )
+
+
+@pytest.mark.parametrize("shape", list(UNREADABLE_CARRIERS))
+def test_a_command_output_the_archive_cannot_read_crashes(mutable_db: Path, shape: str) -> None:
+    """A record archiving a command's output in an unknown shape stops the pass, naming it.
+
+    Claude Code owns these shapes and changes them without notice. Neither silent state is
+    tolerable: a dropped record loses the one fact the prompt gained, and a body that reads as
+    empty tells the model the command printed nothing, which is the absence the fix removes.
+    """
+    with EnrichmentStore(mutable_db) as store:
+        plant_record(store, SPINE, 900, UNREADABLE_CARRIERS[shape])
+        # The error names where to look: the session, and the line of the transcript.
+        with pytest.raises(ValueError, match=f"{SPINE}.*line 900"):
+            store.turn_items()
+
+
+def test_a_multi_line_command_output_survives_whole(mutable_db: Path) -> None:
+    """An output printed over several lines reaches the item as those lines.
+
+    The body is planted into a recorded record and invented, and it has to be: redaction
+    flattens every string to `[redacted]`, so no fixture body can hold a newline. A reader
+    that stopped at the first line would extract nothing at all and report an empty body.
+    """
+    with EnrichmentStore(mutable_db) as store:
+        store.connection.execute(
+            "UPDATE raw_records SET raw = ? WHERE session_id = ? AND line_no = 8",
+            [
+                json.dumps(
+                    {
+                        "parentUuid": "5b848af7-f86e-4950-b474-cd98125fad24",
+                        "type": "user",
+                        "message": {
+                            "role": "user",
+                            "content": "<local-command-stdout>first line\nsecond line"
+                            "</local-command-stdout>",
+                        },
+                    }
+                ),
+                SPINE,
+            ],
+        )
+        item = next(item for item in store.turn_items() if item.turn_id.startswith("5b848af7"))
+    assert item.command_result == "first line\nsecond line"
 
 
 def test_a_project_filter_narrows_the_items(fixture_db: Path) -> None:

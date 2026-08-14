@@ -155,6 +155,13 @@ def _source_clause(alias: str, *, main: bool) -> str:
     return f"{alias}.source {'=' if main else '<>'} '{MAIN_SOURCE}'"
 
 
+# The tag Claude Code wraps a slash command's own output in, and the pattern that reads a
+# body out of it. `(?s)` is load-bearing: without it a multi-line body matches nothing and
+# extracts as the empty string, which is a state of its own.
+_STDOUT_TAG = "local-command-stdout"
+_STDOUT_BODY = f"(?s)<{_STDOUT_TAG}>(.*)</{_STDOUT_TAG}>"
+
+
 def _project_clause(project: str | None) -> str:
     """Narrows a query already joined to `sessions s` to one analyzed repository."""
     return " AND s.project_dir = ?" if project is not None else ""
@@ -242,6 +249,7 @@ class EnrichmentStore:
             _project_parameters(project),
         ).fetchall()
         calls = self._api_calls(main=True, project=project)
+        results = self._command_results(project=project)
         by_turn: dict[tuple[str, str, str], list[ApiCallRow]] = {}
         for (session_id, source), sequence in calls.items():
             for turn_id, row in sequence:
@@ -256,10 +264,59 @@ class EnrichmentStore:
                 prompt=prompt,
                 command_name=command_name,
                 command_args=command_args,
+                command_result=results.get((session_id, source, turn_id)),
                 api_calls=tuple(by_turn.get((session_id, source, turn_id), ())),
             )
             for session_id, source, turn_id, index, prompt, command_name, command_args in turns
         ]
+
+    def _command_results(self, *, project: str | None) -> dict[tuple[str, str, str], str]:
+        """What the CLI printed for each command turn, keyed by session, source and turn.
+
+        A turn absent from the mapping had no such record archived, which is a different
+        state from one whose record printed nothing — `render_turn` says which. A record
+        this build cannot classify raises rather than reading as either.
+        """
+        results: dict[tuple[str, str, str], str] = {}
+        for session_id, source, turn_id, line_no, body, readable in self.connection.execute(
+            f"""WITH carriers AS (
+                    SELECT r.session_id, r.source, t.id AS turn_id, r.line_no,
+                           -- The two recorded carriers: a `user` record holds the output in
+                           -- its message, a `system`/`local_command` one at the top level.
+                           -- Both are plain strings in every recorded case. A list-shaped
+                           -- `message.content` would extract as the serialised array, so a
+                           -- tag quoted inside it would match and pass the guard below.
+                           coalesce(json_extract_string(r.raw, '$.message.content'),
+                                    json_extract_string(r.raw, '$.content')) AS carrier
+                    FROM raw_records r
+                    JOIN live_turns t
+                      ON t.session_id = r.session_id AND t.source = r.source
+                     AND t.id = json_extract_string(r.raw, '$.parentUuid')
+                    JOIN sessions s ON s.id = r.session_id
+                    WHERE r.raw LIKE '%<{_STDOUT_TAG}>%'
+                      AND t.command_name IS NOT NULL
+                      AND {_source_clause("t", main=True)}{_project_clause(project)}
+                )
+                SELECT session_id, source, turn_id, line_no,
+                       regexp_extract(carrier, ?, 1) AS body,
+                       -- Tells "no match" from "matched nothing": without it an unreadable
+                       -- record extracts as '', which is the printed-nothing state.
+                       coalesce(regexp_matches(carrier, ?), false) AS readable
+                FROM carriers
+                ORDER BY session_id, source, turn_id, line_no""",
+            [*_project_parameters(project), _STDOUT_BODY, _STDOUT_BODY],
+        ).fetchall():
+            if not readable:
+                raise ValueError(
+                    f"session {session_id} source {source} line {line_no} archives a command "
+                    f"result in a shape this build cannot read: no <{_STDOUT_TAG}> in either "
+                    "carrier field. Claude Code changed the record shape — record it and "
+                    "teach the reader before enriching again."
+                )
+            key = (session_id, source, turn_id)
+            # Ordered by line, so a turn answered over several records reads in sequence.
+            results[key] = f"{results[key]}\n{body}" if key in results else body
+        return results
 
     def run_items(self, project: str | None = None) -> list[AgentRunItem]:
         """Every agent run, each as the sequence of instructions and work its transcript holds.

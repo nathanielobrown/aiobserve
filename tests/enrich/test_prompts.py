@@ -288,6 +288,34 @@ def test_a_slash_turn_renders_the_command_not_its_tags(fixture_db: Path) -> None
         assert "<command-message>" not in rendered
 
 
+def test_a_command_turn_carries_what_the_cli_printed(fixture_db: Path) -> None:
+    """A slash command's own output travels with it, and a turn with none says so.
+
+    Most command turns drive no model response at all, so before this the render said what
+    was asked and nothing about what happened — and a reader with no answer in front of it
+    infers one. `/model` reads as a question the session never got an answer to.
+    """
+    with EnrichmentStore(fixture_db) as store:
+        # If `spine/`'s `/model` turn is rendered — the CLI answered it, and the archive kept
+        # what it printed — then the whole prompt is this: the answer sits in the head beside
+        # the command, ahead of the work, and the `Ended:` line still ends the render.
+        assert render_turn(turn(store, SPINE, "5b848af7")) == (
+            "# Main turn\n"
+            "\n"
+            "## Command\n"
+            "/model [redacted]\n"
+            "\n"
+            "## Command result\n"
+            "[redacted]\n"
+            "\n"
+            "## Ended: no model response"
+        )
+        # ...and if nothing archived an answer — `/night-run` is the one recorded turn in
+        # that state — the render says that, rather than leaving the block out. A missing
+        # section is what the model reads absence from.
+        assert "## Command result: not recorded" in render_turn(turn(store, SPINE, "30aad8e5"))
+
+
 def test_thinking_reaches_no_prompt(mutable_db: Path) -> None:
     """Extended thinking is excluded from every prompt, whatever it holds."""
     # If a sentinel is planted into the thinking of a real `spine/` api call — invented
@@ -378,11 +406,11 @@ def test_input_hash_reads_the_rendered_content_and_nothing_else(mutable_db: Path
 def test_an_over_budget_turn_drops_the_middle_of_its_work(fixture_db: Path) -> None:
     """Past its budget a turn drops the middle of its call sequence and says how much went."""
     # If `spine/`'s longest turn — three tool calls under one response — is rendered at a
-    # budget of 200 characters, two thirds of what it needs (injected, because redaction
+    # budget of 240 characters, two thirds of the 346 it needs (injected, because redaction
     # leaves no fixture within two orders of magnitude of the real 30K)...
     with EnrichmentStore(fixture_db) as store:
         item = turn(store, SPINE, "30aad8e5")
-        elided = render_turn(item, dataclasses.replace(TURN_BUDGETS, total=200))
+        elided = render_turn(item, dataclasses.replace(TURN_BUDGETS, total=240))
     # ...then the render fits, and what it kept is the prompt, the start of the work and the
     # last thing the turn did — the two ends a description is written from. The middle went,
     # and the gap counts itself rather than reading as the whole sequence. The `Ended:` line
@@ -394,6 +422,8 @@ def test_an_over_budget_turn_drops_the_middle_of_its_work(fixture_db: Path) -> N
         "## Command\n"
         "/night-run [redacted]\n"
         "\n"
+        "## Command result: not recorded\n"
+        "\n"
         "## Response\n"
         "[redacted]\n"
         "[… 2 of 8 lines elided …]\n"
@@ -401,7 +431,7 @@ def test_an_over_budget_turn_drops_the_middle_of_its_work(fixture_db: Path) -> N
         "\n"
         "## Ended: tool_use"
     )
-    assert len(elided) <= 200
+    assert len(elided) <= 240
 
 
 def test_a_multi_turn_run_renders_every_instruction_in_sequence(fixture_db: Path) -> None:
