@@ -137,15 +137,16 @@ def test_the_output_schema_is_the_taxonomy_the_validator_enforces() -> None:
 
 
 def test_every_level_asks_for_json_at_the_same_version() -> None:
-    """All three levels are at prompt version 3 — the version that says how to choose.
+    """All three levels are at prompt version 4 — the version that carries a command's output.
 
     Version 1 asked for a forced tool call through the Batches API; version 2 answered in
-    JSON. The instructions and the schema are what `input_hash` cannot see, so the bump is
-    the whole mechanism by which the corpus gets re-described under new guidance.
+    JSON; version 3 said how to choose. The instructions and the schema are what `input_hash`
+    cannot see, so the bump is the whole mechanism by which the corpus gets re-described under
+    new guidance.
     """
-    assert {Level.turn: 3, Level.agent_run: 3, Level.session: 3} == PROMPT_VERSION
-    # The vocabulary did not change with it, so a version-2 row stays comparable to a
-    # version-3 one — which is the whole reason the guidance went in the prompt.
+    assert {Level.turn: 4, Level.agent_run: 4, Level.session: 4} == PROMPT_VERSION
+    # Both stamps in one place: a pass that bumped one and not the other would describe the
+    # corpus under a mixed key, and no query could tell the halves apart afterwards.
     assert TAXONOMY_VERSION == 1
     # Every level's instructions ask for the JSON object the schema describes, and none of
     # them still names a tool to call.
@@ -181,6 +182,12 @@ def test_every_level_carries_the_rules_for_choosing_between_members() -> None:
         "configure for a turn the CLI handled by itself",
         "review over debug when the work judges a change someone else made",
         "end_turn means the model finished its answer",
+        # The other half of that last rule, and the one a QC pass found the model reading
+        # backwards: a turn whose last call asked for a tool nobody answered was cut off.
+        # `tool_use` alone would not do — the render prints `## Ended: tool_use` — and
+        # `abandoned` alone is printed by the vocabulary, so each phrase carries its direction.
+        "tool_use means the last call asked for a tool and the records stop there",
+        "abandoned, not completed",
     )
     # If each level's instructions are rendered...
     for level in Level:
@@ -199,6 +206,28 @@ def test_every_level_carries_the_rules_for_choosing_between_members() -> None:
         )
         for text in (*rules, "/model", "/effort", "/clear"):
             assert rendered.index(text) > vocabulary_end
+
+
+def test_only_a_session_is_told_it_is_reading_other_readers_descriptions() -> None:
+    """A session is told its lines are descriptions to relay, and no other level is.
+
+    A session render is one line per child, each written by an earlier pass. A QC pass found
+    the model reading them as a plan and reporting the session did what it set out to do.
+    """
+    # The phrase carries the direction, not the subject: "description" appears at every level
+    # in the answer contract, so only the rule's own wording can tell the levels apart.
+    relaying = "if a line says a cause was found, the session found a cause — it did not fix it"
+    session = instructions(Level.session)
+    # If a session is rendered, it carries the rule, past the last vocabulary line the way
+    # every other piece of guidance does...
+    assert relaying in session
+    assert session.index(relaying) > session.rindex(
+        f"- {Outcome.unclear}: {OUTCOME_DEFINITIONS[Outcome.unclear]}"
+    )
+    # ...and neither of the levels reading a transcript does: their lines are records, and
+    # telling them to relay would be telling them not to read what they are looking at.
+    for level in (Level.turn, Level.agent_run):
+        assert relaying not in instructions(level)
 
 
 def test_a_plain_main_turn_renders_its_prompt_then_its_calls(fixture_db: Path) -> None:

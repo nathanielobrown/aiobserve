@@ -30,7 +30,7 @@ class Level(StrEnum):
 
 # Per level, covering what `input_hash` cannot see: the instructions and the output schema.
 # Bump one and that level re-enriches; its parents follow through the hash.
-PROMPT_VERSION: dict[Level, int] = {Level.turn: 3, Level.agent_run: 3, Level.session: 3}
+PROMPT_VERSION: dict[Level, int] = {Level.turn: 4, Level.agent_run: 4, Level.session: 4}
 
 # What each level is looking at. The rest of the instructions is the same everywhere, so a
 # level reads differently only where it should.
@@ -74,7 +74,17 @@ how the agent is set up, not what it is working on
 - review over debug when the work judges a change someone else made, even while it hunts \
 defects in that change
 - the records say how each item ended. end_turn means the model finished its answer: do not \
-report partial or failed unless the records name what did not land"""
+report partial or failed unless the records name what did not land
+- tool_use means the last call asked for a tool and the records stop there, so the item did \
+not finish. Name what did not land, and call it abandoned, not completed"""
+
+# Appended for `Level.session` alone. A session render is one line per child, each written by
+# an earlier pass over the records; a QC pass found the model reading those lines as a plan
+# and reporting that the session did what it set out to do.
+_RELAYING = """Each line below is another reader's description of one thing the session did. \
+Say what those lines say happened, not what the session set out to do. Do not name a result \
+no line names: if a line says a cause was found, the session found a cause — it did not fix \
+it."""
 
 # The output contract itself: passed to `--json-schema`, so the model cannot answer out of
 # vocabulary in the first place. An edit here is a `PROMPT_VERSION` bump, since `input_hash`
@@ -106,7 +116,10 @@ def instructions(level: Level) -> str:
             *(f"- {member}: {text}" for member, text in OUTCOME_DEFINITIONS.items()),
         ]
     )
-    return "\n\n".join([_SUBJECT[level], _ANSWER, vocabulary, _CHOOSING])
+    parts = [_SUBJECT[level], _ANSWER, vocabulary, _CHOOSING]
+    if level is Level.session:
+        parts.append(_RELAYING)
+    return "\n\n".join(parts)
 
 
 @dataclass(frozen=True)
