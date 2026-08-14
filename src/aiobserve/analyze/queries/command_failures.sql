@@ -57,11 +57,7 @@ WITH commanded AS (
             regexp_extract(invocation, '^(\S+(\s+[a-z][a-z-]*){0,2})(\s|$)', 1), 1, $head_chars
         ) AS command_head,
         CASE
-            WHEN is_error THEN substr(
-                regexp_replace(trim(split_part(result, chr(10), 1)), '\s+', ' ', 'g'),
-                1,
-                $signature_chars
-            )
+            WHEN is_error THEN substr(signature_line(result), 1, $signature_chars)
         END AS signature,
         count(*) AS calls,
         -- How much of the corpus the count is evidence about, as `error_signatures` reports it.

@@ -48,6 +48,22 @@ PLANTED_IN_SHORT_WINDOW = 4
 # `advisor` call, whose results redaction left as one word apiece.
 RECORDED_SIGNATURES = ["[redacted]", "unavailable"]
 
+# The error class that splits itself: a guardrail whose first line names the worktree it
+# blocked. Invented text under a fake root, because fixture redaction leaves no error body at
+# all, but the shape is the canonical store's — its worktree-isolation guardrail failed 36
+# times in the 2026-08-13 window and split into 28 signatures, one per worktree (`--project
+# mycelia --as-of 2026-08-13 --param min_occurrences=1`). The call id stands in for the
+# volatile segment.
+GUARDRAIL_HEAD = "This agent is isolated in the worktree /repo/.claude/worktrees/agent-"
+GUARDRAIL_TAIL = ", but this command wanted to write outside it"
+# The one group they have to collapse into: the sentence, with the path standing for itself.
+GUARDRAIL_SIGNATURE = f"This agent is isolated in the worktree <path>{GUARDRAIL_TAIL}"
+# What the plant costs: every corpus `Bash` call, which is 4 calls over 3 sessions and 4
+# threads — one apiece in `SPINE`'s two threads, `CONFIG_ONLY` and the architect run.
+GUARDRAIL_ERRORS = 4
+GUARDRAIL_SESSIONS = 3
+GUARDRAIL_THREADS = 4
+
 # Command lines planted onto real calls so `command_failures` has command text to shape. They
 # are invented — every fixture tool input is `[redacted]` — but the shapes are the canonical
 # store's: over `--project mycelia --as-of 2026-08-07`, 839 of the window's 1,487 failed Bash
@@ -60,10 +76,10 @@ GH_CHECKS = "gh pr checks --watch"
 # with the wrapper, the flags, the quoted pattern and the paths gone.
 GREP_HEAD = "grep"
 GH_HEAD = "gh pr checks"
-# The two exit codes the plant fails with. Bare codes, which is the whole problem: `Exit code
-# 1` names nothing, so the command shape is the only thing left to attribute it to.
+# What the wrapped grep fails with. A bare code, which is the whole problem: `Exit code 1`
+# names nothing, so the command shape is the only thing left to attribute it to. The `gh`
+# calls fail with the guardrail below instead, so one shape's signature is a real sentence.
 EXIT_1 = "Exit code 1"
-EXIT_8 = "Exit code 8"
 # How the plant is spread: `SPINE`'s four `Read` calls, over its two threads, become wrapped
 # grep failures; `FORK_ORIGIN`'s four become two `gh pr checks` failures and two grep calls
 # that succeeded — the denominator an error count is read against.
@@ -104,7 +120,11 @@ def test_error_signatures_counts_one_signature_over_many_bodies(
     # If eight tool calls failed with the same opening line and a different body each — the
     # shape of a recurring error, planted because the recorded ones are one-offs — spread
     # over two sessions and three threads...
-    rows = _signatures(planted_query, {"min_occurrences": 2})
+    rows = [
+        row
+        for row in _signatures(planted_query, {"min_occurrences": 2})
+        if row["tool"] == PLANTED_TOOL
+    ]
     # ...then they come back as one row. The signature is the first line, so the bodies do
     # not split the count, and the spread says how much of the corpus it is evidence about.
     assert len(rows) == 1
@@ -145,18 +165,48 @@ def test_error_signatures_narrows_to_a_bound_phrase_and_a_floor(
     def planted_query(name: str, *arguments: str) -> Output:
         return query(planted_failures_db, capsys, name, *arguments)
 
-    # If the corpus holds the planted signature and the two recorded one-off errors...
+    # If the corpus holds the two planted signatures and the two recorded one-off errors...
     every = _signatures(planted_query, {"min_occurrences": 1}, period="corpus")
-    assert sorted(row["signature"] for row in every) == sorted([SIGNATURE, *RECORDED_SIGNATURES])
+    assert sorted(row["signature"] for row in every) == sorted(
+        [SIGNATURE, GUARDRAIL_SIGNATURE, *RECORDED_SIGNATURES]
+    )
     # ...then the floor keeps the singletons out, which is what bounds a listing on a corpus
     # where most error text is unique...
     kept = _signatures(planted_query, {"min_occurrences": 2}, period="corpus")
-    assert [row["signature"] for row in kept] == [SIGNATURE]
+    assert [row["signature"] for row in kept] == [SIGNATURE, GUARDRAIL_SIGNATURE]
     # ...and binding a phrase counts just the error holding it, matched anywhere in the text
     # rather than only in the line the signature is cut from — a tail is where the path sits.
     bound = _signatures(planted_query, {"min_occurrences": 1, "signature": "tail for "})
     assert [row["signature"] for row in bound] == [SIGNATURE]
     assert int(bound[0]["errors"]) == PLANTED_ERRORS
+
+
+def test_error_signatures_groups_past_a_path_inside_the_line(
+    planted_failures_db: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """One guardrail message is one error, however many worktrees it names."""
+
+    def planted_query(name: str, *arguments: str) -> Output:
+        return query(planted_failures_db, capsys, name, *arguments)
+
+    # If four calls failed with one guardrail message whose *first line* names the worktree it
+    # blocked — a different path each time, so the cut that keeps a trailing path out of the
+    # signature cannot help...
+    rows = [
+        row
+        for row in _signatures(planted_query, {"min_occurrences": 2})
+        if row["signature"] == GUARDRAIL_SIGNATURE
+    ]
+    # ...then they are one recurring error rather than one group per worktree, which is what
+    # iteration 3's isolation guardrail had been split into...
+    assert len(rows) == 1
+    assert int(rows[0]["errors"]) == GUARDRAIL_ERRORS
+    assert int(rows[0]["sessions"]) == GUARDRAIL_SESSIONS
+    assert int(rows[0]["threads"]) == GUARDRAIL_THREADS
+    # ...and the path is gone from the output rather than shortened, so no signature a report
+    # quotes carries a run of somebody's filesystem.
+    every = _signatures(planted_query, {"min_occurrences": 1}, period="corpus")
+    assert not [row for row in every if "/" in row["signature"]]
 
 
 def test_command_failures_groups_by_the_shape_of_the_command_line(
@@ -187,10 +237,14 @@ def test_command_failures_groups_by_the_shape_of_the_command_line(
         WRAPPED_GREP_CALLS
     }
     # ...and a command whose subcommands name what it did keeps them, because `gh` alone
-    # would put `gh pr checks` and `gh pr create` in one group.
-    assert int(shapes[GH_HEAD, EXIT_8]["calls"]) == GH_CHECKS_CALLS
-    # Nothing else reaches the output: no head carries a flag, a path, or a quoted argument...
+    # would put `gh pr checks` and `gh pr create` in one group. Its two calls failed with a
+    # guardrail naming a different worktree each, and land in one group all the same: the
+    # signature is normalized here the way `error_signatures` normalizes it.
+    assert int(shapes[GH_HEAD, GUARDRAIL_SIGNATURE]["calls"]) == GH_CHECKS_CALLS
+    # Nothing else reaches the output: no head carries a flag, a path, or a quoted argument,
+    # and no signature carries a path either...
     assert not [row for row in rows if set(row["command_head"]) & set("-/\"'")]
+    assert not [row for row in rows if "/" in row["signature"]]
     # ...and `$head_chars` cuts whatever is left, which is the backstop under that rule — a
     # command line is private text, and a shape nobody anticipated must not carry a run of it.
     capped = _command_failures(planted_query, {"min_occurrences": 1, "head_chars": 4})
@@ -350,7 +404,8 @@ def test_context_reloads_reads_a_call_once_however_many_periods_hold_it(
 
 @pytest.fixture(scope="session")
 def planted_failures_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """The corpus with one tool's calls in two sessions marked failed, sharing a first line.
+    """The corpus with two recurring errors planted: one splitting after its first line, one
+    inside it.
 
     Invented data, and deliberately so: the recorded errors are one-offs whose text redaction
     cut to a word, and a recurring error is precisely what this query counts.
@@ -363,6 +418,12 @@ def planted_failures_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactor
             """UPDATE tool_calls SET is_error = true, result = ? || id
                WHERE name = ? AND session_id IN (?, ?)""",
             [PLANTED_ERROR, PLANTED_TOOL, SPINE, FORK_ORIGIN],
+        )
+        # Every `Bash` call gets the guardrail, whose volatile segment is the call id: one
+        # message class over four worktrees, which the corpus has and no fixture records.
+        connection.execute(
+            "UPDATE tool_calls SET is_error = true, result = ? || id || ? WHERE name = 'Bash'",
+            [GUARDRAIL_HEAD, GUARDRAIL_TAIL],
         )
     finally:
         connection.close()
@@ -399,18 +460,20 @@ def planted_commands_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactor
             ).fetchall()
         ]
         assert len(ids) == GH_CHECKS_CALLS + BARE_GREP_CALLS
-        for call_id, (command, error) in zip(
+        for call_id, (command, fails) in zip(
             ids,
-            [(GH_CHECKS, EXIT_8)] * GH_CHECKS_CALLS + [(BARE_GREP, None)] * BARE_GREP_CALLS,
+            [(GH_CHECKS, True)] * GH_CHECKS_CALLS + [(BARE_GREP, False)] * BARE_GREP_CALLS,
             strict=True,
         ):
+            # The failing ones carry the guardrail, whose volatile segment is the call id, so
+            # this query's signature has the same path to normalize away that its own does.
             connection.execute(
                 """UPDATE tool_calls SET name = 'Bash', input = ?, is_error = ?, result = ?
                    WHERE id = ? AND session_id = ? AND NOT replayed""",
                 [
                     json.dumps({"command": command}),
-                    error is not None,
-                    error,
+                    fails,
+                    f"{GUARDRAIL_HEAD}{call_id}{GUARDRAIL_TAIL}" if fails else None,
                     call_id,
                     FORK_ORIGIN,
                 ],

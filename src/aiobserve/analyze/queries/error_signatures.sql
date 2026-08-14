@@ -1,8 +1,9 @@
 -- Which errors keep happening, counted. A reader who saw "File has not been read yet" in
 -- three sessions has a recurring observation; this is what turns it into a number.
--- The signature is the first line of the error text, whitespace collapsed and cut to
--- `$signature_chars`, because the line that names the failure is usually followed by the
--- path or the command that hit it — text that would split one error into a hundred groups.
+-- The signature is `signature_line` — the first line of the error text, whitespace collapsed,
+-- with paths cut out — capped at `$signature_chars`, because the line that names the failure
+-- carries the path or the command that hit it, text that would split one error into a
+-- hundred groups.
 -- Bind `$signature` to count a phrase wherever it sits in the text instead: it matches
 -- case-sensitively against the whole result, so an error whose first line is a generic
 -- "Error:" is still countable by the sentence underneath it.
@@ -12,11 +13,7 @@ WITH failure AS (
     SELECT
         p.period,
         t.name AS tool,
-        substr(
-            regexp_replace(trim(split_part(t.result, chr(10), 1)), '\s+', ' ', 'g'),
-            1,
-            $signature_chars
-        ) AS signature,
+        substr(signature_line(t.result), 1, $signature_chars) AS signature,
         t.session_id,
         t.source
     FROM session_period p
