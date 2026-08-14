@@ -81,10 +81,12 @@ WITH call AS (
               AND k.timestamp <= call.started_at + INTERVAL 1 SECOND
         ) AS compacting
     FROM call
+    -- The thread's own first call is excluded here rather than in `rebuilt_context`: it
+    -- writes its whole prompt and reads nothing, which is what starting *is*.
     WHERE call_index > first_index
-      AND cache_creation_tokens >= $min_rebuilt_tokens
-      AND cache_creation_tokens * 100
-          >= $min_rebuilt_pct * (cache_creation_tokens + cache_read_tokens)
+      AND rebuilt_context(
+          cache_creation_tokens, cache_read_tokens, $min_rebuilt_tokens, $min_rebuilt_pct
+      )
 ), thread_total AS (
     SELECT session_id, source, sum(cost_usd) AS cost_usd,
         count(*) FILTER (cost_usd IS NULL) AS unpriced_api_calls

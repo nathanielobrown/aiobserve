@@ -74,6 +74,20 @@ regexp_replace(
 )
 """
 
+# Whether one api call rebuilt the context it already had: it wrote at least `min_tokens` to
+# the cache, and wrote at least `min_pct` of everything it cached. Shared for the same reason
+# as the line above — `context_reloads.sql` counts these calls and `idle_gaps.sql` says which
+# silences they followed, so a detector that drifted between them would let one query deny
+# what the other reported. Neither number is a fact about Claude Code; `context_reloads.sql`
+# holds the corpus measurements that placed them, and both stay bound parameters.
+# The caller still owns the rest of the definition: a thread's first call writes everything
+# and rebuilds nothing, and only the query knows where its thread starts.
+_REBUILT_MACRO = """
+CREATE OR REPLACE TEMP MACRO rebuilt_context(creation_tokens, read_tokens, min_tokens, min_pct)
+AS creation_tokens >= min_tokens
+   AND creation_tokens * 100 >= min_pct * (creation_tokens + read_tokens)
+"""
+
 # Sessions no project predicate can place. They are excluded from every corpus count, so the
 # runner reports how many there were rather than leaving the gap silent.
 _UNPLACEABLE = "SELECT count(*) FROM sessions WHERE project_dir IS NULL"
@@ -136,6 +150,7 @@ def run(
         connection.execute("SET TimeZone='UTC'")
         _check_schema(db, connection)
         connection.execute(_SIGNATURE_MACRO)
+        connection.execute(_REBUILT_MACRO)
         cited: dict[str, ParamValue] = {}
         unplaceable = None
         if corpus:
