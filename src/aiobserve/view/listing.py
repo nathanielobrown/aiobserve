@@ -144,6 +144,7 @@ def sorted_sessions(
     page: int,
     size: int,
     filters: Mapping[str, ParamValue],
+    described: bool,
 ) -> Listing:
     """One page of the session list, ordered by one of `SORTS` — the design's composition.
 
@@ -153,6 +154,10 @@ def sorted_sessions(
     value a request supplied bound as a parameter. `session_id` breaks ties in the same
     direction, which makes every sort a total order, its reverse exact, and the page
     boundaries stable between requests.
+
+    `described` says whether the store holds the enrichment tables to join — a caller asks
+    `view/enrichment.py`, which is where that catalog check lives. It is an argument rather
+    than a check here because it is a fact about the store, not about the request.
     """
     # A sort or filter key *is* part of a SQL fragment, so membership is the whole guard —
     # and it is checked here as well as at the route, because this builds the SQL.
@@ -160,24 +165,32 @@ def sorted_sessions(
         raise KeyError(sort)
     order = DIRECTIONS[direction]
     listing = queries.load(Page.SESSIONS).strip().rstrip(";")
+    # What the pass said each session was, joined before the sort so a row carries it: the
+    # left join adds columns and never a row, so it changes neither the order nor the count.
+    said = queries.load(Page.DESCRIBED_SESSIONS).strip().rstrip(";")
+    joined = f" LEFT JOIN ({said}) USING (session_id)" if described else ""
     # `FILTERS` order, not the query string's: the SQL a citation stands for is the same
     # whichever way a URL was typed.
     applied = [FILTERS[key].predicate for key in FILTERS if key in filters]
     where = f" WHERE {' AND '.join(applied)}" if applied else ""
     # One row past the page: cheaper than a second query, and all a pager needs to know.
+    bound: dict[str, ParamValue] = {
+        "limit": size + 1,
+        "offset": (page - 1) * size,
+        "head_chars": queries.LIST_CHARS,
+        "item_chars": queries.LIST_ITEM_CHARS,
+        "head_items": queries.LIST_ITEMS,
+        **filters,
+    }
+    # The joined query cuts its own strings, and takes the same head a row's other strings do.
+    if described:
+        bound["tag_chars"] = queries.TAG_CHARS
     rows = fetch(
         connection,
-        f"{SHOWN} (SELECT * FROM ({listing}){where}"
+        f"{SHOWN} (SELECT * FROM ({listing}){joined}{where}"
         f" ORDER BY {sort} {order.keyword} {order.nulls}, session_id {order.keyword}"
         " LIMIT $limit OFFSET $offset)",
-        {
-            "limit": size + 1,
-            "offset": (page - 1) * size,
-            "head_chars": queries.LIST_CHARS,
-            "item_chars": queries.LIST_ITEM_CHARS,
-            "head_items": queries.LIST_ITEMS,
-            **filters,
-        },
+        bound,
     )
     return Listing(rows[:size], len(rows) > size)
 

@@ -47,6 +47,9 @@ class Page(StrEnum):
     # What an enrichment pass said about the session, its turns and its runs. Absent from a
     # store no pass has written to, which is why `view/enrichment.py` asks before it runs.
     ENRICHMENT = "view_enrichment"
+    # The same for the list: what the pass said each session was, joined to the page of rows
+    # the list just read. Absent from an un-enriched store for the same reason.
+    DESCRIBED_SESSIONS = "view_described_sessions"
     # One page of a thread's raw transcript, previewed a record per row, and the line each of
     # the thread's turns was read from — what turns a timeline row into a link into it.
     RECORDS = "view_records"

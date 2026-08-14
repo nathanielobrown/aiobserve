@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_parts.html" as parts %}
 {% block title %}Sessions — aiobserve{% endblock %}
 
 {# A column heading: a link that re-sorts, marked when it is the sort in force. #}
@@ -66,6 +67,16 @@
       <td data-field="started_at">{{ row.started_at | when }}</td>
       <td data-field="title" class="title">
         <a href="/session/{{ row.session_id }}">{{ row.title or row.session_id }}</a>
+        {# What the pass said this session was, under the prompt's own title. Absent over a
+           store no pass has touched, and over a session it has not reached yet. Never a
+           stale tag: the list joins the words and not the versions that would judge them,
+           and the session's own page says so a click away. #}
+        {% if row.description %}
+        <span class="enrichment" data-enrichment="{{ row.session_id }}">
+          <span data-field="description">{{ row.description }}</span>
+          {{ parts.tags({'category': row.category, 'outcome': row.outcome, 'stale': false}) }}
+        </span>
+        {% endif %}
       </td>
       <td data-field="project_dir" class="path">{{ row.project_dir }}</td>
       <td data-field="turns" class="number">{{ row.turns }}</td>

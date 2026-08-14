@@ -31,7 +31,7 @@ from aiobserve.export.duckdb import SCHEMA_VERSION
 from aiobserve.model import MAIN_SOURCE
 from aiobserve.view import format as fmt
 from aiobserve.view import render
-from aiobserve.view.enrichment import described
+from aiobserve.view.enrichment import described, enriched
 from aiobserve.view.listing import (
     CONTROLS,
     DEFAULT_DIRECTION,
@@ -192,7 +192,12 @@ def build_app(db_path: Path) -> FastAPI:
         # form has to come back filled in with what was typed into it.
         given = {key: request.query_params.get(key, "") for key in FILTERS}
         with open_store(resolved) as connection:
-            rows, more = sorted_sessions(connection, sort, direction, page, size, filters)
+            # Whether the store holds the enrichment tables at all, which decides both what
+            # the list joins and what it cites: a page cites what it ran.
+            describes = enriched(connection)
+            rows, more = sorted_sessions(
+                connection, sort, direction, page, size, filters, described=describes
+            )
             projects = page_rows(
                 connection,
                 Page.PROJECTS,
@@ -241,7 +246,22 @@ def build_app(db_path: Path) -> FastAPI:
                             "head_items": queries.LIST_ITEMS,
                             **filters,
                         },
-                    )
+                    ),
+                    # Joined to that page rather than run against it, so it is cited on its
+                    # own — and only over a store whose enrichment tables exist to join.
+                    **(
+                        {
+                            Page.DESCRIBED_SESSIONS.value: queries.citation(
+                                Page.DESCRIBED_SESSIONS,
+                                {
+                                    "head_chars": queries.LIST_CHARS,
+                                    "tag_chars": queries.TAG_CHARS,
+                                },
+                            )
+                        }
+                        if describes
+                        else {}
+                    ),
                 },
             },
         )

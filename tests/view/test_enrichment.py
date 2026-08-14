@@ -16,6 +16,7 @@ from pathlib import Path
 import duckdb
 from fastapi.testclient import TestClient
 
+from aiobserve.analyze import queries
 from aiobserve.enrich.prompts import PROMPT_VERSION, Level
 from aiobserve.enrich.store import LEVELS
 from aiobserve.view.app import build_app
@@ -28,12 +29,14 @@ EMPTIED = tuple((f"DELETE FROM {spec.table}", ()) for spec in LEVELS.values())
 
 
 def pages(store: duckdb.DuckDBPyConnection) -> list[str]:
-    """Every session page and every run page one store can serve, as URLs."""
+    """Every page one store can serve — the list, every session, every run — as URLs."""
     sessions = [row[0] for row in store.execute("SELECT id FROM sessions").fetchall()]
     runs = store.execute("SELECT session_id, id FROM agent_runs").fetchall()
-    return [f"/session/{session_id}" for session_id in sessions] + [
-        f"/session/{session_id}/run/{run_id}" for session_id, run_id in runs
-    ]
+    return (
+        ["/"]
+        + [f"/session/{session_id}" for session_id in sessions]
+        + [f"/session/{session_id}/run/{run_id}" for session_id, run_id in runs]
+    )
 
 
 def enrichment_of(
@@ -71,6 +74,38 @@ def test_a_session_page_shows_what_the_model_said_about_the_session(
     )
     # ...and the query behind it is cited like every other query the page ran.
     assert Page.ENRICHMENT.value in fields(page, "id", "citation")
+
+
+def test_the_session_list_shows_what_the_model_said_about_each_session(
+    enriched_client: TestClient, enriched_store: duckdb.DuckDBPyConnection
+) -> None:
+    """A row of the list carries the head of its session's description and its two tags.
+
+    The list is where a reader picks what to open, so the pass's one-line answer to "what was
+    this session" belongs on it — cut to a row's head, because the row is multiplied by the
+    page and the whole description is on the session's own page.
+    """
+    listing = enriched_client.get("/").text
+    said = {
+        row[0]: (row[1], row[2], row[3])
+        for row in enriched_store.execute(
+            "SELECT session_id, description, category, outcome FROM session_enrichments"
+        ).fetchall()
+    }
+    listed = values(listing, "data-session-id")
+    described = [session_id for session_id in listed if session_id in said]
+    # The store is the partly-described one, so the page has rows of both kinds on it...
+    assert 0 < len(described) < len(listed)
+    for session_id in described:
+        row = fields(listing, "data-session-id", session_id)
+        description, category, outcome = said[session_id]
+        # ...each described row showing a head of what the pass wrote, and both its tags...
+        assert row["description"] == description[: queries.LIST_CHARS]
+        assert (row["category"], row["outcome"]) == (category, outcome)
+    # ...and a session the pass never reached carrying nothing at all beside it.
+    assert values(listing, "data-enrichment") == described
+    # The query behind that is cited like every other query the page ran.
+    assert Page.DESCRIBED_SESSIONS.value in fields(listing, "id", "citation")
 
 
 def test_a_session_page_tags_every_turn_and_run_the_pass_described(

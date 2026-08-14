@@ -400,6 +400,15 @@ QUERIES: dict[str, Query] = {
             "page_tools": Param(type=ParamType.INTEGER, default=PAGE_TOOLS),
         },
     ),
+    "view_described_sessions": Query(
+        scope=Scope.KEYED,
+        # What a list row shows of a session's enrichment. The description takes a row's head
+        # rather than a page's, because the list multiplies its row by the size of the page.
+        params={
+            "head_chars": Param(type=ParamType.INTEGER, default=LIST_CHARS),
+            "tag_chars": Param(type=ParamType.INTEGER, default=TAG_CHARS),
+        },
+    ),
     "view_enrichment": Query(
         scope=Scope.KEYED,
         params={

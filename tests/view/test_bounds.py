@@ -83,6 +83,11 @@ PAGE_BYTES = 500_000
 # — less the 43 characters of title, project path and skill names those rows averaged. The
 # fixture rows are redacted down to a few characters and project nothing about a real corpus.
 MEASURED_SESSION_ROW_MARKUP = 1_000
+# What the markup around one row's enrichment costs on top of that, with the model's own words
+# taken off. Measured through the app by the leaf at the bottom of this file, every field
+# planted full of `&`: 257 B. The list never renders the stale tag — it joins what a pass wrote
+# and not the versions that would judge it — so this is the two tags and the block around them.
+MEASURED_LIST_ENRICHMENT_MARKUP = 300
 # What a list page weighs apart from its rows: the filter form, the project suggestions, the
 # table head and the two pagers. Measured through the app by the leaf at the bottom of this
 # file, with `&` planted in every suggestion and the box at its cap — 8,622 B, a worst case
@@ -171,11 +176,19 @@ def worst_session_row_bytes() -> int:
 
     The heads are counted off the composition rather than listed, so a column added to what a
     row shows lands in the arithmetic instead of quietly spending the ceiling
-    `MAX_PAGE_SESSIONS` times over.
+    `MAX_PAGE_SESSIONS` times over. A described row is what this budgets — the enrichment the
+    list joins is a column of the row like the rest, and every row of a described store carries
+    it — which is why the description takes a row's head and not the page's larger one.
     """
     strings = heads(SHOWN, LIST_HEAD) * queries.LIST_CHARS
     names = heads(SHOWN, LIST_ITEM_HEAD) * queries.LIST_ITEMS * queries.LIST_ITEM_CHARS
-    return MEASURED_SESSION_ROW_MARKUP + (strings + names) * ESCAPED_CHAR_BYTES
+    said = heads(queries.load(Page.DESCRIBED_SESSIONS), LIST_HEAD) * queries.LIST_CHARS
+    return (
+        MEASURED_SESSION_ROW_MARKUP
+        + (strings + names + said) * ESCAPED_CHAR_BYTES
+        + MEASURED_LIST_ENRICHMENT_MARKUP
+        + worst_tag_bytes()
+    )
 
 
 def worst_tag_bytes() -> int:
@@ -824,19 +837,21 @@ def test_a_session_page_of_nothing_but_escapes_carries_the_chrome_the_ceiling_bu
 
 
 def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
-    plant: Planter, store: duckdb.DuckDBPyConnection
+    enriched_plant: Planter, store: duckdb.DuckDBPyConnection
 ) -> None:
     """A list row and the chrome around it weigh no more than the arithmetic gives them.
 
     The list is the page a corpus grows: every string in a row is one a transcript wrote, and
     its skills and the filter box's project suggestions both grow with what the store holds.
     So `&` is planted at every cap — the character that escapes to five bytes — and both halves
-    of the ceiling are measured against it: one more row, and the page with no rows at all.
+    of the ceiling are measured against it: one more row, and the page with no rows at all. The
+    described store rather than the bare one, because a row of a store a pass has run over
+    carries what the pass said as well, and that is the row the ceiling has to budget.
     """
     head = "&" * queries.LIST_CHARS
     name = "&" * queries.LIST_ITEM_CHARS
     over = queries.LIST_ITEMS + 2
-    path = plant(
+    path = enriched_plant(
         # A project path per session, each one the longest the filter box offers, so the box
         # has more suggestions than it shows. The two digits that tell them apart are the only
         # characters on the page that are not an escape...
@@ -855,6 +870,7 @@ def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
             " range(1, ?) t(i))",
             [name, over + 1],
         ),
+        *DESCRIBED_AT_EVERY_CAP,
     )
     (sessions,) = one(store, "SELECT count(*) FROM sessions")
     assert sessions > queries.LIST_PROJECTS, "the fixture corpus no longer fills the filter box"
@@ -882,6 +898,11 @@ def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     assert row["skills"].endswith("more")
     options = re.findall(r'<option value="([^"]*)"', one_row)
     assert len(options) == queries.LIST_PROJECTS
+    # And the pass's own line reached the head the list cuts it to, with both tags beside it —
+    # the whole description is on the session's page, which is a page ceiling of its own.
+    assert len(row["description"]) == queries.LIST_CHARS
+    assert len(row["category"]) == len(row["outcome"]) == queries.TAG_CHARS
+    assert "stale" not in row
 
 
 def test_the_digest_rows_no_window_reaches_are_capped_at_what_a_page_budgets(
