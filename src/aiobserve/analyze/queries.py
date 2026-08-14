@@ -245,6 +245,19 @@ QUERIES: dict[str, Query] = {
             "signature_chars": Param(type=ParamType.INTEGER, default=SIGNATURE_CHARS),
         },
     ),
+    "missing_file_recovery": Query(
+        scope=Scope.CORPUS,
+        params={
+            # Calls after the failure that count as the recovery. One, because the claim is
+            # about what the thread did *next*: a listing three calls later is as likely to
+            # be answering the question after it.
+            "within_calls": Param(type=ParamType.INTEGER, default=1),
+            # Keep only failures whose text holds this phrase — "does not exist" narrows the
+            # population to the ones a listing could have prevented. NULL is every failed call
+            # that named a path, which is the survey a reader runs first.
+            "missing": Param(type=ParamType.TEXT, default=None),
+        },
+    ),
     "path_failures": Query(
         scope=Scope.CORPUS,
         params={
