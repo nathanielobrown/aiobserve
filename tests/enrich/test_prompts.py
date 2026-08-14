@@ -9,6 +9,7 @@ the real ones.
 """
 
 import dataclasses
+import json
 import os
 import shutil
 from pathlib import Path
@@ -310,10 +311,51 @@ def test_a_command_turn_carries_what_the_cli_printed(fixture_db: Path) -> None:
             "\n"
             "## Ended: no model response"
         )
+        # ...if the record that answered it printed nothing — `/clear` always does — the
+        # render says so in its own words...
+        assert "## Command result: the command printed nothing" in (
+            render_turn(turn(store, MODEL_ONLY, "144af379"))
+        )
         # ...and if nothing archived an answer — `/night-run` is the one recorded turn in
-        # that state — the render says that, rather than leaving the block out. A missing
-        # section is what the model reads absence from.
+        # that state — the render says that instead. The two read alike and mean opposite
+        # things, which is why one test renders both.
         assert "## Command result: not recorded" in render_turn(turn(store, SPINE, "30aad8e5"))
+
+
+def test_a_long_command_result_is_capped_and_still_ends_with_how_it_ended(
+    mutable_db: Path,
+) -> None:
+    """A command that printed pages of output costs its budget and no more of the render.
+
+    The body is invented and oversized: the longest recorded one is 2,038 characters, and the
+    next `/context` can beat that. Rendered at the real `total`, so the cap is the subject and
+    not the elision.
+    """
+    with EnrichmentStore(mutable_db) as store:
+        # If a command printed 100,000 characters, against the recorded `/model` turn...
+        store.connection.execute(
+            "UPDATE raw_records SET raw = ? WHERE session_id = ? AND line_no = 8",
+            [
+                json.dumps(
+                    {
+                        "parentUuid": "5b848af7-f86e-4950-b474-cd98125fad24",
+                        "type": "system",
+                        "content": f"<local-command-stdout>{'x' * 100_000}</local-command-stdout>",
+                    }
+                ),
+                SPINE,
+            ],
+        )
+        rendered = render_turn(turn(store, SPINE, "5b848af7"))
+    # ...then the block carries its budget's worth and counts what it dropped...
+    assert "## Command result\nxxx" in rendered
+    # ...the marker comes out of the budget rather than riding on top of it: 1,985 characters
+    # of body and a 15-character marker are the 2,000 the budget allows...
+    assert "[+98015 chars]" in rendered
+    # ...and the render still fits and still ends by saying how the turn ended — the head is
+    # protected from elision, so an unbounded body would have taken the `Ended:` line with it.
+    assert len(rendered) <= TURN_BUDGETS.total
+    assert ended(rendered) == "## Ended: no model response"
 
 
 def test_thinking_reaches_no_prompt(mutable_db: Path) -> None:
@@ -713,6 +755,22 @@ def test_a_workflow_line_embeds_its_spawned_run(mutable_db: Path) -> None:
     )
 
 
+def live_store_copy(tmp_path: Path) -> Path:
+    """A private copy of the real archive `AIOBSERVE_LIVE_STORE` names.
+
+    Never the store itself: it is the archive (`docs/store.md`) and opening one runs the
+    enrichment DDL against it. The write-ahead log comes along, or the copy would be the
+    archive as of its last checkpoint.
+    """
+    archive = Path(os.environ[LIVE_STORE])
+    copy = tmp_path / archive.name
+    shutil.copy(archive, copy)
+    wal = archive.with_name(f"{archive.name}.wal")
+    if wal.exists():
+        shutil.copy(wal, copy.with_name(f"{copy.name}.wal"))
+    return copy
+
+
 @pytest.mark.slow  # Renders a whole real corpus — minutes, and it reads private sessions.
 @pytest.mark.skipif(
     LIVE_STORE not in os.environ, reason=f"set {LIVE_STORE} to a real trace store to run"
@@ -721,21 +779,57 @@ def test_no_real_item_renders_past_its_budget(tmp_path: Path) -> None:
     """Every turn and run in a real store renders within the budget the enricher would send.
 
     The fixtures cannot show this: redaction leaves them two orders of magnitude short of
-    the cap, so this is the only check that the default budgets hold on real text.
+    the cap, so this is the only check that the default budgets hold on real text — including
+    the command result block, which adds up to 2,054 characters to a turn's protected head.
     """
-    # A copy, never the store itself: `AIOBSERVE_LIVE_STORE` names the archive (`docs/store.md`)
-    # and opening one runs the enrichment DDL against it. The write-ahead log comes along, or
-    # the copy would be the archive as of its last checkpoint.
-    archive = Path(os.environ[LIVE_STORE])
-    copy = tmp_path / archive.name
-    shutil.copy(archive, copy)
-    wal = archive.with_name(f"{archive.name}.wal")
-    if wal.exists():
-        shutil.copy(wal, copy.with_name(f"{copy.name}.wal"))
-    with EnrichmentStore(copy) as store:
+    with EnrichmentStore(live_store_copy(tmp_path)) as store:
         turn_items, run_items = store.turn_items(), store.run_items()
     assert turn_items, f"{LIVE_STORE} names a store with no turns in it"
     assert run_items, f"{LIVE_STORE} names a store with no agent runs in it"
     over = [item.key for item in turn_items if len(render_turn(item)) > TURN_BUDGETS.total]
     over += [item.key for item in run_items if len(render_run(item)) > RUN_BUDGETS.total]
     assert over == []
+
+
+@pytest.mark.slow  # Reads every recorded session, and they are private.
+@pytest.mark.skipif(
+    LIVE_STORE not in os.environ, reason=f"set {LIVE_STORE} to a real trace store to run"
+)
+def test_every_real_command_turn_is_classified(tmp_path: Path) -> None:
+    """Over the whole corpus, every archived command output is read, and none is unclassifiable.
+
+    The one place the archive read meets all the recorded sessions. The fixtures carry one
+    example of each shape by construction; this says the corpus holds no other.
+
+    Counts only, never the items: a `TurnItem` reprs as transcript content, and a failing
+    assertion prints its operands.
+    """
+    # If the real store's turns are read — which raises on any record the shape guard cannot
+    # classify, so reaching the next line is the guard's verdict on the whole corpus...
+    with EnrichmentStore(live_store_copy(tmp_path)) as store:
+        commands = [item for item in store.turn_items() if item.command_name is not None]
+        # ...and both carriers really are in use, so the `coalesce` is load-bearing rather
+        # than a branch the corpus never takes — 279 and 37 recorded instances.
+        by_carrier = store.connection.execute(
+            """SELECT count(*) FILTER (WHERE json_extract_string(raw, '$.message.content')
+                                             LIKE '%<local-command-stdout>%'),
+                      count(*) FILTER (WHERE json_extract_string(raw, '$.content')
+                                             LIKE '%<local-command-stdout>%')
+               FROM raw_records WHERE raw LIKE '%<local-command-stdout>%'"""
+        ).fetchone()
+    assert commands, f"{LIVE_STORE} names a store with no command turns in it"
+    assert by_carrier is not None and min(by_carrier) > 0
+    # ...then nearly every command turn the CLI answered by itself carries what it printed:
+    # 272 of 280 (measured 2026-08-13), asserted as a floor rather than the count, since the
+    # corpus grows. That class is the one the read serves — a turn that drove no api call has
+    # nothing else to be described from. The wider population is deliberately not the
+    # invariant: 143 of the 423 command turns drove the model instead (`/manager`, `/handoff`)
+    # and only 39 of those archived an output, so a threshold over all 423 would measure how
+    # people use slash commands rather than whether the read works.
+    quiet = [item.command_result for item in commands if not item.api_calls]
+    answered, quiet_turns = sum(result is not None for result in quiet), len(quiet)
+    assert answered > quiet_turns * 0.95
+    # ...and both recorded states are really in there: bodies, and the empty ones `/clear`
+    # writes. An empty share of zero would mean the read had stopped telling them apart.
+    empty = sum(result == "" for result in quiet)
+    assert 0 < empty < answered

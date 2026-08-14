@@ -19,6 +19,8 @@ from tests.enrich.conftest import (
     DUP_UUID,
     FORK_BYREF,
     RESUME,
+    RESUME_ANCESTOR,
+    RESUME_PLAIN_TURN,
     SPINE,
     SPINE_LEAF,
     SPINE_RUN,
@@ -52,6 +54,69 @@ def test_turn_items_are_the_live_main_turns(fixture_db: Path) -> None:
     # failure record carry.
     assert third.level is Level.turn
     assert third.key == f"turn|{SPINE}|main|{third.turn_id}"
+
+
+def test_the_second_carrier_and_the_empty_body_both_arrive(fixture_db: Path) -> None:
+    """Both recorded ways of archiving a command's output reach the item, empty output included.
+
+    The two states nothing else tells apart: `None` is a turn no record answered, and `""` is
+    a record that answered with nothing. Collapsing them puts the model back to inferring.
+    """
+    with EnrichmentStore(fixture_db) as store:
+        items = {
+            item.command_name: item for item in store.turn_items() if item.session_id == MODEL_ONLY
+        }
+    # If `model_only/`'s `/reload-skills` turn was answered by a `system`/`local_command`
+    # record, which carries its output at `$.content` rather than at `$.message.content` —
+    # 37 recorded instances hang on that second read...
+    assert items["/reload-skills"].command_result == "[redacted]"
+    # ...and its `/clear` turn was answered by a record that printed nothing at all — every
+    # one of the 21 recorded `/clear` bodies is empty — then the empty body arrives as the
+    # empty string, which is not the same value as no record.
+    assert items["/clear"].command_result == ""
+    assert items["/clear"].command_result is not None
+
+
+def test_output_archived_against_a_plain_turn_belongs_to_no_turn(fixture_db: Path) -> None:
+    """A command's output recorded against a turn that ran no command reaches no prompt.
+
+    183 recorded records are in this shape — a resume replays its ancestor's stdout records
+    against plain turns — so the read has to drop them, and the shape guard has to let them go
+    without a word.
+    """
+    with EnrichmentStore(fixture_db) as store:
+        items = [item for item in store.turn_items() if item.session_id == RESUME_ANCESTOR]
+    # If the ancestor's one main turn ran no command, then the stdout record naming it as
+    # `parentUuid` is not its prompt's to carry.
+    assert [(item.turn_id, item.command_name) for item in items] == [(RESUME_PLAIN_TURN, None)]
+    assert items[0].command_result is None
+
+
+def test_output_archived_over_several_records_reads_in_line_order(mutable_db: Path) -> None:
+    """A command answered by more than one record reads as those records, in transcript order.
+
+    Five recorded turns hold two stdout records; the bodies here are invented and planted,
+    because every redacted fixture body is the same ten characters and could not show an
+    order at all.
+    """
+    with EnrichmentStore(mutable_db) as store:
+        # If two more records are archived against `spine/`'s `/model` turn, whose own
+        # recorded answer sits at line 8 — inserted later line first, so a read that trusted
+        # the row order DuckDB returns would put them back to front...
+        for line_no, body in ((900, "second"), (700, "first")):
+            plant_record(
+                store,
+                SPINE,
+                line_no,
+                {
+                    "parentUuid": "5b848af7-f86e-4950-b474-cd98125fad24",
+                    "type": "system",
+                    "content": f"<local-command-stdout>{body}</local-command-stdout>",
+                },
+            )
+        item = next(item for item in store.turn_items() if item.turn_id.startswith("5b848af7"))
+    # ...then the turn carries all three, in the order the transcript wrote them.
+    assert item.command_result == "[redacted]\nfirst\nsecond"
 
 
 # A record the archive filter catches whose body no carrier holds. Both are invented, and
