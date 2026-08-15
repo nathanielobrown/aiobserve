@@ -23,7 +23,7 @@ Use `mise` for project tasks; `uv` owns the Python environment.
 - Use `mise run check-fast` while iterating — format, lint, type-check
 - Run `mise run check` before you finish a task or open a PR. It adds the tests and the hook linter, and GitHub runs it again on every push and PR (`.github/workflows/check.yml`)
 - Individual tasks are `format`, `lint`, `typecheck`, `test`. Ruff handles linting and formatting; Pyrefly handles types
-- `mise run diagram-check <file>` validates Mermaid. Every task lives in `mise.toml`
+- `mise run diagram-check <file>` validates Mermaid; `mise run mutate` scores the suite against mutants (`.claude/rules/testing.md`). Every task lives in `mise.toml`
 
 mise's own flags go **before** the task name. `mise run check --force` passes `--force` to the task, where it does nothing.
 
@@ -50,6 +50,7 @@ docs/
   handoffs.md         Per-run agent scratch: naming, transfer, and lifetime
 plans/                Designs and testing plans, one directory per change
 reports/              Analysis findings, one per run (see README.md)
+handoffs/             Gitignored: scratch one agent run leaves for the next (`docs/handoffs.md`)
 data/                 Gitignored: the canonical trace store `traces.duckdb` (`docs/store.md`) and analysis scratch
 ```
 
