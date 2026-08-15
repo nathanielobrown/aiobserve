@@ -63,11 +63,14 @@ npx -y @mermaid-js/mermaid-cli -i "$usage_file" -o "$out" >/dev/null && echo 'di
 """
 
 [tasks.diagram-render]
-description = "Render a Mermaid file to a PNG and print its path, for layout inspection"
+description = "Render a Mermaid file to PNGs and print their paths, for layout inspection"
 usage = 'arg "<file>" help="Mermaid or Markdown file to render"'
+# The paths come from `ls`, not from `-o`: a Markdown input renders one PNG per ```mermaid
+# block, named `diagram-1.png` upward, and the name passed to `-o` is then written by nothing.
 run = """
-out="$(mktemp -d)/diagram.png"
-npx -y @mermaid-js/mermaid-cli -s 2 -i "$usage_file" -o "$out" >/dev/null && echo "$out"
+dir="$(mktemp -d)"
+npx -y @mermaid-js/mermaid-cli -s 2 -i "$usage_file" -o "$dir/diagram.png" >/dev/null \
+  && ls "$dir"/*.png
 """
 
 [tasks.test]

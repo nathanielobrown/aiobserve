@@ -112,7 +112,7 @@ Not every edit needs this. When you want proof a diagram is valid and lays out w
 
 1. Write or edit the `.mmd` file or ` ```mermaid ` block.
 2. **Validate:** `mise run diagram-check <file>` — mmdc validates by rendering, so a non-zero exit is a syntax error to fix.
-3. **Render for inspection:** `mise run diagram-render <file>` — writes a PNG and prints its path (one per ` ```mermaid ` block in a Markdown file). Inspect the raster PNG, not SVG, for layout.
+3. **Render for inspection:** `mise run diagram-render <file>` — prints the path of every PNG it wrote, one per ` ```mermaid ` block in a Markdown file. Inspect the raster PNG, not SVG, for layout.
 4. **View the PNG** and check for overlapping nodes, crossing edges, clipped nodes, unreadable labels, wrong shapes. Fix the *source*. If the layout, rather than the content, is tangled, flip `TD`↔`LR`, add subgraphs, or try ELK; past ~20 nodes, split.
 5. Re-render until clean.
 
