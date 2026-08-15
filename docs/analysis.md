@@ -1,6 +1,6 @@
 # Analysis
 
-How to turn the trace store into findings about how an AI coding agent behaved on a project. Read this before running an iteration, and read it again as a reader subagent before opening a session. The design behind it, and the numbers that sized it, are in `plans/mycelia-analysis/design.md`.
+How to turn the trace store into findings about how an AI coding agent behaved on a project. Read this before running an iteration, and read it again as a reader subagent before opening a session. The design behind it, and the numbers that sized it, are in [the analysis design](../plans/mycelia-analysis/design.md).
 
 An iteration ends in one committed report under `reports/`. Everything else it produces is working paper in gitignored `data/analysis/<YYYY_MM_DD>/`, because a per-session note written from a private transcript sometimes carries a piece of one.
 

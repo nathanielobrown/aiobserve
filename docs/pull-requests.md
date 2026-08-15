@@ -72,7 +72,7 @@ Pick the type by the question the PR answers:
 
 Before creating a PR diagram, read [the Mermaid guide](mermaid-guide.md), the source of truth for syntax and local render checks. **One question per diagram** — if it mixes structure and flow, or pushes past ~20 nodes, split it.
 
-**Promote durable diagrams into the tree.** When a PR diagram depicts lasting architecture — how components connect or how data flows, not just this PR's delta — commit it under `docs/diagrams/` and link it from the PR body. A diagram left in the body dies with the PR. One in the tree stays maintained.
+**Promote durable diagrams into the tree.** When a PR diagram depicts lasting architecture — how components connect or how data flows, not just this PR's delta — commit it into the doc that owns the topic and link that doc from the PR body. A diagram left in the body dies with the PR. One in the tree stays maintained.
 
 Before submitting a PR body with a Mermaid block, write the exact final body to a temporary Markdown file and validate it with `mise run diagram-check <file>`. PR descriptions are not committed files, so this is the only local gate that catches a Mermaid mistake before GitHub tries to render it.
 

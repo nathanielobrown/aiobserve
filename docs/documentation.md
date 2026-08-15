@@ -11,6 +11,7 @@ Use this guide after the documentation summary in `CLAUDE.md` when you create or
 | A guide to one project topic | `docs/`, linked from the `CLAUDE.md` Layout tree |
 | This documentation guide | `docs/documentation.md` |
 | What a telemetry field means and where it comes from | `docs/schema.md` |
+| A picture of how parts connect or data moves | a ` ```mermaid ` block in the doc that owns the topic; see [the Mermaid guide](mermaid-guide.md) |
 | A finding about an AI coding agent, with the evidence behind it | `reports/`; see [the report guide](../reports/README.md) |
 | An actionable bug, feature, or design question | a GitHub issue |
 | A design or testing plan for one change, kept after it lands | `plans/<change>/`, committed |

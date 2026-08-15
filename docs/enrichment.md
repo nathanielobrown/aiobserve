@@ -114,4 +114,4 @@ A run-level bump cascades upward through every round, so price it with `--dry-ru
 
 ## Design
 
-The decisions, their alternatives, and the measurements behind them are in `plans/enrichment/design.md`, with the as-built notes recording where the implementation diverged.
+The decisions, their alternatives, and the measurements behind them are in [the enrichment design](../plans/enrichment/design.md), with the as-built notes recording where the implementation diverged.

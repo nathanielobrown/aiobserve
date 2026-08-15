@@ -17,7 +17,7 @@ Bring the documentation into agreement with a changeset, so docs land in the sam
    - A new top-level module or package → its line in the `CLAUDE.md` Layout tree
    - A new or changed telemetry attribute, span name, or transcript field → `docs/schema.md`, with the recorded session that proves it
    - A new or changed extraction or analysis command → the README's usage section and `mise.toml`'s task description
-   - New or changed component relationships or flows → a diagram under `docs/diagrams/` (authoring rules: [mermaid-guide.md](mermaid-guide.md)). Refresh a diagram the change has outrun — a stale diagram misleads worse than none.
+   - New or changed component relationships or flows → a ` ```mermaid ` block in the doc that owns the topic (authoring rules: [mermaid-guide.md](mermaid-guide.md)). Refresh a diagram the change has outrun — a stale diagram misleads worse than none.
    - A finding that changes what we believe about an agent's behavior → the owning report under `reports/`
    - Why a config setting or dependency exists → a comment at the setting itself, not a doc
 

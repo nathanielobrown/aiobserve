@@ -4,7 +4,7 @@ How to author Mermaid diagrams in this repo, whether in `.mmd`/`.mermaid` files 
 
 ## Which diagram, and when
 
-A system has several orthogonal axes, and each one wants its own diagram. Spanning axes in one picture is the main cause of unreadable hairballs. The filename names the axis (`<subject>_<axis>.mmd`, see *Drill-down*), so the question a diagram answers is always explicit.
+A system has several orthogonal axes, and each one wants its own diagram. Spanning axes in one picture is the main cause of unreadable hairballs. Name the axis where the diagram sits — in the section that holds it, or in the filename of a standalone `.mmd` — so the question a diagram answers is always explicit.
 
 | Tier | Axis | Question it answers | Mermaid | Tag |
 |---|---|---|---|---|
@@ -93,7 +93,7 @@ But GitHub and many renderers **ignore ELK and fall back to dagre**, so your loc
 Detail lives in separate diagrams arranged as a zoomable hierarchy: **a node in a level-N diagram is the entire subject of a level-(N+1) diagram.** Think maps at increasing zoom, never one infinite diagram.
 
 - **Subroutine shape = drill-down marker.** A node with its own sub-diagram uses `[[Label]]`. That is the only meaning of `[[...]]` here — the visual cue that says "look deeper."
-- **Folder mirrors the zoom hierarchy.** A subject's diagrams are `docs/diagrams/<subject>_<axis>.mmd`; its drill-down children live in `docs/diagrams/<subject>/`, recursively, so the on-disk tree *is* the zoom hierarchy. A subject's axis peers (`_structure`, `_process`, …) sit side by side.
+- **A diagram lives in the document it serves**, as a ` ```mermaid ` block in the section that raises the question — the reader meets the picture where the prose needs it, and doc sync updates both at once. A standalone `.mmd` file is for a diagram no single document owns; name it `<subject>_<axis>.mmd` and keep its drill-down children beside it.
 - **A subject's axes are peers, not a hierarchy.** An import pipeline can have both a `_structure` and a `_process` view. Those are sibling files, not drill-downs of each other — never navigate between them with a `[[...]]` node.
 
 ```mermaid

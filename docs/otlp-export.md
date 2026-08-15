@@ -6,6 +6,8 @@
 aiobserve export-otlp /path/to/repo --db data/traces.duckdb --backend honeycomb
 ```
 
+The decisions behind it, and the importer it replaces, are in [the OTLP export design](../plans/otlp-export/design.md).
+
 The store is the source, not the transcripts on disk, so a session Claude Code has pruned still ships. DuckDB admits one writer, so an export cannot run beside `extract` or `enrich` — a second run fails fast on the lock rather than waiting.
 
 The project argument is resolved before it is matched against the recorded `cwd`s, so a relative path or a quoted `~/…` names the repository a shell would. A project the store holds no session under stops the run, send or dry run: the command promises a corpus, so an empty one is a mistyped path rather than a clean delivery of nothing.
