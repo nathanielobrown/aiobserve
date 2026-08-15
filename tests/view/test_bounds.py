@@ -17,24 +17,11 @@ from fastapi.testclient import TestClient
 
 from aiobserve.analyze import queries
 from aiobserve.analyze.queries import QUERIES, VIEW_PREFIX
-from aiobserve.view.app import (
-    MAX_CHUNK_CHARS,
-    MAX_PAGE_CALLS,
-    MAX_PAGE_RECORDS,
-    MAX_PAGE_TOOLS,
-    build_app,
-)
-from aiobserve.view.listing import MAX_PAGE_SESSIONS, PAGE_SESSIONS, SHOWN
+from aiobserve.view import bounds
+from aiobserve.view.app import build_app
+from aiobserve.view.listing import SHOWN
 from aiobserve.view.store import Fragment, Page, Value, cursorless_rows
-from aiobserve.view.threads import (
-    CHIP_BUDGET,
-    MAX_PAGE_CHIPS,
-    PAGE_CHIPS,
-    PAGE_CURSORLESS,
-    PAGE_MARKS,
-    PAGE_TURNS,
-    TURN_CURSOR,
-)
+from aiobserve.view.threads import TURN_CURSOR
 from tests.conftest import (
     ANCESTOR,
     CONFIG_ONLY,
@@ -71,10 +58,10 @@ FAT = (
     "model",
 )
 
-# What a page may weigh. The list is the page a corpus grows, so `MAX_PAGE_SESSIONS` rows of
+# What a page may weigh. The list is the page a corpus grows, so `bounds.SESSIONS.ceiling` rows of
 # what one row can hold have to fit under it. Raised from 350,000 when the pages began showing
 # what an enrichment pass said: a described run row costs half again what a bare one does, and
-# `CHIP_BUDGET` multiplies that 200 times. The alternative was cutting `CHIP_BUDGET`, which
+# `bounds.CHIP_BUDGET` multiplies that 200 times. The alternative was cutting the budget, which
 # would put the widest forest the corpus records behind a "+N more" nobody can open.
 PAGE_BYTES = 500_000
 # What the markup around one row of the list costs, with the content the row carries taken off.
@@ -136,7 +123,7 @@ MEASURED_CHIP_ENRICHMENT_MARKUP = 300
 MEASURED_SESSION_CHROME = 15_000
 # The parameter every truncated column of a run row is cut to. Counted per query rather than
 # listed, so a fourth column added to a chip shows up in the arithmetic instead of quietly
-# spending the ceiling `CHIP_BUDGET` times over.
+# spending the ceiling `bounds.CHIP_BUDGET` times over.
 CHIP_HEAD = "$chip_chars"
 # The same two for one row of the session list, whose cuts the viewer composes around the
 # query rather than making in it: a string's head, and a skill name's.
@@ -176,7 +163,7 @@ def worst_session_row_bytes() -> int:
 
     The heads are counted off the composition rather than listed, so a column added to what a
     row shows lands in the arithmetic instead of quietly spending the ceiling
-    `MAX_PAGE_SESSIONS` times over. A described row is what this budgets — the enrichment the
+    `bounds.SESSIONS.ceiling` times over. A described row is what this budgets — the enrichment the
     list joins is a column of the row like the rest, and every row of a described store carries
     it — which is why the description takes a row's head and not the page's larger one.
     """
@@ -252,13 +239,13 @@ def worst_session_bytes() -> int:
     """
     return (
         MEASURED_SESSION_CHROME
-        + PAGE_MARKS * worst_mark_bytes()
+        + bounds.MARKS * worst_mark_bytes()
         + max(
-            (turns + PAGE_CURSORLESS) * worst_turn_bytes()
+            (turns + bounds.CURSORLESS_TURNS) * worst_turn_bytes()
             + (turns + 1) * chips * worst_chip_bytes()
-            for turns in range(1, PAGE_TURNS + 1)
-            for chips in range(1, MAX_PAGE_CHIPS + 1)
-            if (turns + 1) * chips <= CHIP_BUDGET
+            for turns in range(1, bounds.TURNS.ceiling + 1)
+            for chips in range(1, bounds.CHIPS.ceiling + 1)
+            if (turns + 1) * chips <= bounds.CHIP_BUDGET
         )
     )
 
@@ -416,29 +403,32 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     # Every ceiling is projected at the largest page a URL can ask for, because a size is
     # something a reader types. The turn fragment's two sizes multiply, so its ceiling is
     # spent by the defaults themselves and `?calls=` only goes down from here.
-    assert MAX_PAGE_CALLS * worst_call_bytes(MAX_PAGE_TOOLS) < PAGE_BYTES
-    assert MAX_PAGE_RECORDS * worst_record_bytes() < PAGE_BYTES
-    assert MAX_CHUNK_CHARS * ESCAPED_CHAR_BYTES < PAGE_BYTES
+    assert bounds.CALLS.ceiling * worst_call_bytes(bounds.TOOLS.ceiling) < PAGE_BYTES
+    assert bounds.RECORDS.ceiling * worst_record_bytes() < PAGE_BYTES
+    assert bounds.CHUNK.ceiling * ESCAPED_CHAR_BYTES < PAGE_BYTES
     # The list is the page a corpus grows, so its ceiling is the widest page a URL can ask for
     # plus the chrome that rides every page — both bound by construction now, not by how long
     # the titles this corpus happens to hold are.
-    assert MEASURED_LIST_CHROME + MAX_PAGE_SESSIONS * worst_session_row_bytes() < PAGE_BYTES
+    assert MEASURED_LIST_CHROME + bounds.SESSIONS.ceiling * worst_session_row_bytes() < PAGE_BYTES
     # The session timeline is the page whose caps this arithmetic sets rather than checks: its
-    # run rows are most of what the ceiling buys, and `CHIP_BUDGET` is what that leaves room for.
+    # run rows are most of what the ceiling buys, and the chip budget is what that leaves room for.
     assert worst_session_bytes() < PAGE_BYTES
     # And no default asks for more than its own ceiling allows, which nothing else checks: a
-    # default above the ceiling serves a 400 to a reader who typed no size at all.
-    assert queries.PAGE_CALLS <= MAX_PAGE_CALLS
-    assert queries.PAGE_TOOLS <= MAX_PAGE_TOOLS
-    assert queries.PAGE_RECORDS <= MAX_PAGE_RECORDS
-    assert queries.CHUNK_CHARS <= MAX_CHUNK_CHARS
-    assert PAGE_SESSIONS <= MAX_PAGE_SESSIONS
-    assert PAGE_CHIPS <= MAX_PAGE_CHIPS
-    assert (PAGE_TURNS + 1) * PAGE_CHIPS <= CHIP_BUDGET
+    # default above the ceiling serves a 400 to a reader who typed no size at all. Read off the
+    # module rather than listed, so a size added later cannot dodge the check.
+    declared = {
+        name: value for name, value in vars(bounds).items() if isinstance(value, bounds.Bound)
+    }
+    for name, bound in declared.items():
+        assert bound.default <= bound.ceiling, name
+    # ...and those are the sizes this leaf priced above: a new one reds here until its ceiling
+    # is spent in the arithmetic too, rather than riding a page nobody weighed.
+    assert set(declared) == {"CALLS", "TOOLS", "RECORDS", "CHUNK", "TURNS", "CHIPS", "SESSIONS"}
+    assert (bounds.TURNS.default + 1) * bounds.CHIPS.default <= bounds.CHIP_BUDGET
     # And every run is reachable: one turn's runs, or the unattached list, fits a page of its
-    # own at `?turns=1&chips={MAX_PAGE_CHIPS}` — which the widest forest the corpus records,
+    # own at `?turns=1&chips={bounds.CHIPS.ceiling}` — which the widest forest the corpus records,
     # 94 runs under one turn, needs to be more than a "+N more" nobody can open.
-    assert (1 + 1) * MAX_PAGE_CHIPS <= CHIP_BUDGET
+    assert (1 + 1) * bounds.CHIPS.ceiling <= bounds.CHIP_BUDGET
 
 
 def limits(sql: str) -> list[str]:
@@ -494,11 +484,11 @@ def test_a_served_page_stays_under_its_ceiling(
     # corpus can reach is the arithmetic above, and the planted leaf below re-measures it.
     chrome = len(client.get("/?size=1").content)
     per_session = (listing - chrome) / (count - 1)
-    assert chrome + per_session * MAX_PAGE_SESSIONS < PAGE_BYTES
+    assert chrome + per_session * bounds.SESSIONS.ceiling < PAGE_BYTES
     # Every session page at the defaults, and at the widest single list a URL can ask for —
     # a different shape rather than a larger one, and the shape the arithmetic above bounds.
     for session_id in [row[0] for row in store.execute("SELECT id FROM sessions").fetchall()]:
-        for sizes in ({}, {"turns": 1, "chips": MAX_PAGE_CHIPS}):
+        for sizes in ({}, {"turns": 1, "chips": bounds.CHIPS.ceiling}):
             page = client.get(f"/session/{session_id}", params=sizes)
             assert page.status_code == 200, (session_id, sizes)
             assert len(page.content) < PAGE_BYTES, (session_id, sizes)
@@ -638,17 +628,17 @@ def test_an_offload_of_nothing_but_escapes_still_serves_under_the_ceiling(
     The content is invented for exactly that reason — no recorded offload is adversarial, and
     the point of the leaf is the character no corpus happens to contain.
     """
-    escapes = "&" * MAX_CHUNK_CHARS
+    escapes = "&" * bounds.CHUNK.ceiling
     path = plant(
         ("UPDATE offload_files SET content = ? WHERE session_id = ?", [escapes, CONFIG_ONLY])
     )
     with TestClient(build_app(path)) as planted:
         page = planted.get(
-            f"/session/{CONFIG_ONLY}/offload/{OFFLOAD_FILE}", params={"size": MAX_CHUNK_CHARS}
+            f"/session/{CONFIG_ONLY}/offload/{OFFLOAD_FILE}", params={"size": bounds.CHUNK.ceiling}
         )
     assert page.status_code == 200
     # Served whole — the chunk is not silently cut — and still under the ceiling.
-    assert page.text.count("&amp;") == MAX_CHUNK_CHARS
+    assert page.text.count("&amp;") == bounds.CHUNK.ceiling
     assert len(page.content) < PAGE_BYTES
 
 
@@ -806,7 +796,7 @@ def test_a_session_page_of_nothing_but_escapes_carries_the_chrome_the_ceiling_bu
         (
             "INSERT INTO compactions (SELECT 'planted-' || i, s.id, 'main',"
             " '1970-01-01T00:00:00Z', ?, 1, 1, 1 FROM sessions s, range(1, ?) t(i))",
-            ["&" * queries.CHIP_CHARS, PAGE_MARKS + 2],
+            ["&" * queries.CHIP_CHARS, bounds.MARKS + 2],
         ),
         *DESCRIBED_AT_EVERY_CAP,
     )
@@ -816,7 +806,7 @@ def test_a_session_page_of_nothing_but_escapes_carries_the_chrome_the_ceiling_bu
         pages = [
             planted.get(f"/session/{session_id}", params=sizes).text
             for session_id in sessions
-            for sizes in ({}, {"turns": 1, "chips": MAX_PAGE_CHIPS})
+            for sizes in ({}, {"turns": 1, "chips": bounds.CHIPS.ceiling})
         ]
     widest = max((chrome(page) for page in pages), key=lambda page: len(page.encode()))
     assert len(widest.encode()) <= MEASURED_SESSION_CHROME
@@ -912,13 +902,15 @@ def test_the_digest_rows_no_window_reaches_are_capped_at_what_a_page_budgets(
 
     A digest row with no turn index cannot be windowed, so it arrives on the last page
     whatever `turns` a reader asked for — which is why the arithmetic above budgets
-    `PAGE_CURSORLESS` turn rows on top of the size the route admits. `RESUME` answers turns
+    `bounds.CURSORLESS_TURNS` turn rows on top of the size the route admits. `RESUME` answers turns
     that live in the session it resumed, so every one of its api calls is unattributed and
     its digest carries exactly this row. The cap is bound down to zero to reach a boundary no
     recorded digest crosses: more of these rows than the ceiling budgets raises rather than
     riding a page nothing counted them on.
     """
-    rows = cursorless_rows(store, Page.TIMELINE, TURN_CURSOR, PAGE_CURSORLESS, session_id=RESUME)
+    rows = cursorless_rows(
+        store, Page.TIMELINE, TURN_CURSOR, bounds.CURSORLESS_TURNS, session_id=RESUME
+    )
     assert [row["turn_id"] for row in rows] == [queries.UNATTRIBUTED]
     with pytest.raises(ValueError, match="more than 0"):
         cursorless_rows(store, Page.TIMELINE, TURN_CURSOR, 0, session_id=RESUME)

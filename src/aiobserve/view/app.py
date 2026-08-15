@@ -29,8 +29,8 @@ from aiobserve.analyze import queries
 from aiobserve.analyze.queries import ParamValue
 from aiobserve.export.duckdb import SCHEMA_VERSION
 from aiobserve.model import MAIN_SOURCE
+from aiobserve.view import bounds, render
 from aiobserve.view import format as fmt
-from aiobserve.view import render
 from aiobserve.view.enrichment import described, enriched
 from aiobserve.view.listing import (
     CONTROLS,
@@ -38,8 +38,6 @@ from aiobserve.view.listing import (
     DEFAULT_SORT,
     DIRECTIONS,
     FILTERS,
-    MAX_PAGE_SESSIONS,
-    PAGE_SESSIONS,
     SORTS,
     Control,
     list_url,
@@ -61,12 +59,6 @@ from aiobserve.view.store import (
     window,
 )
 from aiobserve.view.threads import (
-    CHIP_BUDGET,
-    MAX_PAGE_CHIPS,
-    PAGE_CHIPS,
-    PAGE_CURSORLESS,
-    PAGE_MARKS,
-    PAGE_TURNS,
     TURN_CURSOR,
     ancestry,
     capped,
@@ -90,18 +82,6 @@ STATIC = _PACKAGE / "static"
 # viewer renders text a transcript wrote, so the escaping is the first defence and this is
 # the second.
 CSP = "default-src 'self'"
-
-# The most a page or a fragment will serve at once, whatever a URL asks for — so these, not
-# the manifest defaults, are the numbers the payload bound is arithmetic over. A size is
-# something a reader types. The turn fragment's two sizes multiply, and 12 KB a call row
-# spends the ceiling at the defaults themselves, so `?calls=` and `?tools=` only go down.
-MAX_PAGE_CALLS = queries.PAGE_CALLS
-MAX_PAGE_TOOLS = queries.PAGE_TOOLS
-MAX_PAGE_RECORDS = 200
-# The offload ceiling is the one set by escaping alone rather than by a row's markup: the
-# content is a file some tool wrote, and a chunk of nothing but `&` weighs five bytes a
-# character.
-MAX_CHUNK_CHARS = 60_000
 
 
 def checked(size: int, ceiling: int) -> int:
@@ -176,16 +156,16 @@ def build_app(db_path: Path) -> FastAPI:
         sort: str = DEFAULT_SORT,
         direction: str = DEFAULT_DIRECTION,
         page: int = 1,
-        size: int = PAGE_SESSIONS,
+        size: int = bounds.SESSIONS.default,
     ) -> Response:
         if sort not in SORTS or direction not in DIRECTIONS:
             raise HTTPException(
                 400,
                 f"Sort by one of {', '.join(SORTS)}, in direction {' or '.join(DIRECTIONS)}.",
             )
-        if page < 1 or not 1 <= size <= MAX_PAGE_SESSIONS:
+        if page < 1 or not 1 <= size <= bounds.SESSIONS.ceiling:
             raise HTTPException(
-                400, f"Ask for page 1 or later, at a size between 1 and {MAX_PAGE_SESSIONS}."
+                400, f"Ask for page 1 or later, at a size between 1 and {bounds.SESSIONS.ceiling}."
             )
         filters = narrowing(request.query_params)
         # What the URL said, kept as text: the links have to reproduce the request, and the
@@ -286,8 +266,8 @@ def build_app(db_path: Path) -> FastAPI:
         request: Request,
         session_id: str,
         after: int = queries.FIRST_PAGE,
-        turns: int = PAGE_TURNS,
-        chips: int = PAGE_CHIPS,
+        turns: int = bounds.TURNS.default,
+        chips: int = bounds.CHIPS.default,
     ) -> Response:
         """One page of a session's timeline: its turns in order, with the runs they spawned.
 
@@ -295,12 +275,12 @@ def build_app(db_path: Path) -> FastAPI:
         the turn at index N opens on `?after={N - 1}`, first row on the page. The two sizes
         multiply, which is why their product is checked as well as each of them.
         """
-        checked(turns, PAGE_TURNS)
-        checked(chips, MAX_PAGE_CHIPS)
+        checked(turns, bounds.TURNS.ceiling)
+        checked(chips, bounds.CHIPS.ceiling)
         # The unattached list is a list of `chips` like a turn's, and it rides every page.
-        if (turns + 1) * chips > CHIP_BUDGET:
+        if (turns + 1) * chips > bounds.CHIP_BUDGET:
             raise HTTPException(
-                400, f"Ask for at most {CHIP_BUDGET} run rows a page: (turns + 1) × chips."
+                400, f"Ask for at most {bounds.CHIP_BUDGET} run rows a page: (turns + 1) × chips."
             )
         with open_store(resolved) as connection:
             header = page_rows(
@@ -324,7 +304,7 @@ def build_app(db_path: Path) -> FastAPI:
                     connection,
                     Page.TIMELINE,
                     TURN_CURSOR,
-                    PAGE_CURSORLESS,
+                    bounds.CURSORLESS_TURNS,
                     session_id=session_id,
                 )
                 if page.after is None
@@ -364,7 +344,7 @@ def build_app(db_path: Path) -> FastAPI:
             runs,
             marks_on_page(markers, outline, rows),
             chips,
-            PAGE_MARKS,
+            bounds.MARKS,
         )
         return templates.TemplateResponse(
             request,
@@ -380,7 +360,7 @@ def build_app(db_path: Path) -> FastAPI:
                 "page": page,
                 # What the page's own links carry: the sizes it was served at, and the widest
                 # one list may be — the size a "+N more" link asks for.
-                "sizes": {"turns": turns, "chips": chips, "widest": MAX_PAGE_CHIPS},
+                "sizes": {"turns": turns, "chips": chips, "widest": bounds.CHIPS.ceiling},
                 "citations": {
                     named.value: queries.citation(named, bound.get(named, keyed))
                     for named in (
@@ -424,7 +404,7 @@ def build_app(db_path: Path) -> FastAPI:
             )
             lines = turn_lines(connection, session_id, run_id)
             enrichment = described(connection, session_id, run_id)
-        marks = cut_to(markers, PAGE_MARKS)
+        marks = cut_to(markers, bounds.MARKS)
         keyed: dict[str, ParamValue] = {"session_id": session_id}
         at_source = keyed | {"source": run_id}
         return templates.TemplateResponse(
@@ -437,9 +417,9 @@ def build_app(db_path: Path) -> FastAPI:
                 # A run's own thread is short — 8 turns at the corpus maximum — so it is
                 # unpaged; its run lists are the same multiplicand a session page has, and
                 # they take the same caps.
-                "timeline": timeline(turns, runs, marks.shown, run_id, PAGE_CHIPS),
+                "timeline": timeline(turns, runs, marks.shown, run_id, bounds.CHIPS.default),
                 "marks": marks,
-                "children": capped(children(run_id, runs), PAGE_CHIPS),
+                "children": capped(children(run_id, runs), bounds.CHIPS.default),
                 "lines": lines,
                 "enrichment": enrichment,
                 "citations": {
@@ -467,14 +447,14 @@ def build_app(db_path: Path) -> FastAPI:
         session_id: str,
         source: str,
         after: int = queries.FIRST_PAGE,
-        size: int = queries.PAGE_RECORDS,
+        size: int = bounds.RECORDS.default,
     ) -> Response:
         """One page of a thread's raw transcript — where a report's citation lands.
 
         A citation names `(session_id, source, line_no)`; the URL for it is this path with
         `?after={line_no - 1}#L{line_no}`, so the cited record is the first row on the page.
         """
-        checked(size, MAX_PAGE_RECORDS)
+        checked(size, bounds.RECORDS.ceiling)
         keyed: dict[str, ParamValue] = {"session_id": session_id, "source": source}
         bound = keyed | {"after": after, "page_records": size}
         with open_store(resolved) as connection:
@@ -505,7 +485,7 @@ def build_app(db_path: Path) -> FastAPI:
         session_id: str,
         name: str,
         after: int = 0,
-        size: int = queries.CHUNK_CHARS,
+        size: int = bounds.CHUNK.default,
     ) -> Response:
         """One chunk of a tool result Claude Code wrote to a file beside the transcript.
 
@@ -513,7 +493,7 @@ def build_app(db_path: Path) -> FastAPI:
         — spaces, percent signs, something shaped like a path. It is a key into the store and
         never a path the server opens, which is what makes the shape of it uninteresting.
         """
-        checked(size, MAX_CHUNK_CHARS)
+        checked(size, bounds.CHUNK.ceiling)
         if after < 0:
             raise HTTPException(400, "Ask for an offset of 0 or more.")
         bound: dict[str, ParamValue] = {
@@ -565,12 +545,12 @@ def build_app(db_path: Path) -> FastAPI:
         source: str,
         turn_id: str,
         after: int = queries.FIRST_PAGE,
-        calls: int = queries.PAGE_CALLS,
-        tools: int = queries.PAGE_TOOLS,
+        calls: int = bounds.CALLS.default,
+        tools: int = bounds.TOOLS.default,
     ) -> Response:
         """One page of the api calls a turn made, each carrying a page of its tool calls."""
-        checked(calls, MAX_PAGE_CALLS)
-        checked(tools, MAX_PAGE_TOOLS)
+        checked(calls, bounds.CALLS.ceiling)
+        checked(tools, bounds.TOOLS.ceiling)
         keyed: dict[str, ParamValue] = {"session_id": session_id, "source": source}
         # The digests name the calls that sit under no turn with a sentinel, because a URL
         # cannot carry a NULL. The query asks for those rows with one.
@@ -626,10 +606,10 @@ def build_app(db_path: Path) -> FastAPI:
         source: str,
         api_call_id: str,
         after: int = queries.FIRST_PAGE,
-        tools: int = queries.PAGE_TOOLS,
+        tools: int = bounds.TOOLS.default,
     ) -> Response:
         """One page of the tool calls under one api call."""
-        checked(tools, MAX_PAGE_TOOLS)
+        checked(tools, bounds.TOOLS.ceiling)
         keyed: dict[str, ParamValue] = {
             "session_id": session_id,
             "source": source,

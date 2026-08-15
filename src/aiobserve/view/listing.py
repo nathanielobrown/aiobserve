@@ -18,6 +18,7 @@ from fastapi import HTTPException
 
 from aiobserve.analyze import queries
 from aiobserve.analyze.queries import ParamValue
+from aiobserve.view import bounds
 from aiobserve.view.store import Page, Row, fetch
 
 # What the session list can be sorted by: a column of `view_sessions`, mapped to its header
@@ -102,16 +103,6 @@ DIRECTIONS: dict[str, Direction] = {
 # Newest first: the session someone is looking for is usually the one that just ran.
 DEFAULT_SORT = "started_at"
 DEFAULT_DIRECTION = "desc"
-
-# How many sessions a page of the list holds, and the most it will hold on request. The list
-# is the one page that grows with the corpus: 575 sessions rendered whole came to 587 KB,
-# past the design's page ceiling, so the size is bound rather than assumed small. The maximum
-# is what fits under that ceiling at the *worst* cost of a row rather than the measured one —
-# every character of a title or a path can escape to five bytes — so the two are the same
-# number and `?size=` only goes down from here. `tests/view/test_bounds.py` does the
-# arithmetic; the row it multiplies is `SHOWN` below.
-PAGE_SESSIONS = 125
-MAX_PAGE_SESSIONS = 125
 
 # What one row of the list shows of the values a transcript wrote: each string cut to a head,
 # the skills cut to their first names with a count of what was left, and the two lists the
@@ -235,6 +226,6 @@ def list_url(sort: str, direction: str, page: int, size: int, filters: Mapping[s
     query: dict[str, str | int] = {"sort": sort, "direction": direction}
     if page > 1:
         query["page"] = page
-    if size != PAGE_SESSIONS:
+    if size != bounds.SESSIONS.default:
         query["size"] = size
     return "/?" + urlencode(query | {key: value for key, value in filters.items() if value})

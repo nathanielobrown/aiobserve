@@ -13,17 +13,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from aiobserve.analyze import queries
+from aiobserve.view import bounds
 from aiobserve.view.app import CSP, TEMPLATES, build_app
 from aiobserve.view.listing import (
     DEFAULT_DIRECTION,
     DEFAULT_SORT,
     DIRECTIONS,
     FILTERS,
-    MAX_PAGE_SESSIONS,
-    PAGE_SESSIONS,
     SORTS,
 )
-from aiobserve.view.threads import CHIP_BUDGET, MAX_PAGE_CHIPS, PAGE_MARKS, PAGE_TURNS
 from tests.conftest import (
     ANCESTOR,
     DENSE_CALL,
@@ -164,7 +162,7 @@ def test_the_list_footer_cites_its_query_and_what_was_composed_around_it(
     default = fields(client.get("/").text, "id", "citation")
     assert default["view_sessions"] == (
         f"-- queries/view_sessions.sql sort={DEFAULT_SORT} direction={DEFAULT_DIRECTION}"
-        f" limit={PAGE_SESSIONS} offset=0 {CUT}"
+        f" limit={bounds.SESSIONS.default} offset=0 {CUT}"
     )
 
 
@@ -200,7 +198,7 @@ def test_a_page_outside_the_bounds_is_refused(
     """The page size is bounded on both ends: a page cannot be asked to hold the store."""
     response = client.get("/", params=parameters)
     assert response.status_code == 400
-    assert str(MAX_PAGE_SESSIONS) in response.text
+    assert str(bounds.SESSIONS.ceiling) in response.text
 
 
 # One value per filter, read off the fixture corpus rather than invented, chosen so each
@@ -390,7 +388,7 @@ def test_a_fork_does_not_chip_onto_a_turn_of_its_own_timeline(client: TestClient
     assert FORK_RUN not in values(page, "data-chip")
 
 
-@pytest.mark.parametrize("turns", [PAGE_TURNS, 1])
+@pytest.mark.parametrize("turns", [bounds.TURNS.default, 1])
 def test_every_session_page_accounts_for_all_of_its_runs(
     client: TestClient, store: duckdb.DuckDBPyConnection, turns: int
 ) -> None:
@@ -401,7 +399,7 @@ def test_every_session_page_accounts_for_all_of_its_runs(
     page has to stay placed rather than raise, and no page may show one twice.
     """
     for session_id in sessions(store):
-        pages = walk(client, session_id, turns=turns, chips=CHIP_BUDGET // (turns + 1))
+        pages = walk(client, session_id, turns=turns, chips=bounds.CHIP_BUDGET // (turns + 1))
         shown = [values(page, "data-chip") + values(page, "data-unattached") for page in pages]
         runs = {
             row[0]
@@ -449,7 +447,7 @@ def chipped(store: duckdb.DuckDBPyConnection) -> Chipped:
     return Chipped(run_id, call_id, turn_id, turn_index)
 
 
-@pytest.mark.parametrize("turns", [PAGE_TURNS, 1])
+@pytest.mark.parametrize("turns", [bounds.TURNS.default, 1])
 def test_a_run_the_page_cannot_place_stops_the_page(
     plant: Planter, store: duckdb.DuckDBPyConnection, turns: int
 ) -> None:
@@ -686,7 +684,7 @@ def test_a_compaction_rides_the_page_of_the_turn_it_precedes(
 def test_a_thread_with_more_compactions_than_a_page_holds_says_how_many_it_cut(
     plant: Planter, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """A timeline renders `PAGE_MARKS` compactions and counts the rest rather than dropping them.
+    """A timeline renders `bounds.MARKS` compactions and counts the rest rather than dropping them.
 
     Compactions are not a size a URL carries, so this cap is the payload arithmetic's backstop:
     without it a thread's markers are however many the session ran, and the ceiling budgets a
@@ -699,7 +697,7 @@ def test_a_thread_with_more_compactions_than_a_page_holds_says_how_many_it_cut(
         "SELECT count(*) FROM live_compactions WHERE session_id = ? AND source = ?",
         [SPINE, MAIN],
     )
-    over = PAGE_MARKS + 3
+    over = bounds.MARKS + 3
     path = plant(
         (
             "INSERT INTO compactions (SELECT 'planted-' || i, ?, ?,"
@@ -710,9 +708,9 @@ def test_a_thread_with_more_compactions_than_a_page_holds_says_how_many_it_cut(
     with TestClient(build_app(path)) as planted:
         page = planted.get(f"/session/{SPINE}").text
     # The page shows the cap's worth of markers...
-    assert len(values(page, "data-compaction")) == PAGE_MARKS
+    assert len(values(page, "data-compaction")) == bounds.MARKS
     # ...and says how many of the thread's own it left, so a cut list is never a silent one.
-    assert values(page, "data-more-marks") == [str(recorded + over - PAGE_MARKS)]
+    assert values(page, "data-more-marks") == [str(recorded + over - bounds.MARKS)]
 
 
 # The most pages a walk of one fixture session may take. The longest fixture thread holds a
@@ -834,13 +832,14 @@ def test_a_turns_permalink_opens_the_page_that_turn_starts(client: TestClient) -
     "sizes",
     [
         "turns=0",
-        f"turns={PAGE_TURNS + 1}",
+        f"turns={bounds.TURNS.ceiling + 1}",
         "chips=0",
-        f"chips={MAX_PAGE_CHIPS + 1}",
+        f"chips={bounds.CHIPS.ceiling + 1}",
         # Each size is inside its own ceiling; what they multiply into is not. The unattached
         # list rides every page at the same size, so the budget buys `turns + 1` of them.
-        f"turns={PAGE_TURNS}&chips={CHIP_BUDGET // (PAGE_TURNS + 1) + 1}",
-        f"turns=2&chips={MAX_PAGE_CHIPS}",
+        f"turns={bounds.TURNS.default}"
+        f"&chips={bounds.CHIP_BUDGET // (bounds.TURNS.default + 1) + 1}",
+        f"turns=2&chips={bounds.CHIPS.ceiling}",
     ],
 )
 def test_a_timeline_size_outside_its_bounds_is_refused(sizes: str, client: TestClient) -> None:
@@ -853,8 +852,8 @@ def test_the_whole_chip_budget_is_reachable_on_one_turn(
 ) -> None:
     """A reader who wants a turn's whole run forest can have it, one turn at a time.
 
-    `MAX_PAGE_CHIPS` is sized for the widest forest the corpus records — 94 runs under one turn
-    — so that no run sits behind a "+N more" nobody can open. No fixture session has a turn
+    The chip ceiling is sized for the widest forest the corpus records — 94 runs under one
+    turn — so that no run sits behind a "+N more" nobody can open. No fixture session has a turn
     that wide, so the leaf plants one past the cap: the rows are what the ceiling bought, and a
     page that refused them, or rendered fewer than it was asked for, would leave the budget
     spent on nothing.
@@ -864,7 +863,7 @@ def test_the_whole_chip_budget_is_reachable_on_one_turn(
         (
             "INSERT INTO agent_runs (SELECT a.* REPLACE (a.id || '-planted-' || i AS id)"
             " FROM agent_runs a, range(1, ?) t(i) WHERE a.session_id = ? AND a.id = ?)",
-            [MAX_PAGE_CHIPS + 1, SPINE, run.run_id],
+            [bounds.CHIPS.ceiling + 1, SPINE, run.run_id],
         ),
     )
     # A clone of a chipped run is a chip on the same turn: what the join reads is the tool call
@@ -874,19 +873,21 @@ def test_the_whole_chip_budget_is_reachable_on_one_turn(
         "SELECT count(*) FROM live_agent_runs WHERE session_id = ? AND parent_agent_id = ?",
         [SPINE, run.run_id],
     )
-    planted_rows = 1 + MAX_PAGE_CHIPS + forest
+    planted_rows = 1 + bounds.CHIPS.ceiling + forest
     with TestClient(build_app(path)) as served:
         # The page of that one turn, opened at the cursor its permalink carries.
         page = served.get(
             f"/session/{SPINE}",
-            params={"after": run.turn_index - 1, "turns": 1, "chips": MAX_PAGE_CHIPS},
+            params={"after": run.turn_index - 1, "turns": 1, "chips": bounds.CHIPS.ceiling},
         )
     assert page.status_code == 200
     # The turn renders the whole budget the URL asked for...
     assert values(page.text, "data-turn")[0] == run.turn_id
-    assert len(values(page.text, "data-chip")) == MAX_PAGE_CHIPS
+    assert len(values(page.text, "data-chip")) == bounds.CHIPS.ceiling
     # ...and counts what is still behind it, so the widest list is a page and not a ceiling.
-    assert fields(page.text, "data-turn", run.turn_id)["cut"] == str(planted_rows - MAX_PAGE_CHIPS)
+    assert fields(page.text, "data-turn", run.turn_id)["cut"] == str(
+        planted_rows - bounds.CHIPS.ceiling
+    )
 
 
 def test_a_session_the_store_does_not_hold_is_a_404(client: TestClient) -> None:

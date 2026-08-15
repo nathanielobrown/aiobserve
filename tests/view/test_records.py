@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from aiobserve.analyze import queries
-from aiobserve.view.app import MAX_PAGE_RECORDS
+from aiobserve.view import bounds
 from aiobserve.view.store import Page
 from tests.conftest import ANCESTOR, MAIN, RESUME, RESUME_LONG_RECORD, SPINE, SPINE_RUN
 from tests.view.conftest import MISSING, fields, inside, one, values
@@ -207,6 +207,6 @@ def test_a_record_the_store_does_not_hold_is_a_404(client: TestClient) -> None:
 
 def test_a_records_page_size_outside_its_bounds_is_refused(client: TestClient) -> None:
     """A hand-typed page size past the ceiling is a 400, not a page nothing bounds."""
-    for size in (0, MAX_PAGE_RECORDS + 1):
+    for size in (0, bounds.RECORDS.ceiling + 1):
         response = client.get(f"/session/{ANCESTOR}/records/{MAIN}", params={"size": size})
         assert response.status_code == 400, size

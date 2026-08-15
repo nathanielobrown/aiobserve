@@ -11,7 +11,8 @@ from urllib.parse import quote
 import duckdb
 from fastapi.testclient import TestClient
 
-from aiobserve.view.app import MAX_CHUNK_CHARS, build_app
+from aiobserve.view import bounds
+from aiobserve.view.app import build_app
 from tests.conftest import (
     CONFIG_ONLY,
     FORK_ORIGIN,
@@ -140,7 +141,7 @@ def test_a_name_that_looks_like_a_path_is_a_404(client: TestClient) -> None:
 
 def test_a_chunk_size_outside_its_bounds_is_refused(client: TestClient) -> None:
     """A hand-typed chunk size past the ceiling is a 400, not a whole 50 MB file."""
-    for size in (0, MAX_CHUNK_CHARS + 1):
+    for size in (0, bounds.CHUNK.ceiling + 1):
         response = client.get(
             f"/session/{CONFIG_ONLY}/offload/{OFFLOAD_FILE}", params={"size": size}
         )

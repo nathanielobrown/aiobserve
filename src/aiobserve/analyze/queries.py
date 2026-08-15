@@ -104,12 +104,13 @@ SIGNATURE_CHARS = 120
 # private text, and no run of it may reach a table a report quotes.
 COMMAND_HEAD_CHARS = 60
 
-# The viewer's page sizes. Every one of them is a bound parameter with a default here and
-# nowhere else, because the payload bound the design states is arithmetic over these numbers:
-# a page of calls carries at most `PAGE_CALLS` × (2 KB of text + `PAGE_TOOLS` tool rows), and
-# every character of that content can escape to five bytes. The two sizes multiply, which is
-# what keeps them this small — a call row costs about 12 KB before its tool rows.
-# `tests/view/test_bounds.py` pins the values and asserts the arithmetic still fits.
+# The viewer's page sizes that a query binds: each is a parameter's default, declared here
+# and nowhere else, because the payload bound the design states is arithmetic over these
+# numbers — a page of calls carries at most `PAGE_CALLS` × (2 KB of text + `PAGE_TOOLS` tool
+# rows), and every character of that content can escape to five bytes. The two sizes multiply,
+# which is what keeps them this small: a call row costs about 12 KB before its tool rows.
+# `view/bounds.py` names each of them beside the ceiling a URL may not pass, and
+# `tests/view/test_bounds.py` asserts the arithmetic still fits.
 PAGE_CALLS = 10
 PAGE_TOOLS = 12
 PAGE_RECORDS = 100

@@ -18,29 +18,6 @@ from aiobserve.analyze import queries
 from aiobserve.model import MAIN_SOURCE
 from aiobserve.view.store import Row
 
-# The session timeline's two page sizes, which multiply: `turns` rows, each carrying up to
-# `chips` run rows. `session_digest` has no LIMIT of its own — a report quotes the whole digest
-# — so this is the composed one, and `tests/view/test_bounds.py` pins it with the arithmetic.
-PAGE_TURNS = 20
-PAGE_CHIPS = 8
-# The most run rows one page renders however the two sizes are split. The unattached list is
-# capped at `chips` and rides every page, so a page buys `turns + 1` lists of that size and the
-# route checks that product — 200 is what leaves the defaults room.
-CHIP_BUDGET = 200
-# The most a single list may hold, reachable at `?turns=1&chips=100`: enough for the largest
-# forest the corpus records (94 runs under one turn), so no run is out of a reader's reach.
-MAX_PAGE_CHIPS = 100
-# The rows a page renders that no cursor reaches, on top of the `turns` it was asked for.
-# `session_digest` gives one — the calls that answer no turn are a single group — and it
-# rides the last page, outside the window and outside the size a reader typed. Bound here
-# because a page renders it: the ceiling budgets a turn row for it, and a digest answering
-# with more raises rather than serving a row nothing counted.
-PAGE_CURSORLESS = 1
-# What one page renders of a thread's compactions. Not a size a URL carries: the most any
-# session's main thread holds is 18, so this is the arithmetic's backstop rather than a knob.
-# Set just above that maximum because the bytes it does not spend are the header's, which is
-# the one part of a page no size a reader types bounds.
-PAGE_MARKS = 20
 # The digests' keyset column: where a turn's prompt sat in its thread, unique and ascending,
 # which is what lets `after` mean "the last index already shown" instead of an offset.
 TURN_CURSOR = "turn_index"
