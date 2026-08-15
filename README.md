@@ -8,7 +8,26 @@ The first target is **Claude Code**. The tool takes a project path, so it works 
 
 ## Status
 
-Early. Claude Code transcripts extract into a local DuckDB store — sessions, turns, API calls, tool calls, subagent runs, compactions, cost, and every raw line. A second pass describes each run, turn, and session in the model's words, so findings can filter on meaning. The spans Claude Code exports over OpenTelemetry, and the findings the store is for, come later.
+Early, and running end to end for Claude Code. Transcripts extract into a local DuckDB store — sessions, turns, API calls, tool calls, subagent runs, compactions, cost, and every raw line. A second pass describes each run, turn, and session in the model's words, so findings can filter on meaning. A local viewer serves the store in a browser, and an exporter ships it to any OTLP backend. Findings from the analysis iterations run so far are committed under `reports/`, one per iteration; [the report guide](reports/README.md) says how to read one and how to write the next.
+
+What is still missing: the spans Claude Code itself exports over OpenTelemetry. Nothing imports them yet, so every number here comes from transcripts.
+
+```mermaid
+flowchart LR
+    transcripts[/"Claude Code transcripts"/] --> extract["extract"]
+    extract --> store[("traces.duckdb")]
+    store --> enrich["enrich"]
+    enrich -->|"one call per item"| claude_cli["claude -p"]
+    enrich -->|"descriptions"| store
+    store --> analyze["query and read"]
+    analyze --> reports[/"reports/"/]
+    store --> view["view"]
+    view --> browser[/"browser"/]
+    store --> export_otlp["export-otlp"]
+    export_otlp --> backend[("OTLP backend")]
+```
+
+Each stage has a guide: [the store](docs/store.md), [enrichment](docs/enrichment.md), [analysis](docs/analysis.md), [the viewer](docs/viewer.md), [OTLP export](docs/otlp-export.md).
 
 ## Getting started
 
