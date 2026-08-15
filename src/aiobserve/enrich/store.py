@@ -14,8 +14,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
 
-import duckdb
-
 from aiobserve.enrich.prompts import (
     AgentRunItem,
     ApiCallRow,
@@ -28,7 +26,7 @@ from aiobserve.enrich.prompts import (
     TurnItem,
 )
 from aiobserve.enrich.validation import Enrichment
-from aiobserve.export.duckdb import SCHEMA_VERSION, SchemaVersionError, held_schema_version
+from aiobserve.export.duckdb import open_trace_store
 from aiobserve.model import MAIN_SOURCE
 
 # Every enrichment table holds the same columns; only the primary key differs.
@@ -201,9 +199,10 @@ class EnrichmentStore:
 
     def __init__(self, path: Path) -> None:
         self.path = path
-        self.connection = duckdb.connect(str(path))
-        self.connection.execute("SET TimeZone='UTC'")
-        self._check_base_schema()
+        # Enrichment reads the pipeline's views by name and column, so a store another schema
+        # wrote is not one this code can enrich, and it opens on the same terms as every
+        # other reader: nothing is created at a path that holds no store.
+        self.connection = open_trace_store(path, read_only=False)
         self.connection.execute(_SCHEMA)
 
     def __enter__(self) -> "EnrichmentStore":
@@ -219,20 +218,6 @@ class EnrichmentStore:
 
     def close(self) -> None:
         self.connection.close()
-
-    def _check_base_schema(self) -> None:
-        """Refuse a file whose base tables this build cannot read, before creating anything.
-
-        Enrichment reads the pipeline's views by name and column, so a store written by
-        another schema version is not a store this code can enrich.
-        """
-        held = held_schema_version(self.connection)
-        if held != SCHEMA_VERSION:
-            raise SchemaVersionError(
-                f"{self.path} holds schema version {held or 'nothing'}, this "
-                f"build enriches {SCHEMA_VERSION}. Extract into it first, or point at the "
-                f"canonical store."
-            )
 
     def turn_items(self, project: str | None = None) -> list[TurnItem]:
         """Every enrichable main turn, each carrying the api and tool calls it drove.

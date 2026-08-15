@@ -13,6 +13,7 @@ import pytest
 
 from aiobserve.enrich.prompts import Level, TurnItem
 from aiobserve.enrich.store import EnrichmentStore, Stamp
+from aiobserve.export.duckdb import SchemaVersionError
 from tests.conftest import MODEL_ONLY, build_store, fixture_transcripts
 from tests.enrich.conftest import (
     COMPACTION,
@@ -504,8 +505,22 @@ def test_a_store_written_by_another_schema_is_refused(tmp_path: Path) -> None:
     connection = duckdb.connect(str(path))
     connection.execute("UPDATE meta SET schema_version = 1")
     connection.close()
-    with pytest.raises(Exception, match="schema version"):
+    # The refusal is `open_trace_store`'s, which also lets go of the file — the export tier
+    # holds that half, since nothing in this one may start a process.
+    with pytest.raises(SchemaVersionError, match="schema version"):
         EnrichmentStore(path)
+
+
+def test_a_path_with_no_store_behind_it_creates_nothing(tmp_path: Path) -> None:
+    """A `--db` that names no store is a typo: enrichment refuses it and leaves no file."""
+    # If a path names nothing — one character off the store an operator meant...
+    path = tmp_path / "tarces.duckdb"
+    # ...then enrichment says so...
+    with pytest.raises(FileNotFoundError, match="holds no trace store"):
+        EnrichmentStore(path)
+    # ...and nothing was created at the typo: opening read-write would leave an empty DuckDB
+    # behind, and the next run would read it as a store with nothing to enrich.
+    assert not path.exists()
 
 
 def test_stamp_is_the_four_field_staleness_key() -> None:

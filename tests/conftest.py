@@ -187,6 +187,22 @@ _HOLDER = "import duckdb, sys, time; held = duckdb.connect(sys.argv[1]); time.sl
 LOCK_TIMEOUT = 10.0
 
 
+# What another process does to check the lock is free: takes it and lets go.
+_TAKER = "import duckdb, sys; duckdb.connect(sys.argv[1]).close()"
+
+
+def lock_is_free(path: Path) -> bool:
+    """Whether another process can take `path`'s write lock — so nothing here still holds it.
+
+    A subprocess for the same reason `locked()` uses one: this process's own second open
+    succeeds whatever the file lock says, so an in-process check answers nothing.
+    """
+    taker = subprocess.run(
+        [sys.executable, "-c", _TAKER, str(path)], capture_output=True, timeout=LOCK_TIMEOUT
+    )
+    return taker.returncode == 0
+
+
 @contextmanager
 def locked(path: Path) -> Iterator[None]:
     """Hold a store's write lock from another process for the length of the block.

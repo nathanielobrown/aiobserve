@@ -5,6 +5,7 @@ columns under test hold values a real transcript produced.
 """
 
 import dataclasses
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
@@ -16,8 +17,9 @@ from aiobserve.export.duckdb import (
     TABLES,  # every table a session owns — read off the exporter so a new one cannot slip past
     DuckDbExporter,
     SchemaVersionError,
+    open_trace_store,
 )
-from tests.conftest import TraceFactory
+from tests.conftest import TraceFactory, lock_is_free
 
 SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"
 DUPS = "8ee00a94-b01a-4394-b447-b065f74b11af"
@@ -430,17 +432,50 @@ def test_a_schema_version_mismatch_refuses_to_open(db: Path):
     assert shape(db) == before
 
 
+def foreign_store(path: Path) -> dict[str, list[str]]:
+    """Someone else's DuckDB file: real tables, and no `meta` to read a version out of."""
+    with duckdb.connect(str(path)) as connection:
+        connection.execute("CREATE TABLE inventory (sku VARCHAR)")
+    return shape(path)
+
+
 def test_a_foreign_database_refuses_to_open(db: Path):
     """A DuckDB file that is not a trace store is refused rather than built on top of."""
     # If the path names someone else's database...
-    with duckdb.connect(str(db)) as connection:
-        connection.execute("CREATE TABLE inventory (sku VARCHAR)")
-    before = shape(db)
+    before = foreign_store(db)
 
     # ...then opening it fails without adding our tables to it.
     with pytest.raises(SchemaVersionError, match="re-extract"):
         DuckDbExporter(db)
     assert shape(db) == before
+
+
+@pytest.mark.parametrize(
+    "open_store",
+    [DuckDbExporter, lambda path: open_trace_store(path, read_only=False)],
+    ids=["exporter", "reader"],
+)
+@pytest.mark.parametrize("write_store", [old_store, foreign_store], ids=["old-schema", "foreign"])
+def test_a_refused_store_keeps_none_of_its_lock(
+    db: Path,
+    write_store: Callable[[Path], dict[str, list[str]]],
+    open_store: Callable[[Path], object],
+):
+    """However a store is opened and whatever makes it unreadable, refusing it frees the file.
+
+    Half the contract is invisible in the file: an opener that raises hands nothing back, so
+    no `with` block runs and nothing calls `close()`. The connection lives on in the
+    traceback its caller holds, and DuckDB's single-writer lock goes with it — the next
+    process to open the store is refused for a reason that has nothing to do with the store.
+    """
+    # If an unreadable store is refused, and its caller keeps the error to report — a live
+    # process, not one exiting on the spot...
+    write_store(db)
+    with pytest.raises(SchemaVersionError) as refused:
+        open_store(db)
+
+    # ...then nothing here still holds the file.
+    assert lock_is_free(db), f"the refusal kept the write lock: {refused.value}"
 
 
 def test_a_newer_schema_version_refuses_to_open(db: Path):

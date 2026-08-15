@@ -300,13 +300,16 @@ def held_schema_version(connection: duckdb.DuckDBPyConnection) -> int | None:
 
     None covers both a file that is not a trace store and one that crashed between its DDL
     and its stamp, so every reader can say "holds nothing" instead of raising a catalog
-    error on someone else's database. The `duckdb_tables()` join is what makes that
-    possible: `SELECT ... FROM meta` on a foreign file crashes before the check can speak.
+    error on someone else's database — and, raising nothing, leaves its caller free to close
+    the connection. Asking the catalog has to be its own statement: DuckDB binds every table
+    a query names before any filter in that same query can spare it.
     """
-    row = connection.execute(
-        "SELECT schema_version FROM duckdb_tables() t"
-        " LEFT JOIN meta ON true WHERE t.table_name = 'meta'"
+    stamped = connection.execute(
+        "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'meta'"
     ).fetchone()
+    if not stamped or not stamped[0]:
+        return None
+    row = connection.execute("SELECT schema_version FROM meta").fetchone()
     return None if row is None else row[0]
 
 
@@ -339,15 +342,21 @@ class DuckDbExporter:
         self.path = path
         path.parent.mkdir(parents=True, exist_ok=True)
         self.connection = duckdb.connect(str(path))
-        # Timestamps go in as UTC and must come back as UTC, whatever the machine's clock
-        # is set to.
-        self.connection.execute("SET TimeZone='UTC'")
-        # Before any DDL: a file this build cannot read must be left exactly as it was.
-        self._check_schema_version()
-        self.connection.execute(_SCHEMA)
-        # After the tables: every view below reads them.
-        self.connection.execute(_VIEWS)
-        self._stamp_schema_version()
+        try:
+            # Timestamps go in as UTC and must come back as UTC, whatever the machine's clock
+            # is set to.
+            self.connection.execute("SET TimeZone='UTC'")
+            # Before any DDL: a file this build cannot read must be left exactly as it was.
+            self._check_schema_version()
+            self.connection.execute(_SCHEMA)
+            # After the tables: every view below reads them.
+            self.connection.execute(_VIEWS)
+            self._stamp_schema_version()
+        except Exception:
+            # Nothing here was ever handed out, so no `with` block will close it: a refusal
+            # that kept the connection would hold DuckDB's write lock until the process ends.
+            self.connection.close()
+            raise
 
     def __enter__(self) -> "DuckDbExporter":
         return self
