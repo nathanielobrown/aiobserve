@@ -77,7 +77,7 @@ A transcript records everything the analyzed agent read — source, credentials,
 Claude Code owns the transcript and span shapes, and changes them without notice. So:
 
 - Open a real recorded session before you write a parser, a query, or a doc about a field
-- An unrecognized record shape is a schema change we need to see. Crash on it; don't skip it
+- How a parser must react when a shape surprises it: `.claude/rules/python.md`
 - `docs/schema.md` records what we've confirmed, with the session and Claude Code version that confirmed it. If it isn't there, it isn't established
 
 ## Comments

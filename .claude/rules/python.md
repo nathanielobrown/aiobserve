@@ -15,7 +15,7 @@ paths:
 
 ## Parsing telemetry
 
-The transcript and span schemas belong to Claude Code, not to us, and they change without notice. That makes the parsing layer the one place where fail-fast matters most:
+The parsing layer is where a schema we don't own meets code that assumes one, so it's the place where fail-fast matters most:
 
 - **Crash on an unrecognized shape.** A record whose `type` we don't handle is a schema change we need to see, not a row to skip. Silently dropping it turns a schema drift into a quietly wrong count months later.
 - **Never default a field that carries meaning.** `record.get("costUSD", 0.0)` reports a free session; `record["costUSD"]` reports a schema change. Use `.get` only where absence is a documented, meaningful state — and say which in a comment.
