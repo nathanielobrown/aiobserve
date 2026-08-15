@@ -2,6 +2,31 @@
 
 `aiobserve extract` writes session traces into one DuckDB file. There is one canonical store, `data/traces.duckdb` — gitignored, like everything under `data/`. Read this before you delete a store, move one, or bump a version constant.
 
+## What it holds
+
+```mermaid
+erDiagram
+    sessions ||--o{ turns : "ran"
+    sessions ||--o{ agent_runs : "spawned"
+    sessions ||--o{ compactions : "hit"
+    sessions ||--o{ pr_links : "opened"
+    sessions ||--o{ raw_records : "archived"
+    sessions ||--o{ offload_files : "archived"
+    sessions ||--|| extract_state : "fingerprinted by"
+    sessions ||--o{ otlp_delivery : "shipped per backend"
+    turns ||--o{ api_calls : "drove"
+    api_calls ||--o{ tool_calls : "asked for"
+    tool_calls ||--o| agent_runs : "started"
+    tool_calls ||--o| offload_files : "offloaded its result to"
+    agent_runs ||--o{ agent_runs : "spawned"
+```
+
+The columns live in `_SCHEMA` in `src/aiobserve/export/duckdb.py`, and what each telemetry field means, with the session that proves it, in [the schema guide](schema.md). A session's own thread and each of its agent runs share these tables and are told apart by `source`, so a turn or a call is keyed by `(session_id, source, id)`.
+
+Nothing here is queried raw. `_VIEWS` in the same module derives the `live_*` views, which drop the records a fork replayed, and the `corpus_*` views, which additionally drop the records an earlier session already holds — a resume copies its ancestor's records verbatim, so counting both doubles the corpus. `session_rollups` and `corpus_rollups` roll each family up to one row per session.
+
+[Enrichment](enrichment.md) writes into the same file: three `*_enrichments` tables keyed one-to-one onto sessions, turns and agent runs, plus the views that join them back on. A store no pass has touched holds none of them, which is why a query over them fails saying so.
+
 ## The store is the archive, not a cache
 
 Claude Code prunes a session's transcript and its `tool-results/` files from disk after a few weeks, which is the constraint the pipeline was built around ([the trace-pipeline design](../plans/trace-pipeline/design.md)). Every line of every file goes into the store — `raw_records` holds the transcripts, `offload_files` the tool outputs Claude Code moved out of them — so once a session's files are gone, the store is the only copy of it. A refresh keeps such a session's rows rather than mirroring what is on disk.
