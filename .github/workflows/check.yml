@@ -1,0 +1,24 @@
+# Runs the same gate as a local `mise run check`, so a broken merge is caught on GitHub rather
+# than by the next person to clone. The suite needs no secret, store, or network: every test
+# that reaches a real API, backend, or trace store is skipped unless an env var names one
+# (`.claude/rules/testing.md`), and none is set here.
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Read-only: this workflow only checks out and runs the gate.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Installs the tools mise.toml pins (Python, uv) and caches them between runs.
+      - uses: jdx/mise-action@v4
+      - run: mise run sync
+      - run: mise run check

@@ -21,7 +21,7 @@ Use `mise` for project tasks; `uv` owns the Python environment.
 
 - Run `mise run sync` after a fresh clone or a dependency change
 - Use `mise run check-fast` while iterating — format, lint, type-check
-- Run `mise run check` before you finish a task or open a PR. It adds the tests and the hook linter
+- Run `mise run check` before you finish a task or open a PR. It adds the tests and the hook linter, and GitHub runs it again on every push and PR (`.github/workflows/check.yml`)
 - Individual tasks are `format`, `lint`, `typecheck`, `test`. Ruff handles linting and formatting; Pyrefly handles types
 - `mise run diagram-check <file>` validates Mermaid. Every task lives in `mise.toml`
 
