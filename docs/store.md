@@ -21,7 +21,7 @@ erDiagram
     agent_runs ||--o{ agent_runs : "spawned"
 ```
 
-The columns live in `_SCHEMA` in `src/aiobserve/export/duckdb.py`. [The schema guide](schema.md) explains what each telemetry field means and cites the session that proves it. A session's own thread and each of its agent runs share these tables. The `source` column tells them apart, so a turn or a call is keyed by `(session_id, source, id)`.
+The columns live in `_SCHEMA` in `src/aiobserve/export/duckdb.py` — except `otlp_delivery`, which the exporter that fills it declares in `src/aiobserve/export/otlp.py`. Each component that writes into the store past an extract brings its own tables: the enrichment tables below come the same way. [The schema guide](schema.md) explains what each telemetry field means and cites the session that proves it. A session's own thread and each of its agent runs share these tables. The `source` column tells them apart, so a turn or a call is keyed by `(session_id, source, id)`.
 
 Queries don't read these tables directly. `_VIEWS` in the same module derives the `live_*` views, which drop the records a fork replayed. The `corpus_*` views also drop records already held by an earlier session. A resume copies its ancestor's records verbatim, so counting both doubles the corpus. `session_rollups` and `corpus_rollups` roll each family up to one row per session.
 
