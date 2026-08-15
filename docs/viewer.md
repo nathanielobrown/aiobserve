@@ -4,6 +4,23 @@
 
 ## What it shows
 
+```mermaid
+flowchart LR
+    session_list["session list"] -->|"a row"| session_page["a session"]
+    session_page -->|"a run chip"| run_page["an agent run"]
+    run_page -->|"a nested run chip"| run_page
+    run_page -->|"the thread above it"| session_page
+    session_page -->|"the thread it renders"| records_page["raw records"]
+    run_page -->|"the thread it renders"| records_page
+    session_page -.->|"opening a turn"| turn_calls["that turn's api calls"]
+    run_page -.->|"opening a turn"| turn_calls
+    turn_calls -.->|"opening one of them"| one_value["one text, thinking or tool value"]
+    records_page -.->|"opening a row"| one_value
+    one_value -->|"a result written to a file"| offload_page["an offloaded result"]
+```
+
+Solid edges are pages, one URL each: `/`, `/session/{session_id}`, `/session/{session_id}/run/{run_id}`, `/session/{session_id}/records/{source}`, and `/session/{session_id}/offload/{name}`. Dotted edges are fragments the open page fetches in place, one value to a request. Every route is declared in `src/aiobserve/view/app.py`.
+
 The list at `/` holds one row per session — when it started, its title and project, the rollup counts, cost, tokens, and time. Every column heading sorts by that column; clicking it again reverses. A cost with a `*` beside it had calls at a model our price table lacks, so the total is a floor. What a transcript wrote reaches a row cut to a head: the title and the project path to 100 characters, the skills to the first four names with a count of what was left. The session's own page has them whole.
 
 The form above the list narrows it: by project, by a date range, by a skill the session ran, or by a floor on failed tool calls. The project filter takes the recorded path exactly, so it is narrower than the CLI's `--project`, which also takes the sessions a checkout's worktrees recorded. A filter rides the sort headings and the pager, so re-ordering or turning the page keeps it; the masthead link clears everything. The footer's citation names each filter after the paging, so the line reproduces the rows that were on the screen.
