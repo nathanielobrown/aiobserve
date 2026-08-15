@@ -2,7 +2,7 @@
 
 What each field in an AI coding session means and where it comes from. Read this before writing a query or an analysis — misreading a field produces a confident wrong finding.
 
-The span schema is still missing: it arrives with the OTel importer, extracted from `mac_settings/claude-otel/` in a later step. Until then, do not describe a span field here from memory.
+The span schema is still missing: it arrives with a span importer we have yet to build, whose shapes come out of `mac_settings/claude-otel/` in a later step. Until then, do not describe a span field here from memory.
 
 ## The rule for adding a field
 

@@ -6,7 +6,7 @@
 aiobserve export-otlp /path/to/repo --db data/traces.duckdb --backend honeycomb
 ```
 
-The decisions behind it, and the importer it replaces, are in [the OTLP export design](../plans/otlp-export/design.md).
+The decisions behind it, and the prior importer it retires — claude-otel's transcript pusher — are in [the OTLP export design](../plans/otlp-export/design.md).
 
 The store is the source, not the transcripts on disk, so a session Claude Code has pruned still ships. DuckDB admits one writer, so an export cannot run beside `extract` or `enrich` — a second run fails fast on the lock instead of waiting.
 
@@ -18,7 +18,7 @@ The command resolves the project argument before matching it against the recorde
 
 Keys come from `.env` or the environment. The command validates them before opening the store and never prints them. The backend name is also the ledger key, so the ledger tracks two backends separately when you ship the same corpus to both.
 
-Spans leave at 300 per second (`--rate`). The importer this replaces measured a backend answering 200 while dropping about 40% of the spans it took at 2,575 spans/s, and nothing on our side can detect that loss. The limit mitigates it and puts a full corpus backfill at tens of minutes. Requests are gzipped protobuf, up to 2,000 spans each.
+Spans leave at 300 per second (`--rate`). The prior importer measured a backend answering 200 while dropping about 40% of the spans it took at 2,575 spans/s, and nothing on our side can detect that loss. The limit mitigates it and puts a full corpus backfill at tens of minutes. Requests are gzipped protobuf, up to 2,000 spans each.
 
 ## Counting before you send
 
@@ -40,7 +40,7 @@ A session becomes a root span with one child per turn, model call, tool call, su
 
 ## Delivered at least once, never diffed
 
-The exporter posts a session whole and records it only after the backend confirms every batch. A failure records nothing, so the next run sends that session again. Nothing compares what has already landed with what is about to be sent. That machinery was the largest bug source in the importer this replaces. As a result, a backend that ignores span identity will hold duplicates.
+The exporter posts a session whole and records it only after the backend confirms every batch. A failure records nothing, so the next run sends that session again. Nothing compares what has already landed with what is about to be sent. That machinery was the largest bug source in the prior importer. As a result, a backend that ignores span identity will hold duplicates.
 
 Identity keeps a re-send a re-send: every span id is a sha256 digest of the session, the kind of row, and its natural id, so shaping the same session twice names the same spans. A backend that collapses on span id sees an update; one that does not sees a copy.
 
