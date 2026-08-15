@@ -61,7 +61,13 @@ uv run aiobserve sessions ~/repos/mycelia
 uv run aiobserve extract ~/repos/mycelia    # --db to write somewhere other than data/traces.duckdb
 ```
 
-Each run re-extracts only the sessions whose files changed, replacing a session's rows wholesale. Query the DuckDB file directly. Count through the `session_rollups` and `corpus_rollups` views, which drop records copied by a fork or resume. The store outlives the transcripts it was built from, so read [the store guide](docs/store.md) before deleting one.
+Each run re-extracts only the sessions whose files changed, replacing a session's rows wholesale.
+
+```bash
+uv run aiobserve query session_counts --project ~/repos/mycelia    # every query in src/aiobserve/analyze/queries/
+```
+
+`query` runs a saved query and prints the line that cites it, which is what a finding has to carry ([the analysis guide](docs/analysis.md)). Ask anything it doesn't of the DuckDB file directly, counting through the `session_rollups` and `corpus_rollups` views, which drop records copied by a fork or resume. The store outlives the transcripts it was built from, so read [the store guide](docs/store.md) before deleting one.
 
 ## Describing what happened
 
