@@ -119,10 +119,10 @@ SPINE_IDLE_SECONDS = 23_773
 # the second request. A cache entry ages from the request that wrote it, so this gap clears a
 # 300-second floor — measured end to start it would fall out of the table.
 SHORTEST_IDLE_SECONDS = 319
-# How many silences over that floor the recorded corpus holds: five in main threads, one in an
+# How many silences over that floor the recorded corpus holds: six in main threads, one in an
 # agent run. The raw table holds two more — `corpus_api_calls` hides a resumed thread's
 # replayed rows, and a gap between two of them is not the corpus's to count.
-RECORDED_IDLE_GAPS = 6
+RECORDED_IDLE_GAPS = 7
 
 
 def test_error_signatures_counts_one_signature_over_many_bodies(

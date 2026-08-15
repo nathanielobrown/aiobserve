@@ -113,9 +113,9 @@ def test_as_of_defaults_to_today(run_query: QueryRunner) -> None:
 
 def test_since_filters_and_omitting_it_means_the_whole_corpus(run_query: QueryRunner) -> None:
     """`--since` cuts the corpus at a date; with no `--since` there is no cut."""
-    # If six mycelia sessions started on or after 2026-07-15...
+    # If seven mycelia sessions started on or after 2026-07-15...
     since = run_query("sessions", "--project", MYCELIA, "--since", "2026-07-15", "--csv")
-    assert len(since.column("session_id")) == 6
+    assert len(since.column("session_id")) == 7
     # ...then the same query with no `--since` still returns the whole corpus.
     whole = run_query("sessions", "--project", MYCELIA, "--csv")
     assert len(whole.column("session_id")) == MYCELIA_SESSIONS

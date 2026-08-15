@@ -26,7 +26,7 @@ Every line of a transcript is a JSON object with a `type`. `aiobserve.extract.cl
 | `isCompactSummary` | `user` records | The summary written back into the transcript after a compaction. Not a prompt | `tests/fixtures/dup_uuid/`, CC 2.1.211 |
 | `isSidechain` | `user` and `assistant` records | The record belongs to a subagent's stream rather than the main one. In a main transcript it marks delegated work the subagent's own file records better, so those records are skipped. Inside a subagent transcript **every** record carries it, so reading it as an exclusion there leaves the agent turnless | `tests/fixtures/spine/` — main and subagent sides, CC 2.1.221 |
 | `message.content` | `user` records | Either a string or a list of blocks. A block list can hold `text`, `image`, or `tool_result` — a `tool_result` block makes the record plumbing, not a prompt | `tests/fixtures/spine/`, CC 2.1.220 (block form) |
-| `tool_use` block | `assistant` records | One tool the model asked for: `id`, `name`, `input`. Usually one per record, but 23 records of the mycelia corpus hold two or more (scanned 2026-08-07), so a per-record reading undercounts | `tests/fixtures/spine/`, CC 2.1.221 |
+| `tool_use` block | `assistant` records | One tool the model asked for: `id`, `name`, `input`. Usually one per record, but 23 records of the mycelia corpus hold two or more (scanned 2026-08-07), so a per-record reading undercounts | `tests/fixtures/spine/`, CC 2.1.221; `tests/fixtures/parallel_tools/`, CC 2.1.211 — one record of two |
 | `tool_use.input` on a `Skill` call | `assistant` records | Which skill was invoked: `skill`, plus `args` on 81 of the corpus's 326 `Skill` calls (scanned 2026-08-08, across 57 sessions and CC 2.1.195–2.1.221). This is the *invocation*; `attributionSkill` is what was loaded while a reply came back, and the two disagree — a skill reached through a slash command invokes no `Skill` call at all | no fixture holds one; corpus scan only |
 | `tool_result` block | `user` records | What came back, quoting the call's id in `tool_use_id`. `content` is a string or a list of `text`, `image` and `tool_reference` blocks. `is_error` is **absent on success** — 66,653 of the corpus's 154,169 result blocks omit it (scanned 2026-08-07) | `tests/fixtures/spine/`, CC 2.1.221 |
 | `server_tool_use` block | `assistant` records | A tool Anthropic ran server-side rather than Claude Code running it locally. Same fields as `tool_use`. All 45 in the corpus, across 5 sessions, name the `advisor` tool and carry an empty `input` (scanned 2026-08-07) | `tests/fixtures/server_tools/`, CC 2.1.201 |
@@ -78,8 +78,8 @@ The same record is replayed into a resumed session against the plain turn it now
 
 ### A parallel batch's timestamps rank by execution, not by issue
 
-One assistant message can issue several tool calls at once, and Claude Code writes a record per
-call in the order it got round to running them. The records therefore carry different timestamps
+One assistant message can issue several tool calls at once, and Claude Code usually writes a record
+per call in the order it got round to running them. The records therefore carry different timestamps
 for calls the model issued together: of 23,371 multi-call messages in the mycelia corpus, 156 wrote
 one shared timestamp (scanned 2026-08-07). Reading a record's own timestamp as the call's start
 turns queue position into duration.
@@ -88,7 +88,12 @@ So a batch's calls all start at the earliest timestamp in the batch, and carry
 `ToolCall.duration_synthetic` to say the start was assigned rather than measured. A lone call keeps
 its own timestamp and the flag is false.
 
-*Seen in* `tests/fixtures/spine/`, CC 2.1.221 — three calls under `msg_011CdmMjFXDofyYSMxYtXa5n`.
+**The batch is the records, not the calls.** A record can hold several `tool_use` blocks, and those
+calls were issued in one moment rather than ranked — so a message whose calls all sit in one record
+keeps that record's measured start. Counting blocks instead flags a real start as assigned.
+
+*Seen in* `tests/fixtures/spine/`, CC 2.1.221 — three calls under `msg_011CdmMjFXDofyYSMxYtXa5n` — and
+`tests/fixtures/parallel_tools/`, CC 2.1.211, which holds one message of each shape.
 
 ### A server-side call is timed from its own record
 

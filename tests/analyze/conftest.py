@@ -44,33 +44,33 @@ NO_WORK_SESSIONS = (
 # The id the planted agent-run compaction carries, so no first-seen twin can own it.
 PLANTED_COMPACTION = "planted-compaction"
 
-# Measured on 2026-08-08: of the in-window sessions, the ones with any turn or agent run.
-POOL_AT_WHOLE = 10
-POOL_AT_PARTIAL = 5
+# Measured on 2026-08-15: of the in-window sessions, the ones with any turn or agent run.
+POOL_AT_WHOLE = 11
+POOL_AT_PARTIAL = 6
 # Distinct `agent_type`s across the corpus's 7 agent runs — one run each.
 AGENT_TYPES = 7
 
-# Measured on 2026-08-13 by building the store below: 14 mycelia sessions between
+# Measured on 2026-08-15 by building the store below: 15 mycelia sessions between
 # 2026-06-30 and 2026-07-27, in five unevenly filled ISO weeks.
-MYCELIA_SESSIONS = 14
+MYCELIA_SESSIONS = 15
 WEEKS = {
     "2026-W27": 4,
     "2026-W28": 4,
-    "2026-W29": 3,
+    "2026-W29": 4,
     # Two, since `model_only/` — the recording that carries a turn and no api call — landed here.
     "2026-W30": 2,
     "2026-W31": 1,
 }
 # `$as_of` values with a window each side of the corpus: 2026-08-07 opens the trailing 28
-# days at 2026-07-10 and covers 7 sessions; 2026-07-28 opens at 2026-06-30 and covers all 14.
+# days at 2026-07-10 and covers 8 sessions; 2026-07-28 opens at 2026-06-30 and covers all 15.
 AS_OF_PARTIAL = "2026-08-07"
-IN_WINDOW_AT_PARTIAL = 7
+IN_WINDOW_AT_PARTIAL = 8
 AS_OF_WHOLE = "2026-07-28"
 # A third `$as_of`, inside the corpus, so the window's far edge has something to exclude:
 # 2026-07-19 opens at 2026-06-21, before the earliest session, and closes at the end of that
-# day — 11 sessions, the corpus minus the three recorded after it (07-20, 07-21, 07-27).
+# day — 12 sessions, the corpus minus the three recorded after it (07-20, 07-21, 07-27).
 AS_OF_MID = "2026-07-19"
-IN_WINDOW_AT_MID = 11
+IN_WINDOW_AT_MID = 12
 
 
 @dataclass(frozen=True)

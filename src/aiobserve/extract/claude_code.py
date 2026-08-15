@@ -996,9 +996,9 @@ def _tool_calls(
 ) -> list[ToolCall]:
     """Every tool the transcript asked for, paired with the record that answered it.
 
-    A message issuing several calls writes one record per call, in the order Claude Code
-    got round to running them — so the batch shares the earliest of those timestamps and
-    says the start is synthetic, rather than reporting an execution order as a duration.
+    A message issuing several calls usually writes one record per call, in the order Claude
+    Code got round to running them — so the batch shares the earliest of those timestamps
+    and says the start is synthetic, rather than reporting an execution order as a duration.
 
     A server-side call sits in that same stream but is not part of that batch: its record
     is the request itself, so it keeps its own start.
@@ -1011,15 +1011,19 @@ def _tool_calls(
         for block in line.record["message"]["content"]
         if block["type"] in (ContentBlock.TOOL_USE, ContentBlock.SERVER_TOOL_USE)
     ]
-    batches: dict[str, list[datetime]] = {}
+    # A batch is the *records* a message issued its calls from, not the calls: several
+    # `tool_use` blocks in one record were issued together and share that record's real
+    # timestamp, so counting blocks would call a measured start synthetic (both shapes are
+    # recorded — `docs/schema.md`, `tool_use block`).
+    batches: dict[str, dict[int, datetime]] = {}
     for line, block in issued:
         if block["type"] == ContentBlock.TOOL_USE:
             message_id = line.record["message"]["id"]
-            batches.setdefault(message_id, []).append(_required_timestamp(line, session_id))
+            batches.setdefault(message_id, {})[line.line_no] = _required_timestamp(line, session_id)
     calls = []
     for index, (line, block) in enumerate(issued):
         server_side = block["type"] == ContentBlock.SERVER_TOOL_USE
-        batch = batches[line.record["message"]["id"]] if not server_side else []
+        batch = list(batches[line.record["message"]["id"]].values()) if not server_side else []
         result = results.get(block["id"])
         calls.append(
             ToolCall(

@@ -5,7 +5,7 @@ leaves here pin the mechanics a report's realized composition is built from: str
 order, each walks down past what an earlier stratum took, a stratum whose metric runs out
 stops short rather than padding, and the slots nobody used fall through to discovery.
 
-Every quota is bound small — the fixture pool is ten sessions — except the last leaf, which
+Every quota is bound small — the fixture pool is eleven sessions — except the last leaf, which
 pins the production defaults a committed report cites.
 """
 
@@ -50,7 +50,7 @@ COMPACTIONS = "compactions"
 DISCOVERY = "discovery"
 GRILL_ME = "skill:grill-me"
 
-# Quotas small enough that a ten-session pool can show a stratum running out. Each leaf
+# Quotas small enough that an eleven-session pool can show a stratum running out. Each leaf
 # overrides the ones it is about; anything it leaves alone stays off, so the set it asserts
 # on is only the mechanism it names.
 OFF: dict[str, int | str] = {
@@ -102,8 +102,8 @@ def test_the_same_bindings_select_the_same_sessions_however_the_store_was_built(
 
 def test_a_later_stratum_walks_past_what_an_earlier_one_took(run_query: QueryRunner) -> None:
     """A session an earlier stratum took does not spend a later stratum's quota."""
-    # If the cost stratum's four take `ANCESTOR`, one of only two sessions that compacted...
-    picks = _select(run_query, {"cost_quota": 4, "compaction_quota": 1})
+    # If the cost stratum's five take `ANCESTOR`, one of only two sessions that compacted...
+    picks = _select(run_query, {"cost_quota": 5, "compaction_quota": 1})
     assert (COST, ANCESTOR) in picks
     # ...then the compaction stratum walks down to the other one and still meets its quota,
     # rather than reporting a session the cost stratum already accounted for.
@@ -116,7 +116,7 @@ def test_a_ranked_stratum_takes_only_nonzero_sessions_and_stops_short(
     """A stratum whose metric runs out returns fewer sessions instead of padding to quota."""
     # If only two pool sessions hold an error tool call and the quota asks for three...
     picks = _select(run_query, {"error_quota": 3})
-    # ...then the stratum stops at two, and the eight error-free pool sessions carry no
+    # ...then the stratum stops at two, and the error-free rest of the pool carries no
     # `tool-errors` tag: the tag is what a report's realized composition is counted from, and
     # a stratum that padded to quota would make every one of those counts a lie.
     assert [pick for pick in picks if pick[0] == ERRORS] == [
@@ -218,7 +218,7 @@ def test_discovery_passes_over_a_session_with_almost_nothing_in_it(run_query: Qu
     # If discovery is asked for the whole pool with the substance floor at four api calls...
     picks = _select(run_query, {"discovery_quota": 20, "min_discovery_api_calls": 4})
     # ...then it draws the three pool sessions that made at least that many, and passes over
-    # the seven that made one to three. On mycelia's 2026-08-13 window, four of the eight
+    # the rest, which made one to three. On mycelia's 2026-08-13 window, four of the eight
     # discovery draws had gone to sessions of 1, 4, 4 and 9 api calls.
     assert {session for _, session in picks} == {SERVER_TOOLS, SPINE, ANCESTOR}
     assert {stratum for stratum, _ in picks} == {DISCOVERY}
@@ -267,8 +267,8 @@ def test_a_session_whose_turns_made_no_api_call_is_outside_the_pool(
 
 def test_the_selection_window_rides_as_of(run_query: QueryRunner) -> None:
     """Moving the as-of date moves the pool the draw is made from, and nothing else."""
-    # If the same bindings are drawn against a window covering all thirteen sessions and then
-    # one opening mid-corpus...
+    # If the same bindings are drawn against a window covering the whole corpus and then one
+    # opening mid-corpus...
     bindings: dict[str, int | str] = {"cost_quota": 3, "discovery_quota": 20}
     whole = {session for _, session in _select(run_query, bindings)}
     partial = {session for _, session in _select(run_query, bindings, as_of=AS_OF_PARTIAL)}

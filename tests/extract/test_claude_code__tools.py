@@ -27,6 +27,11 @@ REFUSED = "srvtoolu_01KUMaS97sNkE7Z12UW4HMEp"
 ENCRYPTED = "srvtoolu_01TK5pPoxEdDu3g975oMijMg"
 UNANSWERED = "srvtoolu_01FHMDigqBGzPfr9CkXyA91v"
 DELEGATION = "a3b37063695183556"
+# The `parallel_tools/` session, which issued a batch each way: two calls in one record, and
+# two a record apart.
+PARALLEL = "5f4b59fb-a9a8-4ca1-af62-a64b9d0ce515"
+ONE_RECORD = "msg_011Cd6RyHnMi8h4ZAceminTf"
+MANY_RECORDS = "msg_011Cd6SbrBGHDLxr2oKBJZCf"
 
 
 def calls(fixture_source: SourceFactory, directory: str, stem: str) -> dict[str, ToolCall]:
@@ -66,10 +71,10 @@ def test_a_tool_call_carries_its_result(fixture_source: SourceFactory):
 
 
 def test_parallel_calls_share_a_start_and_say_so(fixture_source: SourceFactory):
-    """Calls issued together in one message report a shared, synthetic start.
+    """Calls a message issued a record apart report a shared, synthetic start.
 
-    Claude Code writes each `tool_use` block as its own record, in the order it got round
-    to running them, so per-record timestamps rank a parallel batch by execution order
+    Claude Code usually writes each `tool_use` block as its own record, in the order it got
+    round to running them, so per-record timestamps rank a parallel batch by execution order
     rather than by issue time. The flag is what stops an analysis ranking on that noise.
     """
     # If one assistant message issued three calls...
@@ -85,6 +90,53 @@ def test_parallel_calls_share_a_start_and_say_so(fixture_source: SourceFactory):
     # ...while a message that issued a single call reports its own, real start.
     lone = calls(fixture_source, "spine", SPINE)[LONE]
     assert (lone.duration_synthetic, lone.started_at) == (False, at("2026-08-06T18:41:14.084"))
+
+
+def test_calls_issued_in_one_record_keep_their_measured_start(fixture_source: SourceFactory):
+    """Several `tool_use` blocks in one record are one issue moment, not a queue.
+
+    The other shape a parallel batch takes: 23 records of the mycelia corpus hold two or more
+    `tool_use` blocks (`docs/schema.md`), and one record timestamps all of its calls at once —
+    so nothing was ranked by execution order and nothing is synthetic.
+    """
+    # If one record issued two calls...
+    parallel = calls(fixture_source, "parallel_tools", PARALLEL)
+    together = [call for call in parallel.values() if call.api_call_id == ONE_RECORD]
+
+    # ...then both blocks became calls, the first of them whole...
+    assert together[0] == ToolCall(
+        id="toolu_01KZDHBh9UU4G5BkzFyTgSQR",
+        session_id=PARALLEL,
+        source=MAIN_SOURCE,
+        api_call_id=ONE_RECORD,
+        index=0,
+        name="SendMessage",
+        server_side=False,
+        # ...arguments and answer as recorded, which this fixture's redaction replaced...
+        input=(
+            '{"to": "[redacted]", "summary": "[redacted]", "message": "[redacted]", '
+            '"type": "[redacted]", "recipient": "[redacted]", "content": "[redacted]"}'
+        ),
+        result="[redacted]",
+        offload_file=None,
+        is_error=False,
+        incomplete=False,
+        # ...starting when the record was written, which is when both were issued...
+        started_at=at("2026-07-16T21:17:43.798"),
+        ended_at=at("2026-07-16T21:17:43.851"),
+        duration_synthetic=False,
+        replayed=False,
+    )
+    # ...and its sibling shares that start and that measured flag...
+    assert len(together) == 2
+    assert {call.started_at for call in together} == {at("2026-07-16T21:17:43.798")}
+    assert not any(call.duration_synthetic for call in together)
+
+    # ...while the same session's other batch, spread over two records, is flagged.
+    spread = [call for call in parallel.values() if call.api_call_id == MANY_RECORDS]
+    assert len(spread) == 2
+    assert {call.started_at for call in spread} == {at("2026-07-16T21:25:25.648")}
+    assert all(call.duration_synthetic for call in spread)
 
 
 def test_a_call_with_no_result_is_incomplete(fixture_source: SourceFactory):
