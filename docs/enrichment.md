@@ -58,6 +58,24 @@ There is no resume state on disk. A failed item writes no row, so it is still st
 
 ## How a round runs
 
+```mermaid
+flowchart TD
+    start(["a round starts"]) --> plan["render this level's stale items, skipping any whose child failed"]
+    plan --> canary["describe the first item alone"]
+    canary --> drift{"did the envelope drift?"}
+    drift -->|"Yes"| crash(["crash, one item spent"])
+    drift -->|"No"| fan_out["describe the rest, concurrency at a time"]
+    fan_out --> tripped{"five failures in a row?"}
+    tripped -->|"Yes"| abort["start nothing more; the unsent come back aborted"]
+    tripped -->|"No"| write["write a row per answer in hand"]
+    abort --> write
+    write --> more{"another level, and no Ctrl-C?"}
+    more -->|"Yes"| start
+    more -->|"No"| done(["report what was described, or crash naming every failure"])
+```
+
+Planning happens per round rather than up front, which is what carries a new child description up the tree.
+
 One `claude -p` per item, over a thread pool `--concurrency` wide. Each call carries the level's instructions on `--system-prompt`, the rendered content on stdin, and the answer's shape on `--json-schema`. Tools, settings, MCP and slash commands are all off, and the cwd is a temp directory: a render is untrusted transcript text, and nothing it says may reach a tool or leave a session behind in an extractable project.
 
 The subprocess environment is **constructed, not inherited** — `HOME`, `PATH`, `USER`, and `MAX_THINKING_TOKENS=0`, nothing else. `USER` is load-bearing: the OAuth token lives in the keychain, and without it every call reports itself logged out. A stray `ANTHROPIC_API_KEY` or `ANTHROPIC_BASE_URL` cannot divert the run off the subscription, because it never reaches the child. `preflight` asks its auth question under that same environment, so what it validates is the process shape the items spend under.
