@@ -6,9 +6,9 @@ import datetime as dt
 import os
 import sys
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from dotenv import load_dotenv
 
@@ -46,157 +46,30 @@ from aiobserve.view.app import PORT, serve
 DEFAULT_DB = Path("data") / "traces.duckdb"
 
 
-def main(*argv: str) -> None:
+class Subcommand(NamedTuple):
+    """One `aiobserve` subcommand: what it is for, what it takes, and what runs it."""
+
+    help: str
+    # Declares the subcommand's own arguments on the parser it is handed.
+    arguments: Callable[[argparse.ArgumentParser], None]
+    run: Callable[[argparse.Namespace], None]
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """The whole command line, built from the table at the bottom of this file.
+
+    Public so a test can read the surface `main` dispatches on without running anything.
+    """
     parser = argparse.ArgumentParser(prog="aiobserve", description=__doc__)
     subcommands = parser.add_subparsers(dest="command", required=True)
+    for name, subcommand in SUBCOMMANDS.items():
+        subcommand.arguments(subcommands.add_parser(name, help=subcommand.help))
+    return parser
 
-    sessions = subcommands.add_parser("sessions", help="List the sessions recorded for a project")
-    _add_common_arguments(sessions)
 
-    extract = subcommands.add_parser("extract", help="Extract a project's sessions into DuckDB")
-    _add_common_arguments(extract)
-    extract.add_argument(
-        "--db",
-        type=Path,
-        default=DEFAULT_DB,
-        help=f"Where to write the trace store (default: {DEFAULT_DB})",
-    )
-
-    enrichment = subcommands.add_parser(
-        "enrich", help="Describe the extracted sessions with an AI model"
-    )
-    enrichment.add_argument(
-        "--db", type=Path, default=DEFAULT_DB, help=f"The trace store (default: {DEFAULT_DB})"
-    )
-    enrichment.add_argument(
-        "--project", type=Path, help="Only enrich the sessions recorded for this repository"
-    )
-    enrichment.add_argument(
-        "--model",
-        default=DEFAULT_MODEL,
-        help=f"The model to describe with (default: {DEFAULT_MODEL})",
-    )
-    enrichment.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Say what would be sent and stop, spending nothing "
-        "(creates the empty enrichment tables if absent)",
-    )
-    enrichment.add_argument("--limit", type=int, help="Send at most this many items")
-    enrichment.add_argument(
-        "--concurrency",
-        type=int,
-        default=DEFAULT_CONCURRENCY,
-        help=f"How many `claude` processes run at once (default: {DEFAULT_CONCURRENCY}). "
-        "They spend the same 5-hour allowance this machine's own agents do",
-    )
-
-    otlp = subcommands.add_parser(
-        "export-otlp", help="Ship the store's sessions to an OTLP backend as spans"
-    )
-    otlp.add_argument("project", type=Path, help="Path to the analyzed repository")
-    otlp.add_argument(
-        "--db", type=Path, default=DEFAULT_DB, help=f"The trace store (default: {DEFAULT_DB})"
-    )
-    otlp.add_argument(
-        "--backend",
-        choices=BACKEND_NAMES,
-        default=GENERIC,
-        help="Where to ship, and whose delivery ledger this run reads and writes "
-        f"(default: {GENERIC}, configured by {ENDPOINT_ENV}). A named backend reads its own "
-        f"key variable, and {ENDPOINT_ENV} overrides its endpoint",
-    )
-    otlp.add_argument(
-        "--service-name",
-        help="Send every session to this service instead of one named for its project directory",
-    )
-    otlp.add_argument(
-        "--rate",
-        type=float,
-        default=DEFAULT_RATE,
-        help=f"Spans per second, across the whole run (default: {DEFAULT_RATE:g})",
-    )
-    otlp.add_argument(
-        "--include-text",
-        action="store_true",
-        help="Also send prompts, model text, tool arguments and results — untrusted "
-        "transcript content, published to a third party",
-    )
-    otlp.add_argument(
-        "--max-chars",
-        type=int,
-        default=DEFAULT_MAX_CHARS,
-        help=f"Characters kept per included text field (default: {DEFAULT_MAX_CHARS})",
-    )
-    otlp.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Count what a send would ship and send nothing. Needs no backend and no key",
-    )
-
-    library = subcommands.add_parser("query", help="Run a library query against the trace store")
-    library.add_argument("name", help="The query to run — a file in analyze/queries/")
-    library.add_argument(
-        "--db", type=Path, default=DEFAULT_DB, help=f"The trace store (default: {DEFAULT_DB})"
-    )
-    library.add_argument(
-        "--project", type=Path, help="The analyzed repository — required by a corpus query"
-    )
-    library.add_argument(
-        "--since",
-        type=dt.date.fromisoformat,
-        help="Only count sessions started on or after this date (default: the whole corpus)",
-    )
-    library.add_argument(
-        "--as-of",
-        type=dt.date.fromisoformat,
-        default=dt.date.today(),
-        help="The date the trailing window is measured back from (default: today)",
-    )
-    library.add_argument(
-        "--param",
-        action="append",
-        default=[],
-        metavar="KEY=VALUE",
-        help="Bind one of the query's parameters, overriding its production default",
-    )
-    library.add_argument(
-        "--csv", action="store_true", help="Write CSV to stdout, commentary to stderr"
-    )
-
-    viewer = subcommands.add_parser("view", help="Read the trace store in a local web viewer")
-    viewer.add_argument(
-        "--db", type=Path, default=DEFAULT_DB, help=f"The trace store (default: {DEFAULT_DB})"
-    )
-    viewer.add_argument(
-        "--port", type=int, default=PORT, help=f"The port to serve on (default: {PORT})"
-    )
-    viewer.add_argument(
-        "--no-browser", action="store_true", help="Do not open a browser on startup"
-    )
-
-    args = parser.parse_args(argv or None)
-    if args.command == "view":
-        serve(args.db, args.port, open_browser=not args.no_browser)
-        return
-    if args.command == "query":
-        _query(args)
-        return
-    if args.command == "enrich":
-        _enrich(args)
-        return
-    if args.command == "export-otlp":
-        _export_otlp(args)
-        return
-    if args.command == "extract":
-        extractor = ClaudeCodeExtractor(projects_root=args.projects_root)
-        with DuckDbExporter(args.db) as exporter:
-            result = refresh(args.project, extractor=extractor, exporter=exporter)
-        print(f"{len(result.extracted)} session(s) extracted, {len(result.skipped)} unchanged")
-        return
-    for session in find_sessions(args.project, projects_root=args.projects_root):
-        subagents = len(session.subagent_transcripts())
-        print(f"{session.id}\t{subagents} subagent(s)\t{session.transcript}")
+def main(*argv: str) -> None:
+    args = build_parser().parse_args(argv or None)
+    SUBCOMMANDS[args.command].run(args)
 
 
 def build_client(model: str, *, concurrency: int) -> BatchClient:
@@ -205,6 +78,41 @@ def build_client(model: str, *, concurrency: int) -> BatchClient:
     The one place a real client is built, so a test can put a fake in its place.
     """
     return CliClient(model, concurrency=concurrency)
+
+
+def _sessions(args: argparse.Namespace) -> None:
+    """List a project's transcripts on disk, with the subagents each session spawned."""
+    for session in find_sessions(args.project, projects_root=args.projects_root):
+        subagents = len(session.subagent_transcripts())
+        print(f"{session.id}\t{subagents} subagent(s)\t{session.transcript}")
+
+
+def _extract(args: argparse.Namespace) -> None:
+    """Parse a project's transcripts into the trace store, skipping what has not changed."""
+    extractor = ClaudeCodeExtractor(projects_root=args.projects_root)
+    with DuckDbExporter(args.db) as exporter:
+        result = refresh(args.project, extractor=extractor, exporter=exporter)
+    print(f"{len(result.extracted)} session(s) extracted, {len(result.skipped)} unchanged")
+
+
+def _extract_arguments(subcommand: argparse.ArgumentParser) -> None:
+    _add_discovery_arguments(subcommand)
+    _add_db_argument(subcommand, "Where to write the trace store")
+
+
+def _view(args: argparse.Namespace) -> None:
+    """Serve the store in a local browser until interrupted."""
+    serve(args.db, args.port, open_browser=not args.no_browser)
+
+
+def _view_arguments(subcommand: argparse.ArgumentParser) -> None:
+    _add_db_argument(subcommand, "The trace store")
+    subcommand.add_argument(
+        "--port", type=int, default=PORT, help=f"The port to serve on (default: {PORT})"
+    )
+    subcommand.add_argument(
+        "--no-browser", action="store_true", help="Do not open a browser on startup"
+    )
 
 
 def _query(args: argparse.Namespace) -> None:
@@ -238,6 +146,35 @@ def _query(args: argparse.Namespace) -> None:
         writer.writerows(result.rows)
         return
     print(_table(result))
+
+
+def _query_arguments(subcommand: argparse.ArgumentParser) -> None:
+    subcommand.add_argument("name", help="The query to run — a file in analyze/queries/")
+    _add_db_argument(subcommand, "The trace store")
+    subcommand.add_argument(
+        "--project", type=Path, help="The analyzed repository — required by a corpus query"
+    )
+    subcommand.add_argument(
+        "--since",
+        type=dt.date.fromisoformat,
+        help="Only count sessions started on or after this date (default: the whole corpus)",
+    )
+    subcommand.add_argument(
+        "--as-of",
+        type=dt.date.fromisoformat,
+        default=dt.date.today(),
+        help="The date the trailing window is measured back from (default: today)",
+    )
+    subcommand.add_argument(
+        "--param",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Bind one of the query's parameters, overriding its production default",
+    )
+    subcommand.add_argument(
+        "--csv", action="store_true", help="Write CSV to stdout, commentary to stderr"
+    )
 
 
 def _table(result: Result) -> str:
@@ -277,6 +214,32 @@ def _enrich(args: argparse.Namespace) -> None:
         client = build_client(args.model, concurrency=args.concurrency)
         report = enrich(store, client, project=project, limit=args.limit)
     print(f"{report.enriched} item(s) enriched, {report.swept} orphaned row(s) swept")
+
+
+def _enrich_arguments(subcommand: argparse.ArgumentParser) -> None:
+    _add_db_argument(subcommand, "The trace store")
+    subcommand.add_argument(
+        "--project", type=Path, help="Only enrich the sessions recorded for this repository"
+    )
+    subcommand.add_argument(
+        "--model",
+        default=DEFAULT_MODEL,
+        help=f"The model to describe with (default: {DEFAULT_MODEL})",
+    )
+    subcommand.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Say what would be sent and stop, spending nothing "
+        "(creates the empty enrichment tables if absent)",
+    )
+    subcommand.add_argument("--limit", type=int, help="Send at most this many items")
+    subcommand.add_argument(
+        "--concurrency",
+        type=int,
+        default=DEFAULT_CONCURRENCY,
+        help=f"How many `claude` processes run at once (default: {DEFAULT_CONCURRENCY}). "
+        "They spend the same 5-hour allowance this machine's own agents do",
+    )
 
 
 def _export_otlp(args: argparse.Namespace) -> None:
@@ -323,6 +286,46 @@ def _census_otlp(args: argparse.Namespace, text: TextPolicy) -> None:
     print(f"{counts.sessions} session(s) and {counts.spans} span(s) would ship — nothing sent")
 
 
+def _export_otlp_arguments(subcommand: argparse.ArgumentParser) -> None:
+    subcommand.add_argument("project", type=Path, help="Path to the analyzed repository")
+    _add_db_argument(subcommand, "The trace store")
+    subcommand.add_argument(
+        "--backend",
+        choices=BACKEND_NAMES,
+        default=GENERIC,
+        help="Where to ship, and whose delivery ledger this run reads and writes "
+        f"(default: {GENERIC}, configured by {ENDPOINT_ENV}). A named backend reads its own "
+        f"key variable, and {ENDPOINT_ENV} overrides its endpoint",
+    )
+    subcommand.add_argument(
+        "--service-name",
+        help="Send every session to this service instead of one named for its project directory",
+    )
+    subcommand.add_argument(
+        "--rate",
+        type=float,
+        default=DEFAULT_RATE,
+        help=f"Spans per second, across the whole run (default: {DEFAULT_RATE:g})",
+    )
+    subcommand.add_argument(
+        "--include-text",
+        action="store_true",
+        help="Also send prompts, model text, tool arguments and results — untrusted "
+        "transcript content, published to a third party",
+    )
+    subcommand.add_argument(
+        "--max-chars",
+        type=int,
+        default=DEFAULT_MAX_CHARS,
+        help=f"Characters kept per included text field (default: {DEFAULT_MAX_CHARS})",
+    )
+    subcommand.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Count what a send would ship and send nothing. Needs no backend and no key",
+    )
+
+
 def _report_plan(planned: Sequence[PlannedItem], model: str) -> None:
     """Say what a run would send and what it would cost, per level and in total.
 
@@ -339,7 +342,8 @@ def _report_plan(planned: Sequence[PlannedItem], model: str) -> None:
     )
 
 
-def _add_common_arguments(subcommand: argparse.ArgumentParser) -> None:
+def _add_discovery_arguments(subcommand: argparse.ArgumentParser) -> None:
+    """What a subcommand that reads transcripts off disk takes: where to look, and for what."""
     subcommand.add_argument("project", type=Path, help="Path to the analyzed repository")
     subcommand.add_argument(
         "--projects-root",
@@ -347,3 +351,47 @@ def _add_common_arguments(subcommand: argparse.ArgumentParser) -> None:
         default=DEFAULT_PROJECTS_ROOT,
         help=f"Where Claude Code keeps transcripts (default: {DEFAULT_PROJECTS_ROOT})",
     )
+
+
+def _add_db_argument(subcommand: argparse.ArgumentParser, description: str) -> None:
+    """The trace store flag, defaulted in one place — `description` says read or write."""
+    subcommand.add_argument(
+        "--db", type=Path, default=DEFAULT_DB, help=f"{description} (default: {DEFAULT_DB})"
+    )
+
+
+# Every subcommand, in the order `--help` lists them. A project is a positional argument where
+# it names the corpus itself — transcripts to discover, or a store's sessions to ship — and
+# `--project` where it narrows a store the subcommand would otherwise read whole.
+SUBCOMMANDS: dict[str, Subcommand] = {
+    "sessions": Subcommand(
+        help="List the sessions recorded for a project",
+        arguments=_add_discovery_arguments,
+        run=_sessions,
+    ),
+    "extract": Subcommand(
+        help="Extract a project's sessions into DuckDB",
+        arguments=_extract_arguments,
+        run=_extract,
+    ),
+    "enrich": Subcommand(
+        help="Describe the extracted sessions with an AI model",
+        arguments=_enrich_arguments,
+        run=_enrich,
+    ),
+    "export-otlp": Subcommand(
+        help="Ship the store's sessions to an OTLP backend as spans",
+        arguments=_export_otlp_arguments,
+        run=_export_otlp,
+    ),
+    "query": Subcommand(
+        help="Run a library query against the trace store",
+        arguments=_query_arguments,
+        run=_query,
+    ),
+    "view": Subcommand(
+        help="Read the trace store in a local web viewer",
+        arguments=_view_arguments,
+        run=_view,
+    ),
+}
