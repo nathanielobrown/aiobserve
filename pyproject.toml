@@ -72,6 +72,13 @@ testpaths = ["tests"]
 # This is a backstop; individual waits carry their own deadlines.
 timeout = 120
 addopts = "--strict-markers --durations=10"
+filterwarnings = [
+  # Starlette 1.4's test client prefers `httpx2` and warns at import when only `httpx` is
+  # installed (starlette/testclient.py:48). Nothing we call is deprecated — the viewer and the
+  # OTLP exporter ship httpx in production — so this says only that the test client would like
+  # a second HTTP stack in the dev environment. Drop this line if we ever install one.
+  "ignore:Using `httpx` with `starlette.testclient` is deprecated:UserWarning",
+]
 markers = [
   "slow: earned its runtime (real subprocess, network, or large corpus) — needs a why-comment",
   "live: opts in to a real remote call (Anthropic API, an OTLP backend) — billed, so it needs an env var as well",
