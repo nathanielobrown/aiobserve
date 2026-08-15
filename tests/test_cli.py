@@ -15,8 +15,9 @@ from aiobserve import cli
 from aiobserve.cli import DEFAULT_DB
 from aiobserve.enrich.client import DEFAULT_CONCURRENCY, DEFAULT_MODEL
 from aiobserve.export.otlp import DEFAULT_MAX_CHARS, DEFAULT_RATE, GENERIC
-from aiobserve.sessions import DEFAULT_PROJECTS_ROOT
+from aiobserve.sessions import DEFAULT_PROJECTS_ROOT, encode_project_path
 from aiobserve.view.app import PORT
+from tests.test_sessions import make_projects_root
 
 PROJECT = Path("repos/mycelia")
 
@@ -116,6 +117,29 @@ def test_the_store_flag_is_one_flag_wherever_it_appears() -> None:
         parsed = cli.build_parser().parse_args([name, *required, "--db", "elsewhere.duckdb"])
         # A `Path`, not the string argparse hands back untyped.
         assert parsed.db == Path("elsewhere.duckdb"), name
+
+
+def test_the_sessions_command_lists_the_transcripts_it_found(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`aiobserve sessions` prints a line per session: its id, its subagents, and its path.
+
+    The subcommand that reads no store — it walks the projects root instead — so nothing else
+    drives its handler and a rewiring of it would otherwise land silently.
+    """
+    # If a project's directory holds two sessions, one of which spawned a subagent...
+    project = Path("/Users/nob/repos/mycelia")
+    root = make_projects_root(tmp_path, project, ["a-first", "b-second"])
+    directory = root / encode_project_path(project)
+    (directory / "a-first" / "subagents").mkdir(parents=True)
+    (directory / "a-first" / "subagents" / "agent-aaa.jsonl").write_text("")
+    # ...then the listing names both, in discovery order, with the count of subagent
+    # transcripts under each and the path a reader would open next.
+    cli.main("sessions", str(project), "--projects-root", str(root))
+    assert capsys.readouterr().out.splitlines() == [
+        f"a-first\t1 subagent(s)\t{directory / 'a-first.jsonl'}",
+        f"b-second\t0 subagent(s)\t{directory / 'b-second.jsonl'}",
+    ]
 
 
 def test_the_viewer_opens_a_browser_unless_the_run_says_not_to(
