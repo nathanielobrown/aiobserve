@@ -47,7 +47,7 @@ Claude Code writes one JSON-per-line transcript per session:
 ~/.claude/projects/<encoded-cwd>/<session-id>/subagents/agent-<id>.jsonl
 ```
 
-`<encoded-cwd>` is the session's working directory with each `/` replaced by `-`, so `~/repos/mycelia` becomes `-Users-nob-repos-mycelia`. A subagent's work is part of its session but recorded separately, so any accounting that ignores those files undercounts.
+`<encoded-cwd>` is the session's working directory with each `/` replaced by `-`, so `~/repos/mycelia` becomes `-Users-nob-repos-mycelia`. A subagent's work is part of its session but recorded separately, so any accounting that ignores those files undercounts. A worktree cut from the repository records under its own path, and every command that takes a project matches those sessions too.
 
 ```bash
 uv run aiobserve sessions ~/repos/mycelia
