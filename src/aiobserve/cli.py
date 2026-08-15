@@ -283,7 +283,13 @@ def _census_otlp(args: argparse.Namespace, text: TextPolicy) -> None:
         )
     finally:
         connection.close()
-    print(f"{counts.sessions} session(s) and {counts.spans} span(s) would ship — nothing sent")
+    # The compaction count is broken out because it is the one number the store cannot be
+    # queried for: `live_compactions` keeps the copies a fork inherited and the mapper's
+    # replay rule drops them.
+    print(
+        f"{counts.sessions} session(s) and {counts.spans} span(s) would ship, "
+        f"{counts.compactions} of them compactions — nothing sent"
+    )
 
 
 def _export_otlp_arguments(subcommand: argparse.ArgumentParser) -> None:

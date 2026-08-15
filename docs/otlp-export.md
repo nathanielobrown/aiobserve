@@ -24,7 +24,7 @@ Spans leave at 300 per second (`--rate`). The importer this replaces measured a 
 aiobserve export-otlp /path/to/repo --dry-run
 ```
 
-`--dry-run` shapes every session and says how many spans a send would put on the wire. It needs no backend and no key, opens the store read-only, and writes nothing. Use it to size a backfill against a backend's ingest quota.
+`--dry-run` shapes every session and says how many spans a send would put on the wire, and how many of them are compactions — the one count no query of the store reproduces, since `live_compactions` keeps the copies a fork inherited and the mapper drops them. It needs no backend and no key, opens the store read-only, and writes nothing. Use it to size a backfill against a backend's ingest quota.
 
 It is also a check: a session whose duplicated compactions the replay rule cannot separate crashes the count rather than reporting a number the send would not match.
 

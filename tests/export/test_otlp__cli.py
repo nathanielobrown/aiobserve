@@ -159,17 +159,31 @@ def test_a_dry_run_counts_without_a_backend(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """`--dry-run` says what a send would ship, and needs neither a key nor a send."""
-    # If the store is counted rather than shipped...
+    # If one compaction is planted on a recorded session — invented, because neither session
+    # in this store compacted, and a compaction count of zero would prove nothing about the
+    # line that reports it...
+    planted = open_trace_store(store_path, read_only=False)
+    planted.execute(
+        "INSERT INTO compactions"
+        " SELECT 'planted-compaction', id, 'main', started_at, 'auto', 100, 10, 5"
+        " FROM sessions LIMIT 1"
+    )
+    planted.close()
+    # ...and the store is counted rather than shipped...
     cli.main("export-otlp", MYCELIA, "--db", str(store_path), "--dry-run")
-    # ...then the printed count is the mapper's own, session for session and span for span...
+    # ...then the printed count is the mapper's own, session for session and span for span,
+    # down to the compactions among those spans — the one number no query reproduces, since
+    # the replay rule that drops a fork's inherited copies lives in the mapper...
     connection = open_trace_store(store_path, read_only=True)
     source = StoreSource(connection)
     counted = census([source.extract(session) for session in source.sessions(Path(MYCELIA))])
     connection.close()
-    assert (
-        capsys.readouterr().out.strip()
-        == f"{counted.sessions} session(s) and {counted.spans} span(s) would ship — nothing sent"
+    assert capsys.readouterr().out.strip() == (
+        f"{counted.sessions} session(s) and {counted.spans} span(s) would ship, "
+        f"{counted.compactions} of them compactions — nothing sent"
     )
+    # ...which the corpus has some of, so the line is a number rather than a zero...
+    assert counted.compactions > 0
     # ...and the run reached no backend and refused nothing for want of a key: a dry run is
     # what an operator does *before* they have one. It leaves the store as it found it,
     # without even the ledger table an export creates, and never takes the write lock.
