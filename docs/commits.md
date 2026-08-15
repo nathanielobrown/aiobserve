@@ -20,6 +20,7 @@ How to write a commit in this repo. Branch from `origin/main` (`git switch -c <n
   - ⚙️ configuration changes
   - 🛠️ tooling (linters, formatters, typecheckers, scripts, AI guidance, …)
   - 🔒 security
+- The list is closed. Two Gitmoji habits slip past it: ♻️ is 🧹 here, and 📝 is 📚
 
 ## Hygiene
 
