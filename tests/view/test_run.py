@@ -119,6 +119,24 @@ def test_a_fork_is_its_parents_child_and_has_no_children_of_its_own(client: Test
     assert values(child, "data-child") == []
 
 
+def test_the_run_page_cites_every_query_it_ran(client: TestClient) -> None:
+    """The run page's footer holds one re-runnable line per query behind it."""
+    page = client.get(f"/session/{SPINE}/run/{SPINE_RUN}").text
+    # The run's own thread is read at the run id rather than at the main thread — that
+    # substitution is the whole difference between this page and the session page, so the
+    # citations are where it has to show. `view_runs` is the exception: the trail above the
+    # run and the chips under it come from the session's whole set of links.
+    assert fields(page, "id", "citation") == {
+        "view_run_header": f"-- queries/view_run_header.sql session_id={SPINE} run_id={SPINE_RUN}",
+        "run_digest": f"-- queries/run_digest.sql session_id={SPINE} source={SPINE_RUN}",
+        "view_runs": f"-- queries/view_runs.sql session_id={SPINE}",
+        "view_compactions": f"-- queries/view_compactions.sql session_id={SPINE}"
+        f" source={SPINE_RUN}",
+        "view_turn_records": f"-- queries/view_turn_records.sql session_id={SPINE}"
+        f" source={SPINE_RUN}",
+    }
+
+
 def test_a_run_page_links_back_to_the_session_and_to_its_children(client: TestClient) -> None:
     """Every id the page names is a link a reader can follow."""
     page = client.get(f"/session/{SPINE}/run/{SPINE_RUN}").text

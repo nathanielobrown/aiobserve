@@ -25,6 +25,7 @@ from aiobserve.view.listing import (
 from tests.conftest import (
     ANCESTOR,
     DENSE_CALL,
+    DENSE_CALL_TURN,
     DENSE_TOOL,
     DENSE_TURN,
     DENSE_TURN_CALL,
@@ -35,6 +36,7 @@ from tests.conftest import (
     MYCELIA,
     RESUME,
     SPINE,
+    SPINE_RUN,
 )
 from tests.view.conftest import MISSING, Planter, fields, inside, one, values
 
@@ -326,6 +328,23 @@ def test_the_session_header_holds_what_the_store_says_about_it(
     assert header["turns"] == str(turns)
     assert header["agent_runs"] == str(agent_runs)
     assert header["cost_usd"] == money(cost)
+
+
+def test_the_session_page_cites_every_query_it_ran(client: TestClient) -> None:
+    """The session page's footer holds one re-runnable line per query behind it."""
+    # If the page is asked for at a cursor and a size of its own, so the paging in the
+    # citation is this request's rather than the query file's default...
+    page = client.get(f"/session/{SPINE}", params={"after": 0, "turns": 3}).text
+    # ...then every query the page ran is cited, keyed by the session, and the ones that read
+    # a single thread say which — the main thread, on a session page. Nothing else is listed:
+    # `view_enrichment` never ran, because this store holds no enrichment tables to read.
+    assert fields(page, "id", "citation") == {
+        "view_session_header": f"-- queries/view_session_header.sql session_id={SPINE}",
+        "session_digest": f"-- queries/session_digest.sql session_id={SPINE} after=0 limit=3",
+        "view_runs": f"-- queries/view_runs.sql session_id={SPINE}",
+        "view_compactions": f"-- queries/view_compactions.sql session_id={SPINE} source={MAIN}",
+        "view_turn_records": f"-- queries/view_turn_records.sql session_id={SPINE} source={MAIN}",
+    }
 
 
 def test_the_timeline_is_the_sessions_turns_in_order(
@@ -1012,6 +1031,62 @@ def test_a_per_value_fragment_returns_the_one_value_it_names(
     # ...and no sibling of the same call rode along with it.
     for other in siblings:
         assert other == DENSE_TOOL or other not in served
+
+
+def test_a_fragment_cites_the_query_that_fetched_it(client: TestClient) -> None:
+    """A fragment carries its own query and bindings, whole pages and nested lists alike.
+
+    A fragment arrives on a page that has already been served, so it cannot ride the footer
+    the pages share: each one carries the line itself.
+    """
+    # If a page of one turn's api calls is fetched at sizes of its own...
+    turn = client.get(
+        f"/fragment/turn/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL_TURN}",
+        params={"calls": 2, "tools": 3},
+    ).text
+    keyed = f"session_id={FORK_ORIGIN} source={FORK_ORIGIN_RUN}"
+    # ...then that call carries two lines: the query that fetched the call, at this request's
+    # page, and — for the tool list nested under it — the second query those rows came from,
+    # bound to the one call they hang off rather than to the turn above them.
+    assert inside(turn, "data-api-call", DENSE_CALL, "data-query") == [
+        f"-- queries/view_turn_calls.sql {keyed} turn_id={DENSE_CALL_TURN}"
+        f" after={queries.FIRST_PAGE} page_calls=2",
+        f"-- queries/view_call_tools.sql {keyed} api_call_id={DENSE_CALL}"
+        f" after={queries.FIRST_PAGE} page_tools=3",
+    ]
+    # The same list fetched on its own — what the "+N more" asks for — cites the same query
+    # at the cursor and size it was asked at, so a reader re-runs the page they are looking at.
+    tools = client.get(
+        f"/fragment/tools/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}",
+        params={"after": 1, "tools": 2},
+    ).text
+    assert values(tools, "data-query") == [
+        f"-- queries/view_call_tools.sql {keyed} api_call_id={DENSE_CALL} after=1 page_tools=2"
+    ]
+    # And a whole-value fragment, which takes no paging at all, cites the keys it was fetched
+    # by. All four routes hand one shared seam their own keys, so each is here: a seam pinned
+    # through `tool` alone would still let another route cite a key it was not fetched by.
+    for url, expected in (
+        (
+            f"/fragment/text/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}",
+            f"-- queries/view_call_text.sql {keyed} api_call_id={DENSE_CALL}",
+        ),
+        (
+            f"/fragment/thinking/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}",
+            f"-- queries/view_call_thinking.sql {keyed} api_call_id={DENSE_CALL}",
+        ),
+        (
+            f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}",
+            f"-- queries/view_tool_value.sql {keyed} tool_call_id={DENSE_TOOL}",
+        ),
+        # The record route keys on a line number rather than an id. Fetched off a subagent
+        # thread at a line past the first, so neither key can be a constant the fixture hides.
+        (
+            f"/fragment/record/{SPINE}/{SPINE_RUN}/2",
+            f"-- queries/view_record.sql session_id={SPINE} source={SPINE_RUN} line_no=2",
+        ),
+    ):
+        assert values(client.get(url).text, "data-query") == [expected], url
 
 
 def test_a_fragment_naming_nothing_is_a_404(client: TestClient) -> None:

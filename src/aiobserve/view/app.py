@@ -15,7 +15,7 @@ import socket
 import webbrowser
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import duckdb
 import uvicorn
@@ -82,6 +82,17 @@ STATIC = _PACKAGE / "static"
 # viewer renders text a transcript wrote, so the escaping is the first defence and this is
 # the second.
 CSP = "default-src 'self'"
+
+
+class ToolCalls(NamedTuple):
+    """One page of tool calls and the query line that produced it.
+
+    The citation travels with the rows because the list is rendered twice — nested under a
+    call and served on its own — and a page cites what it ran.
+    """
+
+    page: Paged
+    citation: str
 
 
 def checked(size: int, ceiling: int) -> int:
@@ -526,16 +537,21 @@ def build_app(db_path: Path) -> FastAPI:
         keyed: Mapping[str, ParamValue],
         after: int,
         size: int,
-    ) -> Paged:
+    ) -> ToolCalls:
         """One page of the tool calls under one api call — the nested list and its "+N more".
 
-        The same query and the same page shape whether it arrives inline under a call or as
-        the continuation the indicator fetches, so the two can never disagree about the set.
+        The same query, the same page shape and the same citation whether the list arrives
+        inline under a call or as the continuation the indicator fetches, so the two can
+        never disagree about the set or about what produced it.
         """
-        return paged(
-            page_rows(connection, Fragment.CALL_TOOLS, **keyed, after=after, page_tools=size),
-            "matched_tool_calls",
-            "tool_index",
+        bound = dict(keyed) | {"after": after, "page_tools": size}
+        return ToolCalls(
+            paged(
+                page_rows(connection, Fragment.CALL_TOOLS, **bound),
+                "matched_tool_calls",
+                "tool_index",
+            ),
+            queries.citation(Fragment.CALL_TOOLS, bound),
         )
 
     @app.get("/fragment/turn/{session_id}/{source}/{turn_id}")
@@ -616,7 +632,7 @@ def build_app(db_path: Path) -> FastAPI:
             "api_call_id": api_call_id,
         }
         with open_store(resolved) as connection:
-            page = tools_under(connection, keyed, after, tools)
+            under = tools_under(connection, keyed, after, tools)
         return templates.TemplateResponse(
             request,
             "fragments/tools.html",
@@ -624,11 +640,9 @@ def build_app(db_path: Path) -> FastAPI:
                 "session_id": session_id,
                 "source": source,
                 "api_call_id": api_call_id,
-                "page": page,
+                "page": under.page,
                 "tools": tools,
-                "citation": queries.citation(
-                    Fragment.CALL_TOOLS, keyed | {"after": after, "page_tools": tools}
-                ),
+                "citation": under.citation,
             },
         )
 

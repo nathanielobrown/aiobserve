@@ -171,6 +171,13 @@ def test_every_query_file_has_a_manifest_entry() -> None:
     assert sorted(QUERIES) == NAMES
 
 
+def test_a_citation_with_nothing_bound_ends_at_the_query_file() -> None:
+    """A citation is a line someone pastes into a report, so it never trails whitespace."""
+    # Every shipped query resolves at least one binding, so this is the contract for a caller
+    # that composes its own — the viewer builds citations from what it bound, not a manifest.
+    assert queries.citation("sessions", {}) == "-- queries/sessions.sql"
+
+
 @pytest.mark.parametrize("name", NAMES)
 def test_the_manifest_declares_exactly_the_parameters_the_sql_uses(name: str) -> None:
     """No parameter goes unbound, and no manifest entry describes one that is gone."""

@@ -73,8 +73,14 @@ def test_a_citation_tuple_maps_to_a_working_url(
     # The cited record is the first row of the page, under the anchor the URL fragment names...
     assert values(response.text, "data-record")[0] == str(line_no)
     assert f'id="L{line_no}"' in response.text
-    # ...and the row says which kind of record it is, so a citation reads in place.
+    # ...the row says which kind of record it is, so a citation reads in place...
     assert fields(response.text, "data-record", str(line_no))["type"] == kind
+    # ...and the page cites the query it ran, at this request's cursor and the size it took
+    # by default, so a reader can re-run what produced the rows around the cited one.
+    assert fields(response.text, "id", "citation") == {
+        "view_records": f"-- queries/view_records.sql session_id={session_id} source={source}"
+        f" after={line_no - 1} page_records={bounds.RECORDS.default}"
+    }
 
 
 def test_a_record_row_shows_a_preview_and_the_length_it_was_cut_from(

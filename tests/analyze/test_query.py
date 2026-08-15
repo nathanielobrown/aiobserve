@@ -93,12 +93,13 @@ def test_the_citation_names_the_query_file_and_every_resolved_binding(
     # If a corpus query runs with an explicit `--as-of`...
     table = run_query("sessions", "--project", MYCELIA, "--as-of", AS_OF_PARTIAL)
     # ...then the citation heads the table, naming the file and every resolved binding —
-    # `$as_of` as its date, because a citation a reader cannot rebind is not a citation.
+    # `$as_of` as its date, and the `--since` the caller never passed as NULL rather than
+    # dropped, because a citation a reader cannot paste back is not a citation.
     citation = table.stdout.splitlines()[0]
-    assert "queries/sessions.sql" in citation
-    assert f"project={MYCELIA}" in citation
-    assert f"as_of={AS_OF_PARTIAL}" in citation
-    assert f"window_days={queries.WINDOW_DAYS}" in citation
+    assert citation == (
+        f"-- queries/sessions.sql project={MYCELIA} since=NULL"
+        f" as_of={AS_OF_PARTIAL} window_days={queries.WINDOW_DAYS}"
+    )
     # ...and under `--csv` the same line moves to stderr, leaving stdout machine-readable.
     piped = run_query("sessions", "--project", MYCELIA, "--as-of", AS_OF_PARTIAL, "--csv")
     assert citation in piped.stderr

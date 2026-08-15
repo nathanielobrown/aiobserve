@@ -45,7 +45,9 @@
 
   {% if row.tool_calls %}
   <div class="tools" data-tools="{{ row.api_call_id }}">
-    {% with page = under[row.api_call_id], api_call_id = row.api_call_id %}
+    {# The nested list cites its own query, not the turn's: `citation` is rebound here. #}
+    {% with page = under[row.api_call_id].page, api_call_id = row.api_call_id,
+            citation = under[row.api_call_id].citation %}
     {% include "fragments/tools.html" %}
     {% endwith %}
   </div>

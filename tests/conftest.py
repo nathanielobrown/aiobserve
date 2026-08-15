@@ -72,6 +72,8 @@ SIBLING_SESSION = "4b443ab7-98f8-4c1d-859f-9bdcafbabdd3"
 DENSE_TURN = "55309e59-0fae-4ef1-9251-877e27487bda"
 DENSE_TURN_CALL = "msg_011Ccs78BfVLQfyQqhkxnpkm"
 DENSE_CALL = "msg_011CdFxfStgUUn3Q59b4RFii"
+# The turn `DENSE_CALL` was made in, so a fragment of that turn nests the dense tool list.
+DENSE_CALL_TURN = "33438141-776f-4e1e-9bc5-e5d85df18d22"
 DENSE_TOOL = "toolu_015wiqbosE2nUYZBYdd9urjA"
 
 # `ANCESTOR` is the session `RESUME` resumed, and one of the two pool sessions that compacted.

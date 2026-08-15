@@ -1,6 +1,6 @@
 {# One page of the tool calls under one api call. Rendered inline under a call and served on
    its own to the "+N more" that pages the rest — one template, so the two agree. #}
-<ul class="tool-calls">
+<ul class="tool-calls" data-query="{{ citation }}">
   {% for row in page.rows %}
   <li data-tool-index="{{ row.tool_index }}" data-tool-call="{{ row.tool_call_id }}"
       class="{{ 'error' if row.is_error else '' }}">

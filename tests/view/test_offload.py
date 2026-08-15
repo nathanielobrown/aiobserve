@@ -42,17 +42,28 @@ def test_an_offloaded_result_is_served_in_chunks_that_reassemble_it(
     # Walking from the start, taking the offset each page hands back...
     read = ""
     after = 0
+    cited: list[dict[str, str]] = []
     for _ in range(4):
         page = client.get(url, params={"after": after, "size": 64})
         assert page.status_code == 200
         chunk = fields(page.text, "data-offload", OFFLOAD_FILE)["content"]
         read += chunk
+        cited.append(fields(page.text, "id", "citation"))
         following = values(page.text, "data-more-offload")
         if not following:
             break
         after = int(following[0])
     else:
         raise AssertionError("the offload never ran out of chunks")
+    # ...cites one query per chunk, each at the offset that chunk was cut at rather than at
+    # the file's start — a citation that named only the file would reproduce the wrong chunk.
+    assert cited == [
+        {
+            "view_offload": f"-- queries/view_offload.sql session_id={CONFIG_ONLY}"
+            f" name={OFFLOAD_FILE} after_chars={offset} chunk_chars=64"
+        }
+        for offset in (0, 64, 128)
+    ]
     # ...reassembles the file. Compared with whitespace collapsed, because the HTML reader
     # strips each chunk it lifts and a chunk boundary can land inside a run of spaces — what
     # this leaf is about is the partition, not the `pre` the browser renders.
