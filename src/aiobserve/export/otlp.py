@@ -191,6 +191,10 @@ class TimelessSessionError(Exception):
     """A session with no recorded times reached the mapper, which cannot time its root."""
 
 
+class PlacelessSessionError(Exception):
+    """A session with no project directory reached the exporter, which cannot name a service."""
+
+
 def _root_span(
     trace: SessionTrace, children: list[trace_pb2.Span], text: TextPolicy
 ) -> trace_pb2.Span:
@@ -830,7 +834,7 @@ class OtlpExporter:
         dataset per project; `--service-name` overrides it for a one-off run.
         """
         if self.service_name is None and session.project_dir is None:
-            raise TimelessSessionError(
+            raise PlacelessSessionError(
                 f"Session {session.id} records no project_dir, so it has no service name. "
                 f"The source filter excludes those, so this is schema drift."
             )

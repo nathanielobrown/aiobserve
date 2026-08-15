@@ -8,6 +8,7 @@ delivery row written only after the backend confirmed every batch.
 import datetime as dt
 import os
 from collections import Counter
+from dataclasses import replace
 from pathlib import Path
 
 import duckdb
@@ -20,9 +21,12 @@ from aiobserve.export.otlp import (
     DEFAULT_BATCH_SPANS,
     DEFAULT_RATE,
     MAPPER_VERSION,
+    METADATA_ONLY,
+    Backend,
     ConfigurationError,
     DeliveryError,
     OtlpExporter,
+    PlacelessSessionError,
     RejectedSpansError,
     named_backend,
     session_spans,
@@ -99,6 +103,26 @@ def test_the_resource_names_the_project_and_the_exporter(
     store.execute("DELETE FROM otlp_delivery")
     deliver(store, receiver, service_name="mycelia-backfill")
     assert receiver.attributes(receiver.resources[0])["service.name"] == "mycelia-backfill"
+
+
+def test_a_session_with_no_project_and_no_service_name_crashes(
+    store: duckdb.DuckDBPyConnection, receiver: Receiver
+) -> None:
+    """A session naming no project has no dataset to route to, and says which drift that is."""
+    # If a session carrying times but no `project_dir` reaches the exporter — planted, since
+    # the recorded session with no `project_dir` records no times either, and the source
+    # filter places neither...
+    trace = trace_of(store, FIRST)
+    placeless = replace(trace, session=replace(trace.session, project_dir=None))
+    backend = Backend(name="generic", endpoint=receiver.url, headers={"x-key": KEY_SENTINEL})
+    # ...then it crashes before anything is sent, naming the session and the drift it is:
+    # no place, rather than the no-clock drift the mapper refuses sessions for.
+    with (
+        OtlpExporter(backend, store, service_name=None, text=METADATA_ONLY) as exporter,
+        pytest.raises(PlacelessSessionError, match=FIRST),
+    ):
+        exporter.export(placeless, "fingerprint")
+    assert receiver.bodies == []
 
 
 def test_a_confirmed_session_records_one_delivery_row(
