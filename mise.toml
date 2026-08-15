@@ -99,7 +99,7 @@ if [ "$#" -eq 0 ]; then
   fi
   echo "mutate: branch scope $*"
 fi
-# Every run is cold: mutmut caches verdicts in `mutants/*.meta` and timings in
+# Every run is cold: mutmut caches verdicts in `mutants/src/**/*.py.meta` and timings in
 # `mutants/mutmut-stats.json`, and the tree also holds the copied `__pycache__`, where a stale
 # .pyc can shadow a same-size mutant and score a kill that never ran. Costs ~20s per run.
 rm -rf mutants

@@ -6,7 +6,7 @@ paths:
 
 # Organization
 
-Test files mirror the package layout: tests for `src/aiobserve/extract/transcripts.py` live in `tests/extract/test_transcripts.py`. Keep test structure and names consistent with the code as you refactor.
+Test files mirror the package layout: tests for `src/aiobserve/extract/claude_code.py` live in `tests/extract/test_claude_code.py`. Keep test structure and names consistent with the code as you refactor.
 
 Split a long file by **behavior or topic**, not by private sub-module — we test the public interface, so topics track user-facing feature areas. Name the pieces `test_<unit>__<topic>.py`. Shared scaffolding goes in `conftest.py`.
 
