@@ -21,12 +21,12 @@ from aiobserve.export.duckdb import (
     SCHEMA_VERSION,
     held_schema_version,
 )
-from aiobserve.sessions import resolve_project
+from aiobserve.sessions import project_predicate, resolve_project
 
-# The sessions `--project` selects, and the window flag every corpus query reads. Defined
-# here rather than in each file so the `/`-suffix trap — without it the predicate annexes
-# every neighbouring checkout — is written once.
-_PROJECT_SESSIONS = """
+# The sessions `--project` selects, and the window flag every corpus query reads. Written
+# here rather than in each query file so that a query cannot scope itself differently from
+# the corpus it reports against.
+_PROJECT_SESSIONS = f"""
 CREATE OR REPLACE TEMP TABLE project_sessions AS
 SELECT
     id AS session_id,
@@ -37,7 +37,7 @@ SELECT
         false
     ) AS in_window
 FROM sessions
-WHERE (project_dir = $project OR starts_with(project_dir, $project || '/'))
+WHERE {project_predicate("project_dir", "$project")}
   AND ($since::DATE IS NULL OR started_at >= $since::DATE)
 """
 

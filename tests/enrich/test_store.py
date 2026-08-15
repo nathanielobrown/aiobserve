@@ -14,17 +14,19 @@ import pytest
 from aiobserve.enrich.prompts import Level, TurnItem
 from aiobserve.enrich.store import EnrichmentStore, Stamp
 from aiobserve.export.duckdb import SchemaVersionError
-from tests.conftest import MODEL_ONLY, build_store, fixture_transcripts
+from tests.conftest import MODEL_ONLY, MYCELIA, build_store, fixture_transcripts
 from tests.enrich.conftest import (
     COMPACTION,
     DUP_UUID,
     FORK_BYREF,
+    LEGACY_TITLE,
     RESUME,
     RESUME_ANCESTOR,
     RESUME_PLAIN_TURN,
     SPINE,
     SPINE_LEAF,
     SPINE_RUN,
+    TEAMMATE,
     enrichment,
     session_item,
     stamp,
@@ -196,11 +198,43 @@ def test_a_multi_line_command_output_survives_whole(mutable_db: Path) -> None:
     assert item.command_result == "first line\nsecond line"
 
 
-def test_a_project_filter_narrows_the_items(fixture_db: Path) -> None:
-    """`--project` restricts enrichment to the sessions recorded for one repository."""
+def test_a_project_filter_narrows_the_items(fixture_db: Path, mutable_db: Path) -> None:
+    """`--project` takes a repository's own sessions and the ones its worktrees recorded.
+
+    The same corpus `aiobserve query --project` and `export-otlp` take, which is what makes
+    a description written under one command citable by the other.
+    """
+    # If a project nothing was recorded under is asked for, it has no items, while the store
+    # as a whole has plenty...
     with EnrichmentStore(fixture_db) as store:
         assert store.turn_items(project="/no/such/repo") == []
         assert store.turn_items() != []
+    # ...and since no recorded fixture ran in a worktree, one session's `project_dir` is
+    # planted under `<project>/.claude/worktrees/` and another's under a checkout that merely
+    # shares the prefix — the two values invented, the sessions under them recorded...
+    with EnrichmentStore(mutable_db) as store:
+        for session_id, project_dir in (
+            (LEGACY_TITLE, f"{MYCELIA}/.claude/worktrees/planted"),
+            (TEAMMATE, f"{MYCELIA}-old"),
+        ):
+            store.connection.execute(
+                "UPDATE sessions SET project_dir = ? WHERE id = ?", [project_dir, session_id]
+            )
+        scoped = store.turn_items(project=MYCELIA)
+        whole = store.turn_items()
+    sessions = {item.session_id for item in scoped}
+    # ...then the worktree's session is the project's, because a worktree checkout is where
+    # the project's own work happens...
+    assert LEGACY_TITLE in sessions
+    # ...and the neighbouring checkout's is not: matching the prefix without the `/` would
+    # annex every repository whose path begins with this one's.
+    assert TEAMMATE not in sessions
+    # ...while the filter only drops items: each one it keeps is the item the unscoped read
+    # built, whole. A description is written from the item, so a scoped read that quietly
+    # narrowed a field as well as the session set would describe a turn nobody ran.
+    assert scoped == [item for item in whole if item.session_id in sessions]
+    # ...which includes the archived command output, read by a query of its own.
+    assert [item.command_result for item in scoped if item.command_result] != []
 
 
 def test_a_run_naming_no_parent_agent_hangs_off_the_transcript_that_spawned_it(

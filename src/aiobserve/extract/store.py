@@ -20,7 +20,7 @@ import duckdb
 from aiobserve.export.duckdb import SESSION_KEY, TABLES
 from aiobserve.model import SessionTrace
 from aiobserve.pipeline import SessionSource
-from aiobserve.sessions import resolve_project
+from aiobserve.sessions import project_predicate, resolve_project
 
 # What each table's rows are ordered by: its primary key, minus the `session_id` a single
 # session's read holds constant. List order carries no meaning — the model's lists are keyed
@@ -85,11 +85,10 @@ class StoreSource:
         rows = self.connection.execute(
             "SELECT e.session_id, e.fingerprint FROM extract_state e"
             " JOIN sessions s ON s.id = e.session_id"
-            " WHERE s.project_dir = ? OR starts_with(s.project_dir, ?)"
+            f" WHERE {project_predicate('s.project_dir')}"
             " ORDER BY e.session_id",
-            # The second bound cuts on a path component, so a sibling repository whose name
-            # merely starts with the project's is out of scope.
-            [str(project), f"{project}/"],
+            # Twice: the predicate names its placeholder in both halves.
+            [str(project), str(project)],
         ).fetchall()
         if not rows:
             raise UnknownProjectError(

@@ -9,6 +9,10 @@ for the session's working directory:
 This module locates those files. It does not read them — parsing owns the records,
 and the two rot on different schedules: the layout is stable, the record shapes are
 not (`docs/schema.md`).
+
+It also owns what "a project" means to everything downstream: the absolute path a typed
+one resolves to, the directory name Claude Code encodes it as, and the SQL that matches
+the sessions recorded under it.
 """
 
 from dataclasses import dataclass
@@ -45,6 +49,21 @@ def resolve_project(project: Path) -> Path:
     repository — but `~` does, since a quoted one reaches us unexpanded.
     """
     return project.expanduser().resolve()
+
+
+def project_predicate(column: str, parameter: str = "?") -> str:
+    """SQL matching the sessions a project recorded: its own, and those of its worktrees.
+
+    A worktree checkout sits under the repository it was cut from and its sessions are the
+    project's, so every filter that takes a project matches a path prefix rather than a path.
+    Written once because the `/` is a trap: without it the predicate annexes every
+    neighbouring checkout whose path merely begins with this one's.
+
+    `parameter` names the placeholder, which appears twice — a positional `?` therefore binds
+    the resolved project path twice. A session recording no `project_dir` matches nothing,
+    which is what leaves it out of every project.
+    """
+    return f"({column} = {parameter} OR starts_with({column}, {parameter} || '/'))"
 
 
 def encode_project_path(project: Path) -> str:

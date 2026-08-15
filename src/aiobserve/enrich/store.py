@@ -28,6 +28,7 @@ from aiobserve.enrich.prompts import (
 from aiobserve.enrich.validation import Enrichment
 from aiobserve.export.duckdb import open_trace_store
 from aiobserve.model import MAIN_SOURCE
+from aiobserve.sessions import project_predicate
 
 # Every enrichment table holds the same columns; only the primary key differs.
 _ENRICHMENT_COLUMNS = """
@@ -162,11 +163,12 @@ _STDOUT_BODY = f"(?s)<{_STDOUT_TAG}>(.*)</{_STDOUT_TAG}>"
 
 def _project_clause(project: str | None) -> str:
     """Narrows a query already joined to `sessions s` to one analyzed repository."""
-    return " AND s.project_dir = ?" if project is not None else ""
+    return f" AND {project_predicate('s.project_dir')}" if project is not None else ""
 
 
 def _project_parameters(project: str | None) -> list[str]:
-    return [project] if project is not None else []
+    """What `_project_clause` binds: the path twice, once per placeholder in the predicate."""
+    return [project, project] if project is not None else []
 
 
 @dataclass(frozen=True)
@@ -222,8 +224,8 @@ class EnrichmentStore:
     def turn_items(self, project: str | None = None) -> list[TurnItem]:
         """Every enrichable main turn, each carrying the api and tool calls it drove.
 
-        `project` filters by the analyzed repository's path, as `sessions.project_dir`
-        records it; None takes every session in the store.
+        `project` filters by the analyzed repository's resolved path, taking its worktrees
+        with it (`sessions.project_predicate`); None takes every session in the store.
         """
         turns = self.connection.execute(
             f"""SELECT t.session_id, t.source, t.id, t."index", t.prompt,
