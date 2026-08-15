@@ -14,7 +14,6 @@ from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-import duckdb
 import pytest
 
 from aiobserve.enrich.prompts import PROMPT_VERSION, Level
@@ -181,9 +180,16 @@ def exportable_transcripts() -> tuple[Path, ...]:
     )
 
 
-# What a writer does to the store: opens it read-write and holds it. The connection has to
-# stay referenced — an unnamed one is freed at once, and the lock goes with it.
-_HOLDER = "import duckdb, sys, time; held = duckdb.connect(sys.argv[1]); time.sleep(30)"
+# What a writer does to the store: opens it read-write, says so, and holds it. The connection
+# has to stay referenced — an unnamed one is freed at once, and the lock goes with it. The
+# holder announces the lock by touching a file rather than leaving the waiter to look, because
+# every way of looking takes a lock of its own (see `locked`).
+_HOLDER = (
+    "import duckdb, pathlib, sys, time;"
+    " held = duckdb.connect(sys.argv[1]);"
+    " pathlib.Path(sys.argv[2]).touch();"
+    " time.sleep(30)"
+)
 
 # How long to wait for that subprocess to take the lock before giving up on the test.
 LOCK_TIMEOUT = 10.0
@@ -233,21 +239,33 @@ def locked(path: Path) -> Iterator[None]:
     A subprocess, not a second connection here: DuckDB answers the same process's second
     open differently from the file lock it takes across processes, so an in-process holder
     tests the wrong failure.
+
+    The wait for the holder never opens the store. A read-only open takes a shared read
+    lock, and DuckDB refuses a write open while one is held — so a wait that polled by
+    opening could kill the very holder it waited for. It did, on CI run 31903080480. The
+    holder touches `<store>.locked` instead, and a holder that dies first fails the test
+    with what it said.
     """
-    holder = subprocess.Popen([sys.executable, "-c", _HOLDER, str(path)])
+    signal = path.with_name(f"{path.name}.locked")
+    signal.unlink(missing_ok=True)
+    holder = subprocess.Popen(
+        [sys.executable, "-c", _HOLDER, str(path), str(signal)], stderr=subprocess.PIPE
+    )
     try:
         deadline = time.monotonic() + LOCK_TIMEOUT
-        while True:
-            try:
-                duckdb.connect(str(path), read_only=True).close()
-            except duckdb.IOException:
-                break
+        while not signal.exists():
+            if holder.poll() is not None:
+                _, complaint = holder.communicate()
+                pytest.fail(f"the lock holder for {path} died: {complaint.decode().strip()}")
             if time.monotonic() > deadline:
                 pytest.fail(f"nothing took the lock on {path} within {LOCK_TIMEOUT}s")
             time.sleep(0.05)
         yield
     finally:
         stop(holder, patience=TERMINATE_TIMEOUT)
+        if holder.stderr is not None:
+            holder.stderr.close()
+        signal.unlink(missing_ok=True)
 
 
 @pytest.fixture(scope="session")
