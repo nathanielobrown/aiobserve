@@ -96,3 +96,16 @@ Keep the suite fast enough to run on every edit. A test that has *earned* its ti
 Every run prints a `--durations=10` footer. A pure-parsing test landing there is usually doing accidental I/O or carrying an oversized fixture; fix that rather than accept it.
 
 Never let a test hit a real telemetry backend by default. Backend calls go behind a marker and an explicit env var, so a bare `mise run test` works offline.
+
+# Mutation testing
+
+A green suite proves the tests ran, not that they would notice the code being wrong. `mise run mutate` answers the second question: it breaks one expression at a time and reports which breaks no test caught.
+
+- With no argument it scopes to the source files this branch changed against `main`. On `main` itself that scope is empty, so it says so and exits 1 — a mutation run that tested nothing must not read as a pass
+- Pass mutant globs to scope it yourself: `mise run mutate 'aiobserve.view.format.*'`. A mutant is named `<module path>.<function>__mutmut_<n>`
+- 🎉 is a killed mutant, 🙁 a survivor. Read the survivors with `uv run mutmut browse`
+- Out of `check`, because it re-runs the covering tests once per mutant
+
+**Every run is cold and serial, so the number reproduces.** The task deletes `mutants/` first, because mutmut caches verdicts there, and passes `--max-children 1`. Run in parallel the same cold scope reported three different survivor counts; serial it reports the same one every time, and always the largest — concurrency scores kills the suite did not earn. A survivor count from a parallel run is a hypothesis. Both cost wall time, which is the price of quoting the number.
+
+A survivor is a claim no leaf makes. Usually the fix is an assertion, not a new test — but a survivor over a branch nothing can reach is a finding about the code, not the suite.

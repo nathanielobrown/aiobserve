@@ -2,8 +2,9 @@
 #
 # mise's own flags must come BEFORE the task name — `mise run --force check`, not
 # `mise run check --force`. A flag that trails the task name is passed to the task
-# as an argument and silently does nothing. Only the `diagram-*` tasks take an
-# argument, and they declare it, so a trailing flag anywhere else is a mistake.
+# as an argument and silently does nothing. The tasks that take an argument
+# declare it — `diagram-*` a file, `mutate` optional mutant globs — so a trailing
+# flag on any other task is a mistake.
 #
 # `mise run a ::: b` runs a and b in parallel.
 
@@ -70,6 +71,39 @@ npx -y @mermaid-js/mermaid-cli -s 2 -i {{arg(name="file")}} -o "$out" >/dev/null
 [tasks.test]
 description = "Run the test suite"
 run = "uv run pytest"
+
+[tasks.mutate]
+description = "Mutation-test the source this branch changed; pass mutant globs to scope it yourself"
+# Asks what a green suite cannot: would a leaf notice the code being wrong? Deliberately out
+# of `check` — it re-runs the covering tests once per mutant. Whole-branch scope by default,
+# because a run over the package takes hours; `mise run mutate 'aiobserve.sessions.*'` narrows
+# it. mutmut names a mutant `<module path>.<function>__mutmut_<n>`, and takes globs over that.
+# Read the survivors with `uv run mutmut browse`.
+run = """
+# `set -f` throughout: a mutant name ends in `*`, and an unquoted one the shell expands is a
+# name no mutant has.
+set -f
+set -- {{arg(name="mutants", var=true, required=false)}}
+if [ "$#" -eq 0 ]; then
+  set -- $(git diff --name-only --diff-filter=d "$(git merge-base HEAD main)" -- 'src/aiobserve/*.py' \
+    | sed -e 's|^src/||' -e 's|\\.py$||' -e 's|/|.|g' -e 's|$|.*|')
+  if [ "$#" -eq 0 ]; then
+    echo 'mutate: nothing to do — this branch changes no file under src/aiobserve, so the'
+    echo '        default scope is empty. Pass a mutant glob, e.g.'
+    echo "        mise run mutate 'aiobserve.view.format.*'"
+    exit 1
+  fi
+  echo "mutate: branch scope $*"
+fi
+# Every run is cold: mutmut caches verdicts in `mutants/*.meta` and timings in
+# `mutants/mutmut-stats.json`, and the tree also holds the copied `__pycache__`, where a stale
+# .pyc can shadow a same-size mutant and score a kill that never ran. Costs ~20s per run.
+rm -rf mutants
+# One child at a time, because the number is the point. Run in parallel, the same cold scope
+# gave 7, 9 and 10 survivors over three runs; serial it gives the same 13 every time — the
+# parallel runs were scoring kills the suite did not earn. Costs about 3x wall.
+uv run mutmut run --max-children 1 "$@"
+"""
 
 [tasks.check-fast]
 description = "Format, lint, and type-check — the loop to run while iterating"

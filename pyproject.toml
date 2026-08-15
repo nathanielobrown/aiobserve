@@ -37,6 +37,9 @@ dev = [
   "pytest-timeout>=2.4", # backs the `timeout` setting below
   "pyrefly>=0.24",
   "ruff>=0.12",
+  # Mutation testing — `mise run mutate`. Answers what a green suite cannot: whether a leaf
+  # would notice the code being wrong. Outside `check`, because it costs a test run per mutant.
+  "mutmut>=3.7",
 ]
 
 [tool.ruff]
@@ -73,6 +76,15 @@ markers = [
   "slow: earned its runtime (real subprocess, network, or large corpus) — needs a why-comment",
   "live: opts in to a real remote call (Anthropic API, an OTLP backend) — billed, so it needs an env var as well",
 ]
+
+[tool.mutmut]
+# What `mise run mutate` mutates when it is given no scope of its own. mutmut copies the tree
+# into `mutants/` (gitignored) and re-runs, per mutant, only the tests that cover the mutated
+# line. Config keys are 3.x's: `paths_to_mutate` and `tests_dir` are the deprecated 2.x names.
+source_paths = ["src/aiobserve"]
+# The suite is the oracle, so a mutant that survives is a gap in it. `-x` stops at the first
+# test that catches the mutant, which is all a kill needs.
+pytest_add_cli_args = ["-x", "-p", "no:cacheprovider"]
 
 [tool.pyrefly]
 project-includes = ["src", "tests"]

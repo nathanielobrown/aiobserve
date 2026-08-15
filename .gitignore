@@ -15,6 +15,10 @@ dist/
 .ruff_cache/
 .pyrefly_cache/
 
+# mutmut's working copy of the tree — it also holds the run's verdicts and timings, so this
+# is the whole cache. `mise run mutate` deletes it before every run.
+mutants/
+
 # Secrets: telemetry backend ingest keys (see README.md)
 .env
 
