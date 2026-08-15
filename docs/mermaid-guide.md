@@ -4,7 +4,7 @@ How to author Mermaid diagrams in this repo, whether in `.mmd`/`.mermaid` files 
 
 ## Which diagram, and when
 
-A system has several orthogonal axes, and each one wants its own diagram. Spanning axes in one picture is the main cause of unreadable hairballs. Name the axis where the diagram sits — in the section that holds it, or in the filename of a standalone `.mmd` — so the question a diagram answers is always explicit.
+A system has several orthogonal axes, and each needs its own diagram. Spanning axes in one picture is the main cause of unreadable hairballs. Name the axis where the diagram appears — in its section or in the filename of a standalone `.mmd` — so the question it answers is explicit.
 
 | Tier | Axis | Question it answers | Mermaid | Tag |
 |---|---|---|---|---|
@@ -27,7 +27,7 @@ For the process axis, choose by what the diagram is *about*: a **sequence diagra
 
 ## Shape vocabulary
 
-Stick to these shapes and meanings, so the vocabulary stays consistent:
+Use only these shapes and meanings so the vocabulary stays consistent:
 
 | Meaning | Syntax | Renders as |
 |---|---|---|
@@ -52,9 +52,9 @@ Use classic bracket shapes (not the v11.3 `@{shape:}` syntax) so diagrams render
 
 ## Styling
 
-**Don't style a diagram unless you were asked to.** No `classDef`, `style` or `linkStyle` by default. The shape and edge vocabularies above already carry the meaning, so added color is a second, private vocabulary the next reader has to learn. And a hand-picked color that reads well on one theme can vanish on another.
+**Don't style a diagram unless you were asked to.** No `classDef`, `style` or `linkStyle` by default. The shape and edge vocabularies above already carry the meaning, so added color becomes a second, private vocabulary the next reader has to learn. A hand-picked color that reads well on one theme can vanish on another.
 
-Where a rendered diagram does need visual weight, make the choice once and document it where it is emitted, not per diagram.
+Where a rendered diagram needs visual weight, make the choice once and document it where it is emitted, not per diagram.
 
 ## Syntax pitfalls
 
@@ -72,7 +72,7 @@ These break AI-generated diagrams the most:
 - **Declare nodes, then group** related ones with `subgraph`.
 - **Budgets — split when exceeded:** ≤ ~20 nodes, ≤ 8 parallel branches, ≤ 100 edges per diagram. Past the budget, split along the drill-down hierarchy rather than adding detail. Mermaid hard-fails past 280 edges.
 
-A diagram approaching its budget is telling you to split it. Many small single-purpose diagrams beat one large one.
+A diagram approaching its budget is telling you to split it. Many small, single-purpose diagrams beat one large one.
 
 ## dagre vs ELK
 
@@ -93,7 +93,7 @@ But GitHub and many renderers **ignore ELK and fall back to dagre**, so your loc
 Detail lives in separate diagrams arranged as a zoomable hierarchy: **a node in a level-N diagram is the entire subject of a level-(N+1) diagram.** Think maps at increasing zoom, never one infinite diagram.
 
 - **Subroutine shape = drill-down marker.** A node with its own sub-diagram uses `[[Label]]`. That is the only meaning of `[[...]]` here — the visual cue that says "look deeper."
-- **A diagram lives in the document it serves**, as a ` ```mermaid ` block in the section that raises the question — the reader meets the picture where the prose needs it, and doc sync updates both at once. A standalone `.mmd` file is for a diagram no single document owns; name it `<subject>_<axis>.mmd` and keep its drill-down children beside it.
+- **A diagram lives in the document it serves**, as a ` ```mermaid ` block in the section that raises the question. The reader meets the picture where the prose needs it, and doc sync updates both at once. A standalone `.mmd` file is for a diagram no single document owns; name it `<subject>_<axis>.mmd` and keep its drill-down children beside it.
 - **A subject's axes are peers, not a hierarchy.** An import pipeline can have both a `_structure` and a `_process` view. Those are sibling files, not drill-downs of each other — never navigate between them with a `[[...]]` node.
 
 ```mermaid
@@ -113,7 +113,7 @@ Not every edit needs this. When you want proof a diagram is valid and lays out w
 1. Write or edit the `.mmd` file or ` ```mermaid ` block.
 2. **Validate:** `mise run diagram-check <file>` — mmdc validates by rendering, so a non-zero exit is a syntax error to fix.
 3. **Render for inspection:** `mise run diagram-render <file>` — writes a PNG and prints its path (one per ` ```mermaid ` block in a Markdown file). Inspect the raster PNG, not SVG, for layout.
-4. **View the PNG** and check for overlapping nodes, crossing edges, clipped nodes, unreadable labels, wrong shapes. Fix the *source*. For tangle rather than content problems: flip `TD`↔`LR`, add subgraphs, or try ELK; past ~20 nodes, split.
+4. **View the PNG** and check for overlapping nodes, crossing edges, clipped nodes, unreadable labels, wrong shapes. Fix the *source*. If the layout, rather than the content, is tangled, flip `TD`↔`LR`, add subgraphs, or try ELK; past ~20 nodes, split.
 5. Re-render until clean.
 
-Both tasks shell out to `npx @mermaid-js/mermaid-cli`, which drives a headless Chrome through Puppeteer. On a machine without a system Chrome, set `PUPPETEER_EXECUTABLE_PATH` to one.
+Both tasks shell out to `npx @mermaid-js/mermaid-cli`, which drives a headless Chrome through Puppeteer. On a machine without a system Chrome, set `PUPPETEER_EXECUTABLE_PATH` to the path of one.

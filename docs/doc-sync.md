@@ -1,6 +1,6 @@
 # Doc sync
 
-Bring the documentation into agreement with a changeset, so docs land in the same PR as the change they describe (the rule: [Keep docs in step with the change](documentation.md#keep-docs-in-step-with-the-change)). Run it when the branch's code is finished and **before the PR description is written** — the description puts the doc diff first in its reading order. Normally a dispatched `doc-writer` subagent (`.claude/agents/doc-writer.md`) runs it, so the audit gets fresh eyes; the `pr` skill composes it into the PR flow. Read [documentation.md](documentation.md) first — it's the house style this process enforces.
+Bring the documentation into agreement with a changeset so the docs land in the same PR as the change they describe (the rule: [Keep docs in step with the change](documentation.md#keep-docs-in-step-with-the-change)). Run it when the branch's code is finished and **before the PR description is written** — the description puts the doc diff first in its reading order. Normally, a dispatched `doc-writer` subagent (`.claude/agents/doc-writer.md`) runs it, so the audit gets fresh eyes; the `pr` skill composes it into the PR flow. Read [documentation.md](documentation.md) first — it's the house style this process enforces.
 
 ## Contract
 
@@ -11,7 +11,7 @@ Bring the documentation into agreement with a changeset, so docs land in the sam
 
 ## Procedure
 
-1. **Scope the change.** Diff the branch against its merge base: `git diff origin/main...HEAD`. Read the diff and the changed files. Note new, renamed, and deleted files, new public symbols, new or shifted vocabulary, changed behavior, and any decision the change embodies.
+1. **Scope the change.** Diff the branch against its merge base: `git diff origin/main...HEAD`. Read the diff and the changed files. Note new, renamed, and deleted files; new public symbols; new or shifted vocabulary; changed behavior; and any decision the change embodies.
 
 2. **Map change → docs.** For each kind of change, consult the table in [Find the right home first](documentation.md#find-the-right-home-first) and open the owning doc to check it. Common triggers:
    - A new top-level module or package → its line in the `CLAUDE.md` Layout tree
@@ -21,17 +21,17 @@ Bring the documentation into agreement with a changeset, so docs land in the sam
    - A finding that changes what we believe about an agent's behavior → the owning report under `reports/`
    - Why a config setting or dependency exists → a comment at the setting itself, not a doc
 
-   If a mapped owning doc is a stub or `TODO`, don't force content into it. Flag it in the report so a human decides whether to populate it now.
+   If a mapped owning doc is a stub or `TODO`, don't force content into it. Flag it in the report so a human can decide whether to populate it now.
 
 3. **Apply updates in house style.** Prefer a link to the source of truth over a restated fact. Keep `CLAUDE.md` and what it `@`-imports scannable — a gloss plus a link, not depth. When a doc needs more than a sentence or two of new prose, invoke the `writing` skill before drafting: you own the facts, it owns the sentences.
 
-4. **Validate.** Check every link and path you touched still resolves, and that the case matches.
+4. **Validate.** Check that every link and path you touched still resolves and that the case matches.
 
 5. **Report** using the template below.
 
 ## Audit-only mode
 
-Sometimes you only need the assessment — reviewing someone else's PR, or checking coverage without changing anything. Then run **steps 1–2 and report**, skipping steps 3–4. Say "audit-only" in the report so the reader knows nothing was changed.
+Sometimes you only need the assessment — when reviewing someone else's PR or checking coverage without changing anything. Then run **steps 1–2 and report**, skipping steps 3–4. Say "audit-only" in the report so the reader knows nothing was changed.
 
 ## Report
 

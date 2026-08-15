@@ -1,10 +1,10 @@
 # Handoffs
 
-Handoffs carry per-run scratch between agents without adding it to the repository's durable record.
+Handoffs pass per-run scratch between agents without adding it to the repository's durable record.
 
 ## Write one dated handoff
 
-**Write a handoff `<description>`** means create `handoffs/handoff_<YYYY_MM_DD>_<description>.md` at the working tree's root. Use the local calendar date and a short kebab-case description.
+**Write a handoff `<description>`** means creating `handoffs/handoff_<YYYY_MM_DD>_<description>.md` at the working tree's root. Use the local calendar date and a short kebab-case description.
 
 ## Pass the path
 
@@ -18,4 +18,4 @@ A handoff reports what its author **verified** and what they **inferred**. A lat
 
 Put conclusions that must survive the run in their owning doc, code comment, test, or report. No later run treats a handoff as authority.
 
-A handoff may be deleted after every intended consumer has finished with it.
+Delete a handoff only after every intended consumer has finished with it.

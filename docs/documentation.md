@@ -1,6 +1,6 @@
 # Documentation
 
-Use this guide after the documentation summary in `CLAUDE.md` when you create or edit project documentation. It adds placement rules and repository mechanics. Follow the [writing style guide](writing_style_guide.md) for prose.
+When you create or edit project documentation, use this guide after the documentation summary in `CLAUDE.md`. It adds placement rules and repository mechanics. Follow the [writing style guide](writing_style_guide.md) for prose.
 
 ## Find the right home first
 
@@ -29,7 +29,7 @@ Use the first suitable form:
 
 Treat enumerated facts in a plan as claims to verify during implementation. References survive changes better than copied lists of current callers, files, or commands.
 
-Telemetry schemas rot fastest of all, because the harness owns them and changes them without telling us. Never enumerate a transcript's fields from memory — point at a real recorded session, and say which version of Claude Code produced it.
+Telemetry schemas rot fastest of all because the harness owns them and changes them without telling us. Never enumerate a transcript's fields from memory — point at a real recorded session and say which version of Claude Code produced it.
 
 ## Cross-references
 
@@ -54,6 +54,6 @@ A skill should normally import the document that owns its procedure. Keep only e
 
 ## Keep docs in step with the change
 
-Run doc sync after implementation by dispatching the `doc-writer` agent in `.claude/agents/doc-writer.md`. Its `doc-sync` skill checks the branch and reports either the updates or why none are needed. The `pr` skill includes this step.
+After implementation, dispatch the `doc-writer` agent in `.claude/agents/doc-writer.md` to run doc sync. Its `doc-sync` skill checks the branch and reports the updates or why none are needed. The `pr` skill includes this step.
 
 After an analysis run, update the record in the same change: the report under `reports/` and any guidance the finding revises.
