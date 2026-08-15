@@ -12,7 +12,7 @@ Everything here produces claims about someone else's behavior from data we didn'
 
 - **A claim carries its query.** The dataset, the filter, the time window, the count. A number with no query behind it is a hypothesis
 - **An absence is bounded or it isn't a finding.** "No session did X" means nothing until you show the data could have contained X
-- **Say what the corpus is.** One person's sessions on one codebase is evidence about that codebase's guidance. Scope the recommendation to match
+- **Say what the corpus is.** One person's sessions on one codebase are evidence about that codebase's guidance. Scope the recommendation to match
 - **Correlation is not the mechanism.** A guidance change and a metric shift in the same week are two facts. Name what else moved
 
 # Tooling
