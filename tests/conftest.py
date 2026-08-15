@@ -186,6 +186,27 @@ _HOLDER = "import duckdb, sys, time; held = duckdb.connect(sys.argv[1]); time.sl
 # How long to wait for that subprocess to take the lock before giving up on the test.
 LOCK_TIMEOUT = 10.0
 
+# How long the holder gets to answer each signal. Its own constant: waiting for a lock to
+# appear and waiting for a process to die are different quantities.
+TERMINATE_TIMEOUT = 5.0
+
+
+def stop(holder: "subprocess.Popen[bytes]", *, patience: float) -> None:
+    """End a lock holder, and do not return until it is gone.
+
+    SIGTERM, then SIGKILL for a holder that has not answered within `patience`. A holder
+    slow to die under load is not a failure of the test that borrowed it — that was the
+    suite's one known flake — but one that never dies keeps the store's lock for the rest
+    of the run. So both waits are bounded, and a process that survives the kill fails the
+    test rather than hanging it.
+    """
+    holder.terminate()
+    try:
+        holder.wait(timeout=patience)
+    except subprocess.TimeoutExpired:
+        holder.kill()
+        holder.wait(timeout=patience)
+
 
 # What another process does to check the lock is free: takes it and lets go.
 _TAKER = "import duckdb, sys; duckdb.connect(sys.argv[1]).close()"
@@ -224,8 +245,7 @@ def locked(path: Path) -> Iterator[None]:
             time.sleep(0.05)
         yield
     finally:
-        holder.terminate()
-        holder.wait(timeout=LOCK_TIMEOUT)
+        stop(holder, patience=TERMINATE_TIMEOUT)
 
 
 @pytest.fixture(scope="session")
