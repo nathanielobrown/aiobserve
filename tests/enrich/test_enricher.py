@@ -26,7 +26,13 @@ from aiobserve.enrich.client import (
     Succeeded,
 )
 from aiobserve.enrich.cost import Prompt, estimate
-from aiobserve.enrich.enricher import EnrichmentFailed, EnrichReport, enrich, plan
+from aiobserve.enrich.enricher import (
+    ROUND_ORDER,
+    EnrichmentFailed,
+    EnrichReport,
+    enrich,
+    plan,
+)
 from aiobserve.enrich.prompts import (
     PROMPT_VERSION,
     AgentRunItem,
@@ -35,7 +41,7 @@ from aiobserve.enrich.prompts import (
     input_hash,
     render_turn,
 )
-from aiobserve.enrich.store import EnrichmentStore
+from aiobserve.enrich.store import LEVELS, EnrichmentStore
 from aiobserve.enrich.taxonomy import TAXONOMY_VERSION
 from aiobserve.enrich.validation import FailureKind
 from tests.conftest import MODEL_ONLY, MYCELIA, build_store, fixture_transcripts
@@ -203,6 +209,15 @@ def stored(store: EnrichmentStore) -> list[tuple[Any, ...]]:
         " input_hash, prompt_version, taxonomy_version, model"
         " FROM turn_enrichments ORDER BY turn_id"
     ).fetchall()
+
+
+def test_every_level_the_store_can_write_gets_a_round() -> None:
+    """A pass describes all three levels — a level with no round would be described by nothing.
+
+    The rounds are ordered bottom-up and the store's levels are a closed set, so the two are
+    the same members read for different reasons; only their equality is checked here.
+    """
+    assert set(ROUND_ORDER) == set(LEVELS)
 
 
 def test_a_run_writes_a_row_for_every_stale_item(store: EnrichmentStore) -> None:

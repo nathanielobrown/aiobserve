@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from aiobserve.sessions import Session, encode_project_path, find_sessions, resolve_project
+from aiobserve.sessions import SessionFiles, encode_project_path, find_sessions, resolve_project
 
 
 def make_projects_root(tmp_path: Path, project: Path, session_ids: list[str]) -> Path:
@@ -55,7 +55,7 @@ def test_find_sessions_returns_every_transcript_for_a_project(tmp_path: Path):
     sessions = find_sessions(project, projects_root=root)
     assert [s.id for s in sessions] == ["a-first", "b-second", "c-third"]
     # ...each carrying the path to its own transcript.
-    assert sessions[0] == Session(
+    assert sessions[0] == SessionFiles(
         id="a-first",
         transcript=root / "-Users-nob-repos-mycelia" / "a-first.jsonl",
     )

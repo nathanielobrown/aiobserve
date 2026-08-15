@@ -21,7 +21,7 @@ from aiobserve.enrich.client import (
     preflight,
 )
 from aiobserve.enrich.cost import Prompt, estimate
-from aiobserve.enrich.enricher import LEVELS, PlannedItem, enrich, plan
+from aiobserve.enrich.enricher import ROUND_ORDER, PlannedItem, enrich, plan
 from aiobserve.enrich.store import EnrichmentStore
 from aiobserve.export.duckdb import DuckDbExporter, open_trace_store
 from aiobserve.export.otlp import (
@@ -334,7 +334,7 @@ def _report_plan(planned: Sequence[PlannedItem], model: str) -> None:
     """
     quote = estimate([Prompt(entry.item.level, entry.rendered) for entry in planned], model)
     counts = Counter(entry.item.level for entry in planned)
-    breakdown = ", ".join(f"{counts[level]} {level}" for level in LEVELS)
+    breakdown = ", ".join(f"{counts[level]} {level}" for level in ROUND_ORDER)
     print(f"at most {quote.items} item(s) would be sent to {model} — {breakdown}")
     print(
         f"at most ${quote.usd:.2f}: ~{quote.input_tokens:,} input and "

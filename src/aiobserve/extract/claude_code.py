@@ -219,7 +219,7 @@ class _AgentFiles(NamedTuple):
     meta: Path
 
 
-class _SessionFiles(NamedTuple):
+class _ClassifiedFiles(NamedTuple):
     """One session's files, sorted by what reads them."""
 
     transcript: Path
@@ -405,7 +405,7 @@ def _is_fork(meta: dict[str, Any]) -> bool:
     return bool(meta.get("isFork"))
 
 
-def _classify(source: SessionSource) -> _SessionFiles:
+def _classify(source: SessionSource) -> _ClassifiedFiles:
     """Sort a session's files by what reads them.
 
     The layout is closed-world like the record types: a file whose place we cannot name is
@@ -446,7 +446,9 @@ def _classify(source: SessionSource) -> _SessionFiles:
         )
         for agent in transcripts
     ]
-    return _SessionFiles(transcript=transcript, agents=agents, journals=journals, offloads=offloads)
+    return _ClassifiedFiles(
+        transcript=transcript, agents=agents, journals=journals, offloads=offloads
+    )
 
 
 class _Companion(NamedTuple):

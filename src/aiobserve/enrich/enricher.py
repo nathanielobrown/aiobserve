@@ -51,8 +51,10 @@ class EnrichmentFailed(Exception):
 
 # The levels a run describes, in the order it describes them: bottom-up, because every prompt
 # embeds its children's descriptions rather than their text. The agent runs are themselves
-# split into rounds by parentage.
-LEVELS = (Level.agent_run, Level.turn, Level.session)
+# split into rounds by parentage. Every level `enrich/store.py` can write has a round here —
+# one missing would be a level nothing ever describes, which `tests/enrich/test_enricher.py`
+# checks.
+ROUND_ORDER = (Level.agent_run, Level.turn, Level.session)
 
 
 def plan(
@@ -68,7 +70,7 @@ def plan(
     parents = store.item_parents(project)
     planned: dict[str, PlannedItem] = {}
     reached: set[str] = set()
-    for level in LEVELS:
+    for level in ROUND_ORDER:
         entries = _plan_level(store, model, level, project=project)
         planned |= entries
         for key in store.stale_keys(level, {key: entry.stamp for key, entry in entries.items()}):

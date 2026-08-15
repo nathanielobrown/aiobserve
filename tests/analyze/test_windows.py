@@ -14,7 +14,7 @@ import pytest
 from aiobserve.export.duckdb import DuckDbExporter
 from aiobserve.extract.claude_code import ClaudeCodeExtractor
 from aiobserve.pipeline import SessionSource
-from aiobserve.sessions import Session
+from aiobserve.sessions import SessionFiles
 from tests.analyze.conftest import (
     AS_OF_MID,
     AS_OF_PARTIAL,
@@ -128,7 +128,7 @@ def undated_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Pat
     path = tmp_path_factory.mktemp("undated") / "traces.duckdb"
     path.write_bytes(corpus_db.read_bytes())
     transcript = FIXTURES / "fork_byref" / f"{NO_PROJECT_SESSION}.jsonl"
-    session = Session(id=NO_PROJECT_SESSION, transcript=transcript)
+    session = SessionFiles(id=NO_PROJECT_SESSION, transcript=transcript)
     source = SessionSource(
         id=NO_PROJECT_SESSION, files=tuple(session.files()), fingerprint="planted"
     )

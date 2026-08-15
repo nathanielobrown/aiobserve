@@ -20,7 +20,7 @@ from aiobserve import cli
 from aiobserve.export.duckdb import DuckDbExporter
 from aiobserve.extract.claude_code import ClaudeCodeExtractor
 from aiobserve.pipeline import SessionSource
-from aiobserve.sessions import Session
+from aiobserve.sessions import SessionFiles
 from tests.conftest import (
     ANCESTOR,
     FIXTURES,
@@ -178,7 +178,7 @@ def worktree_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Pa
             ("legacy_entrypoint", SIBLING_SESSION, f"{MYCELIA}-old"),
         ):
             transcript = FIXTURES / directory / f"{stem}.jsonl"
-            session = Session(id=stem, transcript=transcript)
+            session = SessionFiles(id=stem, transcript=transcript)
             source = SessionSource(id=stem, files=tuple(session.files()), fingerprint="planted")
             trace = ClaudeCodeExtractor().extract(source)
             trace = replace(trace, session=replace(trace.session, project_dir=project_dir))

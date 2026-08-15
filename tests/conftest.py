@@ -25,7 +25,7 @@ from aiobserve.export.duckdb import DuckDbExporter
 from aiobserve.extract.claude_code import ClaudeCodeExtractor
 from aiobserve.model import SessionTrace
 from aiobserve.pipeline import SessionSource
-from aiobserve.sessions import Session
+from aiobserve.sessions import SessionFiles
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -151,7 +151,7 @@ def build_store(path: Path, transcripts: Iterable[Path]) -> None:
     """
     with DuckDbExporter(path) as exporter:
         for transcript in transcripts:
-            session = Session(id=transcript.stem, transcript=transcript)
+            session = SessionFiles(id=transcript.stem, transcript=transcript)
             source = SessionSource(
                 id=transcript.stem, files=tuple(session.files()), fingerprint="fixture"
             )
@@ -333,7 +333,7 @@ def fixture_source() -> SourceFactory:
     """
 
     def build(directory: str, stem: str) -> SessionSource:
-        session = Session(id=stem, transcript=FIXTURES / directory / f"{stem}.jsonl")
+        session = SessionFiles(id=stem, transcript=FIXTURES / directory / f"{stem}.jsonl")
         return SessionSource(
             id=stem, files=tuple(session.files()), fingerprint="fixture-fingerprint"
         )
@@ -356,7 +356,7 @@ def planted_source(tmp_path: Path) -> PlantedFactory:
             path = tmp_path / stem / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content)
-        session = Session(id=stem, transcript=transcript)
+        session = SessionFiles(id=stem, transcript=transcript)
         return SessionSource(id=stem, files=tuple(session.files()), fingerprint="planted")
 
     return build

@@ -57,8 +57,11 @@ def encode_project_path(project: Path) -> str:
 
 
 @dataclass(frozen=True)
-class Session:
-    """One recorded Claude Code session."""
+class SessionFiles:
+    """One recorded Claude Code session, as the files that hold it.
+
+    Where a session's records live, not what they say: `model.Session` is the parsed row.
+    """
 
     # The session UUID, taken from the transcript's filename.
     id: str
@@ -96,7 +99,9 @@ class Session:
         return [self.transcript, *walked]
 
 
-def find_sessions(project: Path, *, projects_root: Path = DEFAULT_PROJECTS_ROOT) -> list[Session]:
+def find_sessions(
+    project: Path, *, projects_root: Path = DEFAULT_PROJECTS_ROOT
+) -> list[SessionFiles]:
     """Every session recorded for `project`, sorted by session id.
 
     Raises `FileNotFoundError` when the project has no directory under `projects_root`
@@ -112,6 +117,6 @@ def find_sessions(project: Path, *, projects_root: Path = DEFAULT_PROJECTS_ROOT)
     # Non-recursive on purpose: the per-session subdirectories hold subagent runs and
     # tool results, which belong to a session rather than being one.
     return [
-        Session(id=transcript.stem, transcript=transcript)
+        SessionFiles(id=transcript.stem, transcript=transcript)
         for transcript in sorted(project_dir.glob(f"*{TRANSCRIPT_SUFFIX}"))
     ]
