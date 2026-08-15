@@ -163,6 +163,29 @@ def test_the_filter_takes_the_project_and_what_sits_under_it(
     assert WORKTREE_SESSION not in listed
 
 
+def test_the_filter_places_a_project_named_relative_to_the_working_directory(
+    exportable_db: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A project given as a relative path lists the same sessions its absolute path does."""
+    # If a recorded session sits under a repository beside the working directory — planted,
+    # since every fixture was recorded under one absolute path...
+    repository = tmp_path.resolve() / "repo"
+    path = tmp_path / "relative.duckdb"
+    shutil.copyfile(exportable_db, path)
+    with duckdb.connect(str(path)) as connection:
+        connection.execute(
+            "UPDATE sessions SET project_dir = ? WHERE id = ?", [str(repository), SIBLING_SESSION]
+        )
+    # ...then naming that repository the way a shell would, relative to the directory the
+    # command runs in, ships it: `project_dir` is an absolute cwd, so a filter that matched
+    # the string as typed would report a successful export of nothing.
+    monkeypatch.chdir(tmp_path)
+    connection = open_trace_store(path, read_only=True)
+    listed = {found.id for found in StoreSource(connection).sessions(Path("repo"))}
+    connection.close()
+    assert SIBLING_SESSION in listed
+
+
 def test_a_childless_session_with_no_project_is_excluded(tmp_path: Path) -> None:
     """A session that recorded no working directory and no work is simply not listed."""
     # If a session's main transcript is extracted without the subagent file beside it — a

@@ -38,7 +38,7 @@ from aiobserve.enrich.prompts import (
 from aiobserve.enrich.store import EnrichmentStore
 from aiobserve.enrich.taxonomy import TAXONOMY_VERSION
 from aiobserve.enrich.validation import FailureKind
-from tests.conftest import MODEL_ONLY, build_store, fixture_transcripts
+from tests.conftest import MODEL_ONLY, MYCELIA, build_store, fixture_transcripts
 from tests.enrich.conftest import (
     AUDITOR_RUN,
     MODEL,
@@ -480,6 +480,29 @@ def test_a_dry_run_writes_nothing_and_sends_nothing(
     assert "at most 7 item(s) would be sent" in printed
     assert "2 agent_run, 4 turn, 1 session" in printed
     assert stored(store) == []
+
+
+def test_a_dry_run_scoped_to_a_project_places_a_relative_path(
+    store: EnrichmentStore, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`--project` names a repository from any working directory, relative spelling included."""
+    # If the project is named the way a shell in its parent directory would name it — and a
+    # recorded `project_dir` is absolute, so the root is the one such directory here...
+    monkeypatch.chdir("/")
+    cli.main(
+        "enrich",
+        "--db",
+        str(store.path),
+        "--dry-run",
+        "--project",
+        str(Path(MYCELIA).relative_to("/")),
+    )
+    relative = capsys.readouterr().out
+    # ...then it prices what the absolute spelling prices, rather than the nothing an
+    # unresolved path finds.
+    cli.main("enrich", "--db", str(store.path), "--dry-run", "--project", MYCELIA)
+    assert relative == capsys.readouterr().out
+    assert "at most 7 item(s) would be sent" in relative
 
 
 def test_a_dry_run_counts_the_ancestors_of_what_is_stale(

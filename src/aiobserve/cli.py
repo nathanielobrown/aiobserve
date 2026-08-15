@@ -39,7 +39,7 @@ from aiobserve.export.otlp import (
 from aiobserve.extract.claude_code import ClaudeCodeExtractor
 from aiobserve.extract.store import StoreSource
 from aiobserve.pipeline import refresh
-from aiobserve.sessions import DEFAULT_PROJECTS_ROOT, find_sessions
+from aiobserve.sessions import DEFAULT_PROJECTS_ROOT, find_sessions, resolve_project
 from aiobserve.view.app import PORT, serve
 
 # Gitignored, so an extract never lands in a commit.
@@ -269,7 +269,7 @@ def _enrich(args: argparse.Namespace) -> None:
     # decides whether to pay for a pass is not always whoever is logged in.
     if not args.dry_run:
         preflight()
-    project = str(args.project.resolve()) if args.project else None
+    project = str(resolve_project(args.project)) if args.project else None
     with EnrichmentStore(args.db) as store:
         if args.dry_run:
             _report_plan(plan(store, args.model, project=project, limit=args.limit), args.model)

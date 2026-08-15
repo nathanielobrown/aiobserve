@@ -20,6 +20,7 @@ import duckdb
 from aiobserve.export.duckdb import SESSION_KEY, TABLES
 from aiobserve.model import SessionTrace
 from aiobserve.pipeline import SessionSource
+from aiobserve.sessions import resolve_project
 
 # What each table's rows are ordered by: its primary key, minus the `session_id` a single
 # session's read holds constant. List order carries no meaning — the model's lists are keyed
@@ -62,7 +63,7 @@ class StoreSource:
         self.connection = connection
 
     def sessions(self, project: Path) -> list[SessionSource]:
-        """Every extracted session recorded at or under `project`.
+        """Every extracted session recorded at or under `project`, resolved as typed.
 
         No files: the store is the source, so there is nothing on disk to stat, and the
         fingerprint is the one `extract_state` recorded when the rows were written.
@@ -72,6 +73,7 @@ class StoreSource:
         rather than disappearing.
         """
         self._refuse_unplaceable_content()
+        project = resolve_project(project)
         rows = self.connection.execute(
             "SELECT e.session_id, e.fingerprint FROM extract_state e"
             " JOIN sessions s ON s.id = e.session_id"

@@ -34,13 +34,26 @@ META_SUFFIX = ".meta.json"
 JOURNAL_NAME = "journal.jsonl"
 
 
+def resolve_project(project: Path) -> Path:
+    """The absolute path everything that names a project matches on.
+
+    Claude Code records a session's `cwd` absolute and symlink-free (`docs/schema.md`), so a
+    project typed at a command line has to be resolved before it is compared against one:
+    every filter that takes a typed path goes through this, because the one that did not
+    reported a clean export of nothing for `aiobserve export-otlp mycelia`. A trailing slash
+    needs no handling — `Path` drops it, so `mycelia/` and `mycelia` are already one
+    repository — but `~` does, since a quoted one reaches us unexpanded.
+    """
+    return project.expanduser().resolve()
+
+
 def encode_project_path(project: Path) -> str:
     """Claude Code's directory name for a project: its absolute path, each `/` replaced by `-`.
 
     So `/Users/nob/repos/mycelia` becomes `-Users-nob-repos-mycelia`. The leading dash
     is the encoded root separator, not a prefix.
     """
-    return str(project.resolve()).replace("/", "-")
+    return str(resolve_project(project)).replace("/", "-")
 
 
 @dataclass(frozen=True)

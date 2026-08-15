@@ -53,12 +53,22 @@ def test_a_worktree_session_is_in_the_corpus_and_a_prefix_sibling_is_not(
     assert SIBLING_SESSION not in ids
 
 
-def test_a_trailing_slash_on_the_project_changes_nothing(run_query: QueryRunner) -> None:
-    """`--project path/` and `--project path` name the same corpus."""
-    assert (
-        run_query("sessions", "--project", f"{MYCELIA}/", "--csv").csv_rows()
-        == run_query("sessions", "--project", MYCELIA, "--csv").csv_rows()
-    )
+@pytest.mark.parametrize(
+    "spelling",
+    [f"{MYCELIA}/", str(Path(MYCELIA).relative_to("/"))],
+    ids=["trailing-slash", "relative"],
+)
+def test_every_spelling_of_one_project_names_one_corpus(
+    run_query: QueryRunner, spelling: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """However the shell reached a repository, `--project` selects the same sessions."""
+    # A recorded `project_dir` is an absolute path, so the root is the one working directory
+    # a relative spelling of one can be typed from.
+    monkeypatch.chdir("/")
+    rows = run_query("sessions", "--project", spelling, "--csv").csv_rows()
+    assert rows == run_query("sessions", "--project", MYCELIA, "--csv").csv_rows()
+    # Two identical empty corpora would prove nothing.
+    assert len(rows) == MYCELIA_SESSIONS + 1
 
 
 def test_the_excluded_count_goes_to_stderr_and_csv_stdout_stays_clean(

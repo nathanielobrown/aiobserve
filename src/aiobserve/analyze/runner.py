@@ -21,6 +21,7 @@ from aiobserve.export.duckdb import (
     SCHEMA_VERSION,
     held_schema_version,
 )
+from aiobserve.sessions import resolve_project
 
 # The sessions `--project` selects, and the window flag every corpus query reads. Defined
 # here rather than in each file so the `/`-suffix trap — without it the predicate annexes
@@ -174,9 +175,7 @@ def _build_project_sessions(
     connection: duckdb.DuckDBPyConnection, project: Path, since: dt.date | None, as_of: dt.date
 ) -> dict[str, ParamValue]:
     """Materialize the corpus for `project`, and return the bindings that defined it."""
-    # A trailing slash is the same corpus: `mycelia/` and `mycelia` name one repository, and
-    # the predicate supplies its own `/` to pick up the worktrees below it.
-    resolved = str(Path(str(project).rstrip("/")).resolve())
+    resolved = str(resolve_project(project))
     bindings: dict[str, ParamValue] = {
         "project": resolved,
         "since": since,

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from aiobserve.sessions import Session, encode_project_path, find_sessions
+from aiobserve.sessions import Session, encode_project_path, find_sessions, resolve_project
 
 
 def make_projects_root(tmp_path: Path, project: Path, session_ids: list[str]) -> Path:
@@ -34,6 +34,16 @@ def test_encode_project_path_resolves_a_relative_path(tmp_path: Path, monkeypatc
     encoded = encode_project_path(Path("myproject"))
     assert encoded == encode_project_path(tmp_path / "myproject")
     assert encoded.startswith("-")
+
+
+def test_a_home_relative_project_names_what_the_shell_would_have_expanded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A quoted `~/repos/x` selects the same repository the unquoted spelling does."""
+    # If `~` reaches us unexpanded — a quoted argument, or one read out of a config file...
+    monkeypatch.setenv("HOME", str(tmp_path))
+    # ...then it names the home directory, not a directory called `~` under the working one.
+    assert resolve_project(Path("~/repos/mycelia")) == tmp_path.resolve() / "repos" / "mycelia"
 
 
 def test_find_sessions_returns_every_transcript_for_a_project(tmp_path: Path):
