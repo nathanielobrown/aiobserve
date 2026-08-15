@@ -56,16 +56,18 @@ description = "Validate a Mermaid file or Markdown's ```mermaid blocks by render
 # mmdc validates by rendering, so a non-zero exit is a syntax error. Deliberately
 # out of `check` — it needs network on first run and a Chrome; call it when you
 # author a diagram (docs/mermaid-guide.md).
+usage = 'arg "<file>" help="Mermaid or Markdown file to validate"'
 run = """
 out="$(mktemp -d)/check.svg"
-npx -y @mermaid-js/mermaid-cli -i {{arg(name="file")}} -o "$out" >/dev/null && echo 'diagram-check: valid'
+npx -y @mermaid-js/mermaid-cli -i "$usage_file" -o "$out" >/dev/null && echo 'diagram-check: valid'
 """
 
 [tasks.diagram-render]
 description = "Render a Mermaid file to a PNG and print its path, for layout inspection"
+usage = 'arg "<file>" help="Mermaid or Markdown file to render"'
 run = """
 out="$(mktemp -d)/diagram.png"
-npx -y @mermaid-js/mermaid-cli -s 2 -i {{arg(name="file")}} -o "$out" >/dev/null && echo "$out"
+npx -y @mermaid-js/mermaid-cli -s 2 -i "$usage_file" -o "$out" >/dev/null && echo "$out"
 """
 
 [tasks.test]
@@ -79,11 +81,13 @@ description = "Mutation-test the source this branch changed; pass mutant globs t
 # because a run over the package takes hours; `mise run mutate 'aiobserve.sessions.*'` narrows
 # it. mutmut names a mutant `<module path>.<function>__mutmut_<n>`, and takes globs over that.
 # Read the survivors with `uv run mutmut browse`.
+usage = 'arg "[mutants]" var=#true help="mutant globs to score, e.g. aiobserve.view.format.*"'
 run = """
 # `set -f` throughout: a mutant name ends in `*`, and an unquoted one the shell expands is a
-# name no mutant has.
+# name no mutant has. mise hands a variadic arg over shell-escaped, so `eval` is what undoes
+# the escaping — under `set -f` it splits the words without expanding one.
 set -f
-set -- {{arg(name="mutants", var=true, required=false)}}
+eval "set -- ${usage_mutants:-}"
 if [ "$#" -eq 0 ]; then
   set -- $(git diff --name-only --diff-filter=d "$(git merge-base HEAD main)" -- 'src/aiobserve/*.py' \
     | sed -e 's|^src/||' -e 's|\\.py$||' -e 's|/|.|g' -e 's|$|.*|')
