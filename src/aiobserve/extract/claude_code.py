@@ -574,7 +574,7 @@ def _workflow_launches(lines: list[_Line]) -> dict[str, str]:
         if not isinstance(details, dict) or "runId" not in details:
             continue
         for block in line.record["message"]["content"]:
-            if block["type"] == "tool_result":
+            if block["type"] == ContentBlock.TOOL_RESULT:
                 launches[details["runId"]] = block["tool_use_id"]
     return launches
 
@@ -894,11 +894,11 @@ def _prompt(line: _Line, session_id: str, source: str) -> _Prompt | None:
 def _block_prompt(blocks: list[dict[str, Any]]) -> _Prompt | None:
     """A block-content user record is a prompt unless it is carrying a tool result back."""
     kinds = {block["type"] for block in blocks}
-    if "tool_result" in kinds:
+    if ContentBlock.TOOL_RESULT in kinds:
         return None
-    if not kinds & {"text", "image"}:
+    if not kinds & {ContentBlock.TEXT, ContentBlock.IMAGE}:
         return None
-    text = "".join(block["text"] for block in blocks if block["type"] == "text")
+    text = "".join(block["text"] for block in blocks if block["type"] == ContentBlock.TEXT)
     return _Prompt(text=text, command_name=None, command_args=None)
 
 
@@ -968,8 +968,8 @@ def _api_calls(
                 cache_1h_tokens=tokens.cache_1h,
                 cost_usd=compute_cost(message["model"], tokens),
                 synthetic=message["model"] == SYNTHETIC_MODEL,
-                text=_blocks(group, "text", "text"),
-                thinking=_blocks(group, "thinking", "thinking"),
+                text=_blocks(group, ContentBlock.TEXT, "text"),
+                thinking=_blocks(group, ContentBlock.THINKING, "thinking"),
                 # The message belongs to whichever transcript wrote it first, so its first
                 # chunk decides — a fork copies a message whole.
                 replayed=first.line_no in replayed,
@@ -1064,7 +1064,7 @@ def _tool_results(lines: list[_Line], session_id: str) -> dict[str, _Result]:
         details = record.get("toolUseResult")
         path = details.get("persistedOutputPath") if isinstance(details, dict) else None
         for block in content:
-            if block["type"] != "tool_result":
+            if block["type"] != ContentBlock.TOOL_RESULT:
                 continue
             results[block["tool_use_id"]] = _Result(
                 text=_result_text(block["content"], session_id, line.line_no),
@@ -1122,8 +1122,12 @@ def _result_text(content: Any, session_id: str, line_no: int) -> str:
     return "".join(parts)
 
 
-def _blocks(group: Iterable[_Line], kind: str, field: str) -> str:
-    """Every block of one kind across a message's records, concatenated in order."""
+def _blocks(group: Iterable[_Line], kind: ContentBlock, field: str) -> str:
+    """Every block of one kind across a message's records, concatenated in order.
+
+    `field` is the block's own key for the text it carries, which is not the kind: a
+    `thinking` block holds its words at `thinking`, a `text` block at `text`.
+    """
     return "".join(
         block[field]
         for line in group
