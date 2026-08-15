@@ -181,6 +181,19 @@ def test_a_dry_run_counts_without_a_backend(
     check.close()
 
 
+@pytest.mark.parametrize("arguments", [(), ("--dry-run",)], ids=["send", "dry-run"])
+def test_a_project_the_store_holds_nothing_under_stops_the_run(
+    store_path: Path, receiver: Receiver, configured: None, arguments: tuple[str, ...]
+) -> None:
+    """A project no recorded session sits under is refused, however the command is run."""
+    # If the project names a repository the store holds nothing under — a typo, or a path
+    # typed from the wrong directory...
+    with pytest.raises(SystemExit, match="No session in this store"):
+        cli.main("export-otlp", "/no/such/repo", "--db", str(store_path), *arguments)
+    # ...then the run says so and stops, rather than reporting a clean delivery of nothing.
+    assert receiver.bodies == []
+
+
 def test_the_delivery_flags_reach_the_exporter(
     store_path: Path, receiver: Receiver, configured: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:

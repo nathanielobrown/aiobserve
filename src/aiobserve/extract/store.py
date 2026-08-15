@@ -52,6 +52,10 @@ class UnknownSessionError(Exception):
     """Asked for a session the store never extracted."""
 
 
+class UnknownProjectError(Exception):
+    """Asked for a project no session in the store was recorded under."""
+
+
 class StoreSource:
     """Reads one project's extracted sessions back out of a trace store.
 
@@ -71,6 +75,10 @@ class StoreSource:
         Sessions with no `project_dir` sit under no project and are excluded by the filter
         itself. That is only safe while they are empty, so one holding rows crashes here
         rather than disappearing.
+
+        A project nothing was recorded under is refused: the store is a finite corpus, so an
+        empty answer here is a mistyped argument, and the export it feeds would otherwise
+        report a clean delivery of nothing.
         """
         self._refuse_unplaceable_content()
         project = resolve_project(project)
@@ -83,6 +91,11 @@ class StoreSource:
             # merely starts with the project's is out of scope.
             [str(project), f"{project}/"],
         ).fetchall()
+        if not rows:
+            raise UnknownProjectError(
+                f"No session in this store was recorded under {project}. "
+                f"Check the path, or run `aiobserve extract` for it first."
+            )
         return [
             SessionSource(id=session_id, files=(), fingerprint=fingerprint)
             for session_id, fingerprint in rows

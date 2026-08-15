@@ -16,7 +16,12 @@ import duckdb
 import pytest
 
 from aiobserve.export.duckdb import open_trace_store
-from aiobserve.extract.store import ROW_ORDER, StoreSource, UnplaceableSessionError
+from aiobserve.extract.store import (
+    ROW_ORDER,
+    StoreSource,
+    UnknownProjectError,
+    UnplaceableSessionError,
+)
 from aiobserve.model import SessionTrace
 from aiobserve.pipeline import SessionSource
 from tests.conftest import (
@@ -195,10 +200,14 @@ def test_a_childless_session_with_no_project_is_excluded(tmp_path: Path) -> None
     shutil.copy(FIXTURES / "fork_byref" / transcript.name, transcript)
     path = tmp_path / "childless.duckdb"
     build_store(path, [transcript])
-    # ...then discovery leaves it out without complaint: there is nothing to lose.
+    # ...then discovery leaves it out without complaint about the session — there is nothing
+    # to lose — and what it refuses is the project, which the store then holds nothing under.
     connection = open_trace_store(path, read_only=True)
-    assert StoreSource(connection).sessions(Path(MYCELIA)) == []
+    with pytest.raises(UnknownProjectError) as refused:
+        StoreSource(connection).sessions(Path(MYCELIA))
     connection.close()
+    assert MYCELIA in str(refused.value)
+    assert NO_PROJECT_SESSION not in str(refused.value)
 
 
 def test_a_session_with_no_project_but_rows_crashes(tmp_path: Path) -> None:

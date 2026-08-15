@@ -37,7 +37,7 @@ from aiobserve.export.otlp import (
     named_backend,
 )
 from aiobserve.extract.claude_code import ClaudeCodeExtractor
-from aiobserve.extract.store import StoreSource
+from aiobserve.extract.store import StoreSource, UnknownProjectError
 from aiobserve.pipeline import refresh
 from aiobserve.sessions import DEFAULT_PROJECTS_ROOT, find_sessions, resolve_project
 from aiobserve.view.app import PORT, serve
@@ -283,25 +283,30 @@ def _export_otlp(args: argparse.Namespace) -> None:
     """Ship every session of a project that this backend has not already confirmed."""
     load_dotenv()
     text = TextPolicy(include=args.include_text, max_chars=args.max_chars)
-    if args.dry_run:
-        _census_otlp(args, text)
-        return
-    # Before the store is opened: a run with nowhere to ship refuses now rather than after
-    # reading a corpus.
+    # A project the store holds nothing under is a mistyped argument, whichever half of the
+    # command reads it: worth a line an operator can act on rather than a traceback.
     try:
-        backend = named_backend(args.backend, os.environ)
-    except ConfigurationError as error:
+        if args.dry_run:
+            _census_otlp(args, text)
+            return
+        # Before the store is opened: a run with nowhere to ship refuses now rather than after
+        # reading a corpus.
+        try:
+            backend = named_backend(args.backend, os.environ)
+        except ConfigurationError as error:
+            raise SystemExit(str(error)) from error
+        # One connection for both halves — DuckDB admits a single writer, and the exporter
+        # needs to write its ledger into the store the source is reading.
+        connection = open_trace_store(args.db, read_only=False)
+        try:
+            with OtlpExporter(
+                backend, connection, service_name=args.service_name, text=text, rate=args.rate
+            ) as exporter:
+                result = refresh(args.project, extractor=StoreSource(connection), exporter=exporter)
+        finally:
+            connection.close()
+    except UnknownProjectError as error:
         raise SystemExit(str(error)) from error
-    # One connection for both halves — DuckDB admits a single writer, and the exporter needs
-    # to write its ledger into the store the source is reading.
-    connection = open_trace_store(args.db, read_only=False)
-    try:
-        with OtlpExporter(
-            backend, connection, service_name=args.service_name, text=text, rate=args.rate
-        ) as exporter:
-            result = refresh(args.project, extractor=StoreSource(connection), exporter=exporter)
-    finally:
-        connection.close()
     print(f"{len(result.extracted)} session(s) exported, {len(result.skipped)} unchanged")
 
 

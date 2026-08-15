@@ -8,6 +8,8 @@ aiobserve export-otlp /path/to/repo --db data/traces.duckdb --backend honeycomb
 
 The store is the source, not the transcripts on disk, so a session Claude Code has pruned still ships. DuckDB admits one writer, so an export cannot run beside `extract` or `enrich` — a second run fails fast on the lock rather than waiting.
 
+The project argument is resolved before it is matched against the recorded `cwd`s, so a relative path or a quoted `~/…` names the repository a shell would. A project the store holds no session under stops the run, send or dry run: the command promises a corpus, so an empty one is a mistyped path rather than a clean delivery of nothing.
+
 ## Where it ships
 
 `--backend` picks one of the entries in `BACKENDS` in `src/aiobserve/export/otlp.py`, which holds each backend's endpoint, the variable its key comes from, and the header that key travels in. `generic` is the base case: any OTLP/HTTP endpoint, named by `OTLP_ENDPOINT`, with `OTLP_HEADERS` carrying `name=value` pairs. `OTLP_ENDPOINT` also overrides a named backend's endpoint, which is how a run reaches a collector standing in front of one.
