@@ -15,6 +15,7 @@ one resolves to, the directory name Claude Code encodes it as, and the SQL that 
 the sessions recorded under it.
 """
 
+import contextlib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -48,7 +49,30 @@ def resolve_project(project: Path) -> Path:
     needs no handling — `Path` drops it, so `mycelia/` and `mycelia` are already one
     repository — but `~` does, since a quoted one reaches us unexpanded.
     """
-    return project.expanduser().resolve()
+    return _actual_case(project.expanduser().resolve())
+
+
+def _actual_case(path: Path) -> Path:
+    """The path as the filesystem spells it, not as it was typed.
+
+    `Path.resolve()` fixes `..` and symlinks but leaves case alone, and macOS's default
+    filesystem is case-insensitive-but-preserving: two differently-cased spellings of a path
+    open the same directory but are different strings. Claude Code records the directory's
+    real spelling, so a typed path with the wrong case resolves to real files on disk yet
+    matches nothing in the store — silently, since every read finds zero rows rather than
+    raising. Walking the tree and matching each component case-insensitively against what
+    `iterdir` actually returns closes that gap; it costs nothing on a case-sensitive
+    filesystem, where the match is already exact.
+    """
+    corrected = Path(path.anchor)
+    for part in path.relative_to(path.anchor).parts:
+        # Nothing on disk to correct against past this point — keep the rest as typed.
+        with contextlib.suppress(StopIteration, FileNotFoundError, NotADirectoryError):
+            part = next(
+                entry.name for entry in corrected.iterdir() if entry.name.lower() == part.lower()
+            )
+        corrected /= part
+    return corrected
 
 
 def project_predicate(column: str, parameter: str = "?") -> str:

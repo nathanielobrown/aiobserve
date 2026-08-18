@@ -46,6 +46,18 @@ def test_a_home_relative_project_names_what_the_shell_would_have_expanded(
     assert resolve_project(Path("~/repos/mycelia")) == tmp_path.resolve() / "repos" / "mycelia"
 
 
+def test_resolve_project_corrects_case_to_match_the_filesystem(tmp_path: Path) -> None:
+    """A path typed in the wrong case still names the directory Claude Code recorded."""
+    # If a project sits on disk under `repos/MyProject`...
+    (tmp_path / "repos" / "MyProject").mkdir(parents=True)
+    # ...then typing it as `REPOS/myproject` still resolves to the real spelling, since a
+    # string comparison against the recorded `cwd` would otherwise match nothing.
+    assert (
+        resolve_project(tmp_path / "REPOS" / "myproject")
+        == tmp_path.resolve() / "repos" / "MyProject"
+    )
+
+
 def test_find_sessions_returns_every_transcript_for_a_project(tmp_path: Path):
     """Every session transcript in a project's directory is discovered, sorted by id."""
     # If a project has three recorded sessions...
