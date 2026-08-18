@@ -1,16 +1,18 @@
 # aiobserve 🔭
 
-Analyze AI coding agents from their own telemetry to find ways to make them faster, cheaper, and better at the work.
+aiobserve turns AI coding-agent sessions into queryable telemetry and evidence-backed findings. Use it to see where agents spend time, tokens, and money, which guidance they ignore, and which tools trip them up.
 
-Coding sessions leave a detailed trail: every tool call, file read, retry, and token. aiobserve extracts that trail — mostly as OpenTelemetry traces — and makes it queryable. It produces findings you can act on: where time and cost go, which guidance the agent ignores, and which tools it fumbles.
+The goal is to enable continuous improvement of repository setup and/or coding agent configuration to improve coding agent performance.
 
-The first target is **Claude Code**. The tool takes a project path, so it works on any repository; `~/repos/mycelia` is just the first corpus.
+The first extractor supports **Claude Code**.
 
 ## Status
 
-The project is early but runs end to end for Claude Code. Transcripts extract into a local DuckDB store — sessions, turns, API calls, tool calls, subagent runs, compactions, cost, and every raw line. A second pass describes each run, turn, and session in the model's words, so findings can filter on meaning. A local viewer serves the store in a browser, and an exporter ships it to any OTLP backend. Findings from the analysis iterations run so far are committed under `reports/`, one per iteration. [The report guide](reports/README.md) explains how to read one and write the next.
+The project is early, but the Claude Code pipeline runs end to end. It extracts transcripts into a local DuckDB trace store and adds model-written descriptions of each run, turn, and session. A local viewer serves the store in a browser, and an exporter sends it to any OTLP backend. Reports from completed analysis runs live under `reports/`; [the report guide](reports/README.md) explains how to read them and write the next one.
 
-The spans Claude Code exports over OpenTelemetry are still missing. Nothing imports them yet, so every number here comes from transcripts.
+aiobserve does not yet import Claude Code's native OpenTelemetry spans. All current metrics come from transcripts.
+
+## How data moves
 
 ```mermaid
 flowchart LR
@@ -27,60 +29,70 @@ flowchart LR
     export_otlp --> backend[("OTLP backend")]
 ```
 
-Each stage has a guide: [the store](docs/store.md), [enrichment](docs/enrichment.md), [analysis](docs/analysis.md), [the viewer](docs/viewer.md), [OTLP export](docs/otlp-export.md).
 
-## Getting started
+
+Read the guide for each stage: [the store](docs/store.md), [enrichment](docs/enrichment.md), [analysis](docs/analysis.md), [the viewer](docs/viewer.md), and [OTLP export](docs/otlp-export.md).
+
+## Set up the project
 
 ```bash
-mise run sync     # install the virtualenv from uv.lock
-mise run check    # format, lint, type-check, test
+mise run sync     # install the environment from uv.lock
+mise run check    # format, lint, type-check, and test
 ```
 
-Every task lives in `mise.toml`. Use `mise run check-fast` while you iterate.
+Every project task lives in `mise.toml`. Use `mise run check-fast` while you work.
 
-## Where session data lives
+## Find Claude Code sessions
 
-Claude Code writes one JSON-per-line transcript per session:
+Claude Code writes one JSON Lines transcript for each session:
 
 ```
 ~/.claude/projects/<encoded-cwd>/<session-id>.jsonl
 ~/.claude/projects/<encoded-cwd>/<session-id>/subagents/agent-<id>.jsonl
 ```
 
-`<encoded-cwd>` is the session's working directory with each `/` replaced by `-`, so `~/repos/mycelia` becomes `-Users-nob-repos-mycelia`. A subagent's work is part of its session but is recorded separately, so any accounting that ignores those files undercounts. A worktree cut from the repository records under its own path, and every command that takes a project matches those sessions too.
+`<encoded-cwd>` is the session's working directory with each `/` replaced by `-`, so `~/repos/mycelia` becomes `-Users-nob-repos-mycelia`. Claude Code records subagent work in separate files; ignoring them undercounts the session. It also records worktree sessions under each worktree's path, and every command that takes a project path includes those sessions.
+
+List the sessions aiobserve finds for a project:
 
 ```bash
 uv run aiobserve sessions ~/repos/mycelia
 ```
 
-`docs/schema.md` records each field's meaning and the session that established it. Never rely on memory, because the harness changes these shapes without notice.
+[The schema guide](docs/schema.md) records each field's meaning and the session that established it. Check it instead of relying on memory because Claude Code can change transcript shapes without notice.
 
-## Extracting a project
+## Extract and query a project
 
-```bash
-uv run aiobserve extract ~/repos/mycelia    # --db to write somewhere other than data/traces.duckdb
-```
-
-Each run re-extracts only the sessions whose files changed, replacing a session's rows wholesale.
+Extract transcripts into `data/traces.duckdb`:
 
 ```bash
-uv run aiobserve query session_counts --project ~/repos/mycelia    # every query in src/aiobserve/analyze/queries/
+uv run aiobserve extract ~/repos/mycelia
 ```
 
-`query` runs a saved query and prints the line that cites it, which is what a finding has to carry ([the analysis guide](docs/analysis.md)). Ask anything it doesn't of the DuckDB file directly, counting through the `session_rollups` and `corpus_rollups` views, which drop records copied by a fork or resume. The store outlives the transcripts it was built from, so read [the store guide](docs/store.md) before deleting one.
+Pass `--db` to write elsewhere. Later runs replace all rows for each changed session and skip unchanged sessions.
 
-## Describing what happened
+Run a saved query:
 
 ```bash
-uv run aiobserve enrich ~/repos/mycelia --dry-run    # what it would send, and what that costs
+uv run aiobserve query session_counts --project ~/repos/mycelia
 ```
 
-A model describes every agent run, main turn, and session, and the store keeps each answer beside the rows it describes. Only changed items are described again. Read [the enrichment guide](docs/enrichment.md) before running a pass against a real corpus — it explains what the pass buys and costs.
+Saved queries live in `src/aiobserve/analyze/queries/`. The command prints the citation line that every finding must carry; [the analysis guide](docs/analysis.md) explains the contract. For questions the saved queries do not answer, query DuckDB directly through the `session_rollups` and `corpus_rollups` views, which omit records copied by a fork or resume. The store can outlive its source transcripts, so read [the store guide](docs/store.md) before deleting it.
 
-## Handling the data
+## Describe what happened
 
-A transcript records everything the analyzed agent read, including file contents and credentials. Raw extracts go in `data/`, and telemetry keys go in `.env`. Both are gitignored, and neither is ever committed. Test fixtures are redacted excerpts trimmed to the records the test needs.
+Preview what an enrichment pass would send and what it would cost:
 
-## For agents working in this repo
+```bash
+uv run aiobserve enrich ~/repos/mycelia --dry-run
+```
 
-`CLAUDE.md` is the entry point. The house guides live in `docs/`, the rules and subagents in `.claude/`.
+Enrichment describes every agent run, main turn, and session, then stores each answer beside its source rows. It skips unchanged items. Read [the enrichment guide](docs/enrichment.md) before enriching a real corpus.
+
+## Treat transcripts as private
+
+A transcript contains everything the agent read, including file contents and credentials. Raw extracts belong in `data/`, and telemetry keys belong in `.env`; both paths are gitignored. Never commit either. Test fixtures must be redacted excerpts trimmed to the records each test needs.
+
+## AI Guidance Locations
+
+Read `CLAUDE.md` first. Project guides live in `docs/`; agent rules and subagents live in `.claude/`.

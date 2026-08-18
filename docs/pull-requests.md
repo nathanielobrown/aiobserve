@@ -1,87 +1,98 @@
 # Pull requests
 
-How to open a PR that a reviewer understands fast. AI writes much of the code here, so it is **CRITICAL** that a human can understand each PR — especially its orientation and context.
+Use this guide to open a PR that a reviewer can understand before reading the diff. Because AI writes much of this project's code, the PR must make the intent, design, and open questions clear to a human.
 
-## Mechanics
+A finished PR has working code, a green `mise run check`, current owning docs, and a description that tells the reviewer where to spend judgment. If you open the PR before then, say what's missing at the top of the description.
 
-Plain `git` owns branches and commits; `gh` owns PRs. Sessions are non-interactive — no `-i` flags. `.claude/settings.json` is the source of truth for which `git` and `gh` verbs are allowed.
+## Shape the branch for review
 
-**The flow:**
+Plain `git` owns branches and commits; `gh` owns PRs. Sessions are non-interactive, so don't use `-i` flags. `.claude/settings.json` defines the allowed `git` and `gh` commands.
 
-- Shape: use one branch per task, cut from `origin/main`. Each commit is one reviewable change — small, atomic, with a message that follows [Commits](commits.md). The commit is the review unit; the PR is the branch's cover letter.
-- Keep history linear: when `main` moves, rebase onto `origin/main`, never merge it in
-- Push once, when the branch is ready for review. Run `mise run check` as the local gate while you iterate.
-- Docs before description: when the branch's code is finished, dispatch a `doc-writer` subagent (`.claude/agents/doc-writer.md`) to run its doc-sync process over the branch, then fold in the edits. Docs land in the same PR ([the rule](documentation.md#keep-docs-in-step-with-the-change)).
-- Open the PR with `gh pr create --title <title> --body-file <file>`; use a draft only when the branch isn't ready to be seen
-- Turn review feedback into **fixup commits** (`git commit --fixup=<sha>`), so the reviewer re-reads just the round instead of the branch
-- Before landing, fold the fixups (`git rebase --autosquash origin/main`). For a bigger reshape, prefer `git reset --soft origin/main` and recommitting over surgical splitting.
-- Land by fast-forward (`git switch main && git merge --ff-only <branch>`), never through the GitHub UI: "Rebase and merge" mints new, untested SHAs
-
-## What makes a PR done
-
-Three things, all in the same PR:
-
-1. **It works and is verified** — `mise run check` is green, and the description flags whatever *isn't* instead of listing every gate that passed
-2. **Its docs came along** — the owning docs are updated in the same PR ([the rule](documentation.md#keep-docs-in-step-with-the-change))
-3. **A reviewer can understand it without reading the diff first, and knows where their judgment is needed** — see [Write the description for a human](#write-the-description-for-a-human)
+1. Create one branch per task from `origin/main`.
+2. Shape the work into atomic commits. Each commit should be one reviewable change with a message that follows [the commit guide](commits.md). The commit is the review unit; the PR is the branch's cover letter.
+3. Keep history linear. If `main` moves, rebase onto `origin/main`; never merge `main` into the branch.
+4. Run `mise run check`.
+5. Sync the docs before writing the PR description. Dispatch the `doc-writer` subagent in `.claude/agents/doc-writer.md` to run doc-sync over the finished branch, then fold its edits into the branch. The docs belong in the same PR as the code; see [the documentation rule](documentation.md#keep-docs-in-step-with-the-change).
+6. Push once, after the branch is ready, then open the PR with `gh pr create --title <title> --body-file <file>`. Use a draft only when asking for review before the work is ready to land.
 
 ## Write the description for a human
 
-The diff shows *what* changed. The description explains *why* and tells reviewers where you need their judgment. Review attention is the scarcest resource here. Because machines write and gates verify most of a diff, route the reviewer to the few decisions that need a human and explain why the rest is safe to skim.
+The diff shows what changed. The description explains why, relates the code to its design, and directs the reviewer to decisions that need human judgment. Machines can verify much of a diff; don't make a reviewer hunt for the parts they can't.
 
-A good description has:
+Before drafting, invoke the `writing` skill. Keep the description proportional: a one-line config change may need one sentence, while a new subsystem needs the full structure below.
 
-- **Summary** — what changed and why, in one to three sentences. If the PR closes an issue, link to it. State intent, not mechanics: "Adds a span-tree importer so a session's tool calls are queryable by duration and cost (#12)" — not "adds `importer.py` with a `run_import` that loops over records."
-- **The design it implements** — link the design doc, or copy the half-page sketch and test checklist from the [handoffs](handoffs.md) into the body. Never put a local handoff path in the PR. A reviewer needs to know how much design review happened before the code existed. For a change too small to design, say so in a clause.
-- **What the diff did to the design** — use four short lists so a reviewer who read the design can see what changed: built as designed, deviations (the design said X, the code does Y, why), additions the design didn't call for, designed but not built and why. "None" is an answer; silence is not. The auditor writes these because it already reads the diff against the stated intent.
-- **A diagram, when it earns its place** — see [Diagrams earn their place](#diagrams-earn-their-place)
-- **Review guide** — list the changes that need the reviewer's judgment in reading order. For each, give the files, the decision made, and the question the reviewer is settling ("is this the right boundary?", "does this hold when the transcript is truncated?"). Two to four items cover a typical PR. Close with one line naming the rest of the diff and the gate that verified it, so skimming is a decision, not a gamble. When the PR touches docs, put the doc diff first in the reading order — it gives the reviewer the fastest orientation.
-- **Verification** — report the *exceptions*, not the routine `mise run check`. Cover anything the gates don't, any gate that is **not** green (say so; never let the diff imply green), any manual check you ran, and anything the reviewer should verify. A behavior change also needs evidence, not a claim: paste the transcript of the run that shows it working. Evidence lets the reviewer judge the design instead of re-verifying the behavior.
-- **Status / known issues** *(only when there are any)* — put any known defect, unresolved decision, or not-ready part up front. The reviewer should learn this from the description, not discover it in the diff.
-- **Links** *(optional)* — any reference not linked above that would help the reviewer
+### Put known problems first
 
-Keep it proportional: a one-line config bump needs a sentence; a new subsystem needs the full shape above.
+If the PR has a defect, unresolved decision, failed gate, or unfinished part, open with **Status / known issues**. Don't let the reviewer discover it in the diff.
 
-Before drafting, invoke the `writing` skill. A description is prose for a human, and the skill carries the house style guide.
+### State the intent
 
-**Avoid the traps AI descriptions fall into:**
+Under **Summary**, say what changed and why in one to three sentences. Link an issue when the PR closes one. Describe the result, not the files: “Adds a span-tree importer so a session's tool calls are queryable by duration and cost (#12),” not “Adds `importer.py` with a `run_import` loop.”
 
-- Narrating the diff file by file instead of stating intent — the diff already shows *what*; you owe the *why*
-- Giving every change equal weight — narrating the mechanical bulk while the one decision that needs a human goes unmentioned
-- Adding a diagram that restates the file tree or re-draws the diff — it must add a view the diff can't (flow, ordering, state), or be skipped
-- Leaving a known issue or open decision to be discovered in the diff — surface it under Status / known issues
-- Dumping routine gate output ("format: clean, lint: clean, 92 passed…"), or giving its opposite, a bare "ran tests". Give the one-line green result, then report only what is *not* green and what you verified by hand.
-- Copying relative Markdown links from a doc — a PR body renders on github.com, not in the tree, so they 404. Use full URLs or backticked paths.
-- Pasting real session data as evidence — transcripts carry whatever the agent read. Redact, or point at a fixture.
+### Show the design and what changed
 
-## Diagrams earn their place
+Under **Design**, link the design doc or copy the half-page sketch and test checklist from the [handoff](handoffs.md) into the PR body. Never link a local handoff path. If the change was too small to need design work, say so in a clause.
 
-GitHub renders fenced ` ```mermaid ` blocks in PR descriptions natively, so use them. A diagram of the new control or data flow, a component interaction, or a state machine saves the reviewer from reconstructing it from the diff.
+Then compare the finished diff with that design under four labels:
 
-**Default to a diagram for any non-trivial change.** Skip it for a mechanical edit, a one-line fix, a pure rename, or a config change. When the change follows a flow already drawn elsewhere, link to that diagram instead of redrawing it.
+- **Built as designed**
+- **Deviations** — what the design said, what the code does, and why
+- **Additions** — what the code adds beyond the design
+- **Not built** — what the design included but the code omits, and why
 
-Pick the type by the question the PR answers:
+Write “None” where needed. Silence forces the reviewer to compare the plan and diff alone.
 
-| The PR changes…                               | Use                          |
-| --------------------------------------------- | ---------------------------- |
-| Control or data flow, pipeline stages, wiring | `flowchart`                  |
-| Ordering / interaction across components      | `sequenceDiagram`            |
-| A lifecycle or state machine                  | `stateDiagram-v2`            |
-| A data-model shape                            | `classDiagram` / `erDiagram` |
-| A refactor (show the move)                    | a before → after pair        |
+### Direct the review
 
-Before creating a PR diagram, read [the Mermaid guide](mermaid-guide.md), the source of truth for syntax and local render checks. **One question per diagram** — if it mixes structure and flow, or grows past ~20 nodes, split it.
+Under **Review guide**, list the places that need judgment in reading order. For each item, name the files, the decision, and the question the reviewer should settle: “Is this the right boundary?” or “Does this hold when the transcript is truncated?” Two to four items suit most PRs.
 
-**Promote durable diagrams into the tree.** When a PR diagram shows lasting architecture — how components connect or how data flows, not just this PR's delta — commit it to the doc that owns the topic and link that doc from the PR body. A diagram left in the body dies with the PR. One in the tree stays maintained.
+Put documentation first when the PR changes it; the docs orient the reviewer faster than the code. End with one line naming the rest of the diff and the gate that checked it, so the reviewer can skim by choice rather than gamble.
 
-Before submitting a PR body with a Mermaid block, write the exact final body to a temporary Markdown file and validate it with `mise run diagram-check <file>`. PR descriptions are not committed files, so this is the only local gate that catches a Mermaid mistake before GitHub tries to render it.
+### Report verification and evidence
 
-## Before you submit
+Under **Verification**, give the one-line `mise run check` result and name every gate that isn't green. Don't dump routine gate output or write only “ran tests.” Report what the gates don't cover: manual checks, behavior the reviewer should verify, and other exceptions.
 
-- [ ] `mise run check` green
-- [ ] History is linear on `origin/main`, fixups folded, each commit an atomic reviewable change
-- [ ] Docs synced into this PR
-- [ ] If the description contains a Mermaid block, the exact final body was written to a Markdown file and passed `mise run diagram-check <file>`
-- [ ] Description has: summary, the design (linked or inline, with its test checklist), what the diff did to that design, a diagram if it earns its place, review guide, verification — evidence for any behavior change, any gate **not** green noted — and links
+A behavior change needs evidence. Include redacted command output that shows the behavior or point to a safe fixture. Never paste real session data; transcripts may contain source, credentials, or customer data.
 
-After submitting, watch the PR's CI run until it turns green. It runs the same `mise run check` on a Linux runner (`.github/workflows/check.yml`), so it catches what your machine hid. Wait on a predicate that terminates: take the workflow run id and poll `gh run view <id> --json status` until it reports `completed`. Never poll for the absence of pending checks; that state may never arrive.
+Add **Links** only for useful references not linked above. Use full URLs or backticked repository paths; relative Markdown links from a doc won't resolve in a PR body on github.com.
+
+## Add a diagram only when it answers a question
+
+GitHub renders Mermaid code fences in PR descriptions. Use a diagram when it saves the reviewer from reconstructing flow, ordering, state, or structure from the diff. Default to one for a non-trivial change; skip it for a mechanical edit, one-line fix, pure rename, or config change. Don't redraw the file tree or diff. If an existing diagram answers the question, link it instead.
+
+Choose the type from the question:
+
+| The PR changes… | Use |
+| --- | --- |
+| Control or data flow, pipeline stages, wiring | `flowchart` |
+| Ordering or interaction across components | `sequenceDiagram` |
+| A lifecycle or state machine | `stateDiagram-v2` |
+| A data-model shape | `classDiagram` or `erDiagram` |
+| A refactor | a before → after pair |
+
+Read [the Mermaid guide](mermaid-guide.md) before drawing. Give each diagram one question. If it mixes structure with flow or grows past about 20 nodes, split it.
+
+Put a lasting architecture diagram in the doc that owns the topic and link that doc from the PR. A diagram kept only in a PR body won't stay maintained.
+
+Before submission, write the exact PR body to a temporary Markdown file and run `mise run diagram-check <file>`. PR descriptions aren't committed, so no other local gate will catch their Mermaid errors.
+
+## Respond to review without hiding the round
+
+Turn review changes into fixup commits with `git commit --fixup=<sha>`. This lets the reviewer read the new round instead of searching the whole branch.
+
+Before landing, fold the fixups with `git rebase --autosquash origin/main`. For a larger reshape, prefer `git reset --soft origin/main` and recommit the branch rather than splitting commits surgically.
+
+## Submit, verify, and land
+
+Before opening the PR, check:
+
+- [ ] `mise run check` is green, or the description names every failure
+- [ ] The branch is linear on `origin/main`, fixups are folded, and each commit is reviewable
+- [ ] The owning docs are in the branch
+- [ ] The description covers the summary, design, design comparison, review guide, and verification at a scale that fits the change
+- [ ] Every behavior change has safe evidence
+- [ ] Any Mermaid block in the exact final body passed `mise run diagram-check <file>`
+
+After opening the PR, watch CI until it finishes green. CI runs `mise run check` on Linux through `.github/workflows/check.yml`, which may expose differences hidden by your machine. Poll a workflow run that can terminate: get its run ID, then run `gh run view <id> --json status` until the status is `completed`. Don't poll for the absence of pending checks; that state may never arrive.
+
+Land with a fast-forward: `git switch main && git merge --ff-only <branch>`. Don't use GitHub's “Rebase and merge”; it creates new SHAs that weren't tested.

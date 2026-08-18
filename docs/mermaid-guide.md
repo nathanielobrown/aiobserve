@@ -1,82 +1,77 @@
-# Mermaid authoring guide
+# Mermaid diagrams
 
-How to author Mermaid diagrams in this repo, whether in `.mmd`/`.mermaid` files (prefer `.mmd`) or ` ```mermaid ` blocks in Markdown.
+Use this guide to write Mermaid diagrams that stay small, render on GitHub, and share one visual language. Prefer `.mmd` for standalone diagrams; use ` ```mermaid ` blocks when a document owns the diagram.
 
-## Which diagram, and when
+## Make each diagram answer one question
 
-A system has several orthogonal axes, and each needs its own diagram. Spanning axes in one picture is the main cause of unreadable hairballs. Name the axis where the diagram appears — in its section or in the filename of a standalone `.mmd` — so the question it answers is explicit.
+Choose the axis before you draw. Name it in the section heading or, for a standalone file, in the filename.
 
-| Tier | Axis | Question it answers | Mermaid | Tag |
-|---|---|---|---|---|
-| Static | **structure** | What are the parts and how do they connect? | `flowchart` (architecture / context) | `_structure` |
-| Static | **schema** | What is the shape of the data? | `erDiagram` / `classDiagram` | `_schema` |
-| Dynamic | **process** | How does the system act over time (control flow)? | `sequenceDiagram` or `flowchart` | `_process` |
-| Dynamic | **data_flow** | How does data move (source → transform → sink)? | `flowchart` (DFD) | `_data_flow` |
+| Tier | Axis | Question | Mermaid type | Filename tag |
+| --- | --- | --- | --- | --- |
+| Static | **structure** | What are the parts, and how do they connect? | `flowchart` | `_structure` |
+| Static | **schema** | What shape does the data have? | `erDiagram` or `classDiagram` | `_schema` |
+| Dynamic | **process** | How does the system act over time? | `sequenceDiagram` or `flowchart` | `_process` |
+| Dynamic | **data_flow** | How does data move from source to sink? | `flowchart` | `_data_flow` |
 | Dynamic | **lifecycle** | How does one entity change state? | `stateDiagram-v2` | `_lifecycle` |
 | Dynamic | **ux** | What does the user see and do? | `journey` or `flowchart` | `_ux` |
 
-Treat the table as a vocabulary to pick from, not a checklist. Most subjects need one or two axes, never all six.
+Pick only the axes that help the reader. Most subjects need one or two.
 
-Three rules keep diagrams legible:
+Keep one question and one level of detail in each diagram. Split a picture that mixes architecture, control flow, and data movement. If an overview needs more detail, add a drill-down diagram instead of crowding the overview.
 
-1. **One question per diagram.** A flowchart that shows structure *and* process *and* data at once is three diagrams in a trenchcoat — split it.
-2. **One level of abstraction per diagram.** Don't mix a top-level "system and its dependencies" view with low-level calls. Zoom in with a sub-diagram (see *Drill-down*), never by adding detail to the overview.
-3. **One subject's axes are peers, not a hierarchy.** A subject can warrant several axis diagrams — an import pipeline has both a `_structure` and a `_process` view. Those are *sibling files*, not drill-downs of each other, so never navigate between them with a `[[...]]` node.
+A subject's axis diagrams are peers. For example, a pipeline's structure and process views belong in sibling diagrams; neither is a drill-down of the other.
 
-For the process axis, choose by what the diagram is *about*: a **sequence diagram** when the point is who talks to whom in what order, a **flowchart** when the point is branching logic. Don't force branching into a sequence diagram or message-ordering into a flowchart.
+For a process diagram, use a sequence diagram when message order matters. Use a flowchart when branches matter.
 
-## Shape vocabulary
+## Use the shared visual language
 
-Use only these shapes and meanings so the vocabulary stays consistent:
+Use these shapes and no others:
 
-| Meaning | Syntax | Renders as |
-|---|---|---|
-| Process / step | `id[Text]` | rectangle |
-| Start / end | `id([Text])` | stadium |
+| Meaning | Syntax | Shape |
+| --- | --- | --- |
+| Process or step | `id[Text]` | rectangle |
+| Start or end | `id([Text])` | stadium |
 | Decision | `id{Text}` | rhombus |
-| Datastore / DB | `id[(Text)]` | cylinder |
-| Sub-process with its own diagram | `id[[Text]]` | subroutine |
-| I/O | `id[/Text/]` | parallelogram |
+| Datastore | `id[(Text)]` | cylinder |
+| Subject with a drill-down diagram | `id[[Text]]` | subroutine |
+| Input or output | `id[/Text/]` | parallelogram |
 
-`[[...]]` is **reserved for drill-down** in this repo (see below) — never use it for a node that has no sub-diagram.
+The subroutine shape marks a drill-down. Don't use `[[...]]` unless a deeper diagram exists.
 
-Use classic bracket shapes (not the v11.3 `@{shape:}` syntax) so diagrams render on GitHub and everywhere else.
+Use classic bracket syntax rather than Mermaid v11.3's `@{shape:}` syntax. The bracket forms work across more renderers, including GitHub.
 
-## Edge conventions
+Use edges consistently:
 
-- `-->` solid — primary/sync flow
-- `-.->` dotted — async / optional / deferred / feedback
-- `==>` thick — emphasized main path
-- **Quote every edge label:** `source -->|"label with (special) characters"| target`. Punctuation like `(`, `)`, `:` or `/` otherwise trips the parser.
-- **Label every decision branch:** `decision -->|"Yes"| next`.
+| Syntax | Meaning |
+| --- | --- |
+| `-->` | primary or synchronous flow |
+| `-.->` | asynchronous, optional, deferred, or feedback flow |
+| `==>` | emphasized main path |
 
-## Styling
+Quote every edge label: `source -->|"label with (special) characters"| target`. Label each decision branch, such as `decision -->|"Yes"| next`.
 
-**Don't style a diagram unless you were asked to.** No `classDef`, `style` or `linkStyle` by default. The shape and edge vocabularies above already carry the meaning, so added color becomes a second, private vocabulary the next reader has to learn. A hand-picked color that reads well on one theme can vanish on another.
+Don't add `classDef`, `style`, or `linkStyle` unless the task calls for styling. Shapes and edges already carry meaning, while custom colors often fail in another theme. If a rendered view needs visual weight, define the choice once where that view is emitted.
 
-Where a rendered diagram needs visual weight, make the choice once and document it where it is emitted, not per diagram.
+## Write syntax that renderers accept
 
-## Syntax pitfalls
+Follow these rules to avoid common parse failures:
 
-These break AI-generated diagrams the most:
+- Don't use bare `end` as a node ID or label; write `End` or choose another word
+- Put spaces around an edge when the target starts with `o` or `x`; `A---oB` creates a circle edge, while `A --- oB` points to the node `oB`
+- Quote node labels that contain special characters: `id["Label (x)"]`
+- If quoted punctuation still fails, use HTML entities: `#40;` for `(`, `#41;` for `)`, and `#35;` for `#`
+- Use `<br>` for a line break in a label, never `\n`
+- Use `-->`, not `->`
+- Put `%%` comments on their own lines
+- Give nodes short, descriptive snake_case IDs such as `importer` and `span_tree`, never `A`, `B`, or `C`
 
-- **`end` is reserved.** A bare `end` node/label can break the parse — capitalize (`End`) or rephrase.
-- **Leg `o`/`x` glues onto the target.** `A---oB` becomes a *circle-edge* to `B`; write `A --- oB` or rename the node so an edge never abuts a leading `o`/`x`.
-- **Quote labels with special characters:** `id["Label (x)"]`. For characters that still trip the parser inside quotes, use HTML entities: `#40;` `(`, `#41;` `)`, `#35;` `#`.
-- **Newlines in labels:** `<br>`, never `\n`.
-- Use `-->`, not `->`. Comments are `%%` on their own line. Node IDs are short, descriptive and snake_case (`importer`, `span_tree`) — never `A`/`B`/`C`.
+## Keep the layout small
 
-## Layout & quality budgets
+Declare the direction first. Use `TD` for sequential or decision flows and `LR` for wide trees or pipelines. Declare nodes, then group related parts with `subgraph`.
 
-- **Declare direction first:** `TD` for sequential/decision flows, `LR` for wide trees/pipelines.
-- **Declare nodes, then group** related ones with `subgraph`.
-- **Budgets — split when exceeded:** ≤ ~20 nodes, ≤ 8 parallel branches, ≤ 100 edges per diagram. Past the budget, split along the drill-down hierarchy rather than adding detail. Mermaid hard-fails past 280 edges.
+Split a diagram when it grows past about 20 nodes, eight parallel branches, or 100 edges. Split along the drill-down hierarchy rather than squeezing in more detail.
 
-A diagram approaching its budget is telling you to split it. Many small, single-purpose diagrams beat one large one.
-
-## dagre vs ELK
-
-**dagre** is the default renderer and the one GitHub uses, so author for it. **ELK** lays out large, tangled flowcharts better; opt in through front-matter:
+Dagre is Mermaid's default layout and the layout to design for because GitHub uses it. ELK can untangle a large flowchart in local previews:
 
 ```mermaid
 ---
@@ -84,17 +79,17 @@ config:
   layout: elk
 ---
 flowchart LR
+    source[/Source/] --> transform[Transform]
+    transform --> sink[(Sink)]
 ```
 
-But GitHub and many renderers **ignore ELK and fall back to dagre**, so your local preview can differ from what GitHub shows. Use ELK only as a *local* escape hatch for a tangled diagram; never rely on it for the committed view.
+GitHub and other renderers may ignore ELK and fall back to dagre. Treat ELK as a local escape hatch, not a requirement for understanding the committed diagram.
 
-## Drill-down: keep each diagram small
+## Put detail in drill-down diagrams
 
-Detail lives in separate diagrams arranged as a zoomable hierarchy: **a node in a level-N diagram is the entire subject of a level-(N+1) diagram.** Think maps at increasing zoom, never one infinite diagram.
+A drill-down diagram expands one node from its parent. The parent node uses `[[...]]`, and the child diagram covers that node's subject at the next level of detail.
 
-- **Subroutine shape = drill-down marker.** A node with its own sub-diagram uses `[[Label]]`. That is the only meaning of `[[...]]` here — the visual cue that says "look deeper."
-- **A diagram lives in the document it serves**, as a ` ```mermaid ` block in the section that raises the question. The reader meets the picture where the prose needs it, and doc sync updates both at once. A standalone `.mmd` file is for a diagram no single document owns; name it `<subject>_<axis>.mmd` and keep its drill-down children beside it.
-- **A subject's axes are peers, not a hierarchy.** An import pipeline can have both a `_structure` and a `_process` view. Those are sibling files, not drill-downs of each other — never navigate between them with a `[[...]]` node.
+Put a diagram in the document section that needs it. This keeps the prose and picture together. Use a standalone `.mmd` file only when no single document owns the diagram; name it `<subject>_<axis>.mmd` and keep its drill-down children beside it.
 
 ```mermaid
 flowchart LR
@@ -102,18 +97,20 @@ flowchart LR
     importer --> backend[(OTel backend)]
 ```
 
-`backend` is a plain datastore, not a drill-down, so it stays `[(...)]`. `[[Importer]]` says a deeper diagram exists for it.
+Here, `Importer` promises a deeper diagram. `backend` remains a datastore because it has no drill-down.
 
-Keep sub-diagrams few and tightly scoped. The hierarchy exists so each diagram stays small and current, not as an excuse for a deep tree of stale pictures.
+Keep the hierarchy shallow. Its purpose is to keep each diagram focused and current, not to create a tree of pictures readers must search.
 
-## The render/validate loop
+## Validate, render, and inspect
 
-Not every edit needs this. When you want proof a diagram is valid and lays out well:
+Run this loop when you need proof that a diagram parses and reads well:
 
-1. Write or edit the `.mmd` file or ` ```mermaid ` block.
-2. **Validate:** `mise run diagram-check <file>` — mmdc validates by rendering, so a non-zero exit is a syntax error to fix.
-3. **Render for inspection:** `mise run diagram-render <file>` — prints the path of every PNG it wrote, one per ` ```mermaid ` block in a Markdown file. Inspect the raster PNG, not SVG, for layout.
-4. **View the PNG** and check for overlapping nodes, crossing edges, clipped nodes, unreadable labels, wrong shapes. Fix the *source*. If the layout, rather than the content, is tangled, flip `TD`↔`LR`, add subgraphs, or try ELK; past ~20 nodes, split.
-5. Re-render until clean.
+1. Write or edit the `.mmd` file or Mermaid block
+2. Run `mise run diagram-check <file>`; a nonzero exit means Mermaid couldn't render the source
+3. Run `mise run diagram-render <file>`; the task prints each PNG path and creates one PNG per Mermaid block in a Markdown file
+4. Inspect the PNG for overlaps, crossing edges, clipped nodes, unclear labels, and wrong shapes
+5. Fix the source and render again
 
-Both tasks shell out to `npx @mermaid-js/mermaid-cli`, which drives a headless Chrome through Puppeteer. On a machine without a system Chrome, set `PUPPETEER_EXECUTABLE_PATH` to the path of one.
+Inspect the PNG rather than the SVG because the raster output exposes layout problems. If the content is sound but the layout is tangled, switch between `TD` and `LR`, group related nodes, or try ELK. Split the diagram when layout changes no longer help.
+
+Both tasks run `npx @mermaid-js/mermaid-cli`, which uses headless Chrome through Puppeteer. If the machine has no system Chrome, set `PUPPETEER_EXECUTABLE_PATH` to a Chrome executable.

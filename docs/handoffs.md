@@ -1,21 +1,21 @@
 # Handoffs
 
-Handoffs pass per-run scratch between agents without adding it to the repository's durable record.
+Use a handoff to pass scratch from one agent to another during a run. Handoffs are temporary notes, not part of the repository's record.
 
-## Write one dated handoff
+## Name each handoff with its date
 
-**Write a handoff `<description>`** means creating `handoffs/handoff_<YYYY_MM_DD>_<description>.md` at the working tree's root. Use the local calendar date and a short kebab-case description.
+When an instruction says **write a handoff `<description>`**, create `handoffs/handoff_<YYYY_MM_DD>_<description>.md` at the working tree's root. Use the local date and a short kebab-case description.
 
-## Pass the path
+## Pass one authoritative copy
 
-Return the handoff's absolute path in the bounded inline report. Give later agents that path, not the file's contents, so one copy remains authoritative during the run.
+Return the handoff's absolute path in the bounded inline report. Give later agents the path instead of copying the contents. This keeps one copy authoritative during the run.
 
-A handoff reports what its author **verified** and what they **inferred**. A later agent verifies any repository claim it relies on; a handoff is another agent's reading of the repository, not the repository.
+Mark what you **verified** and what you **inferred**. Later agents must verify any repository claim they rely on: a handoff records another agent's reading of the repository, not the repository itself.
 
-## Leave no durable authority
+## Keep handoffs out of the durable record
 
-`handoffs/` is gitignored scratch. Never commit a handoff or put its local path in a PR. Copy a design sketch or test checklist into the PR body when [the PR guide](pull-requests.md) requires it.
+The gitignored `handoffs/` directory holds per-run scratch. Never commit a handoff or put its local path in a PR. When [the PR guide](pull-requests.md) calls for a design sketch or test checklist, copy that material into the PR body.
 
-Put conclusions that must survive the run in their owning doc, code comment, test, or report. No later run treats a handoff as authority.
+Put conclusions that must survive the run in the doc, code comment, test, or report that owns them. Later runs must not treat a handoff as authority.
 
 Delete a handoff only after every intended consumer has finished with it.

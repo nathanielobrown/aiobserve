@@ -1,53 +1,81 @@
-# Shipping traces to an OTLP backend
+# Export stored traces over OTLP
 
-`aiobserve export-otlp` sends sessions from the trace store to any OTLP/HTTP backend as spans. This lets you point a waterfall view and the backend's query language at the same corpus that local queries read. Read this before you run it against a backend anyone else can see.
+`aiobserve export-otlp` sends sessions from the trace store to an OTLP/HTTP backend as spans. Use a dry run first, then review the data policy and delivery limits below before sending traces to a shared backend.
 
+## Preview the exact export
+
+```console
+aiobserve export-otlp /path/to/repo --db data/traces.duckdb --dry-run
 ```
+
+A dry run shapes every selected session with the same mapper used by a real export. It reports the session and span counts, including compactions, without configuring a backend or key. It opens the store read-only, writes no delivery records, and sends no requests.
+
+The mapper must count compactions because the store's `live_compactions` view retains copies inherited by forks while the exporter drops them. If the mapper cannot tell which copy is live, the dry run fails instead of reporting a count that a real export would not match.
+
+Use the result to check the backend's ingest quota and estimate the run time at your chosen `--rate`.
+
+## The trace store defines the corpus
+
+The exporter reads the store, not Claude Code's transcript files. It can therefore send sessions that Claude Code has pruned from disk, and the remote corpus matches the one local queries use.
+
+The project argument selects sessions by their recorded working directory. The command expands `~` and resolves relative paths before matching. It stops if the store holds no session for that project, which catches a mistyped path instead of reporting a successful export of nothing.
+
+A real export reads sessions and writes its delivery ledger through one DuckDB connection. DuckDB admits one writer, so `export-otlp` cannot run beside `extract` or `enrich`; a second writer fails at the store lock before sending anything.
+
+## Configure one destination
+
+The default `generic` backend sends to `OTLP_ENDPOINT`. Set optional request headers in `OTLP_HEADERS` as comma-separated `name=value` pairs:
+
+```console
+aiobserve export-otlp /path/to/repo --db data/traces.duckdb
+```
+
+Named backends and their key variables live in `BACKENDS` in `src/aiobserve/export/otlp.py`; `--help` lists the accepted names. For example:
+
+```console
 aiobserve export-otlp /path/to/repo --db data/traces.duckdb --backend honeycomb
 ```
 
-The decisions behind it, and the prior importer it retires — claude-otel's transcript pusher — are in [the OTLP export design](../plans/otlp-export/design.md).
+Keys come from `.env` or the environment. The command validates the endpoint and required key before opening the store, and it never prints keys. `OTLP_ENDPOINT` overrides the endpoint of a named backend, which lets you put a collector in front of it.
 
-The store is the source, not the transcripts on disk, so a session Claude Code has pruned still ships. DuckDB admits one writer, so an export cannot run beside `extract` or `enrich` — a second run fails fast on the lock instead of waiting.
+The backend name also identifies its delivery ledger. Sending the same sessions to two named backends creates separate delivery records. All generic endpoints share the `generic` identity, so changing `OTLP_ENDPOINT` alone does not make a session eligible to send again.
 
-The command resolves the project argument before matching it against the recorded `cwd`s, so a relative path or a quoted `~/…` names the repository a shell would. If the store holds no session for that project, the command stops, whether sending or running dry. The command promises a corpus, so an empty one means a mistyped path rather than a clean delivery of nothing.
+## Transcript text stays local by default
 
-## Where it ships
+The default export sends the structure of the work: span ids and times, project metadata, model and tool names, token counts, costs, stop reasons, agent types, command names, and PR numbers. This metadata is not anonymous; it includes such values as the project path, Git branch, session ids, and request ids.
 
-`--backend` picks an entry from `BACKENDS` in `src/aiobserve/export/otlp.py`. Each entry holds the backend's endpoint, the variable that supplies its key, and the header that carries the key. `generic` is the base case: any OTLP/HTTP endpoint named by `OTLP_ENDPOINT`, with `OTLP_HEADERS` carrying `name=value` pairs. `OTLP_ENDPOINT` also overrides a named backend's endpoint, letting a run reach a collector in front of that backend.
+The default omits transcript-derived text: prompts, command arguments, model responses and thinking, tool inputs and results, session titles, session agent names, subagent descriptions, PR URLs, and repository names. PR links still become events on the session root, but those events contain only the PR number by default.
 
-Keys come from `.env` or the environment. The command validates them before opening the store and never prints them. The backend name is also the ledger key, so the ledger tracks two backends separately when you ship the same corpus to both.
+Each session becomes one trace. Its root span has children for turns, model calls, tool calls, subagent runs, and compactions. A tool call that starts a subagent becomes the subagent span rather than a second tool span. Rows copied into a fork emit no span because sending them would double-count the work.
 
-Spans leave at 300 per second (`--rate`). The prior importer measured a backend answering 200 while dropping about 40% of the spans it took at 2,575 spans/s, and nothing on our side can detect that loss. The limit mitigates it and puts a full corpus backfill at tens of minutes. Requests are gzipped protobuf, up to 2,000 spans each.
+`session_spans()` in `src/aiobserve/export/otlp.py` defines what ships. `tests/export/test_otlp__privacy.py` scans the raw request bytes for every excluded field.
 
-## Counting before you send
+Use `--include-text` only when you intend to publish transcript content to the backend. It adds the excluded fields and cuts each one to `--max-chars`, which defaults to 500. Truncation limits size; it does not redact secrets.
 
-```
-aiobserve export-otlp /path/to/repo --dry-run
-```
+## Keep the default rate unless the backend proves it can take more
 
-`--dry-run` shapes every session and reports how many spans a send would put on the wire, including how many are compactions. No store query can reproduce the compaction count because `live_compactions` keeps the copies a fork inherited and the mapper drops them. It needs no backend or key, opens the store read-only, and writes nothing. Use it to size a backfill against a backend's ingest quota.
+The exporter sends 300 spans per second by default. The prior importer saw a backend return HTTP 200 while silently dropping about 40% of spans at 2,575 spans per second. A successful request therefore does not prove that every span was persisted, and the exporter cannot detect this kind of server-side loss.
 
-It is also a check: if the replay rule cannot separate a session's duplicated compactions, the count crashes instead of reporting a number that the send would not match.
+Override the limit with `--rate` only after testing the backend at that rate. Requests use gzipped protobuf and contain at most 2,000 spans.
 
-## What leaves the machine
+## Delivery is at least once
 
-Metadata only. Nothing the user typed or the model wrote is sent: no prompt, no response text, no thinking, no tool input or result, no session title, no PR URL. What ships is the shape of the work — ids, timings, models, token counts, cost, stop reasons — and the resource identifies the project and exporter version it came from. `session_spans()` in `src/aiobserve/export/otlp.py` defines the whole list, and `tests/export/test_otlp__privacy.py` sweeps the raw request bytes for every excluded field.
+The exporter sends a session whole and writes its `otlp_delivery` row only after every batch returns success with no rejected spans. If a batch fails or the run stops, that session gets no delivery row and the next run sends it again. Sessions confirmed before the failure remain recorded.
 
-A session becomes a root span with one child per turn, model call, tool call, subagent run and compaction. PR links ride the root as events. A tool call that started a subagent becomes that subagent's span instead of a separate tool-call span. Rows that a fork copied from its parent's transcript emit nothing because they would double-count in every backend aggregation.
+A resend uses the same trace and span ids. Each id is derived from the session id, row kind, and the row's natural id. A backend that deduplicates those ids can treat the send as an update; a backend that does not will store another copy. The exporter does not compare remote spans with the next payload.
 
-`--include-text` opts in the excluded fields, cut to `--max-chars` (500 by default). Truncation is not redaction — a credential fits in 200 characters — so this is a flag, not the default.
+The `otlp_delivery` table is keyed by session and backend. Each row stores the shipped session fingerprint and the `MAPPER_VERSION` that shaped it. A changed fingerprint resends that session. A changed mapper version resends every selected session because their old delivery rows no longer count as current.
 
-## Delivered at least once, never diffed
+This ledger records what the backend acknowledged, not what a later query can find there. Backend-side delivery verification is not built.
 
-The exporter posts a session whole and records it only after the backend confirms every batch. A failure records nothing, so the next run sends that session again. Nothing compares what has already landed with what is about to be sent. That machinery was the largest bug source in the prior importer. As a result, a backend that ignores span identity will hold duplicates.
+## Replacing the store also replaces the ledger
 
-Identity keeps a re-send a re-send: every span id is a sha256 digest of the session, the kind of row, and its natural id, so shaping the same session twice names the same spans. A backend that collapses on span id sees an update; one that does not sees a copy.
+The ledger lives inside `traces.duckdb`. If a `SCHEMA_VERSION` change requires a fresh store, the new store has no delivery history. The next export to a backend resends the selected corpus to that backend. This favors duplication over loss, but it can trigger a full backfill. Read [the store guide](store.md) before replacing a store.
 
-The ledger lives in `otlp_delivery` in the store itself. It is keyed by session and backend and carries the shipped fingerprint and the `MAPPER_VERSION` that shaped it. A change to either makes the session undelivered again, so a re-extract re-ships it and a change to span shaping re-ships the corpus.
+## A rejected span blocks the sessions behind it
 
-## Two things worth knowing before you run it
+If a backend accepts a request but reports rejected spans, the exporter stops and records no delivery for that session. The same session will fail again on the next run, so later sessions cannot ship until the cause is fixed.
 
-**The ledger dies with the store.** It is a table in `traces.duckdb`, and the remedy for a `SCHEMA_VERSION` bump is to extract into a fresh store ([the store guide](store.md)). That erases every delivery row, and the next export re-sends the whole corpus to every backend. The direction is safe — duplication, never loss — but the cost is a full backfill.
+There is no skip or quarantine flag. A deterministic rejection means the mapper produced data the backend will not accept. Fix the mapper and bump `MAPPER_VERSION`; the next run then reshapes and resends the corpus.
 
-**A rejected span stops the run, every run.** If a backend accepts the request but reports that it kept only part of it, the export crashes and records nothing. It crashes again next time, and sessions behind it never ship. That is deliberate. A deterministic rejection is a bug in what we send. No flag skips past it, and the fix is a mapper change — whose `MAPPER_VERSION` bump then re-sends everything.
+The design choices and the failure record from the importer this command replaced are in [the OTLP export design](../plans/otlp-export/design.md).

@@ -1,35 +1,37 @@
 # Enrichment
 
-Enrichment reads the trace store and writes a description of what happened, in the model's words, beside every agent run, main turn, and session. Findings can then filter and group on meaning — "every turn that debugged something and failed" — without re-reading a single transcript.
+Enrichment describes every agent run, main turn, and session in the trace store. Findings can then filter and group by meaning — for example, every debugging turn that failed — without reading each transcript again.
+
+Start with a dry run:
 
 ```bash
-uv run aiobserve enrich ~/repos/mycelia --dry-run   # what it would send, and what that costs
-uv run aiobserve enrich ~/repos/mycelia             # describe everything stale
+uv run aiobserve enrich ~/repos/mycelia --dry-run   # show what it would send and the estimated cost
+uv run aiobserve enrich ~/repos/mycelia             # describe every stale item
 ```
 
-Enrichment spends the Claude Code subscription. It shells out to `claude -p` once per item. There is no API key to hold and nothing is billed separately — log in with `claude` first. A run that would spend calls `claude auth status` before rendering anything. It refuses to run if the CLI is logged out, the login has no subscription behind it, or `claude` is not on `PATH`. `--dry-run` asks nothing because quoting spends nothing, and whoever prices a pass is not always whoever is logged in.
+Enrichment spends the Claude Code subscription by running `claude -p` once per item. It needs no API key and creates no separate bill. Log in with `claude` first. Before a paid run renders anything, enrichment runs `claude auth status`; it refuses to continue if `claude` is absent, logged out, or logged in without a subscription. A dry run skips this check because quoting costs nothing and the person pricing a pass may not own the active login.
 
-Every flag lives in `src/aiobserve/cli.py`; `--limit` buys a cheap dev pass, and `--concurrency` sets how many `claude` processes a round runs at once, four by default.
+`src/aiobserve/cli.py` defines every flag. Use `--limit` for a cheap development pass. `--concurrency` controls how many `claude` processes run at once within a round; it defaults to four.
 
-## What a row holds
+## Each item gets one enrichment row
 
-`turn_enrichments`, `agent_run_enrichments`, and `session_enrichments` each hold one row per described item. Each row holds four model-written fields — a description, a `category`, an `outcome`, and a nullable `friction` note. The vocabularies are closed and live in `src/aiobserve/enrich/taxonomy.py`; the enricher refuses an answer outside them rather than storing it.
+`turn_enrichments`, `agent_run_enrichments`, and `session_enrichments` hold one row per described item. Each row has four model-written fields: `description`, `category`, `outcome`, and a nullable `friction` note. `src/aiobserve/enrich/taxonomy.py` defines the closed vocabularies. The enricher rejects answers outside them.
 
-Query through the `enriched_turns`, `enriched_agent_runs`, and `enriched_sessions` views, which left-join the descriptions onto the live base rows. A `NULL` description there means "not described yet", and counting them is how you read coverage honestly. `enriched_agent_runs` renames the run's own recorded task to `task_description` and its model to `agent_model`, so `description` means the enrichment's description in all three views.
+Query these rows through `enriched_turns`, `enriched_agent_runs`, and `enriched_sessions`. Each view left-joins enrichments onto the live base rows, so a `NULL` description means "not described yet." Count those rows when reporting coverage. To keep `description` consistent across the views, `enriched_agent_runs` calls the recorded run task `task_description` and the recorded model `agent_model`.
 
-The query library ships three named questions over these rows, each runnable with `aiobserve query` and citable in a report:
+The query library provides three report-ready questions, which `aiobserve query` can run:
 
-- `enrichment_coverage` — what share of each level is described, split by category, outcome, model and prompt version. The row with no category is the gap
-- `enrichment_digest` — one session's descriptions, keyed so they sit beside `session_digest`, `run_digest` and `view_runs`
-- `select_enrichments` — a seeded draw of described items, so many per category, for checking descriptions against the records they came from
+- `enrichment_coverage` reports coverage at each level by category, outcome, model, and prompt version; the row with no category is the gap
+- `enrichment_digest` returns one session's descriptions under keys that align with `session_digest`, `run_digest`, and `view_runs`
+- `select_enrichments` draws a seeded number of described items from each category for checks against their source records
 
-All three read tables an enrichment pass writes. A store no pass has touched does not hold them, and the query fails saying so.
+These queries read tables created by an enrichment pass. If no pass has touched the store, they fail and explain that the tables are missing.
 
-[The viewer](viewer.md) shows the same rows beside what they describe. It reads the three tables rather than the views, which lets it render described and undescribed items differently. It also checks whether the tables exist, so a store no pass has touched still serves every page.
+[The viewer](viewer.md) shows each enrichment beside its source. It reads the three tables directly, rather than the views, so it can distinguish described items from undescribed ones. It checks for the tables first, which lets every page work before the first enrichment pass.
 
-## Descriptions go up, text never does
+## Descriptions move up without transcript text
 
-Every prompt embeds its children's **descriptions**, not their text. A session prompt carries one line per thing the session did; it never carries a transcript. That makes the corpus affordable — tool results alone run to hundreds of megabytes — and explains why the levels are described bottom-up:
+A prompt includes its children's descriptions, never their transcript text. A session prompt has one line for each thing the session did, but no transcript. This keeps enrichment affordable when tool results alone span hundreds of megabytes. It also requires a bottom-up pass:
 
 ```mermaid
 flowchart BT
@@ -38,25 +40,37 @@ flowchart BT
     main_turn --> session[sessions]
 ```
 
-The enricher sends agent runs in rounds, deepest first, so no parent is ever described from a hole. A run's parent is the agent named in `parent_agent_id` where there is one, and otherwise whatever transcript holds the tool call that spawned it. A session's direct children are its main turns plus **the runs nothing else embeds** — teammates the team mechanism started, and runs spawned by a call belonging to no turn. Because nothing may be dropped silently, that set comes from the same parent rule that orders the rounds, not a rule of its own.
+The enricher describes agent runs in rounds, deepest first, so it never describes a parent with a missing child. When `parent_agent_id` names an agent, that agent is the parent. Otherwise, the parent is the transcript containing the tool call that spawned the run.
 
-The `describable_sessions` view excludes two kinds of session. One has no main turn and no agent run — there is nothing to describe, and compaction records and duplicate-uuid sessions are the recorded cases. The other holds turns that drove no api call: a `/model` or `/effort` turn the CLI answered by itself, leaving no model response to describe. A QC pass found that the enrichment model invented work for those rather than reporting none, so the fix is not to ask.
+A session's direct children are its main turns and any runs that nothing else embeds. The latter include teammates started by the team mechanism and runs spawned by calls that belong to no turn. The same parent rule both orders rounds and finds these children, so a separate rule cannot silently drop them.
 
-A main turn that ran a slash command carries **what the CLI printed** beside the command, capped at 2,000 characters. For a turn that drove no api call, it is the only account of what happened, and most such turns carry one — 272 of 280 in the mycelia corpus (2026-08-13). The render distinguishes three states rather than leaving the model to infer one: the output; "the command printed nothing", which every recorded `/clear` is; and "not recorded", for a turn nothing archived an answer for. Claude Code archives that output in either of two record shapes ([schema](schema.md)) — one in a third shape stops the pass rather than reading as an empty answer.
+The `describable_sessions` view excludes sessions that give the model nothing sound to describe:
 
-`sweep_zombies` also checks each session row against this view, so the next run deletes rows written before the gate and `aiobserve enrich` reports the count. Turns are not gated — a turn that drove no api call keeps its row.
+- Sessions with no main turn and no agent run. Recorded examples are compaction records and sessions with duplicate UUIDs
+- Sessions whose turns made no API call, such as `/model` or `/effort` turns handled by the CLI. A quality-control pass found that the enrichment model invented work when asked to describe them
 
-## Staleness is the whole resume mechanism
+A main turn that ran a slash command includes the command's printed output, capped at 2,000 characters. For a turn that made no API call, this may be the only record of what happened. In the mycelia corpus on 2026-08-13, 272 of 280 such turns had output.
 
-A row is current when four things match: the hash of the rendered prompt, the level's prompt version, the taxonomy version, and the model that answered. If any of them changes, the row is stale.
+The prompt names all three output states: recorded output, "the command printed nothing," and "not recorded." Every recorded `/clear` falls into the second state. Claude Code stores slash-command output in either of two record shapes documented in the [schema](schema.md). If the enricher finds a third shape, it stops rather than treating the answer as empty.
 
-The hash covers the **rendered content only**, so a re-extract that changes no text costs nothing. It also makes the cascade fall out for free: a child described in new words changes what its parent renders to, so the parent goes stale in the same invocation. A child re-described in the same words stops there.
+`sweep_zombies` checks session rows against `describable_sessions`. The next run removes enrichments written before this gate and reports how many it removed. The gate does not apply to turns, so a turn that made no API call keeps its row.
 
-That is why a dry run's count is an upper bound. It quotes every stale item plus every item whose prompt embeds one, because no read can tell in advance which descriptions will actually change.
+## Four values decide whether a row is stale
 
-There is no resume state on disk. A failed item writes no row, so it is still stale next time and rerunning is the retry. An item whose child failed writes nothing either — a description built around a hole would be hashed as current forever, which is the one failure a rerun cannot heal.
+A row is current only when these values match:
 
-## How a round runs
+- The rendered prompt's content hash
+- The level's prompt version
+- The taxonomy version
+- The model that answered
+
+The hash covers rendered content, not extraction metadata. Re-extracting unchanged text therefore costs nothing. A changed child description changes its parent's rendered prompt, which makes the parent stale in the same invocation. If the new child description matches the old one, the cascade stops there.
+
+For this reason, a dry run reports an upper bound. It quotes every stale item and every item that embeds one; it cannot know which descriptions will change before the model answers.
+
+There is no resume file. A failed item writes no row and remains stale for the next run. An item with a failed child also writes nothing. Otherwise, a description built around a missing child could be hashed as current and no later run could repair it.
+
+## Each round protects paid answers
 
 ```mermaid
 flowchart TD
@@ -74,44 +88,48 @@ flowchart TD
     more -->|"No"| done(["report what was described, or crash naming every failure"])
 ```
 
-Planning happens per round rather than up front, which carries a new child description up the tree.
+The enricher plans one round at a time so each parent can include descriptions written in the preceding round.
 
-The enricher runs one `claude -p` process per item over a thread pool `--concurrency` wide. Each call carries the level's instructions on `--system-prompt`, the rendered content on stdin, and the answer's shape on `--json-schema`. Tools, settings, MCP, and slash commands are all off, and the cwd is a temp directory. A render is untrusted transcript text, so nothing it says may reach a tool or leave a session behind in an extractable project.
+Within a round, a thread pool runs one `claude -p` process per item, up to `--concurrency` at once. Each process receives the level instructions through `--system-prompt`, rendered content on stdin, and the answer contract through `--json-schema`. It runs in a temporary directory with tools, settings, MCP, and slash commands disabled. Rendered content is untrusted transcript text; it cannot invoke a tool or leave a session in an extractable project.
 
-The subprocess environment is **constructed, not inherited**: it contains `HOME`, `PATH`, `USER`, and `MAX_THINKING_TOKENS=0`, and nothing else. `USER` is load-bearing because the OAuth token lives in the keychain. Without it, every call reports itself logged out. A stray `ANTHROPIC_API_KEY` or `ANTHROPIC_BASE_URL` cannot divert the run off the subscription because it never reaches the child. `preflight` asks its auth question under that same environment, so it validates the process shape used by the calls that spend.
+The subprocess gets a constructed environment rather than inheriting the caller's. It contains only `HOME`, `PATH`, `USER`, and `MAX_THINKING_TOKENS=0`. `USER` lets the process find the OAuth token in the keychain; without it, every call appears logged out. Because `ANTHROPIC_API_KEY` and `ANTHROPIC_BASE_URL` never reach the child, they cannot divert work from the subscription. Preflight checks auth under the same environment used by paid calls.
 
-The round's first item runs alone as a **canary** and is the only call allowed to crash the run. Every call after it spends the subscription. The enricher writes a round's rows only once `submit` returns, so a raise mid-round would forfeit answers already paid for. Five consecutive failures trip the **breaker** — nothing further starts, and the unsent remainder comes back `Failed(aborted)`. The answers already in hand are written, and the run crashes at the end naming both.
+The first item runs alone as a canary and is the only call that may crash the run immediately. Every later call spends the subscription. `submit` returns all results before the enricher writes the round, because an exception during fan-out would otherwise discard answers already paid for.
 
-**Ctrl-C ends the round, not the answers.** Because a pass runs for hours and `--limit` is the only pacing lever, stopping one is expected. The round it lands in waits out the calls already running, writes what it bought, and stops the run at the next round instead of mid-write. Press it again and it gives up on the answers still in the air, which come back `aborted` like anything else with no answer to its name.
+Five consecutive failures trip the breaker. The enricher starts nothing else, marks the unsent items `Failed(aborted)`, writes completed answers, and then crashes with both kinds of failure in its report.
 
-### The envelope, pinned at claude 2.1.221
+**Ctrl-C stops after the current round, not during it.** The enricher waits for running calls, writes their answers, and stops before the next round. Press Ctrl-C again to abandon calls still in flight; they return `aborted`, like any item with no answer. This behavior makes it safe to stop a pass that runs for hours, while `--limit` remains the pacing control.
 
-`--output-format json` returns one object. This build reads four fields. It ignores everything else the CLI writes, so a new field is not drift:
+### The CLI envelope is pinned to `claude` 2.1.221
 
-- `is_error` and a nonzero exit — the call failed. Retried once, then recorded as `api_error`
-- `stop_reason` — `max_tokens` means the answer was cut off at the cap, so it is `invalid_output` rather than a truncated answer worth storing. Every other value is left to `structured_output` to judge
-- `modelUsage` — keyed by model id. A key that is not the model asked for means the CLI substituted one, which would make the staleness `model` axis a lie
-- `structured_output` — the answer itself. Its **absence is not drift**: the CLI omits it whenever the model produced nothing conforming, as the recorded logged-out envelope shows, so it is `invalid_output`
+With `--output-format json`, this version returns one object. The enricher reads four fields and ignores all others, so an added field does not count as drift:
 
-A missing contract field is drift. On the canary, that raises `EnvelopeDrift` for the price of one item rather than describing thousands against a shape nobody has read. Past the canary, it is one more per-item failure. Claude Code owns this envelope and changes it without notice — re-record `tests/enrich/fixtures/` when it moves, and say which version did.
+- `is_error` and a nonzero exit status mean the call failed. The enricher retries once, then records `api_error`
+- `stop_reason` equal to `max_tokens` means the answer was cut off, so the result is `invalid_output`. For other values, `structured_output` decides validity
+- `modelUsage` is keyed by model ID. A key other than the requested model means the CLI substituted one, so the row's model would no longer be a truthful staleness key
+- `structured_output` holds the answer. Its absence is `invalid_output`, not drift, because the CLI omits it when the model returns nothing conforming; the recorded logged-out envelope demonstrates this case
 
-## What it costs
+A missing contract field is drift. On the canary, it raises `EnvelopeDrift` after spending one item rather than describing the corpus against an unread shape. After the canary, it counts as a per-item failure. Claude Code owns this envelope and may change it without notice. When it changes, re-record `tests/enrich/fixtures/` and record the Claude Code version.
 
-`src/aiobserve/enrich/cost.py` holds the rate table and the arithmetic. It prices rendered characters over a chars-per-token ratio, then adds each level's instructions and a flat per-item transport constant. That constant covers the CLI's own framing and the `--json-schema` payload, which a fresh subprocess pays for every time. There is one price: list price. The batch discount went with the API. Prompt caching counts as zero, so the quote reads high. A full pass over the mycelia corpus is single-digit dollars on Haiku.
+## A dry run quotes money, not elapsed time
 
-It costs time rather than money. At the ~4s per item measured on 2026-08-13, four at a time, a full corpus pass takes over an hour and runs four `claude` processes against an allowance shared with this project's own agents. `--limit` is the only pacing lever, and it is manual.
+`src/aiobserve/enrich/cost.py` owns the rates and arithmetic. It estimates tokens from rendered characters, then adds each level's instructions and a flat transport cost per item. Each fresh subprocess pays that cost for the CLI framing and `--json-schema` payload.
 
-Prices move and models get added. An unpriced model crashes rather than quoting zero.
+The quote uses list price. The API batch discount no longer applies, and prompt caching is priced at zero, so the estimate runs high. A full Haiku pass over the mycelia corpus costs single-digit dollars.
 
-## Changing a prompt or the taxonomy
+The practical cost is time. At about four seconds per item, measured on 2026-08-13, a full pass with four workers takes more than an hour. Those workers share the Claude allowance with this project's agents. `--limit` is the only pacing control, and you must set it yourself.
 
-Both are deliberate re-buys:
+Prices and models change. Asking for an unpriced model crashes instead of returning a zero quote.
 
-- Editing a level's instructions means bumping `PROMPT_VERSION[level]` in `src/aiobserve/enrich/prompts.py` — the hash cannot see instructions, so nothing else would notice
-- Adding a taxonomy member, renaming one, or changing what one means — the definitions are what the model classifies by — means bumping `TAXONOMY_VERSION`, which re-describes every level
+## Prompt and taxonomy changes buy new descriptions
 
-A run-level bump cascades upward through every round, so price it with `--dry-run` first.
+Both changes deliberately make stored rows stale:
 
-## Design
+- After changing a level's instructions, bump `PROMPT_VERSION[level]` in `src/aiobserve/enrich/prompts.py`. The content hash cannot see the instructions
+- After adding, renaming, or redefining a taxonomy member, bump `TAXONOMY_VERSION`. The model classifies from these definitions, so the change re-describes every level
 
-The decisions, their alternatives, and the measurements behind them are in [the enrichment design](../plans/enrichment/design.md), with the as-built notes recording where the implementation diverged.
+A run-level prompt bump cascades through later rounds. Price it with `--dry-run` before starting the pass.
+
+## The design records the tradeoffs
+
+[The enrichment design](../plans/enrichment/design.md) records the alternatives, measurements, and as-built differences behind these choices.

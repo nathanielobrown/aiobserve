@@ -1,87 +1,98 @@
-# Analysis
+# Analyze agent behavior
 
-How to turn the trace store into findings about how an AI coding agent behaved on a project. Read it before running an iteration, and read it again as a reader subagent before opening a session. The design behind this process, and the numbers that sized it, are in [the analysis design](../plans/mycelia-analysis/design.md).
+Follow this process to turn the trace store into evidence-backed findings about how an AI coding agent behaved on a project. Read it before each iteration; reader subagents should read it again before opening a session. [The analysis design](../plans/mycelia-analysis/design.md) explains why the process works this way and how its reading budget was set.
 
-An iteration ends in one committed report under `reports/`. Everything else it produces is working paper in gitignored `data/analysis/<YYYY_MM_DD>/`, because a per-session note written from a private transcript sometimes carries a piece of one.
+Commit one report under `reports/` for each iteration. Keep every other artifact in gitignored `data/analysis/<YYYY_MM_DD>/`. Session notes may repeat private transcript text and must not enter the repository.
 
-## One iteration
+## Run one iteration
 
-1. **Refresh and stamp.** `aiobserve extract` brings the store current. Record the **corpus stamp** — session count, `max(started_at)`, `meta.schema_version`, and the distinct `extract_state.extractor_version`s — in `data/analysis/<YYYY_MM_DD>/stamp.txt`. Every artifact of the iteration cites it. The store grows daily, so "the data you looked at" is a claim with a date on it.
-2. **Broad counts and clusters.** Run the query library — every `.sql` in `src/aiobserve/analyze/queries/` — and write the CSVs to `counts/`. Each result's citation line names the query and every resolved binding; keep it with the CSV.
-3. **Select.** `aiobserve query select_sessions` and `select_runs` choose what gets read. Both are deterministic; see below.
-4. **Careful reading.** One reader subagent handles each selected session, writing a report from `src/aiobserve/analyze/templates/session.md` into `sessions/`, plus a report from `src/aiobserve/analyze/templates/run.md` into `runs/` for each run it flags and each run `select_runs` drew. A run that neither draw reached, picked by hand to answer a question the iteration is chasing, is read the same way and tagged `synthesis-draw`.
-5. **Synthesis.** A high-effort pass loads the session reports, the count tables, and the cluster output. It promotes candidates to findings under the evidence ladder and writes the committed report according to [the report guide](../reports/README.md).
-6. **Process review.** The report's last section reviews the iteration against the checklist below. Fixes to the queries, the templates, and this document land in the same PR as the report.
+1. **Refresh and stamp the corpus.** Run `aiobserve extract`. Write the session count, `max(started_at)`, `meta.schema_version`, and distinct `extract_state.extractor_version` values to `data/analysis/<YYYY_MM_DD>/stamp.txt`. This **corpus stamp** defines the data behind the findings, so every artifact must cite it.
+2. **Survey the corpus.** Run the count and cluster queries that apply to the iteration from `src/aiobserve/analyze/queries/`. Save their CSV output under `data/analysis/<YYYY_MM_DD>/counts/`, with each result's citation line. The citation must name the query and every resolved binding.
+3. **Select what to read.** Run `aiobserve query select_sessions` and `aiobserve query select_runs`. Both queries make deterministic draws under the rules below.
+4. **Read the sample.** Assign each selected session to one reader subagent. The reader writes a session report from `src/aiobserve/analyze/templates/session.md` and a run report from `src/aiobserve/analyze/templates/run.md` for every run it flags. Use the same run template for runs drawn by `select_runs`. Save the reports under the iteration's `sessions/` and `runs/` directories. If synthesis chooses another run to answer the iteration's question, read it the same way and tag it `synthesis-draw`.
+5. **Synthesize the findings.** In a high-effort pass, read the session and run reports, count tables, and cluster output. Promote candidates under the evidence rules below, then write the committed report according to [the report guide](../reports/README.md).
+6. **Review the process.** Answer the fixed checklist below in the report's final section. Land any fixes to the queries, templates, or this guide in the same PR as the report.
 
-## Selection
+## Make the sample reproducible
 
-`select_sessions` draws a stratified sample over the trailing window, and it draws the same one every time it runs against the same store with the same bindings. That is the point: a selection anyone can re-run is a selection anyone can criticize.
+`select_sessions` draws a stratified sample from the trailing window. Given the same store and bindings, it returns the same sessions. Anyone can therefore rerun and challenge the draw.
 
-Strata fill in order — cost, tool errors, compactions, one slot per major skill, then a seeded remainder for discovery — and each walks down its own ranking, taking only sessions no earlier stratum took. The walk-down is load-bearing: the top sessions by cost, errors, and compactions are largely the same sessions, so without it the read set collapses onto a few monsters. Each selected session carries the tag of the stratum that took it, and its report records the tag.
+The strata claim sessions in this order: cost, tool errors, compactions, one slot for each major skill, then seeded discovery. Each stratum walks down its ranking and skips sessions already claimed. This walk-down keeps the cost, error, and compaction strata from collapsing onto the same few large sessions. Each selected session carries the stratum that claimed it, and its report records that tag.
 
-Every quota is a bound parameter, and `src/aiobserve/analyze/queries.py` holds the production defaults a committed report quotes. Resetting an iteration's reading budget is a `--param`, not a query edit.
+Every quota is a bound parameter. `src/aiobserve/analyze/queries.py` defines the production defaults that committed reports quote. Change an iteration's reading budget with `--param`, not by editing the query.
 
-Three properties decide how a selection may be read:
+Interpret the draw by these rules:
 
-- The pool contains in-window sessions that did work of their own. Sessions with no turns and no agent runs are excluded. So are sessions whose turns made no api call: a `/model` turn reads as work but isn't. Together they are a large minority of any window
-- A ranked stratum takes only sessions whose metric is nonzero and stops short when the metric runs out. A `tool-errors` tag on an error-free session would be a lie, so the tags stay honest and the stratum's realized size falls short
-- Unused ranked slots pass to discovery, so the realized set is the smaller of the quota sum and the pool. What varies between iterations is the composition, not the count — report the realized composition, never the target
-- Discovery draws only from sessions above a substance floor because it is the one stratum that picks without a reason. A ranked stratum's metric says why a session is worth an hour; a seeded draw over the whole pool spent half of iteration 3's discovery slots on sessions of nine api calls or fewer
+- The pool contains in-window sessions that did work of their own: at least one turn or agent run, plus the bound minimum number of API calls. This excludes empty sessions and command-only turns such as `/model`
+- A ranked stratum considers only sessions with a nonzero metric. If that population runs out, the stratum stops rather than giving a false tag such as `tool-errors` to an error-free session
+- Unused ranked slots remain available to discovery, but discovery applies its own substance floor. The reading budget is a cap, not a promised sample size. Report the realized count and composition
+- Discovery uses a seeded draw because it has no metric to justify a choice. Its substance floor avoids spending reading slots on sessions too small to support careful analysis
 
-`select_runs` adds agent runs on top: the highest error count and the highest cost per `agent_type`. Session strata rank whole sessions, so a rarely used agent definition can go unread for iterations; this draw ensures that every commonly used definition gets read.
+`select_runs` supplements the session sample. For each `agent_type` that meets its usage floor, it draws the highest-error runs, then the highest-cost runs not already selected for errors. Session strata rank whole sessions and may otherwise miss a commonly used agent definition for several iterations.
 
-## Reader protocol
+## Bound each reader's context
 
-A reader's brief is bounded: the session id, its stratum, the template path, and a pointer to this document. No transcript content goes in a brief. A reader handed content has already spent the context the process exists to protect.
+Give a reader only the session id, selection stratum, template path, and a link to this guide. Don't paste transcript content into the brief. That would spend the context this protocol is meant to protect.
 
-Readers work through `aiobserve query` digests. `records_slice` is the only route to raw transcript text, and its line range and character cap control context and privacy. The cap is in the citation, so a report says how much raw text it opened.
+Readers start with `aiobserve query` digests and use `records_slice` as their only route to raw transcript text. Its required line range and character cap bound both context and exposure to private data. The citation records the cap, so the report shows how much raw text the reader opened.
 
-Four working rules, each bought by an iteration that lacked it:
+Follow these working rules:
 
-- Work in a `mktemp -d` scratch directory — concurrent readers sharing `/tmp` paths have collided
-- Enumerate the session's runs with `view_runs` before digging; a session's cost usually lives in its runs, not its main thread. It carries each run's cost, tool errors, and compactions, so ranking the runs takes no further query
-- List the session's failures with `error_records` before opening any raw record. It names the thread, the tool, and the line each error sits at, so finding one takes a query rather than a scan of a thousand records
-- Record roughly what context you spent in the report's "Context spent" line — the process review depends on it
+- Work in a directory created by `mktemp -d`; concurrent readers have collided in shared `/tmp` paths
+- Start with `view_runs` to list and rank the session's runs by cost, tool errors, and compactions
+- Run `error_records` before opening raw records; it identifies each error's thread, tool, and line without a transcript scan
+- Estimate context use in the report's **Context spent** field so the process review can assess the reading cost
 
-Both controls are conventions rather than mechanisms: a reader has Bash and could open the store directly. The mitigations are the bounded brief and the process-review checklist, which asks whether each reader stayed inside the digests and roughly what context it spent.
+These bounds are conventions, not access controls. A reader still has Bash and can open the store directly. The brief keeps raw text out of the initial context, and the process review checks whether readers stayed within the digests.
 
-Session and run reports stay in gitignored `data/`. Only the synthesized report is committed, under the quoting contract below.
+Keep all session and run reports in gitignored `data/`. Commit only the synthesized report, under the quoting rules below.
 
-## The evidence ladder
+## Promote claims only as far as the evidence allows
 
-Synthesis promotes a candidate to a finding at one of three stated levels, and the report says which:
+Give every finding one of these evidence levels in the report:
 
-- **Counted** — a corpus query corroborates it. The query and the window go in the report
-- **Recurring** — three or more independent session reports show it, and no query can count it
-- **Anecdote** — reported as a hypothesis, with its one session named
+- **Counted** — a corpus query corroborates the finding; cite the query, bindings, and window
+- **Recurring** — at least three independent session reports show the finding, and no query can count it
+- **Anecdote** — one named session shows the behavior; state it as a hypothesis
 
-The counting queries in the library do the promoting. `error_signatures` counts an error's occurrences, sessions, and threads over the window and the corpus. It takes a bound phrase when the first line of the text is as generic as `Exit code 1`. Its signature replaces every absolute path with `<path>`, so a message that names the worktree it blocked counts once rather than once per worktree. The same replacement makes the signature publishable. `command_failures` picks up where that runs out. Use it when a group's text is a bare exit code, because it counts the same failures by the shape of the command line — the command word and its subcommands, with the `cd` wrapper, the flags, and the paths cut — beside the calls of that shape that succeeded. `path_failures` picks up the other half. It counts failures by the directory the call was pointed at, keyed on the tail of the path so one directory counts the same from a worktree, a sandbox copy, and the primary checkout. Use it when the error text is "File does not exist" and the question is what the reader was looking for. `missing_file_recovery` asks what the thread did next — listed that directory, listed another, listed nothing — with every failure in exactly one of the three, so the recovery has a denominator. `agent_compactions` counts how often each agent definition runs out of context, with the main thread in a row of its own as the thing a definition's rate has to beat. `context_reloads` counts what threads paid to rebuild a context they already had — a mid-thread api call that writes its whole prompt to the cache and reads nothing back. It gives one row per affected thread under a row per definition and a corpus total. It also marks the reloads that a gap long enough to expire the cache, or a compaction, could account for — bounds on the reading, not filters. `idle_gaps` opens that idle flag up. It gives one row per silence a thread went through, with its length in seconds and whether the call that broke it rebuilt, so a recommendation whose cost turns on how long a wait ran can size the population it would apply to instead of arguing from one thread's sampled gaps. `reload_cost_split` prices that population: it splits the same silences at a gap length you name — the bound is required because it is the claim — and reports what share of the rebuilt tokens sat under it beside what share of the reloads did, per kind of thread. Use it when a recommendation is scoped to short waits or long ones: the two shares differ whenever short reloads rebuild less than long ones do, and the count share alone reads as the bill.
+Use the saved query that matches the claim:
 
-**An absence is only counted.** "No session did X" has to come from a corpus-wide query whose filter demonstrably could have matched X. It never comes from the read sample: zero sightings across roughly thirty read sessions bounds prevalence only at about one in three, over a pool that already excluded the sessions that did no work. A reader who notices an absence files it as a hypothesis for synthesis to count or drop.
+- **`error_signatures`** groups recurring error text and counts its occurrences, sessions, and threads in both the trailing window and full corpus. Bind a phrase when the first line is generic, such as `Exit code 1`. The query replaces absolute paths in its signature so checkout paths don't split one error into many groups; the report's redaction rules still apply.
+- **`command_failures`** handles errors whose text is only a bare exit code. It groups calls by command shape, stripping wrappers, flags, and paths, and places failures beside successful calls of the same shape.
+- **`path_failures`** answers which directory a failed file operation targeted. It groups by the path tail so the same directory can count together across a worktree, sandbox copy, and primary checkout. Its output names directories, so redact it before publication.
+- **`missing_file_recovery`** counts what a thread did after a missing-file failure: list the same directory, list another directory, or list neither. Every failure belongs to one group, which supplies the denominator.
+- **`agent_compactions`** counts context exhaustion by agent definition and reports the main thread as the baseline.
+- **`context_reloads`** counts mid-thread API calls that appear to rebuild context they already held. It also marks reloads that an idle gap or compaction may explain. Treat those marks as bounds on interpretation, not filters.
+- **`idle_gaps`** lists each silence, its duration, and whether the next call rebuilt context. Use it to size the population behind a recommendation that depends on wait length.
+- **`reload_cost_split`** splits those gaps at a required, caller-supplied duration and reports the share of reloads and rebuilt tokens on each side, grouped by thread kind. Use both shares: short and long reloads may rebuild different amounts of context.
 
-The mirror claims follow the same rule. "Every session I read did Y" is a statement about a deliberately biased sample; it reaches a finding only when restated as a corpus-wide count or labeled sample-only in the report.
+### Count absences across the corpus
 
-Every recommendation ties to a finding and is scoped to the corpus that produced it — one person's sessions on one codebase is evidence about that codebase's guidance.
+Only a corpus-wide query can promote an absence to **counted**. The read sample is deliberately biased toward costly, error-prone, compacted, and skill-heavy sessions. At the production defaults, only the eight discovery draws are random, and only within the eligible remainder. Even if treated as a simple random sample, zero sightings there gives a rule-of-three upper bound of roughly three in eight. The pool also excludes sessions that did no work of their own.
 
-## Quoting a transcript in a committed report
+A reader who sees no instance of a behavior should file the absence as a hypothesis for synthesis to count or drop. The mirror claim follows the same rule: "Every session I read did Y" describes the sample, not the corpus. Restate it as a corpus count or label it sample-only.
 
-A transcript records everything the analyzed agent read. Any quote in a committed report:
+Tie each recommendation to a finding and scope it to the corpus that produced the evidence. One person's sessions on one codebase support a recommendation about that codebase's guidance.
 
-- carries its citation `(session_id, source, first_line-last_line)`, so the quoted line can be re-read at its source
-- passes a rule-based redaction: strip file paths outside the analyzed repository, personal names, and anything secret-shaped — tokens, env values, PEM headers
+## Cite and redact transcript quotes
 
-Synthesis checks that every quote has its citation. Nathaniel's PR review checks each quoted line against the redaction rule; the citation makes that check mechanical rather than a matter of taste.
+Before a transcript quote enters a committed report, it must:
 
-## Iteration and process review
+- cite `(session_id, source, first_line-last_line)` so a reviewer can find the source
+- pass rule-based redaction that removes paths outside the analyzed repository, personal names, and secret-shaped text such as tokens, environment values, and PEM headers
 
-A new iteration gets a new dated report. Old reports stay put as the version history, and their shortcoming sections record how the process improved.
+Synthesis checks every quote for a citation. Nathaniel compares each quoted line with the redaction rule during PR review; the citation makes that a check rather than a judgment call.
 
-The process-review section answers a fixed checklist:
+## Improve the next iteration
 
-- which strata produced findings, and which produced none
-- which template fields went unfilled, or were always tagged `other`
-- which candidates failed corroboration, and why
-- roughly what context each reader spent
-- which queries misled
+Give each iteration a new dated report and leave old reports unchanged. Their process-review sections record how the method evolved.
 
-Fixes update this document, the templates — bumping `template_version` — and the query library in the same PR as the report.
+Answer this checklist in the process review:
+
+- Which strata produced findings, and which produced none?
+- Which template fields stayed empty or always received `other`?
+- Which candidates failed corroboration, and why?
+- Roughly how much context did each reader spend?
+- Which queries misled?
+
+Land the resulting fixes with the report. Update this guide and the query library as needed. If a template changes, update it and bump `template_version`.

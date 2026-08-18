@@ -1,8 +1,10 @@
 # The trace viewer
 
-`aiobserve view` serves the trace store in a browser, letting you view a session instead of querying it. It binds only to `127.0.0.1`, opens the store read-only, and ships only assets it has vendored. Run `aiobserve view --help` for flags; see [the trace-viewer design](../plans/trace-viewer/design.md) for the design behind it.
+`aiobserve view` opens the trace store in a local browser. Use it to move from a corpus-level session row to turns, agent runs, and raw records, then copy stable URLs into reports.
 
-## What it shows
+The server binds only to `127.0.0.1`, opens the store read-only, and serves only vendored assets. Run `aiobserve view --help` for flags. See [the trace-viewer design](../plans/trace-viewer/design.md) for the choices behind the implementation.
+
+## Follow a session down to its source records
 
 ```mermaid
 flowchart LR
@@ -19,52 +21,103 @@ flowchart LR
     one_value -->|"a result written to a file"| offload_page["an offloaded result"]
 ```
 
-Solid edges are pages, one URL each: `/`, `/session/{session_id}`, `/session/{session_id}/run/{run_id}`, `/session/{session_id}/records/{source}`, and `/session/{session_id}/offload/{name}`. Dotted edges are fragments that the open page fetches in place, one value per request. Every route is declared in `src/aiobserve/view/app.py`.
+Solid edges lead to pages with their own URLs:
 
-The list at `/` has one row per session, showing when it started, its title and project, and its rollup counts, cost, tokens, and time. Every column heading sorts by that column; clicking it again reverses the order. A cost with a `*` beside it includes calls to a model our price table lacks, so the total is a floor. The row cuts transcript text to a head: the title and project path to 100 characters, and the skills to the first four names with a count of what was left. The session's own page shows the full title, project path, and skill list.
+| Page | Route |
+| --- | --- |
+| Session list | `/` |
+| Session | `/session/{session_id}` |
+| Agent run | `/session/{session_id}/run/{run_id}` |
+| Raw records | `/session/{session_id}/records/{source}` |
+| Offloaded result | `/session/{session_id}/offload/{name}` |
 
-The form above the list filters by project, date range, a skill the session ran, or a floor on failed tool calls. The project filter takes the recorded path exactly, so it is narrower than the CLI's `--project`, which also takes the sessions a checkout's worktrees recorded. Filters stay in the sort headings and pager, so reordering or turning the page keeps them; the masthead link clears everything. The footer's citation names each filter after the paging, so the line reproduces the rows that were on the screen.
+Dotted edges fetch a fragment into the open page. Each request returns one value or one bounded page of rows. `src/aiobserve/view/app.py` declares every route.
 
-A session page at `/session/{session_id}` opens with the header from the `sessions` row, followed by the main-source turn timeline in order, one page of turns at a time. Each turn shows its prompt or command, its counts, and its cost. A run spawned from a turn appears as a chip on that turn, with any run it spawned nested under it. Two rows make the page's numbers match the header: an unattributed row for calls that sit under no turn, and an unattached section for runs that resolve to neither a turn nor a run of the session. Every list on the page is capped — the turns, the runs under each of them, the compaction markers, and the header's own skills and PR links. Each says how much the cap left behind and, where possible, links to the page that holds it.
+## The session list keeps the query visible
 
-Opening a turn fetches its api calls one page at a time. Each call shows the model, the tokens, the cost, a preview of what it wrote, and a row for each tool call it made. Everything in that fragment is a preview — the full text, the thinking, and one tool's arguments and result each load on their own when you open them, one value per fetch.
+The list has one row per session. A row shows when the session started, its title and project, rollup counts, cost, tokens, and time. Every column heading sorts by that column; click it again to reverse the order. A `*` after the cost means the session called a model missing from the price table, so the shown total is a floor.
 
-A run chip links to `/session/{session_id}/run/{run_id}`, the same kind of page for one agent run: its header, the thread above it as a trail of links, its own turn timeline, and the runs under it that no turn of its timeline claims. The trail stops where the store stops naming parents — a fork's spawning call lives in files this store may not hold, and a guess in a breadcrumb is a wrong citation.
+Rows show only the head of long text: 100 characters for the title and project path, and four skill names followed by the number omitted. The session header shows five skill names of up to 60 characters along with its other fields; it too stays bounded.
 
-Where [an enrichment pass](enrichment.md) has run, its output sits beside what the store recorded. The session's description, category, outcome, and one line of friction appear under the header; each turn in the timeline carries its own description and the two tags. A run chip carries the tags only because its description appears on the run's own page, where the run page shows it too. The session list carries the line beside each title, cut to a row's head like the title itself, with the two tags — and never a stale one, because the list joins the words a pass wrote, not the versions that would judge them. A `stale` tag means the row was written under a prompt or taxonomy version this build has moved past — a reason to re-run a pass, not a reason to distrust the words. A store no pass has touched holds none of these tables, and its pages show nothing at all: absence is the ordinary case, and an item a pass has not reached yet looks the same. An agent run's turns are described by the run rather than one apiece, so a run page's timeline carries no descriptions.
+The form above the list filters by project, date range, skill, or a minimum number of failed tool calls. The project filter matches the recorded path exactly. It is narrower than the CLI's `--project`, which also includes sessions recorded by a checkout's worktrees.
 
-Every timeline links to its thread's raw transcript at `/session/{session_id}/records/{source}`. Each row shows the archived line's number, record type, length, and head. Opening a row fetches the whole line. Each turn also links to the line that carries it, so a rendered turn and its record reach each other in one click.
+Filters survive sorting and paging. The masthead link clears them. The footer prints a citation after paging and names every active filter, so it describes the rows on screen.
 
-A tool result Claude Code wrote to a file instead of the transcript links to `/session/{session_id}/offload/{name}`. Those files run to tens of megabytes, so the page serves the content in chunks and returns the offset of the next one. The name is a key into `offload_files`, never a path the server opens.
+## Session pages account for every call and run
 
-## URLs are the citation surface
+A session page starts with the stored session header, then pages through the main-source turns in order. Each turn shows its prompt or command, counts, and cost. A run spawned from that turn appears as a chip, with descendant runs nested beneath it.
 
-Every page is a plain GET you can paste into a report or a message. The list takes `sort`, `direction`, `page`, `size`, and the filter keys; a session or run takes its ids. An unknown key, an unknown sort or direction, a filter value of the wrong type, or a page outside its bounds returns 400 rather than guessing. Sort keys are column names and filter keys are fixed predicates, so a citation says what produced the rows and their order — and request text reaches SQL only as a bound value.
+Two extra groups make the timeline totals match the header. The unattributed row holds calls that belong to no turn. The unattached section holds runs that resolve to neither a turn nor another run in the session.
 
-Session pages use natural ids, so a report that cites `(session_id, source, line_no)` keeps citing the tuple. The URL comes from that tuple, and a port or route change breaks nothing already written down. That tuple has a page of its own: `/session/{session_id}/records/{source}?after={line_no - 1}#L{line_no}` opens the records browser on the cited line.
+Every growing list has a cap: turns, run chips, compaction markers, skills, and PR links. Each capped list says how many items it omitted and links to the page that contains them when such a page exists.
 
-A timeline cursor reads the same way, and citing one turn takes the same shape. A session page takes `after`, `turns`, and `chips`, where `after` is *the last turn index already shown*, so `/session/{session_id}?after={turn_index - 1}#turn-{turn_id}` opens that turn first on the page. Paging moves forward only and uses the turn index rather than a row count, so a link keeps opening the same turns however much the session grew after it was written down.
+A run chip opens `/session/{session_id}/run/{run_id}`. The run page uses the same shape: a run header, a trail of links to the thread above it, its turn timeline, and child runs that no turn claims. The trail stops when the store stops naming parents. A fork's spawning call may live in files the store does not hold, and the viewer will not invent a breadcrumb.
 
-## Reading while an extract runs
+## Open large values only when you need them
 
-The viewer holds no connection between requests, so `aiobserve extract` can take the write lock whenever the viewer is idle. The collision goes both ways, and neither side retries:
+Opening a turn fetches its api calls one page at a time. Each call shows its model, tokens, cost, an output preview, and a bounded page of its tool calls. Full text, thinking, and one tool call's arguments and result each load through a separate request when opened.
 
-- An extract that starts while a page is mid-request fails with DuckDB's lock error. Reload the page and run it again
-- A page loaded while an extract holds the lock answers 503 saying the store is being written. It serves again as soon as the writer lets go
-- A re-extract that bumps the schema under a running viewer answers 503 naming the version this build reads. Restart the viewer
+Every timeline links to the raw transcript for its thread. The records page shows each archived line's number, type, length, and head. Opening a row fetches the full line. Each rendered turn also links back to its source line, so you can move between the modeled turn and the archived record in one click.
 
-Launching against a store this build cannot read, a store that is not there, or a port already serving fails at startup instead of opening a browser onto an error page.
+When Claude Code writes a tool result to a file instead of the transcript, the result links to `/session/{session_id}/offload/{name}`. Some offloads are tens of megabytes, so the page serves them in chunks and returns the next offset. The route treats `name` as a key into `offload_files`; it never opens a path from the URL.
 
-## What keeps a page small
+## Enrichment appears beside the recorded trace
 
-A viewer that renders a whole transcript hangs, so no query behind a page selects a column that holds what the agent read or wrote — `raw`, `text`, `thinking`, `result`, `input`, `content` — or a name someone else chose for it — `agent_type`, `model`, `description` — without truncating it in SQL. The scan in `tests/view/test_bounds.py` holds the set. A per-value fetch is the declared exception: one tool's result or one transcript line, one value per request, so it tops out at the largest value in the store rather than a page of them. Rendering keeps that promise: JSON is re-indented only while indenting stays cheap, because indenting is quadratic in nesting and 10 KB of nothing but `[` would otherwise serve 50 MB. A value nested past what anyone reads is served as it was stored.
+After [an enrichment pass](enrichment.md), the viewer places its output beside the stored telemetry. The session header shows the description, category, outcome, and one line of friction. Timeline turns show their description and two tags. Run chips show the tags; the run description appears on the run page. Agent-run turns do not get separate descriptions because the pass describes the run as a whole.
 
-Every page size is bound in one place: `src/aiobserve/view/bounds.py` names each size beside its ceiling, and a hand-typed `?size=` past a ceiling returns 400. A size that a query binds keeps its default in the manifest, where the parameter is declared. The payload bound comes from the ceiling because a size is something a reader types. A row's own markup costs what it was measured to cost against the canonical store — the fixtures are redacted down to a few characters and project nothing — while every character of transcript content the row carries counts as five bytes, which is what `&` escapes to. The turn fragment's two sizes multiply, so its ten calls of twelve tool rows spend the budget and `?calls=` only goes down from the default.
+The session list adds each session's one-line description and two tags, cutting the line to the same 100-character head as the title. It does not show `stale` because the list joins the words written by a pass without loading the versions needed to judge them. Session, turn, and run pages can show `stale`: it means the pass used an older prompt or taxonomy version, so rerun the pass. It does not mean the saved description is false.
 
-The session timeline is paged the same way, with two sizes that multiply: twenty turns to a page, eight run chips to a turn. The unattached list also contains chips and appears on every page, so the route refuses a pair whose `(turns + 1) × chips` passes 200 run rows — the budget the ceiling affords, and most of what it buys. A capped list says how many items it left and links to the page holding them all, `?turns=1&chips=100`, which fits the widest forest the corpus records — 94 runs under one turn — on a page of its own. That page weighed 33.6 KB against `data/traces.duckdb` on 2026-08-07, and the largest page any legal pair of sizes can ask for projects to 483 KB at the worst character: 456 KB of turn and run rows, 12 KB of compaction markers, and 15 KB for everything else the page carries.
+A store that has never been enriched has none of the enrichment tables. The viewer then shows no enrichment fields. An item that the current pass has not reached looks the same.
 
-Enrichment is most of the difference between that figure and the 350 KB ceiling this page held before it. A described run row costs half again what a bare one does, and 200 of them appear on the widest page — which is why a chip shows the two tags and not the description behind them. Cutting the run budget instead would have put the widest forest the corpus records behind a "+N more" nobody can open, so the ceiling rose to 500 KB.
+## URLs preserve the query behind what you saw
 
-The list is the other page that grows with a corpus, and it is bound the same way: 125 sessions to a page, the default and maximum both, with each row's strings cut to 100 characters and its skills to four names of 20. The cut is composed around the query rather than made in it because the filters match whole values — a project path cut to its head would match nothing, and a skill outside the first few would disappear from a filter that finds it. The filter box is bound too, at the 10 busiest projects, with each path offered whole or left out for the same reason. A described row also carries what the pass said: the line cut to the same 100 characters and the two tags. That gives 10,000 B of chrome plus 125 rows of 3,400 B — 1,300 B of measured markup and 2,100 B of heads at the worst character — or 435 KB against the 500 KB ceiling.
+Every page is a plain GET that you can paste into a report or message. The session list accepts `sort`, `direction`, `page`, `size`, and its filter keys. Session and run pages use their ids. The viewer returns 400 for an unknown key, an unknown sort or direction, a filter value of the wrong type, or a page outside its bounds rather than guessing. Sort keys map to fixed columns, filter keys map to fixed predicates, and request values reach SQL only as bound parameters.
 
-That last 15 KB of a session page is the header, the one part that no size a reader types bounds — a session's PR links grow with every PR it opens. So the query cuts what the header shows: each string to a head, each of its two lists to its first members with a count of what it left, and the session's own description and friction to 200 characters apiece. The compaction markers are capped the same way and for the same reason, at 20 to a page against the 18 the densest recorded thread holds. `tests/view/test_bounds.py` holds the ceiling and everything that must fit under it, and re-measures the header's own weight on every run.
+Reports cite raw records as `(session_id, source, line_no)`. The records URL derives from that natural key, so a later port or route change does not invalidate the saved tuple. This form opens the records browser on the cited line:
+
+```text
+/session/{session_id}/records/{source}?after={line_no - 1}#L{line_no}
+```
+
+Turn links use the same cursor pattern. On a session page, `after` means the last turn index already shown, while `turns` and `chips` set the page shape. This form opens with the cited turn first:
+
+```text
+/session/{session_id}?after={turn_index - 1}#turn-{turn_id}
+```
+
+Timeline paging moves forward by turn index, not row count. A saved link therefore opens the same turns if the session later grows.
+
+## Extracts and page loads can contend for the store
+
+The viewer closes its database connection after each request, leaving `aiobserve extract` free to take DuckDB's write lock while the viewer is idle. Neither side retries a collision:
+
+- If an extract starts while a page request holds the store, the extract fails with DuckDB's lock error. Reload the page, then run the extract again
+- If a page loads while an extract holds the lock, the viewer returns 503 and says the store is being written. Reload after the writer releases the lock
+- If a re-extract changes the schema while the viewer runs, the viewer returns 503 with the schema version this build expects. Restart the viewer
+
+The viewer fails at startup if the store is missing, its schema is unsupported, or the port is already in use.
+
+## Hard bounds keep every page below 500 KB
+
+A browser can hang if the viewer renders a whole transcript. The viewer therefore bounds the row counts and text behind pages at the SQL boundary. Those queries do not select an uncut column that can hold agent or user content: `raw`, `text`, `thinking`, `result`, `input`, `content`, `agent_type`, `model`, or `description`. `tests/view/test_bounds.py` enforces that rule.
+
+Full-value requests are the declared exception. Each returns one transcript line, text block, thinking block, or tool value, so its size depends on the largest matching value rather than a page of them. Offloads remain chunked. JSON is re-indented only while doing so remains cheap; deeply nested data stays as stored because indentation work grows quadratically with nesting.
+
+`src/aiobserve/view/bounds.py` defines each page size beside its ceiling. Query-bound sizes keep their defaults in the query manifest. A typed size above its ceiling returns 400. The payload checks charge each transcript character at five bytes, the longest HTML escape, and add measured markup costs from the canonical store.
+
+| Surface | Default and limit |
+| --- | --- |
+| Session list | 125 sessions; each long string is cut to 100 characters and skills to four 20-character names |
+| Session timeline | 20 turns and 8 run chips per list by default; at most 100 chips in one list |
+| Turn details | 10 api calls, each with at most 12 tool rows; `?calls=` can only reduce the default |
+| Raw records | 100 rows by default, at most 200 |
+| Offload | 50,000 characters by default, at most 60,000 |
+| Compaction markers | 20 per timeline page |
+
+Timeline sizes multiply. The unattached list also appears on every page, so the route requires `(turns + 1) × chips ≤ 200`. A capped run list links to `?turns=1&chips=100`, which can show the widest forest recorded in the canonical store: 94 runs beneath one turn. That page measured 33.6 KB against `data/traces.duckdb` on 2026-08-07. The largest legal shape projects to 483 KB: 456 KB for turn and run rows, 12 KB for compaction markers, and 15 KB for the rest of the page.
+
+Enrichment raised the page ceiling from 350 KB to 500 KB. A described run row costs about half again as much as a bare row, and the widest page can hold 200 of them. Reducing the run budget would have hidden part of the recorded 94-run forest behind a count with no page able to show it, so the ceiling rose instead. Run chips show tags but leave the description for the run page.
+
+The session list is also bound independently of corpus size. Its filter box offers the 10 busiest project paths that fit its bound, whole or not at all; shortening a path would make it fail the exact-match filter. The same rule keeps row filtering correct: the viewer filters whole titles, paths, and skill lists, then cuts only the rows it renders. The worst-case list projects to 435 KB: 10 KB of page chrome plus 125 rows at 3.4 KB each.
+
+A session header does not have a reader-controlled size, so its query cuts every string, skill list, PR list, session description, and friction line. Compaction markers are capped at 20, just above the 18 in the densest recorded thread. `tests/view/test_bounds.py` measures these fixed costs and checks every legal page shape against the 500 KB ceiling.
