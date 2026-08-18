@@ -12,6 +12,16 @@ ABSENT = "—"
 
 _MINUTE = 60_000
 _HOUR = 60 * _MINUTE
+_DAY = 24 * _HOUR
+
+
+def utcnow() -> dt.datetime:
+    """The clock the pages read, in the store's zone — the one place that asks for it.
+
+    A wrapper rather than a call at each point of use, so that a page's freshness is
+    testable: a test moves this, and what the next render prints moves with it.
+    """
+    return dt.datetime.now(dt.UTC)
 
 
 def money(value: float | None) -> str:
@@ -43,3 +53,35 @@ def duration(value: int | None) -> str:
     if value >= _MINUTE:
         return f"{value // _MINUTE}m {value % _MINUTE // 1000:02d}s"
     return f"{value / 1000:.1f}s"
+
+
+def ago(value: dt.datetime | None, now: dt.datetime) -> str:
+    """How long before `now` something happened, in the largest unit it fills: `3d ago`.
+
+    One unit, not two: a list is scanned for which session is recent, and `3d 4h` answers a
+    question nobody asked of it. `now` is passed in rather than read here so the caller —
+    the filter `app.build_app` registers, or a test — decides which clock the page is against.
+    """
+    if value is None:
+        return ABSENT
+    elapsed = int((now - value).total_seconds() * 1000)
+    # A timestamp ahead of the reader's clock is skew between the machine that wrote the
+    # session and the one showing it, and the present is the honest reading of it.
+    if elapsed < _MINUTE:
+        return "just now"
+    if elapsed < _HOUR:
+        return f"{elapsed // _MINUTE}m ago"
+    if elapsed < _DAY:
+        return f"{elapsed // _HOUR}h ago"
+    return f"{elapsed // _DAY}d ago"
+
+
+def share(part: float | None, whole: float | None) -> str:
+    """A part of a whole as a percentage, to one decimal: `2.2%`.
+
+    A whole of zero or NULL is a gap rather than 0%: no errors in no tool calls, and no spend
+    to take a share of, are things the store does not know rather than rates it recorded.
+    """
+    if part is None or not whole:
+        return ABSENT
+    return f"{100 * part / whole:.1f}%"
