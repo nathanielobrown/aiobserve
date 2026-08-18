@@ -145,6 +145,11 @@ LIST_CHARS = 100
 LIST_ITEM_CHARS = 20
 LIST_ITEMS = 4
 
+# How many kinds of work one list row names before it says how many it left: the categories a
+# pass described that session's turns as. Fewer than the lists above, because the taxonomy is
+# closed and small — three names say what a session spent its time on, and a fourth is noise.
+LIST_CATEGORIES = 3
+
 # How many projects the list's filter box suggests, and the longest path it offers. The
 # suggestions grow with the corpus the way the rows do, so the box is bound too. A path is
 # offered whole or left out: a suggestion cut to its head filters to nothing.
@@ -404,10 +409,13 @@ QUERIES: dict[str, Query] = {
     "view_described_sessions": Query(
         scope=Scope.KEYED,
         # What a list row shows of a session's enrichment. The description takes a row's head
-        # rather than a page's, because the list multiplies its row by the size of the page.
+        # rather than a page's, because the list multiplies its row by the size of the page,
+        # and the work cell is cut here rather than in the composition: nothing filters on it.
         params={
             "head_chars": Param(type=ParamType.INTEGER, default=LIST_CHARS),
             "tag_chars": Param(type=ParamType.INTEGER, default=TAG_CHARS),
+            "kind_chars": Param(type=ParamType.INTEGER, default=TAG_CHARS),
+            "head_kinds": Param(type=ParamType.INTEGER, default=LIST_CATEGORIES),
         },
     ),
     "view_enrichment": Query(

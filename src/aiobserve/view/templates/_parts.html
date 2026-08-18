@@ -1,5 +1,29 @@
 {# What a session page and a run page have in common: both render one thread of a session,
-   and a run's transcript is a thread like the session's own. #}
+   and a run's transcript is a thread like the session's own. Plus the cells the session list
+   is built from, which are here for the same reason: more than one page will want them. #}
+
+{# One two-line cell: the value a reader scans a column for, and the texture under it. Both
+   halves are labelled, so a test reads either without matching prose. The unit word sits
+   outside the labelled span — what a reader sees is a number and a word, what a `data-field`
+   carries is the value the store holds — and a `{% raw %}{% call %}{% endraw %}` block rides
+   the primary line, for the mark the cost cell hangs off its total. #}
+{% macro stacked(field, primary, secondary_field, secondary, unit='') %}
+<span data-field="{{ field }}" class="primary">{{ primary }}</span>
+{%- if caller %}{{ caller() }}{% endif %}
+<span class="secondary"><span data-field="{{ secondary_field }}">{{ secondary }}</span>
+  {%- if unit %} {{ unit }}{% endif %}</span>
+{% endmacro %}
+
+{# A counted list of names — the agent types a session spawned, the kinds of work its turns
+   were. `key` is what the store called the count, because the two lists count different
+   things. Every integer goes through `count`, like every other one a page prints. #}
+{% macro counted(items, key) %}
+{%- for item in items %}{{ item.name }} ×{{ item[key] | count }}{{ ", " if not loop.last }}
+{%- endfor %}
+{%- endmacro %}
+
+{# What a cut list left out, in the one wording every list on a row uses. #}
+{% macro more(cut) %}{% if cut %} and {{ cut | count }} more{% endif %}{% endmacro %}
 
 {# What a capped list of runs says it left out. `more` is where the whole list is — absent on
    a run page, whose lists are not a size a URL carries. #}

@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from aiobserve.view.format import ABSENT, ago, clock, count, duration, money, share, when
+from aiobserve.view.format import ABSENT, ago, clock, count, duration, money, share, text, when
 
 # A moment in the store's zone, chosen for its single digits: a formatter that dropped the
 # zero padding would render this one differently.
@@ -28,7 +28,9 @@ DAY = dt.timedelta(days=1)
 SECOND = dt.timedelta(seconds=1)
 
 
-@pytest.mark.parametrize("render", [money, count, when, clock, duration, partial(ago, now=MOMENT)])
+@pytest.mark.parametrize(
+    "render", [money, count, text, when, clock, duration, partial(ago, now=MOMENT)]
+)
 def test_a_column_the_store_left_null_reads_as_one_dash(render: Callable[[Any], str]) -> None:
     """Every cell a NULL reaches prints the same single character, not an empty cell."""
     assert render(None) == ABSENT

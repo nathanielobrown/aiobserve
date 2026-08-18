@@ -35,9 +35,9 @@ Dotted edges fetch a fragment into the open page. Each request returns one value
 
 ## The session list keeps the query visible
 
-The list has one row per session. A row shows when the session started, its title and project, rollup counts, cost, tokens, and time. Every column heading sorts by that column; click it again to reverse the order. A `*` after the cost means the session called a model missing from the price table, so the shown total is a floor.
+The list has one row per session. A row shows how long ago the session started over its timestamp, its title and project, rollup counts, its tool errors as a rate over the count, cost over output tokens, wall time over active time, the agent types it spawned with a count of each, and its skills. Over a store an enrichment pass has run against, a Work column says what kinds of turn the pass found. Every column heading sorts by that column; click it again to reverse the order. Errors sorts by the count rather than the rate: one failure in one call is 100% and not the session someone ranking by errors is looking for. A `*` after the cost means the session called a model missing from the price table, so the shown total is a floor.
 
-Rows show only the head of long text: 100 characters for the title and project path, and four skill names followed by the number omitted. The session header shows five skill names of up to 60 characters along with its other fields; it too stays bounded.
+Rows show only the head of long text: 100 characters for the title and project path, four skill names and four agent types followed by the number omitted, and three kinds of work. The session header shows five skill names of up to 60 characters along with its other fields; it too stays bounded.
 
 The form above the list filters by project, date range, skill, or a minimum number of failed tool calls. The project filter matches the recorded path exactly. It is narrower than the CLI's `--project`, which also includes sessions recorded by a checkout's worktrees.
 
@@ -107,7 +107,7 @@ Full-value requests are the declared exception. Each returns one transcript line
 
 | Surface | Default and limit |
 | --- | --- |
-| Session list | 125 sessions; each long string is cut to 100 characters and skills to four 20-character names |
+| Session list | 110 sessions; each long string is cut to 100 characters, skills and agent types to four 20-character names, and work to three |
 | Session timeline | 20 turns and 8 run chips per list by default; at most 100 chips in one list |
 | Turn details | 10 api calls, each with at most 12 tool rows; `?calls=` can only reduce the default |
 | Raw records | 100 rows by default, at most 200 |
@@ -118,6 +118,6 @@ Timeline sizes multiply. The unattached list also appears on every page, so the 
 
 Enrichment raised the page ceiling from 350 KB to 500 KB. A described run row costs about half again as much as a bare row, and the widest page can hold 200 of them. Reducing the run budget would have hidden part of the recorded 94-run forest behind a count with no page able to show it, so the ceiling rose instead. Run chips show tags but leave the description for the run page.
 
-The session list is also bound independently of corpus size. Its filter box offers the 10 busiest project paths that fit its bound, whole or not at all; shortening a path would make it fail the exact-match filter. The same rule keeps row filtering correct: the viewer filters whole titles, paths, and skill lists, then cuts only the rows it renders. The worst-case list projects to 435 KB: 10 KB of page chrome plus 125 rows at 3.4 KB each.
+The session list is also bound independently of corpus size. Its filter box offers the 10 busiest project paths that fit its bound, whole or not at all; shortening a path would make it fail the exact-match filter. The same rule keeps row filtering correct: the viewer filters whole titles, paths, and skill lists, then cuts only the rows it renders. The worst-case list projects to 483 KB: 10 KB of page chrome plus 110 rows at 4.3 KB each.
 
 A session header does not have a reader-controlled size, so its query cuts every string, skill list, PR list, session description, and friction line. Compaction markers are capped at 20, just above the 18 in the densest recorded thread. `tests/view/test_bounds.py` measures these fixed costs and checks every legal page shape against the 500 KB ceiling.

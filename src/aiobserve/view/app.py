@@ -11,6 +11,7 @@ parameter, so no request text ever reaches SQL. How a session's runs and turns f
 is `view/threads.py`; this module is the URLs and the templates they render.
 """
 
+import datetime as dt
 import socket
 import webbrowser
 from collections.abc import Mapping
@@ -113,12 +114,24 @@ def build_app(db_path: Path) -> FastAPI:
     app = FastAPI(title="aiobserve", docs_url=None, redoc_url=None)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
     templates = Jinja2Templates(directory=TEMPLATES)
+
+    def ago(value: dt.datetime | None) -> str:
+        """How long ago, against the clock at render rather than one captured at startup.
+
+        A viewer left open is a long-lived process, so the clock is read here per render:
+        one captured when the app was built would freeze every row's freshness at boot.
+        """
+        return fmt.ago(value, fmt.utcnow())
+
     templates.env.filters |= {
         "money": fmt.money,
         "count": fmt.count,
+        "share": fmt.share,
         "when": fmt.when,
         "clock": fmt.clock,
         "duration": fmt.duration,
+        "text": fmt.text,
+        "ago": ago,
         # The three filters that print what a transcript wrote. Each hands back escaped
         # markup; `view/render.py` is where that escaping lives, and nothing here may add
         # `|safe`.
@@ -208,6 +221,10 @@ def build_app(db_path: Path) -> FastAPI:
             "sessions.html",
             {
                 "sessions": rows,
+                # Whether the store holds an enrichment pass's answers at all, which decides
+                # whether the list carries a work column: an empty one over a store no pass
+                # has touched is a claim the store cannot support.
+                "described": describes,
                 "sorts": SORTS,
                 "sort": sort,
                 "direction": direction,
@@ -247,6 +264,8 @@ def build_app(db_path: Path) -> FastAPI:
                                 {
                                     "head_chars": queries.LIST_CHARS,
                                     "tag_chars": queries.TAG_CHARS,
+                                    "kind_chars": queries.TAG_CHARS,
+                                    "head_kinds": queries.LIST_CATEGORIES,
                                 },
                             )
                         }
