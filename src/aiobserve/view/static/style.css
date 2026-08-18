@@ -57,6 +57,33 @@ ul.runs { margin: 0.4rem 0 0; padding-left: 1.2rem; }
 ul.runs li { list-style: none; }
 .fork { color: var(--dim); font-size: 0.8rem; }
 
+/* The context panel. Two server-rendered SVGs (`view/chart.py`); no script draws anything, so
+   the coordinates arrive with the page and the stylesheet only scales and colours them. */
+#context-chart figure { margin: 0.5rem 0 1rem; }
+#context-chart figcaption { color: var(--dim); font-size: 0.8rem; max-width: 44rem; }
+/* The box is a `viewBox`, so the chart takes the page's width and keeps its own proportions. */
+svg.chart { width: 100%; max-width: 60rem; height: auto; margin-top: 0.3rem; }
+svg.chart .context { fill: none; stroke: var(--mark); stroke-width: 2; }
+/* A compaction is a drop the reader is looking for, so its rule sits over the shape. */
+svg.chart .mark { stroke: var(--dim); stroke-width: 1; stroke-dasharray: 3 3; }
+svg.chart .tick { fill: var(--dim); font-size: 10px; text-anchor: middle; }
+/* One hue, four steps: the bands stack, so what separates them is depth rather than colour. */
+svg.chart path { stroke: none; }
+svg.chart .input_tokens { fill: color-mix(in srgb, var(--mark) 85%, transparent); }
+svg.chart .cache_read_tokens { fill: color-mix(in srgb, var(--mark) 55%, transparent); }
+svg.chart .cache_creation_tokens { fill: color-mix(in srgb, var(--mark) 32%, transparent); }
+svg.chart .output_tokens { fill: color-mix(in srgb, var(--ink) 45%, transparent); }
+ul.legend { display: flex; flex-wrap: wrap; gap: 0.8rem; margin: 0.3rem 0 0; padding: 0;
+  list-style: none; color: var(--dim); font-size: 0.8rem; }
+ul.legend li::before { content: ""; display: inline-block; width: 0.7rem; height: 0.7rem;
+  margin-right: 0.3rem; vertical-align: middle; }
+ul.legend .input_tokens::before { background: color-mix(in srgb, var(--mark) 85%, transparent); }
+ul.legend .cache_read_tokens::before {
+  background: color-mix(in srgb, var(--mark) 55%, transparent); }
+ul.legend .cache_creation_tokens::before {
+  background: color-mix(in srgb, var(--mark) 32%, transparent); }
+ul.legend .output_tokens::before { background: color-mix(in srgb, var(--ink) 45%, transparent); }
+
 /* What an enrichment pass said, beside what the store recorded. Dimmed throughout: these are
    a model's words about the transcript, and the transcript is what a reader came for. */
 .enrichment { color: var(--dim); margin: 0.3rem 0; }

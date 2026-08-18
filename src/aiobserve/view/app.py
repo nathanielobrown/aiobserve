@@ -29,7 +29,7 @@ from aiobserve.analyze import queries
 from aiobserve.analyze.queries import ParamValue
 from aiobserve.export.duckdb import SCHEMA_VERSION
 from aiobserve.model import MAIN_SOURCE
-from aiobserve.view import bounds, render
+from aiobserve.view import bounds, chart, render
 from aiobserve.view import format as fmt
 from aiobserve.view.enrichment import described, enriched
 from aiobserve.view.listing import (
@@ -331,6 +331,15 @@ def build_app(db_path: Path) -> FastAPI:
                 source=MAIN_SOURCE,
                 chip_chars=queries.CHIP_CHARS,
             )
+            # The whole thread, not the page of it: the chart answers "what does this session
+            # look like", which a page's worth of turns cannot.
+            shape = page_rows(
+                connection,
+                Page.CONTEXT_TIMELINE,
+                session_id=session_id,
+                source=MAIN_SOURCE,
+                max_points=queries.CONTEXT_POINTS,
+            )
             lines = turn_lines(connection, session_id, MAIN_SOURCE)
             enrichment = described(connection, session_id, MAIN_SOURCE)
         # A cursor past the last turn and a thread that was never there are the same answer.
@@ -348,6 +357,7 @@ def build_app(db_path: Path) -> FastAPI:
             Page.TURN_RECORDS: at_source,
             Page.ENRICHMENT: at_source,
             Page.TIMELINE: keyed | {"after": after, "limit": turns},
+            Page.CONTEXT_TIMELINE: at_source | {"max_points": queries.CONTEXT_POINTS},
         }
         threads = session_threads(
             rows,
@@ -363,6 +373,10 @@ def build_app(db_path: Path) -> FastAPI:
             {
                 "header": header[0],
                 "main": MAIN_SOURCE,
+                # The whole thread's marks under the same cap the timeline's take, not the
+                # page's: the chart covers every turn, and an uncapped list of rules is a byte
+                # cost nothing bounds.
+                "chart": chart.build(shape, cut_to(markers, bounds.MARKS).shown),
                 "timeline": threads.entries,
                 "unattached": threads.unattached,
                 "marks": threads.marks,
@@ -376,6 +390,7 @@ def build_app(db_path: Path) -> FastAPI:
                     named.value: queries.citation(named, bound.get(named, keyed))
                     for named in (
                         Page.SESSION_HEADER,
+                        Page.CONTEXT_TIMELINE,
                         Page.TIMELINE,
                         Page.RUNS,
                         Page.COMPACTIONS,

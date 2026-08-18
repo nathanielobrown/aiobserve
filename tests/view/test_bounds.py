@@ -19,6 +19,7 @@ from aiobserve.analyze import queries
 from aiobserve.analyze.queries import QUERIES, VIEW_PREFIX
 from aiobserve.view import bounds
 from aiobserve.view.app import build_app
+from aiobserve.view.chart import TokenType
 from aiobserve.view.listing import SHOWN
 from aiobserve.view.store import Fragment, Page, Value, cursorless_rows
 from aiobserve.view.threads import TURN_CURSOR
@@ -115,6 +116,14 @@ MEASURED_MARK_ROW_MARKUP = 300
 # renders too: 314 B for a turn and 244 B for a run.
 MEASURED_TURN_ENRICHMENT_MARKUP = 400
 MEASURED_CHIP_ENRICHMENT_MARKUP = 300
+# What the context panel weighs at the widest shape it can draw: `queries.CONTEXT_POINTS`
+# points on two charts, `bounds.MARKS` compaction rules across both, and the note a bucketed
+# thread carries. Measured through the app by the leaf at the bottom of this file — 11,512 B —
+# against a session planted with twice the point cap in answering turns. Unlike every other
+# figure here it carries no content factor: the panel draws coordinates this code computed and
+# no string a transcript wrote, so its cost is the markup and the digits alone (`view/chart.py`).
+# A fixed cost, not a per-row one: it rides every session page whatever sizes the URL asks for.
+MEASURED_CHART_BYTES = 12_000
 # What a session page weighs apart from the rows above: the header, the page's own markup, and
 # the lines a cut list mints. Measured through the app by the leaf at the bottom of this file,
 # with `&` planted at every cap the header carries and the session described at every one of
@@ -235,10 +244,11 @@ def worst_session_bytes() -> int:
     `chips` like a turn's that rides every page. The rows the window cannot reach add no run
     rows of their own: the digest gives them `queries.UNATTRIBUTED` for a turn id, which no
     run's `spawn_turn_id` carries. The marks are not a size a URL carries, so they cost the
-    same on any page.
+    same on any page, and the context panel is bound in SQL rather than by a size at all.
     """
     return (
         MEASURED_SESSION_CHROME
+        + MEASURED_CHART_BYTES
         + bounds.MARKS * worst_mark_bytes()
         + max(
             (turns + bounds.CURSORLESS_TURNS) * worst_turn_bytes()
@@ -378,6 +388,10 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     # A call row is multiplied by the page the same way, and carries two model names — which
     # an api request wrote, so their length is Claude Code's to change and not ours.
     assert QUERIES["view_turn_calls"].params["chip_chars"].default == 60
+    # How many points the context panel draws whatever the thread holds. Not a size a URL
+    # carries — the panel's whole byte cost is arithmetic over this number, and the leaf at the
+    # bottom of this file measures the panel at it.
+    assert QUERIES["view_context_timeline"].params["max_points"].default == 100
     # And what a session header shows of each string and each list it carries. The header is
     # the page's one unbounded surface — a session's PR links grow with every PR it opens — so
     # these three are what turn `MEASURED_SESSION_CHROME` into a worst case.
@@ -730,25 +744,28 @@ def test_a_session_timeline_of_nothing_but_escapes_costs_what_the_ceiling_budget
     assert mark_row <= worst_mark_bytes()
 
 
-# What the session arithmetic counts row by row, which chrome is the page without: a turn row
-# with the runs and cut line it carries, a run list of the page's own, a compaction row. Cut
-# innermost first, because a run list nests inside a run list.
+# What the session arithmetic counts on its own, which chrome is the page without: a turn row
+# with the runs and cut line it carries, a run list of the page's own, a compaction row, and
+# the context panel — a fixed cost like the marks rather than a row. Cut innermost first,
+# because a run list nests inside a run list.
+CHART_SECTION = r'<section id="context-chart">.*?</section>'
 COUNTED_ROWS = (
     r'<article id="turn-.*?</article>',
     r'<ul class="runs">.*?</ul>',
     r'<div class="compaction".*?</div>',
+    CHART_SECTION,
 )
 
 
 def chrome(html: str) -> str:
-    """A session page with every row `worst_session_bytes` counts separately taken out."""
+    """A session page with everything `worst_session_bytes` counts separately taken out."""
     for pattern in COUNTED_ROWS:
         while (stripped := re.sub(pattern, "", html, count=1, flags=re.S)) != html:
             html = stripped
     # The strip is the instrument, so it is checked both ways: a row left in is a cost counted
     # twice, and a wrapper taken out hides part of the page this measures.
     assert not values(html, "data-turn") and not values(html, "data-chip")
-    assert not values(html, "data-compaction")
+    assert not values(html, "data-compaction") and not values(html, "data-chart")
     assert 'id="session-header"' in html and 'id="timeline"' in html
     return html
 
@@ -824,6 +841,81 @@ def test_a_session_page_of_nothing_but_escapes_carries_the_chrome_the_ceiling_bu
     described = fields(widest, "data-enrichment", values(widest, "data-enrichment")[0])
     assert len(described["description"]) == len(described["friction"]) == queries.ENRICHMENT_CHARS
     assert described["stale"] == "stale"
+
+
+# What a thread has to hold for the context panel to draw its widest shape: twice the point
+# cap in turns that answered, so the query fills every point *and* groups two real turns into
+# each one — which is the shape that renders the grouping note as well.
+CHART_TURNS = 2 * queries.CONTEXT_POINTS
+# The tokens each planted call reports, and the drop each planted compaction made. Nine digits
+# apiece: the panel prints four such numbers as text — the two scales and each rule's
+# `pre → post` — and no session's counts can be wider than a BIGINT's ten.
+PLANTED_TOKENS = 111_111_111
+PLANTED_DROP = (987_654_321, 123_456_789)
+
+
+def test_a_context_chart_at_its_point_cap_costs_what_the_ceiling_budgets(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The context panel weighs no more than the fixed allowance the ceiling gives it.
+
+    The one surface here with no content factor: the panel draws coordinates this code
+    computed, so what bounds it is `queries.CONTEXT_POINTS` points, `bounds.MARKS` rules and
+    the digits of the numbers beside them, rather than the five bytes a transcript character
+    can escape to. Which is why this is planted rather than measured on the corpus — the
+    deepest fixture thread answers in three turns, and the panel's cost is the shape it takes
+    at the cap, a shape no session in reach of this suite records.
+    """
+    (answered,) = one(
+        store,
+        "SELECT count(DISTINCT t.id) FROM live_turns t JOIN live_api_calls c"
+        " ON c.session_id = t.session_id AND c.source = t.source AND c.turn_id = t.id"
+        " WHERE t.session_id = ? AND t.source = 'main'",
+        [SPINE],
+    )
+    # A turn a minute, each answered by one call, on top of what the session already holds...
+    minute = "TIMESTAMPTZ '2030-01-01 00:00:00' + INTERVAL (i) MINUTE"
+    path = plant(
+        (
+            f"INSERT INTO turns (SELECT 'planted-turn-' || i, ?, 'main', 900000 + i, '', NULL,"
+            f" NULL, {minute}, {minute}, false FROM range(1, ?) t(i))",
+            [SPINE, CHART_TURNS - answered + 1],
+        ),
+        (
+            "INSERT INTO api_calls (SELECT 'planted-call-' || i, ?, 'main', 'planted-turn-' || i,"
+            f" 900000 + i, 'm', NULL, NULL, NULL, NULL, NULL, {minute}, {minute},"
+            " ?, ?, ?, ?, NULL, NULL, '', '', 1.0, false, false FROM range(1, ?) t(i))",
+            [SPINE, *[PLANTED_TOKENS] * 4, CHART_TURNS - answered + 1],
+        ),
+        # ...and more compactions than the panel rules, spread across those turns, so the cap
+        # is what the measurement carries rather than the count the fixture happens to hold.
+        (
+            "INSERT INTO compactions (SELECT 'planted-mark-' || i, ?, 'main',"
+            " TIMESTAMPTZ '2030-01-01 00:00:10' + INTERVAL (i * 7) MINUTE, 'auto', ?, ?, 1"
+            " FROM range(1, ?) t(i))",
+            [SPINE, *PLANTED_DROP, bounds.MARKS + 3],
+        ),
+    )
+    with TestClient(build_app(path)) as planted:
+        response = planted.get(f"/session/{SPINE}")
+    assert response.status_code == 200
+    panel = re.search(CHART_SECTION, response.text, flags=re.S)
+    assert panel is not None
+    # The panel drew the widest shape it can: every point the cap allows, on two charts...
+    section = panel.group(0)
+    assert len(values(section, "points")[0].split()) == queries.CONTEXT_POINTS
+    bands = re.findall(r'<path[^>]* d="([^"]*)"', section)
+    assert [len(band.split()) for band in bands] == [
+        # A band is closed over both its edges, and the `M` and `Z` around them.
+        2 * queries.CONTEXT_POINTS + 2
+    ] * len(TokenType)
+    # ...ruled by as many compactions as the cap passes, on each of them...
+    assert section.count('class="mark"') == 2 * bounds.MARKS
+    # ...and saying that a point stands for several turns, which is the note only a thread
+    # past the cap carries.
+    assert values(section, "data-field").count("bucketed") == 1
+    # ...for no more than the allowance the ceiling budgets it.
+    assert len(section.encode()) <= MEASURED_CHART_BYTES
 
 
 def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(

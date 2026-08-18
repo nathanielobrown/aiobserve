@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "_parts.html" as parts %}
+{% import "_chart.html" as charts %}
 {% block title %}{{ header.title or header.session_id }} — aiobserve{% endblock %}
 
 {% block main %}
@@ -36,6 +37,10 @@
   {% endif %}
   {% if enrichment.session %}{{ parts.summary(enrichment.session) }}{% endif %}
 </section>
+
+{# The whole thread's shape before its turn-by-turn detail, and absent for a thread that has
+   no shape to show — one turn's worth of calls, or none. #}
+{% if chart %}{{ charts.panel(chart) }}{% endif %}
 
 {{ parts.timeline(timeline, header.session_id, main, 'data-chip', lines, marks, sizes,
                   enrichment) }}

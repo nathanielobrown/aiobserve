@@ -1,0 +1,68 @@
+{# The session page's context panel: two server-rendered charts over one thread's turns.
+
+   Every attribute below carries a number `view/chart.py` computed — a coordinate, a token
+   count, a turn index. Nothing a transcript wrote reaches this markup, which is what makes
+   the panel's byte cost arithmetic rather than five bytes a character (`docs/viewer.md`). #}
+
+{# The compactions of this thread, ruled across both charts at the point they fell between.
+   `titled` carries the drop as a hover, which the context chart takes and the composition
+   chart does not: the same twenty rules cost twice, and the figure the numbers belong to is
+   the one that plots context. #}
+{% macro rules(chart, titled) %}
+{%- for mark in chart.compaction_marks -%}
+<line class="mark" x1="{{ mark.x }}" x2="{{ mark.x }}" y1="0" y2="{{ chart.plot_height }}"
+{%- if titled %}><title>{{ mark.pre_tokens | count }}&#8594;{{ mark.post_tokens | count }}</title></line>
+{%- else %}/>{% endif %}
+{%- endfor %}
+{% endmacro %}
+
+{# The x axis: `chart.TICKS` turn indices at most, never one per point. #}
+{% macro axis(chart) %}
+{%- for tick in chart.x_ticks -%}
+<text class="tick" x="{{ tick.x }}" y="{{ chart.label_y }}">{{ tick.turn_index }}</text>
+{%- endfor %}
+{% endmacro %}
+
+{# Both charts of one thread. `chart` is `chart.build`'s result and is never None here: a
+   thread with no shape to draw gets no section at all. #}
+{% macro panel(chart) %}
+<section id="context-chart">
+  <h2>context over this thread</h2>
+  <figure data-chart="context">
+    <figcaption>
+      what the thread's context had grown to by the end of each turn, peaking at
+      <span data-field="y_max">{{ chart.y_max | count }}</span> tokens
+    </figcaption>
+    <svg class="chart" viewBox="{{ chart.view_box }}" role="img"
+         aria-label="context size per turn">
+      <polyline class="context" data-field="context_line" points="{{ chart.context_line }}"/>
+      {{- rules(chart, true) }}{{ axis(chart) -}}
+    </svg>
+  </figure>
+  <figure data-chart="composition">
+    <figcaption>
+      what each turn spent, by token type, topping out at
+      <span data-field="spend_max">{{ chart.spend_max | count }}</span> tokens. Output is
+      spend and not context, so these bands do not total the line above.
+    </figcaption>
+    <svg class="chart" viewBox="{{ chart.view_box }}" role="img"
+         aria-label="token spend per turn, by type">
+      {%- for band in chart.bands -%}
+      <path class="{{ band.type }}" data-band="{{ band.type }}" d="{{ band.outline }}"/>
+      {%- endfor %}
+      {{- rules(chart, false) }}{{ axis(chart) -}}
+    </svg>
+    <ul class="legend">
+      {%- for band in chart.bands %}
+      <li class="{{ band.type }}" data-legend="{{ band.type }}">{{ band.type.label }}</li>
+      {%- endfor %}
+    </ul>
+  </figure>
+  {# A point stands for several turns once the thread outgrows `$max_points`, and the two
+     charts read it differently: context is the last turn's size, spend is the group's total. #}
+  {%- if chart.bucketed %}
+  <p class="more" data-field="bucketed">Each point groups several turns: the line shows the
+    last turn's context, the bands their total spend.</p>
+  {% endif %}
+</section>
+{% endmacro %}
