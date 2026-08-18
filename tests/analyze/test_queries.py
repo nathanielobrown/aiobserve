@@ -65,6 +65,9 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     # `spine/` is the fixture session with agent runs; its main thread never compacted, so
     # the compaction markers come from the session that did.
     "view_compactions": {"session_id": ANCESTOR, "source": MAIN},
+    # The chart's rows, at the fixture thread that answers in the most turns — three, so the
+    # bucketing arithmetic runs over more than one group at any cap.
+    "view_context_timeline": {"session_id": SPINE, "source": MAIN},
     "view_run_header": {"session_id": SPINE, "run_id": SPINE_RUN},
     "view_runs": {"session_id": SPINE},
     "view_session_header": {"session_id": SPINE},

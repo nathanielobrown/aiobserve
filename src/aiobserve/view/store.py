@@ -44,6 +44,9 @@ class Page(StrEnum):
     RUN_TIMELINE = "run_digest"
     RUNS = "view_runs"
     COMPACTIONS = "view_compactions"
+    # One thread's context size and token spend over its turns, bucketed in SQL to a fixed
+    # point count — what the session page's chart draws (`view/chart.py`).
+    CONTEXT_TIMELINE = "view_context_timeline"
     # What an enrichment pass said about the session, its turns and its runs. Absent from a
     # store no pass has written to, which is why `view/enrichment.py` asks before it runs.
     ENRICHMENT = "view_enrichment"

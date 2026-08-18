@@ -115,6 +115,14 @@ PAGE_CALLS = 10
 PAGE_TOOLS = 12
 PAGE_RECORDS = 100
 
+# The most points the session page's context chart draws, which is what turns a session of any
+# turn count into a panel of fixed size: past this the query buckets consecutive turns
+# (`view_context_timeline.sql`). Not a size a URL carries — the viewer always binds the default
+# — because the panel's byte cost is arithmetic over this number (`tests/view/test_bounds.py`).
+# 100 leaves almost every recorded session unbucketed: the largest main thread in the canonical
+# store holds 268 turns, and the median holds far fewer.
+CONTEXT_POINTS = 100
+
 # How much of an offloaded tool result one chunk of the offload page carries. The only value
 # the viewer serves with no ceiling behind it — `offload_files.content` is whatever a tool
 # wrote, and the canonical store holds one over 50 MB — so the page is a walk, not a fetch.
@@ -425,6 +433,16 @@ QUERIES: dict[str, Query] = {
     "view_compactions": Query(
         scope=Scope.KEYED,
         params={"session_id": SESSION_ID, "source": SOURCE, "chip_chars": CHIP_CHARS_PARAM},
+    ),
+    "view_context_timeline": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            # Which thread's context to plot. Required like every other source: a default
+            # would answer for the main thread on a page rendering a run's.
+            "source": SOURCE,
+            "max_points": Param(type=ParamType.INTEGER, default=CONTEXT_POINTS),
+        },
     ),
     "view_run_header": Query(
         scope=Scope.KEYED,

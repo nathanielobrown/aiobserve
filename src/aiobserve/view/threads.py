@@ -164,15 +164,20 @@ def marks_on_page(
     return [
         mark
         for mark in compactions
-        if start <= (fell := _lands(mark, outline)) < stop or (trailing and fell == stop)
+        if start <= (fell := lands(mark, outline)) < stop or (trailing and fell == stop)
     ]
 
 
-def _lands(mark: Row, outline: Sequence[Row]) -> int:
+def lands(mark: Row, outline: Sequence[Row]) -> int:
     """Where in a thread one compaction falls: the position of the turn it precedes.
 
     `len(outline)` when no turn of the thread started after it — the marks that trail the
     timeline, which is what `timeline` leaves to the end.
+
+    Public because the context chart places its rules the same way (`view/chart.py`): the two
+    surfaces have to agree about which turns a compaction fell between, and `outline` is any
+    sequence of rows carrying `started_at` in thread order — a page's turns, or the chart's
+    buckets.
     """
     return next(
         (

@@ -340,6 +340,12 @@ def test_the_session_page_cites_every_query_it_ran(client: TestClient) -> None:
     # `view_enrichment` never ran, because this store holds no enrichment tables to read.
     assert fields(page, "id", "citation") == {
         "view_session_header": f"-- queries/view_session_header.sql session_id={SPINE}",
+        # The context panel's rows, cited whether or not the panel drew: the query ran, and a
+        # citation says what produced the page rather than what reached it.
+        "view_context_timeline": (
+            f"-- queries/view_context_timeline.sql session_id={SPINE} source={MAIN}"
+            f" max_points={queries.CONTEXT_POINTS}"
+        ),
         "session_digest": f"-- queries/session_digest.sql session_id={SPINE} after=0 limit=3",
         "view_runs": f"-- queries/view_runs.sql session_id={SPINE}",
         "view_compactions": f"-- queries/view_compactions.sql session_id={SPINE} source={MAIN}",

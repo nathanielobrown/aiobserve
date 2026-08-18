@@ -45,7 +45,13 @@ Filters survive sorting and paging. The masthead link clears them. The footer pr
 
 ## Session pages account for every call and run
 
-A session page starts with the stored session header, then pages through the main-source turns in order. Each turn shows its prompt or command, counts, and cost. A run spawned from that turn appears as a chip, with descendant runs nested beneath it.
+A session page starts with the stored session header, then draws the whole thread's shape, then pages through the main-source turns in order.
+
+The context panel sits between the two. Its first chart lines the context each turn ended at — input plus cache-read plus cache-creation tokens on that turn's last api call. Its second stacks what each turn spent by token type, output included, so the two charts total different numbers on purpose. A dashed rule on both marks each compaction, at the point it fell between, carrying its `pre → post` drop. Both are server-rendered SVG with no script behind them, and both cover the whole thread rather than the turns on screen. A thread whose turns made calls in fewer than two of them gets no panel: there is no shape to draw, and the numbers are on the timeline below.
+
+Threads longer than 100 turns are grouped into 100 points, and the panel says so. A grouped point plots the last turn's context and its turns' total spend.
+
+Each turn shows its prompt or command, counts, and cost. A run spawned from that turn appears as a chip, with descendant runs nested beneath it.
 
 Two extra groups make the timeline totals match the header. The unattributed row holds calls that belong to no turn. The unattached section holds runs that resolve to neither a turn nor another run in the session.
 
@@ -112,9 +118,12 @@ Full-value requests are the declared exception. Each returns one transcript line
 | Turn details | 10 api calls, each with at most 12 tool rows; `?calls=` can only reduce the default |
 | Raw records | 100 rows by default, at most 200 |
 | Offload | 50,000 characters by default, at most 60,000 |
-| Compaction markers | 20 per timeline page |
+| Compaction markers | 20 per timeline page, and the same 20 ruled across the context panel |
+| Context panel | 100 points per chart, whatever the thread holds |
 
-Timeline sizes multiply. The unattached list also appears on every page, so the route requires `(turns + 1) × chips ≤ 200`. A capped run list links to `?turns=1&chips=100`, which can show the widest forest recorded in the canonical store: 94 runs beneath one turn. That page measured 33.6 KB against `data/traces.duckdb` on 2026-08-07. The largest legal shape projects to 483 KB: 456 KB for turn and run rows, 12 KB for compaction markers, and 15 KB for the rest of the page.
+Timeline sizes multiply. The unattached list also appears on every page, so the route requires `(turns + 1) × chips ≤ 200`. A capped run list links to `?turns=1&chips=100`, which can show the widest forest recorded in the canonical store: 94 runs beneath one turn. That page measured 33.6 KB against `data/traces.duckdb` on 2026-08-07. The largest legal shape projects to 495 KB: 456 KB for turn and run rows, 12 KB for compaction markers, 12 KB for the context panel, and 15 KB for the rest of the page.
+
+The context panel is the one surface charged no escaping factor. It draws coordinates and counts the viewer computed, never a string a transcript wrote, so its cost is the point cap and the compaction cap alone. It measured 11,512 B at the widest shape it can take — 100 points on both charts, 20 rules across each, and nine-digit token labels — against a session planted for that shape, because no thread this suite can reach is long enough to draw it.
 
 Enrichment raised the page ceiling from 350 KB to 500 KB. A described run row costs about half again as much as a bare row, and the widest page can hold 200 of them. Reducing the run budget would have hidden part of the recorded 94-run forest behind a count with no page able to show it, so the ceiling rose instead. Run chips show tags but leave the description for the run page.
 
