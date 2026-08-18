@@ -1,0 +1,22 @@
+{
+  // Thin wrappers around `mise run <task>` (defined in mise.toml). Keep this
+  // file mechanical — no logic, no flags. If a command needs to grow, change
+  // the underlying mise task so the CLI and the editor stay in sync.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "lint",
+      "detail": "mise: check (format + lint + typecheck + test)",
+      "type": "shell",
+      "command": "mise run check",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "typecheck",
+      "type": "shell",
+      "command": "mise run typecheck",
+      "problemMatcher": []
+    }
+  ]
+}
