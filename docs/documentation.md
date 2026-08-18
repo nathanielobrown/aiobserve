@@ -1,59 +1,59 @@
 # Documentation
 
-When you create or edit project documentation, use this guide after the documentation summary in `CLAUDE.md`. It adds placement rules and repository mechanics. Follow the [writing style guide](writing_style_guide.md) for prose.
+Use this guide to decide where project documentation belongs and how to keep it current. Start with the documentation summary in `CLAUDE.md`, then follow the [writing style guide](writing_style_guide.md) as you write.
 
-## Find the right home first
+## Give each fact one home
 
 | Content | Home |
 | --- | --- |
-| Repo-wide conventions and context worth loading every session | `CLAUDE.md` |
-| Conventions scoped to particular files, such as tests | `.claude/rules/` |
+| Repository-wide context and conventions that every session needs | `CLAUDE.md` |
+| Conventions for a set of files, such as tests | `.claude/rules/` |
 | A guide to one project topic | `docs/`, linked from the `CLAUDE.md` Layout tree |
-| This documentation guide | `docs/documentation.md` |
-| What a telemetry field means and where it comes from | `docs/schema.md` |
-| A picture of how parts connect or data moves | a ` ```mermaid ` block in the doc that owns the topic; see [the Mermaid guide](mermaid-guide.md) |
-| A finding about an AI coding agent, with the evidence behind it | `reports/`; see [the report guide](../reports/README.md) |
-| An actionable bug, feature, or design question | a GitHub issue |
-| A design or testing plan for one change, kept after it lands | `plans/<change>/`, committed |
+| This guide | `docs/documentation.md` |
+| The meaning and source of a telemetry field | `docs/schema.md` |
+| A picture of how parts connect or data moves | A ` ```mermaid ` block in the document that owns the topic; see [the Mermaid guide](mermaid-guide.md) |
+| A finding about an AI coding agent and its evidence | `reports/`; see [the report guide](../reports/README.md) |
+| A bug, feature, or design question that needs action | A GitHub issue |
+| A design or test plan that should remain after the change lands | `plans/<change>/`, committed |
 | Scratch passed between agent runs | `handoffs/`; see [the handoff guide](handoffs.md) |
 
-Put module, function, and configuration details in comments or docstrings beside the code.
+Keep details about a module, function, or configuration beside the code in comments or docstrings.
 
-## Keep it from rotting
+## Prefer facts that update themselves
 
-Use the first suitable form:
+Choose the first form that fits:
 
-1. **Describe how to discover it.** Write "every task in `mise.toml`" rather than listing the current tasks.
-2. **Reference the source of truth.** Point to code for behavior and `mise.toml` for commands.
-3. **State it in prose.** Use this only when the other forms would make the fact harder to find or understand.
+1. **Explain how to find the fact.** Write "every task in `mise.toml`" instead of copying the task list.
+2. **Link to the source of truth.** Point to the code for behavior and to `mise.toml` for commands.
+3. **State the fact in prose.** Do this only when the other forms would hide it or make it harder to understand.
 
-Treat enumerated facts in a plan as claims to verify during implementation. References survive changes better than copied lists of current callers, files, or commands.
+A plan may list callers, files, or commands to make a design concrete. Treat those lists as claims to check during implementation, not as lasting records.
 
-Telemetry schemas rot fastest of all because the harness owns them and changes them without telling us. Never enumerate a transcript's fields from memory — point at a real recorded session and say which version of Claude Code produced it.
+Telemetry schemas need stronger evidence because the harness owns them and may change them without notice. Never list transcript fields from memory. Cite a recorded session and the Claude Code version that produced it.
 
-## Cross-references
+## Make references work where readers find them
 
-Write references as either backticked paths or Markdown links:
+Write references as backticked paths or Markdown links:
 
-- In `CLAUDE.md` and `.claude/rules/`, use compact backticked paths. Use a Markdown link for an anchor, an external URL, or a slashless name.
-- In other prose documents, link to prose with descriptive text, such as `[the PR guide](pull-requests.md)`. Use a backticked path for source artifacts such as code or diagrams.
+- In `CLAUDE.md` and `.claude/rules/`, use short backticked paths. Use a Markdown link for an anchor, an external URL, or a name without a path
+- In other prose documents, link to prose by name, as in `[the PR guide](pull-requests.md)`. Use backticked paths for source artifacts such as code and diagrams
 
-Markdown links resolve relative to the current file. Backticked paths resolve from the repository root. References in code comments, docstrings, TOML, and YAML also resolve from the repository root and must match the target's case.
+Markdown links resolve from the file that contains them. Backticked paths resolve from the repository root. Paths in code comments, docstrings, TOML, and YAML also resolve from the repository root and must match the target's case.
 
-## One line per paragraph
+## Keep each source paragraph on one line
 
-Write each paragraph and list item on one physical line and let the editor wrap it. Fenced code blocks are exempt.
+Write each paragraph and list item on one physical line. Let the editor wrap it. Fenced code blocks are exempt.
 
-## Rules and skills across harnesses
+## Keep shared agent guidance in one place
 
-`.claude/rules/` and `.claude/skills/` are the sources of project rules and skills for the AI coding agents we use.
+`.claude/rules/` and `.claude/skills/` are the sources for project rules and skills used by our AI coding agents.
 
-`@` imports work in harness-loaded rules and skills, but not in agent prompt bodies. Tell a subagent to read a repo-root path; an `@` in its prompt is inert text.
+`@` imports work in rules and skills loaded by a harness, but they don't work in agent prompts. Tell a subagent to read a path from the repository root instead.
 
-A skill should normally import the document that owns its procedure. Keep only enough text in the skill to orient the agent. A skill may carry its own short procedure when no separate document needs it.
+A skill should usually import the document that owns its procedure and keep only enough text to orient the agent. Keep a short procedure in the skill itself when no separate document needs it.
 
-## Keep docs in step with the change
+## Update documentation with the code
 
-After implementation, dispatch the `doc-writer` agent in `.claude/agents/doc-writer.md` to run doc sync. Its `doc-sync` skill checks the branch and reports the updates or why none are needed. The `pr` skill includes this step.
+After implementation, dispatch the `doc-writer` agent in `.claude/agents/doc-writer.md`. Its `doc-sync` skill checks the branch and reports what to update or why no update is needed. The `pr` skill runs this step.
 
-After an analysis run, update the record in the same change: the report under `reports/` and any guidance the finding revises.
+After an analysis run, update the report under `reports/` and any guidance changed by the finding in the same change.

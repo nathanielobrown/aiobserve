@@ -1,28 +1,47 @@
 # Commits
 
-How to write a commit in this repo. Branch from `origin/main` with `git switch -c <name>`, then commit with plain `git`. Make each commit one reviewable change. For branch flow, fixup commits, and history-rewrite recipes, see [the PR guide](pull-requests.md).
+Each commit is a review unit. Keep it to one change and write a subject a reviewer can understand without opening the diff. See [the PR guide](pull-requests.md) for branches, fixups, rebases, and landing.
 
-## Message format
+## Make each commit one change
 
-- First line: concise — lead with the *type* of change and the area or feature it touches. Add detail in the body as needed, but not too much
-- Keep references such as issue or PR numbers off the first line. Put them on a later body line (e.g. `Closes #12.`). Use the first line for the what-and-type, not bookkeeping
-- Start every message with at least one emoji from this list:
-  - ✨ new feature
-  - 🌱 built but not yet hooked up (intermediate development steps)
-  - 🧹 refactor or cleanup
-  - 🗂️ data model changes
-  - 🐛 bug fix
-  - 🧪 testing (exclusively)
-  - 📚 documentation
-  - 🔍 observability
-  - 🚀 CI/CD
-  - ⬆️ dependency upgrades
-  - ⚙️ configuration changes
-  - 🛠️ tooling (linters, formatters, typecheckers, scripts, AI guidance, …)
-  - 🔒 security
-- Use only emojis from this list. Two Gitmoji habits slip past it: ♻️ is 🧹 here, and 📝 is 📚
+Commit as often as you need while working. Before review, shape the branch into a few atomic commits. The reviewed commits land on `main` unchanged, without a squash.
 
-## Hygiene
+Never commit extracted session data or a backend ingest key. `.gitignore` covers `data/` and `.env`; ignore any related files you add.
 
-- Commit as finely as you like while iterating. Before review, shape the branch into a few well-scoped, atomic commits. They land on `main` exactly as reviewed (fast-forward, no squash)
-- Never commit extracted session data or a backend ingest key. `.gitignore` covers `data/` and `.env`; give anything you add beside them the same treatment
+## Say what changed in the subject
+
+Use this form:
+
+```
+<emoji> <plain statement of the change>
+```
+
+Choose an emoji for the type of change, then name the area or feature it touches. Keep the subject short. Add a body when the reviewer needs more context.
+
+Keep issue and PR numbers out of the subject. Put them on a later body line instead:
+
+```
+Closes #12.
+```
+
+## Choose emojis from this list
+
+Start each subject with at least one emoji from this table. Don't use emojis outside the list.
+
+| Emoji | Change |
+| --- | --- |
+| ✨ | New feature |
+| 🌱 | Intermediate work that is built but not yet wired in |
+| 🧹 | Refactor or cleanup |
+| 🗂️ | Data model |
+| 🐛 | Bug fix |
+| 🧪 | Tests only |
+| 📚 | Documentation |
+| 🔍 | Observability |
+| 🚀 | CI/CD |
+| ⬆️ | Dependency upgrade |
+| ⚙️ | Configuration |
+| 🛠️ | Tooling, including linters, formatters, type checkers, scripts, and AI guidance |
+| 🔒 | Security |
+
+Two common Gitmoji choices don't apply here: use 🧹 instead of ♻️, and 📚 instead of 📝.

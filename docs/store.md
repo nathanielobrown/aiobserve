@@ -1,8 +1,8 @@
 # The trace store
 
-`aiobserve extract` writes session traces into one DuckDB file. There is one canonical store, `data/traces.duckdb` — gitignored, like everything under `data/`. Read this before you delete a store, move one, or bump a version constant.
+`aiobserve extract` writes session traces to a DuckDB file. The canonical store is `data/traces.duckdb`. It is gitignored with the rest of `data/`. Treat this file as an archive: read this guide before deleting it, moving it, or changing a version constant.
 
-## What it holds
+## The store holds traces and derived data
 
 ```mermaid
 erDiagram
@@ -21,29 +21,31 @@ erDiagram
     agent_runs ||--o{ agent_runs : "spawned"
 ```
 
-The columns live in `_SCHEMA` in `src/aiobserve/export/duckdb.py` — except `otlp_delivery`, which the exporter that fills it declares in `src/aiobserve/export/otlp.py`. Each component that writes into the store past an extract brings its own tables: the enrichment tables below come the same way. [The schema guide](schema.md) explains what each telemetry field means and cites the session that proves it. A session's own thread and each of its agent runs share these tables. The `source` column tells them apart, so a turn or a call is keyed by `(session_id, source, id)`.
+`_SCHEMA` in `src/aiobserve/export/duckdb.py` defines the trace tables and their columns. The OTLP exporter defines its own `otlp_delivery` table in `src/aiobserve/export/otlp.py`. Other components that write to the store also own their tables, including the enrichment tables described below. [The schema guide](schema.md) defines each telemetry field and cites the recording that proves it.
 
-Queries don't read these tables directly. `_VIEWS` in the same module derives the `live_*` views, which drop the records a fork replayed. The `corpus_*` views also drop records already held by an earlier session. A resume copies its ancestor's records verbatim, so counting both doubles the corpus. `session_rollups` and `corpus_rollups` roll each family up to one row per session.
+A session's main thread and agent runs use the same trace tables. The `source` column distinguishes them, so `(session_id, source, id)` identifies a turn or call.
 
-[Enrichment](enrichment.md) writes into the same file: three `*_enrichments` tables keyed one-to-one onto sessions, turns and agent runs, plus the views that join them back on. A store no pass has touched holds none of them, so a query over them fails saying so.
+Queries use views instead of reading the trace tables directly. `_VIEWS` in `src/aiobserve/export/duckdb.py` defines `live_*` views, which omit records replayed by a fork. The `corpus_*` views also omit records already stored for an earlier session. Resumed sessions copy their ancestor's records, so counting both would count the same records twice. `session_rollups` and `corpus_rollups` reduce each family to one row per session.
 
-## The store is the archive, not a cache
+[Enrichment](enrichment.md) adds three `*_enrichments` tables keyed one-to-one to sessions, turns, and agent runs. It also adds views that join the enrichments to those records. Until an enrichment pass writes these tables, queries against them fail with an error that says they don't exist.
 
-Claude Code prunes a session's transcript and its `tool-results/` files from disk after a few weeks. This constraint shaped the pipeline ([the trace-pipeline design](../plans/trace-pipeline/design.md)). Every line of every file goes into the store: `raw_records` holds the transcripts, and `offload_files` holds the tool outputs Claude Code moved out of them. Once a session's files are gone, the store is its only copy. A refresh keeps such a session's rows rather than mirroring what is on disk.
+## The store is the only durable archive
 
-Deleting a store therefore destroys sessions no re-extract can recover. Re-parsing a pruned session out of its archived `raw_records` is possible but not built; the design lists it under out of scope.
+Claude Code deletes session transcripts and their `tool-results/` files from disk after a few weeks. This constraint shaped [the trace-pipeline design](../plans/trace-pipeline/design.md). The extractor archives every line: `raw_records` holds transcripts, while `offload_files` holds tool outputs that Claude Code moved out of them. A refresh keeps rows for sessions whose source files are gone instead of making the store mirror the disk.
 
-## A version bump re-extracts in place
+Once Claude Code deletes those files, the store holds the only copy. Deleting it can destroy sessions that extraction can't recover. The archived `raw_records` contain enough data to reparse a pruned session, but that feature isn't built; the design lists it as out of scope.
 
-Each session's fingerprint includes `EXTRACTOR_VERSION` (`src/aiobserve/extract/claude_code.py`), so raising it makes the next refresh re-extract every session whose files are still on disk into the same store. You don't need to delete anything, and pruned sessions keep whatever the parser of their day produced.
+## Choose the right path for each version change
 
-`SCHEMA_VERSION` (`src/aiobserve/export/duckdb.py`) has no migrations while the project is early. When you open a store written by an older schema, the program refuses before reading or writing a single table and tells you to extract into a fresh one. Deleting the old store is a separate decision — run the check below first.
+Each session fingerprint includes `EXTRACTOR_VERSION` from `src/aiobserve/extract/claude_code.py`. Raising that version makes the next refresh re-extract every session whose files remain on disk. Extraction updates the existing store, so you don't need to delete it. Pruned sessions keep the rows produced by the parser that first extracted them.
 
-A fresh store also starts with an empty `otlp_delivery`, the table `export-otlp` writes to record what a backend confirmed. The next export therefore re-sends every session to every backend ([the OTLP export guide](otlp-export.md)).
+`SCHEMA_VERSION` in `src/aiobserve/export/duckdb.py` has no migrations while the project is early. The program refuses to read or write a store created with another schema version. It tells you to extract into a fresh store instead. Don't delete the old store until you run the check below.
 
-## Check the session set before deleting a store
+A fresh store has an empty `otlp_delivery` table. Because `export-otlp` uses that table to track what each backend confirmed, the next export sends every session to every backend again. See [the OTLP export guide](otlp-export.md).
 
-An older store is safe to delete once the canonical store holds every session from the older store:
+## Compare session IDs before deleting an old store
+
+You can delete an old store after the canonical store contains every session ID found in it:
 
 ```sql
 ATTACH 'data/traces.duckdb' AS canonical (READ_ONLY);
@@ -51,6 +53,6 @@ ATTACH 'old.duckdb'        AS old       (READ_ONLY);
 SELECT id FROM old.sessions EXCEPT SELECT id FROM canonical.sessions;
 ```
 
-No rows means every session in the old store was re-extracted into the canonical one. A row identifies a session the canonical store has never heard of — usually one whose files Claude Code has since pruned, which makes the old store its only home.
+No rows means the canonical store contains every session from the old store. A returned ID marks a session that the canonical store has never seen. Its source files may have been pruned, leaving the old store as its only copy.
 
-The check compares session ids, not rows. It answers "would deleting this lose a session?", which is the question after a re-extract from the same files.
+This query compares session IDs, not table rows. It answers one question: would deleting the old store lose an entire session after re-extracting the same source files?

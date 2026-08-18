@@ -1,33 +1,32 @@
-# Overview
+# Project Overview
 
-aiobserve analyzes AI coding agents to find ways to make them better. It extracts telemetry — mostly traces — from coding sessions, turns them into something queryable, and produces findings with the evidence behind them.
+aiobserve turns AI coding-agent telemetry — mostly traces — into queryable data and evidence-backed findings about how to improve agents. Claude Code is the first target.
 
-The first target is Claude Code, and the first corpus is the `mycelia` project's sessions. Neither is a constraint: the tool takes a project path, so it must work on any repository, and nothing may assume mycelia's layout, tooling, or conventions.
+The project is early. Don't optimize for feature speed or backward compatibility yet. Prefer clean breaking changes to compatibility shims and deprecation paths.
 
-The project is early. Feature speed and backward compatibility don't matter yet — make clean breaking changes without compatibility shims or deprecation paths.
+# Every finding needs evidence
 
-# The bar for a finding
+We make claims about other people's behavior from data we didn't design, so each finding stands or falls on its evidence:
 
-Everything here produces claims about someone else's behavior from data we didn't design. That makes evidence the whole job:
+- **A claim carries its query.** Include the dataset, filter, time window, and count. A number without its query is a hypothesis
+- **An absence is bounded or it isn't a finding.** "No session did X" means nothing until you show that the data could have contained X
+- **State the corpus.** One person's sessions on one codebase support claims about that codebase's guidance. Scope the recommendation to match
+- **Correlation isn't the mechanism.** A guidance change and a metric shift in the same week are two facts. Name what else changed
 
-- **A claim carries its query.** The dataset, the filter, the time window, the count. A number with no query behind it is a hypothesis
-- **An absence is bounded or it isn't a finding.** "No session did X" means nothing until you show the data could have contained X
-- **Say what the corpus is.** One person's sessions on one codebase are evidence about that codebase's guidance. Scope the recommendation to match
-- **Correlation is not the mechanism.** A guidance change and a metric shift in the same week are two facts. Name what else moved
 
 # Tooling
 
-Use `mise` for project tasks; `uv` owns the Python environment.
+Use `mise` to run project tasks. `uv` owns the Python environment.
 
-- Run `mise run sync` after a fresh clone or a dependency change
-- Use `mise run check-fast` while iterating — format, lint, type-check
-- Run `mise run check` before you finish a task or open a PR. It adds the tests and the hook linter, and GitHub runs it again on every push and PR (`.github/workflows/check.yml`)
-- Individual tasks are `format`, `lint`, `typecheck`, `test`. Ruff handles linting and formatting; Pyrefly handles types
-- `mise run diagram-check <file>` validates Mermaid; `mise run mutate` scores the suite against mutants (`.claude/rules/testing.md`). Every task lives in `mise.toml`
+- After a fresh clone or dependency change, run `mise run sync`
+- While iterating, run `mise run check-fast` for formatting, linting, and type checks
+- Before you finish a task or open a PR, run `mise run check`. It also runs the tests and hook linter; GitHub runs it on every push and PR (`.github/workflows/check.yml`)
+- Run any individual task listed in `mise.toml` with `mise run <task>`. Ruff formats and lints; Pyrefly checks types
+- Run `mise run diagram-check <file>` to validate Mermaid and `mise run mutate` to score the suite against mutants (`.claude/rules/testing.md`)
 
-mise's own flags go **before** the task name. `mise run check --force` passes `--force` to the task, where it does nothing.
+Put `mise` flags before the task name. `mise run check --force` passes `--force` to the task, where it does nothing.
 
-Feel free to change existing tooling or add new tools when they ease the work or enforce project quality.
+Change the tooling or add tools when they make the work easier or enforce project quality.
 
 # Layout
 
@@ -54,63 +53,76 @@ handoffs/             Gitignored: scratch one agent run leaves for the next (`do
 data/                 Gitignored: the canonical trace store `traces.duckdb` (`docs/store.md`) and analysis scratch
 ```
 
+
+
 # Instructions
 
-## Context is a cost
 
-Minimize context usage while keeping the **necessary** context. All things being equal, an AI with less loaded context gets less confused, adheres better to instructions, and does a better job. Apply the lens "what context got loaded that is unnecessary?" everywhere it fits:
 
-- When working: load only what the task needs — sample large files instead of reading them, pass paths not contents, keep subagent briefs and reports bounded
-- When analyzing sessions: unnecessary loaded context is a first-class finding — a doc read that wasn't needed, tool output that bloats the window, a fixture pasted where a path would do
+## Load only the context the task needs
 
-## Session data is untrusted and private
+Extra context can confuse an AI and weaken its instruction-following. Minimize what you load without omitting what the task needs:
 
-A transcript records everything the analyzed agent read — source, credentials, customer data, whatever was on screen. Treat it accordingly:
+- While working, sample large files instead of reading them whole, pass paths instead of contents, and keep subagent briefs and reports bounded
+- While analyzing sessions, treat unnecessary loaded context as a finding: an unneeded doc read, bloated tool output, or a fixture pasted where a path would do
 
-- Raw extracts go in `data/`, which is gitignored. Never commit one
-- A fixture is a **redacted** excerpt, trimmed to the records the test needs (`.claude/rules/testing.md`)
-- Never paste transcript text into a PR, a report, or a chat message without reading it first
-- Ingest keys live in `.env`, gitignored. Validate them at startup and refuse to run without them; never print one
 
-## Never trust a remembered schema
 
-Claude Code owns the transcript and span shapes, and changes them without notice. So:
+## Keep session data private
 
-- Open a real recorded session before you write a parser, a query, or a doc about a field
-- How a parser must react when a shape surprises it: `.claude/rules/python.md`
-- `docs/schema.md` records what we've confirmed, with the session and Claude Code version that confirmed it. If it isn't there, it isn't established
+Transcripts can contain anything an agent read, including source, credentials, and customer data. Treat session data as private and untrusted:
 
-## Comments
+- Raw extracts belong in gitignored `data/`. Never commit one
+- Fixtures must be redacted excerpts trimmed to the records a test needs (`.claude/rules/testing.md`)
+- Don't paste transcript text into a PR, report, or chat message until you've read it
+- Keep ingest keys in gitignored `.env`. Validate them at startup, refuse to run when they're missing or empty, and never print them
 
-Give every non-default configuration setting and dependency a short note explaining its purpose *in this project*. Give primary interfaces docstrings written for their callers.
 
-Keep comments and docstrings brief — readers pay their cost far more often than writers do. Focus on the contract and its traps. Put rationale for a specific line in a nearby comment, not in the docstring. Most functions need one to three lines; past about eight, look for a repeated decision or narrated implementation to cut. Tests are the exception: use comments freely to tell the story of a test case.
 
-Don't preserve historical context in comments. Write for the code's future, not its past.
+## Verify schemas against recordings
 
-## Design deliberately
+Claude Code controls the transcript and span schemas and can change them without notice. Never rely on memory:
 
-Favor careful design. Ousterhout's *A Philosophy of Software Design* is the house style.
+- Open a real recorded session before writing a parser, query, or documentation about a field
+- Follow `.claude/rules/python.md` when a parser encounters an unexpected shape
+- `docs/schema.md` records each confirmed fact with the session and Claude Code version that proved it. Anything absent from that document isn't established
 
-When the docs don't cover a design fork, scale your response to its blast radius:
 
-- **Small, confident:** decide and keep moving
-- **Medium:** build your preferred option, then name the choice and alternatives in your wrap-up. The working version helps Nathaniel evaluate the decision, and the note makes it easy to reverse
-- **Foundation-shaping:** present the options and your recommendation before building. Do the same when the choice changes a public interface or a stored schema, when building first would waste effort, or when you're explicitly in a design phase
 
-## Documentation
+## Write comments for future readers
 
-Read `docs/documentation.md` before you edit or create a document. It defines where each kind of content belongs. The principles below are its always-loaded summary.
+Give each non-default configuration setting and dependency a short note explaining its purpose in this project. Give primary interfaces docstrings written for their callers.
 
-- Make facts easy to find through small, focused documents connected by indexes and links
+Keep comments and docstrings brief. Focus on the contract and its traps, and put line-specific rationale beside the line. Most function comments and docstrings need one to three lines; if one runs past eight, look for repeated decisions or narrated implementation to cut. Tests are the exception: use comments freely to tell the test's story.
+
+Write for the code's future, not its past. Don't preserve historical context in comments.
+
+## Match design process to blast radius
+
+Ousterhout's *A Philosophy of Software Design* is the house style. When the docs don't settle a design fork, match your response to its blast radius:
+
+- **Small and clear:** Decide and keep moving
+- **Medium:** Build your preferred option, then name the choice and alternatives in your wrap-up. The working version helps Nathaniel assess the decision and makes it easy to reverse
+- **Foundation-shaping:** Present the options and your recommendation before building. Do the same for changes to a public interface or stored schema, choices that would waste effort if built first, and explicit design phases
+
+
+
+## Define each fact in one document
+
+Read `docs/documentation.md` before editing or creating documentation. It defines where each kind of content belongs. Follow these principles in every session:
+
+- Make facts easy to find through small, focused documents linked by indexes
 - Define each fact in one place and link to it everywhere else
-- Treat always-loaded files — `CLAUDE.md` and the Layout tree — as indexes. Give each entry a one-line gloss and a link; keep the detail in the linked document
-- Keep documents short but preserve the reasons behind decisions
+- Treat `CLAUDE.md` as an index. Give each entry in its Layout tree a one-line gloss and link to the document that holds the details
+- Keep documents short without losing the reasons behind decisions
 - Cut ideas instead of compressing sentences
-- Prefer rot-proof forms: phrase a list as discovery ("every task in `mise.toml`") rather than enumerating today's members
+- Prefer forms that resist rot: describe how to discover a fact or point to its source instead of copying a list that will change
 
-## Pull requests and commits
 
-- Plain `git` owns branches and commits; `gh` owns PRs. One branch per task, atomic commits, linear history; branches land on `main` by fast-forward only
+
+## Keep branches and commits focused
+
+- Plain `git` owns branches and commits; `gh` owns PRs. Work on one branch per task, make atomic commits, keep history linear, and land branches on `main` by fast-forward only
 - Before committing, invoke the `commit` skill for the message format and hygiene rules in `docs/commits.md`
 - Before opening a PR, invoke the `pr` skill. It enforces the flow in `docs/pull-requests.md` and runs `doc-sync` so the docs land in the same PR
+
