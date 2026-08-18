@@ -84,7 +84,7 @@ Saved queries live in `src/aiobserve/analyze/queries/`. The command prints the c
 Preview what an enrichment pass would send and what it would cost:
 
 ```bash
-uv run aiobserve enrich ~/repos/mycelia --dry-run
+uv run aiobserve enrich --project ~/repos/mycelia --dry-run    # what it would send, and what that costs
 ```
 
 Enrichment describes every agent run, main turn, and session, then stores each answer beside its source rows. It skips unchanged items. Read [the enrichment guide](docs/enrichment.md) before enriching a real corpus.
