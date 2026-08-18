@@ -72,7 +72,7 @@ uv run aiobserve query session_counts --project ~/repos/mycelia    # every query
 ## Describing what happened
 
 ```bash
-uv run aiobserve enrich ~/repos/mycelia --dry-run    # what it would send, and what that costs
+uv run aiobserve enrich --project ~/repos/mycelia --dry-run    # what it would send, and what that costs
 ```
 
 A model describes every agent run, main turn, and session, and the store keeps each answer beside the rows it describes. Only changed items are described again. Read [the enrichment guide](docs/enrichment.md) before running a pass against a real corpus — it explains what the pass buys and costs.

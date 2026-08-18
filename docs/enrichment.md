@@ -3,8 +3,8 @@
 Enrichment reads the trace store and writes a description of what happened, in the model's words, beside every agent run, main turn, and session. Findings can then filter and group on meaning — "every turn that debugged something and failed" — without re-reading a single transcript.
 
 ```bash
-uv run aiobserve enrich ~/repos/mycelia --dry-run   # what it would send, and what that costs
-uv run aiobserve enrich ~/repos/mycelia             # describe everything stale
+uv run aiobserve enrich --project ~/repos/mycelia --dry-run   # what it would send, and what that costs
+uv run aiobserve enrich --project ~/repos/mycelia             # describe everything stale
 ```
 
 Enrichment spends the Claude Code subscription. It shells out to `claude -p` once per item. There is no API key to hold and nothing is billed separately — log in with `claude` first. A run that would spend calls `claude auth status` before rendering anything. It refuses to run if the CLI is logged out, the login has no subscription behind it, or `claude` is not on `PATH`. `--dry-run` asks nothing because quoting spends nothing, and whoever prices a pass is not always whoever is logged in.
