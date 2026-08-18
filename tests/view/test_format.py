@@ -11,18 +11,24 @@ on one.
 
 import datetime as dt
 from collections.abc import Callable
+from functools import partial
 from typing import Any
 
 import pytest
 
-from aiobserve.view.format import ABSENT, clock, count, duration, money, when
+from aiobserve.view.format import ABSENT, ago, clock, count, duration, money, share, when
 
 # A moment in the store's zone, chosen for its single digits: a formatter that dropped the
 # zero padding would render this one differently.
 MOMENT = dt.datetime(2026, 8, 15, 9, 5, 3, tzinfo=dt.UTC)
 
+MINUTE = dt.timedelta(minutes=1)
+HOUR = dt.timedelta(hours=1)
+DAY = dt.timedelta(days=1)
+SECOND = dt.timedelta(seconds=1)
 
-@pytest.mark.parametrize("render", [money, count, when, clock, duration])
+
+@pytest.mark.parametrize("render", [money, count, when, clock, duration, partial(ago, now=MOMENT)])
 def test_a_column_the_store_left_null_reads_as_one_dash(render: Callable[[Any], str]) -> None:
     """Every cell a NULL reaches prints the same single character, not an empty cell."""
     assert render(None) == ABSENT
@@ -82,3 +88,68 @@ def test_a_timestamp_prints_to_the_minute_and_the_time_of_day_to_the_second() ->
 def test_a_duration_prints_in_the_two_largest_units_it_fills(value: int, printed: str) -> None:
     """Milliseconds read as hours and minutes, minutes and seconds, or seconds alone."""
     assert duration(value) == printed
+
+
+@pytest.mark.parametrize(
+    ("value", "printed"),
+    [
+        # A moment this second, and one a second before the first unit fills, read the same:
+        # a list refreshed while a session runs should not flicker between "0m" and "1m".
+        (MOMENT, "just now"),
+        (MOMENT - SECOND, "just now"),
+        (MOMENT - MINUTE + SECOND, "just now"),
+        # A minute exactly is the first row of the next form up, and so is an hour and a day.
+        (MOMENT - MINUTE, "1m ago"),
+        (MOMENT - HOUR + SECOND, "59m ago"),
+        (MOMENT - HOUR, "1h ago"),
+        (MOMENT - DAY + SECOND, "23h ago"),
+        (MOMENT - DAY, "1d ago"),
+        (MOMENT - 3 * DAY, "3d ago"),
+        # Days do not roll over into a larger unit: a corpus is read in days, and "2mo" hides
+        # which two months.
+        (MOMENT - 400 * DAY, "400d ago"),
+        # A timestamp in the future is clock skew between the machine that wrote the session
+        # and the one reading it. Invented — no recorded session carries one — and it reads as
+        # the present rather than as a negative unit.
+        (MOMENT + HOUR, "just now"),
+    ],
+)
+def test_an_elapsed_time_prints_in_the_largest_unit_it_fills(
+    value: dt.datetime, printed: str
+) -> None:
+    """How long ago something happened reads as one unit and the word "ago"."""
+    assert ago(value, MOMENT) == printed
+
+
+@pytest.mark.parametrize(
+    ("part", "whole", "printed"),
+    [
+        (1, 45, "2.2%"),
+        # A real zero numerator is a rate someone can act on — no errors in five calls — so it
+        # prints rather than reading as a gap.
+        (0, 5, "0.0%"),
+        (1, 1, "100.0%"),
+    ],
+)
+def test_a_rate_prints_one_decimal_of_a_percent(part: float, whole: float, printed: str) -> None:
+    """A share cell is a percentage to one decimal place, zero included."""
+    assert share(part, whole) == printed
+
+
+@pytest.mark.parametrize(
+    ("part", "whole"),
+    [
+        # Nothing to count...
+        (None, 45),
+        # ...nothing to count against...
+        (1, None),
+        # ...and the one the store actually produces: a session that cost nothing, whose
+        # share of its own spend is a gap rather than 0%.
+        (1, 0),
+    ],
+)
+def test_a_rate_over_nothing_is_a_gap_rather_than_zero(
+    part: float | None, whole: float | None
+) -> None:
+    """A rate with no numerator, no denominator or nothing to divide into reads as absent."""
+    assert share(part, whole) == ABSENT
