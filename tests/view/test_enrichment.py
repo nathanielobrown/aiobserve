@@ -108,6 +108,30 @@ def test_the_session_list_shows_what_the_model_said_about_each_session(
     assert Page.DESCRIBED_SESSIONS.value in fields(listing, "id", "citation")
 
 
+def test_the_work_cell_counts_the_turn_categories_a_pass_described(
+    enriched_client: TestClient,
+    enriched_store: duckdb.DuckDBPyConnection,
+    client: TestClient,
+) -> None:
+    """A row says what kind of work its session's turns were, ranked and cut.
+
+    The one column of the list a pass writes rather than the store reads: a session's turn
+    categories say what it spent its time on, which no count of turns or tools does. It is
+    absent from a store no pass has run over — an empty column would be a claim the store
+    cannot support.
+    """
+    row = fields(enriched_client.get("/").text, "data-session-id", SPINE)
+    kinds = enriched_store.execute(
+        "SELECT category, count(*) FROM turn_enrichments WHERE session_id = ?"
+        " GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT ?",
+        [SPINE, queries.LIST_CATEGORIES],
+    ).fetchall()
+    assert kinds, "the described corpus no longer describes this session's turns"
+    assert row["work"] == ", ".join(f"{name} ×{turns}" for name, turns in kinds)
+    # A store with no enrichment tables at all renders the same row without the column.
+    assert "work" not in fields(client.get("/").text, "data-session-id", SPINE)
+
+
 def test_a_session_page_tags_every_turn_and_run_the_pass_described(
     enriched_client: TestClient, enriched_store: duckdb.DuckDBPyConnection
 ) -> None:

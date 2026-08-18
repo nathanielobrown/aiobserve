@@ -46,7 +46,9 @@ CHIPS = Bound(default=8, ceiling=100)
 # past the ceiling, so the size is bound rather than assumed small. The maximum is what fits
 # under that ceiling at the *worst* cost of a row rather than the measured one — every
 # character of a title or a path can escape to five bytes — so the two are the same number.
-SESSIONS = Bound(default=125, ceiling=125)
+# Cut from 125 when the row grew the columns that say what a session's subagents and its turns
+# were: a row that says more is a row a page holds fewer of.
+SESSIONS = Bound(default=110, ceiling=110)
 
 # The most run rows one page renders however `turns` and `chips` are split. The unattached
 # list is capped at `chips` and rides every page, so a page buys `turns + 1` lists of that

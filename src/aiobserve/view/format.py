@@ -34,6 +34,11 @@ def count(value: int | None) -> str:
     return ABSENT if value is None else f"{value:,}"
 
 
+def text(value: str | None) -> str:
+    """A string column as a cell: whatever the store holds, or the dash a NULL prints."""
+    return ABSENT if value is None else value
+
+
 def when(value: dt.datetime | None) -> str:
     """A timestamp in the store's zone (UTC), to the minute."""
     return ABSENT if value is None else value.strftime("%Y-%m-%d %H:%M")

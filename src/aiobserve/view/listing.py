@@ -24,7 +24,9 @@ from aiobserve.view.store import Page, Row, fetch
 # What the session list can be sorted by: a column of `view_sessions`, mapped to its header
 # label. A closed dictionary, and the only place a request's `sort` value is ever looked up —
 # an unknown key is a 400, never a fragment of SQL. `tests/view/test_app.py` checks every
-# key against the columns the query returns.
+# key against the columns the query returns. Output tokens and active time are not here: they
+# ride the row as the second line of the cost and wall cells, and a column nobody ranks a
+# corpus by is texture rather than a heading.
 SORTS: dict[str, str] = {
     "started_at": "Started",
     "title": "Session",
@@ -32,13 +34,13 @@ SORTS: dict[str, str] = {
     "turns": "Turns",
     "api_calls": "Calls",
     "tool_calls": "Tools",
-    "tool_errors": "Errors",
-    "agent_runs": "Runs",
     "compactions": "Compactions",
+    # By the count, though the cell shows the rate: one tool call that failed is a session at
+    # 100%, and not the session a reader sorting by errors is looking for.
+    "tool_errors": "Errors",
     "cost_usd": "Cost",
-    "output_tokens": "Output",
     "wall_ms": "Wall",
-    "active_ms": "Active",
+    "agent_runs": "Subagents",
 }
 
 
@@ -105,17 +107,19 @@ DEFAULT_SORT = "started_at"
 DEFAULT_DIRECTION = "desc"
 
 # What one row of the list shows of the values a transcript wrote: each string cut to a head,
-# the skills cut to their first names with a count of what was left, and the two lists the
-# page has no column for dropped. Composed here rather than cut in the query because the
-# list's filters read the whole values — a `project` matched against a cut path would miss
+# the skills and the agent types cut to their first few with a count of what was left, and the
+# PR links the page has no column for dropped. Composed here rather than in the query because
+# the list's filters read the whole values — a `project` matched against a cut path would miss
 # every session under a longer one, and a `skill` outside the first few would find nothing —
 # and applied outside the window, so it cuts the rows one page shows and nothing else.
-SHOWN = """SELECT * EXCLUDE (agent_types, pr_urls) REPLACE (
+SHOWN = """SELECT * EXCLUDE (pr_urls) REPLACE (
     substr(title, 1, $head_chars) AS title,
     substr(project_dir, 1, $head_chars) AS project_dir,
     list_transform(list_slice(coalesce(skills, []), 1, $head_items),
-        name -> substr(name, 1, $item_chars)) AS skills
-), greatest(len(coalesce(skills, [])) - $head_items, 0) AS skills_cut FROM"""
+        name -> substr(name, 1, $item_chars)) AS skills,
+    list_slice(coalesce(agent_types, []), 1, $head_items) AS agent_types
+), greatest(len(coalesce(skills, [])) - $head_items, 0) AS skills_cut,
+   greatest(len(coalesce(agent_types, [])) - $head_items, 0) AS agent_types_cut FROM"""
 
 # Every query-string key the session list reads: the filters, plus what orders and pages them.
 LIST_KEYS = frozenset(FILTERS) | {"sort", "direction", "page", "size"}
@@ -176,6 +180,8 @@ def sorted_sessions(
     # The joined query cuts its own strings, and takes the same head a row's other strings do.
     if described:
         bound["tag_chars"] = queries.TAG_CHARS
+        bound["kind_chars"] = queries.TAG_CHARS
+        bound["head_kinds"] = queries.LIST_CATEGORIES
     rows = fetch(
         connection,
         f"{SHOWN} (SELECT * FROM ({listing}){joined}{where}"

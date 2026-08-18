@@ -51,53 +51,64 @@
       {{ heading('turns') }}
       {{ heading('api_calls') }}
       {{ heading('tool_calls') }}
-      {{ heading('tool_errors') }}
-      {{ heading('agent_runs') }}
       {{ heading('compactions') }}
+      {{ heading('tool_errors') }}
       {{ heading('cost_usd') }}
-      {{ heading('output_tokens') }}
       {{ heading('wall_ms') }}
-      {{ heading('active_ms') }}
+      {{ heading('agent_runs') }}
       <th>Skills</th>
+      {# Only over a store a pass has described: an empty column would be a claim about what
+         these sessions did that the store cannot support. #}
+      {% if described %}<th>Work</th>{% endif %}
     </tr>
   </thead>
   <tbody>
     {% for row in sessions %}
     <tr data-session-id="{{ row.session_id }}">
-      <td data-field="started_at">{{ row.started_at | when }}</td>
-      <td data-field="title" class="title">
-        <a href="/session/{{ row.session_id }}">{{ row.title or row.session_id }}</a>
+      {# When, at the scale a list is scanned at, over the timestamp a report would quote. #}
+      <td class="when">{{ parts.stacked('ago', row.started_at | ago,
+                                        'started_at', row.started_at | when) }}</td>
+      <td class="title">
+        <a class="primary" data-field="title"
+           href="/session/{{ row.session_id }}">{{ row.title or row.session_id }}</a>
         {# What the pass said this session was, under the prompt's own title. Absent over a
            store no pass has touched, and over a session it has not reached yet. Never a
            stale tag: the list joins the words and not the versions that would judge them,
            and the session's own page says so a click away. #}
         {% if row.description %}
-        <span class="enrichment" data-enrichment="{{ row.session_id }}">
+        <span class="enrichment secondary" data-enrichment="{{ row.session_id }}">
           <span data-field="description">{{ row.description }}</span>
           {{ parts.tags({'category': row.category, 'outcome': row.outcome, 'stale': false}) }}
         </span>
         {% endif %}
       </td>
-      <td data-field="project_dir" class="path">{{ row.project_dir }}</td>
-      <td data-field="turns" class="number">{{ row.turns }}</td>
-      <td data-field="api_calls" class="number">{{ row.api_calls }}</td>
-      <td data-field="tool_calls" class="number">{{ row.tool_calls }}</td>
-      <td data-field="tool_errors" class="number">{{ row.tool_errors }}</td>
-      <td data-field="agent_runs" class="number">{{ row.agent_runs }}</td>
-      <td data-field="compactions" class="number">{{ row.compactions }}</td>
+      <td data-field="project_dir" class="path secondary">{{ row.project_dir | text }}</td>
+      <td data-field="turns" class="number">{{ row.turns | count }}</td>
+      <td data-field="api_calls" class="number">{{ row.api_calls | count }}</td>
+      <td data-field="tool_calls" class="number">{{ row.tool_calls | count }}</td>
+      <td data-field="compactions" class="number">{{ row.compactions | count }}</td>
+      {# The rate says whether a session was going wrong; the count is what ranks it, which is
+         why the heading over it sorts by the line underneath. #}
+      <td class="number">{{ parts.stacked('error_rate', row.tool_errors | share(row.tool_calls),
+                                          'tool_errors', row.tool_errors | count, 'errors') }}</td>
       {# The unpriced count rides beside the cost: a total with calls our price table
          missed is not the session's cost, and the page has to say so. #}
-      <td class="number"><span data-field="cost_usd">{{ row.cost_usd | money }}</span>{% if
-        row.unpriced_api_calls %}<sup
-        title="{{ row.unpriced_api_calls }} call(s) at a model our price table lacks">*</sup>{%
-        endif %}</td>
-      <td data-field="output_tokens" class="number">{{ row.output_tokens | count }}</td>
-      <td data-field="wall_ms" class="number">{{ row.wall_ms | duration }}</td>
-      <td data-field="active_ms" class="number">{{ row.active_ms | duration }}</td>
-      {# The skills a session ran grow with it, so the query cuts the list and says how many
-         it left: a row of the list is multiplied by the size of the page. #}
+      <td class="number">{% call parts.stacked('cost_usd', row.cost_usd | money,
+        'output_tokens', row.output_tokens | count, 'out') %}{% if row.unpriced_api_calls %}<sup
+        title="{{ row.unpriced_api_calls | count }} call(s) at a model our price table lacks"
+        >*</sup>{% endif %}{% endcall %}</td>
+      <td class="number">{{ parts.stacked('wall_ms', row.wall_ms | duration,
+                                          'active_ms', row.active_ms | duration, 'active') }}</td>
+      {# The three lists that grow with a session, so the query cuts each and says how many it
+         left: a row of the list is multiplied by the size of the page. #}
+      <td data-field="agent_types" class="names">{{ parts.counted(row.agent_types or [], 'runs')
+        }}{{ parts.more(row.agent_types_cut) }}</td>
       <td data-field="skills" class="names">{{ (row.skills or []) | join(', ')
-        ~ (' and %d more' % row.skills_cut if row.skills_cut else '') }}</td>
+        }}{{ parts.more(row.skills_cut) }}</td>
+      {% if described %}
+      <td data-field="work" class="names">{{ parts.counted(row.work or [], 'turns')
+        }}{{ parts.more(row.work_cut) }}</td>
+      {% endif %}
     </tr>
     {% endfor %}
   </tbody>

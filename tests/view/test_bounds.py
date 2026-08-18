@@ -65,11 +65,10 @@ FAT = (
 # would put the widest forest the corpus records behind a "+N more" nobody can open.
 PAGE_BYTES = 500_000
 # What the markup around one row of the list costs, with the content the row carries taken off.
-# Measured against `data/traces.duckdb` on 2026-08-07 as the marginal cost of one more row —
-# 308,233 B for 300 sessions less 4,708 B for one, over the 299 rows between, which is 1,015 B
-# — less the 43 characters of title, project path and skill names those rows averaged. The
-# fixture rows are redacted down to a few characters and project nothing about a real corpus.
-MEASURED_SESSION_ROW_MARKUP = 1_000
+# Re-measured through the app by the leaf at the bottom of this file, every cap full of `&`:
+# one more row cost 4,040 B, of which 2,800 B is content at those caps and 257 B the enrichment
+# markup below, leaving 983 B of stacked cells, counted lists and the row around them.
+MEASURED_SESSION_ROW_MARKUP = 1_200
 # What the markup around one row's enrichment costs on top of that, with the model's own words
 # taken off. Measured through the app by the leaf at the bottom of this file, every field
 # planted full of `&`: 257 B. The list never renders the stale tag — it joins what a pass wrote
@@ -129,6 +128,9 @@ CHIP_HEAD = "$chip_chars"
 # query rather than making in it: a string's head, and a skill name's.
 LIST_HEAD = "$head_chars"
 LIST_ITEM_HEAD = "$item_chars"
+# And the one a kind of work in the Work cell is cut to, which is a tag's head rather than a
+# name's: the categories a pass writes come from a taxonomy, not from a transcript.
+LIST_KIND_HEAD = "$kind_chars"
 
 # The most one character of a transcript's own content can weigh on the page that shows it.
 # Content has no shape at all — a tool wrote the file, a model wrote the text — so every bound
@@ -167,12 +169,17 @@ def worst_session_row_bytes() -> int:
     list joins is a column of the row like the rest, and every row of a described store carries
     it — which is why the description takes a row's head and not the page's larger one.
     """
+    said = queries.load(Page.DESCRIBED_SESSIONS)
     strings = heads(SHOWN, LIST_HEAD) * queries.LIST_CHARS
-    names = heads(SHOWN, LIST_ITEM_HEAD) * queries.LIST_ITEMS * queries.LIST_ITEM_CHARS
-    said = heads(queries.load(Page.DESCRIBED_SESSIONS), LIST_HEAD) * queries.LIST_CHARS
+    # The skill names are cut in the composition and the agent types in the query itself —
+    # a type is grouped after its cut, so the cut has to be where the grouping can see it.
+    listed = heads(SHOWN, LIST_ITEM_HEAD) + heads(queries.load(Page.SESSIONS), LIST_ITEM_HEAD)
+    names = listed * queries.LIST_ITEMS * queries.LIST_ITEM_CHARS
+    described = heads(said, LIST_HEAD) * queries.LIST_CHARS
+    kinds = heads(said, LIST_KIND_HEAD) * queries.LIST_CATEGORIES * queries.TAG_CHARS
     return (
         MEASURED_SESSION_ROW_MARKUP
-        + (strings + names + said) * ESCAPED_CHAR_BYTES
+        + (strings + names + described + kinds) * ESCAPED_CHAR_BYTES
         + MEASURED_LIST_ENRICHMENT_MARKUP
         + worst_tag_bytes()
     )
@@ -840,7 +847,9 @@ def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     """
     head = "&" * queries.LIST_CHARS
     name = "&" * queries.LIST_ITEM_CHARS
+    kind = "&" * queries.TAG_CHARS
     over = queries.LIST_ITEMS + 2
+    kinds = queries.LIST_CATEGORIES + 2
     path = enriched_plant(
         # A project path per session, each one the longest the filter box offers, so the box
         # has more suggestions than it shows. The two digits that tell them apart are the only
@@ -860,7 +869,29 @@ def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
             " range(1, ?) t(i))",
             [name, over + 1],
         ),
+        # ...and every session spawns more kinds of subagent than a row shows. The names have
+        # to differ inside the head the query cuts them to, because it groups the runs after
+        # the cut: two types sharing a head are one name's worth of bytes and not two. Two
+        # digits tell them apart, so 18 of every 20 characters are still escapes.
+        (
+            "INSERT INTO agent_runs (SELECT r.* REPLACE (s.id AS session_id,"
+            " s.id || '-planted-' || i AS id, ? || printf('%02d', i) AS agent_type)"
+            " FROM (SELECT * FROM live_agent_runs ORDER BY session_id, id LIMIT 1) r,"
+            " sessions s, range(1, ?) t(i))",
+            [name[:-2], over + 1],
+        ),
         *DESCRIBED_AT_EVERY_CAP,
+        # The pass described every turn as the same kind of work, so the Work cell would show
+        # one name; a described turn per session per kind fills it the way a real pass would,
+        # cloning a described row rather than inventing one. Categories are cut and grouped
+        # like the agent types, so they are told apart the same way.
+        (
+            "INSERT INTO turn_enrichments (SELECT e.* REPLACE (s.id AS session_id,"
+            " s.id || '-planted-' || i AS turn_id, ? || printf('%02d', i) AS category)"
+            " FROM (SELECT * FROM turn_enrichments ORDER BY session_id, turn_id LIMIT 1) e,"
+            " sessions s, range(1, ?) t(i))",
+            [kind[:-2], kinds + 1],
+        ),
     )
     (sessions,) = one(store, "SELECT count(*) FROM sessions")
     assert sessions > queries.LIST_PROJECTS, "the fixture corpus no longer fills the filter box"
@@ -886,6 +917,11 @@ def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     assert len(row["title"]) == len(row["project_dir"]) == queries.LIST_CHARS
     assert row["skills"].count(name) == queries.LIST_ITEMS
     assert row["skills"].endswith("more")
+    # The two counted lists reached their own caps, each name cut to the head it is grouped
+    # under — the last two characters of one are the digits that tell the plants apart.
+    assert row["agent_types"].count(name[:-2]) == queries.LIST_ITEMS
+    assert row["work"].count(kind[:-2]) == queries.LIST_CATEGORIES
+    assert row["agent_types"].endswith("more") and row["work"].endswith("more")
     options = re.findall(r'<option value="([^"]*)"', one_row)
     assert len(options) == queries.LIST_PROJECTS
     # And the pass's own line reached the head the list cuts it to, with both tags beside it —

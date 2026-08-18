@@ -4,6 +4,7 @@ Every expectation is derived from the store the app is serving rather than writt
 a fixture added to the corpus does not silently stop being covered.
 """
 
+import datetime as dt
 import re
 from pathlib import Path
 from typing import NamedTuple
@@ -14,7 +15,9 @@ from fastapi.testclient import TestClient
 
 from aiobserve.analyze import queries
 from aiobserve.view import bounds
+from aiobserve.view import format as fmt
 from aiobserve.view.app import CSP, TEMPLATES, build_app
+from aiobserve.view.format import ABSENT
 from aiobserve.view.listing import (
     DEFAULT_DIRECTION,
     DEFAULT_SORT,
@@ -34,6 +37,7 @@ from tests.conftest import (
     FORK_RUN,
     MAIN,
     MYCELIA,
+    NO_PROJECT_SESSION,
     RESUME,
     SPINE,
     SPINE_RUN,
@@ -68,26 +72,186 @@ def money(amount: float) -> str:
     return f"${amount:.2f}"
 
 
+def counted(value: int) -> str:
+    """A count as the pages print it: thousands separated."""
+    return f"{value:,}"
+
+
 def test_the_list_holds_every_session_with_its_own_numbers(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """The list is one row per session in the store, carrying that session's rollup."""
+    """The list is one row per session, its counts stacked two to a cell over that session's
+    rollup — the primary someone scans for, and the texture under it."""
     page = client.get("/").text
     # Every session gets a row, and the default order is newest first...
     assert values(page, "data-session-id") == sessions(store)
     # ...whose cells are that session's rollup, not a number computed anywhere else.
     row = fields(page, "data-session-id", SPINE)
-    turns, tool_calls, agent_runs, compactions, cost = one(
+    turns, api_calls, tool_calls, compactions, cost, tokens, wall, active, started = one(
         store,
-        "SELECT turns, tool_calls, agent_runs, compactions, cost_usd"
-        " FROM session_rollups WHERE session_id = ?",
+        "SELECT turns, api_calls, tool_calls, compactions, cost_usd, output_tokens,"
+        " wall_ms, active_ms, started_at FROM session_rollups WHERE session_id = ?",
         [SPINE],
     )
-    assert row["turns"] == str(turns)
-    assert row["tool_calls"] == str(tool_calls)
-    assert row["agent_runs"] == str(agent_runs)
-    assert row["compactions"] == str(compactions)
-    assert row["cost_usd"] == money(cost)
+    (errors,) = one(
+        store,
+        "SELECT count(*) FROM live_tool_calls WHERE session_id = ? AND is_error",
+        [SPINE],
+    )
+    # The four plain counts, each through the same formatter every count on the page uses...
+    assert row["turns"] == counted(turns)
+    assert row["api_calls"] == counted(api_calls)
+    assert row["tool_calls"] == counted(tool_calls)
+    assert row["compactions"] == counted(compactions)
+    # ...the stacked cells, whose secondary is the texture the recompose demoted rather than
+    # dropped: what the errors were a rate of, what the spend bought, how long of the wall
+    # clock was work. `tests/view/test_format.py` owns what each of these strings looks like;
+    # this leaf owns which of the session's values reaches which cell.
+    assert (row["error_rate"], row["tool_errors"]) == (fmt.share(errors, tool_calls), str(errors))
+    assert (row["cost_usd"], row["output_tokens"]) == (money(cost), counted(tokens))
+    assert (row["wall_ms"], row["active_ms"]) == (fmt.duration(wall), fmt.duration(active))
+    assert row["started_at"] == fmt.when(started)
+
+
+def test_a_column_the_store_left_null_reads_as_one_dash(client: TestClient) -> None:
+    """A cell over a column the store holds nothing in prints a dash, not "None" or a blank.
+
+    `fork_byref`'s fork is the recorded case: it carries neither a project directory nor a
+    start, so its row is the one place the list has to say "the store does not know" out loud.
+    """
+    row = fields(client.get("/").text, "data-session-id", NO_PROJECT_SESSION)
+    assert row["project_dir"] == ABSENT
+    assert row["started_at"] == ABSENT
+
+
+def test_the_list_reads_the_clock_at_render_rather_than_at_startup(
+    client: TestClient, store: duckdb.DuckDBPyConnection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """How long ago a session ran is measured against the clock this request read.
+
+    A viewer left open is a long-lived process, so a clock captured when the app was built
+    would freeze every row's freshness at whenever the server started. Two requests against
+    two clocks, one app: the answers have to move.
+    """
+    (started,) = one(store, "SELECT started_at FROM session_rollups WHERE session_id = ?", [SPINE])
+
+    def elapsed(later: dt.timedelta) -> str:
+        monkeypatch.setattr(fmt, "utcnow", lambda: started + later)
+        return fields(client.get("/").text, "data-session-id", SPINE)["ago"]
+
+    assert elapsed(dt.timedelta(hours=2)) == "2h ago"
+    assert elapsed(dt.timedelta(days=3)) == "3d ago"
+
+
+def test_the_errors_cell_shows_a_rate_over_the_count_it_sorts_by(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A row's errors read as a share of the tools it ran, over the count itself.
+
+    Both recorded failing-tool sessions, because the pair is what makes the rate worth
+    showing: one error in five calls and one in seven are the same count and different rates.
+    """
+    page = client.get("/").text
+    failing = store.execute(
+        "SELECT * FROM (SELECT r.session_id, r.tool_calls,"
+        " (SELECT count(*) FROM live_tool_calls t"
+        "  WHERE t.session_id = r.session_id AND t.is_error) AS errors"
+        " FROM session_rollups r) WHERE errors > 0"
+    ).fetchall()
+    assert len(failing) > 1, "the fixture corpus no longer records two failing sessions"
+    for session_id, tool_calls, errors in failing:
+        row = fields(page, "data-session-id", session_id)
+        assert row["error_rate"] == fmt.share(errors, tool_calls)
+        assert row["tool_errors"] == counted(errors)
+    # The rates differ, so a cell showing the count where the rate belongs would fail above.
+    assert len({fields(page, "data-session-id", row[0])["error_rate"] for row in failing}) > 1
+
+
+def test_every_number_a_list_row_prints_carries_its_separators(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """Every integer a row prints goes through the count formatter — no bare `{{ row.int }}`.
+
+    Planted, because no fixture session is large enough to tell a formatted count from an
+    unformatted one: the corpus's busiest session ran 78 turns. One session's turns and api
+    calls are cloned past a thousand, which is where the two spellings diverge.
+    """
+    over = 1_000
+    path = plant(
+        # Cloning recorded rows rather than inventing them: what a row counts is the
+        # `live_*` population, and a clone of a real row is a member of it.
+        (
+            "INSERT INTO turns (SELECT t.* REPLACE (t.id || '-planted-' || i AS id)"
+            " FROM turns t, range(1, ?) r(i) WHERE t.session_id = ?"
+            " AND t.id = (SELECT min(id) FROM turns WHERE session_id = ?))",
+            [over + 1, SPINE, SPINE],
+        ),
+        (
+            "INSERT INTO api_calls (SELECT c.* REPLACE (c.id || '-planted-' || i AS id)"
+            " FROM api_calls c, range(1, ?) r(i) WHERE c.session_id = ?"
+            " AND c.id = (SELECT min(id) FROM api_calls WHERE session_id = ?))",
+            [over + 1, SPINE, SPINE],
+        ),
+    )
+    with TestClient(build_app(path)) as planted:
+        row = fields(planted.get("/").text, "data-session-id", SPINE)
+    # Every number the row prints is either grouped in threes or the dash a NULL prints...
+    counts = ("turns", "api_calls", "tool_calls", "compactions", "tool_errors", "output_tokens")
+    for field in counts:
+        assert re.fullmatch(r"\d{1,3}(,\d{3})*|—", row[field]), f"{field} prints {row[field]!r}"
+    # ...and the plant really did push two of them past the point where that is a claim.
+    assert "," in row["turns"] and "," in row["api_calls"]
+
+
+def test_the_subagents_cell_counts_the_runs_of_each_agent_type(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A row says which agent types the session spawned and how many runs of each.
+
+    The count is what the recompose bought: `agent_runs` alone said a session spawned six
+    subagents and not what any of them were.
+    """
+    row = fields(client.get("/").text, "data-session-id", SPINE)
+    kinds = store.execute(
+        "SELECT agent_type, count(*) FROM live_agent_runs WHERE session_id = ?"
+        " GROUP BY 1 ORDER BY 2 DESC, 1",
+        [SPINE],
+    ).fetchall()
+    assert kinds, "the fixture session no longer spawns any agent runs"
+    assert row["agent_types"] == ", ".join(f"{name} ×{runs}" for name, runs in kinds)
+
+
+def test_the_subagents_cell_ranks_by_count_and_says_what_it_cut(plant: Planter) -> None:
+    """The list is ordered by runs descending and cut like the skills beside it.
+
+    Planted twice over: no fixture session runs one agent type twice, and none spawns more
+    types than the cell shows. Both are properties of a redacted corpus rather than of the
+    store the viewer serves, so the row is built to have them.
+    """
+    over = queries.LIST_ITEMS + 2
+    path = plant(
+        # One recorded run cloned into `over` types of its own, the kth spawned k times: more
+        # types than the cell shows, no two of them tied, so the order it shows them in is a
+        # claim rather than an accident.
+        (
+            "INSERT INTO agent_runs (SELECT a.* REPLACE ("
+            " a.id || '-planted-' || i || '-' || j AS id, 'planted-' || i AS agent_type)"
+            " FROM agent_runs a, range(1, ?) r(i), range(1, ?) s(j)"
+            " WHERE j <= i AND a.session_id = ?"
+            " AND a.id = (SELECT min(id) FROM agent_runs WHERE session_id = ?))",
+            [over + 1, over + 1, SPINE, SPINE],
+        ),
+    )
+    with TestClient(build_app(path)) as planted:
+        row = fields(planted.get("/").text, "data-session-id", SPINE)
+    listed = row["agent_types"].split(" and ")[0].split(", ")
+    counts = [int(entry.rsplit(" ×", 1)[1]) for entry in listed]
+    # As many types as the cell shows, no more, ranked by the runs each stood for...
+    assert len(listed) == queries.LIST_ITEMS
+    assert counts == sorted(counts, reverse=True) and len(set(counts)) == len(counts)
+    # ...and a tail counting the types it left out rather than dropping them silently. Two
+    # recorded types sit under the planted ones, which is what the cut has to reach past.
+    assert row["agent_types"].endswith(f"and {over + 2 - queries.LIST_ITEMS} more")
 
 
 def test_a_list_row_links_to_the_session_it_names(
@@ -132,6 +296,10 @@ def test_a_sort_and_its_reverse_are_exact_opposites(sort: str, client: TestClien
     [
         # A key that is not in the closed dict, however plausible...
         {"sort": "session_id"},
+        # ...the two the recompose demoted to secondary lines, which the query still returns
+        # and the list no longer offers — a stale bookmark, not an injection...
+        {"sort": "output_tokens"},
+        {"sort": "active_ms"},
         # ...a direction that is not one of the two...
         {"direction": "sideways"},
         # ...and the shape of an attempt to reach the SQL through either.

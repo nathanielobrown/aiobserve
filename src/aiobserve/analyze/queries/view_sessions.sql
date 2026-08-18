@@ -3,6 +3,13 @@
 -- a reader opening the session will see, resume copies included.
 -- The viewer wraps this SELECT to sort and filter it (`view/listing.py`): the file stays the
 -- citable core, and no user-supplied value is ever interpolated into it.
+WITH agent_kinds AS (
+    SELECT session_id, list({'name': name, 'runs': runs} ORDER BY runs DESC, name) AS agent_types
+    FROM (
+        SELECT session_id, substr(agent_type, 1, $item_chars) AS name, count(*) AS runs
+        FROM live_agent_runs GROUP BY 1, 2
+    ) GROUP BY session_id
+)
 SELECT
     r.session_id,
     r.started_at,
@@ -23,15 +30,17 @@ SELECT
     r.active_ms,
     (SELECT count(*) FROM live_tool_calls t
         WHERE t.session_id = r.session_id AND t.is_error) AS tool_errors,
-    -- Names, never content: which skills ran, which agent types were spawned, which PRs the
-    -- session opened. Sorted, so two runs of the same query print the same row.
+    -- Names, never content: which skills ran, and which PRs the session opened. Sorted, so
+    -- two runs of the same query print the same row.
     (SELECT list_sort(list(DISTINCT c.attribution_skill)) FROM live_api_calls c
         WHERE c.session_id = r.session_id AND c.attribution_skill IS NOT NULL) AS skills,
-    -- A definition's name is cut where the list cuts a skill name: the row the viewer composes
-    -- drops this column, but a name nobody bounds is one row of the list away from a page.
-    (SELECT list_sort(list(DISTINCT substr(a.agent_type, 1, $item_chars))) FROM live_agent_runs a
-        WHERE a.session_id = r.session_id) AS agent_types,
+    -- Which agent types ran and how many runs of each, busiest first. Counted rather than
+    -- listed: `agent_runs` already says six subagents ran, and this says what they were. A
+    -- definition's name is cut where the list cuts a skill name, inside the grouping — a name
+    -- nobody bounds is one row of the list away from a page.
+    k.agent_types,
     (SELECT list_sort(list(DISTINCT p.pr_url)) FROM pr_links p
         WHERE p.session_id = r.session_id) AS pr_urls
 FROM session_rollups r
+LEFT JOIN agent_kinds k ON k.session_id = r.session_id
 ORDER BY r.started_at DESC NULLS LAST, r.session_id;
