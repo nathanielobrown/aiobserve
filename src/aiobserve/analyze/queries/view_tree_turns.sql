@@ -23,6 +23,8 @@ SELECT
     substr(t.prompt, 1, $nav_chars) AS prompt,
     substr(t.command_name, 1, $nav_chars) AS command_name,
     substr(t.command_args, 1, $nav_chars) AS command_args,
+    -- When it started, which is what the compactions of the same thread interleave against.
+    t.started_at,
     coalesce(s.cost_usd, 0) AS cost_usd,
     coalesce(s.unpriced_api_calls, 0) AS unpriced_api_calls
 FROM live_turns t

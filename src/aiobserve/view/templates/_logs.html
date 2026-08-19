@@ -1,0 +1,50 @@
+{# The pane's children log: one page of what is under the node, a row per child. A row is a
+   line that gets a reader to the child's own page, not a preview of it — a log of twelve
+   previews is twelve panes, and the response is priced for one. The shape follows the kind of
+   child, because a turn's children are api calls however the reader arrived at the turn. #}
+
+{% macro log(shape, rows, more, suffix, next) %}
+{% if shape != 'none' %}
+<section class="log" data-log="{{ shape }}">
+  <h2><span data-field="children">{{ rows | length | count }}</span> {{ shape }}</h2>
+  <ul>
+    {% for item in rows %}
+    <li data-child="{{ item.node.key }}">
+      <a href="{{ item.node.url }}{{ suffix }}" hx-get="{{ item.node.url }}{{ suffix }}"
+         hx-select="#pane" hx-select-oob="#tree-rows" hx-push-url="true"
+        ><span data-field="label">{{ item.node.label }}</span></a>
+      {%- if shape == 'turns' %}
+      <span data-field="turn_index">{{ item.row.turn_index | count }}</span>
+      <span data-field="api_calls">{{ item.row.api_calls | count }}</span>
+      <span data-field="tool_calls">{{ item.row.tool_calls | count }}</span>
+      {%- elif shape == 'calls' %}
+      <span data-field="model" class="model">{{ item.row.model }}</span>
+      <span data-field="tool_calls">{{ item.row.tool_calls | count }}</span>
+      <span data-field="text_chars">{{ item.row.text_chars | count }}</span>
+      {%- elif shape == 'tools' %}
+      <span data-field="name" class="tool">{{ item.row.name }}</span>
+      {%- if item.row.is_error %}<span data-field="is_error">error</span>{% endif %}
+      <span data-field="result_chars">{{ item.row.result_chars | count }}</span>
+      {%- elif shape == 'runs' %}
+      <span data-field="agent_type">{{ item.row.agent_type }}</span>
+      <span data-field="tool_errors">{{ item.row.tool_errors | count }}</span>
+      {%- endif %}
+      {%- if item.node.cost_usd is not none %}
+      <span data-field="cost_usd">{{ item.node.cost_usd | money }}</span>
+      {%- endif %}
+      {%- if item.row.started_at %}
+      <span data-field="started_at">{{ item.row.started_at | clock }}</span>
+      {%- endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% if more %}
+  <p class="more">
+    {%- if next %}<a data-next="{{ shape }}" href="{{ next }}"
+      >+<span data-field="cut">{{ more | count }}</span> more</a>
+    {%- else %}+<span data-field="cut">{{ more | count }}</span> more{% endif %}
+  </p>
+  {% endif %}
+</section>
+{% endif %}
+{% endmacro %}

@@ -1,18 +1,17 @@
--- One page of the tool calls one api call made. The same query serves the rows shown under a
--- call and the rows behind its "+N more": pages of one list, so the two cannot disagree.
+-- One page of the tool calls one api call made: the children log under a call's node page.
 -- Keyset on "index", unique and ascending within a (session, source); `$after` is the last
 -- index already shown, and -1 asks for the first page.
--- `input` is previewed here and fetched whole one value at a time (`view_tool_value`).
 SELECT
     t."index" AS tool_index,
     t.id AS tool_call_id,
-    t.name,
+    substr(t.name, 1, $log_chars) AS name,
     t.server_side,
     t.is_error,
     t.incomplete,
     t.offload_file,
     t.started_at,
-    substr(t.input, 1, 200) AS input_head,
+    -- Sizes only: what the tool was asked and what it answered are on its own page, which
+    -- this row links to. A log row carrying a preview would price a page of twelve at one.
     length(t.input) AS input_chars,
     -- NULL where the tool returned nothing at all, which is not the same as returning "".
     length(t.result) AS result_chars,

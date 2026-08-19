@@ -22,11 +22,16 @@ class Bound(NamedTuple):
     ceiling: int
 
 
-# The turn fragment's two sizes, which multiply: `calls` rows, each carrying up to `tools`
-# tool rows. A call row costs about 12 KB, so the two spend the ceiling at the defaults
-# themselves — which is why each is its own ceiling and `?calls=` only goes down.
-CALLS = Bound(default=queries.PAGE_CALLS, ceiling=queries.PAGE_CALLS)
-TOOLS = Bound(default=queries.PAGE_TOOLS, ceiling=queries.PAGE_TOOLS)
+# The three sizes every node page takes, and the whole of what a reader can ask a node URL
+# for. Each is its own ceiling — `?kin=`, `?log=` and `?detail=` only go down — because the
+# response's bound is arithmetic over them at the default, so there is no headroom to spend.
+# How many children one expanded level of the tree shows before a tail row says how many it
+# left; how many rows the pane's children log lists; and how much of the one value the pane
+# is about it shows before offering the rest as its own fetch.
+KIN = Bound(default=25, ceiling=25)
+LOG = Bound(default=queries.LOG_ROWS, ceiling=queries.LOG_ROWS)
+DETAIL = Bound(default=queries.DETAIL_CHARS, ceiling=queries.DETAIL_CHARS)
+
 # The records browser, whose row is a preview and the `hx-get` that fetches the record whole.
 RECORDS = Bound(default=queries.PAGE_RECORDS, ceiling=200)
 # The offload page, the one ceiling set by escaping alone rather than by a row's markup: the
@@ -35,13 +40,6 @@ RECORDS = Bound(default=queries.PAGE_RECORDS, ceiling=200)
 # content` is whatever a tool wrote, and the canonical store holds one over 50 MB — so the
 # page is a walk, not a fetch.
 CHUNK = Bound(default=queries.CHUNK_CHARS, ceiling=60_000)
-# The session timeline's two sizes, which multiply the same way: `turns` rows, each carrying
-# up to `chips` run rows. `session_digest` has no LIMIT of its own — a report quotes the whole
-# digest — so these are composed around it rather than bound in it. A single list reaches its
-# ceiling at `?turns=1&chips=100`, which is enough for the largest forest the corpus records
-# (94 runs under one turn), so no run is out of a reader's reach.
-TURNS = Bound(default=20, ceiling=20)
-CHIPS = Bound(default=8, ceiling=100)
 # The session list, the one page a corpus grows: 575 sessions rendered whole came to 587 KB,
 # past the ceiling, so the size is bound rather than assumed small. The maximum is what fits
 # under that ceiling at the *worst* cost of a row rather than the measured one — every
@@ -56,33 +54,20 @@ SESSIONS = Bound(default=104, ceiling=104)
 # it left. The row is dearer than its own markup because it carries a link holding a whole
 # project path, and percent-encoding writes three bytes for every byte of it.
 PROJECTS = Bound(default=queries.PAGE_PROJECTS, ceiling=queries.PAGE_PROJECTS)
-# The session map, which is its own response: the page it lands beside has ~17 KB of headroom
-# under its own ceiling, and no map fits in it. A node is a turn or a run, counted flattened.
-# The store's largest session maps to 285 nodes, so the cap bites and the tail says by how
-# much. Default equals ceiling — the `CALLS` precedent: `?nodes=` only goes down, and it exists
-# because no recorded session reaches the cap on its own.
-NAV = Bound(default=200, ceiling=200)
 
-# The tree beside a node page and the log under it, which every node kind takes: how many
-# children one expanded level of the tree shows before it says how many it left, and how many
-# a pane's children log lists. Both are what the response's ceiling is arithmetic over, so
-# `?kin=` and `?log=` only go down — the `CALLS` precedent, and the reason a cap's tail is
-# testable at all on a corpus whose widest node holds four children.
-KIN = Bound(default=25, ceiling=25)
-LOG = Bound(default=12, ceiling=12)
+# How much of a string one row of the pane's children log carries. Not a size a URL names —
+# a reader picks the next node out of a log rather than reading one — so it is the arithmetic's
+# multiplicand rather than a knob. Declared with the parameter it binds (`analyze/queries.py`).
+LOG_CHARS = queries.LOG_CHARS
 
-# The most run rows one page renders however `turns` and `chips` are split. The unattached
-# list is capped at `chips` and rides every page, so a page buys `turns + 1` lists of that
-# size and the route checks that product — 200 is what leaves the defaults room.
-CHIP_BUDGET = 200
-# The turn rows a page renders that no cursor reaches, on top of the `turns` it was asked for.
-# `session_digest` gives one — the calls that answer no turn are a single group — and it rides
-# the last page, outside the window and outside the size a reader typed. Bound because a page
-# renders it: the ceiling budgets a turn row for it, and a digest answering with more raises
-# rather than serving a row nothing counted.
+# How deep a chain the tree will open, the selection counted. A session's nesting is a
+# transcript's, and a transcript can nest as far as an agent spawns: the corpus reaches five,
+# and a chain past this is a store shape nothing here has seen rather than a page to render,
+# so `view/tree.py:ancestry` raises instead of building it. The response's bound is arithmetic
+# over this and `KIN`, which is what makes it a bound rather than a preference.
+DEPTH = 16
+# The turn rows a page renders that no cursor reaches. `session_digest` gives one — the calls
+# that answer no turn are a single group — and the tree reads it as the unattributed bucket's
+# row. Bound because a level renders it: a digest answering with more than one raises rather
+# than serving a row nothing counted.
 CURSORLESS_TURNS = 1
-# What one page renders of a thread's compactions. Not a size a URL carries: the most any
-# session's main thread holds is 18, so this is the arithmetic's backstop rather than a knob.
-# Set just above that maximum because the bytes it does not spend are the header's, which is
-# the one part of a page no size a reader types bounds.
-MARKS = 20

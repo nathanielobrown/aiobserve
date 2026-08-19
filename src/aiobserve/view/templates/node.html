@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% import "_node_body.html" as body %}
+{% import "_logs.html" as logs %}
+{% import "_parts.html" as parts %}
 {% import "_tree.html" as treeview %}
 
 {% block title %}{{ selection.label }} · aiobserve{% endblock %}
@@ -11,35 +13,41 @@
 {% block main %}
 <div id="browser">
   <nav id="tree" aria-label="Session tree">
-    <ul id="tree-rows">{{ treeview.lines(rows) }}</ul>
+    <ul id="tree-rows">{{ treeview.lines(rows, suffix) }}</ul>
   </nav>
   <article id="pane">
     {# Where the node sits, outermost first: the same chain the tree has open. #}
     <nav class="crumbs" data-crumbs="{{ selection.kind }}" aria-label="Where this node sits">
       {% for step in chain %}
-      <a data-crumb="{{ step.key }}" href="{{ step.url }}"
+      <a data-crumb="{{ step.key }}" href="{{ step.url }}{{ suffix }}"
         ><span data-field="{{ step.kind }}">{{ step.label }}</span></a>
       {% endfor %}
     </nav>
-    {{ body.turn(header) }}
-    {# What is under the node. A child reads whole on its own page; this is the list that
-       gets a reader there, capped at what the response is priced for. #}
-    <section class="log" data-log="{{ selection.kind }}">
-      <h2><span data-field="children">{{ page.rows | length | count }}</span> api call(s)</h2>
-      <ul>
-        {% for row in page.rows %}
-        <li data-child="{{ row.api_call_id }}">
-          <span data-field="model" class="model">{{ row.model }}</span>
-          <span data-field="started_at">{{ row.started_at | clock }}</span>
-          <span data-field="tool_calls">{{ row.tool_calls | count }} tools</span>
-          <span data-field="cost_usd">{{ row.cost_usd | money }}</span>
-        </li>
-        {% endfor %}
-      </ul>
-      {% if page.more %}
-      <p class="more">+<span data-field="cut">{{ page.more | count }}</span> more api call(s)</p>
-      {% endif %}
-    </section>
+    {{ body.pane(selection, header) }}
+    {# What an enrichment pass said about this node, when a pass has reached it. #}
+    {% if enrichment %}{{ parts.summary(enrichment) }}{% endif %}
+    {# The node's own values, cut to the pane's width, each with the way to the whole of it. #}
+    {% for item in details %}{{ parts.detail(item) }}{% endfor %}
+    {# What the extractor read, under what it made of it. The record arrives on open, one
+       request: a raw line is the least filtered thing the viewer shows and the widest, so a
+       pane that carried it unasked would be a pane priced for a transcript. #}
+    <p class="raw">
+      <a data-field="records" href="/session/{{ selection.session_id }}/records/{{ source }}"
+        >this thread's transcript</a>
+      {%- if record %}
+      <a data-field="record" href="/session/{{ selection.session_id }}/records/{{ source }}?after={{ record - 1 }}#L{{ record }}"
+        >line {{ record | count }}</a>
+      {%- endif %}
+    </p>
+    {% if record %}
+    <details class="raw" data-open-record="{{ record }}"
+             hx-get="/fragment/record/{{ selection.session_id }}/{{ source }}/{{ record }}"
+             hx-trigger="toggle once" hx-target="find .value">
+      <summary>archived record</summary>
+      <div class="value"></div>
+    </details>
+    {% endif %}
+    {{ logs.log(shape, log, more, suffix, next) }}
   </article>
 </div>
 {% endblock %}

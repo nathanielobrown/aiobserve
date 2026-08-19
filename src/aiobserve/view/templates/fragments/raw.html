@@ -1,0 +1,6 @@
+{# One whole value that was never prose — what a tool call was passed, or what it returned.
+   Rendered as recorded rather than as markdown: a tool's arguments are JSON, and JSON put
+   through a markdown renderer stops being the thing a reader came to re-read. #}
+<div class="value" data-value="{{ (row.value or '') | length }}" data-query="{{ citation }}">
+  <pre>{{ row.value | pretty }}</pre>
+</div>

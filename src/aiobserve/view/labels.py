@@ -4,7 +4,7 @@ A header is a column of the store read by a person, so the two names it carries 
 different readers: the `data-field` beside every value stays the store's own column, and the
 word above it is what someone says out loud. Closed on purpose — a header field with no entry
 here raises rather than falling back to the column name, and `tests/view/test_app.py` checks
-the registry against the facts the templates actually ask for.
+the registry against the facts the templates and the panes actually ask for.
 """
 
 LABELS: dict[str, str] = {
@@ -16,9 +16,16 @@ LABELS: dict[str, str] = {
     # Claude Code's own version string, which is what pins a schema fact (`docs/schema.md`).
     "version": "Version",
     "entrypoint": "Entrypoint",
-    "skills": "Skills",
-    "description": "Description",
+    # What the spawning agent typed in the Agent tool's `description`, which is the brief the
+    # run was given rather than a description of what it did.
+    "description": "Task brief",
+    "agent_type": "Agent",
     "model": "Model",
+    # The model a fallback replaced, present only on a call that fell back.
+    "fallback_from": "Fell back from",
+    "effort": "Effort",
+    "stop_reason": "Stop reason",
+    "attribution_skill": "Skill",
     "spawn_depth": "Depth",
     "is_fork": "Fork",
     # When it ran and for how long. Both spans print as a duration, so neither label names the
@@ -38,7 +45,35 @@ LABELS: dict[str, str] = {
     # What it cost, and how much of that our price table could not price.
     "cost_usd": "Cost",
     "unpriced_api_calls": "Unpriced calls",
+    "input_tokens": "Input tokens",
     "output_tokens": "Output tokens",
+    "cache_read_tokens": "Cache read",
+    "cache_creation_tokens": "Cache written",
+    # The skills a session loaded, cut in SQL and counted by the pane.
+    "skills": "Skills",
+    # Where one call and one tool call sit in the thread that made them.
+    "call_index": "Call",
+    "tool_index": "Tool call",
+    "name": "Tool",
+    "server_side": "Server-side",
+    "is_error": "Error",
+    "incomplete": "Incomplete",
+    # A replayed turn is one a resume re-read, not one the model answered again.
+    "replayed": "Replayed",
+    "command_name": "Command",
+    "command_args": "Arguments",
+    # What a compaction was, when it ran, and what it cost the thread's context.
+    "trigger": "Trigger",
+    "timestamp": "At",
+    "pre_tokens": "Tokens before",
+    "post_tokens": "Tokens after",
+    "duration_ms": "Took",
+    # The fat columns a pane previews, each with its own way to the whole of it.
+    "prompt": "Prompt",
+    "text": "Said",
+    "thinking": "Thought",
+    "input": "Arguments",
+    "result": "Result",
 }
 
 

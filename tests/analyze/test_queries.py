@@ -68,12 +68,23 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     "view_run_header": {"session_id": SPINE, "run_id": SPINE_RUN},
     "view_runs": {"session_id": SPINE},
     "view_session_header": {"session_id": SPINE},
-    "view_session_nav": {"session_id": SPINE},
     # The tree levels beside a node page, bound at the session the tree tests open and
     # at the turn under it holding 4 api calls, so each level answers with more than one row.
     "view_tree_turns": {"session_id": ANCESTOR, "source": MAIN},
     "view_tree_calls": {"session_id": ANCESTOR, "source": MAIN, "turn_id": DENSE_TURN},
+    "view_tree_tools": {
+        "session_id": FORK_ORIGIN,
+        "source": FORK_ORIGIN_RUN,
+        "api_call_id": DENSE_CALL,
+    },
+    # One node read whole, one per kind that has fields of its own.
     "view_turn_header": {"session_id": ANCESTOR, "source": MAIN, "turn_id": DENSE_TURN},
+    "view_call_header": {"session_id": ANCESTOR, "source": MAIN, "api_call_id": DENSE_TURN_CALL},
+    "view_tool_header": {
+        "session_id": FORK_ORIGIN,
+        "source": FORK_ORIGIN_RUN,
+        "tool_call_id": DENSE_TOOL,
+    },
     # The viewer's drill-down, bound at the corpus's densest shapes so each query answers
     # with more than one row: the turn holding 4 api calls, and the call holding 4 tools.
     "view_turn_calls": {"session_id": ANCESTOR, "source": MAIN, "turn_id": DENSE_TURN},
@@ -91,11 +102,18 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     # The per-value queries answer with one row apiece, whatever is bound.
     "view_call_text": {"session_id": ANCESTOR, "source": MAIN, "api_call_id": DENSE_TURN_CALL},
     "view_call_thinking": {"session_id": ANCESTOR, "source": MAIN, "api_call_id": DENSE_TURN_CALL},
-    "view_tool_value": {
+    "view_tool_input": {
         "session_id": FORK_ORIGIN,
         "source": FORK_ORIGIN_RUN,
         "tool_call_id": DENSE_TOOL,
     },
+    "view_tool_result": {
+        "session_id": FORK_ORIGIN,
+        "source": FORK_ORIGIN_RUN,
+        "tool_call_id": DENSE_TOOL,
+    },
+    "view_turn_prompt": {"session_id": ANCESTOR, "source": MAIN, "turn_id": DENSE_TURN},
+    "view_run_brief": {"session_id": SPINE, "run_id": SPINE_RUN},
     "view_record": {"session_id": RESUME, "source": MAIN, "line_no": str(RESUME_LONG_RECORD)},
     # The enrichment family, at the fixture session the plant describes at every level and
     # the level holding the most planted rows.

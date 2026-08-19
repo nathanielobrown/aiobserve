@@ -1,19 +1,20 @@
--- One page of the api calls under one turn: what the model said, and what it cost to say it.
+-- One page of the api calls under one turn: the children log under a turn's node page.
 -- A turn is not a bounded unit — the largest in the canonical store aggregates megabytes
 -- across hundreds of tool calls — so the page is the unit and `$page_calls` is its size.
 -- Keyset on "index", which is unique and ascending within a (session, source): `$after` is
 -- the last index already shown, and -1 asks for the first page.
--- `$turn_id` NULL selects the calls that sit under no turn, which is the unattributed row on
--- a session page and the continuation section on a run page.
+-- `$turn_id` NULL selects this thread's unattributed calls, which is the bucket's own page.
+-- Unattributed is decided by the join and not by `c.turn_id IS NULL`, for the reason
+-- `view_tree_calls` states: a call naming a turn recorded on another thread is this thread's.
 -- `text` is previewed here and fetched whole one value at a time (`view_call_text`); the
 -- tool rows under a call are their own query (`view_call_tools`), capped the same way.
 SELECT
     c."index" AS call_index,
     c.id AS api_call_id,
     -- The two model names, cut like every other string a repeated row shows: what an api
-    -- request carried is Claude Code's to lengthen, and a call row rides a page of ten.
-    substr(c.model, 1, $chip_chars) AS model,
-    substr(c.fallback_from, 1, $chip_chars) AS fallback_from,
+    -- request carried is Claude Code's to lengthen, and a call row rides a page of twelve.
+    substr(c.model, 1, $log_chars) AS model,
+    substr(c.fallback_from, 1, $log_chars) AS fallback_from,
     c.effort,
     c.stop_reason,
     c.attribution_skill,
@@ -26,9 +27,9 @@ SELECT
     -- A NULL cost is a model our price table lacks, not a call that was free. Counted here
     -- as 0 or 1 so a call's cost is marked the way every other cost in the viewer is.
     (c.cost_usd IS NULL)::INTEGER AS unpriced_api_calls,
-    -- The preview and the size of what was cut, so the page can say there is more to fetch
-    -- rather than leaving a reader to guess whether the answer ended there.
-    substr(c.text, 1, 2000) AS text_head,
+    -- How much the call said and thought. Sizes only: what it said is on the call's own
+    -- page, which this row links to, and a log row that carried a preview would price a page
+    -- of twelve of them at a preview each.
     length(c.text) AS text_chars,
     length(c.thinking) AS thinking_chars,
     (
@@ -39,9 +40,11 @@ SELECT
     -- the page knows whether to offer another without a second query.
     count(*) OVER () AS matched_api_calls
 FROM live_api_calls c
+LEFT JOIN live_turns t
+    ON t.session_id = c.session_id AND t.source = c.source AND t.id = c.turn_id
 WHERE c.session_id = $session_id
   AND c.source = $source
-  AND c.turn_id IS NOT DISTINCT FROM $turn_id
+  AND t.id IS NOT DISTINCT FROM $turn_id
   AND c."index" > $after
 ORDER BY c."index"
 LIMIT $page_calls;

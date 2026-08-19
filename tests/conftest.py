@@ -108,8 +108,10 @@ DEEP_RESEARCH_SESSION = "8d930c77-9e60-4784-9885-6d4c226280f7"
 # corpus's one orphan, a run with no spawning tool call behind it.
 TEAMMATE = "10d0349d-0705-4e23-aa64-5b1b97698b2e"
 TEAMMATE_RUN = "aarchitect-5144001ac50718bc"
-# `compaction/`'s session, which holds two recorded main-thread compactions.
+# `compaction/`'s session, which holds two recorded main-thread compactions, and the first
+# of the two — the node a compaction's own page is served for.
 COMPACTED = "1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9"
+COMPACTED_BOUNDARY = "459d0d29-cb67-477a-9cf1-f9bb19417c49"
 
 # What the planted enrichment rows say. Invented, and it has to be: the four fields are a
 # model's words about a private transcript, and no fixture records one. The tiers under test

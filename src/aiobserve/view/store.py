@@ -28,6 +28,10 @@ _LOCKED = "Conflicting lock is held"
 
 Row = dict[str, Any]
 
+# The column both turn digests are ordered and windowed by: unique and ascending within one
+# thread, which is what makes a page of turns a keyset rather than an offset.
+TURN_CURSOR = "turn_index"
+
 
 class Page(StrEnum):
     """The library queries the pages are built from, by the part each one fills."""
@@ -40,16 +44,18 @@ class Page(StrEnum):
     # of the page: the projects on one page of sessions are not the projects to filter by.
     PROJECTS = "view_projects"
     SESSION_HEADER = "view_session_header"
-    # The map beside a session page: one cheap row per main-thread turn, the whole session
-    # rather than the page's window of it. Its own query because the map is its own response.
-    SESSION_NAV = "view_session_nav"
+    # One node read whole, the header of its own page. One per kind that has fields of its
+    # own; a bucket has none, and a compaction reads out of `view_compactions`.
     RUN_HEADER = "view_run_header"
     TURN_HEADER = "view_turn_header"
+    CALL_HEADER = "view_call_header"
+    TOOL_HEADER = "view_tool_header"
     # The levels of the tree beside a node page: one thin row per child, whatever the level
     # holds. One query per kind of child rather than per kind of parent, so a turn's calls
     # are read the same way under a session, under a run, or under a bucket.
     TREE_TURNS = "view_tree_turns"
     TREE_CALLS = "view_tree_calls"
+    TREE_TOOLS = "view_tree_tools"
     # The two turn timelines, shared with `aiobserve query` — the same rows a report cites.
     # One query per thread kind: `session_digest` reads `main`, `run_digest` a bound source.
     TIMELINE = "session_digest"
@@ -88,8 +94,15 @@ class Value(StrEnum):
 
     CALL_TEXT = "view_call_text"
     CALL_THINKING = "view_call_thinking"
-    TOOL = "view_tool_value"
+    # What one tool call was asked and what it returned, one value each rather than the row
+    # whole: a pane previews the two apart, so each has its own way to the rest of it.
+    TOOL_INPUT = "view_tool_input"
+    TOOL_RESULT = "view_tool_result"
     RECORD = "view_record"
+    # What a turn was asked, and what an agent run was briefed with. Both are a pane's one
+    # value, cut in the node's header query and fetched whole here.
+    TURN_PROMPT = "view_turn_prompt"
+    RUN_BRIEF = "view_run_brief"
 
 
 # Any of the three, for the fetch helper they share.

@@ -81,7 +81,10 @@ class Query:
 # sensible default — a digest of "some session" is not a question anyone asked.
 SESSION_ID = Param(type=ParamType.TEXT, default=REQUIRED)
 SOURCE = Param(type=ParamType.TEXT, default=REQUIRED)
-# Which api call, and which tool call. Keys for the same reason, one level down.
+# Which turn, which run, which api call, which tool call. Keys for the same reason, one
+# level down: a node's own query is about that node, so absence cannot stand in for its id.
+TURN_ID = Param(type=ParamType.TEXT, default=REQUIRED)
+RUN_ID = Param(type=ParamType.TEXT, default=REQUIRED)
 API_CALL_ID = Param(type=ParamType.TEXT, default=REQUIRED)
 TOOL_CALL_ID = Param(type=ParamType.TEXT, default=REQUIRED)
 
@@ -106,13 +109,12 @@ COMMAND_HEAD_CHARS = 60
 
 # The viewer's page sizes that a query binds: each is a parameter's default, declared here
 # and nowhere else, because the payload bound the design states is arithmetic over these
-# numbers — a page of calls carries at most `PAGE_CALLS` × (2 KB of text + `PAGE_TOOLS` tool
-# rows), and every character of that content can escape to five bytes. The two sizes multiply,
-# which is what keeps them this small: a call row costs about 12 KB before its tool rows.
+# numbers, and every character of what a row prints can escape to five bytes.
 # `view/bounds.py` names each of them beside the ceiling a URL may not pass, and
 # `tests/view/test_bounds.py` asserts the arithmetic still fits.
-PAGE_CALLS = 10
-PAGE_TOOLS = 12
+# How many children one node page's log lists — its api calls, its tool calls, its turns.
+# One size for every kind of child, because one pane holds one log.
+LOG_ROWS = 12
 PAGE_RECORDS = 100
 # How many projects the landing page ranks. A corpus grows projects the way it grows sessions,
 # so the page is bound like the list — and a store holding more says how many it left out.
@@ -182,6 +184,19 @@ RECORD_PREVIEW = 160
 # all of: a tree node is a line, and a line that wraps three times is not one.
 NAV_CHARS = 48
 NAV_CHARS_PARAM = Param(type=ParamType.INTEGER, default=NAV_CHARS)
+
+# How much of a string one row of a children log carries — a model name, a tool name. Wider
+# than a tree row, which is a line, and far narrower than the pane above it, which is one
+# node read whole: a log is a dozen rows a reader picks the next node out of.
+LOG_CHARS = 300
+LOG_CHARS_PARAM = Param(type=ParamType.INTEGER, default=LOG_CHARS)
+
+# How much of the one value a node page is *about* the pane shows before it offers the rest:
+# an api call's answer, a tool call's result, the prompt a turn was given. Far wider than any
+# repeated row, because it is not repeated — one node, one value, and the whole of it is a
+# click away (`view/store.py`'s per-value queries). `?detail=` only goes down.
+DETAIL_CHARS = 4_000
+DETAIL_CHARS_PARAM = Param(type=ParamType.INTEGER, default=DETAIL_CHARS)
 
 # The keyset cursor before the first row: "the last index already shown", and indexes start
 # at 0. Defaulted to it, so a bare invocation of a paging query returns its first page.
@@ -419,7 +434,18 @@ QUERIES: dict[str, Query] = {
             "source": SOURCE,
             "api_call_id": API_CALL_ID,
             "after": AFTER,
-            "page_tools": Param(type=ParamType.INTEGER, default=PAGE_TOOLS),
+            "page_tools": Param(type=ParamType.INTEGER, default=LOG_ROWS),
+            "log_chars": LOG_CHARS_PARAM,
+        },
+    ),
+    "view_call_header": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            "source": SOURCE,
+            "api_call_id": API_CALL_ID,
+            "head_chars": Param(type=ParamType.INTEGER, default=HEADER_CHARS),
+            "detail_chars": DETAIL_CHARS_PARAM,
         },
     ),
     "view_described_sessions": Query(
@@ -455,10 +481,12 @@ QUERIES: dict[str, Query] = {
         # The run's id is also the source its rows carry, so one key answers both questions.
         params={
             "session_id": SESSION_ID,
-            "run_id": Param(type=ParamType.TEXT, default=REQUIRED),
+            "run_id": RUN_ID,
             "head_chars": Param(type=ParamType.INTEGER, default=HEADER_CHARS),
+            "detail_chars": DETAIL_CHARS_PARAM,
         },
     ),
+    "view_run_brief": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID, "run_id": RUN_ID}),
     "view_offload": Query(
         scope=Scope.KEYED,
         params={
@@ -524,10 +552,6 @@ QUERIES: dict[str, Query] = {
             "head_items": Param(type=ParamType.INTEGER, default=HEADER_ITEMS),
         },
     ),
-    "view_session_nav": Query(
-        scope=Scope.KEYED,
-        params={"session_id": SESSION_ID, "nav_chars": NAV_CHARS_PARAM},
-    ),
     "view_sessions": Query(
         scope=Scope.KEYED,
         # How much of each agent definition's name a row's list carries. The viewer composes
@@ -535,7 +559,21 @@ QUERIES: dict[str, Query] = {
         # read whole values; nothing filters on this one, so it is cut in the file.
         params={"item_chars": Param(type=ParamType.INTEGER, default=LIST_ITEM_CHARS)},
     ),
-    "view_tool_value": Query(
+    "view_tool_header": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            "source": SOURCE,
+            "tool_call_id": TOOL_CALL_ID,
+            "head_chars": Param(type=ParamType.INTEGER, default=HEADER_CHARS),
+            "detail_chars": DETAIL_CHARS_PARAM,
+        },
+    ),
+    "view_tool_input": Query(
+        scope=Scope.KEYED,
+        params={"session_id": SESSION_ID, "source": SOURCE, "tool_call_id": TOOL_CALL_ID},
+    ),
+    "view_tool_result": Query(
         scope=Scope.KEYED,
         params={"session_id": SESSION_ID, "source": SOURCE, "tool_call_id": TOOL_CALL_ID},
     ),
@@ -546,7 +584,16 @@ QUERIES: dict[str, Query] = {
             "source": SOURCE,
             # NULL is the real question "which calls sit under no turn", so the key is
             # required rather than defaulted: absence cannot stand in for it.
-            "turn_id": Param(type=ParamType.TEXT, default=REQUIRED),
+            "turn_id": TURN_ID,
+            "nav_chars": NAV_CHARS_PARAM,
+        },
+    ),
+    "view_tree_tools": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            "source": SOURCE,
+            "api_call_id": API_CALL_ID,
             "nav_chars": NAV_CHARS_PARAM,
         },
     ),
@@ -561,11 +608,11 @@ QUERIES: dict[str, Query] = {
             "source": SOURCE,
             # NULL is the real question "which calls sit under no turn", so the key is
             # required rather than defaulted: absence cannot stand in for it.
-            "turn_id": Param(type=ParamType.TEXT, default=REQUIRED),
+            "turn_id": TURN_ID,
             "after": AFTER,
-            "page_calls": Param(type=ParamType.INTEGER, default=PAGE_CALLS),
-            # The two model names a call row shows, cut like a run chip's strings.
-            "chip_chars": CHIP_CHARS_PARAM,
+            "page_calls": Param(type=ParamType.INTEGER, default=LOG_ROWS),
+            # The two model names a call row shows, cut like every other log row's strings.
+            "log_chars": LOG_CHARS_PARAM,
         },
     ),
     "view_turn_header": Query(
@@ -575,8 +622,17 @@ QUERIES: dict[str, Query] = {
             "source": SOURCE,
             # Which turn. A key like the session and the thread: "some turn of this thread"
             # is not a question anyone asked.
-            "turn_id": Param(type=ParamType.TEXT, default=REQUIRED),
+            "turn_id": TURN_ID,
             "head_chars": Param(type=ParamType.INTEGER, default=HEADER_CHARS),
+            "detail_chars": DETAIL_CHARS_PARAM,
+        },
+    ),
+    "view_turn_prompt": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            "source": SOURCE,
+            "turn_id": TURN_ID,
         },
     ),
     "view_turn_records": Query(
