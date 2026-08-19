@@ -6,6 +6,7 @@ a fixture added to the corpus does not silently stop being covered.
 
 import datetime as dt
 import re
+from html import unescape
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -25,6 +26,7 @@ from aiobserve.view.listing import (
     DEFAULT_SORT,
     DIRECTIONS,
     FILTERS,
+    LIST_KEYS,
     SORTS,
 )
 from tests.conftest import (
@@ -446,17 +448,28 @@ def test_the_list_footer_cites_its_query_and_what_was_composed_around_it(
 def test_the_list_is_served_a_page_at_a_time(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """The pages of the list tile the store in order: no row twice, none missing."""
+    """The pages of the list tile the store in order: no row twice, none missing.
+
+    Turned the way a reader turns them: the "older page" href the list itself minted is the
+    string fetched, unescaped as a browser would unescape it. A test that built its own
+    `?page=` would tile the store just as well against a pager pointing at the wrong page,
+    so following the link is what puts the link under test.
+    """
     size = 5
     seen: list[str] = []
+    url = f"/sessions?size={size}"
     # A size the fixture corpus needs four pages of, followed to the end...
-    for page in range(1, 10):
-        html = client.get("/sessions", params={"size": size, "page": page}).text
+    for _ in range(9):
+        html = client.get(url).text
         rows = values(html, "data-session-id")
         assert len(rows) <= size
         seen += rows
-        if "next" not in values(html, "data-page"):
+        onward = {unescape(href) for href in inside(html, "data-page", "next", "href")}
+        if not onward:
             break
+        # The pager above the table and the one below it offer the same next page.
+        assert len(onward) == 1
+        url = onward.pop()
     else:
         pytest.fail("the pager never ran out of pages")
     # ...holds every session once, in the order one long list would have had.
@@ -602,6 +615,26 @@ def test_an_unknown_filter_key_or_unparseable_value_is_refused(
     assert says in response.text
     for value in parameters.values():
         assert value not in response.text
+
+
+def test_a_form_submitted_with_every_key_filled_in_is_still_a_narrowing(
+    client: TestClient,
+) -> None:
+    """Every key the list reads, sent at once, is a legal request rather than a 400.
+
+    The filter form posts all five filters and rides the sort, the page and the size, so a
+    reader who types into every box sends the whole of `LIST_KEYS` — the boundary the
+    membership test sits on. The samples are the same recorded values the filter leaves use,
+    so the request that comes back is a real cut of the corpus and not an empty page.
+    """
+    filled = dict(SAMPLES) | {"sort": "cost_usd", "direction": "asc", "page": "1", "size": "5"}
+    assert filled.keys() == LIST_KEYS, "the list reads a key this leaf does not fill in"
+    response = client.get("/sessions", params=filled)
+    assert response.status_code == 200
+    # It narrowed rather than merely surviving: the corpus is wider than what came back.
+    shown = values(response.text, "data-session-id")
+    assert shown
+    assert set(shown) < set(values(client.get("/sessions").text, "data-session-id"))
 
 
 def test_a_filter_rides_the_links_and_the_citation(client: TestClient) -> None:
