@@ -111,9 +111,9 @@
        what a `data-field` carries is the value the store holds. #}
     <p class="numbers">
       <span data-field="started_at">{{ entry.row.started_at | clock }}</span>
-      <span><span data-field="api_calls">{{ entry.row.api_calls }}</span> calls</span>
-      <span><span data-field="tool_calls">{{ entry.row.tool_calls }}</span> tools</span>
-      <span><span data-field="tool_errors">{{ entry.row.tool_errors }}</span> errors</span>
+      <span><span data-field="api_calls">{{ entry.row.api_calls | count }}</span> calls</span>
+      <span><span data-field="tool_calls">{{ entry.row.tool_calls | count }}</span> tools</span>
+      <span><span data-field="tool_errors">{{ entry.row.tool_errors | count }}</span> errors</span>
       <span data-field="cost_usd">{{ entry.row.cost_usd | money }}</span>
       {# Down to the transcript line this turn was read from. Absent for a turn whose record
          the store does not hold — a continuation answers a prompt this thread never had. #}
@@ -152,7 +152,7 @@
     <details class="calls" data-expand="{{ entry.row.turn_id }}"
              hx-get="/fragment/turn/{{ session_id }}/{{ source }}/{{ entry.row.turn_id }}"
              hx-trigger="toggle once" hx-target="find .page">
-      <summary>{{ entry.row.api_calls }} api call(s)</summary>
+      <summary>{{ entry.row.api_calls | count }} api call(s)</summary>
       <div class="page"></div>
     </details>
   </article>

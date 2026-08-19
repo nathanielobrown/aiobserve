@@ -640,6 +640,47 @@ def test_a_command_invoked_with_no_arguments_shows_the_badge_alone(
         assert heading(page, turn_id) == name
 
 
+def test_every_number_a_turn_row_prints_carries_its_separators(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A timeline row's counts go through the same formatter every count on a page does.
+
+    Planted, because the busiest turn the corpus records made four api calls: under a
+    thousand a formatted count and a bare one are the same string. The clones are of a
+    recorded call and a recorded tool call, so what the row counts stays the `live_*`
+    population it counts today.
+    """
+    over = 1_000
+    turn_id, call_id = one(
+        store,
+        "SELECT turn_id, id FROM live_api_calls"
+        " WHERE session_id = ? AND source = ? AND turn_id IS NOT NULL ORDER BY id",
+        [ANCESTOR, MAIN],
+    )
+    path = plant(
+        (
+            "INSERT INTO api_calls (SELECT c.* REPLACE (c.id || '-planted-' || i AS id)"
+            " FROM api_calls c, range(1, ?) r(i) WHERE c.session_id = ? AND c.id = ?)",
+            [over + 1, ANCESTOR, call_id],
+        ),
+        (
+            "INSERT INTO tool_calls (SELECT t.* REPLACE (t.id || '-planted-' || i AS id)"
+            " FROM tool_calls t, range(1, ?) r(i) WHERE t.session_id = ? AND t.api_call_id = ?)",
+            [over + 1, ANCESTOR, call_id],
+        ),
+    )
+    with TestClient(build_app(path)) as planted:
+        page = planted.get(f"/session/{ANCESTOR}").text
+    row = fields(page, "data-turn", turn_id)
+    # Every number the row prints is grouped in threes or the dash a NULL prints...
+    for field in ("api_calls", "tool_calls", "tool_errors"):
+        assert re.fullmatch(r"\d{1,3}(,\d{3})*|—", row[field]), f"{field} prints {row[field]!r}"
+    # ...and the plant pushed two of them past the point where that is a claim, on the row and
+    # on the summary line that says how many calls the reader is about to open.
+    assert "," in row["api_calls"] and "," in row["tool_calls"]
+    assert f"{row['api_calls']} api call(s)" in page
+
+
 def test_a_teammate_prompt_keeps_the_tag_that_names_its_sender(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
