@@ -1,42 +1,61 @@
-/* One stylesheet, served from this app — the policy in `app.CSP` allows no other source. */
+/* One stylesheet, served from this app — the policy in `app.CSP` allows no other source.
+
+   Everything below is spent from one small set of tokens: five surface colors and an alarm,
+   four type steps, four space steps. A page that needs a size or a gap takes the nearest step
+   rather than a new number, which is what keeps a viewer with no build step coherent. */
 :root {
   color-scheme: light dark;
-  --ink: #1b1b1f;
-  --dim: #6a6a75;
-  --line: #d8d8de;
-  --paper: #fbfbfd;
-  --mark: #2b5fd9;
+  --ink: #1b1b1f;    /* body text */
+  --dim: #676772;    /* labels and second lines; holds 4.5:1 over the `:target` wash too */
+  --line: #d8d8de;   /* rules and borders */
+  --paper: #fbfbfd;  /* the page */
+  --mark: #2b5fd9;   /* links, the spend meter, the one accent */
+  --bad: #b3261e;    /* a tool call that failed, and the status on an error page */
+  --type-label: 0.75rem;
+  --type-body: 0.875rem;
+  --type-head: 1rem;
+  --type-title: 1.3rem;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 1rem;
+  --space-4: 2rem;
 }
+/* Dark holds the same roles at the same contrast: ink and dim stay legible on paper, and the
+   accent lightens so a meter and a link read against a dark row rather than sinking into it. */
 @media (prefers-color-scheme: dark) {
-  :root { --ink: #e6e6ea; --dim: #9a9aa5; --line: #33333c; --paper: #17171c; --mark: #7aa2f7; }
+  :root { --ink: #e6e6ea; --dim: #9a9aa5; --line: #33333c; --paper: #17171c; --mark: #7aa2f7;
+    --bad: #ff8f85; }
 }
 body {
   margin: 0;
   background: var(--paper);
   color: var(--ink);
-  font: 14px/1.45 ui-sans-serif, system-ui, sans-serif;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: var(--type-body);
+  line-height: 1.45;
 }
 a { color: var(--mark); }
-main { padding: 0 1.5rem 3rem; }
+main { padding: 0 var(--space-3) var(--space-4); }
 #masthead {
-  padding: 0.6rem 1.5rem;
+  padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--line);
   font-weight: 600;
 }
 #masthead a { text-decoration: none; }
-h1 { font-size: 1.3rem; }
-h2 { font-size: 1rem; }
+h1 { font-size: var(--type-title); }
+h2 { font-size: var(--type-head); }
 
 /* The session list. */
-#filters { display: flex; flex-wrap: wrap; align-items: end; gap: 0.5rem 1rem;
-  margin: 0.5rem 0; }
+#filters { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-2) var(--space-3);
+  margin: var(--space-2) 0; }
 #filters label { display: flex; flex-direction: column; color: var(--dim);
-  font-size: 0.8rem; }
+  font-size: var(--type-label); }
 /* Wide enough for a repository path, narrow enough that five of them fit on one line. */
 #filters input[name="project"] { width: 16rem; }
 #filters input[name="errors"] { width: 5rem; }
 table { border-collapse: collapse; width: 100%; }
-th, td { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--line); text-align: left; }
+th, td { padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--line);
+  text-align: left; }
 th { position: sticky; top: 0; background: var(--paper); white-space: nowrap; }
 th[aria-sort] a { font-weight: 700; }
 td.number { text-align: right; font-variant-numeric: tabular-nums; }
@@ -46,7 +65,7 @@ td.path { max-width: 22rem; overflow: hidden; text-overflow: ellipsis; white-spa
 /* A cell reads as two lines: the value the column is scanned for, and the texture under it.
    Both lines are block, so the second sits under the first whatever the cell's alignment. */
 td .primary { display: block; }
-td .secondary { display: block; color: var(--dim); font-size: 0.8rem; }
+td .secondary { display: block; color: var(--dim); font-size: var(--type-label); }
 /* The title's second line is prose a pass wrote, so it wraps and is cut at two lines rather
    than ellipsised on one: two lines of a description say what the session was. */
 td.title { max-width: 26rem; }
@@ -59,7 +78,7 @@ td.title .secondary { display: -webkit-box; -webkit-box-orient: vertical;
 #session {
   display: grid;
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
-  gap: 0 2rem;
+  gap: 0 var(--space-4);
   align-items: start;
 }
 #map { position: sticky; top: 0; max-height: 100vh; overflow: auto; }
@@ -70,19 +89,19 @@ td.title .secondary { display: -webkit-box; -webkit-box-orient: vertical;
    above the page, which is a `<details>` and needs no script to open. */
 @media (max-width: 900px) {
   #session { display: block; }
-  #map { position: static; max-height: none; overflow: visible; margin-bottom: 1rem; }
+  #map { position: static; max-height: none; overflow: visible; margin-bottom: var(--space-3); }
   #map > summary { display: list-item; color: var(--dim); cursor: pointer; }
   #content { max-width: none; }
 }
 
-/* The map. One node a line, monospaced so a label's cut and the numbers after it line up
-   down the column — the sidebar is scanned rather than read. */
-nav.map { font: 0.75rem/1.6 ui-monospace, monospace; }
-ul.nav { margin: 0; padding-left: 0.7rem; list-style: none; }
+/* The map. One node a line, monospaced at the label step so a name's cut and the numbers after
+   it line up down the column — the sidebar is scanned rather than read. */
+nav.map { font-family: ui-monospace, monospace; font-size: var(--type-label); line-height: 1.6; }
+ul.nav { margin: 0; padding-left: var(--space-2); list-style: none; }
 nav.map > ul.nav { padding-left: 0; }
 li.node > a {
-  display: flex; justify-content: space-between; gap: 0.5rem;
-  padding: 0 0.2rem; color: inherit; text-decoration: none;
+  display: flex; justify-content: space-between; gap: var(--space-2);
+  padding: 0 var(--space-1); color: inherit; text-decoration: none;
 }
 li.node [data-field="label"] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 nav.map .secondary { color: var(--dim); white-space: nowrap; }
@@ -92,10 +111,11 @@ li.node.here > a { font-weight: 600; }
 li.node.away > a { color: var(--dim); }
 li.node > a:hover { background: color-mix(in srgb, var(--mark) 12%, transparent); }
 /* A run's own runs arrive folded — a forest opened by default is a wall, not a map. */
-details.under > summary { color: var(--dim); cursor: pointer; padding-left: 0.7rem; }
-nav.map h3 { margin: 0.8rem 0 0.2rem; font-size: 0.75rem; color: var(--dim); }
-#nav-more { margin: 0.4rem 0; color: var(--dim); }
-nav.map ul.citation { margin: 0.8rem 0 0; padding: 0; list-style: none;
+details.under > summary { color: var(--dim); cursor: pointer; padding-left: var(--space-2); }
+nav.map h3 { margin: var(--space-2) 0 var(--space-1); font-size: var(--type-label);
+  color: var(--dim); }
+#nav-more { margin: var(--space-1) 0; color: var(--dim); }
+nav.map ul.citation { margin: var(--space-2) 0 0; padding: 0; list-style: none;
   color: var(--dim); overflow-wrap: anywhere; }
 
 /* The spend meter: a thin bar along the bottom of each node, anchored left, its length the
@@ -121,55 +141,62 @@ li.node.s10 > a { background-size: 100% 2px; }
 
 /* One session's timeline. The header's four clusters sit side by side while there is room:
    what this session was, when it ran, how much it did, and what it cost. */
-#session-header { display: flex; flex-wrap: wrap; align-items: start; gap: 0 2.5rem; }
-#session-header h1 { flex: 1 0 100%; margin: 0.6rem 0 0; }
-#session-header dl { margin: 0.5rem 0; min-width: 8rem; }
+#session-header { display: flex; flex-wrap: wrap; align-items: start; gap: 0 var(--space-4); }
+#session-header h1 { flex: 1 0 100%; margin: var(--space-2) 0 0; }
+#session-header dl { margin: var(--space-2) 0; min-width: 8rem; }
 /* Identity holds the long strings — a session id, a repository path — so it takes the room
    the three clusters of numbers beside it do not need. */
 #session-header dl[data-cluster="identity"] { flex: 1 1 20rem; overflow-wrap: anywhere; }
-#session-header dl > div { margin-bottom: 0.25rem; }
+#session-header dl > div { margin-bottom: var(--space-1); }
 #session-header .prs, #session-header section.enrichment { flex: 1 0 100%; }
 /* A run's header is one cluster and not four — its facts flow rather than stacking — but a
    fact reads the same on either page: a dim label over the value it names. */
-#run-header dl { display: flex; flex-wrap: wrap; gap: 0.25rem 1.5rem; margin: 0.5rem 0; }
-#session-header dt, #run-header dt { color: var(--dim); font-size: 0.75rem; }
+#run-header dl { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3);
+  margin: var(--space-2) 0; }
+#session-header dt, #run-header dt { color: var(--dim); font-size: var(--type-label); }
 #session-header dd, #run-header dd { margin: 0; font-variant-numeric: tabular-nums; }
-article[data-turn] { border-top: 1px solid var(--line); padding: 0.75rem 0; }
-article[data-turn] h2 { margin: 0 0 0.25rem; font-weight: 600; white-space: pre-wrap; }
+article[data-turn] { border-top: 1px solid var(--line); padding: var(--space-2) 0; }
+article[data-turn] h2 { margin: 0 0 var(--space-1); font-weight: 600; white-space: pre-wrap; }
 /* The command a slash turn ran, ahead of what was typed after it. Marked rather than merely
    bold: the heading's two arms read differently, and the badge says which one this is. */
 .command { color: var(--mark); font-family: ui-monospace, monospace; }
-.numbers { margin: 0; color: var(--dim); display: flex; gap: 1rem; }
-.compaction { border-top: 1px dashed var(--line); padding: 0.4rem 0; color: var(--dim); }
-.compaction span { margin-right: 1rem; }
-ul.runs { margin: 0.4rem 0 0; padding-left: 1.2rem; }
+.numbers { margin: 0; color: var(--dim); display: flex; gap: var(--space-3); }
+.compaction { border-top: 1px dashed var(--line); padding: var(--space-1) 0; color: var(--dim); }
+.compaction span { margin-right: var(--space-3); }
+ul.runs { margin: var(--space-1) 0 0; padding-left: var(--space-3); }
 ul.runs li { list-style: none; }
-.fork { color: var(--dim); font-size: 0.8rem; }
+.fork { color: var(--dim); font-size: var(--type-label); }
 
 /* What an enrichment pass said, beside what the store recorded. Dimmed throughout: these are
    a model's words about the transcript, and the transcript is what a reader came for. */
-.enrichment { color: var(--dim); margin: 0.3rem 0; }
-section.enrichment { border-left: 2px solid var(--line); padding-left: 0.6rem; }
+.enrichment { color: var(--dim); margin: var(--space-1) 0; }
+section.enrichment { border-left: 2px solid var(--line); padding-left: var(--space-2); }
 .friction { font-style: italic; }
-.tag { border: 1px solid var(--line); border-radius: 0.7rem; padding: 0 0.5rem;
-  font-size: 0.8rem; margin-right: 0.3rem; white-space: nowrap; }
+.tag { border: 1px solid var(--line); border-radius: 0.7rem; padding: 0 var(--space-2);
+  font-size: var(--type-label); margin-right: var(--space-1); white-space: nowrap; }
 /* Quiet rather than alarming: a stale row is a reason to re-run a pass, not a reason to
    distrust what it says. */
 .tag.stale { border-style: dashed; }
 
 /* The records browser. One line per record, so a page of them scans as a transcript does. */
-ol.records { margin: 0.5rem 0; padding: 0; list-style: none; }
-ol.records li { border-top: 1px solid var(--line); padding: 0.3rem 0; }
-ol.records .line { color: var(--dim); font-variant-numeric: tabular-nums; margin-right: 0.6rem; }
+ol.records { margin: var(--space-2) 0; padding: 0; list-style: none; }
+ol.records li { border-top: 1px solid var(--line); padding: var(--space-1) 0; }
+ol.records .line { color: var(--dim); font-variant-numeric: tabular-nums;
+  margin-right: var(--space-2); }
 /* The preview stays one line: a record is JSON, and forty wrapped lines of it is not a page. */
 ol.records code { display: inline-block; max-width: 60rem; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 /* A record opened whole wraps instead, which is the reason someone opened it. */
-[data-record-value] pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0.4rem 0; }
+[data-record-value] pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: var(--space-1) 0; }
 /* A record the URL's fragment points at, so a citation lands somewhere visible. */
 ol.records li:target { background: color-mix(in srgb, var(--mark) 12%, transparent); }
 
+/* What failed. The alarm is spent on the tool call that returned an error and on the status an
+   error page leads with, and nowhere else — a page of red says nothing about where to look. */
+[data-field="is_error"], li.error > .tool, #error h1 { color: var(--bad); }
+
 /* Footers and error pages. */
-#citation { border-top: 1px solid var(--line); padding: 0.5rem 1.5rem; color: var(--dim); }
+#citation { border-top: 1px solid var(--line); padding: var(--space-2) var(--space-3);
+  color: var(--dim); }
 #citation ul { margin: 0; padding: 0; list-style: none; }
 #error p { max-width: 40rem; }
