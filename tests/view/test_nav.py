@@ -365,6 +365,7 @@ def test_the_spend_meter_is_a_decile_of_what_the_node_took(
 
 def test_a_node_is_labelled_by_the_best_thing_the_store_says_about_it(
     client: TestClient,
+    plant: Planter,
     enriched_client: TestClient,
     store: duckdb.DuckDBPyConnection,
     enriched_store: duckdb.DuckDBPyConnection,
@@ -393,6 +394,14 @@ def test_a_node_is_labelled_by_the_best_thing_the_store_says_about_it(
     label = fields(fragment, "data-node", commanded[0])["label"]
     assert label == f"{commanded[1]} {commanded[2] or ''}".strip()[: queries.NAV_CHARS]
     assert "<command-" not in label and "command-name" not in label
+    # ...a command that took no arguments by itself, with nothing hung off it...
+    bare = one(
+        store,
+        "SELECT id, command_name FROM live_turns WHERE session_id = ? AND source = 'main'"
+        " AND command_name IS NOT NULL AND coalesce(command_args, '') = '' ORDER BY \"index\"",
+        [MODEL_ONLY],
+    )
+    assert fields(nav(client, MODEL_ONLY), "data-node", bare[0])["label"] == bare[1]
     # ...a turn that ran no command by its prompt...
     assert fields(fragment, "data-node", plain[0])["label"] == plain[1][: queries.NAV_CHARS]
     # ...and either of them, over a store a pass has described, by what the pass wrote.
@@ -408,6 +417,16 @@ def test_a_node_is_labelled_by_the_best_thing_the_store_says_about_it(
     enriched = nav(enriched_client, SPINE)
     for turn_id, description in described.items():
         assert fields(enriched, "data-node", turn_id)["label"] == description[: queries.NAV_CHARS]
+    # A turn the store can say none of those three things about is still a node. Every recorded
+    # main turn carries a prompt, so the empty one is planted — the store forbids a missing one.
+    # The map lists that turn in its place and leaves the label blank, rather than inventing a
+    # name for it or dropping it from the outline.
+    path = plant(("UPDATE turns SET prompt = '' WHERE id = ?", [plain[0]]))
+    with TestClient(build_app(path)) as planted:
+        blank = nav(planted, SPINE)
+    turn_ids = [turn for turn, _ in main_turns(store, SPINE)]
+    assert [node for node in values(blank, "data-nav") if node in turn_ids] == turn_ids
+    assert fields(blank, "data-node", plain[0])["label"] == ""
 
 
 def test_a_run_node_is_labelled_by_the_agent_and_what_it_was_asked_to_do(
