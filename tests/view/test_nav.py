@@ -10,7 +10,6 @@ what a nesting assertion reads; `data-node` marks the node's own row, so a turn'
 read as its cost plus its runs'.
 """
 
-import math
 import re
 
 import duckdb
@@ -364,37 +363,46 @@ def test_a_node_of_a_session_that_cost_nothing_shows_no_share(
         assert fields(fragment, "data-node", turn_id)["share"] == ABSENT
 
 
-def test_the_spend_meter_is_a_decile_of_what_the_node_took(
+def test_the_spend_meter_ranks_nodes_over_the_orders_of_magnitude_they_span(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """The meter is a class per decile, because the policy blocks the inline style a width
-    would need.
+    """The meter is a class per step, because the policy blocks the inline style a width needs.
 
-    Any nonzero share rounds *up* into the first decile, or a session one turn dominates
-    renders every other node with no bar at all. The corpus supplies both ends: `SPINE`'s
-    third turn took 78% of it, and the run under that turn took 4.8%.
+    The steps are logarithmic. Spend inside one session runs over orders of magnitude — the
+    canonical store puts half its main-thread turns under a tenth of their session — and a
+    linear decile drew all of those with the same shortest bar. So the claim is that a node
+    that took more is never drawn shorter than one that took less, and that the two ends this
+    corpus supplies land apart: `SPINE`'s third turn took 78% of it, and the run under that
+    turn took 4.8%, which a linear scale flattened into the first step with everything else.
     """
-    (whole,) = one(store, "SELECT cost_usd FROM session_rollups WHERE session_id = ?", [SPINE])
     spent = spend(store, SPINE)
     fragment = nav(client, SPINE)
-    classes = {
-        turn_id: inside(fragment, "data-nav", turn_id, "class")[0].split()
+    steps = {
+        turn_id: int(
+            next(
+                name
+                for name in inside(fragment, "data-nav", turn_id, "class")[0].split()
+                if re.fullmatch(r"s\d+", name)
+            )[1:]
+        )
         for turn_id, _ in main_turns(store, SPINE)
     }
-    for turn_id, names in classes.items():
-        decile = math.ceil(10 * spent.get(turn_id, 0.0) / whole)
-        assert f"s{decile}" in names, turn_id
-    # The two ends the docstring names, so this is a scale rather than one repeated class:
-    # the turn that took most of the session sits near the top of it...
-    assert "s8" in classes[SPINE_CHIPPED_TURN]
-    # ...and a run that took a twentieth of it still shows a bar, rounded up into `s1`.
-    assert "s1" in inside(fragment, "data-nav", SPINE_RUN, "class")[0].split()
+    # A bar is read against the bars above and below it, so the order is the contract: rank
+    # the turns by what they took and the steps never go backwards.
+    ranked = sorted(steps, key=lambda turn_id: spent.get(turn_id, 0.0))
+    assert [steps[turn_id] for turn_id in ranked] == sorted(steps[turn_id] for turn_id in ranked)
+    # The turn that took most of the session fills the bar...
+    assert steps[SPINE_CHIPPED_TURN] == 10
+    # ...and a run that took a twentieth of it sits mid-scale, where a reader can tell it from
+    # the thousandths a long session is mostly made of.
+    assert "s6" in inside(fragment, "data-nav", SPINE_RUN, "class")[0].split()
     # The scale is only as wide as the stylesheet: a class it has no rule for is a bar the
     # reader never sees, and nothing in a browser complains. So every class the meter can
-    # reach — over shares this corpus does not reach, and past the whole a share is of —
-    # is one the served stylesheet draws, `s0` aside, which is drawn by being absent.
+    # reach — over shares this corpus does not reach, down past the step the scale bottoms
+    # out at and up past the whole a share is of — is one the served stylesheet draws, `s0`
+    # aside, which is drawn by being absent.
     drawn = set(re.findall(r"li\.node\.(s\d+)", client.get("/static/style.css").text))
-    reachable = {meter(share / 100) for share in range(0, 301)} | {meter(None)}
+    reachable = {meter(share / 1000) for share in range(0, 3001)} | {meter(None)}
     assert reachable - {"s0"} == drawn
 
 
