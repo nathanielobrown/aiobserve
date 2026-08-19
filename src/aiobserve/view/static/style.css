@@ -97,6 +97,10 @@ td.title .secondary { display: -webkit-box; -webkit-box-orient: vertical;
   #session { display: block; }
   #map { position: static; max-height: none; overflow: visible; margin-bottom: var(--space-3); }
   #map > summary { display: list-item; color: var(--dim); cursor: pointer; }
+  /* Open, but not at the length of the session: a 285-node map above the page it maps is a
+     screen of scrolling before the first turn. Half the viewport, scrolled inside itself, so
+     the handle and the page underneath stay in reach — and the handle still closes it. */
+  #map > .page { max-height: 50vh; overflow: auto; }
   #content { max-width: none; }
 }
 
