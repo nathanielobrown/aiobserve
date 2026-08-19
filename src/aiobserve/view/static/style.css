@@ -184,7 +184,9 @@ ul.runs li { list-style: none; }
 .enrichment { color: var(--dim); margin: var(--space-1) 0; }
 section.enrichment { border-left: 2px solid var(--line); padding-left: var(--space-2); }
 .friction { font-style: italic; }
-.tag { border: 1px solid var(--line); border-radius: 0.7rem; padding: 0 var(--space-2);
+/* Outlined in the colour it is written in, not in the rule colour: a chip is a thing the
+   reader is asked to see, and `--line` against either paper is 1.4:1 — a pill with no edge. */
+.tag { border: 1px solid currentColor; border-radius: 0.7rem; padding: 0 var(--space-2);
   font-size: var(--type-label); margin-right: var(--space-1); white-space: nowrap; }
 /* Quiet rather than alarming: a stale row is a reason to re-run a pass, not a reason to
    distrust what it says. */
