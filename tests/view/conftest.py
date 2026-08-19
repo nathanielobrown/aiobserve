@@ -31,6 +31,20 @@ Planter = Callable[..., Path]
 MISSING = "00000000-0000-0000-0000-000000000000"
 
 
+def pages(store: duckdb.DuckDBPyConnection) -> list[str]:
+    """Every page one store can serve — the list, every session, every run — as URLs."""
+    sessions = [row[0] for row in store.execute("SELECT id FROM sessions").fetchall()]
+    runs = store.execute("SELECT session_id, id FROM agent_runs").fetchall()
+    return (
+        ["/"]
+        + [f"/session/{session_id}" for session_id in sessions]
+        # The map is its own response, and the one surface that reads what a pass wrote to
+        # *name* a thing rather than to show it — a sweep of pages alone would miss it.
+        + [f"/fragment/nav/{session_id}" for session_id in sessions]
+        + [f"/session/{session_id}/run/{run_id}" for session_id, run_id in runs]
+    )
+
+
 @pytest.fixture(scope="session")
 def client(corpus_db: Path) -> Iterator[TestClient]:
     """The viewer over the fixture corpus, which nothing in this tier writes to."""

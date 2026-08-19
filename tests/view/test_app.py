@@ -39,6 +39,7 @@ from tests.conftest import (
     NO_PROJECT_SESSION,
     RESUME,
     SPINE,
+    SPINE_LEAF,
     SPINE_RUN,
     TEAMMATE,
     TEAMMATE_RUN,
@@ -51,6 +52,7 @@ from tests.view.conftest import (
     fields,
     inside,
     one,
+    pages,
     values,
 )
 
@@ -124,15 +126,29 @@ def test_the_list_holds_every_session_with_its_own_numbers(
     assert row["started_at"] == fmt.when(started)
 
 
-def test_a_column_the_store_left_null_reads_as_one_dash(client: TestClient) -> None:
+def test_a_column_the_store_left_null_reads_as_one_dash(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
     """A cell over a column the store holds nothing in prints a dash, not "None" or a blank.
 
-    `fork_byref`'s fork is the recorded case: it carries neither a project directory nor a
-    start, so its row is the one place the list has to say "the store does not know" out loud.
+    `fork_byref`'s fork is the recorded case on the list: it carries neither a project
+    directory nor a start, so its row is the one place the list has to say "the store does not
+    know" out loud. A run is the recorded case everywhere else — most spawning calls name no
+    model — so the chip a turn hangs it off and the run's own header are checked here too,
+    against the same convention rather than against each template's own idea of a gap.
     """
     row = fields(client.get("/sessions").text, "data-session-id", NO_PROJECT_SESSION)
     assert row["project_dir"] == ABSENT
     assert row["started_at"] == ABSENT
+    chip = fields(client.get(f"/session/{SPINE}").text, "data-chip", SPINE_LEAF)
+    assert chip["model"] == ABSENT
+    header = fields(client.get(f"/session/{SPINE}/run/{SPINE_LEAF}").text, "id", "run-header")
+    assert header["model"] == ABSENT
+    # And no page the store can serve prints a Python value anywhere: the three cells above are
+    # the columns this corpus records a gap in, and a template that renders a NULL straight is
+    # one recording away from showing `None` to a reader.
+    for url in pages(store):
+        assert ">None<" not in client.get(url).text, url
 
 
 def test_the_list_reads_the_clock_at_render_rather_than_at_startup(
