@@ -28,6 +28,8 @@ LABELS: dict[str, str] = {
     "active_ms": "Active time",
     # How much it did.
     "turns": "Turns",
+    # Where one turn sits in its thread, which is what a node page is keyed by.
+    "turn_index": "Turn",
     "api_calls": "API calls",
     "tool_calls": "Tool calls",
     "tool_errors": "Tool errors",

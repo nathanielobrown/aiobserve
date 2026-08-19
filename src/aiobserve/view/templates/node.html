@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% import "_node_body.html" as body %}
+{% import "_tree.html" as treeview %}
+
+{% block title %}{{ selection.label }} · aiobserve{% endblock %}
+
+{# One node of a session, whole: the tree it sits in, and the pane that reads it. Both arrive
+   in one response, and a click on a tree row re-fetches this same URL — htmx takes `#pane`
+   out of the response and swaps `#tree-rows` out of band, so a pasted link and a click serve
+   the same bytes. #}
+{% block main %}
+<div id="browser">
+  <nav id="tree" aria-label="Session tree">
+    <ul id="tree-rows">{{ treeview.lines(rows) }}</ul>
+  </nav>
+  <article id="pane">
+    {# Where the node sits, outermost first: the same chain the tree has open. #}
+    <nav class="crumbs" data-crumbs="{{ selection.kind }}" aria-label="Where this node sits">
+      {% for step in chain %}
+      <a data-crumb="{{ step.key }}" href="{{ step.url }}"
+        ><span data-field="{{ step.kind }}">{{ step.label }}</span></a>
+      {% endfor %}
+    </nav>
+    {{ body.turn(header) }}
+    {# What is under the node. A child reads whole on its own page; this is the list that
+       gets a reader there, capped at what the response is priced for. #}
+    <section class="log" data-log="{{ selection.kind }}">
+      <h2><span data-field="children">{{ page.rows | length | count }}</span> api call(s)</h2>
+      <ul>
+        {% for row in page.rows %}
+        <li data-child="{{ row.api_call_id }}">
+          <span data-field="model" class="model">{{ row.model }}</span>
+          <span data-field="started_at">{{ row.started_at | clock }}</span>
+          <span data-field="tool_calls">{{ row.tool_calls | count }} tools</span>
+          <span data-field="cost_usd">{{ row.cost_usd | money }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% if page.more %}
+      <p class="more">+<span data-field="cut">{{ page.more | count }}</span> more api call(s)</p>
+      {% endif %}
+    </section>
+  </article>
+</div>
+{% endblock %}

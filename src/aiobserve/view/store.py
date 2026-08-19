@@ -44,6 +44,12 @@ class Page(StrEnum):
     # rather than the page's window of it. Its own query because the map is its own response.
     SESSION_NAV = "view_session_nav"
     RUN_HEADER = "view_run_header"
+    TURN_HEADER = "view_turn_header"
+    # The levels of the tree beside a node page: one thin row per child, whatever the level
+    # holds. One query per kind of child rather than per kind of parent, so a turn's calls
+    # are read the same way under a session, under a run, or under a bucket.
+    TREE_TURNS = "view_tree_turns"
+    TREE_CALLS = "view_tree_calls"
     # The two turn timelines, shared with `aiobserve query` — the same rows a report cites.
     # One query per thread kind: `session_digest` reads `main`, `run_digest` a bound source.
     TIMELINE = "session_digest"

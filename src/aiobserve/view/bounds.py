@@ -63,6 +63,14 @@ PROJECTS = Bound(default=queries.PAGE_PROJECTS, ceiling=queries.PAGE_PROJECTS)
 # because no recorded session reaches the cap on its own.
 NAV = Bound(default=200, ceiling=200)
 
+# The tree beside a node page and the log under it, which every node kind takes: how many
+# children one expanded level of the tree shows before it says how many it left, and how many
+# a pane's children log lists. Both are what the response's ceiling is arithmetic over, so
+# `?kin=` and `?log=` only go down — the `CALLS` precedent, and the reason a cap's tail is
+# testable at all on a corpus whose widest node holds four children.
+KIN = Bound(default=25, ceiling=25)
+LOG = Bound(default=12, ceiling=12)
+
 # The most run rows one page renders however `turns` and `chips` are split. The unattached
 # list is capped at `chips` and rides every page, so a page buys `turns + 1` lists of that
 # size and the route checks that product — 200 is what leaves the defaults room.

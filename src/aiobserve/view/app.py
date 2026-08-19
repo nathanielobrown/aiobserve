@@ -30,7 +30,7 @@ from aiobserve.analyze import queries
 from aiobserve.analyze.queries import ParamValue
 from aiobserve.export.duckdb import SCHEMA_VERSION
 from aiobserve.model import MAIN_SOURCE
-from aiobserve.view import bounds, render
+from aiobserve.view import bounds, render, tree
 from aiobserve.view import format as fmt
 from aiobserve.view.enrichment import described, enriched
 from aiobserve.view.labels import label
@@ -50,6 +50,7 @@ from aiobserve.view.listing import (
 )
 from aiobserve.view.store import (
     Fragment,
+    Library,
     Page,
     Paged,
     SchemaMoved,
@@ -547,6 +548,79 @@ def build_app(db_path: Path) -> FastAPI:
             },
         )
 
+    @app.get("/session/{session_id}/turn/{source}/{turn_id}")
+    def turn_page(
+        request: Request,
+        session_id: str,
+        source: str,
+        turn_id: str,
+        kin: int = bounds.KIN.default,
+        log: int = bounds.LOG.default,
+    ) -> Response:
+        """One turn, whole, in the tree it sits in.
+
+        The URL a tree row links to is the URL that row fetches: htmx takes `#pane` out of
+        this response and swaps `#tree-rows` out of band, so a click and a pasted link serve
+        the same bytes. `kin` caps a level of the tree and `log` the list of what is under
+        the turn; both only go down (`view/bounds.py`).
+        """
+        checked(kin, bounds.KIN.ceiling)
+        checked(log, bounds.LOG.ceiling)
+        keyed: dict[str, ParamValue] = {"session_id": session_id, "source": source}
+        at_turn = keyed | {"turn_id": turn_id}
+        with open_store(resolved) as connection:
+            header = page_rows(
+                connection, Page.TURN_HEADER, **at_turn, head_chars=queries.HEADER_CHARS
+            )
+            if not header:
+                raise HTTPException(404, "No turn with that id is in this thread.")
+            # The session the turn was recorded in: the root of the tree, and the spend every
+            # share on it is a share of. A turn the store holds has one, so this is a read
+            # and not a second 404.
+            session = page_rows(
+                connection,
+                Page.SESSION_HEADER,
+                session_id=session_id,
+                head_chars=queries.HEADER_CHARS,
+                item_chars=queries.HEADER_ITEM_CHARS,
+                head_items=queries.HEADER_ITEMS,
+            )
+            whole = session[0]["cost_usd"] or 0
+            chain = tree.turn_chain(session[0], source, header[0], whole)
+            built = tree.tree(connection, chain, whole, kin)
+            page = paged(
+                page_rows(
+                    connection,
+                    Fragment.TURN_CALLS,
+                    **at_turn,
+                    after=queries.FIRST_PAGE,
+                    page_calls=log,
+                    chip_chars=queries.CHIP_CHARS,
+                ),
+                "matched_api_calls",
+                "call_index",
+            )
+        # What the page ran, in the order it ran it — the tree's levels included, because a
+        # level is a query with its own bindings and the reader is looking at its rows.
+        ran: list[tuple[Library, Mapping[str, ParamValue]]] = [
+            (Page.TURN_HEADER, at_turn),
+            (Page.SESSION_HEADER, {"session_id": session_id}),
+            *built.ran,
+            (Fragment.TURN_CALLS, at_turn | {"after": queries.FIRST_PAGE, "page_calls": log}),
+        ]
+        return templates.TemplateResponse(
+            request,
+            "node.html",
+            {
+                "selection": chain[-1],
+                "chain": chain,
+                "rows": built.rows,
+                "header": header[0],
+                "page": page,
+                "citations": {named.value: queries.citation(named, bound) for named, bound in ran},
+            },
+        )
+
     @app.get("/session/{session_id}/records/{source}")
     def records_page(
         request: Request,
@@ -775,6 +849,41 @@ def build_app(db_path: Path) -> FastAPI:
                     Fragment.TURN_CALLS,
                     keyed | {"turn_id": turn, "after": after, "page_calls": calls},
                 ),
+            },
+        )
+
+    @app.get("/fragment/body/turn/{session_id}/{source}/{turn_id}")
+    def turn_body(request: Request, session_id: str, source: str, turn_id: str) -> Response:
+        """One turn's body, for an expansion in a log that lists it.
+
+        The same section the node page wraps, so the two cannot drift apart; where the page
+        has the log itself, this has how many children the turn holds and the way to its own
+        page. The nesting stops here — an accordion of accordions is a page, and the turn
+        already has one.
+        """
+        keyed: dict[str, ParamValue] = {
+            "session_id": session_id,
+            "source": source,
+            "turn_id": turn_id,
+        }
+        with open_store(resolved) as connection:
+            header = page_rows(
+                connection, Page.TURN_HEADER, **keyed, head_chars=queries.HEADER_CHARS
+            )
+        if not header:
+            raise HTTPException(404, "No turn with that id is in this thread.")
+        # Built as a node so the URL is minted where every other one is (`view/tree.py`).
+        # The spend basis is 0 because a body shows no share: this mount is one node.
+        node = tree.turn_node(session_id, source, header[0], 0)
+        return templates.TemplateResponse(
+            request,
+            "fragments/body.html",
+            {
+                "row": header[0],
+                "kind": node.kind,
+                "url": node.url,
+                "children": header[0]["api_calls"],
+                "citation": queries.citation(Page.TURN_HEADER, keyed),
             },
         )
 
