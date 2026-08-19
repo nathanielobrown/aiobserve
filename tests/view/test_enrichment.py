@@ -121,36 +121,29 @@ def test_the_work_cell_counts_the_turn_categories_a_pass_described(
     assert "work" not in fields(client.get("/sessions").text, "data-session-id", SPINE)
 
 
-def test_a_session_page_tags_every_turn_and_run_the_pass_described(
+def test_every_described_node_carries_its_own_words_on_its_own_page(
     enriched_client: TestClient, enriched_store: duckdb.DuckDBPyConnection
 ) -> None:
-    """Each turn of the timeline and each run beside it carries its own category and outcome.
+    """A pass describes turns and runs, and each one's page shows what it said about it.
 
-    A run row links to the run's page, which is where its description is; a turn has no page
-    of its own, so the turn row carries the description itself.
+    One node per response is the whole point of the browser: the pane reads the selection, so
+    a description belongs on the described node's page rather than repeated down a list of
+    them. Swept over every described turn and run of one session, because the two levels are
+    keyed differently — a turn by its thread, a run by the session.
     """
-    page = enriched_client.get(f"/session/{SPINE}").text
-    turns = enrichment_of(enriched_store, Level.turn, SPINE)
-    runs = enrichment_of(enriched_store, Level.agent_run, SPINE)
-    # Every turn on the page that the pass described shows what it said...
-    for turn_id in values(page, "data-turn"):
+    for turn_id, said in enrichment_of(enriched_store, Level.turn, SPINE).items():
+        page = enriched_client.get(f"/session/{SPINE}/turn/main/{turn_id}").text
         shown = fields(page, "data-enrichment", turn_id)
-        description, category, outcome = turns[turn_id]
-        assert (shown["description"], shown["category"], shown["outcome"]) == (
-            description,
-            category,
-            outcome,
-        )
-    # ...and every run row shows its two tags, with the description a click away.
-    chips = values(page, "data-chip")
-    assert chips, "the session that carries the fixture run tree no longer chips one"
-    for run_id in chips:
+        assert (shown["description"], shown["category"], shown["outcome"]) == said, turn_id
+        # And it is the only enrichment on the page: the tree rows beside it are labels.
+        assert values(page, "data-enrichment") == [turn_id], turn_id
+    for run_id, said in enrichment_of(enriched_store, Level.agent_run, SPINE).items():
+        page = enriched_client.get(f"/session/{SPINE}/run/{run_id}").text
         shown = fields(page, "data-enrichment", run_id)
-        assert (shown["category"], shown["outcome"]) == runs[run_id][1:]
-        assert "description" not in shown
+        assert (shown["description"], shown["category"], shown["outcome"]) == said, run_id
 
 
-def test_a_run_page_shows_the_runs_own_enrichment_beside_its_header(
+def test_a_run_page_shows_the_runs_own_enrichment_beside_its_brief(
     enriched_client: TestClient, enriched_store: duckdb.DuckDBPyConnection
 ) -> None:
     """A run's page says what the model said the run did, not just what it was asked to do."""
@@ -164,8 +157,9 @@ def test_a_run_page_shows_the_runs_own_enrichment_beside_its_header(
         category,
         outcome,
     )
-    # The run's recorded task keeps its own place in the header, under the name it always had.
-    assert "description" in fields(page, "id", "run-header")
+    # The run's recorded task keeps its own place, as one of the pane's own values — what the
+    # run was asked to do and what it did are two different sentences.
+    assert values(page, "data-detail") == ["description"]
 
 
 def test_a_store_no_enrichment_pass_has_touched_renders_every_page(
@@ -226,9 +220,9 @@ def test_a_partly_described_store_shows_the_items_it_reached_and_nothing_for_the
         "   ON e.session_id = t.session_id AND e.source = t.source AND e.turn_id = t.id"
         " WHERE t.source = 'main' AND e.turn_id IS NULL",
     )
-    shown = served[f"/session/{session_id}"].text
-    assert turn_id in values(shown, "data-turn")
-    assert turn_id not in values(shown, "data-enrichment")
+    shown = served[f"/session/{session_id}/turn/main/{turn_id}"].text
+    assert values(shown, "data-selected") == [f"turn:{turn_id}"]
+    assert values(shown, "data-enrichment") == []
 
 
 def test_an_item_described_under_an_older_prompt_is_marked_stale(
@@ -252,10 +246,10 @@ def test_an_item_described_under_an_older_prompt_is_marked_stale(
         [PROMPT_VERSION[Level.turn]],
     )
     # The turn described under the older prompt version is tagged...
-    stale_page = enriched_client.get(f"/session/{session_id}").text
+    stale_page = enriched_client.get(f"/session/{session_id}/turn/main/{turn_id}").text
     assert fields(stale_page, "data-enrichment", turn_id).get("stale") == "stale"
     # ...and one described under the current one is not, so the tag is telling them apart.
-    fresh_page = enriched_client.get(f"/session/{fresh[0]}").text
+    fresh_page = enriched_client.get(f"/session/{fresh[0]}/turn/main/{fresh[1]}").text
     assert "stale" not in fields(fresh_page, "data-enrichment", fresh[1])
 
 
@@ -276,15 +270,16 @@ def test_a_model_written_description_is_escaped_like_any_other_transcript_text(
     )
     with TestClient(build_app(path)) as planted:
         page = planted.get(f"/session/{SPINE}").text
-        one_map = planted.get(f"/fragment/nav/{SPINE}").text
-    # Nothing the model wrote opened a tag, on the page or on the map beside it...
-    for served in (page, one_map):
-        assert "<script>" not in served and "<b>bold</b>" not in served
-    # ...and the reader still sees the text it wrote, in the header and on the node.
+    # Nothing the model wrote opened a tag, in the pane or on the tree beside it...
+    assert "<script>" not in page and "<b>bold</b>" not in page
+    # ...and the reader still sees the text it wrote, as the session's own summary...
     shown = fields(page, "data-enrichment", SPINE)
     assert shown["description"] == injected and shown["friction"] == injected
-    labelled = values(one_map, "data-node")[0]
-    assert fields(one_map, "data-node", labelled)["label"] == injected[: queries.NAV_CHARS]
+    # ...and as the label of every turn row, which is the second surface and the second route.
+    labelled = [key for key in values(page, "data-tree") if key.startswith("turn:")]
+    assert labelled, "the session that carries the fixture turn tree no longer opens one"
+    for key in labelled:
+        assert fields(page, "data-tree", key)["label"] == injected[: queries.NAV_CHARS]
 
 
 def test_a_run_pages_turns_carry_no_description_of_their_own(
@@ -302,8 +297,8 @@ def test_a_run_pages_turns_carry_no_description_of_their_own(
     )
     assert main_only == 0, "a pass now describes an agent run's turns: the run page can show them"
     page = enriched_client.get(f"/session/{SPINE}/run/{SPINE_RUN}").text
-    turns = values(page, "data-turn")
-    assert turns, "the fixture run whose timeline this reads no longer holds a turn"
-    assert not set(turns) & set(values(page, "data-enrichment"))
+    turns = values(page, "data-child")
+    assert turns, "the fixture run whose thread this reads no longer holds a turn"
+    assert not {key.removeprefix("turn:") for key in turns} & set(values(page, "data-enrichment"))
     # The run's own description is there, which is what covers them.
     assert SPINE_RUN in values(page, "data-enrichment")

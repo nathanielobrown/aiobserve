@@ -1,6 +1,5 @@
-{# What a session page and a run page have in common: both render one thread of a session,
-   and a run's transcript is a thread like the session's own. Plus the cells the session list
-   is built from, which are here for the same reason: more than one page will want them. #}
+{# The cells more than one page wants: the list's two-line columns, the enrichment block a
+   node page and the list both show, and the fact rows a pane is built out of. #}
 
 {# One two-line cell: the value a reader scans a column for, and the texture under it. Both
    halves are labelled, so a test reads either without matching prose. The unit word sits
@@ -24,24 +23,6 @@
   title="{{ calls | count }} call(s) at a model our price table lacks">*</sup>{% endif %}
 {%- endmacro %}
 
-{# What a turn was asked, as its heading. A slash command is recorded twice: the prompt keeps
-   the `<command-message>…<command-name>` wrapper Claude Code put around it, and two columns
-   hold what those tags said. The heading reads the columns and leaves the wrapper unread —
-   badge alone when the arguments are empty, which is a bare `/command` and not a gap. One arm
-   or the other, never both: `tests/view/test_bounds.py` prices the row at the larger. #}
-{% macro prompt_heading(row, continuation) %}
-<h2>
-  {%- if continuation %}
-  {# A continuation row's calls answer a prompt this transcript does not hold — a resume, or a
-     fork opened mid-conversation — so there is no prompt to show. #}
-  <span data-field="prompt">calls answering a turn this thread does not hold</span>
-  {%- elif row.command_name is not none %}
-  <span class="command" data-field="command_name">{{ row.command_name }}</span>
-  {%- if row.command_args %} <span data-field="command_args">{{ row.command_args }}</span>
-  {%- endif %}
-  {%- else %}<span data-field="prompt">{{ row.prompt }}</span>{% endif %}
-</h2>
-{% endmacro %}
 
 {# A counted list of names — the agent types a session spawned, the kinds of work its turns
    were. `key` is what the store called the count, because the two lists count different
@@ -54,18 +35,6 @@
 {# What a cut list left out, in the one wording every list on a row uses. #}
 {% macro more(cut) %}{% if cut %} and {{ cut | count }} more{% endif %}{% endmacro %}
 
-{# What a capped list of runs says it left out. `more` is where the whole list is — absent on
-   a run page, whose lists are not a size a URL carries. #}
-{% macro cut_line(cut, more) %}
-{% if cut %}
-<p class="more">
-  {%- if more %}<a data-more-chips="{{ more }}" href="{{ more }}"
-    >+<span data-field="cut">{{ cut | count }}</span> more run(s)</a>
-  {%- else %}+<span data-field="cut">{{ cut | count }}</span> more run(s){% endif %}
-</p>
-{% endif %}
-{% endmacro %}
-
 {# What an enrichment pass said an item was and how it went. The vocabularies are closed
    (`enrich/taxonomy.py`); `stale` says the row was written under a prompt or taxonomy version
    this build has moved past, which is a reason to re-run a pass and not a reason to distrust
@@ -76,114 +45,7 @@
 {%- if described.stale %}<span class="tag stale" data-field="stale">stale</span>{% endif %}
 {% endmacro %}
 
-{# One run and the runs under it. `attribute` marks the top level — a chip hangs off a turn,
-   an unattached run hangs off nothing, a child hangs off the run whose page this is — and
-   everything nested is a chip either way. `runs` is what the pass said about each of them,
-   keyed by run id and empty over a store no pass has touched. #}
-{% macro run_list(chips, attribute, session_id, runs) %}
-<ul class="runs">
-  {% for chip in chips %}
-  <li {{ attribute }}="{{ chip.run.run_id }}">
-    <a class="type" data-field="agent_type"
-       href="/session/{{ session_id }}/run/{{ chip.run.run_id }}">{{ chip.run.agent_type }}</a>
-    <span data-field="description">{{ chip.run.description | text }}</span>
-    <span data-field="model" class="model">{{ chip.run.model | text }}</span>
-    {% if chip.run.is_fork %}<span class="fork">fork</span>{% endif %}
-    {# Tags only: what the model said the run did is on the run's own page, which the link
-       above already goes to. #}
-    {% set described = runs.get(chip.run.run_id) %}
-    {% if described %}
-    <span class="enrichment" data-enrichment="{{ described.item_id }}">{{ tags(described) }}</span>
-    {% endif %}
-    {% if chip.children %}{{ run_list(chip.children, 'data-chip', session_id, runs) }}{% endif %}
-  </li>
-  {% endfor %}
-</ul>
-{% endmacro %}
 
-{# One thread's turns in order, its compactions between them, and the runs each turn spawned.
-   `source` is `main` on a session page and the run's id on a run page; `attribute` is what
-   the page calls the runs a turn spawned; `enrichment` is what a pass said about this
-   thread's turns and the session's runs, empty when no pass has described any of them. #}
-{% macro timeline(entries, session_id, source, attribute, lines, marks, sizes, enrichment) %}
-<section id="timeline">
-  {# The way down to what this thread's transcript actually held, from the page that
-     summarises it. Both pages get it here, because both render one thread. #}
-  <p class="thread">
-    <a data-field="records" href="/session/{{ session_id }}/records/{{ source }}">raw records</a>
-  </p>
-  {% for entry in entries %}
-  {% if entry.kind == 'turn' %}
-  <article id="turn-{{ entry.row.turn_id }}" data-turn="{{ entry.row.turn_id }}"
-    {%- if entry.continuation %} data-continuation="{{ entry.row.turn_id }}"{% endif %}>
-    {{ prompt_heading(entry.row, entry.continuation) }}
-    {# The unit sits outside the labelled span: what a reader sees is a number and a word,
-       what a `data-field` carries is the value the store holds. #}
-    <p class="numbers">
-      <span data-field="started_at">{{ entry.row.started_at | clock }}</span>
-      <span><span data-field="api_calls">{{ entry.row.api_calls | count }}</span> calls</span>
-      <span><span data-field="tool_calls">{{ entry.row.tool_calls | count }}</span> tools</span>
-      <span><span data-field="tool_errors">{{ entry.row.tool_errors | count }}</span> errors</span>
-      <span data-field="cost_usd">{{ entry.row.cost_usd | money }}</span>
-      {# Down to the transcript line this turn was read from. Absent for a turn whose record
-         the store does not hold — a continuation answers a prompt this thread never had. #}
-      {% set line = lines.get(entry.row.turn_id) %}
-      {% if line %}
-      <a data-record-link="{{ line }}"
-         href="/session/{{ session_id }}/records/{{ source }}?after={{ line - 1 }}#L{{ line }}"
-         >line {{ line }}</a>
-      {% endif %}
-      {# The link to this turn on a page that starts with it. Minted here rather than
-         assembled by a reader: the cursor is one before the turn's own index. #}
-      {% if sizes and entry.row.turn_index is not none %}
-      {% set link = permalink(session_id, entry.row.turn_index, entry.row.turn_id) %}
-      <a data-permalink="{{ link }}" href="{{ link }}">permalink</a>
-      {% endif %}
-    </p>
-    {# What the model said this turn did, beside what it cost. A turn has no page of its own,
-       so the description sits here rather than a click away. #}
-    {% set described = enrichment.turns.get(entry.row.turn_id) %}
-    {% if described %}
-    <p class="enrichment" data-enrichment="{{ described.item_id }}">
-      <span data-field="description">{{ described.description }}</span>
-      {{ tags(described) }}
-    </p>
-    {% endif %}
-    {% if entry.chips.shown %}
-    {{ run_list(entry.chips.shown, attribute, session_id, enrichment.runs) }}{% endif %}
-    {# The whole forest of one turn is a page of its own: one turn, the widest list allowed. #}
-    {% if sizes and entry.row.turn_index is not none %}
-    {{ cut_line(entry.chips.cut, "/session/" ~ session_id ~ "?after=" ~ (entry.row.turn_index - 1)
-                ~ "&turns=1&chips=" ~ sizes.widest) }}
-    {% else %}{{ cut_line(entry.chips.cut, none) }}{% endif %}
-    {# The turn's api calls arrive on first open and not before: a turn is not a bounded
-       unit, so nothing about what it did rides on the page that lists it. #}
-    <details class="calls" data-expand="{{ entry.row.turn_id }}"
-             hx-get="/fragment/turn/{{ session_id }}/{{ source }}/{{ entry.row.turn_id }}"
-             hx-trigger="toggle once" hx-target="find .page">
-      <summary>{{ entry.row.api_calls | count }} api call(s)</summary>
-      <div class="page"></div>
-    </details>
-  </article>
-  {% else %}
-  {# A compaction sits between the turns it fell between: what a later turn could still see
-     depends on it. #}
-  <div class="compaction" data-compaction="{{ entry.row.compaction_id }}">
-    <span data-field="timestamp">{{ entry.row.timestamp | clock }}</span>
-    <span data-field="trigger">{{ entry.row.trigger }}</span>
-    <span data-field="tokens">
-      {{ entry.row.pre_tokens | count }} → {{ entry.row.post_tokens | count }} tokens
-    </span>
-  </div>
-  {% endif %}
-  {% endfor %}
-  {# A thread's markers are scalar rows and few — 18 at the corpus maximum — so the cap is the
-     arithmetic's backstop rather than a knob, and it says when it bit. #}
-  {% if marks.cut %}
-  <p class="more" data-more-marks="{{ marks.cut }}">{{ marks.cut | count }} more compaction(s)</p>
-  {% endif %}
-</section>
-{% endmacro %}
 
 {# What a pass said about the item whose page this is, beside the header counting what it did.
    Model-written from a private transcript, so it is text like any other the viewer renders. #}
@@ -204,34 +66,18 @@
 <div><dt>{{ label(name) }}</dt><dd data-field="{{ name }}">{{ value | text }}</dd></div>
 {% endmacro %}
 
-{# One level of a session's map. Two attributes, because they answer different questions:
-   `data-nav` marks a node *and everything under it*, which is what a nesting reads, and
-   `data-node` marks the node's own row — so a turn's cost is not read as its cost plus its
-   runs'. The expansion rule is the design's: a turn's direct runs are on the page as it
-   stands, and a run's own children sit behind a `details` a reader opens. #}
-{% macro nav_nodes(nodes) %}
-{% for node in nodes %}
-<li class="node {{ node.kind }} {{ node.meter }} {{ 'here' if node.in_window else 'away' }}"
-    data-nav="{{ node.node_id }}"
-    {%- if node.kind == 'turn' and node.in_window %} data-here="{{ node.node_id }}"{% endif %}>
-  {# Down the page for a turn the page rendered, to the page that starts with it for one it
-     did not, and to its own page for a run. Anchors throughout: no first-party JS. #}
-  <a data-node="{{ node.node_id }}" href="{{ node.href }}">
-    <span data-field="label">{{ node.label }}</span>
-    <span class="secondary"><span data-field="cost_usd">{{ node.cost_usd | money }}</span>
-      {{- unpriced(node.unpriced_api_calls) }}
-      · <span data-field="share">{{ node.share | percent }}</span></span>
-  </a>
-  {%- if node.children %}
-  {%- if node.kind == 'run' %}
-  <details class="under">
-    <summary>{{ node.children | length | count }} run(s)</summary>
-    <ul class="nav">{{ nav_nodes(node.children) }}</ul>
-  </details>
-  {%- else %}
-  <ul class="nav">{{ nav_nodes(node.children) }}</ul>
-  {%- endif %}
-  {%- endif %}
-</li>
-{% endfor %}
+
+{# One of a node's own values as the pane shows it: the head the header query cut, and the way
+   to the rest. The link fetches the whole value and replaces this block, which is the one
+   place a fat column crosses the wire whole (`view/store.py`'s per-value queries). #}
+{% macro detail(item) %}
+<section class="detail" data-detail="{{ item.name }}">
+  <h3>{{ label(item.name) }}</h3>
+  <pre data-field="{{ item.name }}">{{ item.head }}</pre>
+  {% if item.cut %}
+  <p class="more"><a data-whole="{{ item.name }}" href="{{ item.url }}" hx-get="{{ item.url }}"
+     hx-target="closest .detail" hx-swap="outerHTML"
+     >+<span data-field="cut">{{ item.cut | count }}</span> more character(s)</a></p>
+  {% endif %}
+</section>
 {% endmacro %}

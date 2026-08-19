@@ -1,7 +1,10 @@
-"""The two pages slice 1 serves: the session list, and one session's timeline.
+"""The app around the node browser: the landing page, the session list, and what every
+response owes a reader — escaped transcript text, a citation per query, and assets the
+viewer ships itself.
 
 Every expectation is derived from the store the app is serving rather than written down, so
-a fixture added to the corpus does not silently stop being covered.
+a fixture added to the corpus does not silently stop being covered. The node pages
+themselves live in `test_node.py`; the tree beside them in `test_tree.py`.
 """
 
 import datetime as dt
@@ -15,6 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from aiobserve.analyze import queries
+from aiobserve.view import app as view_app
 from aiobserve.view import bounds
 from aiobserve.view import format as fmt
 from aiobserve.view.app import CSP, TEMPLATES, build_app
@@ -38,23 +42,18 @@ from tests.conftest import (
     DENSE_TURN_CALL,
     FORK_ORIGIN,
     FORK_ORIGIN_RUN,
-    FORK_RUN,
     HOME,
     MAIN,
     MYCELIA,
     NO_PROJECT_SESSION,
-    RESUME,
     SPINE,
     SPINE_LEAF,
     SPINE_RUN,
-    TEAMMATE,
-    TEAMMATE_RUN,
 )
 from tests.view.conftest import (
     MISSING,
     Planter,
     Statement,
-    chipped,
     fields,
     inside,
     one,
@@ -140,17 +139,15 @@ def test_a_column_the_store_left_null_reads_as_one_dash(
 
     `fork_byref`'s fork is the recorded case on the list: it carries neither a project
     directory nor a start, so its row is the one place the list has to say "the store does not
-    know" out loud. A run is the recorded case everywhere else — most spawning calls name no
-    model — so the chip a turn hangs it off and the run's own header are checked here too,
-    against the same convention rather than against each template's own idea of a gap.
+    know" out loud. A run is the recorded case on a node page — most spawning calls name no
+    model — so a run's own pane is checked here too, against the same convention rather than
+    against each template's own idea of a gap.
     """
     row = fields(client.get("/sessions").text, "data-session-id", NO_PROJECT_SESSION)
     assert row["project_dir"] == ABSENT
     assert row["started_at"] == ABSENT
-    chip = fields(client.get(f"/session/{SPINE}").text, "data-chip", SPINE_LEAF)
-    assert chip["model"] == ABSENT
-    header = fields(client.get(f"/session/{SPINE}/run/{SPINE_LEAF}").text, "id", "run-header")
-    assert header["model"] == ABSENT
+    pane = fields(client.get(f"/session/{SPINE}/run/{SPINE_LEAF}").text, "data-body", "run")
+    assert pane["model"] == ABSENT
     # And no page the store can serve prints a Python value anywhere: the three cells above are
     # the columns this corpus records a gap in, and a template that renders a NULL straight is
     # one recording away from showing `None` to a reader.
@@ -175,9 +172,8 @@ def test_a_project_directory_folds_the_readers_home_and_still_links_whole(
     assert fields(listed, "data-session-id", SPINE)["project_dir"] == folded
     assert fields(landing, "data-project", MYCELIA)["project_dir"] == folded
     # The session's own page says where it ran in the same words its row does.
-    assert fields(client.get(f"/session/{SPINE}").text, "id", "session-header")["project_dir"] == (
-        folded
-    )
+    session = fields(client.get(f"/session/{SPINE}").text, "data-body", "session")
+    assert session["project_dir"] == folded
     # What a reader clicks or types is untouched: the row is keyed by the stored path, the
     # link filters on it, and the box offers it.
     (link,) = set(inside(landing, "data-project", MYCELIA, "href"))
@@ -666,17 +662,18 @@ def test_the_session_header_holds_what_the_store_says_about_it(
 ) -> None:
     """The session page's header is that session's own rollup and identity."""
     page = client.get(f"/session/{SPINE}").text
-    header = fields(page, "id", "session-header")
+    pane = fields(page, "data-body", "session")
     title, turns, agent_runs, cost = one(
         store,
         "SELECT s.title, r.turns, r.agent_runs, r.cost_usd FROM sessions s"
         " JOIN session_rollups r ON r.session_id = s.id WHERE s.id = ?",
         [SPINE],
     )
-    assert header["title"] == title
-    assert header["turns"] == str(turns)
-    assert header["agent_runs"] == str(agent_runs)
-    assert header["cost_usd"] == money(cost)
+    # The title is what the node is called rather than a fact under it, so it heads the pane.
+    assert fields(page, "data-body", "session")["label"] == title
+    assert pane["turns"] == str(turns)
+    assert pane["agent_runs"] == str(agent_runs)
+    assert pane["cost_usd"] == money(cost)
 
 
 def test_a_header_labels_its_facts_in_words(client: TestClient) -> None:
@@ -701,22 +698,25 @@ def test_every_fact_a_header_asks_for_has_a_label() -> None:
     """The label registry is closed over the templates: no extra entries, and no missing ones.
 
     A header field with no label would reach a reader as a column name, which is the thing
-    `LABELS` exists to stop, and an entry no template asks for is a word nobody sees. Read off
-    the templates rather than listed here, so a fact added to a header lands in this check.
+    `LABELS` exists to stop, and an entry nothing asks for is a word nobody sees. Read off the
+    templates and the panes rather than listed here, so a fact added to either lands in this
+    check. The panes are the second source because a previewed value is labelled by the name
+    the route passed it under, which no template holds.
     """
     asked = {
         name
         for path in TEMPLATES.rglob("*.html")
         for name in re.findall(r"(?:parts\.fact|label)\('([a-z_]+)'", path.read_text())
     }
-    assert asked == set(LABELS)
+    previewed = set(re.findall(r'detail_of\(\s*"([a-z_]+)"', Path(view_app.__file__).read_text()))
+    assert asked | previewed == set(LABELS)
 
 
 def test_every_number_a_header_prints_carries_its_separators(plant: Planter) -> None:
     """A header's counts go through the same formatter every count on a page does.
 
-    Both headers, because they show the same rollup of two different threads: a session's,
-    and one run's. Planted, because the busiest thread the corpus records made a handful of
+    Both panes, because they show the same rollup of two different threads: a session's, and
+    one run's. Planted, because the busiest thread the corpus records made a handful of
     calls — under a thousand a formatted count and a bare one are the same string. The clones
     are of recorded rows, so what a header counts stays the `live_*` population it counts today.
     """
@@ -739,8 +739,8 @@ def test_every_number_a_header_prints_carries_its_separators(plant: Planter) -> 
         )
     )
     with TestClient(build_app(path)) as planted:
-        session = fields(planted.get(f"/session/{SPINE}").text, "id", "session-header")
-        run = fields(planted.get(f"/session/{SPINE}/run/{SPINE_RUN}").text, "id", "run-header")
+        session = fields(planted.get(f"/session/{SPINE}").text, "data-body", "session")
+        run = fields(planted.get(f"/session/{SPINE}/run/{SPINE_RUN}").text, "data-body", "run")
     # Every number either header prints is grouped in threes or the dash a NULL prints...
     counted = ("turns", "api_calls", "tool_calls", "tool_errors", "compactions", "output_tokens")
     for header, name in ((session, "session"), (run, "run")):
@@ -750,789 +750,28 @@ def test_every_number_a_header_prints_carries_its_separators(plant: Planter) -> 
         assert all("," in header[field] for field in counted[:3]), name
 
 
-def test_the_session_page_cites_every_query_it_ran(client: TestClient) -> None:
-    """The session page's footer holds one re-runnable line per query behind it."""
-    # If the page is asked for at a cursor and a size of its own, so the paging in the
-    # citation is this request's rather than the query file's default...
-    page = client.get(f"/session/{SPINE}", params={"after": 0, "turns": 3}).text
-    # ...then every query the page ran is cited, keyed by the session, and the ones that read
-    # a single thread say which — the main thread, on a session page. Nothing else is listed:
-    # `view_enrichment` never ran, because this store holds no enrichment tables to read.
+def test_a_node_page_cites_every_query_it_ran(client: TestClient) -> None:
+    """A node page's footer holds one re-runnable line per query behind it.
+
+    The session node is the case with the most reads behind one page: its own header, the
+    level of the tree under it, and the runs and compactions every level needs to place. Each
+    line carries the bindings this request made rather than the query file's defaults, which
+    is what makes it a citation and not a filename.
+    """
+    page = client.get(f"/session/{SPINE}", params={"log": 3}).text
     assert fields(page, "id", "citation") == {
-        "view_session_header": f"-- queries/view_session_header.sql session_id={SPINE}",
-        "session_digest": f"-- queries/session_digest.sql session_id={SPINE} after=0 limit=3",
-        "view_runs": f"-- queries/view_runs.sql session_id={SPINE}",
+        "view_session_header": (
+            f"-- queries/view_session_header.sql session_id={SPINE}"
+            " head_chars=100 item_chars=60 head_items=5"
+        ),
+        "view_tree_turns": f"-- queries/view_tree_turns.sql session_id={SPINE} source={MAIN}",
+        # The tree cuts a run's label to a row's width, not a chip's, so the citation says
+        # which width this page read them at.
+        "view_runs": f"-- queries/view_runs.sql session_id={SPINE} chip_chars={queries.NAV_CHARS}",
         "view_compactions": f"-- queries/view_compactions.sql session_id={SPINE} source={MAIN}",
-        "view_turn_records": f"-- queries/view_turn_records.sql session_id={SPINE} source={MAIN}",
+        # The whole thread in outline, which is what places the runs: no window, so no paging.
+        "session_digest": f"-- queries/session_digest.sql session_id={SPINE}",
     }
-
-
-def test_the_timeline_is_the_sessions_turns_in_order(
-    client: TestClient, store: duckdb.DuckDBPyConnection
-) -> None:
-    """Every turn of the main thread appears once, in the order it ran."""
-    page = client.get(f"/session/{SPINE}").text
-    turns = [
-        row[0]
-        for row in store.execute(
-            "SELECT id FROM live_turns WHERE session_id = ? AND source = 'main' ORDER BY \"index\"",
-            [SPINE],
-        ).fetchall()
-    ]
-    assert values(page, "data-turn") == turns
-    # A thread that fits one page mints no pager: it is the page it was before paging landed.
-    assert values(page, "data-more-turns") == []
-
-
-def heading(page: str, turn_id: str) -> str:
-    """What a reader sees above one turn's row: its heading, tags stripped and space collapsed.
-
-    The `data-field` values say which column reached the heading; this says what the line
-    reads as — which is where a stray separator between a badge and absent arguments shows.
-    """
-    found = re.search(rf'<article id="turn-{turn_id}".*?<h2>(.*?)</h2>', page, re.S)
-    assert found, f"the page holds no heading for turn {turn_id}"
-    return re.sub(r"\s+", " ", re.sub(r"<[^>]*>", "", found.group(1))).strip()
-
-
-def command_turns(store: duckdb.DuckDBPyConnection) -> list[tuple[str, str, str, str]]:
-    """Every recorded slash-command turn: where it ran, and what the command was."""
-    return store.execute(
-        "SELECT session_id, id, command_name, command_args FROM live_turns"
-        ' WHERE source = ? AND command_name IS NOT NULL ORDER BY session_id, "index"',
-        [MAIN],
-    ).fetchall()
-
-
-def test_no_heading_the_viewer_renders_holds_the_command_tags(
-    client: TestClient, store: duckdb.DuckDBPyConnection
-) -> None:
-    """A slash command reads as `/name args`, never as the markup Claude Code wrapped it in.
-
-    Claude Code records a slash turn's prompt as `<command-message>…</command-name>` and puts
-    what those tags said in two columns of its own. The absence below is bounded by the
-    corpus: every recorded command turn's stored prompt still holds the tags, so a viewer
-    printing the prompt would print them — on the session page, and on any run page under it.
-    """
-    turns = command_turns(store)
-    assert turns, "the fixture corpus records no slash-command turn"
-    # The store's own prompts hold the tags, which is what makes their absence a finding...
-    (tagged,) = one(
-        store,
-        "SELECT count(*) FROM live_turns WHERE command_name IS NOT NULL AND prompt LIKE ?",
-        ["<command-%"],
-    )
-    assert tagged == len(turns)
-    # ...and no page the viewer serves over those sessions carries either spelling of them.
-    served = [f"/session/{session_id}" for session_id in {row[0] for row in turns}]
-    served += [
-        f"/session/{session_id}/run/{run_id}"
-        for session_id, run_id in store.execute(
-            "SELECT session_id, id FROM live_agent_runs"
-        ).fetchall()
-    ]
-    for path in served:
-        page = client.get(path).text
-        assert "<command-" not in page and "&lt;command-" not in page, path
-
-
-def test_a_command_turns_heading_is_the_command_and_a_plain_turns_is_its_prompt(
-    client: TestClient, store: duckdb.DuckDBPyConnection
-) -> None:
-    """A slash turn shows the badge and the arguments; a turn nobody typed a slash for shows
-    the prompt, as it always did.
-
-    Both from `SPINE`, so the two arms are the same page: its second turn ran `/night-run`
-    with arguments, and the turns after it were typed rather than invoked.
-    """
-    page = client.get(f"/session/{SPINE}").text
-    # The last command turn the session recorded — the one whose arguments are not empty.
-    command_id, name, args = one(
-        store,
-        "SELECT id, command_name, command_args FROM live_turns"
-        ' WHERE session_id = ? AND source = ? AND command_name IS NOT NULL ORDER BY "index" DESC',
-        [SPINE, MAIN],
-    )
-    assert args, "the command turn this leaf reads no longer records arguments"
-    row = fields(page, "data-turn", command_id)
-    assert (row["command_name"], row["command_args"]) == (name, args)
-    # The two arms are one line, and the prompt is not on it: the badge, then the arguments.
-    assert heading(page, command_id) == f"{name} {args}"
-    assert "prompt" not in row
-    # ...while a plain turn of the same session is its prompt and carries no command at all.
-    plain_id, prompt = one(
-        store,
-        "SELECT id, prompt FROM live_turns"
-        ' WHERE session_id = ? AND source = ? AND command_name IS NULL ORDER BY "index"',
-        [SPINE, MAIN],
-    )
-    plain = fields(page, "data-turn", plain_id)
-    assert plain["prompt"] == prompt.strip()
-    assert "command_name" not in plain and "command_args" not in plain
-
-
-def test_a_command_invoked_with_no_arguments_shows_the_badge_alone(
-    client: TestClient, store: duckdb.DuckDBPyConnection
-) -> None:
-    """A bare `/command` renders the badge and stops — no separator hanging off nothing.
-
-    `model_only` recorded `/clear` and `/reload-skills` with `command_args = ''`: empty and
-    present, which is a different shape from the NULL a turn nobody typed a slash for carries.
-    """
-    bare = [row for row in command_turns(store) if row[3] == ""]
-    assert len(bare) == 2, "the empty-argument command turns moved: re-derive this leaf"
-    for session_id, turn_id, name, _ in bare:
-        page = client.get(f"/session/{session_id}").text
-        row = fields(page, "data-turn", turn_id)
-        assert row["command_name"] == name
-        # Empty arguments are not a field of their own, and the line is the badge itself.
-        assert "command_args" not in row
-        assert heading(page, turn_id) == name
-
-
-def test_every_number_a_turn_row_prints_carries_its_separators(
-    plant: Planter, store: duckdb.DuckDBPyConnection
-) -> None:
-    """A timeline row's counts go through the same formatter every count on a page does.
-
-    The fragments the row opens are here too, because their "+N more" is a count of the same
-    population one page deep. Planted, because the busiest turn the corpus records made four
-    api calls: under a thousand a formatted count and a bare one are the same string, and the
-    plant clears a thousand *after* the page each fragment shows. The clones are of a recorded
-    call and a recorded tool call, so what the row counts stays the `live_*` population it
-    counts today.
-    """
-    over = 1_100
-    turn_id, call_id = one(
-        store,
-        "SELECT turn_id, id FROM live_api_calls"
-        " WHERE session_id = ? AND source = ? AND turn_id IS NOT NULL ORDER BY id",
-        [ANCESTOR, MAIN],
-    )
-    (recorded_tools,) = one(
-        store,
-        "SELECT count(*) FROM live_tool_calls WHERE session_id = ? AND api_call_id = ?",
-        [ANCESTOR, call_id],
-    )
-    path = plant(
-        (
-            "INSERT INTO api_calls (SELECT c.* REPLACE (c.id || '-planted-' || i AS id)"
-            " FROM api_calls c, range(1, ?) r(i) WHERE c.session_id = ? AND c.id = ?)",
-            [over + 1, ANCESTOR, call_id],
-        ),
-        (
-            "INSERT INTO tool_calls (SELECT t.* REPLACE (t.id || '-planted-' || i AS id)"
-            " FROM tool_calls t, range(1, ?) r(i) WHERE t.session_id = ? AND t.api_call_id = ?)",
-            [over + 1, ANCESTOR, call_id],
-        ),
-    )
-    with TestClient(build_app(path)) as planted:
-        page = planted.get(f"/session/{ANCESTOR}").text
-        calls = planted.get(f"/fragment/turn/{ANCESTOR}/{MAIN}/{turn_id}").text
-        tools = planted.get(f"/fragment/tools/{ANCESTOR}/{MAIN}/{call_id}").text
-    row = fields(page, "data-turn", turn_id)
-    # Every number the row prints is grouped in threes or the dash a NULL prints...
-    for field in ("api_calls", "tool_calls", "tool_errors"):
-        assert re.fullmatch(r"\d{1,3}(,\d{3})*|—", row[field]), f"{field} prints {row[field]!r}"
-    # ...and the plant pushed two of them past the point where that is a claim, on the row and
-    # on the summary line that says how many calls the reader is about to open.
-    assert "," in row["api_calls"] and "," in row["tool_calls"]
-    assert f"{row['api_calls']} api call(s)" in page
-    # What each fragment left behind its own page is the same count, one level down: the calls
-    # under the turn, and the tool calls under one of them.
-    (cursor,) = values(calls, "data-more-calls")
-    behind = int(row["api_calls"].replace(",", "")) - bounds.CALLS.default
-    assert fields(calls, "data-more-calls", cursor)["count"] == f"+{behind:,} more"
-    left = recorded_tools + over - bounds.TOOLS.default
-    assert fields(tools, "data-more", call_id)["count"] == f"+{left:,} more"
-
-
-def test_a_teammate_prompt_keeps_the_tag_that_names_its_sender(
-    client: TestClient, store: duckdb.DuckDBPyConnection
-) -> None:
-    """The command fix reads two columns; it does not strip tags out of a prompt.
-
-    `<teammate-message>` says who wrote the turn and is part of what the prompt means
-    (`docs/schema.md`), so the one recorded run that holds them keeps them.
-    """
-    page = client.get(f"/session/{TEAMMATE}/run/{TEAMMATE_RUN}").text
-    turns = store.execute(
-        "SELECT id FROM live_turns WHERE session_id = ? AND source = ? AND prompt LIKE ?"
-        ' ORDER BY "index"',
-        [TEAMMATE, TEAMMATE_RUN, "<teammate-message%"],
-    ).fetchall()
-    assert turns, "the teammate fixture no longer records a tagged prompt"
-    for (turn_id,) in turns:
-        assert fields(page, "data-turn", turn_id)["prompt"].startswith("<teammate-message")
-
-
-def test_calls_under_no_turn_get_their_own_row(
-    client: TestClient, store: duckdb.DuckDBPyConnection
-) -> None:
-    """A resume's spend sits under no turn, so the page shows it rather than losing it."""
-    # `RESUME` answers turns that live in the session it resumed: it has no turns of its
-    # own, and every one of its api calls is unattributed...
-    page = client.get(f"/session/{RESUME}").text
-    (cost,) = one(store, "SELECT cost_usd FROM session_rollups WHERE session_id = ?", [RESUME])
-    # ...so the unattributed row carries the whole session's cost...
-    unattributed = fields(page, "data-turn", "(unattributed)")
-    assert unattributed["cost_usd"] == money(cost)
-    # ...and the header agrees with it, which is the disagreement this row exists to stop.
-    assert fields(page, "id", "session-header")["cost_usd"] == money(cost)
-
-
-def test_a_turns_chips_are_the_runs_that_turn_spawned(
-    client: TestClient, store: duckdb.DuckDBPyConnection
-) -> None:
-    """A run chips onto the turn whose tool call spawned it."""
-    page = client.get(f"/session/{SPINE}").text
-    spawned = store.execute(
-        "SELECT c.turn_id, a.id FROM live_agent_runs a"
-        " JOIN live_tool_calls tc ON tc.session_id = a.session_id AND tc.id = a.tool_use_id"
-        "  AND tc.source <> a.id"
-        " JOIN live_api_calls c ON c.session_id = a.session_id AND c.source = tc.source"
-        "  AND c.id = tc.api_call_id"
-        " WHERE a.session_id = ? AND c.source = 'main'",
-        [SPINE],
-    ).fetchall()
-    assert spawned, "the chip join returns nothing: this session no longer proves the case"
-    for turn_id, run_id in spawned:
-        assert run_id in inside(page, "data-turn", turn_id, "data-chip")
-
-
-def test_a_fork_does_not_chip_onto_a_turn_of_its_own_timeline(client: TestClient) -> None:
-    """A fork carries an un-replayed copy of its spawning call; it is not its own child."""
-    page = client.get(f"/session/{FORK_ORIGIN}").text
-    # The copy sits in the fork's own transcript, so the join that ignores it leaves the run
-    # unattached rather than hanging it off a turn the fork itself recorded.
-    assert FORK_RUN in values(page, "data-unattached")
-    assert FORK_RUN not in values(page, "data-chip")
-
-
-@pytest.mark.parametrize("turns", [bounds.TURNS.default, 1])
-def test_every_session_page_accounts_for_all_of_its_runs(
-    client: TestClient, store: duckdb.DuckDBPyConnection, turns: int
-) -> None:
-    """Across the corpus, every agent run is reachable from its session's pages, once a page.
-
-    At one turn a page as well as at the default, because placement is checked over the
-    session's whole thread rather than over the page: a run whose spawning turn is on another
-    page has to stay placed rather than raise, and no page may show one twice.
-    """
-    for session_id in sessions(store):
-        pages = walk(client, session_id, turns=turns, chips=bounds.CHIP_BUDGET // (turns + 1))
-        shown = [values(page, "data-chip") + values(page, "data-unattached") for page in pages]
-        runs = {
-            row[0]
-            for row in store.execute(
-                "SELECT id FROM live_agent_runs WHERE session_id = ?", [session_id]
-            ).fetchall()
-        }
-        # The unattached list rides every page, so a run can be reached from more than one —
-        # but never twice from the same one.
-        assert {run for page in shown for run in page} == runs, session_id
-        for page in shown:
-            assert len(page) == len(set(page)), session_id
-
-
-@pytest.mark.parametrize("turns", [bounds.TURNS.default, 1])
-def test_a_run_the_page_cannot_place_stops_the_page(
-    plant: Planter, store: duckdb.DuckDBPyConnection, turns: int
-) -> None:
-    """A run that lands on no turn and in no list crashes the page instead of vanishing from it.
-
-    The complement of the leaf above, and the reason its guarantee is worth anything: the page
-    counts every run in its header, so one the layout cannot place would be a number with no
-    row behind it. The shape is planted and invented — no recorded session has a spawning call
-    naming a turn its own thread does not hold — and it is checked at one turn a page as well,
-    where placement is still computed over the whole thread and not over the page.
-    """
-    # The run whose spawning call sits under a turn of the main thread...
-    run = chipped(store)
-    # ...answers a turn no thread of the session holds, so the chip join has nothing to hang it
-    # on and the unattached list does not want it either: its spawning turn is not missing, it
-    # is unknown.
-    path = plant(
-        (
-            "UPDATE api_calls SET turn_id = 'planted-turn-nothing-holds'"
-            " WHERE session_id = ? AND source = ? AND id = ?",
-            [SPINE, MAIN, run.call_id],
-        ),
-    )
-    with (
-        TestClient(build_app(path)) as planted,
-        pytest.raises(ValueError, match="hang off no turn and no run") as raised,
-    ):
-        planted.get(f"/session/{SPINE}", params={"turns": turns, "chips": 1})
-    # The unplaceable run, and the run it spawned — which the page could only have reached
-    # through it, so an unmoored run takes its subtree with it.
-    under = {
-        row[0]
-        for row in store.execute(
-            "SELECT id FROM live_agent_runs WHERE session_id = ? AND parent_agent_id = ?",
-            [SPINE, run.run_id],
-        ).fetchall()
-    }
-    assert re.findall(r"'([^']+)'", str(raised.value)) == sorted({run.run_id} | under)
-
-
-def test_a_turns_chips_are_capped_by_the_nodes_of_its_forest(
-    client: TestClient, store: duckdb.DuckDBPyConnection
-) -> None:
-    """A turn renders as many runs as the page's chip size allows, counts the rest, links to them.
-
-    The cap counts every node of the forest and not its top level: a run under a run is a row
-    on the page and costs what any other row costs.
-    """
-    # The recorded pair where one run spawned another, and the main turn that spawned the
-    # first of them — three top-level chips can carry fifty nodes, so this is the shape a
-    # top-level cap bounds nothing about...
-    listing = queries.load("view_runs").strip().rstrip(";")
-    ((child, parent, turn_id),) = store.execute(
-        f"SELECT child.run_id, parent.run_id, parent.spawn_turn_id FROM ({listing}) child"
-        f" JOIN ({listing}) parent ON child.spawn_source = parent.run_id"
-        f" WHERE parent.spawn_source = '{MAIN}' AND parent.spawn_turn_id IS NOT NULL",
-        {"session_id": SPINE, "chip_chars": queries.CHIP_CHARS},
-    ).fetchall()
-    # ...renders the top of the forest and nothing under it when the page has room for one...
-    narrow = client.get(f"/session/{SPINE}?chips=1").text
-    assert inside(narrow, "data-turn", turn_id, "data-chip") == [parent]
-    # ...says how many it cut...
-    assert fields(narrow, "data-turn", turn_id)["cut"] == "1"
-    # ...and the link it mints opens a page holding that turn with the whole forest.
-    (wider,) = inside(narrow, "data-turn", turn_id, "data-more-chips")
-    assert inside(client.get(wider).text, "data-turn", turn_id, "data-chip") == [parent, child]
-
-
-def test_the_unattached_list_is_capped_and_counts_what_the_session_holds(
-    client: TestClient, store: duckdb.DuckDBPyConnection
-) -> None:
-    """The runs under no turn are capped like a turn's chips, under a heading that counts them all.
-
-    The list rides every page, so it is one of the sizes that multiply. Cutting it silently
-    would put the header's run count and the runs a reader can reach back out of agreement,
-    which is the disagreement this section exists to end.
-    """
-    # The fixture session listing the most runs under no turn...
-    listed = {
-        session_id: values(client.get(f"/session/{session_id}").text, "data-unattached")
-        for session_id in sessions(store)
-    }
-    session_id = max(listed, key=lambda name: len(listed[name]))
-    assert len(listed[session_id]) > 1, "no fixture session has a list long enough to cut"
-    whole = client.get(f"/session/{session_id}").text
-    nodes = [
-        run
-        for attribute in ("data-unattached", "data-chip")
-        for run in inside(whole, "id", "unattached", attribute)
-    ]
-    # ...renders one of them when the page has room for one chip...
-    narrow = client.get(f"/session/{session_id}?chips=1").text
-    assert values(narrow, "data-unattached") == listed[session_id][:1]
-    # ...counts every run the list holds in its heading, cap or no cap...
-    assert fields(narrow, "id", "unattached")["runs"] == str(len(nodes))
-    # ...and the link it mints opens a page holding the whole list.
-    (wider,) = inside(narrow, "id", "unattached", "data-more-chips")
-    assert values(client.get(wider).text, "data-unattached") == listed[session_id]
-
-
-def test_the_unattached_section_is_the_chip_joins_complement(
-    client: TestClient, store: duckdb.DuckDBPyConnection
-) -> None:
-    """A run is listed as unattached exactly when the chip join fails to place it.
-
-    Placing it takes a turn *or* a run of this session: a run spawned by a call that names
-    the run but no turn hangs under that run, so it is placed and not listed here.
-    """
-    listing = queries.load("view_runs").strip().rstrip(";")
-    for session_id in sessions(store):
-        unplaced = {
-            row[0]
-            for row in store.execute(
-                f"SELECT run_id FROM ({listing}) WHERE spawn_turn_id IS NULL"
-                f" AND (spawn_source IS NULL OR spawn_source NOT IN"
-                f" (SELECT run_id FROM ({listing})))",
-                {"session_id": session_id, "chip_chars": queries.CHIP_CHARS},
-            ).fetchall()
-        }
-        page = client.get(f"/session/{session_id}").text
-        assert set(values(page, "data-unattached")) == unplaced, session_id
-
-
-def test_a_run_spawned_by_a_call_in_no_turn_is_shown_once(
-    plant: Planter, store: duckdb.DuckDBPyConnection
-) -> None:
-    """A run whose spawning call sits in no turn hangs under the run that spawned it, once.
-
-    The shape is real — a call the transcript never tied to a turn is exactly what the store
-    records as a NULL `turn_id` — but no recorded session carries an instance of it under a
-    *run*, so the test plants one by taking the turn away from the call that spawned a nested
-    run. Without the planting, the run would render twice: under its parent and in the
-    unattached list, which is the list for runs nothing places at all.
-    """
-    # The call one run made to spawn another, in the session whose runs nest...
-    parent_run, spawned, call_id = one(
-        store,
-        "SELECT tc.source, a.id, c.id FROM live_agent_runs a"
-        " JOIN live_tool_calls tc ON tc.session_id = a.session_id AND tc.id = a.tool_use_id"
-        "  AND tc.source <> a.id"
-        " JOIN live_api_calls c ON c.session_id = a.session_id AND c.source = tc.source"
-        "  AND c.id = tc.api_call_id"
-        " WHERE a.session_id = ? AND tc.source <> ? LIMIT 1",
-        [SPINE, MAIN],
-    )
-    # ...loses the turn it was made in.
-    path = plant(
-        (
-            "UPDATE api_calls SET turn_id = NULL WHERE session_id = ? AND source = ? AND id = ?",
-            [SPINE, parent_run, call_id],
-        )
-    )
-    with TestClient(build_app(path)) as planted:
-        page = planted.get(f"/session/{SPINE}").text
-    # The run it spawned still hangs under it, and appears nowhere else on the page.
-    assert spawned in inside(page, "data-chip", parent_run, "data-chip")
-    assert (values(page, "data-chip") + values(page, "data-unattached")).count(spawned) == 1
-
-
-def test_a_compaction_appears_in_the_timeline_where_it_happened(
-    client: TestClient, store: duckdb.DuckDBPyConnection
-) -> None:
-    """A main-thread compaction is a marker between the turns it fell between."""
-    session_id, compaction_id = one(
-        store,
-        "SELECT session_id, id FROM live_compactions WHERE source = 'main'"
-        " ORDER BY session_id, timestamp LIMIT 1",
-    )
-    page = client.get(f"/session/{session_id}").text
-    assert compaction_id in values(page, "data-compaction")
-
-
-def test_a_compaction_rides_the_page_of_the_turn_it_precedes(
-    plant: Planter, store: duckdb.DuckDBPyConnection
-) -> None:
-    """Paging a timeline moves no compaction and loses none: each lands on exactly one page.
-
-    A mark hangs off the turn it precedes, because what that turn could still see depends on
-    it — so a mark between two turns rides the page holding the later one, and a mark after
-    every turn rides the last page.
-    """
-    # Two turns of the session long enough to page, in index order and ascending in time...
-    first, second, started = one(
-        store,
-        'SELECT a."index", b."index", b.started_at FROM live_turns a JOIN live_turns b'
-        ' ON b.session_id = a.session_id AND b.source = a.source AND b."index" = a."index" + 1'
-        " WHERE a.session_id = ? AND a.source = ? AND a.started_at < b.started_at"
-        ' ORDER BY a."index" LIMIT 1',
-        [SPINE, MAIN],
-    )
-    assert first == 0, "the pair is no longer SPINE's first two turns, so an earlier turn may claim"
-    turn_id, *_ = one(
-        store,
-        'SELECT id FROM live_turns WHERE session_id = ? AND source = ? AND "index" = ?',
-        [SPINE, MAIN, second],
-    )
-    # ...take two recorded compactions off threads that are not this one, and move them here:
-    # one landing a hair before the second turn, one an hour after every turn.
-    (at, over, between), (from_at, from_over, trailing) = store.execute(
-        "SELECT session_id, source, id FROM live_compactions"
-        " WHERE NOT (session_id = ? AND source = ?) ORDER BY session_id, source, id LIMIT 2",
-        [SPINE, MAIN],
-    ).fetchall()
-    # A compaction id is unique within its thread and not across the store, so the row a plant
-    # moves is named by all three of its key columns.
-    move = (
-        "UPDATE compactions SET session_id = ?, source = ?, timestamp = "
-        " (SELECT {when} FROM live_turns WHERE session_id = ? AND source = ?{at}) {shift}"
-        " WHERE session_id = ? AND source = ? AND id = ?"
-    )
-    path = plant(
-        (
-            move.format(when="started_at", at=' AND "index" = ?', shift="- INTERVAL 1 MICROSECOND"),
-            [SPINE, MAIN, SPINE, MAIN, second, at, over, between],
-        ),
-        (
-            move.format(when="max(started_at)", at="", shift="+ INTERVAL 1 HOUR"),
-            [SPINE, MAIN, SPINE, MAIN, from_at, from_over, trailing],
-        ),
-    )
-    assert started is not None
-    with TestClient(build_app(path)) as planted:
-        pages = walk(planted, SPINE, turns=1, chips=1)
-        unpaged = values(planted.get(f"/session/{SPINE}").text, "data-compaction")
-    marks = [values(page, "data-compaction") for page in pages]
-    # The mark between two turns opens the page of the turn it precedes...
-    assert marks[[values(page, "data-turn")[0] for page in pages].index(turn_id)] == [between]
-    # ...the mark after every turn closes the last page...
-    assert marks[-1][-1] == trailing
-    # ...and between them the pages hold what the unpaged timeline holds, no mark twice.
-    assert [mark for page in marks for mark in page] == unpaged
-
-
-def test_a_thread_with_more_compactions_than_a_page_holds_says_how_many_it_cut(
-    plant: Planter, store: duckdb.DuckDBPyConnection
-) -> None:
-    """A timeline renders `bounds.MARKS` compactions and counts the rest rather than dropping them.
-
-    Compactions are not a size a URL carries, so this cap is the payload arithmetic's backstop:
-    without it a thread's markers are however many the session ran, and the ceiling budgets a
-    fixed number of them. The overflow is planted — the densest recorded thread holds 18, which
-    is why the cap sits where it does — and each planted mark precedes every turn, so they all
-    land on the one page this reads.
-    """
-    (recorded,) = one(
-        store,
-        "SELECT count(*) FROM live_compactions WHERE session_id = ? AND source = ?",
-        [SPINE, MAIN],
-    )
-    over = bounds.MARKS + 3
-    path = plant(
-        (
-            "INSERT INTO compactions (SELECT 'planted-' || i, ?, ?,"
-            " '1970-01-01T00:00:00Z', 'planted', 1, 1, 1 FROM range(1, ?) t(i))",
-            [SPINE, MAIN, over + 1],
-        ),
-    )
-    with TestClient(build_app(path)) as planted:
-        page = planted.get(f"/session/{SPINE}").text
-    # The page shows the cap's worth of markers...
-    assert len(values(page, "data-compaction")) == bounds.MARKS
-    # ...and says how many of the thread's own it left, so a cut list is never a silent one.
-    assert values(page, "data-more-marks") == [str(recorded + over - bounds.MARKS)]
-
-
-def test_every_number_a_cut_list_prints_carries_its_separators(
-    plant: Planter, store: duckdb.DuckDBPyConnection
-) -> None:
-    """What a capped list says it left goes through the formatter its page's counts do.
-
-    Both lists a timeline caps: the runs under a turn, and the compaction markers between
-    turns. Planted, because the widest forest and the deepest run of markers the corpus
-    records are two figures — under a thousand a formatted count and a bare one are the same
-    string. The runs are clones of a recorded chip, so the join that hangs them on the turn is
-    the recorded one.
-    """
-    over = 1_100
-    run = chipped(store)
-    (marks,) = one(
-        store,
-        "SELECT count(*) FROM live_compactions WHERE session_id = ? AND source = ?",
-        [SPINE, MAIN],
-    )
-    (forest,) = one(
-        store,
-        "SELECT count(*) FROM live_agent_runs WHERE session_id = ? AND parent_agent_id = ?",
-        [SPINE, run.run_id],
-    )
-    path = plant(
-        (
-            "INSERT INTO agent_runs (SELECT a.* REPLACE (a.id || '-planted-' || i AS id)"
-            " FROM agent_runs a, range(1, ?) t(i) WHERE a.session_id = ? AND a.id = ?)",
-            [over + 1, SPINE, run.run_id],
-        ),
-        (
-            "INSERT INTO compactions (SELECT 'planted-' || i, ?, ?,"
-            " '1970-01-01T00:00:00Z', 'planted', 1, 1, 1 FROM range(1, ?) t(i))",
-            [SPINE, MAIN, over + 1],
-        ),
-    )
-    with TestClient(build_app(path)) as planted:
-        # One chip of the turn's forest, so the rest of it is what the cut line counts...
-        page = planted.get(
-            f"/session/{SPINE}", params={"after": run.turn_index - 1, "turns": 1, "chips": 1}
-        ).text
-        # ...and the whole thread, because the markers hang off the timeline rather than off
-        # one turn: a single-turn window shows none of them to cut.
-        whole = planted.get(f"/session/{SPINE}").text
-    # The runs the chip list left, grouped in threes: the recorded chip and its own runs are
-    # in the forest too, and only one node of it is on the page.
-    assert fields(page, "data-turn", run.turn_id)["cut"] == f"{over + forest:,}"
-    # ...and the markers the timeline left, in the same grouping.
-    assert f"{marks + over - bounds.MARKS:,} more compaction(s)" in whole
-
-
-# The most pages a walk of one fixture session may take. The longest fixture thread holds a
-# handful of turns, so a walk that runs past this is a pager that never ends rather than a
-# session that is large.
-WALK_CEILING = 20
-
-
-def digest(store: duckdb.DuckDBPyConnection, session_id: str) -> list[str]:
-    """The turn ids of a session's whole digest, in the order the unpaged query gives them.
-
-    What the pages of the timeline have to add up to — read off the library query itself
-    rather than written down, so the expectation moves with the digest.
-    """
-    listing = queries.load("session_digest").strip().rstrip(";")
-    return [
-        row[0]
-        for row in store.execute(
-            f"SELECT turn_id FROM ({listing}) ORDER BY turn_index NULLS LAST",
-            {"session_id": session_id},
-        ).fetchall()
-    ]
-
-
-def walk(client: TestClient, session_id: str, turns: int, chips: int) -> list[str]:
-    """Every page of one session's timeline, followed the way a reader follows it.
-
-    The cursor comes off the page's own pager, so nothing here assembles a URL the viewer
-    does not mint.
-    """
-    after, served = queries.FIRST_PAGE, []
-    while len(served) < WALK_CEILING:
-        served.append(
-            client.get(f"/session/{session_id}?after={after}&turns={turns}&chips={chips}").text
-        )
-        cursor = values(served[-1], "data-more-turns")
-        if not cursor:
-            return served
-        after = int(cursor[0])
-    raise AssertionError(f"{session_id} is still paging after {WALK_CEILING} pages")
-
-
-def test_walking_the_timeline_covers_the_whole_digest_once(
-    client: TestClient, store: duckdb.DuckDBPyConnection
-) -> None:
-    """The pages of a session's timeline hold every row of its digest, once, in digest order."""
-    # Bound to one turn a page against the longest main thread the fixtures record, so the
-    # page boundary is a real overflow of recorded turns rather than a staged one...
-    rows = digest(store, SPINE)
-    assert len(rows) > 2, "SPINE no longer holds enough turns for the boundary to bite"
-    pages = walk(client, SPINE, turns=1, chips=1)
-    # ...and what the pages carry between them is the digest, in the digest's own order.
-    assert [turn for page in pages for turn in values(page, "data-turn")] == rows
-
-
-def test_the_unattributed_row_lands_on_the_last_page_and_no_other(
-    plant: Planter, store: duckdb.DuckDBPyConnection
-) -> None:
-    """The row for calls under no turn sits after the last turn, so it rides the last page.
-
-    The shape is real — a resume's calls answer turns it does not hold — but no recorded
-    fixture has both turns of its own and calls under none, so the test takes the turn away
-    from one main call of the session whose thread is long enough to page.
-    """
-    (call_id,) = one(
-        store,
-        "SELECT id FROM live_api_calls WHERE session_id = ? AND source = ?"
-        " AND turn_id IS NOT NULL ORDER BY id LIMIT 1",
-        [SPINE, MAIN],
-    )
-    path = plant(
-        (
-            "UPDATE api_calls SET turn_id = NULL WHERE session_id = ? AND source = ? AND id = ?",
-            [SPINE, MAIN, call_id],
-        )
-    )
-    with TestClient(build_app(path)) as planted:
-        served = walk(planted, SPINE, turns=1, chips=1)
-    pages = [values(page, "data-turn") for page in served]
-    # It has no turn index, so it cannot ride the window — it is fetched on the last page...
-    assert pages[-1][-1] == queries.UNATTRIBUTED
-    # ...and on no other, which is what a second fetch of it would quietly break.
-    assert [row for page in pages for row in page].count(queries.UNATTRIBUTED) == 1
-    # It costs a turn row and no run rows, which is what the ceiling budgets for it: the
-    # digest gives it a sentinel turn id, and no run's spawning call names that turn.
-    assert inside(served[-1], "data-turn", queries.UNATTRIBUTED, "data-chip") == []
-
-
-def test_a_cursor_past_the_last_turn_is_a_404(
-    client: TestClient, store: duckdb.DuckDBPyConnection
-) -> None:
-    """A cursor beyond a session's turns answers nothing; page one of a short session answers.
-
-    A thread that was never there and a cursor past the end of one that is are the same
-    answer — the records browser's rule. Page one is not: 102 of the canonical store's 575
-    sessions hold no main turn at all, and their spend is still on the page.
-    """
-    assert client.get(f"/session/{SPINE}?after={len(digest(store, SPINE)) + 99}").status_code == 404
-    # RESUME answers turns that live in the session it resumed, so it has none of its own.
-    served = client.get(f"/session/{RESUME}")
-    assert served.status_code == 200
-    assert fields(served.text, "id", "session-header")["session_id"] == RESUME
-
-
-def test_a_turns_permalink_opens_the_page_that_turn_starts(client: TestClient) -> None:
-    """The link a turn row mints opens a page whose first row is that turn."""
-    page = client.get(f"/session/{SPINE}").text
-    turns, links = values(page, "data-turn"), values(page, "data-permalink")
-    # Every row but the continuation one mints a link: that row has no index to cursor from.
-    assert len(links) == len([turn for turn in turns if turn != queries.UNATTRIBUTED])
-    for turn_id, link in zip(turns, links, strict=False):
-        opened = client.get(link).text
-        assert values(opened, "data-turn")[0] == turn_id
-        # ...and the anchor the fragment names is on the page it opens.
-        assert f'id="turn-{turn_id}"' in opened
-
-
-@pytest.mark.parametrize(
-    "sizes",
-    [
-        "turns=0",
-        f"turns={bounds.TURNS.ceiling + 1}",
-        "chips=0",
-        f"chips={bounds.CHIPS.ceiling + 1}",
-        # Each size is inside its own ceiling; what they multiply into is not. The unattached
-        # list rides every page at the same size, so the budget buys `turns + 1` of them.
-        f"turns={bounds.TURNS.default}"
-        f"&chips={bounds.CHIP_BUDGET // (bounds.TURNS.default + 1) + 1}",
-        f"turns=2&chips={bounds.CHIPS.ceiling}",
-    ],
-)
-def test_a_timeline_size_outside_its_bounds_is_refused(sizes: str, client: TestClient) -> None:
-    """Both sizes are checked against their own ceiling and against the budget they multiply."""
-    assert client.get(f"/session/{SPINE}?{sizes}").status_code == 400
-
-
-def test_the_whole_chip_budget_is_reachable_on_one_turn(
-    plant: Planter, store: duckdb.DuckDBPyConnection
-) -> None:
-    """A reader who wants a turn's whole run forest can have it, one turn at a time.
-
-    The chip ceiling is sized for the widest forest the corpus records — 94 runs under one
-    turn — so that no run sits behind a "+N more" nobody can open. No fixture session has a turn
-    that wide, so the leaf plants one past the cap: the rows are what the ceiling bought, and a
-    page that refused them, or rendered fewer than it was asked for, would leave the budget
-    spent on nothing.
-    """
-    run = chipped(store)
-    path = plant(
-        (
-            "INSERT INTO agent_runs (SELECT a.* REPLACE (a.id || '-planted-' || i AS id)"
-            " FROM agent_runs a, range(1, ?) t(i) WHERE a.session_id = ? AND a.id = ?)",
-            [bounds.CHIPS.ceiling + 1, SPINE, run.run_id],
-        ),
-    )
-    # A clone of a chipped run is a chip on the same turn: what the join reads is the tool call
-    # it names, and the clones name the one the recorded run does.
-    (forest,) = one(
-        store,
-        "SELECT count(*) FROM live_agent_runs WHERE session_id = ? AND parent_agent_id = ?",
-        [SPINE, run.run_id],
-    )
-    planted_rows = 1 + bounds.CHIPS.ceiling + forest
-    with TestClient(build_app(path)) as served:
-        # The page of that one turn, opened at the cursor its permalink carries.
-        page = served.get(
-            f"/session/{SPINE}",
-            params={"after": run.turn_index - 1, "turns": 1, "chips": bounds.CHIPS.ceiling},
-        )
-    assert page.status_code == 200
-    # The turn renders the whole budget the URL asked for...
-    assert values(page.text, "data-turn")[0] == run.turn_id
-    assert len(values(page.text, "data-chip")) == bounds.CHIPS.ceiling
-    # ...and counts what is still behind it, so the widest list is a page and not a ceiling.
-    assert fields(page.text, "data-turn", run.turn_id)["cut"] == str(
-        planted_rows - bounds.CHIPS.ceiling
-    )
-
-
-def test_a_session_the_store_does_not_hold_is_a_404(client: TestClient) -> None:
-    """An id that matches nothing gets a 404, not an empty page pretending to be one."""
-    response = client.get(f"/session/{MISSING}")
-    assert response.status_code == 404
-    assert MISSING not in response.text
 
 
 # The ratio WCAG 2.2 asks of body text against what it is printed on. Both schemes are held
@@ -1609,10 +848,10 @@ def test_both_schemes_print_every_color_of_text_readably(client: TestClient) -> 
         "/sessions?sort=bogus",
         f"/session/{SPINE}",
         f"/session/{MISSING}",
-        f"/fragment/turn/{ANCESTOR}/{MAIN}/{DENSE_TURN}",
-        f"/fragment/nav/{SPINE}",
-        f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}",
-        f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{MISSING}",
+        f"/session/{ANCESTOR}/turn/{MAIN}/{DENSE_TURN}",
+        f"/session/{FORK_ORIGIN}/tool/{FORK_ORIGIN_RUN}/{DENSE_TOOL}",
+        f"/fragment/result/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}",
+        f"/fragment/result/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{MISSING}",
         "/static/style.css",
     ],
 )
@@ -1656,11 +895,14 @@ def test_planted_markup_arrives_inert(plant: Planter) -> None:
     with TestClient(build_app(path)) as client:
         served = (
             client.get("/sessions").text,
+            # The session pane, whose tree rows are named by the turn prompts and the run
+            # descriptions the plant rewrote.
             client.get(f"/session/{SPINE}").text,
-            client.get(f"/fragment/nav/{SPINE}").text,
-            client.get(f"/fragment/turn/{ANCESTOR}/{MAIN}/{DENSE_TURN}").text,
+            # A turn pane, whose children log previews the calls' text.
+            client.get(f"/session/{ANCESTOR}/turn/{MAIN}/{DENSE_TURN}").text,
             client.get(f"/fragment/text/{ANCESTOR}/{MAIN}/{DENSE_TURN_CALL}").text,
-            client.get(f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}").text,
+            client.get(f"/fragment/input/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}").text,
+            client.get(f"/fragment/result/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}").text,
             client.get(f"/session/{ANCESTOR}/records/{MAIN}").text,
             client.get(f"/fragment/record/{ANCESTOR}/{MAIN}/1").text,
         )
@@ -1702,7 +944,7 @@ def test_a_pr_link_is_a_link_only_when_a_browser_should_follow_it(plant: Planter
 def test_a_per_value_fragment_returns_the_one_value_it_names(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """Opening one tool call fetches that call and nothing else from the same api call.
+    """Opening one tool call's result fetches that call's and nothing else from the same call.
 
     The per-value routes are the exception to the payload bound — they ship a fat column
     whole — so what keeps the bound is that the unit really is one value. A fragment that
@@ -1717,48 +959,28 @@ def test_a_per_value_fragment_returns_the_one_value_it_names(
         ).fetchall()
     ]
     assert DENSE_TOOL in siblings and len(siblings) > 1
-    served = client.get(f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}").text
-    # The value it was asked for is there, with what the tool returned...
-    assert values(served, "data-tool-value") == [DENSE_TOOL]
-    assert fields(served, "data-tool-value", DENSE_TOOL)["result"]
+    served = client.get(f"/fragment/result/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}").text
+    # The value it was asked for arrives, and it is not empty...
+    whole = one(
+        store,
+        "SELECT length(result) FROM live_tool_calls WHERE id = ? AND session_id = ?",
+        [DENSE_TOOL, FORK_ORIGIN],
+    )[0]
+    assert [int(size) for size in values(served, "data-value")] == [whole]
     # ...and no sibling of the same call rode along with it.
     for other in siblings:
         assert other == DENSE_TOOL or other not in served
 
 
 def test_a_fragment_cites_the_query_that_fetched_it(client: TestClient) -> None:
-    """A fragment carries its own query and bindings, whole pages and nested lists alike.
+    """Every whole-value fragment carries the query and the keys it was fetched by.
 
     A fragment arrives on a page that has already been served, so it cannot ride the footer
-    the pages share: each one carries the line itself.
+    the pages share: each one carries the line itself. All seven routes hand one shared seam
+    their own keys, so each is here — a seam pinned through one route alone would still let
+    another cite a key it was not fetched by.
     """
-    # If a page of one turn's api calls is fetched at sizes of its own...
-    turn = client.get(
-        f"/fragment/turn/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL_TURN}",
-        params={"calls": 2, "tools": 3},
-    ).text
     keyed = f"session_id={FORK_ORIGIN} source={FORK_ORIGIN_RUN}"
-    # ...then that call carries two lines: the query that fetched the call, at this request's
-    # page, and — for the tool list nested under it — the second query those rows came from,
-    # bound to the one call they hang off rather than to the turn above them.
-    assert inside(turn, "data-api-call", DENSE_CALL, "data-query") == [
-        f"-- queries/view_turn_calls.sql {keyed} turn_id={DENSE_CALL_TURN}"
-        f" after={queries.FIRST_PAGE} page_calls=2",
-        f"-- queries/view_call_tools.sql {keyed} api_call_id={DENSE_CALL}"
-        f" after={queries.FIRST_PAGE} page_tools=3",
-    ]
-    # The same list fetched on its own — what the "+N more" asks for — cites the same query
-    # at the cursor and size it was asked at, so a reader re-runs the page they are looking at.
-    tools = client.get(
-        f"/fragment/tools/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}",
-        params={"after": 1, "tools": 2},
-    ).text
-    assert values(tools, "data-query") == [
-        f"-- queries/view_call_tools.sql {keyed} api_call_id={DENSE_CALL} after=1 page_tools=2"
-    ]
-    # And a whole-value fragment, which takes no paging at all, cites the keys it was fetched
-    # by. All four routes hand one shared seam their own keys, so each is here: a seam pinned
-    # through `tool` alone would still let another route cite a key it was not fetched by.
     for url, expected in (
         (
             f"/fragment/text/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}",
@@ -1769,8 +991,22 @@ def test_a_fragment_cites_the_query_that_fetched_it(client: TestClient) -> None:
             f"-- queries/view_call_thinking.sql {keyed} api_call_id={DENSE_CALL}",
         ),
         (
-            f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}",
-            f"-- queries/view_tool_value.sql {keyed} tool_call_id={DENSE_TOOL}",
+            f"/fragment/input/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}",
+            f"-- queries/view_tool_input.sql {keyed} tool_call_id={DENSE_TOOL}",
+        ),
+        (
+            f"/fragment/result/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}",
+            f"-- queries/view_tool_result.sql {keyed} tool_call_id={DENSE_TOOL}",
+        ),
+        (
+            f"/fragment/prompt/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL_TURN}",
+            f"-- queries/view_turn_prompt.sql {keyed} turn_id={DENSE_CALL_TURN}",
+        ),
+        # A run is keyed by the session and its own id: a run has one home, so no thread
+        # names it.
+        (
+            f"/fragment/brief/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}",
+            f"-- queries/view_run_brief.sql session_id={FORK_ORIGIN} run_id={FORK_ORIGIN_RUN}",
         ),
         # The record route keys on a line number rather than an id. Fetched off a subagent
         # thread at a line past the first, so neither key can be a constant the fixture hides.
@@ -1784,7 +1020,7 @@ def test_a_fragment_cites_the_query_that_fetched_it(client: TestClient) -> None:
 
 def test_a_fragment_naming_nothing_is_a_404(client: TestClient) -> None:
     """A per-value fragment for an id the store lacks is a 404, not an empty box."""
-    response = client.get(f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{MISSING}")
+    response = client.get(f"/fragment/result/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{MISSING}")
     assert response.status_code == 404
     assert MISSING not in response.text
 

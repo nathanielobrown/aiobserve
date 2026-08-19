@@ -14,7 +14,10 @@ SELECT
     -- named, and the model the run answered on. Nothing on the far side of any of them bounds
     -- what it holds — an agent definition is named by whoever writes it.
     substr(a.agent_type, 1, $head_chars) AS agent_type,
-    substr(a.description, 1, $head_chars) AS description,
+    -- The task brief, cut at a pane's width with its whole length beside it; the rest is
+    -- fetched as one value (`view_run_brief`).
+    substr(a.description, 1, $detail_chars) AS description,
+    length(a.description) AS description_chars,
     substr(a.model, 1, $head_chars) AS model,
     a.spawn_depth,
     a.is_fork,
@@ -24,7 +27,9 @@ SELECT
     a.ended_at,
     date_diff('millisecond', a.started_at, a.ended_at) AS wall_ms,
     c.source AS spawn_source,
-    c.turn_id AS spawn_turn_id,
+    st.id AS spawn_turn_id,
+    c.id AS spawn_call_id,
+    c."index" AS spawn_call_index,
     (SELECT count(*) FROM live_turns t
         WHERE t.session_id = a.session_id AND t.source = a.id) AS turns,
     (SELECT count(*) FROM live_api_calls k
@@ -49,4 +54,9 @@ LEFT JOIN live_tool_calls tc
     ON tc.session_id = a.session_id AND tc.id = a.tool_use_id AND tc.source <> a.id
 LEFT JOIN live_api_calls c
     ON c.session_id = a.session_id AND c.source = tc.source AND c.id = tc.api_call_id
+-- The turn the spawning call answers, resolved on the call's own thread. A fork's transcript
+-- replays calls whose `turn_id` names a turn of its parent, so the raw column can name a turn
+-- this thread does not hold; the tree would then hang the run off a node no level renders.
+LEFT JOIN live_turns st
+    ON st.session_id = c.session_id AND st.source = c.source AND st.id = c.turn_id
 WHERE a.session_id = $session_id AND a.id = $run_id;

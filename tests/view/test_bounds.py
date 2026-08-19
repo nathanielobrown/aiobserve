@@ -23,10 +23,11 @@ from aiobserve.analyze.queries import QUERIES, VIEW_PREFIX
 from aiobserve.view import bounds
 from aiobserve.view.app import build_app
 from aiobserve.view.listing import SHOWN
-from aiobserve.view.store import Fragment, Page, Value, cursorless_rows
-from aiobserve.view.threads import TURN_CURSOR
+from aiobserve.view.store import TURN_CURSOR, Fragment, Page, Value, cursorless_rows
 from tests.conftest import (
     ANCESTOR,
+    COMPACTED,
+    COMPACTED_BOUNDARY,
     CONFIG_ONLY,
     DENSE_CALL,
     DENSE_TOOL,
@@ -37,10 +38,9 @@ from tests.conftest import (
     OFFLOAD_FILE,
     RESUME,
     SPINE,
-    SPINE_LEAF,
     SPINE_RUN,
 )
-from tests.view.conftest import Planter, Statement, fields, inside, one, values
+from tests.view.conftest import Planter, Statement, fields, inside, one, pages, values
 
 # The columns that hold whatever the agent read or wrote: one of them can be megabytes, and
 # none of them belongs on a page whole. `raw` is a transcript line, `result` a tool's output,
@@ -98,66 +98,45 @@ MEASURED_LIST_CHROME = 10_000
 MEASURED_PROJECT_ROW_MARKUP = 1_400
 MEASURED_PROJECTS_CHROME = 2_500
 
-# How much of a turn's prompt the timeline shows, from `session_digest`'s own `substr`, and
-# the same two for what a slash-command turn shows instead: the name of the command, and what
-# was typed after it. A command is named by whoever wrote the file that defines it, so the
-# badge is cut in SQL like everything else rather than assumed short.
+# How much of a turn's prompt a digest shows, from `session_digest`'s own `substr`, and the
+# same two for what a slash-command turn shows instead: the name of the command, and what was
+# typed after it. A command is named by whoever wrote the file that defines it, so the cut is
+# in SQL like everything else rather than assumed short. All three reach a page through a
+# children log's turn row, which cuts them again to the width of a line.
 PROMPT_CHARS = 300
 COMMAND_NAME_CHARS = 60
 COMMAND_ARGS_CHARS = 300
-# The same, for what a fragment shows of an api call's text and a tool call's arguments.
-TEXT_CHARS = 2_000
-INPUT_CHARS = 200
-# What the markup around one call row and one tool row of a turn fragment costs, with the
-# content those rows carry subtracted. Measured against `data/traces.duckdb` on 2026-08-07 as
-# the marginal cost of one more row — 18,292 B for 20 tool rows less 1,255 B for one, and
-# 50,311 B for 25 call rows less 2,346 B for one — with the rows' own `input` and `text` heads
-# taken back off. The call figure was measured at `tools=1`, so it still carries one tool row
-# that the arithmetic below counts again: a ceiling should err high. The fixture rows are
-# redacted to a few characters and project nothing about either.
-MEASURED_TOOL_ROW_MARKUP = 700
-MEASURED_CALL_ROW_MARKUP = 2_000
 # What a row of the records browser really costs — the preview plus the row's own markup, most
 # of it the `hx-get` that fetches the record whole. Measured against `data/traces.duckdb` on
 # 2026-08-08: 83,659 B for a 100-record page less 1,865 B of chrome, over the 99 rows between.
 # The fixture records are redacted to a few characters, so they project nothing about this.
 MEASURED_RECORD_BYTES = 826
 
-# What the markup around one row of a session timeline costs, with the row's own content taken
-# off. Measured through the app with `&` planted at every cap, which is what the leaf at the
-# bottom of this file re-measures so none of the three can go stale: 1,313 B for a turn row and
-# 264 B for the "+N more" line one turn may carry, 311 B for a run row — the nested kind, the
-# dearer of the two — and 266 B for a compaction row.
-MEASURED_TURN_ROW_MARKUP = 1_700
-MEASURED_CHIP_ROW_MARKUP = 400
-MEASURED_MARK_ROW_MARKUP = 300
-# What the markup around one item's enrichment costs on top of those, with the model's own
-# words taken off — the block beside a turn, and the tags beside a run. Measured the same way,
-# with every enrichment field planted full of `&` and every row stamped stale so the third tag
-# renders too: 314 B for a turn and 244 B for a run.
-MEASURED_TURN_ENRICHMENT_MARKUP = 400
-MEASURED_CHIP_ENRICHMENT_MARKUP = 300
-# What a session page weighs apart from the rows above: the header, the page's own markup, and
-# the lines a cut list mints. Measured through the app by the leaf at the bottom of this file,
-# with `&` planted at every cap the header carries and the session described at every one of
-# its own — 14,419 B, which is a page's worst case rather than a corpus observation, because
-# everything in a header is now cut in SQL.
-MEASURED_SESSION_CHROME = 15_000
-# What the markup around one node of the map beside a session page costs, with the label the
-# node carries taken off, and what the map weighs apart from its nodes: the citation lines, the
-# heading over the runs no turn holds, and the tail saying how many nodes the cap cut. Both
-# re-measured through the app by the leaf at the bottom of this file, every cap a label reads
-# planted full of `&` and every node's cost left short of a call: 721 B a turn node and 754 B a
-# run node — the nested kind, the dearer of the two — of which 240 B is the label at its cap,
-# leaving 514 B of link, meter class, unpriced mark and the row around them; and 1,055 B of
-# chrome, the widest any recorded map reaches. The allowance is larger than that because no
-# recorded session carries the heading and the tail at once.
-MEASURED_NAV_NODE_MARKUP = 600
-# How many levels of the tree a node page opens at once: the chain down to the selection,
-# whose children render too. Two while a turn is the only kind with a page of its own — the
-# session and the turn under it — and a bound rather than a fact once every kind has one.
-TREE_LEVELS = 2
-MEASURED_NAV_CHROME = 1_500
+# What the markup around one row of the tree costs, with the label the row carries taken off:
+# the link, the `hx-get` that swaps the pane, the depth, the meter class and the cost beside
+# it. Interim — slice 6 re-measures it through the app, at the glyphs and titles a row will
+# carry by then, the way every other measured constant here is re-measured.
+MEASURED_TREE_ROW_MARKUP = 700
+# The same for one row of the pane's children log, which carries a link, a label and the three
+# or four numbers whichever shape it is. Interim for the same reason.
+MEASURED_LOG_ROW_MARKUP = 700
+# And what the markup around one crumb of the chain down to the selection costs: the link, the
+# node's key, and the kind the label is named by. Interim for the same reason.
+MEASURED_CRUMB_MARKUP = 300
+# And what the markup around one previewed value costs — the heading, the `<pre>` and the line
+# offering the rest of it — with the preview itself taken off.
+MEASURED_DETAIL_MARKUP = 600
+# How many fat values one pane previews at once. Two is the most any kind shows: an api call
+# previews what it said and what it thought, and a tool call what it was passed and what came
+# back. A third would be a kind whose pane the arithmetic below has not priced.
+PANE_DETAILS = 2
+# What a node page carries outside its tree rows, its log rows and its previews: the crumbs
+# down to the selection, the node's own facts, and what a pass said about it. The session is
+# the widest of the eight panes — every string in its header is one a transcript wrote, and its
+# two lists grow with the session — so the allowance is a session header's, cut in SQL.
+# Interim, re-measured through the app in slice 6 along with the two row costs above.
+MEASURED_NODE_CHROME = 16_000
+
 # The parameter every truncated column of a run row is cut to. Counted per query rather than
 # listed, so a fourth column added to a chip shows up in the arithmetic instead of quietly
 # spending the ceiling `bounds.CHIP_BUDGET` times over.
@@ -186,21 +165,6 @@ ENCODED_CHAR_BYTES = 12
 def heads(sql: str, parameter: str) -> int:
     """How many of a statement's columns are cut to `parameter` — what one of its rows carries."""
     return re.sub(r"--[^\n]*", " ", sql).count(parameter)
-
-
-def worst_call_bytes(page_tools: int) -> int:
-    """What one call row of a turn fragment can weigh: markup, its heads, and its tool rows.
-
-    Markup is measured, because it is ours; every content head is counted at the worst
-    character, because a call's `text`, its model names and a tool's `input` are whatever the
-    session held. The model names are counted off the query rather than listed, so a fourth
-    string added to a call row lands here instead of quietly spending the ceiling ten times over.
-    """
-    tool_row = MEASURED_TOOL_ROW_MARKUP + INPUT_CHARS * ESCAPED_CHAR_BYTES
-    names = heads(queries.load(Fragment.TURN_CALLS), CHIP_HEAD) * queries.CHIP_CHARS
-    return (
-        MEASURED_CALL_ROW_MARKUP + (TEXT_CHARS + names) * ESCAPED_CHAR_BYTES + page_tools * tool_row
-    )
 
 
 def worst_session_row_bytes() -> int:
@@ -250,89 +214,55 @@ def worst_tag_bytes() -> int:
     return 2 * queries.TAG_CHARS * ESCAPED_CHAR_BYTES
 
 
-def worst_heading_bytes() -> int:
-    """What one turn's heading can weigh in content: the larger of its two arms, never both.
+def worst_tree_row_bytes() -> int:
+    """What one row of the tree can weigh: its markup, and a label of nothing but `&`.
 
-    A slash turn shows the command it ran and the arguments after it *instead of* the prompt
-    as recorded, so the two arms never land on one heading — and pricing their sum would put
-    a full page of turns some 13 KB over the ceiling for a cost no reader can produce.
+    One label whatever the row is: a turn's is the head of what a pass said about it, of the
+    command it ran, or of the prompt; a run's is its brief or its definition; a call's is what
+    it said. Each is composed and then cut to the one width the tree reads at, so a row carries
+    one head and not a head per column.
     """
-    return max(PROMPT_CHARS, COMMAND_NAME_CHARS + COMMAND_ARGS_CHARS) * ESCAPED_CHAR_BYTES
+    return MEASURED_TREE_ROW_MARKUP + queries.NAV_CHARS * ESCAPED_CHAR_BYTES
 
 
-def worst_turn_bytes() -> int:
-    """What one turn row of a session timeline can weigh: its markup, the "+N more" line it may
-    carry, a heading of nothing but `&`, and what a pass said about the turn.
+def worst_log_row_bytes() -> int:
+    """What one row of the pane's children log can weigh: its markup, its label, and its one
+    string.
 
-    A turn has no page of its own, so its description rides the row that lists it — the one
-    place a described item costs a page more than a link would.
+    A log row is a link plus the numbers that tell two children apart, and at most one of
+    those is a string the store wrote — the model a call ran on, the tool a call called, the
+    definition a run ran. All of them are cut where a chip's strings are.
     """
+    return MEASURED_LOG_ROW_MARKUP + (queries.NAV_CHARS + queries.CHIP_CHARS) * ESCAPED_CHAR_BYTES
+
+
+def worst_crumb_bytes() -> int:
+    """What one crumb of the chain above a node can weigh: its markup, and a label of `&`."""
+    return MEASURED_CRUMB_MARKUP + queries.NAV_CHARS * ESCAPED_CHAR_BYTES
+
+
+def worst_detail_bytes() -> int:
+    """What one previewed value can weigh: its markup, and a preview of nothing but `&`."""
+    return MEASURED_DETAIL_MARKUP + bounds.DETAIL.ceiling * ESCAPED_CHAR_BYTES
+
+
+def worst_node_bytes() -> int:
+    """The largest node page any sizes a URL can carry produce.
+
+    A page is its chrome, the crumbs down to the selection, the tree beside it, the values the
+    pane previews, and the log under it. The tree is the part that multiplies: every level of
+    the open path admits `KIN` children and a tail row saying what the cap left out, and the
+    path runs `DEPTH` levels deep — so the ceiling is spent by the sizes' own defaults, and
+    each of the three knobs only goes down from there.
+    """
+    tree_rows = 1 + bounds.DEPTH * (bounds.KIN.ceiling + 1)
     return (
-        MEASURED_TURN_ROW_MARKUP
-        + worst_heading_bytes()
-        + MEASURED_TURN_ENRICHMENT_MARKUP
-        + queries.ENRICHMENT_CHARS * ESCAPED_CHAR_BYTES
-        + worst_tag_bytes()
+        MEASURED_NODE_CHROME
+        + bounds.DEPTH * worst_crumb_bytes()
+        + tree_rows * worst_tree_row_bytes()
+        + bounds.LOG.ceiling * worst_log_row_bytes()
+        + PANE_DETAILS * worst_detail_bytes()
     )
-
-
-def worst_chip_bytes() -> int:
-    """What one run row can weigh: its markup, every head it shows all `&`, and its tags.
-
-    Tags and no description: what a pass said a run did is on the run's own page, which the
-    row already links to. The row is the one the caps multiply two hundred times, so the
-    description it doesn't carry is most of what the ceiling above buys back.
-    """
-    return (
-        MEASURED_CHIP_ROW_MARKUP
-        + heads(queries.load(Page.RUNS), CHIP_HEAD) * queries.CHIP_CHARS * ESCAPED_CHAR_BYTES
-        + MEASURED_CHIP_ENRICHMENT_MARKUP
-        + worst_tag_bytes()
-    )
-
-
-def worst_mark_bytes() -> int:
-    """What one compaction row can weigh: its markup, and its trigger all `&`."""
-    return MEASURED_MARK_ROW_MARKUP + (
-        heads(queries.load(Page.COMPACTIONS), CHIP_HEAD) * queries.CHIP_CHARS * ESCAPED_CHAR_BYTES
-    )
-
-
-def worst_session_bytes() -> int:
-    """The largest session page any pair of sizes a URL can carry produces.
-
-    A search over the pairs the route allows, not the product of the two maxima: the sizes
-    trade against each other, so 20 turns of 100 runs each is not a page anyone can ask for.
-    The turn rows are `turns` plus the rows no cursor reaches, which ride the last page
-    outside the size a reader asked for; the run-row `+ 1` is the unattached list, a list of
-    `chips` like a turn's that rides every page. The rows the window cannot reach add no run
-    rows of their own: the digest gives them `queries.UNATTRIBUTED` for a turn id, which no
-    run's `spawn_turn_id` carries. The marks are not a size a URL carries, so they cost the
-    same on any page.
-    """
-    return (
-        MEASURED_SESSION_CHROME
-        + bounds.MARKS * worst_mark_bytes()
-        + max(
-            (turns + bounds.CURSORLESS_TURNS) * worst_turn_bytes()
-            + (turns + 1) * chips * worst_chip_bytes()
-            for turns in range(1, bounds.TURNS.ceiling + 1)
-            for chips in range(1, bounds.CHIPS.ceiling + 1)
-            if (turns + 1) * chips <= bounds.CHIP_BUDGET
-        )
-    )
-
-
-def worst_nav_node_bytes() -> int:
-    """What one node of a session's map can weigh: its markup, and a label of nothing but `&`.
-
-    One label and two numbers, whichever kind of node it is — a turn's label is the head of
-    what a pass said about it, of the command it ran, or of the prompt, and a run's is its
-    agent type and the line it was spawned with. Each is composed and then cut to the one cap
-    the map reads at, so a node carries one head and not a head per column. The `<details>` a
-    nested run sits under rides the markup, which is measured at the dearer of the two kinds.
-    """
-    return MEASURED_NAV_NODE_MARKUP + queries.NAV_CHARS * ESCAPED_CHAR_BYTES
 
 
 def worst_record_bytes() -> int:
@@ -446,36 +376,39 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     """The page sizes the payload bound is computed from are the ones production runs.
 
     Every other leaf in this file binds fixture-sized values, so without this pin the whole
-    section would pass against any defaults at all — a `page_tools` of 5,000 would break the
-    bound in production while CI stayed green. The numbers come from the turn-expand
-    paragraph of `plans/trace-viewer/design.md`.
+    section would pass against any defaults at all — a `page_records` of 5,000 would break the
+    bound in production while CI stayed green.
     """
-    assert QUERIES["view_turn_calls"].params["page_calls"].default == 10
-    assert QUERIES["view_call_tools"].params["page_tools"].default == 12
     assert QUERIES["view_records"].params["page_records"].default == 100
     assert QUERIES["view_records"].params["preview_chars"].default == 160
     assert QUERIES["view_offload"].params["chunk_chars"].default == 50_000
-    # How much of a run row's three columns a chip shows. `session_digest` keeps no LIMIT of
-    # its own — a report quotes the whole digest — so the timeline's *sizes* are the ones the
-    # viewer composes around it, and they are checked as arithmetic below rather than pinned.
-    assert QUERIES["view_runs"].params["chip_chars"].default == 60
-    assert QUERIES["view_compactions"].params["chip_chars"].default == 60
-    # A call row is multiplied by the page the same way, and carries two model names — which
-    # an api request wrote, so their length is Claude Code's to change and not ours.
-    assert QUERIES["view_turn_calls"].params["chip_chars"].default == 60
-    # And what a session header shows of each string and each list it carries. The header is
-    # the page's one unbounded surface — a session's PR links grow with every PR it opens — so
-    # these three are what turn `MEASURED_SESSION_CHROME` into a worst case.
+    # How much of a label a row of the tree shows. Short by design: a tree row is a line in a
+    # sidebar rather than a row of a table, and the tree is the one list whose rows a reader
+    # sees all of. Every level cuts to the same width, whatever kind of child it holds.
+    for level in ("view_tree_turns", "view_tree_calls", "view_tree_tools"):
+        assert QUERIES[level].params["nav_chars"].default == 48, level
+    # And how much of each string a row of the pane's children log shows, with the page it is
+    # read in. Wider than a tree row: a log row is a line of a table, with room for the first
+    # words of a prompt beside the numbers.
+    assert QUERIES["view_turn_calls"].params["log_chars"].default == 300
+    assert QUERIES["view_call_tools"].params["log_chars"].default == 300
+    assert QUERIES["view_turn_calls"].params["page_calls"].default == 12
+    assert QUERIES["view_call_tools"].params["page_tools"].default == 12
+    # A node header cuts every string it carries to a head, and the one fat value its pane
+    # previews to a detail — the four kinds that have fields of their own take the same two.
+    for header in ("view_turn_header", "view_call_header", "view_tool_header", "view_run_header"):
+        assert QUERIES[header].params["head_chars"].default == 100, header
+        assert QUERIES[header].params["detail_chars"].default == 4_000, header
+    # The session header is the widest of the panes: two of its columns are lists that grow
+    # with the session, so it cuts the members and caps how many it shows.
     assert QUERIES["view_session_header"].params["head_chars"].default == 100
     assert QUERIES["view_session_header"].params["item_chars"].default == 60
     assert QUERIES["view_session_header"].params["head_items"].default == 5
-    # And how much of a label the map beside a session page shows, per node. Short by design:
-    # a node is a line in a sidebar rather than a row of a table, and the map is the one list
-    # whose rows a reader sees all of.
-    assert QUERIES["view_session_nav"].params["nav_chars"].default == 48
-    # A run header carries three strings of the same kind — the line the run was spawned with,
-    # the agent definition that ran, and the model it ran on — so they take the same head.
-    assert QUERIES["view_run_header"].params["head_chars"].default == 100
+    # How much of a run row's and a compaction row's three columns a tree row shows. Both
+    # queries keep no LIMIT of their own — a report quotes the whole set — so what bounds them
+    # on a page is the tree's own arithmetic below.
+    assert QUERIES["view_runs"].params["chip_chars"].default == 60
+    assert QUERIES["view_compactions"].params["chip_chars"].default == 60
     # The list's rows drop the agent types a session spawned, but the query behind them still
     # gathers the names, so a member is cut where the list cuts a skill name.
     assert QUERIES["view_sessions"].params["item_chars"].default == queries.LIST_ITEM_CHARS
@@ -495,9 +428,7 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     assert QUERIES["view_project_rollups"].params["head_chars"].default == queries.LIST_CHARS
     assert QUERIES["view_project_rollups"].params["projects"].default == 100
     # Every ceiling is projected at the largest page a URL can ask for, because a size is
-    # something a reader types. The turn fragment's two sizes multiply, so its ceiling is
-    # spent by the defaults themselves and `?calls=` only goes down from here.
-    assert bounds.CALLS.ceiling * worst_call_bytes(bounds.TOOLS.ceiling) < PAGE_BYTES
+    # something a reader types.
     assert bounds.RECORDS.ceiling * worst_record_bytes() < PAGE_BYTES
     assert bounds.CHUNK.ceiling * ESCAPED_CHAR_BYTES < PAGE_BYTES
     # The list is the page a corpus grows, so its ceiling is the widest page a URL can ask for
@@ -509,25 +440,10 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     assert (
         MEASURED_PROJECTS_CHROME + bounds.PROJECTS.ceiling * worst_project_row_bytes() < PAGE_BYTES
     )
-    # The node page: the tree a reader walks, and the pane beside it. A tree buys a row per
-    # child every open level admits plus that level's tail, and the pane's log buys `LOG` rows
-    # of what is under the node — priced at a nav node and a timeline turn row, the two
-    # measured rows nearest each. The chrome allowance is a session page's, which is the
-    # nearest measured page; slice 6 re-measures both through the app once every byte the node
-    # page will carry exists.
-    assert (
-        MEASURED_SESSION_CHROME
-        + (1 + TREE_LEVELS * (bounds.KIN.ceiling + 1)) * worst_nav_node_bytes()
-        + bounds.LOG.ceiling * worst_turn_bytes()
-        < PAGE_BYTES
-    )
-    # The map beside a session page is its own response, so it spends a ceiling of its own
-    # rather than the page's: every node its cap admits, each label at the cut the query makes,
-    # plus what the map carries whatever it holds.
-    assert MEASURED_NAV_CHROME + bounds.NAV.ceiling * worst_nav_node_bytes() < PAGE_BYTES
-    # The session timeline is the page whose caps this arithmetic sets rather than checks: its
-    # run rows are most of what the ceiling buys, and the chip budget is what that leaves room for.
-    assert worst_session_bytes() < PAGE_BYTES
+    # And the node page, the one page every node URL serves: the tree a reader walks down the
+    # left, and the pane beside it. Its three sizes are each their own ceiling, so this is the
+    # widest response any node URL can be asked for.
+    assert worst_node_bytes() < PAGE_BYTES
     # And no default asks for more than its own ceiling allows, which nothing else checks: a
     # default above the ceiling serves a 400 to a reader who typed no size at all. Read off the
     # module rather than listed, so a size added later cannot dodge the check.
@@ -539,23 +455,14 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     # ...and those are the sizes this leaf priced above: a new one reds here until its ceiling
     # is spent in the arithmetic too, rather than riding a page nobody weighed.
     assert set(declared) == {
-        "CALLS",
-        "TOOLS",
-        "RECORDS",
-        "CHUNK",
-        "TURNS",
-        "CHIPS",
-        "SESSIONS",
-        "PROJECTS",
-        "NAV",
         "KIN",
         "LOG",
+        "DETAIL",
+        "RECORDS",
+        "CHUNK",
+        "SESSIONS",
+        "PROJECTS",
     }
-    assert (bounds.TURNS.default + 1) * bounds.CHIPS.default <= bounds.CHIP_BUDGET
-    # And every run is reachable: one turn's runs, or the unattached list, fits a page of its
-    # own at `?turns=1&chips={bounds.CHIPS.ceiling}` — which the widest forest the corpus records,
-    # 94 runs under one turn, needs to be more than a "+N more" nobody can open.
-    assert (1 + 1) * bounds.CHIPS.ceiling <= bounds.CHIP_BUDGET
 
 
 def limits(sql: str) -> list[str]:
@@ -612,13 +519,13 @@ def test_a_served_page_stays_under_its_ceiling(
     chrome = len(client.get("/sessions?size=1").content)
     per_session = (listing - chrome) / (count - 1)
     assert chrome + per_session * bounds.SESSIONS.ceiling < PAGE_BYTES
-    # Every session page at the defaults, and at the widest single list a URL can ask for —
-    # a different shape rather than a larger one, and the shape the arithmetic above bounds.
+    # And every session's own node page, which is the widest of the eight the tree opens on:
+    # the whole main thread is under the selection. A node page's three sizes are each their
+    # own ceiling, so the defaults are also the largest response a URL can ask for.
     for session_id in [row[0] for row in store.execute("SELECT id FROM sessions").fetchall()]:
-        for sizes in ({}, {"turns": 1, "chips": bounds.CHIPS.ceiling}):
-            page = client.get(f"/session/{session_id}", params=sizes)
-            assert page.status_code == 200, (session_id, sizes)
-            assert len(page.content) < PAGE_BYTES, (session_id, sizes)
+        page = client.get(f"/session/{session_id}")
+        assert page.status_code == 200, session_id
+        assert len(page.content) < PAGE_BYTES, session_id
 
 
 # One real URL per route the app exposes, keyed by the route's own path template. The sweep
@@ -626,31 +533,43 @@ def test_a_served_page_stays_under_its_ceiling(
 ROUTES: dict[str, str] = {
     "/": "/",
     "/sessions": "/sessions",
+    # The eight node kinds, each at a session that records the shape: a compaction at the
+    # session with two of them, a bucket at each of the two sessions that has one.
     "/session/{session_id}": f"/session/{SPINE}",
+    "/session/{session_id}/turn/{source}/{turn_id}": f"/session/{ANCESTOR}/turn/main/{DENSE_TURN}",
     "/session/{session_id}/run/{run_id}": f"/session/{SPINE}/run/{SPINE_RUN}",
-    "/fragment/turn/{session_id}/{source}/{turn_id}": (
-        f"/fragment/turn/{ANCESTOR}/main/{DENSE_TURN}"
+    "/session/{session_id}/call/{source}/{api_call_id}": (
+        f"/session/{FORK_ORIGIN}/call/{FORK_ORIGIN_RUN}/{DENSE_CALL}"
     ),
-    "/fragment/tools/{session_id}/{source}/{api_call_id}": (
-        f"/fragment/tools/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}"
+    "/session/{session_id}/tool/{source}/{tool_call_id}": (
+        f"/session/{FORK_ORIGIN}/tool/{FORK_ORIGIN_RUN}/{DENSE_TOOL}"
     ),
+    "/session/{session_id}/compaction/{source}/{compaction_id}": (
+        f"/session/{COMPACTED}/compaction/main/{COMPACTED_BOUNDARY}"
+    ),
+    "/session/{session_id}/unattributed/{source}": f"/session/{RESUME}/unattributed/main",
+    "/session/{session_id}/unattached": f"/session/{FORK_ORIGIN}/unattached",
+    # The two pages that are not nodes: a thread's raw transcript, and a file a tool wrote.
+    "/session/{session_id}/records/{source}": f"/session/{ANCESTOR}/records/main",
+    "/session/{session_id}/offload/{name:path}": f"/session/{CONFIG_ONLY}/offload/{OFFLOAD_FILE}",
+    # And the per-value fetches a pane's previews offer: one per fat column a node can hold.
     "/fragment/text/{session_id}/{source}/{api_call_id}": (
         f"/fragment/text/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}"
     ),
     "/fragment/thinking/{session_id}/{source}/{api_call_id}": (
         f"/fragment/thinking/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}"
     ),
-    "/fragment/tool/{session_id}/{source}/{tool_call_id}": (
-        f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}"
+    "/fragment/input/{session_id}/{source}/{tool_call_id}": (
+        f"/fragment/input/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}"
     ),
-    "/fragment/nav/{session_id}": f"/fragment/nav/{SPINE}",
-    "/session/{session_id}/turn/{source}/{turn_id}": f"/session/{ANCESTOR}/turn/main/{DENSE_TURN}",
-    "/fragment/body/turn/{session_id}/{source}/{turn_id}": (
-        f"/fragment/body/turn/{ANCESTOR}/main/{DENSE_TURN}"
+    "/fragment/result/{session_id}/{source}/{tool_call_id}": (
+        f"/fragment/result/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}"
     ),
-    "/session/{session_id}/records/{source}": f"/session/{ANCESTOR}/records/main",
+    "/fragment/prompt/{session_id}/{source}/{turn_id}": (
+        f"/fragment/prompt/{ANCESTOR}/main/{DENSE_TURN}"
+    ),
+    "/fragment/brief/{session_id}/{run_id}": f"/fragment/brief/{SPINE}/{SPINE_RUN}",
     "/fragment/record/{session_id}/{source}/{line_no}": f"/fragment/record/{ANCESTOR}/main/1",
-    "/session/{session_id}/offload/{name:path}": f"/session/{CONFIG_ONLY}/offload/{OFFLOAD_FILE}",
 }
 
 
@@ -681,76 +600,6 @@ def test_no_route_serves_more_than_the_page_ceiling(path: str, client: TestClien
     assert len(response.content) < PAGE_BYTES, path
 
 
-def test_the_turn_fragment_pages_its_calls_and_partitions_them(
-    client: TestClient, store: duckdb.DuckDBPyConnection
-) -> None:
-    """Following a turn's pages shows every call it made once, in order, with none skipped.
-
-    Bound at two calls against the corpus's densest recorded turn, which holds four — so the
-    page boundary is a real overflow of recorded data rather than a staged one.
-    """
-    indexes = [
-        row[0]
-        for row in store.execute(
-            'SELECT "index" FROM live_api_calls'
-            " WHERE session_id = ? AND source = 'main' AND turn_id = ? ORDER BY \"index\"",
-            [ANCESTOR, DENSE_TURN],
-        ).fetchall()
-    ]
-    assert len(indexes) == 4, "the densest fixture turn moved: re-pick DENSE_TURN"
-    seen: list[str] = []
-    after = -1
-    # Two at a time, following the fragment's own continuation each round...
-    for _ in range(4):
-        html = client.get(
-            f"/fragment/turn/{ANCESTOR}/main/{DENSE_TURN}", params={"after": after, "calls": 2}
-        ).text
-        page = values(html, "data-call-index")
-        assert len(page) <= 2
-        seen += page
-        following = values(html, "data-more-calls")
-        if not following:
-            break
-        after = int(following[0])
-    else:
-        pytest.fail("the fragment never ran out of pages")
-    # ...walks the turn's calls exactly once each, in index order.
-    assert seen == [str(index) for index in indexes]
-    # Keyset, never OFFSET: a page computed by counting rows re-reads what a page missed.
-    assert "OFFSET" not in queries.load(Fragment.TURN_CALLS).upper()
-
-
-def test_the_tool_cap_truncates_the_list_and_says_how_much_it_cut(
-    client: TestClient, store: duckdb.DuckDBPyConnection
-) -> None:
-    """A call's tool rows are capped in SQL, and the indicator pages the rest rather than
-    losing them.
-
-    Bound at two tool rows against the recorded call that made four. The count in the
-    indicator is what gives this leaf teeth: a cap that renders two rows without saying how
-    many it dropped looks identical to a call that only made two.
-    """
-    (total,) = one(
-        store,
-        "SELECT count(*) FROM live_tool_calls"
-        " WHERE session_id = ? AND source = ? AND api_call_id = ?",
-        [FORK_ORIGIN, FORK_ORIGIN_RUN, DENSE_CALL],
-    )
-    assert total == 4, "the densest fixture call moved: re-pick DENSE_CALL"
-    url = f"/fragment/tools/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}"
-    first = client.get(url, params={"after": -1, "tools": 2}).text
-    # Two rows, and the page says two more are behind the indicator...
-    shown = values(first, "data-tool-call")
-    assert len(shown) == 2
-    assert fields(first, "data-more", DENSE_CALL)["count"] == "+2 more"
-    # ...which fetches exactly those two, so the two pages partition the call's tools.
-    after = int(values(first, "data-more-tools")[0])
-    rest = values(client.get(url, params={"after": after, "tools": 2}).text, "data-tool-call")
-    assert len(rest) == 2
-    assert set(shown) & set(rest) == set()
-    assert len(set(shown) | set(rest)) == total
-
-
 def test_an_offload_of_nothing_but_escapes_still_serves_under_the_ceiling(
     plant: Planter,
 ) -> None:
@@ -775,172 +624,51 @@ def test_an_offload_of_nothing_but_escapes_still_serves_under_the_ceiling(
     assert len(page.content) < PAGE_BYTES
 
 
-def test_a_turn_fragment_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
-    plant: Planter,
-) -> None:
-    """A call row and a tool row weigh no more than the ceiling's arithmetic gives them.
-
-    The row costs behind that arithmetic were measured against the canonical store once, and a
-    template that grows a row past them puts the ceiling out by the page size it multiplies.
-    The content is planted `&` at both caps — the character that escapes to five bytes — for
-    the same reason the offload leaf plants one: no recorded row is adversarial.
-    """
-    path = plant(
-        ("UPDATE api_calls SET text = ? WHERE session_id = ?", ["&" * TEXT_CHARS, ANCESTOR]),
-        ("UPDATE tool_calls SET input = ? WHERE session_id = ?", ["&" * INPUT_CHARS, FORK_ORIGIN]),
-    )
-    turn = f"/fragment/turn/{ANCESTOR}/main/{DENSE_TURN}"
-    tools = f"/fragment/tools/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}"
-    with TestClient(build_app(path)) as planted:
-
-        def served(url: str, **params: int) -> int:
-            response = planted.get(url, params={"after": -1, **params})
-            assert response.status_code == 200
-            return len(response.content)
-
-        # What one more call row costs on a fragment, and one more tool row — the marginal
-        # cost, so the fragment's own chrome is not counted against a row's budget.
-        call_row = served(turn, calls=2, tools=1) - served(turn, calls=1, tools=1)
-        tool_rows = served(tools, tools=4) - served(tools, tools=1)
-    assert call_row <= worst_call_bytes(1)
-    assert tool_rows / 3 <= MEASURED_TOOL_ROW_MARKUP + INPUT_CHARS * ESCAPED_CHAR_BYTES
+# What a node page's arithmetic prices row by row, which chrome is the page without: a crumb of
+# the chain down to the selection, a row of the tree, a row of the pane's children log, and one
+# previewed value. Each is matched rather than differenced, so what the leaf below weighs is the
+# row itself and not a difference between two pages that could differ in something else.
+PRICED_ROWS = {
+    "crumb": r"<a data-crumb=.*?</a>",
+    "tree": r'<li class="row.*?</li>',
+    "log": r"<li data-child=.*?</li>",
+    "detail": r'<section class="detail".*?</section>',
+}
 
 
-def test_a_session_timeline_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
-    enriched_plant: Planter, store: duckdb.DuckDBPyConnection
-) -> None:
-    """A turn row, a run row and a compaction row weigh no more than the arithmetic gives them.
-
-    These are the costs the session page's ceiling is computed from, and a run row is the one
-    the caps multiply two hundred times — so a template that grows one past its budget puts the
-    ceiling out by that much. Every head is planted full of `&`, the character that escapes to
-    five bytes, because no recorded row is adversarial. Two stores, because the marginal cost
-    of a row is the same page with the row and without it.
-    """
-    (marks,) = one(store, "SELECT count(*) FROM compactions WHERE session_id = ?", [ANCESTOR])
-    assert marks == 1, "the compaction fixture moved: re-pick the session this measures"
-    heads_full = "&" * queries.CHIP_CHARS
-    content: tuple[Statement, ...] = (
-        # Both arms of the heading at their caps, so the row measured is the dearer of the
-        # two: a turn that ran a slash command shows the command and its arguments instead
-        # of the prompt, and that arm is the one `worst_heading_bytes` prices.
-        (
-            "UPDATE turns SET prompt = ?, command_name = ?, command_args = ? WHERE session_id = ?",
-            [
-                "&" * PROMPT_CHARS,
-                "&" * COMMAND_NAME_CHARS,
-                "&" * COMMAND_ARGS_CHARS,
-                SPINE,
-            ],
-        ),
-        (
-            "UPDATE agent_runs SET agent_type = ?, description = ?, model = ? WHERE session_id = ?",
-            [heads_full, heads_full, heads_full, SPINE],
-        ),
-        ("UPDATE compactions SET trigger = ? WHERE session_id = ?", [heads_full, ANCESTOR]),
-        *DESCRIBED_AT_EVERY_CAP,
-    )
-    whole = enriched_plant(*content)
-    # The same corpus less the run nested under `SPINE`'s one chipped turn, and less the
-    # compaction `ANCESTOR` recorded — each of which a page above renders and this one does not.
-    without = enriched_plant(
-        *content,
-        ("DELETE FROM agent_runs WHERE session_id = ? AND id = ?", [SPINE, SPINE_LEAF]),
-        ("DELETE FROM compactions WHERE session_id = ?", [ANCESTOR]),
-    )
-
-    def served(path: Path, url: str, **params: int) -> int:
-        with TestClient(build_app(path)) as planted:
-            response = planted.get(url, params=params)
-            assert response.status_code == 200, response.text[:200]
-            return len(response.content)
-
-    spine = f"/session/{SPINE}"
-    # `SPINE`'s first two turns spawned nothing, so one more of them is a turn row and nothing
-    # else. Its third spawned the pair, so the page holding that turn is where the rest is
-    # measured: both runs, one run and the "+N more" line, and one run alone.
-    turn_row = served(whole, spine, after=-1, turns=2, chips=1) - served(
-        whole, spine, after=-1, turns=1, chips=1
-    )
-    pair = served(whole, spine, after=1, turns=1, chips=2)
-    cut = served(whole, spine, after=1, turns=1, chips=1)
-    alone = served(without, spine, after=1, turns=1, chips=2)
-    mark_row = served(whole, f"/session/{ANCESTOR}") - served(without, f"/session/{ANCESTOR}")
-    # A turn row costs its markup, its prompt head, and the "+N more" line it may carry...
-    assert turn_row + (cut - alone) <= worst_turn_bytes()
-    # ...a run row its markup and every head it shows, nested where a run row is dearest...
-    assert pair - alone <= worst_chip_bytes()
-    # ...and a compaction row its markup and its trigger.
-    assert mark_row <= worst_mark_bytes()
-
-
-def test_a_command_turns_heading_costs_one_arm_and_not_both(plant: Planter) -> None:
-    """A turn holding both a full prompt and a full command shows one of them, not the sum.
-
-    This is what `worst_heading_bytes` claims and nothing else checks: the macro renders the
-    command *instead of* the prompt, so the two 300-character heads never meet on a page.
-    Pricing their sum instead would put a full timeline about 13 KB over the ceiling — and
-    a macro that rendered both would put a real page there. Planted `&` at all three caps,
-    because no recorded turn is adversarial and redaction flattened the ones that exist.
-    """
-    path = plant(
-        (
-            "UPDATE turns SET prompt = ?, command_name = ?, command_args = ?"
-            " WHERE session_id = ? AND source = ?",
-            ["&" * PROMPT_CHARS, "&" * COMMAND_NAME_CHARS, "&" * COMMAND_ARGS_CHARS, SPINE, "main"],
-        ),
-    )
-    with TestClient(build_app(path)) as planted:
-        page = planted.get(f"/session/{SPINE}", params={"turns": 1}).text
-    heading = re.search(r"<article id=\"turn-.*?<h2>(.*?)</h2>", page, re.S)
-    assert heading is not None, "the planted page rendered no turn heading"
-    # The command arm is on the line whole — both its heads, at the caps the digests cut to...
-    escapes = heading.group(1).count("&amp;")
-    assert escapes == COMMAND_NAME_CHARS + COMMAND_ARGS_CHARS
-    # ...and the prompt is not on it as well, which is the half the arithmetic rests on: the
-    # content of the heading weighs the arm it shows, not the two arms added together.
-    assert escapes * ESCAPED_CHAR_BYTES == worst_heading_bytes()
-
-
-# What the session arithmetic counts row by row, which chrome is the page without: a turn row
-# with the runs and cut line it carries, a run list of the page's own, a compaction row. Cut
-# innermost first, because a run list nests inside a run list.
-COUNTED_ROWS = (
-    r'<article id="turn-.*?</article>',
-    r'<ul class="runs">.*?</ul>',
-    r'<div class="compaction".*?</div>',
-)
-
-
-def chrome(html: str) -> str:
-    """A session page with every row `worst_session_bytes` counts separately taken out."""
-    for pattern in COUNTED_ROWS:
-        while (stripped := re.sub(pattern, "", html, count=1, flags=re.S)) != html:
-            html = stripped
-    # The strip is the instrument, so it is checked both ways: a row left in is a cost counted
+def priced(html: str) -> tuple[str, dict[str, list[str]]]:
+    """A node page split into the rows the arithmetic prices and the chrome it does not."""
+    rows: dict[str, list[str]] = {}
+    for name, pattern in PRICED_ROWS.items():
+        rows[name] = re.findall(pattern, html, flags=re.S)
+        html = re.sub(pattern, "", html, flags=re.S)
+    # The split is the instrument, so it is checked both ways: a row left in is a cost counted
     # twice, and a wrapper taken out hides part of the page this measures.
-    assert not values(html, "data-turn") and not values(html, "data-chip")
-    assert not values(html, "data-compaction")
-    assert 'id="session-header"' in html and 'id="timeline"' in html
-    return html
+    assert not values(html, "data-crumb") and not values(html, "data-tree")
+    assert not values(html, "data-child") and not values(html, "data-detail")
+    assert 'id="tree-rows"' in html and 'id="pane"' in html
+    return html, rows
 
 
-def test_a_session_page_of_nothing_but_escapes_carries_the_chrome_the_ceiling_budgets(
+def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     enriched_plant: Planter, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """What a session page holds outside its counted rows fits the allowance the ceiling gives it.
+    """Every part of a node page weighs no more than the arithmetic above gives it.
 
-    The header is the part of a page no size a reader types bounds: every string in it is one a
-    transcript wrote, and its two lists grow with the session — one recorded session opened 32
-    PRs, which alone was 6 KB of a 6 KB allowance. So the query cuts all of them, and this
-    measures what the cuts leave: `&` planted at every cap, on every session, because the widest
-    chrome belongs to whichever page carries an unattached list, a "+N more" turn link and a cut
-    compaction list as well as a header. The session's own enrichment sits in the header and is
-    planted with it — two more capped strings, and the only place `friction` reaches a page.
+    The node page is the one page `worst_node_bytes` multiplies four ways — a crumb per level
+    open, a tree row per child of each, a log row per child of the selection, and the values the
+    pane previews — so a template that grows any of them puts the ceiling out by whatever size
+    it is multiplied by. Every cap a label, a heading or a preview reads is planted full of `&`,
+    the character that escapes to five bytes, because no recorded node is adversarial: what a
+    pass wrote, and the prompt, command, agent type, model, tool name and tool payload a page
+    falls back to. The sweep is every node of every session, not one page: the widest chrome
+    belongs to whichever pane is dearest, and that is a question about the corpus.
     """
+    label = "&" * queries.CHIP_CHARS
     head = "&" * queries.HEADER_CHARS
-    # Distinct values that agree on their first `$item_chars` characters, which is what makes
-    # them the worst case: the list cuts to `$item_chars` of `&` a member, five bytes apiece.
+    # Longer than the widest cut any query makes, so every cut bites and every preview offers
+    # the rest of itself: what this weighs is the page at its caps, not at the corpus's sizes.
+    fat = "&" * (queries.DETAIL_CHARS + 1)
     item = "&" * queries.HEADER_ITEM_CHARS
     over = queries.HEADER_ITEMS + 2
     path = enriched_plant(
@@ -963,122 +691,60 @@ def test_a_session_page_of_nothing_but_escapes_carries_the_chrome_the_ceiling_bu
             " '2026-01-01T00:00:00Z' FROM sessions s, range(1, ?) t(i))",
             [item, over + 1],
         ),
-        # More compactions than a page renders, all before the first turn, so the line the
-        # marks cap mints is part of the chrome this measures too.
+        # What a turn's tree row, log row and pane read: the prompt is the pane's one preview
+        # and the row's label both, so it goes in at the wider of the two cuts.
         (
-            "INSERT INTO compactions (SELECT 'planted-' || i, s.id, 'main',"
-            " '1970-01-01T00:00:00Z', ?, 1, 1, 1 FROM sessions s, range(1, ?) t(i))",
-            ["&" * queries.CHIP_CHARS, bounds.MARKS + 2],
+            "UPDATE turns SET prompt = ?, command_name = ?, command_args = ?",
+            [fat, "&" * COMMAND_NAME_CHARS, "&" * COMMAND_ARGS_CHARS],
         ),
+        ("UPDATE agent_runs SET agent_type = ?, model = ?, description = ?", [label, label, fat]),
+        ("UPDATE api_calls SET model = ?, text = ?, thinking = ?", [label, fat, fat]),
+        ("UPDATE tool_calls SET name = ?, input = ?, result = ?", [label, fat, fat]),
         *DESCRIBED_AT_EVERY_CAP,
     )
-    sessions = [row[0] for row in store.execute("SELECT id FROM sessions").fetchall()]
     with TestClient(build_app(path)) as planted:
-        # Every session, at the defaults and at the widest single list a URL can ask for.
-        pages = [
-            planted.get(f"/session/{session_id}", params=sizes).text
-            for session_id in sessions
-            for sizes in ({}, {"turns": 1, "chips": bounds.CHIPS.ceiling})
-        ]
-    widest = max((chrome(page) for page in pages), key=lambda page: len(page.encode()))
-    assert len(widest.encode()) <= MEASURED_SESSION_CHROME
-    # The plant reached every cap on the page that measured worst, which is what makes the
-    # number a worst case: each string cut to its head, each list cut to its first members and
-    # saying how many it left, and the compaction cap's own line rendered.
-    facts = fields(widest, "id", "session-header")
-    assert len(facts["title"]) == len(facts["git_branch"]) == queries.HEADER_CHARS
-    assert facts["skills"].count(item) == queries.HEADER_ITEMS
-    assert facts["skills"].endswith("more") and facts["prs_cut"].startswith("and")
-    assert values(widest, "data-pr") == [item.replace("&", "&amp;")] * queries.HEADER_ITEMS
-    assert values(widest, "data-more-marks") != []
-    # The enrichment reached its own two caps as well, stale tag and all — the header holds a
-    # session's description and its friction, so both are part of what this measures.
-    described = fields(widest, "data-enrichment", values(widest, "data-enrichment")[0])
+        served = []
+        for url in pages(store):
+            response = planted.get(url)
+            assert response.status_code == 200, (url, response.text[:200])
+            served.append(response.text)
+    # The list and the two pages that are not nodes come back too; only a node page splits.
+    split = [priced(page) for page in served if 'id="tree-rows"' in page]
+    # A crumb, a tree row, a log row and a preview each weigh what the arithmetic budgets...
+    for name, budget in (
+        ("crumb", worst_crumb_bytes()),
+        ("tree", worst_tree_row_bytes()),
+        ("log", worst_log_row_bytes()),
+        ("detail", worst_detail_bytes()),
+    ):
+        found = [row for _, rows in split for row in rows[name]]
+        assert found, name
+        assert max(len(row.encode()) for row in found) <= budget, name
+    # ...and what the page carries whatever it holds fits the allowance the ceiling gives it.
+    widest = max((chrome for chrome, _ in split), key=lambda page: len(page.encode()))
+    assert len(widest.encode()) <= MEASURED_NODE_CHROME
+    # The plant reached the caps, which is what makes those numbers a worst case: each header
+    # string cut to its head, each list cut to its first members and saying how many it left,
+    # every tree label cut to a nav width, and every preview offering the rest of itself.
+    session = next(chrome for chrome, _ in split if 'data-body="session"' in chrome)
+    facts = fields(session, "data-body", "session")
+    assert len(facts["git_branch"]) == len(facts["version"]) == queries.HEADER_CHARS
+    escaped = {
+        found.count("&amp;")
+        for _, rows in split
+        for row in rows["tree"]
+        for found in re.findall(r'<span data-field="label">(.*?)</span>', row, flags=re.S)
+    }
+    # No label got past the cut, and one reached it. Not every row's label is planted — a
+    # bucket is named by the viewer and a compaction by its trigger — so the widest is what
+    # says the cut bit rather than every row being the same width.
+    assert max(escaped) == queries.NAV_CHARS
+    cuts = {row.count("more character(s)") for _, rows in split for row in rows["detail"]}
+    assert cuts == {1}
+    # The enrichment sits in the chrome, stale tag and all, so it is planted with the rest.
+    described = fields(session, "data-enrichment", values(session, "data-enrichment")[0])
     assert len(described["description"]) == len(described["friction"]) == queries.ENRICHMENT_CHARS
     assert described["stale"] == "stale"
-
-
-# What the map's arithmetic counts node by node, which chrome is the map without: the list of
-# nodes, and the list a node's children sit in. One pattern, because a node list nests inside a
-# node list and the unattached tail is one more of them.
-NAV_NODES = r'<ul class="nav">.*?</ul>'
-
-
-def map_chrome(html: str) -> str:
-    """A session's map with every node `worst_nav_node_bytes` counts separately taken out."""
-    while (stripped := re.sub(NAV_NODES, "", html, count=1, flags=re.S)) != html:
-        html = stripped
-    # The strip is the instrument, so it is checked both ways: a node left in is a cost counted
-    # twice, and the map taken out whole hides what this measures.
-    assert not values(html, "data-nav") and "<nav" in html
-    return html
-
-
-def test_a_session_map_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
-    enriched_plant: Planter, store: duckdb.DuckDBPyConnection
-) -> None:
-    """A node of the map beside a session page weighs no more than the arithmetic gives it.
-
-    The map is its own response and spends a ceiling of its own, so a template that grows a
-    node past its budget puts that ceiling out `bounds.NAV.ceiling` times over. Every cap a
-    label reads is planted full of `&` — the character that escapes to five bytes — because no
-    recorded label is adversarial: what a pass wrote, which is the arm a described store shows,
-    and the command and prompt an undescribed one falls back to. `SPINE` is the session that
-    measures it because its forest nests: a run under a turn, and a run under that run.
-    """
-    heads_full = "&" * queries.CHIP_CHARS
-    path = enriched_plant(
-        (
-            "UPDATE turns SET prompt = ?, command_name = ?, command_args = ? WHERE session_id = ?",
-            ["&" * PROMPT_CHARS, "&" * COMMAND_NAME_CHARS, "&" * COMMAND_ARGS_CHARS, SPINE],
-        ),
-        (
-            "UPDATE agent_runs SET agent_type = ?, description = ? WHERE session_id = ?",
-            [heads_full, heads_full, SPINE],
-        ),
-        # Every call but one loses its price, so each node renders the mark a total missing
-        # calls carries — and the one left priced keeps the session's whole above zero, so the
-        # shares beside those marks print as percentages rather than as the gap a zero whole is.
-        (
-            "UPDATE api_calls SET cost_usd = NULL WHERE session_id = ?"
-            " AND id != (SELECT max(id) FROM api_calls WHERE session_id = ?)",
-            [SPINE, SPINE],
-        ),
-        *DESCRIBED_AT_EVERY_CAP,
-    )
-    with TestClient(build_app(path)) as planted:
-
-        def served(nodes: int) -> str:
-            response = planted.get(f"/fragment/nav/{SPINE}", params={"nodes": nodes})
-            assert response.status_code == 200, response.text[:200]
-            return response.text
-
-        # `SPINE`'s first three nodes are turns, so one more of them is a turn node and
-        # nothing else. Its third turn spawned a run, and that run spawned another: the fifth
-        # node is the nested kind, which brings the `<details>` its siblings fold into.
-        pages = {nodes: served(nodes) for nodes in (2, 3, 4, 5)}
-        # The chrome is measured across every session rather than on `SPINE` alone: the widest
-        # belongs to whichever map carries a heading over the runs no turn holds as well as a
-        # cut tail, and `SPINE`'s forest hangs entirely off its turns.
-        sessions = [row[0] for row in store.execute("SELECT id FROM sessions").fetchall()]
-        maps = [
-            planted.get(f"/fragment/nav/{session_id}", params={"nodes": 2}).text
-            for session_id in sessions
-        ]
-    weights = {nodes: len(page.encode()) for nodes, page in pages.items()}
-    # A turn node costs its markup and a label of nothing but `&`...
-    assert weights[3] - weights[2] <= worst_nav_node_bytes()
-    # ...and a run node costs no more, measured where a run node is dearest.
-    assert weights[5] - weights[4] <= worst_nav_node_bytes()
-    # ...and what the map carries whatever it holds fits the allowance the ceiling gives it.
-    widest = max((map_chrome(one_map) for one_map in maps), key=lambda page: len(page.encode()))
-    assert len(widest.encode()) <= MEASURED_NAV_CHROME
-    # The plant reached the cap the map cuts a label to, which is what makes those numbers a
-    # worst case, and the cap bit and said by how much — a map that renders two nodes without
-    # saying how many it left out looks identical to a session of two.
-    labels = re.findall(r'<span data-field="label">(.*?)</span>', pages[2])
-    assert {label.count("&amp;") for label in labels} == {queries.NAV_CHARS}
-    assert fields(pages[2], "id", "nav-more")["cut"] == "4"
 
 
 def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
@@ -1282,10 +948,14 @@ def test_a_deeply_nested_value_is_served_at_the_size_it_was_stored(plant: Plante
         ("UPDATE raw_records SET raw = ? WHERE session_id = ?", [overflows_the_parser, ANCESTOR]),
     )
     with TestClient(build_app(path)) as planted:
-        tool = planted.get(f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}")
-        record = planted.get(f"/fragment/record/{ANCESTOR}/main/1")
-    # Each fragment answers, and weighs the values it names plus a page of chrome at most.
-    for response, stored in ((tool, 2 * len(indents_huge)), (record, len(overflows_the_parser))):
+        tool = f"/fragment/{{}}/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}"
+        fetched = [
+            (planted.get(tool.format("input")), len(indents_huge)),
+            (planted.get(tool.format("result")), len(indents_huge)),
+            (planted.get(f"/fragment/record/{ANCESTOR}/main/1"), len(overflows_the_parser)),
+        ]
+    # Each fragment answers, and weighs the value it names plus a page of chrome at most.
+    for response, stored in fetched:
         assert response.status_code == 200
         assert len(response.content) < stored + PAGE_BYTES
 
@@ -1295,15 +965,14 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
 ) -> None:
     """Every preview is truncated before it reaches a page, so no one huge value can bloat it.
 
-    The previews the viewer renders — a session's title and project on the list, a turn's
-    prompt or the command it ran on the session page, a run's own description, definition and
-    model on its page, an api call's text and model and a tool call's arguments in the turn
-    fragment — checked at once against one planted store. The
-    oversized values are invented: redaction flattened every recorded string to a few
-    characters, so no fixture reaches a cap.
+    The four widths the viewer cuts to, checked at once against one planted store: a list
+    row's, a tree row's label, a children log row's, and a pane's — a header's strings at one
+    cut and the one value it is about at another, wider one. The oversized values are
+    invented: redaction flattened every recorded string to a few characters, so no fixture
+    reaches a cap.
     """
-    # One turn of each kind, because a heading shows one arm or the other: a plain turn's
-    # prompt, and a slash turn's arguments.
+    # One turn of each kind, because a pane shows one arm or the other: a plain turn's prompt,
+    # and a slash turn's command with its arguments.
     turn_id, _ = one(
         store,
         "SELECT id, \"index\" FROM turns WHERE session_id = ? AND source = 'main'"
@@ -1317,7 +986,7 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
         [SPINE],
     )
     # Each value is planted well past its own cap, onto the real row a fixture recorded...
-    long = "x" * 5_000
+    long = "x" * (queries.DETAIL_CHARS + 5_000)
     path: Path = plant(
         ("UPDATE sessions SET title = ?, project_dir = ? WHERE id = ?", [long, long, SPINE]),
         ("UPDATE turns SET prompt = ? WHERE session_id = ? AND id = ?", [long, SPINE, turn_id]),
@@ -1330,14 +999,15 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
             [long, long, long, SPINE],
         ),
         ("UPDATE api_calls SET text = ?, model = ? WHERE session_id = ?", [long, long, ANCESTOR]),
-        ("UPDATE tool_calls SET input = ? WHERE session_id = ?", [long, FORK_ORIGIN]),
+        ("UPDATE tool_calls SET input = ?, name = ? WHERE session_id = ?", [long, long, ANCESTOR]),
     )
     with TestClient(build_app(path)) as planted:
         listing = planted.get("/sessions").text
-        page = planted.get(f"/session/{SPINE}").text
+        session = planted.get(f"/session/{SPINE}").text
+        turn = planted.get(f"/session/{SPINE}/turn/main/{turn_id}").text
+        slash = planted.get(f"/session/{SPINE}/turn/main/{command_id}").text
         run = planted.get(f"/session/{SPINE}/run/{SPINE_RUN}").text
-        turn = planted.get(f"/fragment/turn/{ANCESTOR}/main/{DENSE_TURN}").text
-        tools = planted.get(f"/fragment/tools/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}").text
+        call = planted.get(f"/session/{ANCESTOR}/call/main/{DENSE_TURN_CALL}").text
     # ...and what each of them shows is its cap, not the value. The list's cuts are the
     # viewer's own composition rather than its query's, because its filters read the whole
     # values — a project path cut to a head would match no session under a longer one.
@@ -1346,20 +1016,25 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # A path too long for the filter box to suggest whole is left out of it rather than cut:
     # half a path fills the filter in with a value that matches nothing.
     assert not [path for path in re.findall(r'<option value="([^"]*)"', listing) if "x" in path]
-    assert len(fields(page, "data-turn", turn_id)["prompt"]) == PROMPT_CHARS
-    # A slash turn's heading is cut the same way, in both the columns it reads.
-    command = fields(page, "data-turn", command_id)
-    assert len(command["command_name"]) == COMMAND_NAME_CHARS
-    assert len(command["command_args"]) == COMMAND_ARGS_CHARS
-    # A run page shows one run's strings and links to the rest, so the heads it shows are a
-    # header's rather than a chip's — the definition it ran under and its model with the
-    # description, because a page has no more idea what those hold than what a prompt does.
-    header = fields(run, "id", "run-header")
-    assert {len(header[field]) for field in ("description", "agent_type", "model")} == {
-        queries.HEADER_CHARS
-    }
-    # A call row is one of ten on a fragment, so its model is cut where a chip's strings are.
-    call = fields(turn, "data-api-call", DENSE_TURN_CALL)
-    assert len(call["text_head"]) == TEXT_CHARS
-    assert len(call["model"]) == queries.CHIP_CHARS
-    assert len(fields(tools, "data-tool-call", DENSE_TOOL)["input_head"]) == INPUT_CHARS
+    # A tree row is a line in a sidebar, so its label takes the narrowest cut of the four —
+    # the same one whatever kind of node the row stands for.
+    labels = re.findall(r'<span data-field="label">(.*?)</span>', session, flags=re.S)
+    assert max(len(label) for label in labels) == queries.NAV_CHARS
+    # A children log row is a line of a table, so it takes the next cut up.
+    log = re.findall(r"<li data-child=.*?</li>", session, flags=re.S)
+    assert (
+        max(len(field) for row in log for field in values(row, "data-field")) <= queries.LOG_CHARS
+    )
+    # A pane reads one node, so its strings take a header's cut — and the one value the node
+    # is about takes the widest of the four, with the rest of it offered as its own fetch.
+    assert len(fields(turn, "data-detail", "prompt")["prompt"]) == queries.DETAIL_CHARS
+    assert inside(turn, "data-detail", "prompt", "data-whole") == ["prompt"]
+    # A slash turn's own two strings are facts of its pane rather than the value it is about,
+    # so both take a header's cut instead.
+    command = fields(slash, "data-body", "turn")
+    assert len(command["command_name"]) == len(command["command_args"]) == queries.HEADER_CHARS
+    header = fields(run, "data-body", "run")
+    assert {len(header[field]) for field in ("agent_type", "model")} == {queries.HEADER_CHARS}
+    assert len(fields(run, "data-detail", "description")["description"]) == queries.DETAIL_CHARS
+    assert len(fields(call, "data-body", "call")["model"]) == queries.HEADER_CHARS
+    assert len(fields(call, "data-detail", "text")["text"]) == queries.DETAIL_CHARS

@@ -136,10 +136,14 @@ def test_every_number_the_offload_page_prints_carries_its_separators(
 def test_a_tool_call_links_to_the_file_its_result_went_to(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """A tool call whose result was offloaded reaches the file from the call's own fragment."""
+    """A tool call whose result was offloaded reaches the file from the call's own pane.
+
+    The pane says where the result went instead of showing an empty one, and that line is the
+    only link a tool's facts carry.
+    """
     (source,) = one(store, "SELECT source FROM tool_calls WHERE id = ?", [OFFLOAD_TOOL])
-    fragment = client.get(f"/fragment/tool/{CONFIG_ONLY}/{source}/{OFFLOAD_TOOL}").text
-    link = inside(fragment, "data-tool-value", OFFLOAD_TOOL, "href")
+    pane = client.get(f"/session/{CONFIG_ONLY}/tool/{source}/{OFFLOAD_TOOL}").text
+    link = inside(pane, "data-body", "tool", "href")
     assert link == [f"/session/{CONFIG_ONLY}/offload/{quote(OFFLOAD_FILE)}"]
     assert client.get(link[0]).status_code == 200
 
@@ -160,11 +164,11 @@ def test_a_name_needing_escaping_survives_the_round_trip(
         ("UPDATE tool_calls SET offload_file = ? WHERE id = ?", [awkward, OFFLOAD_TOOL]),
     )
     with TestClient(build_app(path)) as planted:
-        # The link the tool fragment renders is the one the test follows — built by the app,
+        # The link the tool pane renders is the one the test follows — built by the app,
         # not by the test, so a template that forgot to quote fails here.
         (source,) = one(store, "SELECT source FROM tool_calls WHERE id = ?", [OFFLOAD_TOOL])
-        fragment = planted.get(f"/fragment/tool/{CONFIG_ONLY}/{source}/{OFFLOAD_TOOL}").text
-        (link,) = inside(fragment, "data-tool-value", OFFLOAD_TOOL, "href")
+        pane = planted.get(f"/session/{CONFIG_ONLY}/tool/{source}/{OFFLOAD_TOOL}").text
+        (link,) = inside(pane, "data-body", "tool", "href")
         page = planted.get(link)
     assert page.status_code == 200
     assert fields(page.text, "data-offload", awkward)["name"] == awkward

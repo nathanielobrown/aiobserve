@@ -1,6 +1,6 @@
 -- One turn, whole: what was asked, when, and what answering it took. The header of a turn's
--- node page, so every string is cut at `$head_chars` and the whole length travels beside it
--- — a page shows the head and says how much more there is.
+-- node page, so what was typed is cut at `$detail_chars` with its whole length beside it — a
+-- pane shows the head and says how much more there is (`view_turn_prompt` has the rest).
 WITH call AS (
     SELECT * FROM live_api_calls
     WHERE session_id = $session_id AND source = $source AND turn_id = $turn_id
@@ -13,13 +13,15 @@ WITH call AS (
 SELECT
     t."index" AS turn_index,
     t.id AS turn_id,
-    substr(t.prompt, 1, $head_chars) AS prompt,
+    substr(t.prompt, 1, $detail_chars) AS prompt,
     length(t.prompt) AS prompt_chars,
     -- A slash turn's heading shows the command it ran and what followed it instead of the
     -- prompt, which still holds the tags Claude Code wrapped it in.
     substr(t.command_name, 1, $head_chars) AS command_name,
+    -- Cut at a fact row's width and not at the pane's: a slash turn's `prompt` holds the
+    -- whole `<command-…>` wrapper Claude Code built, arguments included, so the pane's one
+    -- value is still the prompt.
     substr(t.command_args, 1, $head_chars) AS command_args,
-    length(t.command_args) AS command_args_chars,
     t.started_at,
     t.ended_at,
     -- A replayed turn is one a resume re-read rather than one the model answered again.

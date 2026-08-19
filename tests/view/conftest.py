@@ -32,17 +32,48 @@ MISSING = "00000000-0000-0000-0000-000000000000"
 
 
 def pages(store: duckdb.DuckDBPyConnection) -> list[str]:
-    """Every page one store can serve — the list, every session, every run — as URLs."""
-    sessions = [row[0] for row in store.execute("SELECT id FROM sessions").fetchall()]
-    runs = store.execute("SELECT session_id, id FROM agent_runs").fetchall()
-    return (
-        ["/"]
-        + [f"/session/{session_id}" for session_id in sessions]
-        # The map is its own response, and the one surface that reads what a pass wrote to
-        # *name* a thing rather than to show it — a sweep of pages alone would miss it.
-        + [f"/fragment/nav/{session_id}" for session_id in sessions]
-        + [f"/session/{session_id}/run/{run_id}" for session_id, run_id in runs]
-    )
+    """Every page one store can serve — the list, and every node of every session it holds.
+
+    One URL per node the tree can reach, read from the store the way the routes read it, so a
+    sweep over this list is a sweep over the whole viewer rather than over the two pages that
+    used to exist. Every URL here answers 200: the two buckets are included only where the
+    store has something to put in them, because an empty bucket is a node that is not there.
+    """
+    urls = ["/"]
+    urls += [f"/session/{row[0]}" for row in store.execute("SELECT id FROM sessions").fetchall()]
+    kinds = {
+        "run": "SELECT session_id, NULL, id FROM live_agent_runs",
+        "turn": "SELECT session_id, source, id FROM live_turns",
+        "call": "SELECT session_id, source, id FROM live_api_calls",
+        "tool": "SELECT session_id, source, id FROM live_tool_calls",
+        "compaction": "SELECT session_id, source, id FROM live_compactions",
+    }
+    for kind, sql in kinds.items():
+        for session_id, source, node_id in store.execute(sql).fetchall():
+            # A run's own id is the thread it ran on, so its URL says it once.
+            tail = f"{node_id}" if source is None else f"{source}/{node_id}"
+            urls.append(f"/session/{session_id}/{kind}/{tail}")
+    # A thread's unattributed bucket exists where one of its calls answers no turn *of that
+    # thread* — a fork replays calls whose `turn_id` names a turn of the thread it forked from.
+    for session_id, source in store.execute(
+        "SELECT DISTINCT c.session_id, c.source FROM live_api_calls c"
+        " LEFT JOIN live_turns t ON t.session_id = c.session_id AND t.source = c.source"
+        "   AND t.id = c.turn_id"
+        " WHERE t.id IS NULL"
+    ).fetchall():
+        urls.append(f"/session/{session_id}/unattributed/{source}")
+    # And the session's unattached bucket exists where a run's spawning call resolves to
+    # nothing at all, which is the join `view_runs` makes, failing.
+    for (session_id,) in store.execute(
+        "SELECT DISTINCT a.session_id FROM live_agent_runs a"
+        " LEFT JOIN live_tool_calls tc ON tc.session_id = a.session_id"
+        "   AND tc.id = a.tool_use_id AND tc.source <> a.id"
+        " LEFT JOIN live_api_calls c ON c.session_id = a.session_id AND c.source = tc.source"
+        "   AND c.id = tc.api_call_id"
+        " WHERE c.id IS NULL"
+    ).fetchall():
+        urls.append(f"/session/{session_id}/unattached")
+    return urls
 
 
 @pytest.fixture(scope="session")
@@ -116,6 +147,22 @@ def plant(corpus_db: Path, tmp_path: Path) -> Planter:
 def enriched_plant(enriched_db: Path, tmp_path: Path) -> Planter:
     """Planted copies of the described corpus, for what a page shows beside an item."""
     return planter(enriched_db, tmp_path)
+
+
+# What `view_runs` joins, in the expectation's own SQL: a run against the api call that spawned
+# it, the turn that call answers *on the call's own thread*, and where the call sits in it.
+SPAWNS = (
+    'SELECT a.id, c.source, st.id, c.id, c."index" FROM live_agent_runs a'
+    " LEFT JOIN live_tool_calls tc ON tc.session_id = a.session_id AND tc.id = a.tool_use_id"
+    "  AND tc.source <> a.id"
+    " LEFT JOIN live_api_calls c ON c.session_id = a.session_id AND c.source = tc.source"
+    "  AND c.id = tc.api_call_id"
+    " LEFT JOIN live_turns st ON st.session_id = c.session_id AND st.source = c.source"
+    "  AND st.id = c.turn_id"
+    " WHERE a.session_id = ? ORDER BY a.started_at NULLS LAST, a.id"
+)
+# The same join keyed on one run, for a leaf about a single edge rather than a whole level.
+SPAWN_OF = SPAWNS.replace("a.session_id = ?", "a.id = ?")
 
 
 def one(

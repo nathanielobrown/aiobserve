@@ -82,62 +82,53 @@ td.title { max-width: 26rem; }
 td.title .secondary { display: -webkit-box; -webkit-box-orient: vertical;
   -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; margin: 0; }
 
-/* One session: the map on the left, the page it maps on the right. The sidebar scrolls on its
-   own, so a long session scrolls its timeline without losing the map, and the content column
-   is capped near a reading measure rather than filling whatever width the window has. */
-#session {
-  display: grid;
-  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
-  gap: 0 var(--space-4);
-  align-items: start;
-}
-#map { position: sticky; top: 0; max-height: 100vh; overflow: auto; }
-/* Where the map has a column of its own it is simply there, so its handle is noise. */
-#map > summary { display: none; }
-#content { min-width: 0; max-width: 52rem; }
-/* Narrow enough that two columns would leave neither readable: the map folds to a handle
-   above the page, which is a `<details>` and needs no script to open. */
-@media (max-width: 900px) {
-  #session { display: block; }
-  #map { position: static; max-height: none; overflow: visible; margin-bottom: var(--space-3); }
-  #map > summary { display: list-item; color: var(--dim); cursor: pointer; }
-  /* Open, but not at the length of the session: a 285-node map above the page it maps is a
-     screen of scrolling before the first turn. Half the viewport, scrolled inside itself, so
-     the handle and the page underneath stay in reach — and the handle still closes it. */
-  #map > .page { max-height: 50vh; overflow: auto; }
-  #content { max-width: none; }
-}
-
-/* The map. One node a line, monospaced at the label step so a name's cut and the numbers after
-   it line up down the column — the sidebar is scanned rather than read. */
-nav.map, #tree { font-family: ui-monospace, monospace; font-size: var(--type-label);
-  line-height: 1.6; }
-ul.nav { margin: 0; padding-left: var(--space-2); list-style: none; }
-nav.map > ul.nav { padding-left: 0; }
+/* The node browser: the tree a reader walks on the left, the node they are reading on the
+   right. The tree is one flat list — a click swaps the whole of it out of band — so a row's
+   place in the hierarchy is drawn from `data-depth` rather than from nesting. The ladder
+   stops at the depths a chain reaches today; it grows with the kinds that get pages. */
+#browser { display: grid; grid-template-columns: minmax(16rem, 24rem) minmax(0, 1fr);
+  gap: var(--space-4); align-items: start; }
+/* The tree scrolls on its own, so a deep session scrolls its rows without losing the pane
+   beside them. Monospaced at the label step, because a name's cut and the numbers after it
+   line up down the column: the tree is scanned rather than read. */
+#tree { position: sticky; top: var(--space-2); max-height: calc(100vh - 4rem); overflow: auto;
+  font-family: ui-monospace, monospace; font-size: var(--type-label); line-height: 1.6; }
+#tree-rows { margin: 0; padding: 0; list-style: none; }
+li.row[data-depth="1"] > a { padding-left: var(--space-3); }
+li.row[data-depth="2"] > a { padding-left: var(--space-4); }
+li.row[data-depth="3"] > a { padding-left: calc(2 * var(--space-4)); }
+/* A row is one line: what the node is on the left, what it cost on the right, and a label too
+   long for the column cut rather than wrapped. */
 li.node > a {
   display: flex; justify-content: space-between; gap: var(--space-2);
   padding: 0 var(--space-1); color: inherit; text-decoration: none;
 }
 li.node [data-field="label"] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-nav.map .secondary, #tree .secondary { color: var(--dim); white-space: nowrap; }
-/* Emphasis is the whole point of a server-rendered map: the turns on the page the reader is
-   looking at read at full strength, everything a click away recedes. */
-li.node.here > a { font-weight: 600; }
-li.node.away > a { color: var(--dim); }
+#tree .secondary, .tie { color: var(--dim); white-space: nowrap; }
 li.node > a:hover { background-color: color-mix(in srgb, var(--mark) 12%, transparent); }
-/* A run's own runs arrive folded — a forest opened by default is a wall, not a map. */
-details.under > summary { color: var(--dim); cursor: pointer; padding-left: var(--space-2); }
-nav.map h3 { margin: var(--space-2) 0 var(--space-1); font-size: var(--type-label);
-  color: var(--dim); }
-#nav-more { margin: var(--space-1) 0; color: var(--dim); }
+/* The row the pane is about, held at full strength while everything around it recedes. */
+li.row[data-selected] > a { font-weight: 600;
+  background-color: color-mix(in srgb, var(--mark) 12%, transparent); }
+li.row.more { color: var(--dim); }
+/* Where a node sits, above the node itself. Separators between the steps rather than around
+   them, so the trail reads as one line. */
+.crumbs a + a::before { content: "/"; color: var(--dim); margin: 0 var(--space-1); }
+#pane .log ul { margin: 0; padding: 0; list-style: none; }
+#pane .log li { display: flex; gap: var(--space-3); color: var(--dim); }
 
-/* The spend meter: a bar along the bottom of each node over a track the node's full width,
-   its length the node's step of what the session spent. The track is what keeps a lone mark
-   under a line of text from reading as the link underline these anchors do not have, and
-   what makes a short bar a proportion rather than a stray. A class per step and not an
-   inline width, because the policy blocks a `style` attribute. The steps are logarithmic
-   (`view/threads.py`), so each rule below is a tenth of the bar and not a tenth of a
-   session. */
+/* Narrow enough that two columns would leave neither readable: the tree folds above the pane
+   and is scrolled inside itself, so the node stays in reach. */
+@media (max-width: 900px) {
+  #browser { display: block; }
+  #tree { position: static; max-height: 50vh; margin-bottom: var(--space-3); }
+}
+
+/* The spend meter: a bar along the bottom of each row over a track the row's full width, its
+   length the node's step of what the session spent. The track is what keeps a lone mark under
+   a line of text from reading as the link underline these anchors do not have, and what makes
+   a short bar a proportion rather than a stray. A class per step and not an inline width,
+   because the policy blocks a `style` attribute. The steps are logarithmic (`view/nodes.py`),
+   so each rule below is a tenth of the bar and not a tenth of a session. */
 li.node > a {
   background-image: linear-gradient(var(--mark), var(--mark)),
                     linear-gradient(var(--line), var(--line));
@@ -156,60 +147,28 @@ li.node.s8 > a { background-size: 80% 3px, 100% 3px; }
 li.node.s9 > a { background-size: 90% 3px, 100% 3px; }
 li.node.s10 > a { background-size: 100% 3px, 100% 3px; }
 
-/* The node browser: the tree a reader walks on the left, the node they are reading on the
-   right. The tree is one flat list — a click swaps the whole of it out of band — so a row's
-   place in the hierarchy is drawn from `data-depth` rather than from nesting. The ladder
-   stops at the depths a chain reaches today; it grows with the kinds that get pages. */
-#browser { display: grid; grid-template-columns: minmax(16rem, 24rem) minmax(0, 1fr);
-  gap: var(--space-4); align-items: start; }
-#tree { position: sticky; top: var(--space-2); max-height: calc(100vh - 4rem); overflow: auto; }
-#tree-rows { margin: 0; padding: 0; list-style: none; }
-li.row[data-depth="1"] > a { padding-left: var(--space-3); }
-li.row[data-depth="2"] > a { padding-left: var(--space-4); }
-li.row[data-depth="3"] > a { padding-left: calc(2 * var(--space-4)); }
-/* The row the pane is about, held at full strength while everything around it recedes — the
-   same emphasis rule the map reads by. */
-li.row[data-selected] > a { font-weight: 600;
-  background-color: color-mix(in srgb, var(--mark) 12%, transparent); }
-li.row.more { color: var(--dim); }
-/* Where a node sits, above the node itself. Separators between the steps rather than around
-   them, so the trail reads as one line. */
-.crumbs a + a::before { content: "/"; color: var(--dim); margin: 0 var(--space-1); }
-#pane .log ul { margin: 0; padding: 0; list-style: none; }
-#pane .log li { display: flex; gap: var(--space-3); color: var(--dim); }
-
-@media (max-width: 900px) {
-  #browser { display: block; }
-  #tree { position: static; max-height: 50vh; margin-bottom: var(--space-3); }
-}
-
-/* One session's timeline. The header's four clusters sit side by side while there is room:
-   what this session was, when it ran, how much it did, and what it cost. */
-#session-header { display: flex; flex-wrap: wrap; align-items: start; gap: 0 var(--space-4); }
-#session-header h1 { flex: 1 0 100%; margin: var(--space-2) 0 0; }
-#session-header dl { margin: var(--space-2) 0; min-width: 8rem; }
-/* Identity holds the long strings — a session id, a repository path — so it takes the room
-   the three clusters of numbers beside it do not need. */
-#session-header dl[data-cluster="identity"] { flex: 1 1 20rem; overflow-wrap: anywhere; }
-#session-header dl > div { margin-bottom: var(--space-1); }
-#session-header .prs, #session-header section.enrichment { flex: 1 0 100%; }
-/* A run's header is one cluster and not four — its facts flow rather than stacking — but a
-   fact reads the same on either page: a dim label over the value it names. */
-#run-header dl { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3);
+/* The pane. A node's facts flow rather than stacking — a pane is one node, not four clusters
+   of them — and a fact reads the same on every kind's page: a dim label over the value it
+   names. Identifiers and paths break anywhere, because a session id has nowhere else to. */
+.facts { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3);
   margin: var(--space-2) 0; }
-#session-header dt, #run-header dt { color: var(--dim); font-size: var(--type-label); }
-#session-header dd, #run-header dd { margin: 0; font-variant-numeric: tabular-nums; }
-article[data-turn] { border-top: 1px solid var(--line); padding: var(--space-2) 0; }
-article[data-turn] h2 { margin: 0 0 var(--space-1); font-weight: 600; white-space: pre-wrap; }
-/* The command a slash turn ran, ahead of what was typed after it. Marked rather than merely
-   bold: the heading's two arms read differently, and the badge says which one this is. */
-.command { color: var(--mark); font-family: ui-monospace, monospace; }
+.facts dt { color: var(--dim); font-size: var(--type-label); }
+.facts dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+/* One of the node's own values, cut to the pane's width. Its name reads as a label and not
+   as a heading — the pane's one heading is the node — and the value itself wraps: the reader
+   opened it to read it, and a tool input is not a column of a table. */
+.detail h3 { margin: var(--space-2) 0 var(--space-1); font-size: var(--type-label);
+  color: var(--dim); }
+.detail pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: var(--space-1) 0; }
+/* The pull requests a session's commands touched — a list a reader follows off the page. */
+ul.prs { margin: var(--space-2) 0; padding: 0; list-style: none; overflow-wrap: anywhere; }
+/* The way down to the bytes: the thread's transcript, and the one line this node was read
+   from. Quiet, because it is the exit from the page rather than the page. */
+.raw { color: var(--dim); }
+.raw > summary { cursor: pointer; }
+
+/* A row of counts under a heading, on the pages built out of one list. */
 .numbers { margin: 0; color: var(--dim); display: flex; gap: var(--space-3); }
-.compaction { border-top: 1px dashed var(--line); padding: var(--space-1) 0; color: var(--dim); }
-.compaction span { margin-right: var(--space-3); }
-ul.runs { margin: var(--space-1) 0 0; padding-left: var(--space-3); }
-ul.runs li { list-style: none; }
-.fork { color: var(--dim); font-size: var(--type-label); }
 
 /* What an enrichment pass said, beside what the store recorded. Dimmed throughout: these are
    a model's words about the transcript, and the transcript is what a reader came for. */
@@ -239,7 +198,7 @@ ol.records li:target { background: color-mix(in srgb, var(--mark) 12%, transpare
 
 /* What failed. The alarm is spent on the tool call that returned an error and on the status an
    error page leads with, and nowhere else — a page of red says nothing about where to look. */
-[data-field="is_error"], li.error > .tool, #error h1 { color: var(--bad); }
+[data-field="is_error"], #error h1 { color: var(--bad); }
 
 /* Footers and error pages. */
 #citation { border-top: 1px solid var(--line); padding: var(--space-2) var(--space-3);

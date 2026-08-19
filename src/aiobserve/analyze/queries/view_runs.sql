@@ -32,11 +32,21 @@ SELECT
     -- The thread the spawning call was made from, and the turn inside it. A run spawned from
     -- another run resolves to a turn of that run's timeline, not of `main`.
     c.source AS spawn_source,
-    c.turn_id AS spawn_turn_id
+    st.id AS spawn_turn_id,
+    -- The call itself, which is where the run hoists: a run renders after the api call that
+    -- spawned it, under whichever node that call sits in, and the tie names the call by its
+    -- index in the thread.
+    c.id AS spawn_call_id,
+    c."index" AS spawn_call_index
 FROM live_agent_runs a
 LEFT JOIN live_tool_calls tc
     ON tc.session_id = a.session_id AND tc.id = a.tool_use_id AND tc.source <> a.id
 LEFT JOIN live_api_calls c
     ON c.session_id = a.session_id AND c.source = tc.source AND c.id = tc.api_call_id
+-- The turn the spawning call answers, resolved on the call's own thread. A fork's transcript
+-- replays calls whose `turn_id` names a turn of its parent, so the raw column can name a turn
+-- this thread does not hold; the tree would then hang the run off a node no level renders.
+LEFT JOIN live_turns st
+    ON st.session_id = c.session_id AND st.source = c.source AND st.id = c.turn_id
 WHERE a.session_id = $session_id
 ORDER BY a.started_at NULLS LAST, a.id;

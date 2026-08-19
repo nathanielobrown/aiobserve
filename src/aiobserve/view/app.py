@@ -7,16 +7,22 @@ open, and what makes a locked store a 503 rather than a crash.
 
 The pages are built from library queries (`analyze/queries/`) — the viewer composes sort and
 filter *around* a query's SELECT (`view/listing.py`) and binds every user-supplied value as a
-parameter, so no request text ever reaches SQL. How a session's runs and turns fit together
-is `view/threads.py`; this module is the URLs and the templates they render.
+parameter, so no request text ever reaches SQL.
+
+Every node of a session — the session, a turn, a run, an api call, a tool call, a compaction,
+and each of the two buckets — has a URL, and all eight serve the same response: the tree with
+the path to that node open, beside the pane that reads it. `browse` is that response; a route
+supplies only what its own kind needs (`view/nodes.py` for the vocabulary, `view/tree.py` for
+where a node sits and what hangs under it).
 """
 
 import datetime as dt
 import socket
 import webbrowser
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, NamedTuple
+from urllib.parse import urlencode
 
 import duckdb
 import uvicorn
@@ -30,9 +36,9 @@ from aiobserve.analyze import queries
 from aiobserve.analyze.queries import ParamValue
 from aiobserve.export.duckdb import SCHEMA_VERSION
 from aiobserve.model import MAIN_SOURCE
-from aiobserve.view import bounds, render, tree
+from aiobserve.view import bounds, nodes, render, tree
 from aiobserve.view import format as fmt
-from aiobserve.view.enrichment import described, enriched
+from aiobserve.view.enrichment import Described, Descriptions, described, enriched
 from aiobserve.view.labels import label
 from aiobserve.view.listing import (
     ARIA_SORT,
@@ -48,33 +54,20 @@ from aiobserve.view.listing import (
     narrowing,
     sorted_sessions,
 )
+from aiobserve.view.nodes import Kind, Ref, Shape
 from aiobserve.view.store import (
+    TURN_CURSOR,
     Fragment,
-    Library,
     Page,
     Paged,
+    Row,
     SchemaMoved,
     StoreLocked,
     Value,
-    cursorless_rows,
     open_store,
     page_rows,
     paged,
-    thread_outline,
     window,
-)
-from aiobserve.view.threads import (
-    TURN_CURSOR,
-    ancestry,
-    capped,
-    children,
-    cut_to,
-    marks_on_page,
-    nav_tree,
-    on_page,
-    permalink,
-    session_threads,
-    timeline,
 )
 
 # Loopback only, and a port unlikely to be taken. Fixed rather than picked at startup so a
@@ -92,15 +85,112 @@ STATIC = _PACKAGE / "static"
 CSP = "default-src 'self'"
 
 
-class ToolCalls(NamedTuple):
-    """One page of tool calls and the query line that produced it.
+# The three sizes a node URL can name, at the value a link that names none is served at.
+# Every href a node page mints carries whatever is *not* one of these (`knobs`), so a reader
+# who narrowed the tree keeps it narrowed as they walk, and an ordinary link stays short.
+KNOB_DEFAULTS = {
+    "kin": bounds.KIN.default,
+    "log": bounds.LOG.default,
+    "detail": bounds.DETAIL.default,
+}
 
-    The citation travels with the rows because the list is rendered twice — nested under a
-    call and served on its own — and a page cites what it ran.
+
+class Detail(NamedTuple):
+    """One fat column of a node as its pane shows it: the head, and the way to the rest.
+
+    A pane never decides how much of a value it shows — the head is cut in SQL at the
+    `?detail=` the request asked for, and `cut` is what that left for the link to offer.
     """
 
-    page: Paged
-    citation: str
+    name: str
+    head: str
+    cut: int
+    url: str
+
+
+class LogRow(NamedTuple):
+    """One row of a pane's children log: the node it links to, beside the row it reads."""
+
+    node: nodes.Node
+    row: Row
+
+
+class Seen(NamedTuple):
+    """What one node's own reads answered, whatever kind of node it is.
+
+    `trail` is what the node already knows about where it sits, innermost last — a call and a
+    tool name their turn in their own header, so neither costs a read to place; `tree.ancestry`
+    resolves the rest. A kind that reads no children answers `Shape.NONE` and no rows.
+    """
+
+    header: Row
+    trail: list[Ref]
+    shape: Shape
+    rows: list[LogRow]
+    # How many children the log's page left behind, and the cursor the next one resumes at.
+    more: int
+    after: int | None
+    details: list[Detail]
+    # The transcript line the node was read from, where the store archived one. Only a turn
+    # has one: `turns.id` is a record's `uuid`, which is the store's own join down to the
+    # bytes Claude Code wrote.
+    record: int | None
+    ran: tree.Ran
+
+
+# What one node route does beyond the reads every node page makes: its own header, its trail,
+# and its children log. The session header is passed in because every page reads it already.
+Reader = Callable[[duckdb.DuckDBPyConnection, tree.Corpus, Row], Seen]
+
+
+def knobs(kin: int, log: int, detail: int) -> str:
+    """The query string every link on a node page carries: whatever is not a default."""
+    given = {
+        name: value
+        for name, value in (("kin", kin), ("log", log), ("detail", detail))
+        if value != KNOB_DEFAULTS[name]
+    }
+    return f"?{urlencode(given)}" if given else ""
+
+
+def continued(url: str, marks: str, after: int) -> str:
+    """Where a children log's "+N more" goes: this same node, one page further on."""
+    return f"{url}{marks}{'&' if marks else '?'}after={after}"
+
+
+def detail_of(name: str, head: str | None, chars: int | None, url: str) -> Detail | None:
+    """One fat column as a pane shows it, or None where the store holds nothing under it."""
+    if not head:
+        return None
+    return Detail(name, head, (chars or 0) - len(head), url)
+
+
+def sliced(items: Sequence[Row], after: int, size: int) -> Paged:
+    """A page of rows already in memory, cut the way a query's keyset cuts one.
+
+    The unattached runs are the case: they arrive with the session's runs, which every level of
+    the tree needs anyway, so paging them is slicing rather than a second read. `after` is the
+    position of the last row already shown, which is what every other `?after=` means too.
+    """
+    start = max(after + 1, 0)
+    rows = list(items[start : start + size])
+    behind = max(len(items) - start - len(rows), 0)
+    return Paged(rows, behind, start + len(rows) - 1 if behind else None)
+
+
+def described_node(descriptions: Descriptions, node: nodes.Node) -> Described | None:
+    """What an enrichment pass said about the node a pane is about, when it said anything.
+
+    Three of the eight kinds are describable, and the pass keys turns by thread — which is the
+    thread the page was read for, so the selection is always in reach of its own description.
+    """
+    if node.kind is Kind.SESSION:
+        return descriptions.session
+    if node.kind is Kind.TURN:
+        return descriptions.turns.get(node.node_id)
+    if node.kind is Kind.RUN:
+        return descriptions.runs.get(node.node_id)
+    return None
 
 
 def project_link(project_dir: str | None) -> str | None:
@@ -171,11 +261,8 @@ def build_app(db_path: Path) -> FastAPI:
         "link": render.link,
     }
 
-    # The one link two surfaces mint — the timeline's permalink and the map's out-of-window
-    # node — so the cursor rule lives in one place and both go to the same page.
-    # The namespace is typed by what Jinja seeds it with, which is why the assignment needs a
-    # word: a global is any callable a template can name.
-    templates.env.globals["permalink"] = permalink  # pyrefly: ignore
+    # What a page calls each field it prints. The namespace is typed by what Jinja seeds it
+    # with, which is why the assignment needs a word: a global is any callable a template names.
     templates.env.globals["label"] = label  # pyrefly: ignore
 
     def error(request: Request, status: int, message: str) -> Response:
@@ -351,202 +438,186 @@ def build_app(db_path: Path) -> FastAPI:
             },
         )
 
-    def turn_lines(
-        connection: duckdb.DuckDBPyConnection, session_id: str, source: str
-    ) -> dict[str, int]:
-        """Which transcript line each of a thread's turns was read from, keyed by turn id.
+    def browse(
+        request: Request,
+        session_id: str,
+        source: str,
+        kin: int,
+        log: int,
+        detail: int,
+        after: int,
+        read: Reader,
+    ) -> Response:
+        """One node page: the tree with the path to the node open, beside the pane reading it.
 
-        A turn whose record the store does not hold is absent rather than mapped to nothing,
-        so a template can ask `lines.get(turn_id)` and get a link or no link.
+        Every kind serves through here, because a node page is one response whatever the node
+        is. `source` is the thread the enrichment is read for — `view_enrichment` keys turns by
+        thread, and the tree spans the session, so a turn on another thread falls back to its
+        prompt. What differs per kind is `read`, which answers the node's own header, where it
+        sits, and what its children log lists, and 404s when the node is not in the store.
         """
-        return {
-            row["turn_id"]: row["line_no"]
-            for row in page_rows(
-                connection, Page.TURN_RECORDS, session_id=session_id, source=source
-            )
+        checked(kin, bounds.KIN.ceiling)
+        checked(log, bounds.LOG.ceiling)
+        checked(detail, bounds.DETAIL.ceiling)
+        keyed: dict[str, ParamValue] = {"session_id": session_id}
+        header_bound = keyed | {
+            "head_chars": queries.HEADER_CHARS,
+            "item_chars": queries.HEADER_ITEM_CHARS,
+            "head_items": queries.HEADER_ITEMS,
         }
+        runs_bound = keyed | {"chip_chars": queries.NAV_CHARS}
+        with open_store(resolved) as connection:
+            head = page_rows(connection, Page.SESSION_HEADER, **header_bound)
+            if not head:
+                raise HTTPException(404, "No session with that id is in this store.")
+            # The session's runs whole, once: a run is placed by the call that spawned it
+            # rather than by the thread it ran on, so any level of the tree may need any of
+            # them, and both buckets are defined against the same set.
+            corpus = tree.Corpus(
+                session_id=session_id,
+                whole=head[0]["cost_usd"] or 0,
+                runs=page_rows(connection, Page.RUNS, **runs_bound),
+                described=described(connection, session_id, source),
+                source=source,
+            )
+            seen = read(connection, corpus, head[0])
+            built = tree.tree(
+                connection,
+                corpus,
+                nodes.session_node(head[0], corpus.described),
+                tree.ancestry(corpus, seen.trail),
+                kin,
+            )
+        # A cursor past the last child and a node that never had one are the same answer. The
+        # first page is not: a node with no children still has its own facts to show.
+        if after != queries.FIRST_PAGE and not seen.rows:
+            raise HTTPException(404, "This node has no children after that one.")
+        selection = built.chain[-1]
+        ran: tree.Ran = [
+            (Page.SESSION_HEADER, header_bound),
+            (Page.RUNS, runs_bound),
+            *seen.ran,
+            *built.ran,
+        ]
+        # Only when the store held the tables to ask: a page cites what it ran, and over an
+        # un-enriched store this query is not one of them.
+        if corpus.described.queried:
+            ran.append((Page.ENRICHMENT, keyed | {"source": source}))
+        marks = knobs(kin, log, detail)
+        return templates.TemplateResponse(
+            request,
+            "node.html",
+            {
+                "selection": selection,
+                "chain": built.chain,
+                "rows": built.rows,
+                "header": seen.header,
+                "enrichment": described_node(corpus.described, selection),
+                "details": seen.details,
+                # The bytes behind the node: the thread's transcript, and — for a turn — the
+                # one line it was read from.
+                "source": source,
+                "record": seen.record,
+                "shape": seen.shape,
+                "log": seen.rows,
+                "more": seen.more,
+                "next": (
+                    continued(selection.url, marks, seen.after) if seen.after is not None else None
+                ),
+                # What every href on the page carries, so a click serves the URL it displays.
+                "suffix": marks,
+                "citations": {named.value: queries.citation(named, bound) for named, bound in ran},
+            },
+        )
+
+    def turn_log(corpus: tree.Corpus, source: str, rows: list[Row]) -> list[LogRow]:
+        """A page of one thread's digest as a children log reads it: a row per turn."""
+        return [
+            LogRow(
+                nodes.turn_node(
+                    corpus.session_id,
+                    source,
+                    row,
+                    corpus.whole,
+                    corpus.turn_text(source, row["turn_id"]),
+                ),
+                row,
+            )
+            for row in rows
+        ]
+
+    def call_log(
+        connection: duckdb.DuckDBPyConnection,
+        corpus: tree.Corpus,
+        source: str,
+        turn_id: str | None,
+        after: int,
+        log: int,
+    ) -> tuple[Paged, list[LogRow], tree.Ran]:
+        """One page of the api calls under a turn — or, at `turn_id` NULL, under a bucket.
+
+        One function for both because the two differ by that binding alone, which is the same
+        rule the tree's level reads by: a call answering no turn sits in its thread's bucket.
+        """
+        bound: dict[str, ParamValue] = {
+            "session_id": corpus.session_id,
+            "source": source,
+            "turn_id": turn_id,
+            "after": after,
+            "page_calls": log,
+            "log_chars": queries.LOG_CHARS,
+        }
+        page = paged(
+            page_rows(connection, Fragment.TURN_CALLS, **bound), "matched_api_calls", "call_index"
+        )
+        rows = [
+            LogRow(nodes.call_node(corpus.session_id, source, row, corpus.whole), row)
+            for row in page.rows
+        ]
+        return page, rows, [(Fragment.TURN_CALLS, bound)]
+
+    def run_log(corpus: tree.Corpus, rows: list[Row]) -> list[LogRow]:
+        """A list of agent runs as a children log reads it: a row per run."""
+        return [
+            LogRow(
+                nodes.run_node(
+                    corpus.session_id, row, corpus.whole, corpus.run_text(row["run_id"])
+                ),
+                row,
+            )
+            for row in rows
+        ]
 
     @app.get("/session/{session_id}")
     def session_page(
         request: Request,
         session_id: str,
+        kin: int = bounds.KIN.default,
+        log: int = bounds.LOG.default,
+        detail: int = bounds.DETAIL.default,
         after: int = queries.FIRST_PAGE,
-        turns: int = bounds.TURNS.default,
-        chips: int = bounds.CHIPS.default,
     ) -> Response:
-        """One page of a session's timeline: its turns in order, with the runs they spawned.
+        """A session's own node: what it was, and its main thread as the tree's first level.
 
         `after` is *the last turn index already shown*, the records browser's semantics — so
-        the turn at index N opens on `?after={N - 1}`, first row on the page. The two sizes
-        multiply, which is why their product is checked as well as each of them.
+        the turn at index N is the first row of `?after={N - 1}`.
         """
-        checked(turns, bounds.TURNS.ceiling)
-        checked(chips, bounds.CHIPS.ceiling)
-        # The unattached list is a list of `chips` like a turn's, and it rides every page.
-        if (turns + 1) * chips > bounds.CHIP_BUDGET:
-            raise HTTPException(
-                400, f"Ask for at most {bounds.CHIP_BUDGET} run rows a page: (turns + 1) × chips."
-            )
-        with open_store(resolved) as connection:
-            header = page_rows(
-                connection,
-                Page.SESSION_HEADER,
-                session_id=session_id,
-                head_chars=queries.HEADER_CHARS,
-                item_chars=queries.HEADER_ITEM_CHARS,
-                head_items=queries.HEADER_ITEMS,
-            )
-            if not header:
-                raise HTTPException(404, "No session with that id is in this store.")
-            page = window(
-                connection, Page.TIMELINE, TURN_CURSOR, after, turns, session_id=session_id
-            )
-            outline = thread_outline(connection, Page.TIMELINE, TURN_CURSOR, session_id=session_id)
-            # The row for calls under no turn has no index to window on, so it rides the last
-            # page — where the unpaged digest puts it.
-            tail = (
-                cursorless_rows(
-                    connection,
-                    Page.TIMELINE,
-                    TURN_CURSOR,
-                    bounds.CURSORLESS_TURNS,
-                    session_id=session_id,
-                )
-                if page.after is None
-                else []
-            )
-            runs = page_rows(
-                connection, Page.RUNS, session_id=session_id, chip_chars=queries.CHIP_CHARS
-            )
-            markers = page_rows(
-                connection,
-                Page.COMPACTIONS,
-                session_id=session_id,
-                source=MAIN_SOURCE,
-                chip_chars=queries.CHIP_CHARS,
-            )
-            lines = turn_lines(connection, session_id, MAIN_SOURCE)
-            enrichment = described(connection, session_id, MAIN_SOURCE)
-        # A cursor past the last turn and a thread that was never there are the same answer.
-        # Page one is not: a session with no turns of its own still has its header and spend.
-        if after != queries.FIRST_PAGE and not page.rows:
-            raise HTTPException(404, "This session has no turns after that one.")
-        rows = page.rows + tail
-        keyed: dict[str, ParamValue] = {"session_id": session_id}
-        at_source = keyed | {"source": MAIN_SOURCE}
-        # What each query on this page was bound with, defaulting to the session key. The
-        # digest's entry carries what the viewer composed around it, which is as much a part
-        # of what produced the page as a bound parameter is.
-        bound: dict[Page, dict[str, ParamValue]] = {
-            Page.COMPACTIONS: at_source,
-            Page.TURN_RECORDS: at_source,
-            Page.ENRICHMENT: at_source,
-            Page.TIMELINE: keyed | {"after": after, "limit": turns},
-        }
-        threads = session_threads(
-            rows,
-            [row["turn_id"] for row in outline],
-            runs,
-            marks_on_page(markers, outline, rows),
-            chips,
-            bounds.MARKS,
-        )
-        return templates.TemplateResponse(
-            request,
-            "session.html",
-            {
-                "header": header[0],
-                "main": MAIN_SOURCE,
-                # What the sidebar asks the map for: the window this page rendered.
-                "after": after,
-                "timeline": threads.entries,
-                "unattached": threads.unattached,
-                "marks": threads.marks,
-                "lines": lines,
-                "enrichment": enrichment,
-                "page": page,
-                # What the page's own links carry: the sizes it was served at, and the widest
-                # one list may be — the size a "+N more" link asks for.
-                "sizes": {"turns": turns, "chips": chips, "widest": bounds.CHIPS.ceiling},
-                "citations": {
-                    named.value: queries.citation(named, bound.get(named, keyed))
-                    for named in (
-                        Page.SESSION_HEADER,
-                        Page.TIMELINE,
-                        Page.RUNS,
-                        Page.COMPACTIONS,
-                        Page.TURN_RECORDS,
-                        # Only when the store held the tables to ask: a page cites what it
-                        # ran, and over an un-enriched store this query is not one of them.
-                        *((Page.ENRICHMENT,) if enrichment.queried else ()),
-                    )
-                },
-            },
-        )
 
-    @app.get("/session/{session_id}/run/{run_id}")
-    def run_page(request: Request, session_id: str, run_id: str) -> Response:
-        with open_store(resolved) as connection:
-            header = page_rows(
-                connection,
-                Page.RUN_HEADER,
-                session_id=session_id,
-                run_id=run_id,
-                head_chars=queries.HEADER_CHARS,
+        def read(connection: duckdb.DuckDBPyConnection, corpus: tree.Corpus, head: Row) -> Seen:
+            page = window(connection, Page.TIMELINE, TURN_CURSOR, after, log, session_id=session_id)
+            return Seen(
+                header=head,
+                trail=[Ref(Kind.SESSION, None, session_id)],
+                shape=Shape.TURNS,
+                rows=turn_log(corpus, MAIN_SOURCE, page.rows),
+                more=page.more,
+                after=page.after,
+                details=[],
+                record=None,
+                ran=[(Page.TIMELINE, {"session_id": session_id, "after": after, "limit": log})],
             )
-            if not header:
-                raise HTTPException(404, "No run with that id is in this session.")
-            turns = page_rows(connection, Page.RUN_TIMELINE, session_id=session_id, source=run_id)
-            # The session's runs, not this one's: the trail above the run and the runs under
-            # it are both read off the same set of links.
-            runs = page_rows(
-                connection, Page.RUNS, session_id=session_id, chip_chars=queries.CHIP_CHARS
-            )
-            markers = page_rows(
-                connection,
-                Page.COMPACTIONS,
-                session_id=session_id,
-                source=run_id,
-                chip_chars=queries.CHIP_CHARS,
-            )
-            lines = turn_lines(connection, session_id, run_id)
-            enrichment = described(connection, session_id, run_id)
-        marks = cut_to(markers, bounds.MARKS)
-        keyed: dict[str, ParamValue] = {"session_id": session_id}
-        at_source = keyed | {"source": run_id}
-        return templates.TemplateResponse(
-            request,
-            "run.html",
-            {
-                "header": header[0],
-                "main": MAIN_SOURCE,
-                "trail": ancestry(run_id, runs),
-                # A run's own thread is short — 8 turns at the corpus maximum — so it is
-                # unpaged; its run lists are the same multiplicand a session page has, and
-                # they take the same caps.
-                "timeline": timeline(turns, runs, marks.shown, run_id, bounds.CHIPS.default),
-                "marks": marks,
-                "children": capped(children(run_id, runs), bounds.CHIPS.default),
-                "lines": lines,
-                "enrichment": enrichment,
-                "citations": {
-                    Page.RUN_HEADER.value: queries.citation(
-                        Page.RUN_HEADER, keyed | {"run_id": run_id}
-                    ),
-                    Page.RUN_TIMELINE.value: queries.citation(Page.RUN_TIMELINE, at_source),
-                    Page.RUNS.value: queries.citation(Page.RUNS, keyed),
-                    Page.COMPACTIONS.value: queries.citation(Page.COMPACTIONS, at_source),
-                    Page.TURN_RECORDS.value: queries.citation(Page.TURN_RECORDS, at_source),
-                    # Absent over a store no enrichment pass has written to, where the query
-                    # never ran (`view/enrichment.py`).
-                    **(
-                        {Page.ENRICHMENT.value: queries.citation(Page.ENRICHMENT, at_source)}
-                        if enrichment.queried
-                        else {}
-                    ),
-                },
-            },
-        )
+
+        return browse(request, session_id, MAIN_SOURCE, kin, log, detail, after, read)
 
     @app.get("/session/{session_id}/turn/{source}/{turn_id}")
     def turn_page(
@@ -556,70 +627,371 @@ def build_app(db_path: Path) -> FastAPI:
         turn_id: str,
         kin: int = bounds.KIN.default,
         log: int = bounds.LOG.default,
+        detail: int = bounds.DETAIL.default,
+        after: int = queries.FIRST_PAGE,
     ) -> Response:
-        """One turn, whole, in the tree it sits in.
+        """One turn: what it was asked, and the api calls that answered it."""
 
-        The URL a tree row links to is the URL that row fetches: htmx takes `#pane` out of
-        this response and swaps `#tree-rows` out of band, so a click and a pasted link serve
-        the same bytes. `kin` caps a level of the tree and `log` the list of what is under
-        the turn; both only go down (`view/bounds.py`).
-        """
-        checked(kin, bounds.KIN.ceiling)
-        checked(log, bounds.LOG.ceiling)
-        keyed: dict[str, ParamValue] = {"session_id": session_id, "source": source}
-        at_turn = keyed | {"turn_id": turn_id}
-        with open_store(resolved) as connection:
-            header = page_rows(
-                connection, Page.TURN_HEADER, **at_turn, head_chars=queries.HEADER_CHARS
-            )
-            if not header:
+        def read(connection: duckdb.DuckDBPyConnection, corpus: tree.Corpus, head: Row) -> Seen:
+            bound: dict[str, ParamValue] = {
+                "session_id": session_id,
+                "source": source,
+                "turn_id": turn_id,
+                "head_chars": queries.HEADER_CHARS,
+                "detail_chars": detail,
+            }
+            rows = page_rows(connection, Page.TURN_HEADER, **bound)
+            if not rows:
                 raise HTTPException(404, "No turn with that id is in this thread.")
-            # The session the turn was recorded in: the root of the tree, and the spend every
-            # share on it is a share of. A turn the store holds has one, so this is a read
-            # and not a second 404.
-            session = page_rows(
+            # Which line of the transcript each turn of this thread came from. Read for the
+            # whole thread because that is what the query answers; two identifier columns per
+            # turn, and the pane keeps the one row it is about.
+            thread: dict[str, ParamValue] = {"session_id": session_id, "source": source}
+            archived = {
+                row["turn_id"]: row["line_no"]
+                for row in page_rows(connection, Page.TURN_RECORDS, **thread)
+            }
+            page, log_rows, ran = call_log(connection, corpus, source, turn_id, after, log)
+            return Seen(
+                header=rows[0],
+                trail=[Ref(Kind.TURN, source, turn_id)],
+                shape=Shape.CALLS,
+                rows=log_rows,
+                more=page.more,
+                after=page.after,
+                details=[
+                    item
+                    for item in (
+                        detail_of(
+                            "prompt",
+                            rows[0]["prompt"],
+                            rows[0]["prompt_chars"],
+                            f"/fragment/prompt/{session_id}/{source}/{turn_id}",
+                        ),
+                    )
+                    if item is not None
+                ],
+                record=archived.get(turn_id),
+                ran=[(Page.TURN_HEADER, bound), *ran, (Page.TURN_RECORDS, thread)],
+            )
+
+        return browse(request, session_id, source, kin, log, detail, after, read)
+
+    @app.get("/session/{session_id}/run/{run_id}")
+    def run_page(
+        request: Request,
+        session_id: str,
+        run_id: str,
+        kin: int = bounds.KIN.default,
+        log: int = bounds.LOG.default,
+        detail: int = bounds.DETAIL.default,
+        after: int = queries.FIRST_PAGE,
+    ) -> Response:
+        """One agent run: the brief it was given, and its own thread of turns.
+
+        A run's id is also the `source` its rows carry, which is why the URL needs no thread
+        segment and why the enrichment is read at the run.
+        """
+
+        def read(connection: duckdb.DuckDBPyConnection, corpus: tree.Corpus, head: Row) -> Seen:
+            bound: dict[str, ParamValue] = {
+                "session_id": session_id,
+                "run_id": run_id,
+                "head_chars": queries.HEADER_CHARS,
+                "detail_chars": detail,
+            }
+            rows = page_rows(connection, Page.RUN_HEADER, **bound)
+            if not rows:
+                raise HTTPException(404, "No run with that id is in this session.")
+            page = window(
                 connection,
-                Page.SESSION_HEADER,
+                Page.RUN_TIMELINE,
+                TURN_CURSOR,
+                after,
+                log,
                 session_id=session_id,
-                head_chars=queries.HEADER_CHARS,
-                item_chars=queries.HEADER_ITEM_CHARS,
-                head_items=queries.HEADER_ITEMS,
+                source=run_id,
             )
-            whole = session[0]["cost_usd"] or 0
-            chain = tree.turn_chain(session[0], source, header[0], whole)
-            built = tree.tree(connection, chain, whole, kin)
+            return Seen(
+                header=rows[0],
+                trail=[Ref(Kind.RUN, run_id, run_id)],
+                shape=Shape.TURNS,
+                rows=turn_log(corpus, run_id, page.rows),
+                more=page.more,
+                after=page.after,
+                details=[
+                    item
+                    for item in (
+                        detail_of(
+                            "description",
+                            rows[0]["description"],
+                            rows[0]["description_chars"],
+                            f"/fragment/brief/{session_id}/{run_id}",
+                        ),
+                    )
+                    if item is not None
+                ],
+                record=None,
+                ran=[
+                    (Page.RUN_HEADER, bound),
+                    (
+                        Page.RUN_TIMELINE,
+                        {
+                            "session_id": session_id,
+                            "source": run_id,
+                            "after": after,
+                            "limit": log,
+                        },
+                    ),
+                ],
+            )
+
+        return browse(request, session_id, run_id, kin, log, detail, after, read)
+
+    @app.get("/session/{session_id}/call/{source}/{api_call_id}")
+    def call_page(
+        request: Request,
+        session_id: str,
+        source: str,
+        api_call_id: str,
+        kin: int = bounds.KIN.default,
+        log: int = bounds.LOG.default,
+        detail: int = bounds.DETAIL.default,
+        after: int = queries.FIRST_PAGE,
+    ) -> Response:
+        """One api call: what it answered, what it thought, and the tools it called."""
+
+        def read(connection: duckdb.DuckDBPyConnection, corpus: tree.Corpus, head: Row) -> Seen:
+            bound: dict[str, ParamValue] = {
+                "session_id": session_id,
+                "source": source,
+                "api_call_id": api_call_id,
+                "head_chars": queries.HEADER_CHARS,
+                "detail_chars": detail,
+            }
+            rows = page_rows(connection, Page.CALL_HEADER, **bound)
+            if not rows:
+                raise HTTPException(404, "No api call with that id is in this thread.")
+            row = rows[0]
+            tools: dict[str, ParamValue] = {
+                "session_id": session_id,
+                "source": source,
+                "api_call_id": api_call_id,
+                "after": after,
+                "page_tools": log,
+                "log_chars": queries.LOG_CHARS,
+            }
             page = paged(
-                page_rows(
-                    connection,
-                    Fragment.TURN_CALLS,
-                    **at_turn,
-                    after=queries.FIRST_PAGE,
-                    page_calls=log,
-                    chip_chars=queries.CHIP_CHARS,
-                ),
-                "matched_api_calls",
-                "call_index",
+                page_rows(connection, Fragment.CALL_TOOLS, **tools),
+                "matched_tool_calls",
+                "tool_index",
             )
-        # What the page ran, in the order it ran it — the tree's levels included, because a
-        # level is a query with its own bindings and the reader is looking at its rows.
-        ran: list[tuple[Library, Mapping[str, ParamValue]]] = [
-            (Page.TURN_HEADER, at_turn),
-            (Page.SESSION_HEADER, {"session_id": session_id}),
-            *built.ran,
-            (Fragment.TURN_CALLS, at_turn | {"after": queries.FIRST_PAGE, "page_calls": log}),
-        ]
-        return templates.TemplateResponse(
-            request,
-            "node.html",
-            {
-                "selection": chain[-1],
-                "chain": chain,
-                "rows": built.rows,
-                "header": header[0],
-                "page": page,
-                "citations": {named.value: queries.citation(named, bound) for named, bound in ran},
-            },
-        )
+            return Seen(
+                header=row,
+                # The call's own header says which turn it answers, so its place costs no
+                # read: a NULL turn puts it in its thread's unattributed bucket instead.
+                trail=[tree.home(source, row["turn_id"]), Ref(Kind.CALL, source, api_call_id)],
+                shape=Shape.TOOLS,
+                rows=[
+                    LogRow(nodes.tool_node(session_id, source, item), item) for item in page.rows
+                ],
+                more=page.more,
+                after=page.after,
+                details=[
+                    item
+                    for item in (
+                        detail_of(
+                            "text",
+                            row["text_head"],
+                            row["text_chars"],
+                            f"/fragment/text/{session_id}/{source}/{api_call_id}",
+                        ),
+                        detail_of(
+                            "thinking",
+                            row["thinking_head"],
+                            row["thinking_chars"],
+                            f"/fragment/thinking/{session_id}/{source}/{api_call_id}",
+                        ),
+                    )
+                    if item is not None
+                ],
+                record=None,
+                ran=[(Page.CALL_HEADER, bound), (Fragment.CALL_TOOLS, tools)],
+            )
+
+        return browse(request, session_id, source, kin, log, detail, after, read)
+
+    @app.get("/session/{session_id}/tool/{source}/{tool_call_id}")
+    def tool_page(
+        request: Request,
+        session_id: str,
+        source: str,
+        tool_call_id: str,
+        kin: int = bounds.KIN.default,
+        log: int = bounds.LOG.default,
+        detail: int = bounds.DETAIL.default,
+        after: int = queries.FIRST_PAGE,
+    ) -> Response:
+        """One tool call: what it was passed, and what it returned. Nothing hangs under it."""
+
+        def read(connection: duckdb.DuckDBPyConnection, corpus: tree.Corpus, head: Row) -> Seen:
+            bound: dict[str, ParamValue] = {
+                "session_id": session_id,
+                "source": source,
+                "tool_call_id": tool_call_id,
+                "head_chars": queries.HEADER_CHARS,
+                "detail_chars": detail,
+            }
+            rows = page_rows(connection, Page.TOOL_HEADER, **bound)
+            if not rows:
+                raise HTTPException(404, "No tool call with that id is in this thread.")
+            row = rows[0]
+            return Seen(
+                header=row,
+                # The whole path down, out of one read: the call that made it, and the turn
+                # that call answers — else that thread's bucket, by the same rule.
+                trail=[
+                    tree.home(source, row["turn_id"]),
+                    Ref(Kind.CALL, source, row["api_call_id"]),
+                    Ref(Kind.TOOL, source, tool_call_id),
+                ],
+                shape=Shape.NONE,
+                rows=[],
+                more=0,
+                after=None,
+                details=[
+                    item
+                    for item in (
+                        detail_of(
+                            "input",
+                            row["input_head"],
+                            row["input_chars"],
+                            f"/fragment/input/{session_id}/{source}/{tool_call_id}",
+                        ),
+                        detail_of(
+                            "result",
+                            row["result_head"],
+                            row["result_chars"],
+                            f"/fragment/result/{session_id}/{source}/{tool_call_id}",
+                        ),
+                    )
+                    if item is not None
+                ],
+                record=None,
+                ran=[(Page.TOOL_HEADER, bound)],
+            )
+
+        return browse(request, session_id, source, kin, log, detail, after, read)
+
+    @app.get("/session/{session_id}/compaction/{source}/{compaction_id}")
+    def compaction_page(
+        request: Request,
+        session_id: str,
+        source: str,
+        compaction_id: str,
+        kin: int = bounds.KIN.default,
+        log: int = bounds.LOG.default,
+        detail: int = bounds.DETAIL.default,
+        after: int = queries.FIRST_PAGE,
+    ) -> Response:
+        """One compaction: where a thread's context was rewritten, and what that cost it.
+
+        Read out of the thread's markers rather than by id — a compaction has no query of its
+        own because the thread's whole set is what the tree beside it renders anyway.
+        """
+
+        def read(connection: duckdb.DuckDBPyConnection, corpus: tree.Corpus, head: Row) -> Seen:
+            bound: dict[str, ParamValue] = {
+                "session_id": session_id,
+                "source": source,
+                "chip_chars": queries.HEADER_CHARS,
+            }
+            found = [
+                row
+                for row in page_rows(connection, Page.COMPACTIONS, **bound)
+                if row["compaction_id"] == compaction_id
+            ]
+            if not found:
+                raise HTTPException(404, "No compaction with that id is in this thread.")
+            return Seen(
+                header=found[0],
+                trail=[Ref(Kind.COMPACTION, source, compaction_id)],
+                shape=Shape.NONE,
+                rows=[],
+                more=0,
+                after=None,
+                details=[],
+                record=None,
+                ran=[(Page.COMPACTIONS, bound)],
+            )
+
+        return browse(request, session_id, source, kin, log, detail, after, read)
+
+    @app.get("/session/{session_id}/unattributed/{source}")
+    def unattributed_page(
+        request: Request,
+        session_id: str,
+        source: str,
+        kin: int = bounds.KIN.default,
+        log: int = bounds.LOG.default,
+        detail: int = bounds.DETAIL.default,
+        after: int = queries.FIRST_PAGE,
+    ) -> Response:
+        """One thread's api calls that answer no turn — a resume's calls answer turns that
+        live in the session it resumed, and this is where they are read."""
+
+        def read(connection: duckdb.DuckDBPyConnection, corpus: tree.Corpus, head: Row) -> Seen:
+            standing = tree.unattributed(connection, corpus, source)
+            if standing is None:
+                raise HTTPException(404, "Every api call on this thread answers a turn.")
+            page, log_rows, ran = call_log(connection, corpus, source, None, after, log)
+            return Seen(
+                header=standing.row,
+                trail=[Ref(Kind.UNATTRIBUTED, source, source)],
+                shape=Shape.CALLS,
+                rows=log_rows,
+                more=page.more,
+                after=page.after,
+                details=[],
+                record=None,
+                ran=[standing.ran, *ran],
+            )
+
+        return browse(request, session_id, source, kin, log, detail, after, read)
+
+    @app.get("/session/{session_id}/unattached")
+    def unattached_page(
+        request: Request,
+        session_id: str,
+        kin: int = bounds.KIN.default,
+        log: int = bounds.LOG.default,
+        detail: int = bounds.DETAIL.default,
+        after: int = queries.FIRST_PAGE,
+    ) -> Response:
+        """The session's agent runs no spawning call resolved.
+
+        Session-scoped rather than per thread: what makes a run unattached is that nothing says
+        which thread spawned it, so the bucket hangs off the session itself.
+        """
+
+        def read(connection: duckdb.DuckDBPyConnection, corpus: tree.Corpus, head: Row) -> Seen:
+            loose = [run for run in corpus.runs if run["spawn_source"] is None]
+            if not loose:
+                raise HTTPException(404, "Every agent run in this session was placed.")
+            page = sliced(loose, after, log)
+            return Seen(
+                header=head,
+                trail=[Ref(Kind.UNATTACHED, None, session_id)],
+                shape=Shape.RUNS,
+                rows=run_log(corpus, page.rows),
+                more=page.more,
+                after=page.after,
+                details=[],
+                record=None,
+                ran=[],
+            )
+
+        return browse(request, session_id, MAIN_SOURCE, kin, log, detail, after, read)
 
     @app.get("/session/{session_id}/records/{source}")
     def records_page(
@@ -701,223 +1073,6 @@ def build_app(db_path: Path) -> FastAPI:
             },
         )
 
-    def tools_under(
-        connection: duckdb.DuckDBPyConnection,
-        keyed: Mapping[str, ParamValue],
-        after: int,
-        size: int,
-    ) -> ToolCalls:
-        """One page of the tool calls under one api call — the nested list and its "+N more".
-
-        The same query, the same page shape and the same citation whether the list arrives
-        inline under a call or as the continuation the indicator fetches, so the two can
-        never disagree about the set or about what produced it.
-        """
-        bound = dict(keyed) | {"after": after, "page_tools": size}
-        return ToolCalls(
-            paged(
-                page_rows(connection, Fragment.CALL_TOOLS, **bound),
-                "matched_tool_calls",
-                "tool_index",
-            ),
-            queries.citation(Fragment.CALL_TOOLS, bound),
-        )
-
-    @app.get("/fragment/nav/{session_id}")
-    def session_nav(
-        request: Request,
-        session_id: str,
-        after: int = queries.FIRST_PAGE,
-        turns: int = bounds.TURNS.default,
-        nodes: int = bounds.NAV.default,
-    ) -> Response:
-        """The map beside a session page: every main-thread turn, with the runs under it.
-
-        Its own response rather than part of the page, because the ceiling is per response and
-        the page has no room left (`view/bounds.py`). `after` and `turns` are the page's window
-        — all the map takes from it — and decide which nodes are marked as on screen.
-        """
-        checked(turns, bounds.TURNS.ceiling)
-        checked(nodes, bounds.NAV.ceiling)
-        with open_store(resolved) as connection:
-            # The session's own spend, which every share on the map is a share of, and the
-            # 404: a map of a session nothing recorded is not an empty sidebar.
-            header = page_rows(
-                connection,
-                Page.SESSION_HEADER,
-                session_id=session_id,
-                head_chars=queries.HEADER_CHARS,
-                item_chars=queries.HEADER_ITEM_CHARS,
-                head_items=queries.HEADER_ITEMS,
-            )
-            if not header:
-                raise HTTPException(404, "No session with that id is in this store.")
-            outline = page_rows(
-                connection, Page.SESSION_NAV, session_id=session_id, nav_chars=queries.NAV_CHARS
-            )
-            runs = page_rows(
-                connection, Page.RUNS, session_id=session_id, chip_chars=queries.NAV_CHARS
-            )
-            enrichment = described(connection, session_id, MAIN_SOURCE)
-        keyed: dict[str, ParamValue] = {"session_id": session_id}
-        # What the fragment ran, in the order it ran it. Keyed alone everywhere the rest of a
-        # query's bindings are its manifest defaults, and `view_runs` cites its head too: the
-        # map reads a run's strings narrower than a session page chips them, so a line without
-        # it re-runs at the default and answers text the map never showed. The enrichment query
-        # is here only when the store held the tables to ask: a fragment cites what it ran, and
-        # over an un-enriched store that query is not one of them.
-        ran = [
-            (Page.SESSION_NAV, keyed),
-            (Page.RUNS, keyed | {"chip_chars": queries.NAV_CHARS}),
-            (Page.SESSION_HEADER, keyed),
-        ]
-        if enrichment.queried:
-            ran.append((Page.ENRICHMENT, keyed | {"source": MAIN_SOURCE}))
-        return templates.TemplateResponse(
-            request,
-            "fragments/nav.html",
-            {
-                "nav": nav_tree(
-                    session_id,
-                    outline,
-                    runs,
-                    {item: row.description for item, row in enrichment.turns.items()},
-                    header[0]["cost_usd"],
-                    queries.NAV_CHARS,
-                    on_page(outline, after, turns),
-                    nodes,
-                ),
-                "citations": [queries.citation(named, bound) for named, bound in ran],
-            },
-        )
-
-    @app.get("/fragment/turn/{session_id}/{source}/{turn_id}")
-    def turn_calls(
-        request: Request,
-        session_id: str,
-        source: str,
-        turn_id: str,
-        after: int = queries.FIRST_PAGE,
-        calls: int = bounds.CALLS.default,
-        tools: int = bounds.TOOLS.default,
-    ) -> Response:
-        """One page of the api calls a turn made, each carrying a page of its tool calls."""
-        checked(calls, bounds.CALLS.ceiling)
-        checked(tools, bounds.TOOLS.ceiling)
-        keyed: dict[str, ParamValue] = {"session_id": session_id, "source": source}
-        # The digests name the calls that sit under no turn with a sentinel, because a URL
-        # cannot carry a NULL. The query asks for those rows with one.
-        turn: ParamValue = None if turn_id == queries.UNATTRIBUTED else turn_id
-        with open_store(resolved) as connection:
-            page = paged(
-                page_rows(
-                    connection,
-                    Fragment.TURN_CALLS,
-                    **keyed,
-                    turn_id=turn,
-                    after=after,
-                    page_calls=calls,
-                    chip_chars=queries.CHIP_CHARS,
-                ),
-                "matched_api_calls",
-                "call_index",
-            )
-            # One fetch per call rather than a nested subquery: `view_call_tools` stays the
-            # single definition of what a page of tool rows is, and a turn page is 25 small
-            # keyed reads on a local file.
-            under = {
-                row["api_call_id"]: tools_under(
-                    connection,
-                    keyed | {"api_call_id": row["api_call_id"]},
-                    queries.FIRST_PAGE,
-                    tools,
-                )
-                for row in page.rows
-            }
-        return templates.TemplateResponse(
-            request,
-            "fragments/calls.html",
-            {
-                "session_id": session_id,
-                "source": source,
-                "turn_id": turn_id,
-                "page": page,
-                "under": under,
-                "tools": tools,
-                "calls": calls,
-                "citation": queries.citation(
-                    Fragment.TURN_CALLS,
-                    keyed | {"turn_id": turn, "after": after, "page_calls": calls},
-                ),
-            },
-        )
-
-    @app.get("/fragment/body/turn/{session_id}/{source}/{turn_id}")
-    def turn_body(request: Request, session_id: str, source: str, turn_id: str) -> Response:
-        """One turn's body, for an expansion in a log that lists it.
-
-        The same section the node page wraps, so the two cannot drift apart; where the page
-        has the log itself, this has how many children the turn holds and the way to its own
-        page. The nesting stops here — an accordion of accordions is a page, and the turn
-        already has one.
-        """
-        keyed: dict[str, ParamValue] = {
-            "session_id": session_id,
-            "source": source,
-            "turn_id": turn_id,
-        }
-        with open_store(resolved) as connection:
-            header = page_rows(
-                connection, Page.TURN_HEADER, **keyed, head_chars=queries.HEADER_CHARS
-            )
-        if not header:
-            raise HTTPException(404, "No turn with that id is in this thread.")
-        # Built as a node so the URL is minted where every other one is (`view/tree.py`).
-        # The spend basis is 0 because a body shows no share: this mount is one node.
-        node = tree.turn_node(session_id, source, header[0], 0)
-        return templates.TemplateResponse(
-            request,
-            "fragments/body.html",
-            {
-                "row": header[0],
-                "kind": node.kind,
-                "url": node.url,
-                "children": header[0]["api_calls"],
-                "citation": queries.citation(Page.TURN_HEADER, keyed),
-            },
-        )
-
-    @app.get("/fragment/tools/{session_id}/{source}/{api_call_id}")
-    def call_tools(
-        request: Request,
-        session_id: str,
-        source: str,
-        api_call_id: str,
-        after: int = queries.FIRST_PAGE,
-        tools: int = bounds.TOOLS.default,
-    ) -> Response:
-        """One page of the tool calls under one api call."""
-        checked(tools, bounds.TOOLS.ceiling)
-        keyed: dict[str, ParamValue] = {
-            "session_id": session_id,
-            "source": source,
-            "api_call_id": api_call_id,
-        }
-        with open_store(resolved) as connection:
-            under = tools_under(connection, keyed, after, tools)
-        return templates.TemplateResponse(
-            request,
-            "fragments/tools.html",
-            {
-                "session_id": session_id,
-                "source": source,
-                "api_call_id": api_call_id,
-                "page": under.page,
-                "tools": tools,
-                "citation": under.citation,
-            },
-        )
-
     def whole(
         request: Request, value: Value, template: str, keyed: Mapping[str, ParamValue]
     ) -> Response:
@@ -964,14 +1119,41 @@ def build_app(db_path: Path) -> FastAPI:
             {"session_id": session_id, "source": source, "line_no": line_no},
         )
 
-    @app.get("/fragment/tool/{session_id}/{source}/{tool_call_id}")
-    def tool_value(request: Request, session_id: str, source: str, tool_call_id: str) -> Response:
-        """One tool call whole: the arguments it was given and what it returned."""
+    @app.get("/fragment/input/{session_id}/{source}/{tool_call_id}")
+    def tool_input(request: Request, session_id: str, source: str, tool_call_id: str) -> Response:
+        """What one tool call was passed, whole."""
         return whole(
             request,
-            Value.TOOL,
-            "tool",
+            Value.TOOL_INPUT,
+            "raw",
             {"session_id": session_id, "source": source, "tool_call_id": tool_call_id},
+        )
+
+    @app.get("/fragment/result/{session_id}/{source}/{tool_call_id}")
+    def tool_result(request: Request, session_id: str, source: str, tool_call_id: str) -> Response:
+        """What one tool call returned, whole — the largest single fetch the viewer makes."""
+        return whole(
+            request,
+            Value.TOOL_RESULT,
+            "raw",
+            {"session_id": session_id, "source": source, "tool_call_id": tool_call_id},
+        )
+
+    @app.get("/fragment/prompt/{session_id}/{source}/{turn_id}")
+    def turn_prompt(request: Request, session_id: str, source: str, turn_id: str) -> Response:
+        """What one turn was asked, whole."""
+        return whole(
+            request,
+            Value.TURN_PROMPT,
+            "value",
+            {"session_id": session_id, "source": source, "turn_id": turn_id},
+        )
+
+    @app.get("/fragment/brief/{session_id}/{run_id}")
+    def run_brief(request: Request, session_id: str, run_id: str) -> Response:
+        """The whole brief one agent run was given."""
+        return whole(
+            request, Value.RUN_BRIEF, "value", {"session_id": session_id, "run_id": run_id}
         )
 
     return app
