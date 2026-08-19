@@ -18,9 +18,10 @@
   <thead>
     <tr>
       <th>Project</th>
-      <th>{{ bound.recent_days }}d</th>
-      <th>{{ bound.window_days }}d</th>
-      <th>All time</th>
+      {# Set the way the cells under them are: a count is read down its column. #}
+      <th class="number">{{ bound.recent_days }}d</th>
+      <th class="number">{{ bound.window_days }}d</th>
+      <th class="number">All time</th>
       <th>Last active</th>
     </tr>
   </thead>

@@ -58,7 +58,8 @@ th, td { padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--
   text-align: left; }
 th { position: sticky; top: 0; background: var(--paper); white-space: nowrap; }
 th[aria-sort] a { font-weight: 700; }
-td.number { text-align: right; font-variant-numeric: tabular-nums; }
+th.number, td.number { text-align: right; }
+td.number { font-variant-numeric: tabular-nums; }
 td.names, .model, .type { color: var(--dim); }
 td.when { white-space: nowrap; }
 /* The two columns that compete for whatever the numbers leave. A path is one long token, so

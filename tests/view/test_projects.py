@@ -9,6 +9,7 @@ trailing windows would go quietly empty as the corpus ages.
 """
 
 import datetime as dt
+import re
 from collections import defaultdict
 
 import duckdb
@@ -305,3 +306,28 @@ def test_the_filter_box_suggests_the_projects_the_landing_page_lists(plant: Plan
     assert MYCELIA in offered
     # ...and each one finds sessions rather than filling the box in with a dead value.
     assert all(found.values())
+
+
+def test_a_column_is_headed_the_way_its_cells_are_set(client: TestClient) -> None:
+    """A count is read down its column, so the heading over it sits where the digits do.
+
+    The page has one alignment vocabulary — the class the stylesheet sets flush right — and
+    the claim is that the head and the first body row agree on it, column by column.
+    Positional, because that is what a reader sees: a heading is over whatever cell shares
+    its index.
+    """
+    page = client.get("/").text
+    head = re.search(r"<thead>(.*?)</thead>", page, re.S)
+    body = re.search(r"<tbody>\s*<tr[^>]*>(.*?)</tr>", page, re.S)
+    assert head is not None and body is not None
+
+    def aligned(section: str, tag: str) -> list[bool]:
+        return [
+            any("number" in found.split() for found in re.findall(r'class="([^"]*)"', cell))
+            for cell in re.findall(rf"<{tag}[^>]*>", section)
+        ]
+
+    headings, cells = aligned(head.group(1), "th"), aligned(body.group(1), "td")
+    # The project, three windows and the last-active column: five of each, and the three
+    # windows are the ones set right.
+    assert headings == cells == [False, True, True, True, False]
