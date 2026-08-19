@@ -167,6 +167,17 @@ ul.prs { margin: var(--space-2) 0; padding: 0; list-style: none; overflow-wrap: 
 .raw { color: var(--dim); }
 .raw > summary { cursor: pointer; }
 
+/* Reading in order: back on the left, on to the next on the right, with whatever room is
+   between them. Each control carries the neighbour's own label rather than the word "next",
+   so it wraps like the prose it is and is capped near a reading measure. */
+.walk { display: flex; gap: var(--space-3); border-top: 1px solid var(--line);
+  margin-top: var(--space-3); padding-top: var(--space-2); }
+.walk a { max-width: 24rem; text-decoration: none; }
+/* Each control holds its own end whether or not the other is there: the last node of a
+   session has nothing after it, and its back link still belongs on the left. */
+.walk [data-walk="previous"] { margin-right: auto; }
+.walk [data-walk="next"] { margin-left: auto; text-align: right; }
+
 /* A row of counts under a heading, on the pages built out of one list. */
 .numbers { margin: 0; color: var(--dim); display: flex; gap: var(--space-3); }
 
