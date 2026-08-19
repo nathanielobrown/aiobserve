@@ -22,6 +22,7 @@ from aiobserve.view import bounds
 from aiobserve.view import format as fmt
 from aiobserve.view.app import build_app
 from aiobserve.view.format import ABSENT
+from aiobserve.view.threads import meter
 from tests.conftest import (
     FORK_ORIGIN,
     FORK_ORIGIN_RUN,
@@ -33,7 +34,7 @@ from tests.conftest import (
     TEAMMATE,
     TEAMMATE_RUN,
 )
-from tests.view.conftest import MISSING, Planter, fields, inside, one, values
+from tests.view.conftest import MISSING, Planter, chipped, fields, inside, one, values
 
 # The turn `SPINE` spawned its `claude` run in, third of the four its main thread holds — the
 # one turn of the corpus whose node carries a run node that carries a run node of its own.
@@ -111,7 +112,7 @@ def test_the_map_holds_a_node_for_every_turn_of_the_session_and_the_runs_under_i
 
 
 def test_every_run_the_session_holds_is_in_the_map_exactly_once(
-    client: TestClient, store: duckdb.DuckDBPyConnection
+    client: TestClient, plant: Planter, store: duckdb.DuckDBPyConnection
 ) -> None:
     """Across the corpus, every agent run is in its session's map once — no more, no less.
 
@@ -124,6 +125,33 @@ def test_every_run_the_session_holds_is_in_the_map_exactly_once(
         nodes = values(nav(client, session_id), "data-nav")
         assert len(nodes) == len(set(nodes)), session_id
         assert runs_of(store, session_id) <= set(nodes), session_id
+    # The complement, and the reason the rule above is worth anything: a run the two rules
+    # cannot place crashes the map rather than dropping out of it. The shape is planted and
+    # invented, as it is for the page (`test_every_session_page_accounts_for_all_of_its_runs`)
+    # — no recorded run is spawned from a call answering a turn its own thread does not hold.
+    run = chipped(store)
+    path = plant(
+        (
+            "UPDATE api_calls SET turn_id = 'planted-turn-nothing-holds'"
+            " WHERE session_id = ? AND source = 'main' AND id = ?",
+            [SPINE, run.call_id],
+        )
+    )
+    with (
+        TestClient(build_app(path)) as planted,
+        pytest.raises(ValueError, match="on no node of the map") as raised,
+    ):
+        planted.get(f"/fragment/nav/{SPINE}")
+    # The unmoored run takes its subtree with it: the map could only have reached the run
+    # under it through the node it no longer builds.
+    under = {
+        str(row[0])
+        for row in store.execute(
+            "SELECT id FROM live_agent_runs WHERE session_id = ? AND parent_agent_id = ?",
+            [SPINE, run.run_id],
+        ).fetchall()
+    }
+    assert re.findall(r"'([^']+)'", str(raised.value)) == sorted({run.run_id} | under)
 
 
 def test_a_runs_own_children_arrive_closed_and_a_turns_runs_do_not(client: TestClient) -> None:
@@ -361,6 +389,13 @@ def test_the_spend_meter_is_a_decile_of_what_the_node_took(
     assert "s8" in classes[SPINE_CHIPPED_TURN]
     # ...and a run that took a twentieth of it still shows a bar, rounded up into `s1`.
     assert "s1" in inside(fragment, "data-nav", SPINE_RUN, "class")[0].split()
+    # The scale is only as wide as the stylesheet: a class it has no rule for is a bar the
+    # reader never sees, and nothing in a browser complains. So every class the meter can
+    # reach — over shares this corpus does not reach, and past the whole a share is of —
+    # is one the served stylesheet draws, `s0` aside, which is drawn by being absent.
+    drawn = set(re.findall(r"li\.node\.(s\d+)", client.get("/static/style.css").text))
+    reachable = {meter(share / 100) for share in range(0, 301)} | {meter(None)}
+    assert reachable - {"s0"} == drawn
 
 
 def test_a_node_is_labelled_by_the_best_thing_the_store_says_about_it(
@@ -430,7 +465,7 @@ def test_a_node_is_labelled_by_the_best_thing_the_store_says_about_it(
 
 
 def test_a_run_node_is_labelled_by_the_agent_and_what_it_was_asked_to_do(
-    client: TestClient, store: duckdb.DuckDBPyConnection
+    client: TestClient, plant: Planter, store: duckdb.DuckDBPyConnection
 ) -> None:
     """A run's label names the agent that ran and the task it was given, cut to one line.
 
@@ -449,6 +484,18 @@ def test_a_run_node_is_labelled_by_the_agent_and_what_it_was_asked_to_do(
     session_id, run_id = undescribed
     (agent_alone,) = one(store, "SELECT agent_type FROM live_agent_runs WHERE id = ?", [run_id])
     assert fields(nav(client, session_id), "data-node", run_id)["label"] == agent_alone
+    # The cut is what makes a node's width knowable — the byte budget prices every label at
+    # `NAV_CHARS` — and the query cuts the agent and the description separately, so a label
+    # that joins them can still run to twice the cap. Every recorded description is shorter
+    # than that, so the long one is planted, and it is planted on a run in the tail, where a
+    # node is built by its own call and could keep its own uncut label.
+    path = plant(
+        ("UPDATE agent_runs SET description = ? WHERE id = ?", ["task " * 40, TEAMMATE_RUN])
+    )
+    with TestClient(build_app(path)) as planted:
+        assert len(fields(nav(planted, TEAMMATE), "data-node", TEAMMATE_RUN)["label"]) == (
+            queries.NAV_CHARS
+        )
 
 
 def test_the_runs_no_turn_claims_arrive_in_a_tail_group(

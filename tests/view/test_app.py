@@ -7,7 +7,6 @@ a fixture added to the corpus does not silently stop being covered.
 import datetime as dt
 import re
 from pathlib import Path
-from typing import NamedTuple
 
 import duckdb
 import pytest
@@ -44,7 +43,16 @@ from tests.conftest import (
     TEAMMATE,
     TEAMMATE_RUN,
 )
-from tests.view.conftest import MISSING, Planter, Statement, fields, inside, one, values
+from tests.view.conftest import (
+    MISSING,
+    Planter,
+    Statement,
+    chipped,
+    fields,
+    inside,
+    one,
+    values,
+)
 
 # What every list citation says about the display cut, which the viewer composes around the
 # query the same way it composes the paging: re-running the file alone answers whole values.
@@ -820,39 +828,6 @@ def test_every_session_page_accounts_for_all_of_its_runs(
         assert {run for page in shown for run in page} == runs, session_id
         for page in shown:
             assert len(page) == len(set(page)), session_id
-
-
-class Chipped(NamedTuple):
-    """A recorded run that chips onto a turn, and everything a plant needs to move it."""
-
-    run_id: str
-    # The api call the run was spawned from, and the turn that call answers.
-    call_id: str
-    turn_id: str
-    # Where that turn sits in its thread, which is the cursor a page of one turn opens at.
-    turn_index: int
-
-
-def chipped(store: duckdb.DuckDBPyConnection) -> Chipped:
-    """The first run of `SPINE` the chip join hangs on a turn of the main thread.
-
-    The join `view_runs` makes, in the expectation's own SQL: a run is a chip when its
-    `tool_use_id` names a tool call outside its own transcript, whose api call sits under a
-    turn. Read from the store rather than pinned, so a re-recorded fixture moves it.
-    """
-    run_id, call_id, turn_id, turn_index = one(
-        store,
-        'SELECT a.id, c.id, t.id, t."index" FROM live_agent_runs a'
-        " JOIN live_tool_calls tc ON tc.session_id = a.session_id AND tc.id = a.tool_use_id"
-        "  AND tc.source <> a.id"
-        " JOIN live_api_calls c ON c.session_id = a.session_id AND c.source = tc.source"
-        "  AND c.id = tc.api_call_id"
-        " JOIN live_turns t ON t.session_id = a.session_id AND t.source = c.source"
-        "  AND t.id = c.turn_id"
-        " WHERE a.session_id = ? AND c.source = ? ORDER BY a.id LIMIT 1",
-        [SPINE, MAIN],
-    )
-    return Chipped(run_id, call_id, turn_id, turn_index)
 
 
 @pytest.mark.parametrize("turns", [bounds.TURNS.default, 1])
