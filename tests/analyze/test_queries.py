@@ -17,7 +17,7 @@ from aiobserve.analyze.queries import QUERIES, Scope
 from aiobserve.analyze.runner import CORPUS_RELATIONS
 from aiobserve.enrich.store import LEVELS
 from aiobserve.export.duckdb import TABLES
-from tests.analyze.conftest import QueryRunner
+from tests.analyze.conftest import AS_OF_WHOLE, QueryRunner
 from tests.conftest import (
     ANCESTOR,
     CONFIG_ONLY,
@@ -158,7 +158,13 @@ def test_every_query_runs(name: str, run_query: QueryRunner, enriched_query: Que
         )
     arguments = [part for key, value in bindings.items() for part in ("--param", f"{key}={value}")]
     if query.scope is Scope.CORPUS:
-        arguments += ["--project", MYCELIA]
+        # `--as-of` defaults to today, and the runner's trailing window is 28 days wide, so
+        # an unbound run asks a frozen corpus a question about the last four weeks. Every
+        # fixture session recedes past that edge on its own schedule, which turns each
+        # windowed query into a time bomb: `select_runs` went red the morning the last
+        # session carrying agent runs aged out. Pinned at the `$as_of` that opens the
+        # window before the earliest fixture session, so the whole corpus stays in view.
+        arguments += ["--project", MYCELIA, "--as-of", AS_OF_WHOLE]
     # ...and the run completes, which is what catches a query a schema bump broke...
     printed = runner(name, "--csv", *arguments)
     # ...having answered with rows. A query that returns nothing on this corpus runs green
