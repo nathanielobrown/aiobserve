@@ -431,14 +431,18 @@ def test_a_filter_keeps_exactly_the_sessions_the_store_says_it_should(
         assert SAMPLES["skill"] in fields(page, "data-session-id", session_id)["skills"]
 
 
+# The filters whose predicates a value could break out of, one per shape: `skill` binds its
+# parameter once, `project` binds the same one twice and concatenates it, which is the place
+# a value spliced as text would have two chances to become SQL.
+@pytest.mark.parametrize("key", ["skill", "project"])
 def test_a_filter_value_reaches_duckdb_only_as_a_binding(
-    client: TestClient, store: duckdb.DuckDBPyConnection
+    key: str, client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
     """A filter value that is SQL rather than a name matches nothing and runs nothing."""
     before = one(store, "SELECT count(*) FROM sessions")[0]
-    response = client.get("/sessions", params={"skill": "'; DROP TABLE sessions; --"})
-    # A value that reached SQL as text would either error or execute; bound, it is a skill
-    # name no session ran...
+    response = client.get("/sessions", params={key: "'; DROP TABLE sessions; --"})
+    # A value that reached SQL as text would either error or execute; bound, it is a name
+    # no session carries...
     assert response.status_code == 200
     assert values(response.text, "data-session-id") == []
     # ...and the table it named is still there, with every row it had.

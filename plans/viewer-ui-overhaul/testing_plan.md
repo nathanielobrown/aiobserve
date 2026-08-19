@@ -130,7 +130,7 @@ served store rather than a literal.
   and is strictly less than the `session_rollups` sum ($14.8564) — the `resume_pair` fixture makes
   the two views disagree, so a regression to the double-counting query reds here
 - The 7d and 30d cells count and cost exactly the sessions inside the window the page cites.
-  *Evidence:* the test reads `$now` out of the citation footer (`data-field` on the citation `<li>`,
+  *Evidence:* the test reads `$as_of` out of the citation footer (`data-field` on the citation `<li>`,
   `base.html:18-27`) and re-runs the window query in the store bound to that same value, so the
   expectation reproduces the exact window
 - **The windows are exercised rather than vacuously empty.** *Evidence:* a `plant` shifting three
@@ -142,7 +142,9 @@ served store rather than a literal.
   the fold's own session ids
 - A page over a store with no sessions in a window renders the row with `ABSENT`, not a crash.
   *Evidence:* the `/repo` and `/invented/project` rows, whose single sessions sit outside both windows
-- The page cites the query it ran, with `$now` and `$projects` bound. *Evidence:* the citation
+- The page cites the query it ran, with `$as_of` and `$projects` bound. The design calls the
+  clock parameter `$now`; the shipped name is `$as_of`, because the query library refuses a query
+  whose SQL holds the identifier `now` (`tests/analyze/test_queries.py:CLOCK`). *Evidence:* the citation
   assertion pattern of `test_the_list_footer_cites_its_query_and_what_was_composed_around_it`
 
 **Project filter becomes the prefix predicate** `[S3]`
