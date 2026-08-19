@@ -18,6 +18,7 @@ from fastapi import HTTPException
 
 from aiobserve.analyze import queries
 from aiobserve.analyze.queries import ParamValue
+from aiobserve.sessions import project_predicate
 from aiobserve.view import bounds
 from aiobserve.view.store import Page, Row, fetch
 
@@ -66,7 +67,10 @@ class Filter:
 # request text never becomes SQL. Composed in this order, so the WHERE and the citation read
 # the same whatever order a URL happened to put them in.
 FILTERS: dict[str, Filter] = {
-    "project": Filter("project_dir = $project", queries.ParamType.TEXT),
+    # A path prefix, not a path: a worktree checkout sits under the repository it was cut
+    # from, so filtering by a project has to hold its worktrees' sessions the way the CLI's
+    # `--project` does. One statement of the rule, in `aiobserve.sessions`.
+    "project": Filter(project_predicate("project_dir", "$project"), queries.ParamType.TEXT),
     "since": Filter("started_at >= $since", queries.ParamType.DATE),
     # Inclusive of the day named: someone asking for sessions until the 7th means the 7th.
     "until": Filter("started_at < $until + INTERVAL 1 DAY", queries.ParamType.DATE),

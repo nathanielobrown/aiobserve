@@ -9,6 +9,7 @@ trailing windows would go quietly empty as the corpus ages.
 """
 
 import datetime as dt
+import re
 from collections import defaultdict
 
 import duckdb
@@ -48,6 +49,11 @@ def folded(store: duckdb.DuckDBPyConnection) -> dict[str | None, list[str]]:
     for session_id, root in store.execute(f"SELECT session_id, root FROM ({FOLD})").fetchall():
         grouped[root].append(session_id)
     return grouped
+
+
+def suggestions(page: str) -> list[str]:
+    """The project paths the list's filter box offers, in the order it offers them."""
+    return re.findall(r'<option value="([^"]*)">', page)
 
 
 def cited(page: str, name: str) -> dict[str, str]:
@@ -132,6 +138,13 @@ def test_a_worktree_folds_into_its_checkout_and_a_prefix_sibling_does_not(
     assert fields(page, "data-project", MYCELIA)["sessions"] == f"{len(expected[MYCELIA]):,}"
     # ...and the directory that merely shares its name is a row of its own.
     assert fields(page, "data-project", sibling)["sessions"] == "1"
+    # The list the row opens folds the same way, because the row's count and the list it
+    # links to would otherwise disagree by exactly the sessions a worktree recorded.
+    with TestClient(build_app(path)) as planted:
+        (link,) = set(inside(page, "data-project", MYCELIA, "href"))
+        listed = values(planted.get(link).text, "data-session-id")
+    assert set(listed) == set(expected[MYCELIA])
+    assert SPINE in listed and NO_PROJECT_SESSION not in listed
 
 
 def test_project_spend_is_counted_through_the_corpus_views(
@@ -271,3 +284,30 @@ def test_the_page_is_ordered_by_what_ran_most_recently(
         reverse=True,
     )
     assert values(page, "data-project") == [*ordered, ""]
+
+
+def test_the_filter_box_suggests_the_projects_the_landing_page_lists(plant: Planter) -> None:
+    """The box offers roots, so filling one in finds the sessions the row it came from counts.
+
+    Planted for the same reason as the fold above: without a worktree in the store, a box
+    that offered every recorded directory and one that offered only roots look identical.
+    """
+    path = plant(
+        ("UPDATE sessions SET project_dir = ? WHERE id = ?", [f"{MYCELIA}/.claude/wt-1", SPINE]),
+    )
+    with TestClient(build_app(path)) as planted:
+        offered = suggestions(planted.get("/sessions").text)
+        listed = values(planted.get("/").text, "data-project")
+        found = {
+            option: values(
+                planted.get("/sessions", params={"project": option}).text, "data-session-id"
+            )
+            for option in offered
+        }
+    # Every suggestion is a project the landing page counts...
+    assert offered and set(offered) <= set(listed)
+    # ...the worktree is not one of them, and the checkout it folds into is...
+    assert f"{MYCELIA}/.claude/wt-1" not in offered
+    assert MYCELIA in offered
+    # ...and each one finds sessions rather than filling the box in with a dead value.
+    assert all(found.values())
