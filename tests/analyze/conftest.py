@@ -7,11 +7,12 @@ a row copies the file first, as `worktree_db` does.
 """
 
 import csv
+import datetime as dt
 import io
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 import duckdb
 import pytest
@@ -31,6 +32,34 @@ from tests.conftest import (
     SIBLING_SESSION,
     WORKTREE_SESSION,
 )
+
+# Long after the last fixture was recorded — the date this whole tier runs at. A windowed
+# query measures back from `--as-of`, whose default is the wall clock, so a query or a test
+# that leans on today's date passes while the corpus is recent and goes red the morning it
+# recedes. PR #4 found `select_sessions` days from exactly that. Run far enough into the
+# future and the failure lands on the change that introduced it instead.
+FAR_FUTURE = dt.date(2030, 1, 1)
+
+
+class _PinnedDate(dt.date):
+    """`date`, with today at `FAR_FUTURE` — everything else is the real thing."""
+
+    @classmethod
+    def today(cls) -> Self:
+        return cls(FAR_FUTURE.year, FAR_FUTURE.month, FAR_FUTURE.day)
+
+
+@pytest.fixture(autouse=True)
+def far_future(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run every analysis test long after the corpus was recorded.
+
+    Patched on `datetime` itself rather than on the one caller (`cli`'s `--as-of` default),
+    so a clock read added anywhere under a test here is pinned too. The stores are built by
+    session-scoped fixtures, which pytest sets up before this one — a recording keeps the
+    dates it was recorded with, and only the reading of it moves.
+    """
+    monkeypatch.setattr(dt, "date", _PinnedDate)
+
 
 # Mycelia sessions `corpus_rollups` credits with no turns and no agent runs, so no stratum
 # may reach them. Two of them compacted, which is what makes the exclusion visible: a pool
