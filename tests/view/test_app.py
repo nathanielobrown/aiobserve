@@ -44,7 +44,7 @@ from tests.conftest import (
     TEAMMATE,
     TEAMMATE_RUN,
 )
-from tests.view.conftest import MISSING, Planter, fields, inside, one, values
+from tests.view.conftest import MISSING, Planter, Statement, fields, inside, one, values
 
 # What every list citation says about the display cut, which the viewer composes around the
 # query the same way it composes the paging: re-running the file alone answers whole values.
@@ -513,6 +513,44 @@ def test_the_session_header_holds_what_the_store_says_about_it(
     assert header["turns"] == str(turns)
     assert header["agent_runs"] == str(agent_runs)
     assert header["cost_usd"] == money(cost)
+
+
+def test_every_number_a_header_prints_carries_its_separators(plant: Planter) -> None:
+    """A header's counts go through the same formatter every count on a page does.
+
+    Both headers, because they show the same rollup of two different threads: a session's,
+    and one run's. Planted, because the busiest thread the corpus records made a handful of
+    calls — under a thousand a formatted count and a bare one are the same string. The clones
+    are of recorded rows, so what a header counts stays the `live_*` population it counts today.
+    """
+    over = 1_000
+
+    def cloned(table: str, source: str) -> Statement:
+        # One recorded row of that thread, cloned past the point the two spellings diverge.
+        return (
+            f"INSERT INTO {table} (SELECT t.* REPLACE (t.id || '-planted-' || i AS id)"
+            f" FROM {table} t, range(1, ?) r(i) WHERE t.session_id = ? AND t.id ="
+            f" (SELECT min(id) FROM {table} WHERE session_id = ? AND source = ?))",
+            [over + 1, SPINE, SPINE, source],
+        )
+
+    path = plant(
+        *(
+            cloned(table, source)
+            for table in ("turns", "api_calls", "tool_calls")
+            for source in (MAIN, SPINE_RUN)
+        )
+    )
+    with TestClient(build_app(path)) as planted:
+        session = fields(planted.get(f"/session/{SPINE}").text, "id", "session-header")
+        run = fields(planted.get(f"/session/{SPINE}/run/{SPINE_RUN}").text, "id", "run-header")
+    # Every number either header prints is grouped in threes or the dash a NULL prints...
+    counted = ("turns", "api_calls", "tool_calls", "tool_errors", "compactions", "output_tokens")
+    for header, name in ((session, "session"), (run, "run")):
+        for field in (*counted, "unpriced_api_calls"):
+            assert re.fullmatch(r"\d{1,3}(,\d{3})*|—", header[field]), (name, field, header[field])
+        # ...and the plant pushed three of them past the point where that is a claim.
+        assert all("," in header[field] for field in counted[:3]), name
 
 
 def test_the_session_page_cites_every_query_it_ran(client: TestClient) -> None:

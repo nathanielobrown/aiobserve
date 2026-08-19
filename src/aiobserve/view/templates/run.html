@@ -27,17 +27,17 @@
     {{ parts.fact('run_id', header.run_id) }}
     {{ parts.fact('description', header.description) }}
     {{ parts.fact('model', header.model) }}
-    {{ parts.fact('spawn_depth', header.spawn_depth) }}
+    {{ parts.fact('spawn_depth', header.spawn_depth | count) }}
     {{ parts.fact('is_fork', header.is_fork) }}
     {{ parts.fact('started_at', header.started_at | when) }}
     {{ parts.fact('wall_ms', header.wall_ms | duration) }}
-    {{ parts.fact('turns', header.turns) }}
-    {{ parts.fact('api_calls', header.api_calls) }}
-    {{ parts.fact('tool_calls', header.tool_calls) }}
-    {{ parts.fact('tool_errors', header.tool_errors) }}
-    {{ parts.fact('compactions', header.compactions) }}
+    {{ parts.fact('turns', header.turns | count) }}
+    {{ parts.fact('api_calls', header.api_calls | count) }}
+    {{ parts.fact('tool_calls', header.tool_calls | count) }}
+    {{ parts.fact('tool_errors', header.tool_errors | count) }}
+    {{ parts.fact('compactions', header.compactions | count) }}
     {{ parts.fact('cost_usd', header.cost_usd | money) }}
-    {{ parts.fact('unpriced_api_calls', header.unpriced_api_calls) }}
+    {{ parts.fact('unpriced_api_calls', header.unpriced_api_calls | count) }}
     {{ parts.fact('output_tokens', header.output_tokens | count) }}
   </dl>
   {% set described = enrichment.runs.get(header.run_id) %}
@@ -51,7 +51,7 @@
 <section id="children">
   {# The runs this one spawned that no turn of its own timeline claims — a fork, or a run
      whose spawning call the store does not hold. Listed here rather than dropped. #}
-  <h2><span data-field="runs">{{ children.total }}</span> run(s) under no turn of this one</h2>
+  <h2><span data-field="runs">{{ children.total | count }}</span> run(s) under no turn of this one</h2>
   {{ parts.run_list(children.shown, 'data-child', header.session_id, enrichment.runs) }}
   {{ parts.cut_line(children.cut, none) }}
 </section>

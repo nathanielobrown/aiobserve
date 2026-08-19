@@ -5,33 +5,41 @@
 {% block main %}
 <section id="session-header">
   <h1 data-field="title">{{ header.title or header.session_id }}</h1>
-  <dl>
+  {# Four clusters rather than one run of eighteen facts: what this session was, when it
+     ran, how much it did, and what it cost. #}
+  <dl data-cluster="identity">
     {{ parts.fact('session_id', header.session_id) }}
     {{ parts.fact('project_dir', header.project_dir) }}
     {{ parts.fact('git_branch', header.git_branch) }}
     {{ parts.fact('version', header.version) }}
     {{ parts.fact('entrypoint', header.entrypoint) }}
-    {{ parts.fact('started_at', header.started_at | when) }}
-    {{ parts.fact('wall_ms', header.wall_ms | duration) }}
-    {{ parts.fact('active_ms', header.active_ms | duration) }}
-    {{ parts.fact('turns', header.turns) }}
-    {{ parts.fact('api_calls', header.api_calls) }}
-    {{ parts.fact('tool_calls', header.tool_calls) }}
-    {{ parts.fact('tool_errors', header.tool_errors) }}
-    {{ parts.fact('agent_runs', header.agent_runs) }}
-    {{ parts.fact('compactions', header.compactions) }}
-    {{ parts.fact('cost_usd', header.cost_usd | money) }}
-    {{ parts.fact('unpriced_api_calls', header.unpriced_api_calls) }}
-    {{ parts.fact('output_tokens', header.output_tokens | count) }}
     {# Both lists grow with the session, so the query cuts them and says how many it left:
        a header is the one part of a page no size a reader types bounds. #}
     {{ parts.fact('skills', (header.skills or []) | join(', ')
                   ~ (' and %d more' % header.skills_cut if header.skills_cut else '')) }}
   </dl>
+  <dl data-cluster="time">
+    {{ parts.fact('started_at', header.started_at | when) }}
+    {{ parts.fact('wall_ms', header.wall_ms | duration) }}
+    {{ parts.fact('active_ms', header.active_ms | duration) }}
+  </dl>
+  <dl data-cluster="volume">
+    {{ parts.fact('turns', header.turns | count) }}
+    {{ parts.fact('api_calls', header.api_calls | count) }}
+    {{ parts.fact('tool_calls', header.tool_calls | count) }}
+    {{ parts.fact('tool_errors', header.tool_errors | count) }}
+    {{ parts.fact('agent_runs', header.agent_runs | count) }}
+    {{ parts.fact('compactions', header.compactions | count) }}
+  </dl>
+  <dl data-cluster="spend">
+    {{ parts.fact('cost_usd', header.cost_usd | money) }}
+    {{ parts.fact('unpriced_api_calls', header.unpriced_api_calls | count) }}
+    {{ parts.fact('output_tokens', header.output_tokens | count) }}
+  </dl>
   {% if header.pr_urls %}
   <ul class="prs">
     {% for url in header.pr_urls %}<li data-pr="{{ url }}">{{ url | link }}</li>{% endfor %}
-    {% if header.pr_urls_cut %}<li data-field="prs_cut">and {{ header.pr_urls_cut }} more</li>{% endif %}
+    {% if header.pr_urls_cut %}<li data-field="prs_cut">and {{ header.pr_urls_cut | count }} more</li>{% endif %}
   </ul>
   {% endif %}
   {% if enrichment.session %}{{ parts.summary(enrichment.session) }}{% endif %}
@@ -40,12 +48,12 @@
 {{ parts.timeline(timeline, header.session_id, main, 'data-chip', lines, marks, sizes,
                   enrichment) }}
 
-{# Forward only, and the cursor is the last index shown — so a link a reader saved opens the
-   same turns tomorrow, whatever the session grew in between. #}
+{# Forward only, and the cursor is the last index shown — so a link a reader saved opens
+   the same turns tomorrow, whatever the session grew in between. #}
 {% if page.after is not none %}
 <p class="more" data-more-turns="{{ page.after }}">
   <a href="/session/{{ header.session_id }}?after={{ page.after }}&turns={{ sizes.turns }}&chips={{ sizes.chips }}"
-     >+{{ page.more }} more turn(s)</a>
+     >+{{ page.more | count }} more turn(s)</a>
 </p>
 {% endif %}
 
@@ -54,7 +62,7 @@
   {# The chip join's complement. Listed rather than dropped, so the run count in the header
      and the runs on the page agree — and the heading counts the whole list, not the page's
      share of it, which is what keeps that agreement when the cap bites. #}
-  <h2><span data-field="runs">{{ unattached.total }}</span> run(s) under no turn</h2>
+  <h2><span data-field="runs">{{ unattached.total | count }}</span> run(s) under no turn</h2>
   {{ parts.run_list(unattached.shown, 'data-unattached', header.session_id, enrichment.runs) }}
   {{ parts.cut_line(unattached.cut, '/session/' ~ header.session_id ~ '?turns=1&chips='
                     ~ sizes.widest) }}
