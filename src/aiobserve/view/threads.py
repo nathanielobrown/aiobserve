@@ -9,8 +9,9 @@ names no parent for hangs off nothing rather than off a guess.
 Pure functions over rows the queries returned. Nothing here reads a store or a request.
 """
 
-from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+import math
+from collections.abc import Container, Iterator, Mapping, Sequence
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import NamedTuple
 
@@ -260,16 +261,6 @@ def ancestry(run_id: str, runs: Sequence[Row]) -> list[str]:
     return trail[::-1]
 
 
-def permalink(session_id: str, turn_index: int, turn_id: str) -> str:
-    """The link to one turn on a page that starts with it.
-
-    The cursor is one before the turn's own index, because `after` is the last index already
-    shown — so a link a reader saved opens the same turn tomorrow, whatever the session grew
-    in between. Minted here because two surfaces mint it: the timeline and the map.
-    """
-    return f"/session/{session_id}?after={turn_index - 1}#turn-{turn_id}"
-
-
 def children(run_id: str, runs: Sequence[Row]) -> tuple[Chip, ...]:
     """The runs under this one that no turn of its own timeline claims.
 
@@ -301,6 +292,205 @@ def unattached(runs: Sequence[Row]) -> tuple[Chip, ...]:
         for run in runs
         if run["spawn_turn_id"] is None and run["spawn_source"] not in spawners
     )
+
+
+class NavKind(StrEnum):
+    """What one node of a session's map is."""
+
+    TURN = "turn"
+    RUN = "run"
+
+
+@dataclass(frozen=True)
+class NavNode:
+    """One node of the map beside a session page: where it goes and what it took."""
+
+    kind: NavKind
+    # The turn or the run the node stands for — what the page's own rows are keyed by.
+    node_id: str
+    # Down the page when the turn is on it, to the page that starts with it when it is not,
+    # and to a run's own page for a run.
+    href: str
+    label: str
+    cost_usd: float
+    # Calls under this node our price table could not price. A cost carries this or it is not
+    # the node's cost, the same rule the session list's total is printed under.
+    unpriced_api_calls: int
+    # The node's share of what the session spent, or None when it spent nothing: a share of
+    # nothing is a gap rather than 0%.
+    share: float | None
+    # Whether the page this map sits beside rendered the turn. A run takes its turn's answer,
+    # so a run under a turn on the page is not dimmed along with the rest.
+    in_window: bool
+    children: tuple["NavNode", ...]
+
+    @property
+    def meter(self) -> str:
+        """The decile class the spend bar is drawn with, `s0` through `s10`.
+
+        A class and not a width, because the policy blocks the inline style a width needs. Any
+        nonzero share rounds *up* into `s1`, or a session one turn dominates renders every
+        other node with no bar at all.
+        """
+        return "s0" if not self.share else f"s{min(math.ceil(self.share * 10), 10)}"
+
+
+class Nav(NamedTuple):
+    """A session's whole map, cut to the size one response is bounded at."""
+
+    # One node per main-thread turn, each carrying the runs that turn spawned.
+    nodes: tuple[NavNode, ...]
+    # The runs no turn claims, which hang here rather than nowhere.
+    unattached: tuple[NavNode, ...]
+    # How many runs that tail holds, cut or not — what its heading counts.
+    loose: int
+    # Nodes the budget left out, across both lists, and how many the whole map holds.
+    cut: int
+    total: int
+
+
+def permalink(session_id: str, turn_index: int, turn_id: str) -> str:
+    """The link to one turn on a page that starts with it.
+
+    The cursor is one before the turn's own index, because `after` is the last index already
+    shown — so a link a reader saved opens the same turn tomorrow, whatever the session grew
+    in between. Minted here because two surfaces mint it: the timeline and the map.
+    """
+    return f"/session/{session_id}?after={turn_index - 1}#turn-{turn_id}"
+
+
+def on_page(turns: Sequence[Row], after: int, size: int) -> set[str]:
+    """Which turns a page at `after` rendered, by id — `store.window`'s keyset rule in Python.
+
+    The map covers the whole session while the page beside it holds one window of it, so the
+    map has to know that window. Derived from the rows it already has rather than fetched
+    again: a second query would be a second answer to what the page has settled.
+    """
+    ahead = [row for row in turns if row[TURN_CURSOR] > after]
+    return {row["turn_id"] for row in ahead[:size]}
+
+
+def nav_tree(
+    session_id: str,
+    turns: Sequence[Row],
+    runs: Sequence[Row],
+    described: Mapping[str, str],
+    cost_usd: float | None,
+    label_chars: int,
+    here: Container[str],
+    budget: int,
+) -> Nav:
+    """A session's whole main thread as a map, with every run it holds hanging off it.
+
+    The map is the session and not the page: `here` — which turns the page beside it rendered
+    — is all it takes from the window, and it decides emphasis and where a node's link goes.
+    `described` is what a pass said each turn did, keyed by turn id and empty over a store no
+    pass has touched; `cost_usd` is the session's own, which every share is a share of.
+
+    Every run appears exactly once: under the turn that spawned it, under the run that did, or
+    in the unattached tail. One this cannot place raises, as `session_threads` does, rather
+    than vanishing from a map that counts it.
+    """
+    whole = cost_usd or 0
+    nodes = tuple(
+        _turn_node(session_id, row, runs, described, whole, label_chars, row["turn_id"] in here)
+        for row in turns
+    )
+    loose = tuple(
+        _run_node(session_id, chip, whole, label_chars, False) for chip in unattached(runs)
+    )
+    placed = {node.node_id for node in _nodes(nodes) if node.kind is NavKind.RUN}
+    placed |= {node.node_id for node in _nodes(loose)}
+    missing = {run["run_id"] for run in runs} - placed
+    if missing:
+        raise ValueError(f"{len(missing)} run(s) are on no node of the map: {sorted(missing)}")
+    total = sum(1 for _ in _nodes(nodes)) + sum(1 for _ in _nodes(loose))
+    kept, left = _take_nodes(nodes, budget)
+    tail, _ = _take_nodes(loose, left)
+    return Nav(kept, tail, sum(1 for _ in _nodes(loose)), max(total - budget, 0), total)
+
+
+def _turn_node(
+    session_id: str,
+    row: Row,
+    runs: Sequence[Row],
+    described: Mapping[str, str],
+    whole: float,
+    label_chars: int,
+    here: bool,
+) -> NavNode:
+    turn_id = row["turn_id"]
+    cost = row["cost_usd"]
+    return NavNode(
+        kind=NavKind.TURN,
+        node_id=turn_id,
+        href=f"#turn-{turn_id}" if here else permalink(session_id, row[TURN_CURSOR], turn_id),
+        label=_label(row, described.get(turn_id))[:label_chars],
+        cost_usd=cost,
+        unpriced_api_calls=row["unpriced_api_calls"],
+        share=cost / whole if whole else None,
+        in_window=here,
+        children=tuple(
+            _run_node(session_id, chip, whole, label_chars, here)
+            for chip in chips(runs, MAIN_SOURCE, turn_id)
+        ),
+    )
+
+
+def _label(row: Row, description: str | None) -> str:
+    """What to call one turn: what a pass said it did, else the command it ran and what
+    followed, else the prompt as typed.
+
+    The prompt is last because a slash command's prompt is the `<command-…>` wrapper Claude
+    Code put around it, which says nothing in the width of a sidebar.
+    """
+    if description:
+        return description
+    if row["command_name"] is not None:
+        return f"{row['command_name']} {row['command_args'] or ''}".strip()
+    return row["prompt"] or ""
+
+
+def _run_node(
+    session_id: str, chip: Chip, whole: float, label_chars: int, in_window: bool
+) -> NavNode:
+    run = chip.run
+    cost = run["cost_usd"]
+    return NavNode(
+        kind=NavKind.RUN,
+        node_id=run["run_id"],
+        href=f"/session/{session_id}/run/{run['run_id']}",
+        # A run whose transcript recorded no description is named by its agent alone.
+        label=f"{run['agent_type']} {run['description'] or ''}".strip()[:label_chars],
+        cost_usd=cost,
+        unpriced_api_calls=run["unpriced_api_calls"],
+        share=cost / whole if whole else None,
+        in_window=in_window,
+        children=tuple(
+            _run_node(session_id, child, whole, label_chars, in_window) for child in chip.children
+        ),
+    )
+
+
+def _take_nodes(nodes: Sequence[NavNode], budget: int) -> tuple[tuple[NavNode, ...], int]:
+    """The first `budget` nodes of a pre-order walk, and what is left of the budget.
+
+    `_take`'s rule over the map's own node: a rendered run's parent is always rendered, so the
+    cut is a shorter map rather than a map with holes in it.
+    """
+    kept: list[NavNode] = []
+    for node in nodes:
+        if budget <= 0:
+            break
+        children, budget = _take_nodes(node.children, budget - 1)
+        kept.append(replace(node, children=children))
+    return tuple(kept), budget
+
+
+def _nodes(nodes: Sequence[NavNode]) -> Iterator[NavNode]:
+    for node in nodes:
+        yield node
+        yield from _nodes(node.children)
 
 
 def _walk(items: Sequence[Chip]) -> Iterator[Chip]:

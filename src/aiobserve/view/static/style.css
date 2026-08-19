@@ -53,6 +53,72 @@ td.title { max-width: 26rem; }
 td.title .secondary { display: -webkit-box; -webkit-box-orient: vertical;
   -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; margin: 0; }
 
+/* One session: the map on the left, the page it maps on the right. The sidebar scrolls on its
+   own, so a long session scrolls its timeline without losing the map, and the content column
+   is capped near a reading measure rather than filling whatever width the window has. */
+#session {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 0 2rem;
+  align-items: start;
+}
+#map { position: sticky; top: 0; max-height: 100vh; overflow: auto; }
+/* Where the map has a column of its own it is simply there, so its handle is noise. */
+#map > summary { display: none; }
+#content { min-width: 0; max-width: 52rem; }
+/* Narrow enough that two columns would leave neither readable: the map folds to a handle
+   above the page, which is a `<details>` and needs no script to open. */
+@media (max-width: 900px) {
+  #session { display: block; }
+  #map { position: static; max-height: none; overflow: visible; margin-bottom: 1rem; }
+  #map > summary { display: list-item; color: var(--dim); cursor: pointer; }
+  #content { max-width: none; }
+}
+
+/* The map. One node a line, monospaced so a label's cut and the numbers after it line up
+   down the column — the sidebar is scanned rather than read. */
+nav.map { font: 0.75rem/1.6 ui-monospace, monospace; }
+ul.nav { margin: 0; padding-left: 0.7rem; list-style: none; }
+nav.map > ul.nav { padding-left: 0; }
+li.node > a {
+  display: flex; justify-content: space-between; gap: 0.5rem;
+  padding: 0 0.2rem; color: inherit; text-decoration: none;
+}
+li.node [data-field="label"] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+nav.map .secondary { color: var(--dim); white-space: nowrap; }
+/* Emphasis is the whole point of a server-rendered map: the turns on the page the reader is
+   looking at read at full strength, everything a click away recedes. */
+li.node.here > a { font-weight: 600; }
+li.node.away > a { color: var(--dim); }
+li.node > a:hover { background: color-mix(in srgb, var(--mark) 12%, transparent); }
+/* A run's own runs arrive folded — a forest opened by default is a wall, not a map. */
+details.under > summary { color: var(--dim); cursor: pointer; padding-left: 0.7rem; }
+nav.map h3 { margin: 0.8rem 0 0.2rem; font-size: 0.75rem; color: var(--dim); }
+#nav-more { margin: 0.4rem 0; color: var(--dim); }
+nav.map ul.citation { margin: 0.8rem 0 0; padding: 0; list-style: none;
+  color: var(--dim); overflow-wrap: anywhere; }
+
+/* The spend meter: a thin bar along the bottom of each node, anchored left, its length the
+   node's decile of what the session spent. A class per decile and not an inline width,
+   because the policy blocks a `style` attribute — and any nonzero share rounds up to `s1`,
+   so one whale turn cannot blank every other row's meter. */
+li.node > a {
+  background-image: linear-gradient(var(--mark), var(--mark));
+  background-repeat: no-repeat;
+  background-position: left bottom;
+  background-size: 0 2px;
+}
+li.node.s1 > a { background-size: 10% 2px; }
+li.node.s2 > a { background-size: 20% 2px; }
+li.node.s3 > a { background-size: 30% 2px; }
+li.node.s4 > a { background-size: 40% 2px; }
+li.node.s5 > a { background-size: 50% 2px; }
+li.node.s6 > a { background-size: 60% 2px; }
+li.node.s7 > a { background-size: 70% 2px; }
+li.node.s8 > a { background-size: 80% 2px; }
+li.node.s9 > a { background-size: 90% 2px; }
+li.node.s10 > a { background-size: 100% 2px; }
+
 /* One session's timeline. The header's four clusters sit side by side while there is room:
    what this session was, when it ran, how much it did, and what it cost. */
 #session-header { display: flex; flex-wrap: wrap; align-items: start; gap: 0 2.5rem; }

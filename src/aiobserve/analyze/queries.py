@@ -177,6 +177,11 @@ TAG_CHARS = 20
 # is a page rather than a transcript.
 RECORD_PREVIEW = 160
 
+# How much of a label the map beside a session page carries — a turn's, or a run's. Short
+# because a map is scanned rather than read, and because it is the one list whose rows a
+# reader sees all of: a sidebar node is a line, and a line that wraps three times is not one.
+NAV_CHARS = 48
+
 # The keyset cursor before the first row: "the last index already shown", and indexes start
 # at 0. Defaulted to it, so a bare invocation of a paging query returns its first page.
 FIRST_PAGE = -1
@@ -516,6 +521,13 @@ QUERIES: dict[str, Query] = {
             "head_chars": Param(type=ParamType.INTEGER, default=HEADER_CHARS),
             "item_chars": Param(type=ParamType.INTEGER, default=HEADER_ITEM_CHARS),
             "head_items": Param(type=ParamType.INTEGER, default=HEADER_ITEMS),
+        },
+    ),
+    "view_session_nav": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            "nav_chars": Param(type=ParamType.INTEGER, default=NAV_CHARS),
         },
     ),
     "view_sessions": Query(

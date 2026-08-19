@@ -141,6 +141,17 @@ MEASURED_CHIP_ENRICHMENT_MARKUP = 300
 # its own — 13,779 B, which is a page's worst case rather than a corpus observation, because
 # everything in a header is now cut in SQL.
 MEASURED_SESSION_CHROME = 15_000
+# What the markup around one node of the map beside a session page costs, with the label the
+# node carries taken off, and what the map weighs apart from its nodes: the citation lines, the
+# heading over the runs no turn holds, and the tail saying how many nodes the cap cut. Both
+# re-measured through the app by the leaf at the bottom of this file, every cap a label reads
+# planted full of `&` and every node's cost left short of a call: 721 B a turn node and 754 B a
+# run node — the nested kind, the dearer of the two — of which 240 B is the label at its cap,
+# leaving 514 B of link, meter class, unpriced mark and the row around them; and 987 B of
+# chrome, the widest any recorded map reaches. The allowance is larger than that because no
+# recorded session carries the heading and the tail at once.
+MEASURED_NAV_NODE_MARKUP = 600
+MEASURED_NAV_CHROME = 1_500
 # The parameter every truncated column of a run row is cut to. Counted per query rather than
 # listed, so a fourth column added to a chip shows up in the arithmetic instead of quietly
 # spending the ceiling `bounds.CHIP_BUDGET` times over.
@@ -306,6 +317,18 @@ def worst_session_bytes() -> int:
     )
 
 
+def worst_nav_node_bytes() -> int:
+    """What one node of a session's map can weigh: its markup, and a label of nothing but `&`.
+
+    One label and two numbers, whichever kind of node it is — a turn's label is the head of
+    what a pass said about it, of the command it ran, or of the prompt, and a run's is its
+    agent type and the line it was spawned with. Each is composed and then cut to the one cap
+    the map reads at, so a node carries one head and not a head per column. The `<details>` a
+    nested run sits under rides the markup, which is measured at the dearer of the two kinds.
+    """
+    return MEASURED_NAV_NODE_MARKUP + queries.NAV_CHARS * ESCAPED_CHAR_BYTES
+
+
 def worst_record_bytes() -> int:
     """What one row of the records browser can weigh: its markup, and a preview of `&`."""
     return (
@@ -440,6 +463,10 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     assert QUERIES["view_session_header"].params["head_chars"].default == 100
     assert QUERIES["view_session_header"].params["item_chars"].default == 60
     assert QUERIES["view_session_header"].params["head_items"].default == 5
+    # And how much of a label the map beside a session page shows, per node. Short by design:
+    # a node is a line in a sidebar rather than a row of a table, and the map is the one list
+    # whose rows a reader sees all of.
+    assert QUERIES["view_session_nav"].params["nav_chars"].default == 48
     # A run header carries three strings of the same kind — the line the run was spawned with,
     # the agent definition that ran, and the model it ran on — so they take the same head.
     assert QUERIES["view_run_header"].params["head_chars"].default == 100
@@ -476,6 +503,10 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     assert (
         MEASURED_PROJECTS_CHROME + bounds.PROJECTS.ceiling * worst_project_row_bytes() < PAGE_BYTES
     )
+    # The map beside a session page is its own response, so it spends a ceiling of its own
+    # rather than the page's: every node its cap admits, each label at the cut the query makes,
+    # plus what the map carries whatever it holds.
+    assert MEASURED_NAV_CHROME + bounds.NAV.ceiling * worst_nav_node_bytes() < PAGE_BYTES
     # The session timeline is the page whose caps this arithmetic sets rather than checks: its
     # run rows are most of what the ceiling buys, and the chip budget is what that leaves room for.
     assert worst_session_bytes() < PAGE_BYTES
@@ -498,6 +529,7 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
         "CHIPS",
         "SESSIONS",
         "PROJECTS",
+        "NAV",
     }
     assert (bounds.TURNS.default + 1) * bounds.CHIPS.default <= bounds.CHIP_BUDGET
     # And every run is reachable: one turn's runs, or the unattached list, fits a page of its
@@ -591,6 +623,7 @@ ROUTES: dict[str, str] = {
     "/fragment/tool/{session_id}/{source}/{tool_call_id}": (
         f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}"
     ),
+    "/fragment/nav/{session_id}": f"/fragment/nav/{SPINE}",
     "/session/{session_id}/records/{source}": f"/session/{ANCESTOR}/records/main",
     "/fragment/record/{session_id}/{source}/{line_no}": f"/fragment/record/{ANCESTOR}/main/1",
     "/session/{session_id}/offload/{name:path}": f"/session/{CONFIG_ONLY}/offload/{OFFLOAD_FILE}",
@@ -939,6 +972,89 @@ def test_a_session_page_of_nothing_but_escapes_carries_the_chrome_the_ceiling_bu
     described = fields(widest, "data-enrichment", values(widest, "data-enrichment")[0])
     assert len(described["description"]) == len(described["friction"]) == queries.ENRICHMENT_CHARS
     assert described["stale"] == "stale"
+
+
+# What the map's arithmetic counts node by node, which chrome is the map without: the list of
+# nodes, and the list a node's children sit in. One pattern, because a node list nests inside a
+# node list and the unattached tail is one more of them.
+NAV_NODES = r'<ul class="nav">.*?</ul>'
+
+
+def map_chrome(html: str) -> str:
+    """A session's map with every node `worst_nav_node_bytes` counts separately taken out."""
+    while (stripped := re.sub(NAV_NODES, "", html, count=1, flags=re.S)) != html:
+        html = stripped
+    # The strip is the instrument, so it is checked both ways: a node left in is a cost counted
+    # twice, and the map taken out whole hides what this measures.
+    assert not values(html, "data-nav") and "<nav" in html
+    return html
+
+
+def test_a_session_map_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
+    enriched_plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A node of the map beside a session page weighs no more than the arithmetic gives it.
+
+    The map is its own response and spends a ceiling of its own, so a template that grows a
+    node past its budget puts that ceiling out `bounds.NAV.ceiling` times over. Every cap a
+    label reads is planted full of `&` — the character that escapes to five bytes — because no
+    recorded label is adversarial: what a pass wrote, which is the arm a described store shows,
+    and the command and prompt an undescribed one falls back to. `SPINE` is the session that
+    measures it because its forest nests: a run under a turn, and a run under that run.
+    """
+    heads_full = "&" * queries.CHIP_CHARS
+    path = enriched_plant(
+        (
+            "UPDATE turns SET prompt = ?, command_name = ?, command_args = ? WHERE session_id = ?",
+            ["&" * PROMPT_CHARS, "&" * COMMAND_NAME_CHARS, "&" * COMMAND_ARGS_CHARS, SPINE],
+        ),
+        (
+            "UPDATE agent_runs SET agent_type = ?, description = ? WHERE session_id = ?",
+            [heads_full, heads_full, SPINE],
+        ),
+        # Every call but one loses its price, so each node renders the mark a total missing
+        # calls carries — and the one left priced keeps the session's whole above zero, so the
+        # shares beside those marks print as percentages rather than as the gap a zero whole is.
+        (
+            "UPDATE api_calls SET cost_usd = NULL WHERE session_id = ?"
+            " AND id != (SELECT max(id) FROM api_calls WHERE session_id = ?)",
+            [SPINE, SPINE],
+        ),
+        *DESCRIBED_AT_EVERY_CAP,
+    )
+    with TestClient(build_app(path)) as planted:
+
+        def served(nodes: int) -> str:
+            response = planted.get(f"/fragment/nav/{SPINE}", params={"nodes": nodes})
+            assert response.status_code == 200, response.text[:200]
+            return response.text
+
+        # `SPINE`'s first three nodes are turns, so one more of them is a turn node and
+        # nothing else. Its third turn spawned a run, and that run spawned another: the fifth
+        # node is the nested kind, which brings the `<details>` its siblings fold into.
+        pages = {nodes: served(nodes) for nodes in (2, 3, 4, 5)}
+        # The chrome is measured across every session rather than on `SPINE` alone: the widest
+        # belongs to whichever map carries a heading over the runs no turn holds as well as a
+        # cut tail, and `SPINE`'s forest hangs entirely off its turns.
+        sessions = [row[0] for row in store.execute("SELECT id FROM sessions").fetchall()]
+        maps = [
+            planted.get(f"/fragment/nav/{session_id}", params={"nodes": 2}).text
+            for session_id in sessions
+        ]
+    weights = {nodes: len(page.encode()) for nodes, page in pages.items()}
+    # A turn node costs its markup and a label of nothing but `&`...
+    assert weights[3] - weights[2] <= worst_nav_node_bytes()
+    # ...and a run node costs no more, measured where a run node is dearest.
+    assert weights[5] - weights[4] <= worst_nav_node_bytes()
+    # ...and what the map carries whatever it holds fits the allowance the ceiling gives it.
+    widest = max((map_chrome(one_map) for one_map in maps), key=lambda page: len(page.encode()))
+    assert len(widest.encode()) <= MEASURED_NAV_CHROME
+    # The plant reached the cap the map cuts a label to, which is what makes those numbers a
+    # worst case, and the cap bit and said by how much — a map that renders two nodes without
+    # saying how many it left out looks identical to a session of two.
+    labels = re.findall(r'<span data-field="label">(.*?)</span>', pages[2])
+    assert {label.count("&amp;") for label in labels} == {queries.NAV_CHARS}
+    assert fields(pages[2], "id", "nav-more")["cut"] == "4"
 
 
 def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(

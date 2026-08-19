@@ -1314,6 +1314,7 @@ def test_a_session_the_store_does_not_hold_is_a_404(client: TestClient) -> None:
         f"/session/{SPINE}",
         f"/session/{MISSING}",
         f"/fragment/turn/{ANCESTOR}/{MAIN}/{DENSE_TURN}",
+        f"/fragment/nav/{SPINE}",
         f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}",
         f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{MISSING}",
         "/static/style.css",
@@ -1360,6 +1361,7 @@ def test_planted_markup_arrives_inert(plant: Planter) -> None:
         served = (
             client.get("/sessions").text,
             client.get(f"/session/{SPINE}").text,
+            client.get(f"/fragment/nav/{SPINE}").text,
             client.get(f"/fragment/turn/{ANCESTOR}/{MAIN}/{DENSE_TURN}").text,
             client.get(f"/fragment/text/{ANCESTOR}/{MAIN}/{DENSE_TURN_CALL}").text,
             client.get(f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}").text,
@@ -1492,15 +1494,20 @@ def test_a_fragment_naming_nothing_is_a_404(client: TestClient) -> None:
 
 
 def test_every_asset_a_page_asks_for_is_one_the_viewer_ships(client: TestClient) -> None:
-    """No page reaches off the machine for an asset — the viewer works with the wifi off.
+    """No page reaches off the machine for an asset, and none writes an inline style.
 
-    A CDN reference is also the one thing that would make the CSP fail loudly in a browser
-    and silently in this tier, so the check is on the templates rather than on a response.
+    Both are things the policy in `app.CSP` forbids, and both fail the same way: loudly in a
+    browser and silently in this tier, because a blocked asset and a dropped attribute leave
+    a 200 behind. So the check is on the templates rather than on a response — the fragments
+    included, which are the templates no page-level sweep renders.
     """
-    # Every `src` and `href` a template writes is a path on this server...
-    for template in sorted(TEMPLATES.glob("*.html")):
-        remote = re.findall(r'(?:src|href)="(\w+:)?//[^"]*"', template.read_text())
-        assert remote == [], template.name
+    for template in sorted(TEMPLATES.rglob("*.html")):
+        markup = template.read_text()
+        # Every `src` and `href` a template writes is a path on this server...
+        assert re.findall(r'(?:src|href)="(\w+:)?//[^"]*"', markup) == [], template.name
+        # ...and nothing carries a style attribute. This is the trap the spend meter's decile
+        # classes exist to dodge: a width written inline is a meter no reader ever sees.
+        assert ' style="' not in markup, template.name
     # ...and each asset the base page asks for is served, htmx included.
     page = client.get("/").text
     assets = re.findall(r'(?:src|href)="(/static/[^"]*)"', page)
