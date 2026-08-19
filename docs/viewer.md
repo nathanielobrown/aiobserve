@@ -11,6 +11,8 @@ flowchart LR
     projects["projects"] -->|"a project row"| session_list["session list"]
     session_list -->|"a row"| session_page["a session"]
     session_page -->|"a run chip"| run_page["an agent run"]
+    session_page -.->|"the map beside it"| session_map["a map of the session"]
+    session_map -->|"a node off the window"| session_page
     run_page -->|"a nested run chip"| run_page
     run_page -->|"the thread above it"| session_page
     session_page -->|"the thread it renders"| records_page["raw records"]
@@ -22,7 +24,7 @@ flowchart LR
     one_value -->|"a result written to a file"| offload_page["an offloaded result"]
 ```
 
-Solid edges lead to pages with their own URLs:
+Solid edges lead to pages with their own URLs, and the map beside a session page is a fragment with one:
 
 | Page | Route |
 | --- | --- |
@@ -32,16 +34,17 @@ Solid edges lead to pages with their own URLs:
 | Agent run | `/session/{session_id}/run/{run_id}` |
 | Raw records | `/session/{session_id}/records/{source}` |
 | Offloaded result | `/session/{session_id}/offload/{name}` |
+| Session map | `/fragment/nav/{session_id}` |
 
 Dotted edges fetch a fragment into the open page. Each request returns one value or one bounded page of rows. `src/aiobserve/view/app.py` declares every route.
 
 ## The landing page counts projects
 
-`/` lists every project the store holds sessions for, most recently active first, with sessions and spend over the last 7 days, the last 30, and all time. A row opens the session list filtered to that project. Sessions recorded from a checkout's worktrees count under the checkout, and sessions with no recorded directory gather into an unlinked `(no project)` row. The footer cites the query and the date the windows were measured from, so the page reproduces.
+`/` lists every project the store holds sessions for, most recently active first, with sessions and spend over the last 7 days, the last 30, and all time. A row opens the session list filtered to that project. Sessions recorded from a checkout's worktrees count under the checkout, and sessions with no recorded directory gather into an unlinked `(no project)` row. The footer cites the query and `as_of`, the date both windows were measured back from, so the page reproduces tomorrow.
 
 ## The session list keeps the query visible
 
-The list has one row per session. A row shows how long ago the session started over its timestamp, its title and project, rollup counts, its tool errors as a rate over the count, cost over output tokens, wall time over active time, the agent types it spawned with a count of each, and its skills. Over a store an enrichment pass has run against, a Work column says what kinds of turn the pass found. Every column heading sorts by that column; click it again to reverse the order. Errors sorts by the count rather than the rate: one failure in one call is 100% and not the session someone ranking by errors is looking for. A `*` after the cost means the session called a model missing from the price table, so the shown total is a floor.
+The list has one row per session. A row shows how long ago the session started over its timestamp, its title and project, rollup counts, its tool errors as a rate over the count, cost over output tokens, wall time over active time, the agent types it spawned with a count of each, and its skills. A column showing two values is one cell read as two lines: the value the column is scanned for, and the texture under it. Over a store an enrichment pass has run against, a Work column says what kinds of turn the pass found. Every column heading sorts by that column; click it again to reverse the order. Errors sorts by the count rather than the rate: one failure in one call is 100% and not the session someone ranking by errors is looking for. A `*` after the cost means the session called a model missing from the price table, so the shown total is a floor.
 
 Rows show only the head of long text: 100 characters for the title and project path, four skill names and four agent types followed by the number omitted, and three kinds of work. The session header shows five skill names of up to 60 characters along with its other fields; it too stays bounded.
 
@@ -51,13 +54,19 @@ Filters survive sorting and paging. The `clear` link beside the form drops them.
 
 ## Session pages account for every call and run
 
-A session page starts with the stored session header, then pages through the main-source turns in order. Each turn shows its prompt or command, counts, and cost. A run spawned from that turn appears as a chip, with descendant runs nested beneath it.
+A session page starts with the stored session header — what the session was, when it ran, how much it did, and what it cost, in four clusters — then pages through the main-source turns in order. Each turn shows its prompt or command, counts, and cost. A turn that ran a slash command leads with the command's name as a badge, then the arguments typed after it, rather than the wrapper Claude Code records around them. A run spawned from that turn appears as a chip, with descendant runs nested beneath it.
 
 Two extra groups make the timeline totals match the header. The unattributed row holds calls that belong to no turn. The unattached section holds runs that resolve to neither a turn nor another run in the session.
 
 Every growing list has a cap: turns, run chips, compaction markers, skills, and PR links. Each capped list says how many items it omitted and links to the page that contains them when such a page exists.
 
 A run chip opens `/session/{session_id}/run/{run_id}`. The run page uses the same shape: a run header, a trail of links to the thread above it, its turn timeline, and child runs that no turn claims. The trail stops when the store stops naming parents. A fork's spawning call may live in files the store does not hold, and the viewer will not invent a breadcrumb.
+
+## The map says where you are and what a node cost
+
+Beside the timeline, the map draws the session as one line per node: every main-thread turn, with the runs under it nested and folded shut. A node carries a label head, its cost, and a bar along its bottom edge whose length is the node's decile of what the session spent — the one number the viewer spends color on. Nodes in the window the page rendered read at full strength; the rest recede and link to the page that holds them.
+
+The map takes `after` and `turns` from the page so it knows which nodes are on screen, and `nodes` lowers how many it draws. A node is a turn or a run counted flat, so a cut map says "+N more node(s)". The sidebar is a `<details>` that starts open at every width: the viewer ships no script, and a stylesheet cannot close a `<details>` at one width and open it at another. Below 900px it folds above the page, where a reader can collapse it.
 
 ## Open large values only when you need them
 
@@ -77,7 +86,7 @@ A store that has never been enriched has none of the enrichment tables. The view
 
 ## URLs preserve the query behind what you saw
 
-Every page is a plain GET that you can paste into a report or message. The session list accepts `sort`, `direction`, `page`, `size`, and its filter keys. Session and run pages use their ids. The viewer returns 400 for an unknown key, an unknown sort or direction, a filter value of the wrong type, or a page outside its bounds rather than guessing. Sort keys map to fixed columns, filter keys map to fixed predicates, and request values reach SQL only as bound parameters.
+Every page is a plain GET that you can paste into a report or message. The session list accepts `sort`, `direction`, `page`, `size`, and its filter keys. A session page accepts `after`, `turns`, and `chips`; its map accepts `after`, `turns`, and `nodes`. Session and run pages use their ids. The viewer returns 400 for an unknown key, an unknown sort or direction, a filter value of the wrong type, or a page outside its bounds rather than guessing. Sort keys map to fixed columns, filter keys map to fixed predicates, and request values reach SQL only as bound parameters.
 
 Reports cite raw records as `(session_id, source, line_no)`. The records URL derives from that natural key, so a later port or route change does not invalidate the saved tuple. This form opens the records browser on the cited line:
 
@@ -119,9 +128,10 @@ Full-value requests are the declared exception. Each returns one transcript line
 | Turn details | 10 api calls, each with at most 12 tool rows; `?calls=` can only reduce the default |
 | Raw records | 100 rows by default, at most 200 |
 | Offload | 50,000 characters by default, at most 60,000 |
+| Session map | 200 nodes, each label cut to 48 characters |
 | Compaction markers | 20 per timeline page |
 
-Timeline sizes multiply. The unattached list also appears on every page, so the route requires `(turns + 1) × chips ≤ 200`. A capped run list links to `?turns=1&chips=100`, which can show the widest forest recorded in the canonical store: 94 runs beneath one turn. That page measured 33.6 KB against `data/traces.duckdb` on 2026-08-07. The largest legal shape projects to 483 KB: 456 KB for turn and run rows, 12 KB for compaction markers, and 15 KB for the rest of the page.
+Timeline sizes multiply. The unattached list also appears on every page, so the route requires `(turns + 1) × chips ≤ 200`. A capped run list links to `?turns=1&chips=100`, which can show the widest forest recorded in the canonical store: 94 runs beneath one turn. The largest legal shape is `?turns=19&chips=10`, which projects to 489 KB: 360 KB for run rows, 102 KB for turn rows, 12 KB for compaction markers, and 15 KB for the rest of the page. That leaves no room for a map, which is why the map is a response of its own: 200 nodes project to 170 KB.
 
 Enrichment raised the page ceiling from 350 KB to 500 KB. A described run row costs about half again as much as a bare row, and the widest page can hold 200 of them. Reducing the run budget would have hidden part of the recorded 94-run forest behind a count with no page able to show it, so the ceiling rose instead. Run chips show tags but leave the description for the run page.
 
