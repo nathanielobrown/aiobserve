@@ -63,6 +63,21 @@ class Kind(StrEnum):
     UNATTACHED = "unattached"
 
 
+class Preset(StrEnum):
+    """Which children a level shows: the value `?nav=` carries, full when it carries none.
+
+    A view of the same session rather than a different session — nothing is dropped, only
+    folded away, and the path the reader is standing on renders whatever the preset hides.
+    """
+
+    FULL = "full"
+    # The api calls folded away, so a turn's tool calls stand directly under it: what an agent
+    # did, without a row per round trip to the model.
+    NO_API = "noapi"
+    # Agent runs only, each under the run that spawned it: the session as a spawn tree.
+    AGENTS = "agents"
+
+
 def meter(share: float | None) -> str:
     """The step class a share's spend bar is drawn with, or `s0` for nothing to draw."""
     if not share:

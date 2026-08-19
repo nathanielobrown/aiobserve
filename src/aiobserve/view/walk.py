@@ -16,7 +16,7 @@ from collections.abc import Sequence
 
 import duckdb
 
-from aiobserve.view.nodes import Node
+from aiobserve.view.nodes import Node, Preset
 from aiobserve.view.tree import CHILDREN, Corpus, Ran
 
 
@@ -29,8 +29,12 @@ class _Reader:
         self.ran: Ran = []
 
     def children(self, node: Node) -> list[Node]:
-        """One node's children in tree order, the query line recorded."""
-        level = CHILDREN[node.kind](self.connection, self.corpus, node)
+        """One node's children in full-preset tree order, the query line recorded.
+
+        Always full: a filter preset is a view of the session, not a reading order, and three
+        orders would be three reading needs to test for the one a reader has.
+        """
+        level = CHILDREN[(node.kind, Preset.FULL)](self.connection, self.corpus, node)
         self.ran.extend(level.ran)
         return level.nodes
 

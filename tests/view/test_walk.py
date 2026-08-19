@@ -16,7 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tests.conftest import FORK_ORIGIN, SPINE
-from tests.view.conftest import fields, inside, values
+from tests.view.conftest import fields, inside, kin, values
 
 # Every session the fixture corpus holds, walked whole. The corpus is small on purpose — its
 # largest session is 24 nodes — so "the whole session" is a claim every session can carry.
@@ -79,24 +79,10 @@ class Page:
         # last is this page's own node and the rest is where it hangs.
         self.chain = tuple(values(html, "data-crumb"))
         self.key = self.chain[-1]
-        # The tree rows in document order, each with the depth it renders at. A cap tail row
-        # would break the pairing, so the leaf that reads them checks the counts agree.
-        self.depths = values(html, "data-depth")
-        self.rows = values(html, "data-tree")
+        # This node's own children as its tree drew them: only the open path expands, so
+        # nothing else on the page renders one level below the chain.
+        self.children = kin(html)
         self.html = html
-
-    def children(self) -> list[str]:
-        """The keys of this node's own children, as its tree drew them.
-
-        A node's children are the rows one level deeper than its own row, and only the open
-        path expands, so nothing else on the page renders at that depth.
-        """
-        assert len(self.depths) == len(self.rows), f"{self.key}: a row of the tree was cut"
-        return [
-            key
-            for depth, key in zip(self.depths, self.rows, strict=True)
-            if int(depth) == len(self.chain)
-        ]
 
 
 def follow(client: TestClient, start: str, control: str) -> list[Page]:
@@ -155,7 +141,7 @@ def test_the_walk_descends_before_it_moves_on_and_keeps_the_trees_order(
         # Every node's children, gathered off the walk, in the order its own tree drew them.
         for page in walked:
             reached = [step.key for step in walked if step.chain[:-1] == page.chain]
-            assert reached == page.children(), f"{session_id}: {page.key}"
+            assert reached == page.children, f"{session_id}: {page.key}"
 
 
 @pytest.mark.parametrize("session_id", [SPINE, FORK_ORIGIN])
