@@ -452,7 +452,9 @@ def _label(row: Row, description: str | None) -> str:
         return description
     if row["command_name"] is not None:
         return f"{row['command_name']} {row['command_args'] or ''}".strip()
-    return row["prompt"] or ""
+    # The store declares a turn's prompt NOT NULL (`export/duckdb.py`), so this is the one
+    # branch that always has something to say, even when what it says is the empty string.
+    return row["prompt"]
 
 
 def _run_node(
