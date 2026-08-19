@@ -17,7 +17,11 @@
      a map is a view of the session, never the only way into a turn. #}
   <p id="nav-more" class="more">+<span data-field="cut">{{ nav.cut | count }}</span> more node(s)</p>
   {% endif %}
-  <ul class="citation">
-    {% for line in citations %}<li data-query="{{ line }}"><code>{{ line }}</code></li>{% endfor %}
-  </ul>
 </nav>
+{# Out of band, into the slot the page left in its own footer: a citation is a line of SQL
+   someone copies whole, and the column the map is drawn in wraps a session id three times.
+   htmx swaps any top-level element carrying `hx-swap-oob` by id, so this rides the same
+   response as the map without a second request and without any JS of ours. #}
+<ul id="map-citation" hx-swap-oob="true">
+  {% for line in citations %}<li data-query="{{ line }}"><code>{{ line }}</code></li>{% endfor %}
+</ul>

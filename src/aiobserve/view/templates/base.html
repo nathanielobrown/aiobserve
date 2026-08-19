@@ -23,6 +23,9 @@
       <li data-field="{{ name }}"><code>{{ line }}</code></li>
       {% endfor %}
     </ul>
+    {# Where a fragment's own citations land. A page that loads one leaves the slot; the
+       fragment fills it out of band, so both sets read as one footer. #}
+    {% block citation_extra %}{% endblock %}
   </footer>
   {% endif %}
 </body>

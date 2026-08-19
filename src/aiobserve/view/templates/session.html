@@ -2,6 +2,8 @@
 {% import "_parts.html" as parts %}
 {% block title %}{{ header.title or header.session_id }} — aiobserve{% endblock %}
 
+{% block citation_extra %}<ul id="map-citation"></ul>{% endblock %}
+
 {% block main %}
 <div id="session">
   {# The map arrives one request after the page: the payload ceiling is per response, and this
