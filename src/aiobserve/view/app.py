@@ -671,10 +671,17 @@ def build_app(db_path: Path) -> FastAPI:
             )
             enrichment = described(connection, session_id, MAIN_SOURCE)
         keyed: dict[str, ParamValue] = {"session_id": session_id}
-        # What the fragment ran, in the order it ran it. The enrichment query is here only
-        # when the store held the tables to ask: a fragment cites what it ran, and over an
-        # un-enriched store that query is not one of them.
-        ran = [(Page.SESSION_NAV, keyed), (Page.RUNS, keyed), (Page.SESSION_HEADER, keyed)]
+        # What the fragment ran, in the order it ran it. Keyed alone everywhere the rest of a
+        # query's bindings are its manifest defaults, and `view_runs` cites its head too: the
+        # map reads a run's strings narrower than a session page chips them, so a line without
+        # it re-runs at the default and answers text the map never showed. The enrichment query
+        # is here only when the store held the tables to ask: a fragment cites what it ran, and
+        # over an un-enriched store that query is not one of them.
+        ran = [
+            (Page.SESSION_NAV, keyed),
+            (Page.RUNS, keyed | {"chip_chars": queries.NAV_CHARS}),
+            (Page.SESSION_HEADER, keyed),
+        ]
         if enrichment.queried:
             ran.append((Page.ENRICHMENT, keyed | {"source": MAIN_SOURCE}))
         return templates.TemplateResponse(
