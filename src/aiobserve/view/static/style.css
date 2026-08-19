@@ -61,7 +61,12 @@ th[aria-sort] a { font-weight: 700; }
 td.number { text-align: right; font-variant-numeric: tabular-nums; }
 td.names, .model, .type { color: var(--dim); }
 td.when { white-space: nowrap; }
-td.path { max-width: 22rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The two columns that compete for whatever the numbers leave. A path is one long token, so
+   with nowhere to break it takes the width it needs and the lists beside it pay — squeezed
+   until they break a name at its hyphen. `anywhere` lets the path column give, and the floor
+   under the lists keeps an agent type on one line. */
+td.path { max-width: 22rem; overflow-wrap: anywhere; }
+td.names { min-width: 10rem; }
 /* A cell reads as two lines: the value the column is scanned for, and the texture under it.
    Both lines are block, so the second sits under the first whatever the cell's alignment. */
 td .primary { display: block; }

@@ -16,7 +16,22 @@ from typing import Any
 
 import pytest
 
-from aiobserve.view.format import ABSENT, ago, clock, count, duration, money, share, text, when
+from aiobserve.view.format import (
+    ABSENT,
+    ago,
+    clock,
+    count,
+    duration,
+    money,
+    path,
+    share,
+    text,
+    when,
+)
+
+# Whose machine a page is being read on, for the filter that folds a home to `~`. Not this
+# machine's: the fold has to be the same string wherever the suite runs.
+HOME = "/Users/reader"
 
 # A moment in the store's zone, chosen for its single digits: a formatter that dropped the
 # zero padding would render this one differently.
@@ -29,7 +44,8 @@ SECOND = dt.timedelta(seconds=1)
 
 
 @pytest.mark.parametrize(
-    "render", [money, count, text, when, clock, duration, partial(ago, now=MOMENT)]
+    "render",
+    [money, count, text, when, clock, duration, partial(ago, now=MOMENT), partial(path, home=HOME)],
 )
 def test_a_column_the_store_left_null_reads_as_one_dash(render: Callable[[Any], str]) -> None:
     """Every cell a NULL reaches prints the same single character, not an empty cell."""
@@ -155,3 +171,26 @@ def test_a_rate_over_nothing_is_a_gap_rather_than_zero(
 ) -> None:
     """A rate with no numerator, no denominator or nothing to divide into reads as absent."""
     assert share(part, whole) == ABSENT
+
+
+@pytest.mark.parametrize(
+    ("value", "printed"),
+    [
+        # The reader's own home, folded: the list is scanned for which project a session was
+        # in, and nine characters of a path every row repeats are not that.
+        (f"{HOME}/repos/aiobserve", "~/repos/aiobserve"),
+        # The home itself, which is a project directory like any other.
+        (HOME, "~"),
+        # Someone else's home under the same parent. A prefix match on the string would fold
+        # this one too, and `~` on another user's directory is a claim about this machine that
+        # the session does not support.
+        ("/Users/readerly/repos/aiobserve", "/Users/readerly/repos/aiobserve"),
+        # A path the reader's home has nothing to do with — a session recorded on another
+        # machine, or one under a shared checkout — prints as the store holds it.
+        ("/srv/checkouts/aiobserve", "/srv/checkouts/aiobserve"),
+        ("/Users", "/Users"),
+    ],
+)
+def test_a_project_under_the_readers_home_prints_with_a_tilde(value: str, printed: str) -> None:
+    """A directory cell folds the reader's own home and leaves every other path alone."""
+    assert path(value, HOME) == printed

@@ -142,6 +142,14 @@ def build_app(db_path: Path) -> FastAPI:
         """
         return fmt.ago(value, fmt.utcnow())
 
+    def project_path(value: str | None) -> str:
+        """A project directory, with the home of whoever is reading the page folded to `~`.
+
+        Read per render like the clock above, and for the same reason: a test says who is
+        reading, and the next page moves with it.
+        """
+        return fmt.path(value, fmt.home())
+
     templates.env.filters |= {
         "money": fmt.money,
         "count": fmt.count,
@@ -151,6 +159,7 @@ def build_app(db_path: Path) -> FastAPI:
         "clock": fmt.clock,
         "duration": fmt.duration,
         "text": fmt.text,
+        "path": project_path,
         "ago": ago,
         # The three filters that print what a transcript wrote. Each hands back escaped
         # markup; `view/render.py` is where that escaping lives, and nothing here may add
