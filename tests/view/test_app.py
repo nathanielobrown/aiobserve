@@ -1484,6 +1484,72 @@ def test_a_session_the_store_does_not_hold_is_a_404(client: TestClient) -> None:
     assert MISSING not in response.text
 
 
+# The ratio WCAG 2.2 asks of body text against what it is printed on. Both schemes are held
+# to it: a dark page is a page someone reads, not a courtesy.
+READABLE = 4.5
+# How much of the accent the one wash a page composes carries — `:target` on a record, and a
+# hovered node — over whatever surface it lands on.
+WASH = 0.12
+
+
+def _channel(value: int) -> float:
+    """One sRGB channel, linearised — the relative-luminance formula's own step."""
+    scaled = value / 255
+    return scaled / 12.92 if scaled <= 0.04045 else ((scaled + 0.055) / 1.055) ** 2.4
+
+
+def _luminance(color: str) -> float:
+    red, green, blue = (int(color[index : index + 2], 16) for index in (1, 3, 5))
+    return 0.2126 * _channel(red) + 0.7152 * _channel(green) + 0.0722 * _channel(blue)
+
+
+def _contrast(ink: str, surface: str) -> float:
+    lit, dark = sorted((_luminance(ink), _luminance(surface)), reverse=True)
+    return (lit + 0.05) / (dark + 0.05)
+
+
+def _over(ink: str, surface: str, part: float) -> str:
+    """`color-mix(in srgb, ink part%, transparent)` painted over an opaque surface."""
+    mixed = (
+        round(
+            int(ink[index : index + 2], 16) * part
+            + int(surface[index : index + 2], 16) * (1 - part)
+        )
+        for index in (1, 3, 5)
+    )
+    return "#" + "".join(f"{channel:02x}" for channel in mixed)
+
+
+def test_both_schemes_print_every_color_of_text_readably(client: TestClient) -> None:
+    """Every color the stylesheet sets text in clears 4.5:1 over every surface it lands on.
+
+    Read off the served stylesheet rather than written down, so a token retuned for one scheme
+    cannot quietly darken the other. The surfaces are the page itself and the one wash the
+    sheet composes rather than names — 12% of the accent, which a targeted record and a
+    hovered node are both painted with, and which is where `--dim` comes closest to failing.
+    A chip's outline is its own text color (`currentColor`), so it clears whatever this does.
+    """
+    sheet = client.get("/static/style.css").text
+    # Tokens are declared in exactly two places, and dark restates only what it changes.
+    head, _, tail = sheet.partition("prefers-color-scheme: dark")
+
+    def read(block: str) -> dict[str, str]:
+        return dict(re.findall(r"--([a-z]+):\s*(#[0-9a-f]{6})", block))
+
+    light = read(head)
+    schemes = {"light": light, "dark": light | read(tail)}
+    assert set(light) == {"ink", "dim", "line", "paper", "mark", "bad"}
+    for scheme, tokens in schemes.items():
+        surfaces = {
+            "the page": tokens["paper"],
+            "the wash": _over(tokens["mark"], tokens["paper"], WASH),
+        }
+        for role in ("ink", "dim", "mark", "bad"):
+            for where, surface in surfaces.items():
+                ratio = _contrast(tokens[role], surface)
+                assert ratio >= READABLE, f"{scheme} --{role} on {where}: {ratio:.2f}:1"
+
+
 @pytest.mark.parametrize(
     "path",
     [
