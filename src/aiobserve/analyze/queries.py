@@ -470,6 +470,9 @@ QUERIES: dict[str, Query] = {
             "source": SOURCE,
             "description_chars": Param(type=ParamType.INTEGER, default=ENRICHMENT_CHARS),
             "tag_chars": Param(type=ParamType.INTEGER, default=TAG_CHARS),
+            # The width the model's own name is cut to: a header's, not a tag's — a model
+            # string is longer than a taxonomy word and shorter than a sentence.
+            "head_chars": Param(type=ParamType.INTEGER, default=HEADER_CHARS),
         },
     ),
     "view_compactions": Query(

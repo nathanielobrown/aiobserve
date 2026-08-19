@@ -7,6 +7,7 @@ answer when they are absent, which is what makes a page over an un-enriched stor
 same as a page over an item the pass has not reached yet: nothing beside the item.
 """
 
+import datetime as dt
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import NamedTuple
@@ -18,16 +19,26 @@ from aiobserve.analyze.queries import ParamValue
 from aiobserve.enrich.prompts import PROMPT_VERSION, Level
 from aiobserve.enrich.store import LEVELS
 from aiobserve.enrich.taxonomy import TAXONOMY_VERSION
+from aiobserve.view.format import when
 from aiobserve.view.store import Page, page_rows
 
 # The enrichment tables, by the level whose rows they hold. Read off the level map rather than
 # listed, so a fourth level is asked about here too.
 TABLES = {level: spec.table for level, spec in LEVELS.items()}
 
+# What marks a string a model wrote rather than a session. Registered as a Jinja global, so
+# the character itself is written once and every surface that shows it reads this.
+GLYPH = "✨"
+# The class that styles it, and the one thing a test can read a bare glyph by: a tree row
+# carries the mark alone, because the provenance behind it is a pane's to spell out.
+GLYPH_CLASS = "glyph"
+
 
 class Described(NamedTuple):
     """One item's enrichment, as a page shows it."""
 
+    # Which level's pass wrote it, which is what its versions are current against.
+    level: Level
     # The turn, run or session the description is about — what keys the block on the page.
     item_id: str
     description: str
@@ -35,11 +46,37 @@ class Described(NamedTuple):
     outcome: str
     # One line of visible struggle, or None when the model saw none.
     friction: str | None
-    # Written under a prompt or taxonomy version this build no longer writes. Two of the four
-    # staleness axes are invisible from a read — whether the rendered content moved needs a
-    # re-render, and which model a pass would use today is the pass's own configuration — so
-    # a row this leaves untagged is current on the versions and unjudged on the rest.
-    stale: bool
+    # Which model wrote the line and when, and the two versions it was written under.
+    model: str
+    enriched_at: dt.datetime
+    prompt_version: int
+    taxonomy_version: int
+
+    @property
+    def stale(self) -> bool:
+        """Written under a prompt or taxonomy version this build no longer writes.
+
+        Two of the four staleness axes are invisible from a read — whether the rendered
+        content moved needs a re-render, and which model a pass would use today is the pass's
+        own configuration — so a row this leaves untagged is current on the versions and
+        unjudged on the rest.
+        """
+        return (
+            self.prompt_version != PROMPT_VERSION[self.level]
+            or self.taxonomy_version != TAXONOMY_VERSION
+        )
+
+    @property
+    def provenance(self) -> str:
+        """What the glyph beside the line says: who wrote it, when, and under what.
+
+        Everything a reader needs to decide whether re-running a pass would say more, in the
+        one place the page has room for it — the pane. A tree row carries the mark alone.
+        """
+        return (
+            f"{self.model} · {when(self.enriched_at)} · prompt v{self.prompt_version}"
+            f" · taxonomy v{self.taxonomy_version} · {'stale' if self.stale else 'fresh'}"
+        )
 
 
 @dataclass(frozen=True)
@@ -80,18 +117,22 @@ def described(connection: duckdb.DuckDBPyConnection, session_id: str, source: st
         "source": source,
         "description_chars": queries.ENRICHMENT_CHARS,
         "tag_chars": queries.TAG_CHARS,
+        "head_chars": queries.HEADER_CHARS,
     }
     by_level: dict[Level, dict[str, Described]] = {level: {} for level in Level}
     for row in page_rows(connection, Page.ENRICHMENT, **bindings):
         level = Level(row["level"])
         by_level[level][row["item_id"]] = Described(
+            level=level,
             item_id=row["item_id"],
             description=row["description"],
             category=row["category"],
             outcome=row["outcome"],
             friction=row["friction"],
-            stale=row["prompt_version"] != PROMPT_VERSION[level]
-            or row["taxonomy_version"] != TAXONOMY_VERSION,
+            model=row["model"],
+            enriched_at=row["enriched_at"],
+            prompt_version=row["prompt_version"],
+            taxonomy_version=row["taxonomy_version"],
         )
     sessions = by_level[Level.session]
     return Descriptions(

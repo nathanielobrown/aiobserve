@@ -38,7 +38,14 @@ from aiobserve.export.duckdb import SCHEMA_VERSION
 from aiobserve.model import MAIN_SOURCE
 from aiobserve.view import bounds, nodes, render, tree, walk
 from aiobserve.view import format as fmt
-from aiobserve.view.enrichment import Described, Descriptions, described, enriched
+from aiobserve.view.enrichment import (
+    GLYPH,
+    GLYPH_CLASS,
+    Described,
+    Descriptions,
+    described,
+    enriched,
+)
 from aiobserve.view.labels import label
 from aiobserve.view.listing import (
     ARIA_SORT,
@@ -281,6 +288,9 @@ def build_app(db_path: Path) -> FastAPI:
     # What a page calls each field it prints. The namespace is typed by what Jinja seeds it
     # with, which is why the assignment needs a word: a global is any callable a template names.
     templates.env.globals["label"] = label  # pyrefly: ignore
+    # And the mark every model-written string carries, beside the class that styles it.
+    templates.env.globals["GLYPH"] = GLYPH  # pyrefly: ignore
+    templates.env.globals["GLYPH_CLASS"] = GLYPH_CLASS  # pyrefly: ignore
 
     def error(request: Request, status: int, message: str) -> Response:
         return templates.TemplateResponse(

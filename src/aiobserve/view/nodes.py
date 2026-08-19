@@ -125,6 +125,9 @@ class Node:
     share: float | None
     # Where a hoisted run sits, or None for a node that is where it was recorded.
     tie: str | None = None
+    # Whether the label is the model's words rather than the session's, which is what the
+    # glyph beside it marks. Three kinds can be: a session, a turn and a run.
+    enriched: bool = False
 
     @property
     def ref(self) -> Ref:
@@ -189,6 +192,7 @@ def session_node(header: Row, described: Descriptions) -> Node:
         cost_usd=cost,
         unpriced_api_calls=header["unpriced_api_calls"],
         share=1.0 if cost else None,
+        enriched=described.session is not None,
     )
 
 
@@ -204,6 +208,7 @@ def turn_node(session_id: str, source: str, row: Row, whole: float, described: s
         cost_usd=cost,
         unpriced_api_calls=row["unpriced_api_calls"],
         share=_share(cost, whole),
+        enriched=described is not None,
     )
 
 
@@ -226,6 +231,7 @@ def run_node(session_id: str, row: Row, whole: float, described: str | None) -> 
             if row["spawn_call_index"] is not None
             else None
         ),
+        enriched=described is not None,
     )
 
 

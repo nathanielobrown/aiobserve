@@ -20,7 +20,7 @@
     <nav class="crumbs" data-crumbs="{{ selection.kind }}" aria-label="Where this node sits">
       {% for step in chain %}
       <a data-crumb="{{ step.key }}" href="{{ step.url }}{{ suffix }}"
-        ><span data-field="{{ step.kind }}">{{ step.label }}</span></a>
+        >{{ parts.glyph(step) }}<span data-field="{{ step.kind }}">{{ step.label }}</span></a>
       {% endfor %}
     </nav>
     {{ body.pane(selection, header) }}
@@ -54,11 +54,11 @@
     <nav class="walk" aria-label="Read in order">
       {% if previous %}
       <a data-walk="previous" data-node="{{ previous.key }}" href="{{ previous.url }}{{ suffix }}"
-        >← <span data-field="{{ previous.kind }}">{{ previous.label }}</span></a>
+        >← {{ parts.glyph(previous) }}<span data-field="{{ previous.kind }}">{{ previous.label }}</span></a>
       {% endif %}
       {% if following %}
       <a data-walk="next" data-node="{{ following.key }}" href="{{ following.url }}{{ suffix }}"
-        ><span data-field="{{ following.kind }}">{{ following.label }}</span> →</a>
+        >{{ parts.glyph(following) }}<span data-field="{{ following.kind }}">{{ following.label }}</span> →</a>
       {% endif %}
     </nav>
   </article>

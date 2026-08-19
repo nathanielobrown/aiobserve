@@ -186,6 +186,9 @@ ul.prs { margin: var(--space-2) 0; padding: 0; list-style: none; overflow-wrap: 
 .enrichment { color: var(--dim); margin: var(--space-1) 0; }
 section.enrichment { border-left: 2px solid var(--line); padding-left: var(--space-2); }
 .friction { font-style: italic; }
+/* The mark on a string a model wrote. Not dimmed with the rest — it is the one thing on a
+   tree row that says where the label came from, and a dimmed mark reads as decoration. */
+.glyph { color: inherit; cursor: help; }
 /* Outlined in the colour it is written in, not in the rule colour: a chip is a thing the
    reader is asked to see, and `--line` against either paper is 1.4:1 — a pill with no edge. */
 .tag { border: 1px solid currentColor; border-radius: 0.7rem; padding: 0 var(--space-2);
