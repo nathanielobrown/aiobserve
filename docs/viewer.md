@@ -64,7 +64,7 @@ A run chip opens `/session/{session_id}/run/{run_id}`. The run page uses the sam
 
 ## The map says where you are and what a node cost
 
-Beside the timeline, the map draws the session as one line per node: every main-thread turn, with the runs under it nested and folded shut. A node carries a label head, its cost, and a bar along its bottom edge whose length is the node's decile of what the session spent — the one number the viewer spends color on. Nodes in the window the page rendered read at full strength; the rest recede and link to the page that holds them.
+Beside the timeline, the map draws the session as one line per node: every main-thread turn, with the runs under it nested and folded shut. A node carries a label head, its cost, and a bar along its bottom edge whose length is the node's share of what the session spent — the one number the viewer spends color on. The bar is logarithmic over three orders of magnitude, from a thousandth of the session to all of it: spend inside a session runs over magnitudes, and a linear scale drew most of a long session's turns with the same shortest bar. Nodes in the window the page rendered read at full strength; the rest recede and link to the page that holds them.
 
 The map takes `after` and `turns` from the page so it knows which nodes are on screen, and `nodes` lowers how many it draws. A node is a turn or a run counted flat, so a cut map says "+N more node(s)". The sidebar is a `<details>` that starts open at every width: the viewer ships no script, and a stylesheet cannot close a `<details>` at one width and open it at another. Below 900px it folds above the page, where a reader can collapse it.
 
