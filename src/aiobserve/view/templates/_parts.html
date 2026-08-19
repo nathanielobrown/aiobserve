@@ -29,7 +29,7 @@
    hold what those tags said. The heading reads the columns and leaves the wrapper unread —
    badge alone when the arguments are empty, which is a bare `/command` and not a gap. One arm
    or the other, never both: `tests/view/test_bounds.py` prices the row at the larger. #}
-{% macro heading(row, continuation) %}
+{% macro prompt_heading(row, continuation) %}
 <h2>
   {%- if continuation %}
   {# A continuation row's calls answer a prompt this transcript does not hold — a resume, or a
@@ -116,7 +116,7 @@
   {% if entry.kind == 'turn' %}
   <article id="turn-{{ entry.row.turn_id }}" data-turn="{{ entry.row.turn_id }}"
     {%- if entry.continuation %} data-continuation="{{ entry.row.turn_id }}"{% endif %}>
-    {{ heading(entry.row, entry.continuation) }}
+    {{ prompt_heading(entry.row, entry.continuation) }}
     {# The unit sits outside the labelled span: what a reader sees is a number and a word,
        what a `data-field` carries is the value the store holds. #}
     <p class="numbers">
