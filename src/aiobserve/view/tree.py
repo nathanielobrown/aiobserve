@@ -15,7 +15,7 @@ Everything else here is arithmetic over the rows those queries returned.
 """
 
 import datetime as dt
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -29,6 +29,7 @@ from aiobserve.view.enrichment import Descriptions
 from aiobserve.view.nodes import (
     Kind,
     Node,
+    Preset,
     Ref,
     call_node,
     compaction_node,
@@ -259,6 +260,46 @@ def _interleave(
     return placed
 
 
+def _runs(corpus: Corpus, rows: Iterable[Row]) -> list[Node]:
+    """A run row per node, described by whatever the enrichment pass called it."""
+    return [
+        run_node(corpus.session_id, row, corpus.whole, corpus.run_text(row["run_id"]))
+        for row in rows
+    ]
+
+
+def _spawned(corpus: Corpus, source: str, turn_id: str | None) -> list[Row]:
+    """The runs whose spawning call resolved to one node — a turn, or a thread's bucket."""
+    return [
+        run
+        for run in corpus.runs
+        if run["spawn_source"] == source and run["spawn_turn_id"] == turn_id
+    ]
+
+
+def _hoisted(
+    corpus: Corpus, placed: Sequence[tuple[str, Node]], spawned: Sequence[Row], edge: str
+) -> list[Node]:
+    """One level's rows with each run dropped in after the row its spawning edge names.
+
+    `placed` pairs each row's id with its node, and `edge` is the run column naming one — the
+    api call under `full`, the tool call under `noapi`, which is what the preset leaves
+    showing. A run whose row this level does not hold still belongs to the node the level
+    hangs under, so it trails the level: dropping it would lose a run the tree is the only
+    way to.
+    """
+    waiting: dict[str, list[Row]] = {}
+    for run in spawned:
+        waiting.setdefault(run[edge], []).append(run)
+    level: list[Node] = []
+    for row_id, node in placed:
+        level.append(node)
+        level.extend(_runs(corpus, waiting.pop(row_id, [])))
+    for leftover in waiting.values():
+        level.extend(_runs(corpus, leftover))
+    return level
+
+
 def _calls_level(
     connection: duckdb.DuckDBPyConnection, corpus: Corpus, source: str, turn_id: str | None
 ) -> Level:
@@ -270,43 +311,37 @@ def _calls_level(
     keyed: dict[str, ParamValue] = {"session_id": corpus.session_id, "source": source}
     bound = keyed | {"turn_id": turn_id}
     calls = page_rows(connection, Page.TREE_CALLS, **bound, nav_chars=queries.NAV_CHARS)
-    spawned = [
-        run
-        for run in corpus.runs
-        if run["spawn_source"] == source and run["spawn_turn_id"] == turn_id
+    placed = [
+        (row["api_call_id"], call_node(corpus.session_id, source, row, corpus.whole))
+        for row in calls
     ]
-    hoisted: dict[str, list[Row]] = {}
-    for run in spawned:
-        hoisted.setdefault(run["spawn_call_id"], []).append(run)
-    placed: list[Node] = []
-    for row in calls:
-        placed.append(call_node(corpus.session_id, source, row, corpus.whole))
-        for run in hoisted.pop(row["api_call_id"], []):
-            placed.append(
-                run_node(corpus.session_id, run, corpus.whole, corpus.run_text(run["run_id"]))
-            )
-    # A run whose spawning call this level does not hold still belongs to this node: the edge
-    # resolved to the turn, so dropping it would lose a run the tree is the only way to.
-    for leftover in hoisted.values():
-        placed.extend(
-            run_node(corpus.session_id, run, corpus.whole, corpus.run_text(run["run_id"]))
-            for run in leftover
-        )
-    return Level(placed, [(Page.TREE_CALLS, bound)])
+    level = _hoisted(corpus, placed, _spawned(corpus, source, turn_id), "spawn_call_id")
+    return Level(level, [(Page.TREE_CALLS, bound)])
 
 
 def _tools_level(
-    connection: duckdb.DuckDBPyConnection, corpus: Corpus, source: str, api_call_id: str
+    connection: duckdb.DuckDBPyConnection,
+    corpus: Corpus,
+    source: str,
+    api_call_id: str | None,
+    turn_id: str | None,
 ) -> Level:
-    """The tool calls one api call made, in the order it made them."""
+    """The tool calls under one api call, or — at `api_call_id` NULL — under one turn.
+
+    The second is `noapi`'s level: the api calls are folded away, so their tool calls stand
+    under the turn in call-then-tool order with each run hoisted after the tool call that
+    spawned it. A call's own level hoists nothing, because a run is a child of the turn.
+    """
     bound: dict[str, ParamValue] = {
         "session_id": corpus.session_id,
         "source": source,
         "api_call_id": api_call_id,
+        "turn_id": turn_id,
     }
     rows = page_rows(connection, Page.TREE_TOOLS, **bound, nav_chars=queries.NAV_CHARS)
-    nodes = [tool_node(corpus.session_id, source, row) for row in rows]
-    return Level(nodes, [(Page.TREE_TOOLS, bound)])
+    placed = [(row["tool_call_id"], tool_node(corpus.session_id, source, row)) for row in rows]
+    spawned = [] if api_call_id is not None else _spawned(corpus, source, turn_id)
+    return Level(_hoisted(corpus, placed, spawned, "tool_use_id"), [(Page.TREE_TOOLS, bound)])
 
 
 def _unattached_level(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
@@ -324,27 +359,114 @@ def _leaf(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> 
     return Level([], [])
 
 
-# What one kind of node holds. Total over `Kind` on purpose: the tree opens whatever the path
-# reaches, so a kind with no entry would be a page that renders and then raises halfway down.
-CHILDREN: dict[Kind, Callable[[duckdb.DuckDBPyConnection, Corpus, Node], Level]] = {
-    Kind.SESSION: lambda connection, corpus, node: _thread_level(
-        connection, corpus, MAIN_SOURCE, unattached=True
-    ),
-    Kind.RUN: lambda connection, corpus, node: _thread_level(
-        connection, corpus, node.node_id, unattached=False
-    ),
-    Kind.TURN: lambda connection, corpus, node: _calls_level(
-        connection, corpus, str(node.source), node.node_id
-    ),
-    Kind.UNATTRIBUTED: lambda connection, corpus, node: _calls_level(
-        connection, corpus, str(node.source), None
-    ),
-    Kind.CALL: lambda connection, corpus, node: _tools_level(
-        connection, corpus, str(node.source), node.node_id
-    ),
-    Kind.UNATTACHED: _unattached_level,
-    Kind.TOOL: _leaf,
-    Kind.COMPACTION: _leaf,
+# The `agents` preset's levels, which read nothing: a run is placed by an edge `view_runs`
+# already answered, so the whole spawn tree is arithmetic over the runs read for the request.
+def _agent_session(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
+    """The runs the main thread spawned, then the runs nothing placed."""
+    placed = _runs(corpus, [run for run in corpus.runs if run["spawn_source"] == MAIN_SOURCE])
+    loose = [run for run in corpus.runs if run["spawn_source"] is None]
+    if loose:
+        placed.append(unattached_node(corpus.session_id, loose, corpus.whole))
+    return Level(placed, [])
+
+
+def _agent_children(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
+    """The runs a run spawned, by what the transcript says their parent was.
+
+    `parent_agent_id` rather than the spawning call, because this is the one level the preset
+    is about: a run whose spawning call resolved to nothing still names the run it came from.
+    """
+    return Level(
+        _runs(corpus, [r for r in corpus.runs if r["parent_agent_id"] == node.node_id]), []
+    )
+
+
+def _agent_thread(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
+    """The runs one turn — or, at a bucket, one thread's turnless calls — spawned."""
+    turn_id = None if node.kind is Kind.UNATTRIBUTED else node.node_id
+    return Level(_runs(corpus, _spawned(corpus, str(node.source), turn_id)), [])
+
+
+def _agent_call(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
+    """The runs one api call spawned. Matched on the thread too: a fork's transcript replays
+    its parent's calls, so an id alone would hang the run under the replayed copy as well."""
+    placed = [
+        run
+        for run in corpus.runs
+        if run["spawn_call_id"] == node.node_id and run["spawn_source"] == node.source
+    ]
+    return Level(_runs(corpus, placed), [])
+
+
+def _agent_tool(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
+    """The run one tool call spawned, matched on the thread for the same reason as the call."""
+    placed = [
+        run
+        for run in corpus.runs
+        if run["tool_use_id"] == node.node_id and run["spawn_source"] == node.source
+    ]
+    return Level(_runs(corpus, placed), [])
+
+
+def _session_level(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
+    return _thread_level(connection, corpus, MAIN_SOURCE, unattached=True)
+
+
+def _run_level(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
+    return _thread_level(connection, corpus, node.node_id, unattached=False)
+
+
+def _turn_calls(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
+    return _calls_level(connection, corpus, str(node.source), node.node_id)
+
+
+def _bucket_calls(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
+    return _calls_level(connection, corpus, str(node.source), None)
+
+
+def _turn_tools(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
+    return _tools_level(connection, corpus, str(node.source), None, node.node_id)
+
+
+def _bucket_tools(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
+    return _tools_level(connection, corpus, str(node.source), None, None)
+
+
+def _call_tools(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
+    return _tools_level(connection, corpus, str(node.source), node.node_id, None)
+
+
+Builder = Callable[[duckdb.DuckDBPyConnection, Corpus, Node], Level]
+
+# What one kind of node holds under one filter preset — the design's kind × preset table, one
+# entry per cell. Total over `Kind × Preset` on purpose, and spelled out rather than defaulted:
+# the tree opens whatever the path reaches, so a missing cell would be a page that renders and
+# then raises halfway down, and a cell a preset passes through is a decision either way.
+CHILDREN: dict[tuple[Kind, Preset], Builder] = {
+    (Kind.SESSION, Preset.FULL): _session_level,
+    (Kind.SESSION, Preset.NO_API): _session_level,
+    (Kind.SESSION, Preset.AGENTS): _agent_session,
+    (Kind.RUN, Preset.FULL): _run_level,
+    (Kind.RUN, Preset.NO_API): _run_level,
+    (Kind.RUN, Preset.AGENTS): _agent_children,
+    (Kind.TURN, Preset.FULL): _turn_calls,
+    (Kind.TURN, Preset.NO_API): _turn_tools,
+    (Kind.TURN, Preset.AGENTS): _agent_thread,
+    (Kind.UNATTRIBUTED, Preset.FULL): _bucket_calls,
+    (Kind.UNATTRIBUTED, Preset.NO_API): _bucket_tools,
+    (Kind.UNATTRIBUTED, Preset.AGENTS): _agent_thread,
+    (Kind.CALL, Preset.FULL): _call_tools,
+    (Kind.CALL, Preset.NO_API): _call_tools,
+    (Kind.CALL, Preset.AGENTS): _agent_call,
+    (Kind.TOOL, Preset.FULL): _leaf,
+    (Kind.TOOL, Preset.NO_API): _leaf,
+    (Kind.TOOL, Preset.AGENTS): _agent_tool,
+    (Kind.COMPACTION, Preset.FULL): _leaf,
+    (Kind.COMPACTION, Preset.NO_API): _leaf,
+    (Kind.COMPACTION, Preset.AGENTS): _leaf,
+    (Kind.UNATTACHED, Preset.FULL): _unattached_level,
+    (Kind.UNATTACHED, Preset.NO_API): _unattached_level,
+    (Kind.UNATTACHED, Preset.AGENTS): _unattached_level,
 }
 
 
@@ -353,15 +475,19 @@ def tree(
     corpus: Corpus,
     root: Node,
     trail: Sequence[Ref],
+    preset: Preset,
     cap: int,
 ) -> Tree:
     """The session's tree with `trail` open — its steps, their siblings, and its children.
 
     `trail` runs outermost first and ends at the selection; `root` is the node `trail[0]` names,
     which the page read for its own header. Every step is expanded and nothing else is, so a
-    reader sees one path and what sits beside each step of it. `cap` bounds a level and a tail
-    row says what it left out, except that the row the path goes through is always kept: a cut
-    that hid the selection would leave the pane describing a node the tree does not show.
+    reader sees one path and what sits beside each step of it. `preset` picks which children
+    each level shows, except that a level whose cell hides the path's own next step renders in
+    full: a reader standing on a folded-away kind still sees where it sits. `cap` bounds a
+    level and a tail row says what it left out, except that the row the path goes through is
+    always kept: a cut that hid the selection would leave the pane describing a node the tree
+    does not show.
     """
     open_keys = [ref.key for ref in trail]
     selection = open_keys[-1]
@@ -374,7 +500,15 @@ def tree(
         if node.key not in open_keys:
             return
         chain.append(node)
-        level = CHILDREN[node.kind](connection, corpus, node)
+        level = CHILDREN[(node.kind, preset)](connection, corpus, node)
+        at = open_keys.index(node.key) + 1
+        if at < len(open_keys) and all(child.key != open_keys[at] for child in level.nodes):
+            # A preset filters children and never the expanded chain: where this level's cell
+            # hides the kind the path goes through, the level renders in full instead. Adding
+            # the step to the filtered level would draw part of the tree twice — `noapi`
+            # hoists a tool call to its turn, so an api call spliced back in would render its
+            # own copy of a row already sitting a level higher.
+            level = CHILDREN[(node.kind, Preset.FULL)](connection, corpus, node)
         ran.extend(level.ran)
         kept, cut = _kin(level.nodes, cap, open_keys)
         for child in kept:

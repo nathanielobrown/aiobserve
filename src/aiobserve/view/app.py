@@ -85,10 +85,12 @@ STATIC = _PACKAGE / "static"
 CSP = "default-src 'self'"
 
 
-# The three sizes a node URL can name, at the value a link that names none is served at.
-# Every href a node page mints carries whatever is *not* one of these (`knobs`), so a reader
-# who narrowed the tree keeps it narrowed as they walk, and an ordinary link stays short.
-KNOB_DEFAULTS = {
+# What a node URL can name, at the value a link that names none is served at: the view, and
+# the three sizes. Every href a node page mints carries whatever is *not* one of these
+# (`knobs`), so a reader who picked a view or narrowed the tree keeps it as they walk, and an
+# ordinary link stays short.
+KNOB_DEFAULTS: dict[str, int | str] = {
+    "nav": nodes.Preset.FULL,
     "kin": bounds.KIN.default,
     "log": bounds.LOG.default,
     "detail": bounds.DETAIL.default,
@@ -143,11 +145,11 @@ class Seen(NamedTuple):
 Reader = Callable[[duckdb.DuckDBPyConnection, tree.Corpus, Row], Seen]
 
 
-def knobs(kin: int, log: int, detail: int) -> str:
+def knobs(nav: nodes.Preset, kin: int, log: int, detail: int) -> str:
     """The query string every link on a node page carries: whatever is not a default."""
     given = {
         name: value
-        for name, value in (("kin", kin), ("log", log), ("detail", detail))
+        for name, value in (("nav", nav), ("kin", kin), ("log", log), ("detail", detail))
         if value != KNOB_DEFAULTS[name]
     }
     return f"?{urlencode(given)}" if given else ""
@@ -212,6 +214,17 @@ def checked(size: int, ceiling: int) -> int:
     if not 1 <= size <= ceiling:
         raise HTTPException(400, f"Ask for a page size between 1 and {ceiling}.")
     return size
+
+
+def viewed(nav: str) -> nodes.Preset:
+    """The filter preset from a query string, or a 400 — every node route's `?nav=` comes here.
+
+    A 400 rather than a fallback to the full tree: a reader who typed a view the viewer does
+    not have should be told, not served a different one under the URL they asked for.
+    """
+    if nav not in set(nodes.Preset):
+        raise HTTPException(400, f"Filter the tree by one of: {', '.join(nodes.Preset)}.")
+    return nodes.Preset(nav)
 
 
 def build_app(db_path: Path) -> FastAPI:
@@ -442,6 +455,7 @@ def build_app(db_path: Path) -> FastAPI:
         request: Request,
         session_id: str,
         source: str,
+        nav: str,
         kin: int,
         log: int,
         detail: int,
@@ -456,6 +470,7 @@ def build_app(db_path: Path) -> FastAPI:
         prompt. What differs per kind is `read`, which answers the node's own header, where it
         sits, and what its children log lists, and 404s when the node is not in the store.
         """
+        preset = viewed(nav)
         checked(kin, bounds.KIN.ceiling)
         checked(log, bounds.LOG.ceiling)
         checked(detail, bounds.DETAIL.ceiling)
@@ -486,6 +501,7 @@ def build_app(db_path: Path) -> FastAPI:
                 corpus,
                 nodes.session_node(head[0], corpus.described),
                 tree.ancestry(corpus, seen.trail),
+                preset,
                 kin,
             )
             # What the reader reads before and after this node, off the same open path. Read
@@ -508,7 +524,7 @@ def build_app(db_path: Path) -> FastAPI:
         # un-enriched store this query is not one of them.
         if corpus.described.queried:
             ran.append((Page.ENRICHMENT, keyed | {"source": source}))
-        marks = knobs(kin, log, detail)
+        marks = knobs(preset, kin, log, detail)
         return templates.TemplateResponse(
             request,
             "node.html",
@@ -600,6 +616,7 @@ def build_app(db_path: Path) -> FastAPI:
     def session_page(
         request: Request,
         session_id: str,
+        nav: str = nodes.Preset.FULL,
         kin: int = bounds.KIN.default,
         log: int = bounds.LOG.default,
         detail: int = bounds.DETAIL.default,
@@ -625,7 +642,7 @@ def build_app(db_path: Path) -> FastAPI:
                 ran=[(Page.TIMELINE, {"session_id": session_id, "after": after, "limit": log})],
             )
 
-        return browse(request, session_id, MAIN_SOURCE, kin, log, detail, after, read)
+        return browse(request, session_id, MAIN_SOURCE, nav, kin, log, detail, after, read)
 
     @app.get("/session/{session_id}/turn/{source}/{turn_id}")
     def turn_page(
@@ -633,6 +650,7 @@ def build_app(db_path: Path) -> FastAPI:
         session_id: str,
         source: str,
         turn_id: str,
+        nav: str = nodes.Preset.FULL,
         kin: int = bounds.KIN.default,
         log: int = bounds.LOG.default,
         detail: int = bounds.DETAIL.default,
@@ -683,13 +701,14 @@ def build_app(db_path: Path) -> FastAPI:
                 ran=[(Page.TURN_HEADER, bound), *ran, (Page.TURN_RECORDS, thread)],
             )
 
-        return browse(request, session_id, source, kin, log, detail, after, read)
+        return browse(request, session_id, source, nav, kin, log, detail, after, read)
 
     @app.get("/session/{session_id}/run/{run_id}")
     def run_page(
         request: Request,
         session_id: str,
         run_id: str,
+        nav: str = nodes.Preset.FULL,
         kin: int = bounds.KIN.default,
         log: int = bounds.LOG.default,
         detail: int = bounds.DETAIL.default,
@@ -754,7 +773,7 @@ def build_app(db_path: Path) -> FastAPI:
                 ],
             )
 
-        return browse(request, session_id, run_id, kin, log, detail, after, read)
+        return browse(request, session_id, run_id, nav, kin, log, detail, after, read)
 
     @app.get("/session/{session_id}/call/{source}/{api_call_id}")
     def call_page(
@@ -762,6 +781,7 @@ def build_app(db_path: Path) -> FastAPI:
         session_id: str,
         source: str,
         api_call_id: str,
+        nav: str = nodes.Preset.FULL,
         kin: int = bounds.KIN.default,
         log: int = bounds.LOG.default,
         detail: int = bounds.DETAIL.default,
@@ -827,7 +847,7 @@ def build_app(db_path: Path) -> FastAPI:
                 ran=[(Page.CALL_HEADER, bound), (Fragment.CALL_TOOLS, tools)],
             )
 
-        return browse(request, session_id, source, kin, log, detail, after, read)
+        return browse(request, session_id, source, nav, kin, log, detail, after, read)
 
     @app.get("/session/{session_id}/tool/{source}/{tool_call_id}")
     def tool_page(
@@ -835,6 +855,7 @@ def build_app(db_path: Path) -> FastAPI:
         session_id: str,
         source: str,
         tool_call_id: str,
+        nav: str = nodes.Preset.FULL,
         kin: int = bounds.KIN.default,
         log: int = bounds.LOG.default,
         detail: int = bounds.DETAIL.default,
@@ -889,7 +910,7 @@ def build_app(db_path: Path) -> FastAPI:
                 ran=[(Page.TOOL_HEADER, bound)],
             )
 
-        return browse(request, session_id, source, kin, log, detail, after, read)
+        return browse(request, session_id, source, nav, kin, log, detail, after, read)
 
     @app.get("/session/{session_id}/compaction/{source}/{compaction_id}")
     def compaction_page(
@@ -897,6 +918,7 @@ def build_app(db_path: Path) -> FastAPI:
         session_id: str,
         source: str,
         compaction_id: str,
+        nav: str = nodes.Preset.FULL,
         kin: int = bounds.KIN.default,
         log: int = bounds.LOG.default,
         detail: int = bounds.DETAIL.default,
@@ -933,13 +955,14 @@ def build_app(db_path: Path) -> FastAPI:
                 ran=[(Page.COMPACTIONS, bound)],
             )
 
-        return browse(request, session_id, source, kin, log, detail, after, read)
+        return browse(request, session_id, source, nav, kin, log, detail, after, read)
 
     @app.get("/session/{session_id}/unattributed/{source}")
     def unattributed_page(
         request: Request,
         session_id: str,
         source: str,
+        nav: str = nodes.Preset.FULL,
         kin: int = bounds.KIN.default,
         log: int = bounds.LOG.default,
         detail: int = bounds.DETAIL.default,
@@ -965,12 +988,13 @@ def build_app(db_path: Path) -> FastAPI:
                 ran=[standing.ran, *ran],
             )
 
-        return browse(request, session_id, source, kin, log, detail, after, read)
+        return browse(request, session_id, source, nav, kin, log, detail, after, read)
 
     @app.get("/session/{session_id}/unattached")
     def unattached_page(
         request: Request,
         session_id: str,
+        nav: str = nodes.Preset.FULL,
         kin: int = bounds.KIN.default,
         log: int = bounds.LOG.default,
         detail: int = bounds.DETAIL.default,
@@ -999,7 +1023,7 @@ def build_app(db_path: Path) -> FastAPI:
                 ran=[],
             )
 
-        return browse(request, session_id, MAIN_SOURCE, kin, log, detail, after, read)
+        return browse(request, session_id, MAIN_SOURCE, nav, kin, log, detail, after, read)
 
     @app.get("/session/{session_id}/records/{source}")
     def records_page(

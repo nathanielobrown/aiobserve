@@ -22,6 +22,7 @@ from tests.conftest import (
     ANCESTOR,
     CONFIG_ONLY,
     DENSE_CALL,
+    DENSE_CALL_TURN,
     DENSE_TOOL,
     DENSE_TURN,
     DENSE_TURN_CALL,
@@ -72,10 +73,14 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     # at the turn under it holding 4 api calls, so each level answers with more than one row.
     "view_tree_turns": {"session_id": ANCESTOR, "source": MAIN},
     "view_tree_calls": {"session_id": ANCESTOR, "source": MAIN, "turn_id": DENSE_TURN},
+    # Bound at one api call, which is the level under a call; the turn is what the other
+    # question binds — every tool call under a turn, the level `noapi` puts there — and the
+    # CLI has no way to send the NULL that asks it, so this run exercises the first.
     "view_tree_tools": {
         "session_id": FORK_ORIGIN,
         "source": FORK_ORIGIN_RUN,
         "api_call_id": DENSE_CALL,
+        "turn_id": DENSE_CALL_TURN,
     },
     # One node read whole, one per kind that has fields of its own.
     "view_turn_header": {"session_id": ANCESTOR, "source": MAIN, "turn_id": DENSE_TURN},

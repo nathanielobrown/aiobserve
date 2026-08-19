@@ -217,6 +217,27 @@ def values(html: str, attribute: str) -> list[str]:
     return re.findall(rf'{attribute}="([^"]*)"', html)
 
 
+# One tree row that stands for a node, depth beside key. Read as a pair rather than as two
+# `values` scans because a cap's tail row carries a depth and no key, so the two lists are
+# not the same length whenever a level was cut.
+_ROW = re.compile(r'data-depth="(\d+)"\s+data-tree="([^"]*)"')
+
+
+def rows(html: str) -> list[tuple[int, str]]:
+    """Every tree row that stands for a node: its depth beside its key, in document order."""
+    return [(int(depth), key) for depth, key in _ROW.findall(html)]
+
+
+def kin(html: str) -> list[str]:
+    """The children the tree opened under the selection, as node keys in document order.
+
+    The rows one level below the open chain, which is what the crumbs count. Everything else
+    on the tree is an ancestor, an ancestor's sibling, or a tail row.
+    """
+    depth = len(values(html, "data-crumb"))
+    return [key for at, key in rows(html) if at == depth]
+
+
 class _Element(HTMLParser):
     """What sits inside the one element carrying `attribute="value"`."""
 

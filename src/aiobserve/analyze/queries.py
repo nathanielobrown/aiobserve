@@ -593,7 +593,11 @@ QUERIES: dict[str, Query] = {
         params={
             "session_id": SESSION_ID,
             "source": SOURCE,
+            # Both NULL-able and both required for the same reason as `view_tree_calls`:
+            # NULL is the question "under this turn, whichever call made it" at the first and
+            # "under no turn of this thread" at the second, not a key left out.
             "api_call_id": API_CALL_ID,
+            "turn_id": TURN_ID,
             "nav_chars": NAV_CHARS_PARAM,
         },
     ),
