@@ -11,6 +11,10 @@ from pathlib import Path, PurePosixPath
 # as a gap rather than as a value.
 ABSENT = "—"
 
+# What a page prints where it cut a value short. One character, and the only thing that tells
+# a value that ended from a value that was stopped.
+ELLIPSIS = "…"
+
 _MINUTE = 60_000
 _HOUR = 60 * _MINUTE
 _DAY = 24 * _HOUR
@@ -41,6 +45,16 @@ def money(value: float | None) -> str:
 def count(value: int | None) -> str:
     """A count, with thousands separated."""
     return ABSENT if value is None else f"{value:,}"
+
+
+def cut(value: str, size: int) -> str:
+    """A string at the width a page reads it, marked where the rest was left behind.
+
+    The one-extra-character protocol every cut query rides: a query selects `$n + 1`
+    characters, so a value longer than `n` is a value with more behind it. How much more is a
+    `length()` column's answer, beside the head, wherever a page offers the rest of a value.
+    """
+    return value[:size] + ELLIPSIS if len(value) > size else value
 
 
 def text(value: str | None) -> str:

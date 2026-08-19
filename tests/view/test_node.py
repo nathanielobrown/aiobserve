@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from aiobserve.analyze import queries
 from aiobserve.view import bounds
 from aiobserve.view.app import build_app
+from aiobserve.view.format import ELLIPSIS
 from aiobserve.view.labels import LABELS
 from tests.conftest import ANCESTOR, DENSE_TURN, MAIN, SPINE
 from tests.view.conftest import MISSING, Planter, fields, inside, one, values
@@ -189,8 +190,10 @@ def test_a_pane_previews_a_fat_value_and_offers_the_rest_as_its_own_fetch(
     )
     with TestClient(build_app(path)) as grown:
         page = grown.get(TURN).text
-        # The pane shows the width it budgeted for, and says how many characters it left.
-        assert fields(page, "data-detail", "prompt")["prompt"] == prompt[: bounds.DETAIL.ceiling]
+        # The pane shows the width it budgeted for, marked where the value went on, and says
+        # how many characters it left.
+        head = prompt[: bounds.DETAIL.ceiling] + ELLIPSIS
+        assert fields(page, "data-detail", "prompt")["prompt"] == head
         assert (
             fields(page, "data-detail", "prompt")["cut"]
             == f"{len(prompt) - bounds.DETAIL.ceiling:,}"
@@ -202,7 +205,7 @@ def test_a_pane_previews_a_fat_value_and_offers_the_rest_as_its_own_fetch(
         assert values(whole.text, "data-value") == [str(len(prompt))]
         # A reader who asks for less gets less, which is what makes the width a knob.
         narrow = grown.get(TURN, params={"detail": 10}).text
-        assert fields(narrow, "data-detail", "prompt")["prompt"] == prompt[:10]
+        assert fields(narrow, "data-detail", "prompt")["prompt"] == prompt[:10] + ELLIPSIS
 
 
 def test_every_value_a_pane_previews_is_fetchable_whole_from_its_own_url(

@@ -15,6 +15,7 @@ from enum import StrEnum
 
 from aiobserve.analyze import queries
 from aiobserve.view.enrichment import Descriptions
+from aiobserve.view.format import cut
 from aiobserve.view.store import Row
 
 # How a spend bar is drawn: the steps it has, and how many decades of share they cover. A
@@ -162,8 +163,12 @@ def _share(cost: float | None, whole: float) -> float | None:
 
 
 def _cut(text: str | None) -> str:
-    """A label at the width of a tree row, whatever the query left in the column."""
-    return (text or "")[: queries.NAV_CHARS]
+    """A label at the width of a tree row, marked where the rest was left behind.
+
+    Every column a label is composed from comes back one character past this width, so a
+    label that fills the row is one the reader can tell was stopped (`view/format.py:cut`).
+    """
+    return cut(text or "", queries.NAV_CHARS)
 
 
 def session_node(header: Row, described: Descriptions) -> Node:

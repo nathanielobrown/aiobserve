@@ -1,6 +1,7 @@
 -- One turn, whole: what was asked, when, and what answering it took. The header of a turn's
--- node page, so what was typed is cut at `$detail_chars` with its whole length beside it — a
--- pane shows the head and says how much more there is (`view_turn_prompt` has the rest).
+-- node page, so what was typed is cut one character past `$detail_chars` — the protocol
+-- `view/format.py:cut` reads — with its whole length beside it, and a pane shows the head,
+-- marks it as cut and says how much more there is (`view_turn_prompt` has the rest).
 WITH call AS (
     SELECT * FROM live_api_calls
     WHERE session_id = $session_id AND source = $source AND turn_id = $turn_id
@@ -13,7 +14,7 @@ WITH call AS (
 SELECT
     t."index" AS turn_index,
     t.id AS turn_id,
-    substr(t.prompt, 1, $detail_chars) AS prompt,
+    substr(t.prompt, 1, $detail_chars + 1) AS prompt,
     length(t.prompt) AS prompt_chars,
     -- A slash turn's heading shows the command it ran and what followed it instead of the
     -- prompt, which still holds the tags Claude Code wrapped it in.

@@ -14,9 +14,10 @@ SELECT
     -- named, and the model the run answered on. Nothing on the far side of any of them bounds
     -- what it holds — an agent definition is named by whoever writes it.
     substr(a.agent_type, 1, $head_chars) AS agent_type,
-    -- The task brief, cut at a pane's width with its whole length beside it; the rest is
-    -- fetched as one value (`view_run_brief`).
-    substr(a.description, 1, $detail_chars) AS description,
+    -- The task brief, cut one character past a pane's width — the protocol
+    -- `view/format.py:cut` reads — with its whole length beside it; the rest is fetched as
+    -- one value (`view_run_brief`).
+    substr(a.description, 1, $detail_chars + 1) AS description,
     length(a.description) AS description_chars,
     substr(a.model, 1, $head_chars) AS model,
     a.spawn_depth,

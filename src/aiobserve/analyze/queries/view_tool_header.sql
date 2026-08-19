@@ -1,6 +1,7 @@
 -- One tool call, whole: what it was asked and what it answered, cut to a pane's width.
--- The header of a tool call's node page. Both fat columns are cut at `$detail_chars` with
--- their whole lengths beside them; the rest is fetched as one value (`view_tool_value`), and
+-- The header of a tool call's node page. Both fat columns are cut one character past
+-- `$detail_chars` — the protocol `view/format.py:cut` reads — with their whole lengths
+-- beside them; the rest is fetched as one value (`view_tool_value`), and
 -- a result the transcript offloaded to a file has a page of its own instead.
 SELECT
     t."index" AS tool_index,
@@ -21,10 +22,10 @@ SELECT
     t.started_at,
     t.ended_at,
     date_diff('millisecond', t.started_at, t.ended_at) AS wall_ms,
-    substr(t.input, 1, $detail_chars) AS input_head,
+    substr(t.input, 1, $detail_chars + 1) AS input_head,
     length(t.input) AS input_chars,
     -- NULL where the tool returned nothing at all, which is not the same as returning "".
-    substr(t.result, 1, $detail_chars) AS result_head,
+    substr(t.result, 1, $detail_chars + 1) AS result_head,
     length(t.result) AS result_chars
 FROM live_tool_calls t
 JOIN live_api_calls c
