@@ -63,16 +63,17 @@ CUT = (
 
 
 def sessions(store: duckdb.DuckDBPyConnection) -> list[str]:
-    """Every session in the store in the list's default order: newest first.
+    """Every session in the store in the list's default order: newest first, empties last.
 
-    A session with no start sorts to the top rather than the bottom, because the direction
-    carries the NULLs with it — that is what makes a sort and its reverse exact opposites.
+    A session the store gave no start sorts to the bottom whichever way the list is ordered:
+    "the store does not know" is not a date, and a row that carries none is not the newest
+    thing that happened.
     """
     return [
         row[0]
         for row in store.execute(
             "SELECT session_id FROM session_rollups"
-            " ORDER BY started_at DESC NULLS FIRST, session_id DESC"
+            " ORDER BY started_at DESC NULLS LAST, session_id DESC"
         ).fetchall()
     ]
 
@@ -289,8 +290,28 @@ def test_every_sort_key_names_a_column_the_query_returns(
 
 
 @pytest.mark.parametrize("sort", sorted(SORTS))
-def test_a_sort_and_its_reverse_are_exact_opposites(sort: str, client: TestClient) -> None:
-    """Every sort key totally orders the list, so flipping the direction reverses it."""
+def test_a_sort_and_its_reverse_are_exact_opposites(
+    sort: str, client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """Every sort key totally orders the rows that carry a value, so flipping the direction
+    reverses them — and the rows carrying none sit at the end of both.
+
+    Two claims rather than one, because the empty rows are pinned. A session the store knows
+    nothing about is not the newest, the cheapest or the busiest, so it sorts last whichever
+    way the reader asked; the rows that do carry a value are the ones reversal is about.
+    """
+    # Which sessions carry no value in this column, asked of the query the list ranks rather
+    # than of a table beside it: two of the eleven keys are the query's own arithmetic.
+    listing = queries.load("view_sessions").strip().rstrip(";")
+    defaults = {
+        name: spec.default for name, spec in queries.QUERIES["view_sessions"].params.items()
+    }
+    empty = {
+        row[0]
+        for row in store.execute(
+            f"SELECT session_id FROM ({listing}) WHERE {sort} IS NULL", defaults
+        ).fetchall()
+    }
     order = {
         direction: values(
             client.get("/sessions", params={"sort": sort, "direction": direction}).text,
@@ -299,7 +320,13 @@ def test_a_sort_and_its_reverse_are_exact_opposites(sort: str, client: TestClien
         for direction in DIRECTIONS
     }
     assert len(order["asc"]) > 1
-    assert order["asc"] == list(reversed(order["desc"]))
+    valued = {
+        direction: [row for row in rows if row not in empty] for direction, rows in order.items()
+    }
+    assert valued["asc"] == list(reversed(valued["desc"]))
+    # And the empties trail both lists, rather than riding to the top of one of them.
+    for direction, rows in order.items():
+        assert set(rows[len(valued[direction]) :]) == empty & set(rows), direction
 
 
 @pytest.mark.parametrize(
