@@ -122,7 +122,7 @@ Full-value requests are the declared exception. Each returns one transcript line
 
 | Surface | Default and limit |
 | --- | --- |
-| Session list | 110 sessions; each long string is cut to 100 characters, skills and agent types to four 20-character names, and work to three |
+| Session list | 104 sessions; each long string is cut to 100 characters, skills and agent types to four 20-character names, and work to three |
 | Projects | 100 projects; the path is cut to 100 characters |
 | Session timeline | 20 turns and 8 run chips per list by default; at most 100 chips in one list |
 | Turn details | 10 api calls, each with at most 12 tool rows; `?calls=` can only reduce the default |
@@ -135,6 +135,6 @@ Timeline sizes multiply. The unattached list also appears on every page, so the 
 
 Enrichment raised the page ceiling from 350 KB to 500 KB. A described run row costs about half again as much as a bare row, and the widest page can hold 200 of them. Reducing the run budget would have hidden part of the recorded 94-run forest behind a count with no page able to show it, so the ceiling rose instead. Run chips show tags but leave the description for the run page.
 
-The session list is also bound independently of corpus size. Its filter box offers the 10 busiest project paths that fit its bound, whole or not at all; a cut path would filter by a directory nobody named. The projects page cuts a long path the same way and leaves that row unlinked. The same rule keeps row filtering correct: the viewer filters whole titles, paths, and skill lists, then cuts only the rows it renders. The worst-case list projects to 483 KB: 10 KB of page chrome plus 110 rows at 4.3 KB each.
+The session list is also bound independently of corpus size. Its filter box offers the 10 busiest project paths that fit its bound, whole or not at all; a cut path would filter by a directory nobody named. The projects page cuts a long path the same way and leaves that row unlinked. The same rule keeps row filtering correct: the viewer filters whole titles, paths, and skill lists, then cuts only the rows it renders. The worst-case list projects to 499 KB: 10 KB of page chrome plus 104 rows at 4.7 KB each.
 
 A session header does not have a reader-controlled size, so its query cuts every string, skill list, PR list, session description, and friction line. Compaction markers are capped at 20, just above the 18 in the densest recorded thread. `tests/view/test_bounds.py` measures these fixed costs and checks every legal page shape against the 500 KB ceiling.

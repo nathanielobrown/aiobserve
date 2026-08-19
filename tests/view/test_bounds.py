@@ -9,6 +9,7 @@ a per-value fetch is the one exception, and it is exempt because its unit *is* o
 
 import re
 from html import unescape
+from itertools import pairwise
 from pathlib import Path
 from urllib.parse import quote
 
@@ -72,10 +73,11 @@ FAT = (
 # would put the widest forest the corpus records behind a "+N more" nobody can open.
 PAGE_BYTES = 500_000
 # What the markup around one row of the list costs, with the content the row carries taken off.
-# Re-measured through the app by the leaf at the bottom of this file, every cap full of `&`:
-# one more row cost 4,040 B, of which 2,800 B is content at those caps and 257 B the enrichment
-# markup below, leaving 983 B of stacked cells, counted lists and the row around them.
-MEASURED_SESSION_ROW_MARKUP = 1_200
+# Re-measured through the app by the leaf at the bottom of this file, every cap full of `&`,
+# at the dearest row the list holds rather than at whichever one sorted second: that row cost
+# 4,519 B, of which 2,730 B is content at those caps and 257 B the enrichment markup below,
+# leaving 1,532 B of stacked cells, counted lists and the row around them.
+MEASURED_SESSION_ROW_MARKUP = 1_600
 # What the markup around one row's enrichment costs on top of that, with the model's own words
 # taken off. Measured through the app by the leaf at the bottom of this file, every field
 # planted full of `&`: 257 B. The list never renders the stale tag — it joins what a pass wrote
@@ -1126,9 +1128,13 @@ def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
             assert response.status_code == 200, response.text[:200]
             return response.text
 
-        one_row, two_rows = served(1), served(2)
-    # One more row costs its markup and every head it shows, all `&`...
-    assert len(two_rows.encode()) - len(one_row.encode()) <= worst_session_row_bytes()
+        pages = [served(size) for size in range(1, sessions + 1)]
+    one_row = pages[0]
+    # One more row costs its markup and every head it shows, all `&` — priced at every row the
+    # list holds rather than at whichever one lands second, because the ceiling multiplies the
+    # dearest row and which session that is depends only on how the list happens to be sorted.
+    weights = [len(page.encode()) for page in pages]
+    assert max(b - a for a, b in pairwise(weights)) <= worst_session_row_bytes()
     # ...and what the page carries whatever its size fits the allowance the ceiling gives it,
     # with the row the arithmetic counts separately stripped out.
     chrome = re.sub(r"<tr data-session-id=.*?</tr>", "", one_row, flags=re.S)
@@ -1136,8 +1142,11 @@ def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     assert len(chrome.encode()) <= MEASURED_LIST_CHROME
     # The plant reached every cap, which is what makes those two numbers a worst case: each
     # string cut to its head, the skills cut to their first names and saying how many were
-    # left, and the filter box offering as many projects as it has room for.
-    row = fields(two_rows, "data-session-id", values(two_rows, "data-session-id")[0])
+    # left, and the filter box offering as many projects as it has room for. Read off the row
+    # the budget above is priced at — the dearest one — rather than off whichever sorted first.
+    markup = re.findall(r"<tr data-session-id=.*?</tr>", pages[-1], flags=re.S)
+    dearest = max(markup, key=lambda one: len(one.encode()))
+    row = fields(dearest, "data-session-id", values(dearest, "data-session-id")[0])
     assert len(row["title"]) == len(row["project_dir"]) == queries.LIST_CHARS
     assert row["skills"].count(name) == queries.LIST_ITEMS
     assert row["skills"].endswith("more")
