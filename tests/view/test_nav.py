@@ -555,13 +555,16 @@ def test_a_session_the_store_does_not_hold_has_no_map(client: TestClient) -> Non
 
 
 def test_the_map_cites_every_query_it_ran(client: TestClient) -> None:
-    """A fragment arrives after the page it lands on, so it carries its own citations."""
-    lines = values(nav(client, SPINE), "data-query")
-    assert {line.split()[1] for line in lines} == {
-        "queries/view_session_nav.sql",
-        "queries/view_runs.sql",
+    """A fragment arrives after the page it lands on, so it carries its own citations.
+
+    Whole lines rather than query names: a citation claims that re-running it reproduces what
+    the fragment showed, so every binding that moved off its manifest default belongs in it.
+    The map reads a run's strings at `NAV_CHARS`, narrower than the head a session page chips
+    them to — a line that leaves it out re-runs at the default and answers longer text.
+    """
+    assert set(values(nav(client, SPINE), "data-query")) == {
+        f"-- queries/view_session_nav.sql session_id={SPINE}",
+        f"-- queries/view_runs.sql session_id={SPINE} chip_chars={queries.NAV_CHARS}",
         # What every share on the map is a share of, which is a query like the rest.
-        "queries/view_session_header.sql",
+        f"-- queries/view_session_header.sql session_id={SPINE}",
     }
-    for line in lines:
-        assert f"session_id={SPINE}" in line
