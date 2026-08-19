@@ -30,7 +30,7 @@
         {# Both lists grow with the session, so the query cuts them and says how many it left:
            a header is the one part of a page no size a reader types bounds. #}
         {{ parts.fact('skills', (header.skills or []) | join(', ')
-                      ~ (' and %d more' % header.skills_cut if header.skills_cut else '')) }}
+                      ~ parts.more(header.skills_cut)) }}
       </dl>
       <dl data-cluster="time">
         {{ parts.fact('started_at', header.started_at | when) }}

@@ -28,7 +28,7 @@
   <li class="more" data-more="{{ api_call_id }}" data-more-tools="{{ page.after }}"
       hx-get="/fragment/tools/{{ session_id }}/{{ source }}/{{ api_call_id }}?after={{ page.after }}&tools={{ tools }}"
       hx-trigger="click" hx-swap="outerHTML">
-    <span data-field="count">+{{ page.more }} more</span>
+    <span data-field="count">+{{ page.more | count }} more</span>
   </li>
   {% endif %}
 </ul>

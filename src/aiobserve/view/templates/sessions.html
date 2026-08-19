@@ -13,8 +13,8 @@
 {% macro pager(place) %}
 <nav class="pager" data-pager="{{ place }}">
   {% if previous %}<a data-page="previous" href="{{ previous }}">← newer page</a>{% endif %}
-  <span data-field="range">{% if sessions %}Sessions {{ first }}–{{ first + (sessions | length) - 1
-    }}{% else %}No sessions{% endif %}</span>
+  <span data-field="range">{% if sessions %}Sessions {{ first | count }}–{{ (first
+    + (sessions | length) - 1) | count }}{% else %}No sessions{% endif %}</span>
   {% if next %}<a data-page="next" href="{{ next }}">older page →</a>{% endif %}
 </nav>
 {% endmacro %}

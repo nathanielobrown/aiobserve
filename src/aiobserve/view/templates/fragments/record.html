@@ -7,7 +7,7 @@
        record whose uuid is the turn's id. #}
     {% if row.uuid %}<span data-field="uuid">{{ row.uuid }}</span>{% endif %}
     <span data-field="timestamp">{{ row.timestamp | clock }}</span>
-    <span><span data-field="raw_chars">{{ row.raw_chars }}</span> chars</span>
+    <span><span data-field="raw_chars">{{ row.raw_chars | count }}</span> chars</span>
   </p>
   <pre data-field="raw">{{ row.raw | pretty }}</pre>
 </div>

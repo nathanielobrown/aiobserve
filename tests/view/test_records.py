@@ -11,9 +11,10 @@ from fastapi.testclient import TestClient
 
 from aiobserve.analyze import queries
 from aiobserve.view import bounds
+from aiobserve.view.app import build_app
 from aiobserve.view.store import Page
 from tests.conftest import ANCESTOR, MAIN, RESUME, RESUME_LONG_RECORD, SPINE, SPINE_RUN
-from tests.view.conftest import MISSING, fields, inside, one, values
+from tests.view.conftest import MISSING, Planter, fields, inside, one, values
 
 
 def test_the_browser_pages_by_line_number_without_repeating_or_skipping(
@@ -105,8 +106,47 @@ def test_a_record_row_shows_a_preview_and_the_length_it_was_cut_from(
         "data-record",
         str(RESUME_LONG_RECORD),
     )
-    assert row["raw_chars"] == str(len(stored))
+    # Through the same formatter every count on a page goes through. This record is the one
+    # recorded value long enough to tell the two spellings apart: 3,054 against 3054.
+    assert row["raw_chars"] == f"{len(stored):,}"
     assert len(row["raw_head"]) <= queries.RECORD_PREVIEW
+
+
+def test_every_number_the_records_browser_prints_carries_its_separators(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The browser's counts go through the same formatter every count on a page does.
+
+    Planted, because the corpus's densest recorded thread archives 47 lines: under a thousand
+    a formatted count and a bare one are the same string. The clones are of a recorded record
+    given line numbers of their own, so what the page counts stays the archived population —
+    and they carry no uuid, a shape the store records for a summary line.
+    """
+    over = 1_200
+    (recorded,) = one(
+        store,
+        "SELECT count(*) FROM raw_records WHERE session_id = ? AND source = ?",
+        [ANCESTOR, MAIN],
+    )
+    path = plant(
+        (
+            "INSERT INTO raw_records (SELECT r.* REPLACE (r.line_no + i * 1000 AS line_no,"
+            " NULL AS uuid) FROM raw_records r, range(1, ?) t(i)"
+            " WHERE r.session_id = ? AND r.source = ? AND r.line_no ="
+            " (SELECT min(line_no) FROM raw_records WHERE session_id = ? AND source = ?))",
+            [over + 1, ANCESTOR, MAIN, ANCESTOR, MAIN],
+        ),
+    )
+    with TestClient(build_app(path)) as planted:
+        page = planted.get(f"/session/{ANCESTOR}/records/{MAIN}").text
+    held = recorded + over
+    shown = len(values(page, "data-record"))
+    assert shown == bounds.RECORDS.default
+    # What the thread holds from this cursor on, and what the page left behind it, both
+    # grouped in threes — and the plant pushed each past where that is a claim.
+    assert fields(page, "id", "records")["matched"] == f"{held:,}"
+    (after,) = values(page, "data-more-records")
+    assert fields(page, "data-more-records", after)["count"] == f"+{held - shown:,} more"
 
 
 def test_a_record_fragment_holds_the_one_record_it_names(
@@ -127,6 +167,8 @@ def test_a_record_fragment_holds_the_one_record_it_names(
     shown = fields(served.text, "data-record-value", str(RESUME_LONG_RECORD))
     # The whole record arrived — pretty-printed, so at least as long as what was stored...
     assert len(shown["raw"]) >= len(stored)
+    # ...saying its stored length in the grouping every count on a page carries...
+    assert shown["raw_chars"] == f"{len(stored):,}"
     # ...and no other line of the same thread rode along with it.
     assert values(served.text, "data-record-value") == [str(RESUME_LONG_RECORD)]
 
