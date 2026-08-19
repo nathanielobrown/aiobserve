@@ -36,7 +36,7 @@ from aiobserve.analyze import queries
 from aiobserve.analyze.queries import ParamValue
 from aiobserve.export.duckdb import SCHEMA_VERSION
 from aiobserve.model import MAIN_SOURCE
-from aiobserve.view import bounds, nodes, render, tree
+from aiobserve.view import bounds, nodes, render, tree, walk
 from aiobserve.view import format as fmt
 from aiobserve.view.enrichment import Described, Descriptions, described, enriched
 from aiobserve.view.labels import label
@@ -488,6 +488,10 @@ def build_app(db_path: Path) -> FastAPI:
                 tree.ancestry(corpus, seen.trail),
                 kin,
             )
+            # What the reader reads before and after this node, off the same open path. Read
+            # inside the request's own connection because it asks the store for levels the
+            # tree did not open.
+            walked = walk.neighbours(connection, corpus, built.chain)
         # A cursor past the last child and a node that never had one are the same answer. The
         # first page is not: a node with no children still has its own facts to show.
         if after != queries.FIRST_PAGE and not seen.rows:
@@ -498,6 +502,7 @@ def build_app(db_path: Path) -> FastAPI:
             (Page.RUNS, runs_bound),
             *seen.ran,
             *built.ran,
+            *walked.ran,
         ]
         # Only when the store held the tables to ask: a page cites what it ran, and over an
         # un-enriched store this query is not one of them.
@@ -518,6 +523,9 @@ def build_app(db_path: Path) -> FastAPI:
                 # one line it was read from.
                 "source": source,
                 "record": seen.record,
+                # Where the reading order goes from here, in both directions.
+                "previous": walked.previous,
+                "following": walked.following,
                 "shape": seen.shape,
                 "log": seen.rows,
                 "more": seen.more,

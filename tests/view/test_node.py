@@ -287,7 +287,7 @@ def test_a_children_log_pages_by_keyset_and_says_what_it_left(
     assert values(first.text, "data-child") == children[:1]
     assert fields(first.text, "data-log", "calls")["cut"] == str(len(children) - 1)
     # The link says where to resume, by the cursor of the row it stopped on and not by a count.
-    (nxt,) = inside(first.text, "data-next", "calls", "href")
+    (nxt,) = inside(first.text, "data-page", "calls", "href")
     assert "after=" in nxt and "offset" not in nxt.lower()
     assert values(client.get(nxt).text, "data-child") == children[1:2]
     # Walking the log to its end lands on every child exactly once, in the level's own order.
@@ -296,7 +296,7 @@ def test_a_children_log_pages_by_keyset_and_says_what_it_left(
     while at is not None:
         page = client.get(at).text
         walked += values(page, "data-child")
-        following = inside(page, "data-next", "calls", "href")
+        following = inside(page, "data-page", "calls", "href")
         at = following[0] if following else None
     assert walked == children
     # And a page past the last one is nothing, rather than an empty log that reads as a node

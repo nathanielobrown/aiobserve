@@ -40,7 +40,7 @@
   </ul>
   {% if more %}
   <p class="more">
-    {%- if next %}<a data-next="{{ shape }}" href="{{ next }}"
+    {%- if next %}<a data-page="{{ shape }}" href="{{ next }}"
       >+<span data-field="cut">{{ more | count }}</span> more</a>
     {%- else %}+<span data-field="cut">{{ more | count }}</span> more{% endif %}
   </p>

@@ -48,6 +48,19 @@
     </details>
     {% endif %}
     {{ logs.log(shape, log, more, suffix, next) }}
+    {# Reading in order. The tree opens one path, so these two links are how a reader gets
+       through everything it is not showing — depth-first over the whole session, into the
+       buckets as well, and the same order whatever the tree beside it was capped to. #}
+    <nav class="walk" aria-label="Read in order">
+      {% if previous %}
+      <a data-walk="previous" data-node="{{ previous.key }}" href="{{ previous.url }}{{ suffix }}"
+        >← <span data-field="{{ previous.kind }}">{{ previous.label }}</span></a>
+      {% endif %}
+      {% if following %}
+      <a data-walk="next" data-node="{{ following.key }}" href="{{ following.url }}{{ suffix }}"
+        ><span data-field="{{ following.kind }}">{{ following.label }}</span> →</a>
+      {% endif %}
+    </nav>
   </article>
 </div>
 {% endblock %}
