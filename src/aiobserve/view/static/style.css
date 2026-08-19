@@ -110,7 +110,8 @@ td.title .secondary { display: -webkit-box; -webkit-box-orient: vertical;
 
 /* The map. One node a line, monospaced at the label step so a name's cut and the numbers after
    it line up down the column — the sidebar is scanned rather than read. */
-nav.map { font-family: ui-monospace, monospace; font-size: var(--type-label); line-height: 1.6; }
+nav.map, #tree { font-family: ui-monospace, monospace; font-size: var(--type-label);
+  line-height: 1.6; }
 ul.nav { margin: 0; padding-left: var(--space-2); list-style: none; }
 nav.map > ul.nav { padding-left: 0; }
 li.node > a {
@@ -118,7 +119,7 @@ li.node > a {
   padding: 0 var(--space-1); color: inherit; text-decoration: none;
 }
 li.node [data-field="label"] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-nav.map .secondary { color: var(--dim); white-space: nowrap; }
+nav.map .secondary, #tree .secondary { color: var(--dim); white-space: nowrap; }
 /* Emphasis is the whole point of a server-rendered map: the turns on the page the reader is
    looking at read at full strength, everything a click away recedes. */
 li.node.here > a { font-weight: 600; }
@@ -154,6 +155,33 @@ li.node.s7 > a { background-size: 70% 3px, 100% 3px; }
 li.node.s8 > a { background-size: 80% 3px, 100% 3px; }
 li.node.s9 > a { background-size: 90% 3px, 100% 3px; }
 li.node.s10 > a { background-size: 100% 3px, 100% 3px; }
+
+/* The node browser: the tree a reader walks on the left, the node they are reading on the
+   right. The tree is one flat list — a click swaps the whole of it out of band — so a row's
+   place in the hierarchy is drawn from `data-depth` rather than from nesting. The ladder
+   stops at the depths a chain reaches today; it grows with the kinds that get pages. */
+#browser { display: grid; grid-template-columns: minmax(16rem, 24rem) minmax(0, 1fr);
+  gap: var(--space-4); align-items: start; }
+#tree { position: sticky; top: var(--space-2); max-height: calc(100vh - 4rem); overflow: auto; }
+#tree-rows { margin: 0; padding: 0; list-style: none; }
+li.row[data-depth="1"] > a { padding-left: var(--space-3); }
+li.row[data-depth="2"] > a { padding-left: var(--space-4); }
+li.row[data-depth="3"] > a { padding-left: calc(2 * var(--space-4)); }
+/* The row the pane is about, held at full strength while everything around it recedes — the
+   same emphasis rule the map reads by. */
+li.row[data-selected] > a { font-weight: 600;
+  background-color: color-mix(in srgb, var(--mark) 12%, transparent); }
+li.row.more { color: var(--dim); }
+/* Where a node sits, above the node itself. Separators between the steps rather than around
+   them, so the trail reads as one line. */
+.crumbs a + a::before { content: "/"; color: var(--dim); margin: 0 var(--space-1); }
+#pane .log ul { margin: 0; padding: 0; list-style: none; }
+#pane .log li { display: flex; gap: var(--space-3); color: var(--dim); }
+
+@media (max-width: 900px) {
+  #browser { display: block; }
+  #tree { position: static; max-height: 50vh; margin-bottom: var(--space-3); }
+}
 
 /* One session's timeline. The header's four clusters sit side by side while there is room:
    what this session was, when it ran, how much it did, and what it cost. */

@@ -69,6 +69,11 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     "view_runs": {"session_id": SPINE},
     "view_session_header": {"session_id": SPINE},
     "view_session_nav": {"session_id": SPINE},
+    # The tree levels beside a node page, bound at the session the tree tests open and
+    # at the turn under it holding 4 api calls, so each level answers with more than one row.
+    "view_tree_turns": {"session_id": ANCESTOR, "source": MAIN},
+    "view_tree_calls": {"session_id": ANCESTOR, "source": MAIN, "turn_id": DENSE_TURN},
+    "view_turn_header": {"session_id": ANCESTOR, "source": MAIN, "turn_id": DENSE_TURN},
     # The viewer's drill-down, bound at the corpus's densest shapes so each query answers
     # with more than one row: the turn holding 4 api calls, and the call holding 4 tools.
     "view_turn_calls": {"session_id": ANCESTOR, "source": MAIN, "turn_id": DENSE_TURN},

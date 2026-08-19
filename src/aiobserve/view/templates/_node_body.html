@@ -1,0 +1,24 @@
+{# One node as the pane reads it, a macro per kind. Two mounts render these: a node page
+   wraps the body in its tree, its crumbs and its children log, and `/fragment/body/...`
+   serves it alone for an expansion in someone else's log. So what is here is the node
+   itself, and everything around it belongs to whichever mount asked. A page and a fragment
+   that disagreed here would tell a reader two stories about one node. #}
+{% import "_parts.html" as parts %}
+
+{# One turn: what it was asked, when, and what answering it took. #}
+{% macro turn(row) %}
+<section class="body" data-body="turn">
+  {{ parts.prompt_heading(row, false) }}
+  <dl class="facts">
+    {{ parts.fact('turn_index', row.turn_index | count) }}
+    {{ parts.fact('started_at', row.started_at | clock) }}
+    {{ parts.fact('api_calls', row.api_calls | count) }}
+    {{ parts.fact('tool_calls', row.tool_calls | count) }}
+    {{ parts.fact('tool_errors', row.tool_errors | count) }}
+    {{ parts.fact('cost_usd', row.cost_usd | money) }}
+    {# Beside the cost rather than folded into it: a total missing calls our price table
+       could not price is not what the turn cost. #}
+    {{ parts.fact('unpriced_api_calls', row.unpriced_api_calls | count) }}
+  </dl>
+</section>
+{% endmacro %}

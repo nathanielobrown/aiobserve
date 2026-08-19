@@ -1,0 +1,31 @@
+{# The tree's rows: one flat list, in document order. Flat rather than nested because a click
+   swaps the whole list out of band in one go, and because a row's own attributes have to be
+   readable without a descendant's answering for it. `data-depth` is what the stylesheet
+   indents by, so nesting buys the markup nothing. #}
+{% import "_parts.html" as parts %}
+
+{% macro lines(rows) %}
+{% for row in rows %}
+{% if row.cut %}
+{# What the cap left out of this level. The link goes to the parent's own page, which pages
+   its children rather than capping them. #}
+<li class="row more" data-depth="{{ row.depth }}" data-more="{{ row.node.key }}">
+  <a href="{{ row.node.url }}">+<span data-field="cut">{{ row.cut | count }}</span> more</a>
+</li>
+{% else %}
+<li class="row node {{ row.node.kind }} {{ row.node.meter }}" data-depth="{{ row.depth }}"
+    data-tree="{{ row.node.key }}"
+    {%- if row.selected %} data-selected="{{ row.node.key }}" aria-current="true"{% endif %}>
+  {# A row links where it fetches: one URL, whether the reader clicks it, pastes it, or comes
+     back to it from a bookmark. htmx takes the pane out of the response and swaps the rows
+     out of band, so the bytes served are the same either way. #}
+  <a href="{{ row.node.url }}" hx-get="{{ row.node.url }}"
+     hx-select="#pane" hx-select-oob="#tree-rows" hx-push-url="true">
+    <span data-field="label">{{ row.node.label }}</span>
+    <span class="secondary"><span data-field="cost_usd">{{ row.node.cost_usd | money }}</span>
+      {{- parts.unpriced(row.node.unpriced_api_calls) }}</span>
+  </a>
+</li>
+{% endif %}
+{% endfor %}
+{% endmacro %}

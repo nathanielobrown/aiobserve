@@ -153,6 +153,10 @@ MEASURED_SESSION_CHROME = 15_000
 # chrome, the widest any recorded map reaches. The allowance is larger than that because no
 # recorded session carries the heading and the tail at once.
 MEASURED_NAV_NODE_MARKUP = 600
+# How many levels of the tree a node page opens at once: the chain down to the selection,
+# whose children render too. Two while a turn is the only kind with a page of its own — the
+# session and the turn under it — and a bound rather than a fact once every kind has one.
+TREE_LEVELS = 2
 MEASURED_NAV_CHROME = 1_500
 # The parameter every truncated column of a run row is cut to. Counted per query rather than
 # listed, so a fourth column added to a chip shows up in the arithmetic instead of quietly
@@ -505,6 +509,18 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     assert (
         MEASURED_PROJECTS_CHROME + bounds.PROJECTS.ceiling * worst_project_row_bytes() < PAGE_BYTES
     )
+    # The node page: the tree a reader walks, and the pane beside it. A tree buys a row per
+    # child every open level admits plus that level's tail, and the pane's log buys `LOG` rows
+    # of what is under the node — priced at a nav node and a timeline turn row, the two
+    # measured rows nearest each. The chrome allowance is a session page's, which is the
+    # nearest measured page; slice 6 re-measures both through the app once every byte the node
+    # page will carry exists.
+    assert (
+        MEASURED_SESSION_CHROME
+        + (1 + TREE_LEVELS * (bounds.KIN.ceiling + 1)) * worst_nav_node_bytes()
+        + bounds.LOG.ceiling * worst_turn_bytes()
+        < PAGE_BYTES
+    )
     # The map beside a session page is its own response, so it spends a ceiling of its own
     # rather than the page's: every node its cap admits, each label at the cut the query makes,
     # plus what the map carries whatever it holds.
@@ -532,6 +548,8 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
         "SESSIONS",
         "PROJECTS",
         "NAV",
+        "KIN",
+        "LOG",
     }
     assert (bounds.TURNS.default + 1) * bounds.CHIPS.default <= bounds.CHIP_BUDGET
     # And every run is reachable: one turn's runs, or the unattached list, fits a page of its
@@ -626,6 +644,10 @@ ROUTES: dict[str, str] = {
         f"/fragment/tool/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}"
     ),
     "/fragment/nav/{session_id}": f"/fragment/nav/{SPINE}",
+    "/session/{session_id}/turn/{source}/{turn_id}": f"/session/{ANCESTOR}/turn/main/{DENSE_TURN}",
+    "/fragment/body/turn/{session_id}/{source}/{turn_id}": (
+        f"/fragment/body/turn/{ANCESTOR}/main/{DENSE_TURN}"
+    ),
     "/session/{session_id}/records/{source}": f"/session/{ANCESTOR}/records/main",
     "/fragment/record/{session_id}/{source}/{line_no}": f"/fragment/record/{ANCESTOR}/main/1",
     "/session/{session_id}/offload/{name:path}": f"/session/{CONFIG_ONLY}/offload/{OFFLOAD_FILE}",

@@ -177,10 +177,11 @@ TAG_CHARS = 20
 # is a page rather than a transcript.
 RECORD_PREVIEW = 160
 
-# How much of a label the map beside a session page carries — a turn's, or a run's. Short
-# because a map is scanned rather than read, and because it is the one list whose rows a
-# reader sees all of: a sidebar node is a line, and a line that wraps three times is not one.
+# How much of a label a tree row carries — a turn's, a run's, an api call's. Short because a
+# tree is scanned rather than read, and because it is the one list whose rows a reader sees
+# all of: a tree node is a line, and a line that wraps three times is not one.
 NAV_CHARS = 48
+NAV_CHARS_PARAM = Param(type=ParamType.INTEGER, default=NAV_CHARS)
 
 # The keyset cursor before the first row: "the last index already shown", and indexes start
 # at 0. Defaulted to it, so a bare invocation of a paging query returns its first page.
@@ -525,10 +526,7 @@ QUERIES: dict[str, Query] = {
     ),
     "view_session_nav": Query(
         scope=Scope.KEYED,
-        params={
-            "session_id": SESSION_ID,
-            "nav_chars": Param(type=ParamType.INTEGER, default=NAV_CHARS),
-        },
+        params={"session_id": SESSION_ID, "nav_chars": NAV_CHARS_PARAM},
     ),
     "view_sessions": Query(
         scope=Scope.KEYED,
@@ -540,6 +538,21 @@ QUERIES: dict[str, Query] = {
     "view_tool_value": Query(
         scope=Scope.KEYED,
         params={"session_id": SESSION_ID, "source": SOURCE, "tool_call_id": TOOL_CALL_ID},
+    ),
+    "view_tree_calls": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            "source": SOURCE,
+            # NULL is the real question "which calls sit under no turn", so the key is
+            # required rather than defaulted: absence cannot stand in for it.
+            "turn_id": Param(type=ParamType.TEXT, default=REQUIRED),
+            "nav_chars": NAV_CHARS_PARAM,
+        },
+    ),
+    "view_tree_turns": Query(
+        scope=Scope.KEYED,
+        params={"session_id": SESSION_ID, "source": SOURCE, "nav_chars": NAV_CHARS_PARAM},
     ),
     "view_turn_calls": Query(
         scope=Scope.KEYED,
@@ -553,6 +566,17 @@ QUERIES: dict[str, Query] = {
             "page_calls": Param(type=ParamType.INTEGER, default=PAGE_CALLS),
             # The two model names a call row shows, cut like a run chip's strings.
             "chip_chars": CHIP_CHARS_PARAM,
+        },
+    ),
+    "view_turn_header": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            "source": SOURCE,
+            # Which turn. A key like the session and the thread: "some turn of this thread"
+            # is not a question anyone asked.
+            "turn_id": Param(type=ParamType.TEXT, default=REQUIRED),
+            "head_chars": Param(type=ParamType.INTEGER, default=HEADER_CHARS),
         },
     ),
     "view_turn_records": Query(
