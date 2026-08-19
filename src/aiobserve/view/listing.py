@@ -97,19 +97,8 @@ class Control(NamedTuple):
     value: str
 
 
-class Direction(NamedTuple):
-    """One sort direction, as the two SQL fragments it puts in the ORDER BY."""
-
-    keyword: str
-    # Where the NULLs go. Opposite ends in the two directions, so that reversing a sort
-    # reverses the whole list rather than pinning the empty rows to one end.
-    nulls: str
-
-
-DIRECTIONS: dict[str, Direction] = {
-    "asc": Direction("ASC", "NULLS LAST"),
-    "desc": Direction("DESC", "NULLS FIRST"),
-}
+# The two orderings a reader can ask for, as the SQL keyword each one puts in the ORDER BY.
+DIRECTIONS: dict[str, str] = {"asc": "ASC", "desc": "DESC"}
 
 # Newest first: the session someone is looking for is usually the one that just ran.
 DEFAULT_SORT = "started_at"
@@ -157,7 +146,8 @@ def sorted_sessions(
     dictionary lookups, a LIMIT, and `SHOWN` over the rows that survive all three — every
     value a request supplied bound as a parameter. `session_id` breaks ties in the same
     direction, which makes every sort a total order, its reverse exact, and the page
-    boundaries stable between requests.
+    boundaries stable between requests. The rows carrying no value sort last either way:
+    "the store does not know" is not the largest reading of a column, or the smallest.
 
     `described` says whether the store holds the enrichment tables to join — a caller asks
     `view/enrichment.py`, which is where that catalog check lives. It is an argument rather
@@ -167,7 +157,7 @@ def sorted_sessions(
     # and it is checked here as well as at the route, because this builds the SQL.
     if sort not in SORTS or not filters.keys() <= FILTERS.keys():
         raise KeyError(sort)
-    order = DIRECTIONS[direction]
+    keyword = DIRECTIONS[direction]
     listing = queries.load(Page.SESSIONS).strip().rstrip(";")
     # What the pass said each session was, joined before the sort so a row carries it: the
     # left join adds columns and never a row, so it changes neither the order nor the count.
@@ -194,7 +184,7 @@ def sorted_sessions(
     rows = fetch(
         connection,
         f"{SHOWN} (SELECT * FROM ({listing}){joined}{where}"
-        f" ORDER BY {sort} {order.keyword} {order.nulls}, session_id {order.keyword}"
+        f" ORDER BY {sort} {keyword} NULLS LAST, session_id {keyword}"
         " LIMIT $limit OFFSET $offset)",
         bound,
     )
