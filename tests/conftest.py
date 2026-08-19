@@ -31,6 +31,9 @@ FIXTURES = Path(__file__).parent / "fixtures"
 # The project every recorded fixture was captured under. `tests/fixtures/*/README.md` names
 # the session behind each one.
 MYCELIA = "/Users/nob/repos/mycelia"
+# The home directory that project sits under, which the viewer folds to `~` for a reader on
+# the machine the corpus was recorded on. Named here so a leaf can say who is reading.
+HOME = "/Users/nob"
 
 # The six transcripts under `invented/` that carry unknown record shapes crash on export by
 # design, so the corpus takes the two that do not by name. They are the only fixtures

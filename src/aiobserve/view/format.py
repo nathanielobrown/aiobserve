@@ -5,6 +5,7 @@ as None and an empty cell says less than a dash.
 """
 
 import datetime as dt
+from pathlib import Path, PurePosixPath
 
 # What a page prints where the store holds nothing. One character, so a column of them reads
 # as a gap rather than as a value.
@@ -13,6 +14,14 @@ ABSENT = "—"
 _MINUTE = 60_000
 _HOUR = 60 * _MINUTE
 _DAY = 24 * _HOUR
+
+
+def home() -> str:
+    """The directory `path` folds to `~` — the one place the pages ask whose machine this is.
+
+    A wrapper rather than a call at the point of use, so a test can say who is reading.
+    """
+    return str(Path.home())
 
 
 def utcnow() -> dt.datetime:
@@ -37,6 +46,22 @@ def count(value: int | None) -> str:
 def text(value: str | None) -> str:
     """A string column as a cell: whatever the store holds, or the dash a NULL prints."""
     return ABSENT if value is None else value
+
+
+def path(value: str | None, home: str) -> str:
+    """A directory as a cell, with the reader's own home folded to `~`.
+
+    Only the reader's home, and only whole segments of it: a directory under someone else's is
+    theirs, and `~` over it would be a claim about this machine that the session cannot
+    support. Display alone — every link, filter and datalist carries the path the store holds.
+    """
+    if value is None:
+        return ABSENT
+    here, root = PurePosixPath(value), PurePosixPath(home)
+    if not here.is_relative_to(root):
+        return value
+    rest = here.relative_to(root)
+    return "~" if rest == PurePosixPath(".") else f"~/{rest}"
 
 
 def when(value: dt.datetime | None) -> str:

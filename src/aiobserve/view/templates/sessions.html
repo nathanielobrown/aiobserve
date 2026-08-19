@@ -82,7 +82,7 @@
         </span>
         {% endif %}
       </td>
-      <td data-field="project_dir" class="path secondary">{{ row.project_dir | text }}</td>
+      <td data-field="project_dir" class="path secondary">{{ row.project_dir | path }}</td>
       <td data-field="turns" class="number">{{ row.turns | count }}</td>
       <td data-field="api_calls" class="number">{{ row.api_calls | count }}</td>
       <td data-field="tool_calls" class="number">{{ row.tool_calls | count }}</td>

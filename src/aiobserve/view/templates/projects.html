@@ -33,9 +33,10 @@
          project to open, and `?project=` matches no session at all. #}
       <td class="path">
         {%- if row.link %}
-        <a data-field="project_dir" href="{{ row.link }}">{{ row.project_dir }}</a>
+        <a data-field="project_dir" href="{{ row.link }}">{{ row.project_dir | path }}</a>
         {%- else %}
-        <span data-field="project_dir">{{ row.project_dir or '(no project)' }}</span>
+        <span data-field="project_dir">{{ row.project_dir | path
+          if row.project_dir else '(no project)' }}</span>
         {%- endif %}
       </td>
       {{ window('recent_sessions', row.recent_sessions,

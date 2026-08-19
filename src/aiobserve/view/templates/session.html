@@ -25,7 +25,7 @@
          ran, how much it did, and what it cost. #}
       <dl data-cluster="identity">
         {{ parts.fact('session_id', header.session_id) }}
-        {{ parts.fact('project_dir', header.project_dir) }}
+        {{ parts.fact('project_dir', header.project_dir | path) }}
         {{ parts.fact('git_branch', header.git_branch) }}
         {{ parts.fact('version', header.version) }}
         {{ parts.fact('entrypoint', header.entrypoint) }}

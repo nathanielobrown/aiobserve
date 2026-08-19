@@ -160,6 +160,11 @@ def chipped(store: duckdb.DuckDBPyConnection) -> Chipped:
     return Chipped(run_id, call_id, turn_id, turn_index)
 
 
+def suggestions(page: str) -> list[str]:
+    """The project paths the list's filter box offers, in the order it offers them."""
+    return re.findall(r'<option value="([^"]*)">', page)
+
+
 def values(html: str, attribute: str) -> list[str]:
     """Every value of one data attribute in the document, in document order."""
     return re.findall(rf'{attribute}="([^"]*)"', html)

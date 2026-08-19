@@ -9,7 +9,6 @@ trailing windows would go quietly empty as the corpus ages.
 """
 
 import datetime as dt
-import re
 from collections import defaultdict
 
 import duckdb
@@ -21,7 +20,7 @@ from aiobserve.view.app import build_app
 from aiobserve.view.format import ABSENT
 from aiobserve.view.store import Page
 from tests.conftest import MYCELIA, NO_PROJECT_SESSION, SPINE
-from tests.view.conftest import Planter, fields, inside, one, values
+from tests.view.conftest import Planter, fields, inside, one, suggestions, values
 
 # Every session in the store beside the project it folds onto: the shortest stored directory
 # it sits in, by the predicate the CLI filters with. Written here rather than imported from
@@ -49,11 +48,6 @@ def folded(store: duckdb.DuckDBPyConnection) -> dict[str | None, list[str]]:
     for session_id, root in store.execute(f"SELECT session_id, root FROM ({FOLD})").fetchall():
         grouped[root].append(session_id)
     return grouped
-
-
-def suggestions(page: str) -> list[str]:
-    """The project paths the list's filter box offers, in the order it offers them."""
-    return re.findall(r'<option value="([^"]*)">', page)
 
 
 def cited(page: str, name: str) -> dict[str, str]:
