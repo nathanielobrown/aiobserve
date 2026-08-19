@@ -200,3 +200,35 @@
 {% macro fact(name, value) %}
 <div><dt>{{ name }}</dt><dd data-field="{{ name }}">{{ value }}</dd></div>
 {% endmacro %}
+
+{# One level of a session's map. Two attributes, because they answer different questions:
+   `data-nav` marks a node *and everything under it*, which is what a nesting reads, and
+   `data-node` marks the node's own row — so a turn's cost is not read as its cost plus its
+   runs'. The expansion rule is the design's: a turn's direct runs are on the page as it
+   stands, and a run's own children sit behind a `details` a reader opens. #}
+{% macro nav_nodes(nodes) %}
+{% for node in nodes %}
+<li class="node {{ node.kind }} {{ node.meter }} {{ 'here' if node.in_window else 'away' }}"
+    data-nav="{{ node.node_id }}"
+    {%- if node.kind == 'turn' and node.in_window %} data-here="{{ node.node_id }}"{% endif %}>
+  {# Down the page for a turn the page rendered, to the page that starts with it for one it
+     did not, and to its own page for a run. Anchors throughout: no first-party JS. #}
+  <a data-node="{{ node.node_id }}" href="{{ node.href }}">
+    <span data-field="label">{{ node.label }}</span>
+    <span class="secondary"><span data-field="cost_usd">{{ node.cost_usd | money }}</span>
+      {{- unpriced(node.unpriced_api_calls) }}
+      · <span data-field="share">{{ node.share | percent }}</span></span>
+  </a>
+  {%- if node.children %}
+  {%- if node.kind == 'run' %}
+  <details class="under">
+    <summary>{{ node.children | length | count }} run(s)</summary>
+    <ul class="nav">{{ nav_nodes(node.children) }}</ul>
+  </details>
+  {%- else %}
+  <ul class="nav">{{ nav_nodes(node.children) }}</ul>
+  {%- endif %}
+  {%- endif %}
+</li>
+{% endfor %}
+{% endmacro %}

@@ -67,6 +67,8 @@ from aiobserve.view.threads import (
     children,
     cut_to,
     marks_on_page,
+    nav_tree,
+    on_page,
     permalink,
     session_threads,
     timeline,
@@ -143,6 +145,7 @@ def build_app(db_path: Path) -> FastAPI:
         "money": fmt.money,
         "count": fmt.count,
         "share": fmt.share,
+        "percent": fmt.percent,
         "when": fmt.when,
         "clock": fmt.clock,
         "duration": fmt.duration,
@@ -438,6 +441,8 @@ def build_app(db_path: Path) -> FastAPI:
             {
                 "header": header[0],
                 "main": MAIN_SOURCE,
+                # What the sidebar asks the map for: the window this page rendered.
+                "after": after,
                 "timeline": threads.entries,
                 "unattached": threads.unattached,
                 "marks": threads.marks,
@@ -627,6 +632,67 @@ def build_app(db_path: Path) -> FastAPI:
                 "tool_index",
             ),
             queries.citation(Fragment.CALL_TOOLS, bound),
+        )
+
+    @app.get("/fragment/nav/{session_id}")
+    def session_nav(
+        request: Request,
+        session_id: str,
+        after: int = queries.FIRST_PAGE,
+        turns: int = bounds.TURNS.default,
+        nodes: int = bounds.NAV.default,
+    ) -> Response:
+        """The map beside a session page: every main-thread turn, with the runs under it.
+
+        Its own response rather than part of the page, because the ceiling is per response and
+        the page has no room left (`view/bounds.py`). `after` and `turns` are the page's window
+        — all the map takes from it — and decide which nodes are marked as on screen.
+        """
+        checked(turns, bounds.TURNS.ceiling)
+        checked(nodes, bounds.NAV.ceiling)
+        with open_store(resolved) as connection:
+            # The session's own spend, which every share on the map is a share of, and the
+            # 404: a map of a session nothing recorded is not an empty sidebar.
+            header = page_rows(
+                connection,
+                Page.SESSION_HEADER,
+                session_id=session_id,
+                head_chars=queries.HEADER_CHARS,
+                item_chars=queries.HEADER_ITEM_CHARS,
+                head_items=queries.HEADER_ITEMS,
+            )
+            if not header:
+                raise HTTPException(404, "No session with that id is in this store.")
+            outline = page_rows(
+                connection, Page.SESSION_NAV, session_id=session_id, nav_chars=queries.NAV_CHARS
+            )
+            runs = page_rows(
+                connection, Page.RUNS, session_id=session_id, chip_chars=queries.NAV_CHARS
+            )
+            enrichment = described(connection, session_id, MAIN_SOURCE)
+        keyed: dict[str, ParamValue] = {"session_id": session_id}
+        # What the fragment ran, in the order it ran it. The enrichment query is here only
+        # when the store held the tables to ask: a fragment cites what it ran, and over an
+        # un-enriched store that query is not one of them.
+        ran = [(Page.SESSION_NAV, keyed), (Page.RUNS, keyed), (Page.SESSION_HEADER, keyed)]
+        if enrichment.queried:
+            ran.append((Page.ENRICHMENT, keyed | {"source": MAIN_SOURCE}))
+        return templates.TemplateResponse(
+            request,
+            "fragments/nav.html",
+            {
+                "nav": nav_tree(
+                    session_id,
+                    outline,
+                    runs,
+                    {item: row.description for item, row in enrichment.turns.items()},
+                    header[0]["cost_usd"],
+                    queries.NAV_CHARS,
+                    on_page(outline, after, turns),
+                    nodes,
+                ),
+                "citations": [queries.citation(named, bound) for named, bound in ran],
+            },
         )
 
     @app.get("/fragment/turn/{session_id}/{source}/{turn_id}")

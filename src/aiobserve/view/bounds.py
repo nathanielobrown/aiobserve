@@ -55,6 +55,12 @@ SESSIONS = Bound(default=110, ceiling=110)
 # it left. The row is dearer than its own markup because it carries a link holding a whole
 # project path, and percent-encoding writes three bytes for every byte of it.
 PROJECTS = Bound(default=queries.PAGE_PROJECTS, ceiling=queries.PAGE_PROJECTS)
+# The session map, which is its own response: the page it lands beside has ~17 KB of headroom
+# under its own ceiling, and no map fits in it. A node is a turn or a run, counted flattened.
+# The store's largest session maps to 285 nodes, so the cap bites and the tail says by how
+# much. Default equals ceiling — the `CALLS` precedent: `?nodes=` only goes down, and it exists
+# because no recorded session reaches the cap on its own.
+NAV = Bound(default=200, ceiling=200)
 
 # The most run rows one page renders however `turns` and `chips` are split. The unattached
 # list is capped at `chips` and rides every page, so a page buys `turns + 1` lists of that

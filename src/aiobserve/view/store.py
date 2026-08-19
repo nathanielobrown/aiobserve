@@ -40,6 +40,9 @@ class Page(StrEnum):
     # of the page: the projects on one page of sessions are not the projects to filter by.
     PROJECTS = "view_projects"
     SESSION_HEADER = "view_session_header"
+    # The map beside a session page: one cheap row per main-thread turn, the whole session
+    # rather than the page's window of it. Its own query because the map is its own response.
+    SESSION_NAV = "view_session_nav"
     RUN_HEADER = "view_run_header"
     # The two turn timelines, shared with `aiobserve query` — the same rows a report cites.
     # One query per thread kind: `session_digest` reads `main`, `run_digest` a bound source.

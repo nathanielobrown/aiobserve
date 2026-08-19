@@ -68,6 +68,7 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     "view_run_header": {"session_id": SPINE, "run_id": SPINE_RUN},
     "view_runs": {"session_id": SPINE},
     "view_session_header": {"session_id": SPINE},
+    "view_session_nav": {"session_id": SPINE},
     # The viewer's drill-down, bound at the corpus's densest shapes so each query answers
     # with more than one row: the turn holding 4 api calls, and the call holding 4 tools.
     "view_turn_calls": {"session_id": ANCESTOR, "source": MAIN, "turn_id": DENSE_TURN},

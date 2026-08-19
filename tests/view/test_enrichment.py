@@ -35,6 +35,9 @@ def pages(store: duckdb.DuckDBPyConnection) -> list[str]:
     return (
         ["/"]
         + [f"/session/{session_id}" for session_id in sessions]
+        # The map is its own response, and the one surface that reads what a pass wrote to
+        # *name* a thing rather than to show it — a sweep of pages alone would miss it.
+        + [f"/fragment/nav/{session_id}" for session_id in sessions]
         + [f"/session/{session_id}/run/{run_id}" for session_id, run_id in runs]
     )
 
@@ -280,15 +283,22 @@ def test_a_model_written_description_is_escaped_like_any_other_transcript_text(
     """
     injected = "<script>alert('x')</script> & <b>bold</b>"
     path: Path = enriched_plant(
-        ("UPDATE session_enrichments SET description = ?, friction = ?", [injected, injected])
+        ("UPDATE session_enrichments SET description = ?, friction = ?", [injected, injected]),
+        # The map labels a node by what the pass said the turn did, so the same words reach a
+        # second surface by a second route — as a name rather than as a paragraph.
+        ("UPDATE turn_enrichments SET description = ?", [injected]),
     )
     with TestClient(build_app(path)) as planted:
         page = planted.get(f"/session/{SPINE}").text
-    # Nothing the model wrote opened a tag...
-    assert "<script>" not in page and "<b>bold</b>" not in page
-    # ...and the reader still sees the text it wrote.
+        one_map = planted.get(f"/fragment/nav/{SPINE}").text
+    # Nothing the model wrote opened a tag, on the page or on the map beside it...
+    for served in (page, one_map):
+        assert "<script>" not in served and "<b>bold</b>" not in served
+    # ...and the reader still sees the text it wrote, in the header and on the node.
     shown = fields(page, "data-enrichment", SPINE)
     assert shown["description"] == injected and shown["friction"] == injected
+    labelled = values(one_map, "data-node")[0]
+    assert fields(one_map, "data-node", labelled)["label"] == injected[: queries.NAV_CHARS]
 
 
 def test_a_run_pages_turns_carry_no_description_of_their_own(
