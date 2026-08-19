@@ -160,11 +160,15 @@ def continued(url: str, marks: str, after: int) -> str:
     return f"{url}{marks}{'&' if marks else '?'}after={after}"
 
 
-def detail_of(name: str, head: str | None, chars: int | None, url: str) -> Detail | None:
-    """One fat column as a pane shows it, or None where the store holds nothing under it."""
+def detail_of(name: str, head: str | None, chars: int | None, url: str, size: int) -> Detail | None:
+    """One fat column as a pane shows it, or None where the store holds nothing under it.
+
+    `head` arrives one character past `size`, which is how a value with more behind it is told
+    from one that ends where the pane does; `chars` is the whole length the link offers.
+    """
     if not head:
         return None
-    return Detail(name, head, (chars or 0) - len(head), url)
+    return Detail(name, fmt.cut(head, size), (chars or 0) - size if len(head) > size else 0, url)
 
 
 def sliced(items: Sequence[Row], after: int, size: int) -> Paged:
@@ -693,6 +697,7 @@ def build_app(db_path: Path) -> FastAPI:
                             rows[0]["prompt"],
                             rows[0]["prompt_chars"],
                             f"/fragment/prompt/{session_id}/{source}/{turn_id}",
+                            detail,
                         ),
                     )
                     if item is not None
@@ -754,6 +759,7 @@ def build_app(db_path: Path) -> FastAPI:
                             rows[0]["description"],
                             rows[0]["description_chars"],
                             f"/fragment/brief/{session_id}/{run_id}",
+                            detail,
                         ),
                     )
                     if item is not None
@@ -833,12 +839,14 @@ def build_app(db_path: Path) -> FastAPI:
                             row["text_head"],
                             row["text_chars"],
                             f"/fragment/text/{session_id}/{source}/{api_call_id}",
+                            detail,
                         ),
                         detail_of(
                             "thinking",
                             row["thinking_head"],
                             row["thinking_chars"],
                             f"/fragment/thinking/{session_id}/{source}/{api_call_id}",
+                            detail,
                         ),
                     )
                     if item is not None
@@ -896,12 +904,14 @@ def build_app(db_path: Path) -> FastAPI:
                             row["input_head"],
                             row["input_chars"],
                             f"/fragment/input/{session_id}/{source}/{tool_call_id}",
+                            detail,
                         ),
                         detail_of(
                             "result",
                             row["result_head"],
                             row["result_chars"],
                             f"/fragment/result/{session_id}/{source}/{tool_call_id}",
+                            detail,
                         ),
                     )
                     if item is not None

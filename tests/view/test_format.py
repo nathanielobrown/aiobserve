@@ -18,9 +18,11 @@ import pytest
 
 from aiobserve.view.format import (
     ABSENT,
+    ELLIPSIS,
     ago,
     clock,
     count,
+    cut,
     duration,
     money,
     path,
@@ -194,3 +196,33 @@ def test_a_rate_over_nothing_is_a_gap_rather_than_zero(
 def test_a_project_under_the_readers_home_prints_with_a_tilde(value: str, printed: str) -> None:
     """A directory cell folds the reader's own home and leaves every other path alone."""
     assert path(value, HOME) == printed
+
+
+# What a value looks like at a cut boundary. Invented rather than drawn from the corpus: the
+# boundary is one character wide and no recorded prompt, tool name or task brief sits on it.
+CUT_AT = 8
+
+
+@pytest.mark.parametrize(
+    ("value", "printed"),
+    [
+        # Shorter than the width, so the query that fetched `$n + 1` characters got the whole
+        # value back and the page says so by saying nothing.
+        ("&" * (CUT_AT - 1), "&" * (CUT_AT - 1)),
+        # Exactly the width: still whole. A cut query selects one character past what a page
+        # shows, so a value that fills the width and stops is a value with nothing behind it.
+        ("&" * CUT_AT, "&" * CUT_AT),
+        # One over, which is the only signal there is — the extra character the query fetched
+        # came back, so something was left behind and the page shows the width plus a mark.
+        ("&" * (CUT_AT + 1), "&" * CUT_AT + ELLIPSIS),
+        # Far over, which reads the same: how much more there is is a `length()` column's
+        # answer, in the one place a page offers the rest of a value.
+        ("&" * 400, "&" * CUT_AT + ELLIPSIS),
+        ("", ""),
+    ],
+)
+def test_a_value_wider_than_its_column_prints_cut_with_an_ellipsis(
+    value: str, printed: str
+) -> None:
+    """A cut string carries the mark that says it was cut, and an uncut one carries nothing."""
+    assert cut(value, CUT_AT) == printed

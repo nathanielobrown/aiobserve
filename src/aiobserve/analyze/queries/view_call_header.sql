@@ -1,6 +1,7 @@
 -- One api call, whole: what it answered, what it thought, and what it cost.
--- The header of a call's node page. The two fat columns are cut at `$detail_chars` with
--- their whole lengths beside them, so the pane shows the head and says how much more there
+-- The header of a call's node page. The two fat columns are cut one character past
+-- `$detail_chars` — the protocol `view/format.py:cut` reads — with their whole lengths
+-- beside them, so the pane shows the head, marks it as cut and says how much more there
 -- is; the rest is fetched one value at a time (`view_call_text`, `view_call_thinking`).
 SELECT
     c."index" AS call_index,
@@ -23,9 +24,9 @@ SELECT
     round(c.cost_usd, 4) AS cost_usd,
     -- A NULL cost is a model our price table lacks, not a call that was free.
     (c.cost_usd IS NULL)::INTEGER AS unpriced_api_calls,
-    substr(c.text, 1, $detail_chars) AS text_head,
+    substr(c.text, 1, $detail_chars + 1) AS text_head,
     length(c.text) AS text_chars,
-    substr(c.thinking, 1, $detail_chars) AS thinking_head,
+    substr(c.thinking, 1, $detail_chars + 1) AS thinking_head,
     length(c.thinking) AS thinking_chars,
     (
         SELECT count(*) FROM live_tool_calls t

@@ -12,8 +12,8 @@ SELECT
     -- What the call said, and the model that said it: the label falls back to the model
     -- when the answer was tool calls and no text. Both are cut here, and only one of them
     -- reaches a row.
-    substr(c.text, 1, $nav_chars) AS text_head,
-    substr(c.model, 1, $nav_chars) AS model,
+    substr(c.text, 1, $nav_chars + 1) AS text_head,
+    substr(c.model, 1, $nav_chars + 1) AS model,
     round(c.cost_usd, 4) AS cost_usd,
     -- A NULL cost is a model our price table lacks, not a call that was free.
     (c.cost_usd IS NULL)::INTEGER AS unpriced_api_calls

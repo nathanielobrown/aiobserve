@@ -15,8 +15,8 @@ SELECT
     t.id AS tool_call_id,
     -- What the tool was called and the head of what it was asked, which is what tells two
     -- calls of the same tool apart in the width of a tree.
-    substr(t.name, 1, $nav_chars) AS name,
-    substr(t.input, 1, $nav_chars) AS input_head,
+    substr(t.name, 1, $nav_chars + 1) AS name,
+    substr(t.input, 1, $nav_chars + 1) AS input_head,
     t.is_error
 FROM live_tool_calls t
 JOIN live_api_calls c

@@ -22,6 +22,7 @@ from aiobserve.analyze import queries
 from aiobserve.analyze.queries import QUERIES, VIEW_PREFIX
 from aiobserve.view import bounds
 from aiobserve.view.app import build_app
+from aiobserve.view.format import ELLIPSIS
 from aiobserve.view.listing import SHOWN
 from aiobserve.view.store import TURN_CURSOR, Fragment, Page, Value, cursorless_rows
 from tests.conftest import (
@@ -1019,7 +1020,9 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # A tree row is a line in a sidebar, so its label takes the narrowest cut of the four —
     # the same one whatever kind of node the row stands for.
     labels = re.findall(r'<span data-field="label">(.*?)</span>', session, flags=re.S)
-    assert max(len(label) for label in labels) == queries.NAV_CHARS
+    # Cut and marked as cut: every column a label is composed from comes back one character
+    # past the width, so a row that fills the line says the value went on.
+    assert max(labels, key=len) == "x" * queries.NAV_CHARS + ELLIPSIS
     # A children log row is a line of a table, so it takes the next cut up.
     log = re.findall(r"<li data-child=.*?</li>", session, flags=re.S)
     assert (
@@ -1027,7 +1030,7 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     )
     # A pane reads one node, so its strings take a header's cut — and the one value the node
     # is about takes the widest of the four, with the rest of it offered as its own fetch.
-    assert len(fields(turn, "data-detail", "prompt")["prompt"]) == queries.DETAIL_CHARS
+    assert fields(turn, "data-detail", "prompt")["prompt"] == "x" * queries.DETAIL_CHARS + ELLIPSIS
     assert inside(turn, "data-detail", "prompt", "data-whole") == ["prompt"]
     # A slash turn's own two strings are facts of its pane rather than the value it is about,
     # so both take a header's cut instead.
@@ -1035,6 +1038,7 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     assert len(command["command_name"]) == len(command["command_args"]) == queries.HEADER_CHARS
     header = fields(run, "data-body", "run")
     assert {len(header[field]) for field in ("agent_type", "model")} == {queries.HEADER_CHARS}
-    assert len(fields(run, "data-detail", "description")["description"]) == queries.DETAIL_CHARS
+    brief = fields(run, "data-detail", "description")["description"]
+    assert brief == "x" * queries.DETAIL_CHARS + ELLIPSIS
     assert len(fields(call, "data-body", "call")["model"]) == queries.HEADER_CHARS
-    assert len(fields(call, "data-detail", "text")["text"]) == queries.DETAIL_CHARS
+    assert fields(call, "data-detail", "text")["text"] == "x" * queries.DETAIL_CHARS + ELLIPSIS
