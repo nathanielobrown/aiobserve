@@ -97,6 +97,42 @@ def test_the_page_says_what_the_store_holds_and_how_it_decoded(
     assert "lossy_decode" not in shown
 
 
+def test_every_number_the_offload_page_prints_carries_its_separators(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The page's sizes go through the same formatter every count on a page does.
+
+    Planted, because the one recorded offload is 159 characters and the sizes this page is
+    read for run to megabytes: under a thousand a formatted count and a bare one are the same
+    string. The recorded content is repeated rather than invented, so what the page reports is
+    a length of the file the transcript really wrote.
+    """
+    times = 20
+    size, chars = one(
+        store,
+        "SELECT size_bytes, length(content) FROM offload_files WHERE session_id = ? AND name = ?",
+        [CONFIG_ONLY, OFFLOAD_FILE],
+    )
+    path = plant(
+        (
+            "UPDATE offload_files SET content = repeat(content, ?), size_bytes = size_bytes * ?"
+            " WHERE session_id = ? AND name = ?",
+            [times, times, CONFIG_ONLY, OFFLOAD_FILE],
+        ),
+    )
+    # A chunk under the whole file, so the page also has a next link to print a size into.
+    chunk = 1_200
+    with TestClient(build_app(path)) as planted:
+        page = planted.get(
+            f"/session/{CONFIG_ONLY}/offload/{OFFLOAD_FILE}", params={"size": chunk}
+        ).text
+    shown = fields(page, "data-offload", OFFLOAD_FILE)
+    assert shown["size_bytes"] == f"{size * times:,}"
+    assert shown["content_chars"] == f"{chars * times:,}"
+    # ...including the size on the link to the rest, which is a number a reader typed.
+    assert f"next {chunk:,} chars" in page
+
+
 def test_a_tool_call_links_to_the_file_its_result_went_to(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:

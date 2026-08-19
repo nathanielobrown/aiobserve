@@ -7,7 +7,7 @@
   <p class="numbers">
     <a href="/session/{{ session_id }}">{{ session_id }}</a>
     <span data-field="source">{{ source }}</span>
-    <span><span data-field="matched">{{ page.rows[0].matched_records }}</span> record(s) from here</span>
+    <span><span data-field="matched">{{ page.rows[0].matched_records | count }}</span> record(s) from here</span>
   </p>
   <ol class="records">
     {% for row in page.rows %}
@@ -16,7 +16,7 @@
       <span class="line">{{ row.line_no }}</span>
       <span data-field="type" class="type">{{ row.type }}</span>
       <span data-field="timestamp">{{ row.timestamp | clock }}</span>
-      <span><span data-field="raw_chars">{{ row.raw_chars }}</span> chars</span>
+      <span><span data-field="raw_chars">{{ row.raw_chars | count }}</span> chars</span>
       <code data-field="raw_head">{{ row.raw_head }}</code>
       {# The whole record on first open, one request per record: a page of them whole is the
          one payload nothing here bounds. #}
@@ -32,7 +32,7 @@
   {% if page.after is not none %}
   <p class="more" data-more-records="{{ page.after }}">
     <a href="/session/{{ session_id }}/records/{{ source }}?after={{ page.after }}&size={{ size }}"
-       >+{{ page.more }} more</a>
+       ><span data-field="count">+{{ page.more | count }} more</span></a>
   </p>
   {% endif %}
 </section>

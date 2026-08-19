@@ -59,6 +59,6 @@
 <div class="more" data-more-calls="{{ page.after }}"
      hx-get="/fragment/turn/{{ session_id }}/{{ source }}/{{ turn_id }}?after={{ page.after }}&calls={{ calls }}&tools={{ tools }}"
      hx-trigger="revealed" hx-swap="outerHTML">
-  <span data-field="count">+{{ page.more }} more</span>
+  <span data-field="count">+{{ page.more | count }} more</span>
 </div>
 {% endif %}

@@ -372,6 +372,33 @@ def test_the_list_is_served_a_page_at_a_time(
     assert fields(beyond, "data-pager", "top")["range"] == "No sessions"
 
 
+def test_the_pager_counts_a_store_deeper_than_a_page_with_separators(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The range the pager prints goes through the formatter every count on a page does.
+
+    Planted, because the fixture corpus holds sixteen sessions and the store this list is read
+    against holds thousands: under a thousand a formatted range and a bare one are the same
+    string. The clones are of a recorded session, so each one is a row the list really builds.
+    """
+    over = 1_200
+    path = plant(
+        (
+            "INSERT INTO sessions (SELECT s.* REPLACE (s.id || '-planted-' || i AS id)"
+            " FROM sessions s, range(1, ?) t(i) WHERE s.id = ?)",
+            [over + 1, SPINE],
+        ),
+    )
+    size, page_number = bounds.SESSIONS.default, 11
+    with TestClient(build_app(path)) as planted:
+        page = planted.get("/sessions", params={"size": size, "page": page_number}).text
+    first = (page_number - 1) * size + 1
+    last = first + len(values(page, "data-session-id")) - 1
+    # A page deep into the list says which rows of it these are, both ends grouped in threes.
+    assert first > 1_000, "the plant no longer reaches past a thousand rows"
+    assert fields(page, "data-pager", "top")["range"] == f"Sessions {first:,}–{last:,}"
+
+
 @pytest.mark.parametrize("parameters", [{"page": 0}, {"page": -1}, {"size": 0}, {"size": 100_000}])
 def test_a_page_outside_the_bounds_is_refused(
     parameters: dict[str, int], client: TestClient
@@ -706,17 +733,24 @@ def test_every_number_a_turn_row_prints_carries_its_separators(
 ) -> None:
     """A timeline row's counts go through the same formatter every count on a page does.
 
-    Planted, because the busiest turn the corpus records made four api calls: under a
-    thousand a formatted count and a bare one are the same string. The clones are of a
-    recorded call and a recorded tool call, so what the row counts stays the `live_*`
-    population it counts today.
+    The fragments the row opens are here too, because their "+N more" is a count of the same
+    population one page deep. Planted, because the busiest turn the corpus records made four
+    api calls: under a thousand a formatted count and a bare one are the same string, and the
+    plant clears a thousand *after* the page each fragment shows. The clones are of a recorded
+    call and a recorded tool call, so what the row counts stays the `live_*` population it
+    counts today.
     """
-    over = 1_000
+    over = 1_100
     turn_id, call_id = one(
         store,
         "SELECT turn_id, id FROM live_api_calls"
         " WHERE session_id = ? AND source = ? AND turn_id IS NOT NULL ORDER BY id",
         [ANCESTOR, MAIN],
+    )
+    (recorded_tools,) = one(
+        store,
+        "SELECT count(*) FROM live_tool_calls WHERE session_id = ? AND api_call_id = ?",
+        [ANCESTOR, call_id],
     )
     path = plant(
         (
@@ -732,6 +766,8 @@ def test_every_number_a_turn_row_prints_carries_its_separators(
     )
     with TestClient(build_app(path)) as planted:
         page = planted.get(f"/session/{ANCESTOR}").text
+        calls = planted.get(f"/fragment/turn/{ANCESTOR}/{MAIN}/{turn_id}").text
+        tools = planted.get(f"/fragment/tools/{ANCESTOR}/{MAIN}/{call_id}").text
     row = fields(page, "data-turn", turn_id)
     # Every number the row prints is grouped in threes or the dash a NULL prints...
     for field in ("api_calls", "tool_calls", "tool_errors"):
@@ -740,6 +776,13 @@ def test_every_number_a_turn_row_prints_carries_its_separators(
     # on the summary line that says how many calls the reader is about to open.
     assert "," in row["api_calls"] and "," in row["tool_calls"]
     assert f"{row['api_calls']} api call(s)" in page
+    # What each fragment left behind its own page is the same count, one level down: the calls
+    # under the turn, and the tool calls under one of them.
+    (cursor,) = values(calls, "data-more-calls")
+    behind = int(row["api_calls"].replace(",", "")) - bounds.CALLS.default
+    assert fields(calls, "data-more-calls", cursor)["count"] == f"+{behind:,} more"
+    left = recorded_tools + over - bounds.TOOLS.default
+    assert fields(tools, "data-more", call_id)["count"] == f"+{left:,} more"
 
 
 def test_a_teammate_prompt_keeps_the_tag_that_names_its_sender(
@@ -1094,6 +1137,56 @@ def test_a_thread_with_more_compactions_than_a_page_holds_says_how_many_it_cut(
     assert len(values(page, "data-compaction")) == bounds.MARKS
     # ...and says how many of the thread's own it left, so a cut list is never a silent one.
     assert values(page, "data-more-marks") == [str(recorded + over - bounds.MARKS)]
+
+
+def test_every_number_a_cut_list_prints_carries_its_separators(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """What a capped list says it left goes through the formatter its page's counts do.
+
+    Both lists a timeline caps: the runs under a turn, and the compaction markers between
+    turns. Planted, because the widest forest and the deepest run of markers the corpus
+    records are two figures — under a thousand a formatted count and a bare one are the same
+    string. The runs are clones of a recorded chip, so the join that hangs them on the turn is
+    the recorded one.
+    """
+    over = 1_100
+    run = chipped(store)
+    (marks,) = one(
+        store,
+        "SELECT count(*) FROM live_compactions WHERE session_id = ? AND source = ?",
+        [SPINE, MAIN],
+    )
+    (forest,) = one(
+        store,
+        "SELECT count(*) FROM live_agent_runs WHERE session_id = ? AND parent_agent_id = ?",
+        [SPINE, run.run_id],
+    )
+    path = plant(
+        (
+            "INSERT INTO agent_runs (SELECT a.* REPLACE (a.id || '-planted-' || i AS id)"
+            " FROM agent_runs a, range(1, ?) t(i) WHERE a.session_id = ? AND a.id = ?)",
+            [over + 1, SPINE, run.run_id],
+        ),
+        (
+            "INSERT INTO compactions (SELECT 'planted-' || i, ?, ?,"
+            " '1970-01-01T00:00:00Z', 'planted', 1, 1, 1 FROM range(1, ?) t(i))",
+            [SPINE, MAIN, over + 1],
+        ),
+    )
+    with TestClient(build_app(path)) as planted:
+        # One chip of the turn's forest, so the rest of it is what the cut line counts...
+        page = planted.get(
+            f"/session/{SPINE}", params={"after": run.turn_index - 1, "turns": 1, "chips": 1}
+        ).text
+        # ...and the whole thread, because the markers hang off the timeline rather than off
+        # one turn: a single-turn window shows none of them to cut.
+        whole = planted.get(f"/session/{SPINE}").text
+    # The runs the chip list left, grouped in threes: the recorded chip and its own runs are
+    # in the forest too, and only one node of it is on the page.
+    assert fields(page, "data-turn", run.turn_id)["cut"] == f"{over + forest:,}"
+    # ...and the markers the timeline left, in the same grouping.
+    assert f"{marks + over - bounds.MARKS:,} more compaction(s)" in whole
 
 
 # The most pages a walk of one fixture session may take. The longest fixture thread holds a

@@ -60,8 +60,8 @@
 {% if cut %}
 <p class="more">
   {%- if more %}<a data-more-chips="{{ more }}" href="{{ more }}"
-    >+<span data-field="cut">{{ cut }}</span> more run(s)</a>
-  {%- else %}+<span data-field="cut">{{ cut }}</span> more run(s){% endif %}
+    >+<span data-field="cut">{{ cut | count }}</span> more run(s)</a>
+  {%- else %}+<span data-field="cut">{{ cut | count }}</span> more run(s){% endif %}
 </p>
 {% endif %}
 {% endmacro %}
@@ -180,7 +180,7 @@
   {# A thread's markers are scalar rows and few — 18 at the corpus maximum — so the cap is the
      arithmetic's backstop rather than a knob, and it says when it bit. #}
   {% if marks.cut %}
-  <p class="more" data-more-marks="{{ marks.cut }}">{{ marks.cut }} more compaction(s)</p>
+  <p class="more" data-more-marks="{{ marks.cut }}">{{ marks.cut | count }} more compaction(s)</p>
   {% endif %}
 </section>
 {% endmacro %}
