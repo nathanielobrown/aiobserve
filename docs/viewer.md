@@ -40,7 +40,7 @@ Dotted edges fetch a fragment into the open page. Each request returns one value
 
 ## The landing page counts projects
 
-`/` lists every project the store holds sessions for, most recently active first, with sessions and spend over the last 7 days, the last 30, and all time. A row opens the session list filtered to that project. Sessions recorded from a checkout's worktrees count under the checkout, and sessions with no recorded directory gather into an unlinked `(no project)` row. The footer cites the query and `as_of`, the date both windows were measured back from, so the page reproduces tomorrow.
+`/` lists the projects the store holds sessions for, most recently active first, with sessions and spend over the last 7 days, the last 30, and all time. The page is [bounded](#hard-bounds-keep-every-page-below-500-kb) like every other, so a store holding more projects than it shows ends with the number it left out. A row opens the session list filtered to that project. Sessions recorded from a checkout's worktrees count under the checkout, and sessions with no recorded directory gather into an unlinked `(no project)` row. The footer cites the query and `as_of`, the date both windows were measured back from, so the page reproduces tomorrow.
 
 ## The session list keeps the query visible
 
