@@ -177,9 +177,18 @@ def test_an_in_window_turn_anchors_into_the_page_and_the_rest_link_to_their_own(
 
 
 def test_a_run_node_goes_to_the_runs_own_page(client: TestClient) -> None:
-    """A run has a page of its own, so its node links there rather than into the timeline."""
+    """A run has a page of its own, so its node links there rather than into the timeline.
+
+    All three places a run node can sit, because each is built by its own call: under a turn,
+    under another run, and in the tail of runs no turn claims.
+    """
     fragment = nav(client, SPINE)
-    assert inside(fragment, "data-node", SPINE_RUN, "href") == [f"/session/{SPINE}/run/{SPINE_RUN}"]
+    for run_id in (SPINE_RUN, SPINE_LEAF):
+        assert inside(fragment, "data-node", run_id, "href") == [f"/session/{SPINE}/run/{run_id}"]
+    tail = nav(client, TEAMMATE)
+    assert inside(tail, "data-node", TEAMMATE_RUN, "href") == [
+        f"/session/{TEAMMATE}/run/{TEAMMATE_RUN}"
+    ]
 
 
 def test_the_session_page_asks_for_the_map_with_the_window_it_rendered(
@@ -219,6 +228,15 @@ def test_the_map_marks_exactly_the_turns_the_page_rendered(
     rendered = set(values(page, "data-turn")) - {queries.UNATTRIBUTED}
     assert set(values(fragment, "data-here")) == rendered
     assert len(rendered) == (1 if window else 4)
+    # A run is emphasised with the turn that spawned it rather than on its own account: the
+    # reader is looking at that turn, so its runs are part of what is on the page. At one turn
+    # a page `SPINE`'s chipped turn is off the window, which is what makes this two cases.
+    dimmed = SPINE_CHIPPED_TURN not in rendered
+    for run_id in (SPINE_RUN, SPINE_LEAF):
+        classes = inside(fragment, "data-nav", run_id, "class")[0].split()
+        assert ("away" in classes) == dimmed, (run_id, classes)
+    # A run no turn claims has no turn to take an answer from, so it is never emphasised.
+    assert "away" in inside(nav(client, TEAMMATE), "data-nav", TEAMMATE_RUN, "class")[0]
 
 
 def test_every_node_states_what_it_cost_and_its_share_of_the_session(
@@ -244,8 +262,28 @@ def test_every_node_states_what_it_cost_and_its_share_of_the_session(
         "SELECT round(sum(cost_usd), 4) FROM live_api_calls WHERE session_id = ? AND source = ?",
         [SPINE, SPINE_RUN],
     )
-    run = fields(fragment, "data-node", SPINE_RUN)
-    assert (run["cost_usd"], run["share"]) == (fmt.money(run_cost), fmt.share(run_cost, whole))
+    for source in (SPINE_RUN, SPINE_LEAF):
+        (run_cost,) = one(
+            store,
+            "SELECT round(coalesce(sum(cost_usd), 0), 4) FROM live_api_calls"
+            " WHERE session_id = ? AND source = ?",
+            [SPINE, source],
+        )
+        run = fields(fragment, "data-node", source)
+        assert (run["cost_usd"], run["share"]) == (fmt.money(run_cost), fmt.share(run_cost, whole))
+    # And a run in the tail is a node like any other: the map's shares cover every run it holds.
+    (loose_whole,) = one(
+        store, "SELECT cost_usd FROM session_rollups WHERE session_id = ?", [TEAMMATE]
+    )
+    (loose_cost,) = one(
+        store,
+        "SELECT round(coalesce(sum(cost_usd), 0), 4) FROM live_api_calls"
+        " WHERE session_id = ? AND source = ?",
+        [TEAMMATE, TEAMMATE_RUN],
+    )
+    loose = fields(nav(client, TEAMMATE), "data-node", TEAMMATE_RUN)
+    assert loose["cost_usd"] == fmt.money(loose_cost)
+    assert loose["share"] == fmt.share(loose_cost, loose_whole)
 
 
 def test_a_node_whose_cost_our_price_table_could_not_finish_says_so(
@@ -390,7 +428,8 @@ def test_a_run_node_is_labelled_by_the_agent_and_what_it_was_asked_to_do(
     ).fetchone()
     assert undescribed is not None, "no recorded run lacks a description: the fallback is unproven"
     session_id, run_id = undescribed
-    assert "None" not in fields(nav(client, session_id), "data-node", run_id)["label"]
+    (agent_alone,) = one(store, "SELECT agent_type FROM live_agent_runs WHERE id = ?", [run_id])
+    assert fields(nav(client, session_id), "data-node", run_id)["label"] == agent_alone
 
 
 def test_the_runs_no_turn_claims_arrive_in_a_tail_group(
@@ -427,6 +466,13 @@ def test_the_node_cap_cuts_the_map_and_says_how_much_it_left(client: TestClient)
     assert values(fragment, "data-nav") == whole[:2]
     # ...and it counts what it left, which paging still reaches.
     assert fields(fragment, "id", "nav-more")["cut"] == str(len(whole) - 2)
+    # The budget is over the whole map and not over its turns: `FORK_ORIGIN` holds no turn at
+    # all, so a cap that bites there bites in the tail, and the count still has to add up.
+    loose = values(nav(client, FORK_ORIGIN), "data-nav")
+    assert len(loose) == 2
+    cut = nav(client, FORK_ORIGIN, nodes=1)
+    assert values(cut, "data-nav") == loose[:1]
+    assert fields(cut, "id", "nav-more")["cut"] == "1"
 
 
 def test_a_size_the_bound_refuses_is_a_400(client: TestClient) -> None:

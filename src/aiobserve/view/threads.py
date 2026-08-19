@@ -326,13 +326,18 @@ class NavNode:
 
     @property
     def meter(self) -> str:
-        """The decile class the spend bar is drawn with, `s0` through `s10`.
+        """The decile class this node's spend bar is drawn with."""
+        return meter(self.share)
 
-        A class and not a width, because the policy blocks the inline style a width needs. Any
-        nonzero share rounds *up* into `s1`, or a session one turn dominates renders every
-        other node with no bar at all.
-        """
-        return "s0" if not self.share else f"s{min(math.ceil(self.share * 10), 10)}"
+
+def meter(share: float | None) -> str:
+    """The decile class a node's spend bar is drawn with, `s0` through `s10`.
+
+    A class and not a width, because the policy blocks the inline style a width needs. Any
+    nonzero share rounds *up* into `s1`, or a session one turn dominates renders every other
+    node with no bar at all.
+    """
+    return "s0" if not share else f"s{min(math.ceil(share * 10), 10)}"
 
 
 class Nav(NamedTuple):
@@ -344,9 +349,8 @@ class Nav(NamedTuple):
     unattached: tuple[NavNode, ...]
     # How many runs that tail holds, cut or not — what its heading counts.
     loose: int
-    # Nodes the budget left out, across both lists, and how many the whole map holds.
+    # Nodes the budget left out, across both lists — what the tail says it dropped.
     cut: int
-    total: int
 
 
 def permalink(session_id: str, turn_index: int, turn_id: str) -> str:
@@ -407,7 +411,7 @@ def nav_tree(
     total = sum(1 for _ in _nodes(nodes)) + sum(1 for _ in _nodes(loose))
     kept, left = _take_nodes(nodes, budget)
     tail, _ = _take_nodes(loose, left)
-    return Nav(kept, tail, sum(1 for _ in _nodes(loose)), max(total - budget, 0), total)
+    return Nav(kept, tail, sum(1 for _ in _nodes(loose)), max(total - budget, 0))
 
 
 def _turn_node(
