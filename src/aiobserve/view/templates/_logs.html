@@ -3,6 +3,8 @@
    previews is twelve panes, and the response is priced for one. The shape follows the kind of
    child, because a turn's children are api calls however the reader arrived at the turn. #}
 
+{% import "_parts.html" as parts %}
+
 {% macro log(shape, rows, more, suffix, next) %}
 {% if shape != 'none' %}
 <section class="log" data-log="{{ shape }}">
@@ -12,7 +14,7 @@
     <li data-child="{{ item.node.key }}">
       <a href="{{ item.node.url }}{{ suffix }}" hx-get="{{ item.node.url }}{{ suffix }}"
          hx-select="#pane" hx-select-oob="#tree-rows" hx-push-url="true"
-        ><span data-field="label">{{ item.node.label }}</span></a>
+        >{{ parts.glyph(item.node) }}<span data-field="label">{{ item.node.label }}</span></a>
       {%- if shape == 'turns' %}
       <span data-field="turn_index">{{ item.row.turn_index | count }}</span>
       <span data-field="api_calls">{{ item.row.api_calls | count }}</span>

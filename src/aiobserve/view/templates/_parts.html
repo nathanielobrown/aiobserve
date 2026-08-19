@@ -24,6 +24,14 @@
 {%- endmacro %}
 
 
+{# The mark on a label a model wrote rather than a session. Bare wherever a label repeats —
+   a tree row, a crumb, a log line, a walk control — because what a reader wants beside a mark
+   is on the pane, once, hanging off the paragraph the pass wrote. #}
+{% macro glyph(node) -%}
+{% if node.enriched %}<span class="{{ GLYPH_CLASS }}">{{ GLYPH }}</span> {% endif %}
+{%- endmacro %}
+
+
 {# A counted list of names — the agent types a session spawned, the kinds of work its turns
    were. `key` is what the store called the count, because the two lists count different
    things. Every integer goes through `count`, like every other one a page prints. #}
@@ -51,7 +59,9 @@
    Model-written from a private transcript, so it is text like any other the viewer renders. #}
 {% macro summary(described) %}
 <section class="enrichment" data-enrichment="{{ described.item_id }}">
-  <p data-field="description">{{ described.description }}</p>
+  <p><span class="{{ GLYPH_CLASS }}" data-field="enriched"
+       title="{{ described.provenance }}">{{ GLYPH }}</span>
+    <span data-field="description">{{ described.description }}</span></p>
   <p class="tags">{{ tags(described) }}</p>
   {% if described.friction %}
   <p class="friction" data-field="friction">{{ described.friction }}</p>

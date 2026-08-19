@@ -15,6 +15,11 @@ SELECT
     substr(e.category, 1, $tag_chars) AS category,
     substr(e.outcome, 1, $tag_chars) AS outcome,
     substr(e.friction, 1, $description_chars) AS friction,
+    -- What wrote the line and when, beside the two versions it was written under: the pane
+    -- prints all four in one place, so a reader can see whether a re-run would say more.
+    -- The model is a name Anthropic chooses, so it is cut like every other foreign string.
+    substr(e.model, 1, $head_chars) AS model,
+    e.enriched_at,
     e.prompt_version,
     e.taxonomy_version
 FROM turn_enrichments e
@@ -28,6 +33,7 @@ SELECT
     substr(e.category, 1, $tag_chars),
     substr(e.outcome, 1, $tag_chars),
     substr(e.friction, 1, $description_chars),
+    substr(e.model, 1, $head_chars), e.enriched_at,
     e.prompt_version, e.taxonomy_version
 FROM agent_run_enrichments e
 WHERE e.session_id = $session_id
@@ -39,6 +45,7 @@ SELECT
     substr(e.category, 1, $tag_chars),
     substr(e.outcome, 1, $tag_chars),
     substr(e.friction, 1, $description_chars),
+    substr(e.model, 1, $head_chars), e.enriched_at,
     e.prompt_version, e.taxonomy_version
 FROM session_enrichments e
 WHERE e.session_id = $session_id
