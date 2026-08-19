@@ -17,6 +17,7 @@ from aiobserve.view import bounds
 from aiobserve.view import format as fmt
 from aiobserve.view.app import CSP, TEMPLATES, build_app
 from aiobserve.view.format import ABSENT
+from aiobserve.view.labels import LABELS
 from aiobserve.view.listing import (
     DEFAULT_DIRECTION,
     DEFAULT_SORT,
@@ -591,6 +592,39 @@ def test_the_session_header_holds_what_the_store_says_about_it(
     assert header["turns"] == str(turns)
     assert header["agent_runs"] == str(agent_runs)
     assert header["cost_usd"] == money(cost)
+
+
+def test_a_header_labels_its_facts_in_words(client: TestClient) -> None:
+    """A header names each fact the way a reader says it, with the store's column beside it.
+
+    Both halves, because they answer to different readers: the `<dt>` is what a person reads
+    and the `data-field` is what the rest of this suite reads a header by, so neither can drift
+    into the other. `wall_ms` is the case that forces the split — the value under it already
+    prints as `24h 25m`, and a label ending in `_ms` contradicts the cell it stands over.
+    """
+    labelled = dict(
+        re.findall(
+            r"<dt>([^<]*)</dt><dd data-field=\"([^\"]+)\"", client.get(f"/session/{SPINE}").text
+        )
+    )
+    assert labelled["Wall time"] == "wall_ms"
+    assert labelled["Session"] == "session_id"
+    assert labelled["Cost"] == "cost_usd"
+
+
+def test_every_fact_a_header_asks_for_has_a_label() -> None:
+    """The label registry is closed over the templates: no extra entries, and no missing ones.
+
+    A header field with no label would reach a reader as a column name, which is the thing
+    `LABELS` exists to stop, and an entry no template asks for is a word nobody sees. Read off
+    the templates rather than listed here, so a fact added to a header lands in this check.
+    """
+    asked = {
+        name
+        for path in TEMPLATES.rglob("*.html")
+        for name in re.findall(r"(?:parts\.fact|label)\('([a-z_]+)'", path.read_text())
+    }
+    assert asked == set(LABELS)
 
 
 def test_every_number_a_header_prints_carries_its_separators(plant: Planter) -> None:

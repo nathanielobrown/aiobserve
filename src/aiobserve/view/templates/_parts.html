@@ -201,7 +201,7 @@
    NULL prints the dash the rest of the viewer prints rather than Python's `None`: a header
    names its fields whether or not the session filled them. #}
 {% macro fact(name, value) %}
-<div><dt>{{ name }}</dt><dd data-field="{{ name }}">{{ value | text }}</dd></div>
+<div><dt>{{ label(name) }}</dt><dd data-field="{{ name }}">{{ value | text }}</dd></div>
 {% endmacro %}
 
 {# One level of a session's map. Two attributes, because they answer different questions:

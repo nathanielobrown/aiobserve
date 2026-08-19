@@ -33,6 +33,7 @@ from aiobserve.model import MAIN_SOURCE
 from aiobserve.view import bounds, render
 from aiobserve.view import format as fmt
 from aiobserve.view.enrichment import described, enriched
+from aiobserve.view.labels import label
 from aiobserve.view.listing import (
     CONTROLS,
     DEFAULT_DIRECTION,
@@ -164,6 +165,7 @@ def build_app(db_path: Path) -> FastAPI:
     # The namespace is typed by what Jinja seeds it with, which is why the assignment needs a
     # word: a global is any callable a template can name.
     templates.env.globals["permalink"] = permalink  # pyrefly: ignore
+    templates.env.globals["label"] = label  # pyrefly: ignore
 
     def error(request: Request, status: int, message: str) -> Response:
         return templates.TemplateResponse(
