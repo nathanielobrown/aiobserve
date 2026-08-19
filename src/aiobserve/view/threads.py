@@ -330,6 +330,12 @@ class NavNode:
         return meter(self.share)
 
 
+# Steps in the spend meter. `static/style.css` draws one bar width per step, `s1` through
+# `s10`, and nothing for `s0` — so this is how many classes there are to name, not a rounding
+# choice, and the meter clamps to it rather than naming a class the stylesheet has no rule for.
+DECILES = 10
+
+
 def meter(share: float | None) -> str:
     """The decile class a node's spend bar is drawn with, `s0` through `s10`.
 
@@ -337,7 +343,7 @@ def meter(share: float | None) -> str:
     nonzero share rounds *up* into `s1`, or a session one turn dominates renders every other
     node with no bar at all.
     """
-    return "s0" if not share else f"s{min(math.ceil(share * 10), 10)}"
+    return "s0" if not share else f"s{min(math.ceil(share * DECILES), DECILES)}"
 
 
 class Nav(NamedTuple):

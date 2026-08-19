@@ -14,13 +14,14 @@ import re
 from collections.abc import Callable, Iterator, Sequence
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
 from aiobserve.view.app import build_app
+from tests.conftest import MAIN, SPINE
 
 Statement = tuple[str, Sequence[str | int]]
 Planter = Callable[..., Path]
@@ -110,6 +111,39 @@ def one(
     row = store.execute(sql, list(parameters)).fetchone()
     assert row is not None, f"the store answered nothing: {sql}"
     return row
+
+
+class Chipped(NamedTuple):
+    """A recorded run that chips onto a turn, and everything a plant needs to move it."""
+
+    run_id: str
+    # The api call the run was spawned from, and the turn that call answers.
+    call_id: str
+    turn_id: str
+    # Where that turn sits in its thread, which is the cursor a page of one turn opens at.
+    turn_index: int
+
+
+def chipped(store: duckdb.DuckDBPyConnection) -> Chipped:
+    """The first run of `SPINE` the chip join hangs on a turn of the main thread.
+
+    The join `view_runs` makes, in the expectation's own SQL: a run is a chip when its
+    `tool_use_id` names a tool call outside its own transcript, whose api call sits under a
+    turn. Read from the store rather than pinned, so a re-recorded fixture moves it.
+    """
+    run_id, call_id, turn_id, turn_index = one(
+        store,
+        'SELECT a.id, c.id, t.id, t."index" FROM live_agent_runs a'
+        " JOIN live_tool_calls tc ON tc.session_id = a.session_id AND tc.id = a.tool_use_id"
+        "  AND tc.source <> a.id"
+        " JOIN live_api_calls c ON c.session_id = a.session_id AND c.source = tc.source"
+        "  AND c.id = tc.api_call_id"
+        " JOIN live_turns t ON t.session_id = a.session_id AND t.source = c.source"
+        "  AND t.id = c.turn_id"
+        " WHERE a.session_id = ? AND c.source = ? ORDER BY a.id LIMIT 1",
+        [SPINE, MAIN],
+    )
+    return Chipped(run_id, call_id, turn_id, turn_index)
 
 
 def values(html: str, attribute: str) -> list[str]:
