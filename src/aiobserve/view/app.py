@@ -235,7 +235,7 @@ def build_app(db_path: Path) -> FastAPI:
                 "projects": [row | {"link": project_link(row["project_filter"])} for row in rows],
                 # What the page cut, which the query counted before its LIMIT: a landing page
                 # that silently dropped projects would be a corpus a reader cannot see.
-                "cut": rows[0]["matched_projects"] - len(rows) if rows else 0,
+                "cut": (rows[0]["matched_projects"] - len(rows)) if rows else 0,
                 # The bindings, for the two window headings — a heading and its column read
                 # the same numbers, and the citation below carries them too.
                 "bound": bound,

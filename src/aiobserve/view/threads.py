@@ -424,10 +424,13 @@ def nav_tree(
     missing = {run["run_id"] for run in runs} - placed
     if missing:
         raise ValueError(f"{len(missing)} run(s) are on no node of the map: {sorted(missing)}")
-    total = sum(1 for _ in _nodes(nodes)) + sum(1 for _ in _nodes(loose))
+    # The whole tail, counted before the budget cuts it: the heading over it says what the
+    # session holds, and what is left out is the difference the map prints underneath.
+    unclaimed = sum(1 for _ in _nodes(loose))
+    total = sum(1 for _ in _nodes(nodes)) + unclaimed
     kept, left = _take_nodes(nodes, budget)
     tail, _ = _take_nodes(loose, left)
-    return Nav(kept, tail, sum(1 for _ in _nodes(loose)), max(total - budget, 0))
+    return Nav(kept, tail, unclaimed, max(total - budget, 0))
 
 
 def _turn_node(
