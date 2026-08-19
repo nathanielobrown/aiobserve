@@ -46,6 +46,9 @@ from tests.view.conftest import Planter, Statement, fields, one, values
 # bounds what a caller passes the Agent tool. `agent_type` and `model` are short in every
 # session recorded so far and short by nothing: an agent definition is named by whoever writes
 # it, and a model name is a string an api request carried.
+# `prompt` is whatever was typed or pasted at a turn, and `command_args` whatever followed a
+# slash command — the canonical store holds one of 7,947 characters. Both reach a page through
+# a turn's heading, and both are cut by the digests that select them.
 FAT = (
     "raw",
     "text",
@@ -56,6 +59,8 @@ FAT = (
     "description",
     "agent_type",
     "model",
+    "prompt",
+    "command_args",
 )
 
 # What a page may weigh. The list is the page a corpus grows, so `bounds.SESSIONS.ceiling` rows of
@@ -80,8 +85,13 @@ MEASURED_LIST_ENRICHMENT_MARKUP = 300
 # rather than a corpus observation, because the box is bound in SQL like everything else.
 MEASURED_LIST_CHROME = 10_000
 
-# How much of a turn's prompt the timeline shows, from `session_digest`'s own `substr`.
+# How much of a turn's prompt the timeline shows, from `session_digest`'s own `substr`, and
+# the same two for what a slash-command turn shows instead: the name of the command, and what
+# was typed after it. A command is named by whoever wrote the file that defines it, so the
+# badge is cut in SQL like everything else rather than assumed short.
 PROMPT_CHARS = 300
+COMMAND_NAME_CHARS = 60
+COMMAND_ARGS_CHARS = 300
 # The same, for what a fragment shows of an api call's text and a tool call's arguments.
 TEXT_CHARS = 2_000
 INPUT_CHARS = 200
@@ -194,16 +204,26 @@ def worst_tag_bytes() -> int:
     return 2 * queries.TAG_CHARS * ESCAPED_CHAR_BYTES
 
 
+def worst_heading_bytes() -> int:
+    """What one turn's heading can weigh in content: the larger of its two arms, never both.
+
+    A slash turn shows the command it ran and the arguments after it *instead of* the prompt
+    as recorded, so the two arms never land on one heading — and pricing their sum would put
+    a full page of turns some 13 KB over the ceiling for a cost no reader can produce.
+    """
+    return max(PROMPT_CHARS, COMMAND_NAME_CHARS + COMMAND_ARGS_CHARS) * ESCAPED_CHAR_BYTES
+
+
 def worst_turn_bytes() -> int:
     """What one turn row of a session timeline can weigh: its markup, the "+N more" line it may
-    carry, a prompt head of nothing but `&`, and what a pass said about the turn.
+    carry, a heading of nothing but `&`, and what a pass said about the turn.
 
     A turn has no page of its own, so its description rides the row that lists it — the one
     place a described item costs a page more than a link would.
     """
     return (
         MEASURED_TURN_ROW_MARKUP
-        + PROMPT_CHARS * ESCAPED_CHAR_BYTES
+        + worst_heading_bytes()
         + MEASURED_TURN_ENRICHMENT_MARKUP
         + queries.ENRICHMENT_CHARS * ESCAPED_CHAR_BYTES
         + worst_tag_bytes()
@@ -695,7 +715,18 @@ def test_a_session_timeline_of_nothing_but_escapes_costs_what_the_ceiling_budget
     assert marks == 1, "the compaction fixture moved: re-pick the session this measures"
     heads_full = "&" * queries.CHIP_CHARS
     content: tuple[Statement, ...] = (
-        ("UPDATE turns SET prompt = ? WHERE session_id = ?", ["&" * PROMPT_CHARS, SPINE]),
+        # Both arms of the heading at their caps, so the row measured is the dearer of the
+        # two: a turn that ran a slash command shows the command and its arguments instead
+        # of the prompt, and that arm is the one `worst_heading_bytes` prices.
+        (
+            "UPDATE turns SET prompt = ?, command_name = ?, command_args = ? WHERE session_id = ?",
+            [
+                "&" * PROMPT_CHARS,
+                "&" * COMMAND_NAME_CHARS,
+                "&" * COMMAND_ARGS_CHARS,
+                SPINE,
+            ],
+        ),
         (
             "UPDATE agent_runs SET agent_type = ?, description = ?, model = ? WHERE session_id = ?",
             [heads_full, heads_full, heads_full, SPINE],
@@ -735,6 +766,34 @@ def test_a_session_timeline_of_nothing_but_escapes_costs_what_the_ceiling_budget
     assert pair - alone <= worst_chip_bytes()
     # ...and a compaction row its markup and its trigger.
     assert mark_row <= worst_mark_bytes()
+
+
+def test_a_command_turns_heading_costs_one_arm_and_not_both(plant: Planter) -> None:
+    """A turn holding both a full prompt and a full command shows one of them, not the sum.
+
+    This is what `worst_heading_bytes` claims and nothing else checks: the macro renders the
+    command *instead of* the prompt, so the two 300-character heads never meet on a page.
+    Pricing their sum instead would put a full timeline about 13 KB over the ceiling — and
+    a macro that rendered both would put a real page there. Planted `&` at all three caps,
+    because no recorded turn is adversarial and redaction flattened the ones that exist.
+    """
+    path = plant(
+        (
+            "UPDATE turns SET prompt = ?, command_name = ?, command_args = ?"
+            " WHERE session_id = ? AND source = ?",
+            ["&" * PROMPT_CHARS, "&" * COMMAND_NAME_CHARS, "&" * COMMAND_ARGS_CHARS, SPINE, "main"],
+        ),
+    )
+    with TestClient(build_app(path)) as planted:
+        page = planted.get(f"/session/{SPINE}", params={"turns": 1}).text
+    heading = re.search(r"<article id=\"turn-.*?<h2>(.*?)</h2>", page, re.S)
+    assert heading is not None, "the planted page rendered no turn heading"
+    # The command arm is on the line whole — both its heads, at the caps the digests cut to...
+    escapes = heading.group(1).count("&amp;")
+    assert escapes == COMMAND_NAME_CHARS + COMMAND_ARGS_CHARS
+    # ...and the prompt is not on it as well, which is the half the arithmetic rests on: the
+    # content of the heading weighs the arm it shows, not the two arms added together.
+    assert escapes * ESCAPED_CHAR_BYTES == worst_heading_bytes()
 
 
 # What the session arithmetic counts row by row, which chrome is the page without: a turn row
@@ -984,15 +1043,24 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     """Every preview is truncated before it reaches a page, so no one huge value can bloat it.
 
     The previews the viewer renders — a session's title and project on the list, a turn's
-    prompt on the session page, a run's own description, definition and model on its page, an
-    api call's text and model and a tool call's arguments in the turn fragment — checked at
-    once against one planted store. The
+    prompt or the command it ran on the session page, a run's own description, definition and
+    model on its page, an api call's text and model and a tool call's arguments in the turn
+    fragment — checked at once against one planted store. The
     oversized values are invented: redaction flattened every recorded string to a few
     characters, so no fixture reaches a cap.
     """
+    # One turn of each kind, because a heading shows one arm or the other: a plain turn's
+    # prompt, and a slash turn's arguments.
     turn_id, _ = one(
         store,
-        'SELECT id, "index" FROM turns WHERE session_id = ? AND source = \'main\' ORDER BY "index"',
+        "SELECT id, \"index\" FROM turns WHERE session_id = ? AND source = 'main'"
+        ' AND command_name IS NULL ORDER BY "index"',
+        [SPINE],
+    )
+    command_id, _ = one(
+        store,
+        "SELECT id, \"index\" FROM turns WHERE session_id = ? AND source = 'main'"
+        ' AND command_name IS NOT NULL ORDER BY "index"',
         [SPINE],
     )
     # Each value is planted well past its own cap, onto the real row a fixture recorded...
@@ -1000,6 +1068,10 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     path: Path = plant(
         ("UPDATE sessions SET title = ?, project_dir = ? WHERE id = ?", [long, long, SPINE]),
         ("UPDATE turns SET prompt = ? WHERE session_id = ? AND id = ?", [long, SPINE, turn_id]),
+        (
+            "UPDATE turns SET command_name = ?, command_args = ? WHERE session_id = ? AND id = ?",
+            [long, long, SPINE, command_id],
+        ),
         (
             "UPDATE agent_runs SET description = ?, agent_type = ?, model = ? WHERE session_id = ?",
             [long, long, long, SPINE],
@@ -1022,6 +1094,10 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # half a path fills the filter in with a value that matches nothing.
     assert not [path for path in re.findall(r'<option value="([^"]*)"', listing) if "x" in path]
     assert len(fields(page, "data-turn", turn_id)["prompt"]) == PROMPT_CHARS
+    # A slash turn's heading is cut the same way, in both the columns it reads.
+    command = fields(page, "data-turn", command_id)
+    assert len(command["command_name"]) == COMMAND_NAME_CHARS
+    assert len(command["command_args"]) == COMMAND_ARGS_CHARS
     # A run page shows one run's strings and links to the rest, so the heads it shows are a
     # header's rather than a chip's — the definition it ran under and its model with the
     # description, because a page has no more idea what those hold than what a prompt does.

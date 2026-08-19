@@ -41,6 +41,8 @@ from tests.conftest import (
     RESUME,
     SPINE,
     SPINE_RUN,
+    TEAMMATE,
+    TEAMMATE_RUN,
 )
 from tests.view.conftest import MISSING, Planter, fields, inside, one, values
 
@@ -530,6 +532,131 @@ def test_the_timeline_is_the_sessions_turns_in_order(
     assert values(page, "data-turn") == turns
     # A thread that fits one page mints no pager: it is the page it was before paging landed.
     assert values(page, "data-more-turns") == []
+
+
+def heading(page: str, turn_id: str) -> str:
+    """What a reader sees above one turn's row: its heading, tags stripped and space collapsed.
+
+    The `data-field` values say which column reached the heading; this says what the line
+    reads as — which is where a stray separator between a badge and absent arguments shows.
+    """
+    found = re.search(rf'<article id="turn-{turn_id}".*?<h2>(.*?)</h2>', page, re.S)
+    assert found, f"the page holds no heading for turn {turn_id}"
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]*>", "", found.group(1))).strip()
+
+
+def command_turns(store: duckdb.DuckDBPyConnection) -> list[tuple[str, str, str, str]]:
+    """Every recorded slash-command turn: where it ran, and what the command was."""
+    return store.execute(
+        "SELECT session_id, id, command_name, command_args FROM live_turns"
+        ' WHERE source = ? AND command_name IS NOT NULL ORDER BY session_id, "index"',
+        [MAIN],
+    ).fetchall()
+
+
+def test_no_heading_the_viewer_renders_holds_the_command_tags(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A slash command reads as `/name args`, never as the markup Claude Code wrapped it in.
+
+    Claude Code records a slash turn's prompt as `<command-message>…</command-name>` and puts
+    what those tags said in two columns of its own. The absence below is bounded by the
+    corpus: every recorded command turn's stored prompt still holds the tags, so a viewer
+    printing the prompt would print them — on the session page, and on any run page under it.
+    """
+    turns = command_turns(store)
+    assert turns, "the fixture corpus records no slash-command turn"
+    # The store's own prompts hold the tags, which is what makes their absence a finding...
+    (tagged,) = one(
+        store,
+        "SELECT count(*) FROM live_turns WHERE command_name IS NOT NULL AND prompt LIKE ?",
+        ["<command-%"],
+    )
+    assert tagged == len(turns)
+    # ...and no page the viewer serves over those sessions carries either spelling of them.
+    served = [f"/session/{session_id}" for session_id in {row[0] for row in turns}]
+    served += [
+        f"/session/{session_id}/run/{run_id}"
+        for session_id, run_id in store.execute(
+            "SELECT session_id, id FROM live_agent_runs"
+        ).fetchall()
+    ]
+    for path in served:
+        page = client.get(path).text
+        assert "<command-" not in page and "&lt;command-" not in page, path
+
+
+def test_a_command_turns_heading_is_the_command_and_a_plain_turns_is_its_prompt(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A slash turn shows the badge and the arguments; a turn nobody typed a slash for shows
+    the prompt, as it always did.
+
+    Both from `SPINE`, so the two arms are the same page: its second turn ran `/night-run`
+    with arguments, and the turns after it were typed rather than invoked.
+    """
+    page = client.get(f"/session/{SPINE}").text
+    # The last command turn the session recorded — the one whose arguments are not empty.
+    command_id, name, args = one(
+        store,
+        "SELECT id, command_name, command_args FROM live_turns"
+        ' WHERE session_id = ? AND source = ? AND command_name IS NOT NULL ORDER BY "index" DESC',
+        [SPINE, MAIN],
+    )
+    assert args, "the command turn this leaf reads no longer records arguments"
+    row = fields(page, "data-turn", command_id)
+    assert (row["command_name"], row["command_args"]) == (name, args)
+    # The two arms are one line, and the prompt is not on it: the badge, then the arguments.
+    assert heading(page, command_id) == f"{name} {args}"
+    assert "prompt" not in row
+    # ...while a plain turn of the same session is its prompt and carries no command at all.
+    plain_id, prompt = one(
+        store,
+        "SELECT id, prompt FROM live_turns"
+        ' WHERE session_id = ? AND source = ? AND command_name IS NULL ORDER BY "index"',
+        [SPINE, MAIN],
+    )
+    plain = fields(page, "data-turn", plain_id)
+    assert plain["prompt"] == prompt.strip()
+    assert "command_name" not in plain and "command_args" not in plain
+
+
+def test_a_command_invoked_with_no_arguments_shows_the_badge_alone(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A bare `/command` renders the badge and stops — no separator hanging off nothing.
+
+    `model_only` recorded `/clear` and `/reload-skills` with `command_args = ''`: empty and
+    present, which is a different shape from the NULL a turn nobody typed a slash for carries.
+    """
+    bare = [row for row in command_turns(store) if row[3] == ""]
+    assert len(bare) == 2, "the empty-argument command turns moved: re-derive this leaf"
+    for session_id, turn_id, name, _ in bare:
+        page = client.get(f"/session/{session_id}").text
+        row = fields(page, "data-turn", turn_id)
+        assert row["command_name"] == name
+        # Empty arguments are not a field of their own, and the line is the badge itself.
+        assert "command_args" not in row
+        assert heading(page, turn_id) == name
+
+
+def test_a_teammate_prompt_keeps_the_tag_that_names_its_sender(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The command fix reads two columns; it does not strip tags out of a prompt.
+
+    `<teammate-message>` says who wrote the turn and is part of what the prompt means
+    (`docs/schema.md`), so the one recorded run that holds them keeps them.
+    """
+    page = client.get(f"/session/{TEAMMATE}/run/{TEAMMATE_RUN}").text
+    turns = store.execute(
+        "SELECT id FROM live_turns WHERE session_id = ? AND source = ? AND prompt LIKE ?"
+        ' ORDER BY "index"',
+        [TEAMMATE, TEAMMATE_RUN, "<teammate-message%"],
+    ).fetchall()
+    assert turns, "the teammate fixture no longer records a tagged prompt"
+    for (turn_id,) in turns:
+        assert fields(page, "data-turn", turn_id)["prompt"].startswith("<teammate-message")
 
 
 def test_calls_under_no_turn_get_their_own_row(
@@ -1113,7 +1240,12 @@ def test_planted_markup_arrives_inert(plant: Planter) -> None:
     sentinel = "<script>alert('planted')</script>"
     path = plant(
         ("UPDATE sessions SET title = ? WHERE id = ?", [sentinel, SPINE]),
-        ('UPDATE turns SET prompt = ? WHERE session_id = ? AND "index" = 0', [sentinel, SPINE]),
+        # Both columns a turn's heading can read: a plain turn shows the prompt, a slash turn
+        # shows what followed the command instead, and neither may reach the page as markup.
+        (
+            "UPDATE turns SET prompt = ?, command_args = ? WHERE session_id = ?",
+            [sentinel, sentinel, SPINE],
+        ),
         ("UPDATE agent_runs SET description = ? WHERE session_id = ?", [sentinel, SPINE]),
         # The markdown path: what a model wrote, which is the one value the viewer renders
         # rather than escapes, and the tool arguments beside it.
