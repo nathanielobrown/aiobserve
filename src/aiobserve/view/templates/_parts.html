@@ -7,12 +7,22 @@
    outside the labelled span — what a reader sees is a number and a word, what a `data-field`
    carries is the value the store holds — and a `{% raw %}{% call %}{% endraw %}` block rides
    the primary line, for the mark the cost cell hangs off its total. #}
-{% macro stacked(field, primary, secondary_field, secondary, unit='') %}
+{% macro stacked(field, primary, secondary_field, secondary, unit='', mark='') %}
 <span data-field="{{ field }}" class="primary">{{ primary }}</span>
 {%- if caller %}{{ caller() }}{% endif %}
 <span class="secondary"><span data-field="{{ secondary_field }}">{{ secondary }}</span>
+  {%- if mark %}{{ mark }}{% endif %}
   {%- if unit %} {{ unit }}{% endif %}</span>
 {% endmacro %}
+
+{# The mark a cost carries when our price table priced none of some calls under it: a total
+   missing calls is not what was spent, and the page has to say so. Outside the labelled span
+   either way — a `data-field` carries the number the store holds and nothing else — and
+   written once because both pages that print a cost hang it off one. #}
+{% macro unpriced(calls) -%}
+{% if calls %}<sup
+  title="{{ calls | count }} call(s) at a model our price table lacks">*</sup>{% endif %}
+{%- endmacro %}
 
 {# What a turn was asked, as its heading. A slash command is recorded twice: the prompt keeps
    the `<command-message>…<command-name>` wrapper Claude Code put around it, and two columns

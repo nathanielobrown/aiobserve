@@ -8,7 +8,8 @@ The server binds only to `127.0.0.1`, opens the store read-only, and serves only
 
 ```mermaid
 flowchart LR
-    session_list["session list"] -->|"a row"| session_page["a session"]
+    projects["projects"] -->|"a project row"| session_list["session list"]
+    session_list -->|"a row"| session_page["a session"]
     session_page -->|"a run chip"| run_page["an agent run"]
     run_page -->|"a nested run chip"| run_page
     run_page -->|"the thread above it"| session_page
@@ -25,7 +26,8 @@ Solid edges lead to pages with their own URLs:
 
 | Page | Route |
 | --- | --- |
-| Session list | `/` |
+| Projects | `/` |
+| Session list | `/sessions` |
 | Session | `/session/{session_id}` |
 | Agent run | `/session/{session_id}/run/{run_id}` |
 | Raw records | `/session/{session_id}/records/{source}` |
@@ -41,7 +43,7 @@ Rows show only the head of long text: 100 characters for the title and project p
 
 The form above the list filters by project, date range, skill, or a minimum number of failed tool calls. The project filter matches the recorded path exactly. It is narrower than the CLI's `--project`, which also includes sessions recorded by a checkout's worktrees.
 
-Filters survive sorting and paging. The masthead link clears them. The footer prints a citation after paging and names every active filter, so it describes the rows on screen.
+Filters survive sorting and paging. The `clear` link beside the form drops them. The footer prints a citation after paging and names every active filter, so it describes the rows on screen.
 
 ## Session pages account for every call and run
 

@@ -8,7 +8,9 @@ a per-value fetch is the one exception, and it is exempt because its unit *is* o
 """
 
 import re
+from html import unescape
 from pathlib import Path
+from urllib.parse import quote
 
 import duckdb
 import pytest
@@ -37,7 +39,7 @@ from tests.conftest import (
     SPINE_LEAF,
     SPINE_RUN,
 )
-from tests.view.conftest import Planter, Statement, fields, one, values
+from tests.view.conftest import Planter, Statement, fields, inside, one, values
 
 # The columns that hold whatever the agent read or wrote: one of them can be megabytes, and
 # none of them belongs on a page whole. `raw` is a transcript line, `result` a tool's output,
@@ -84,6 +86,15 @@ MEASURED_LIST_ENRICHMENT_MARKUP = 300
 # file, with `&` planted in every suggestion and the box at its cap — 8,622 B, a worst case
 # rather than a corpus observation, because the box is bound in SQL like everything else.
 MEASURED_LIST_CHROME = 10_000
+# What the markup around one row of the landing page costs, with the path it carries taken off,
+# and what that page weighs apart from its rows: the table head, and the line saying how many
+# projects it left out. Both re-measured through the app by the leaf at the bottom of this
+# file, every project path planted full of `&` and the store filled past the page's ceiling:
+# 2,076 B a row, of which 782 B is a planted path in its cell and in its link, leaving 1,294 B
+# of stacked window cells and the row around them — and 1,933 B of chrome, which is small
+# because the page carries no form, no pager and no suggestions.
+MEASURED_PROJECT_ROW_MARKUP = 1_400
+MEASURED_PROJECTS_CHROME = 2_500
 
 # How much of a turn's prompt the timeline shows, from `session_digest`'s own `substr`, and
 # the same two for what a slash-command turn shows instead: the name of the command, and what
@@ -148,6 +159,11 @@ LIST_KIND_HEAD = "$kind_chars"
 # escape is five bytes (`&amp;`, `&#34;`, `&#39;`), and the longest UTF-8 encoding is four, so
 # five bytes a character covers both.
 ESCAPED_CHAR_BYTES = 5
+# And the most one character can weigh where a page writes it into a link rather than into
+# text. Percent-encoding spends three bytes on every byte it escapes, and a character is up to
+# four bytes of UTF-8: a project path is a directory someone named, so its link is budgeted at
+# the worst character the same way its cell is.
+ENCODED_CHAR_BYTES = 12
 
 
 def heads(sql: str, parameter: str) -> int:
@@ -192,6 +208,19 @@ def worst_session_row_bytes() -> int:
         + (strings + names + described + kinds) * ESCAPED_CHAR_BYTES
         + MEASURED_LIST_ENRICHMENT_MARKUP
         + worst_tag_bytes()
+    )
+
+
+def worst_project_row_bytes() -> int:
+    """What one row of the landing page can weigh: its markup, and the path it carries twice.
+
+    A project path is a directory someone chose, so both copies are counted at the worst
+    character — once escaped into the cell, once percent-encoded into the link that narrows
+    the list to it. Everything else in the row is the store's own arithmetic: two counts, three
+    costs and a timestamp, each as long as its type allows and no longer.
+    """
+    return MEASURED_PROJECT_ROW_MARKUP + queries.LIST_CHARS * (
+        ESCAPED_CHAR_BYTES + ENCODED_CHAR_BYTES
     )
 
 
@@ -427,6 +456,11 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     assert (queries.LIST_CHARS, queries.LIST_ITEM_CHARS, queries.LIST_ITEMS) == (100, 20, 4)
     assert QUERIES["view_projects"].params["head_chars"].default == 100
     assert QUERIES["view_projects"].params["head_projects"].default == 10
+    # And the landing page, whose row shows a path at the list's head and links by the whole
+    # one. How many projects it ranks is a size like the rest; the two windows it counts them
+    # in are not sizes, and `tests/view/test_projects.py` pins those against what it cites.
+    assert QUERIES["view_project_rollups"].params["head_chars"].default == queries.LIST_CHARS
+    assert QUERIES["view_project_rollups"].params["projects"].default == 100
     # Every ceiling is projected at the largest page a URL can ask for, because a size is
     # something a reader types. The turn fragment's two sizes multiply, so its ceiling is
     # spent by the defaults themselves and `?calls=` only goes down from here.
@@ -437,6 +471,11 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     # plus the chrome that rides every page — both bound by construction now, not by how long
     # the titles this corpus happens to hold are.
     assert MEASURED_LIST_CHROME + bounds.SESSIONS.ceiling * worst_session_row_bytes() < PAGE_BYTES
+    # The landing page grows the same way — a project per repository the corpus records — and
+    # its ceiling is not a size a URL carries: a reader picks a project rather than paging.
+    assert (
+        MEASURED_PROJECTS_CHROME + bounds.PROJECTS.ceiling * worst_project_row_bytes() < PAGE_BYTES
+    )
     # The session timeline is the page whose caps this arithmetic sets rather than checks: its
     # run rows are most of what the ceiling buys, and the chip budget is what that leaves room for.
     assert worst_session_bytes() < PAGE_BYTES
@@ -450,7 +489,16 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
         assert bound.default <= bound.ceiling, name
     # ...and those are the sizes this leaf priced above: a new one reds here until its ceiling
     # is spent in the arithmetic too, rather than riding a page nobody weighed.
-    assert set(declared) == {"CALLS", "TOOLS", "RECORDS", "CHUNK", "TURNS", "CHIPS", "SESSIONS"}
+    assert set(declared) == {
+        "CALLS",
+        "TOOLS",
+        "RECORDS",
+        "CHUNK",
+        "TURNS",
+        "CHIPS",
+        "SESSIONS",
+        "PROJECTS",
+    }
     assert (bounds.TURNS.default + 1) * bounds.CHIPS.default <= bounds.CHIP_BUDGET
     # And every run is reachable: one turn's runs, or the unattached list, fits a page of its
     # own at `?turns=1&chips={bounds.CHIPS.ceiling}` — which the widest forest the corpus records,
@@ -501,7 +549,7 @@ def test_a_served_page_stays_under_its_ceiling(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
     """No page the viewer serves is large enough to stall a browser, at any corpus size."""
-    listing = len(client.get("/").content)
+    listing = len(client.get("/sessions").content)
     (count,) = one(store, "SELECT count(*) FROM sessions")
     assert listing < PAGE_BYTES
     # The fixture corpus is smaller than a page, so its own weight proves nothing about a
@@ -509,7 +557,7 @@ def test_a_served_page_stays_under_its_ceiling(
     # holding one session — which is what a growing corpus multiplies. The rows here are
     # redacted down to a few characters, so this is a smoke check: the worst case a real
     # corpus can reach is the arithmetic above, and the planted leaf below re-measures it.
-    chrome = len(client.get("/?size=1").content)
+    chrome = len(client.get("/sessions?size=1").content)
     per_session = (listing - chrome) / (count - 1)
     assert chrome + per_session * bounds.SESSIONS.ceiling < PAGE_BYTES
     # Every session page at the defaults, and at the widest single list a URL can ask for —
@@ -525,6 +573,7 @@ def test_a_served_page_stays_under_its_ceiling(
 # below reads this as a set, so a route added with no entry fails rather than going unswept.
 ROUTES: dict[str, str] = {
     "/": "/",
+    "/sessions": "/sessions",
     "/session/{session_id}": f"/session/{SPINE}",
     "/session/{session_id}/run/{run_id}": f"/session/{SPINE}/run/{SPINE_RUN}",
     "/fragment/turn/{session_id}/{source}/{turn_id}": (
@@ -957,7 +1006,7 @@ def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     with TestClient(build_app(path)) as planted:
 
         def served(size: int) -> str:
-            response = planted.get("/", params={"size": size})
+            response = planted.get("/sessions", params={"size": size})
             assert response.status_code == 200, response.text[:200]
             return response.text
 
@@ -988,6 +1037,63 @@ def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     assert len(row["description"]) == queries.LIST_CHARS
     assert len(row["category"]) == len(row["outcome"]) == queries.TAG_CHARS
     assert "stale" not in row
+
+
+def test_a_projects_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
+    plant: Planter,
+) -> None:
+    """The landing page at its ceiling weighs no more than the arithmetic gives it.
+
+    A project path is a directory someone named, so `&` is planted at the cap the page shows —
+    the character that escapes to five bytes in a cell and to twelve in the link beside it —
+    and the store is filled past the page's own ceiling. That is the page the arithmetic
+    bounds and the one no corpus recorded so far comes near: the fixtures hold four projects.
+    """
+    over = bounds.PROJECTS.ceiling + 20
+    # Three digits tell the paths apart inside the head the page shows, so 97 of every 100
+    # characters are escapes — and no path is a prefix of another, so none folds into another's
+    # row. The sessions are clones of a recorded one rather than invented rows.
+    head = "&" * (queries.LIST_CHARS - 3)
+    path = plant(
+        (
+            "INSERT INTO sessions (SELECT s.* REPLACE (s.id || '-planted-' || i AS id,"
+            " ? || printf('%03d', i) AS project_dir) FROM (SELECT * FROM sessions LIMIT 1) s,"
+            " range(1, ?) t(i))",
+            [head, over + 1],
+        ),
+    )
+    with TestClient(build_app(path)) as planted:
+        response = planted.get("/")
+    assert response.status_code == 200, response.text[:200]
+    page = response.text
+    # A page a reader lands on stays under the ceiling with every path at its cap...
+    assert len(response.content) < PAGE_BYTES
+    shown = values(page, "data-project")
+    assert len(shown) == bounds.PROJECTS.ceiling
+    # ...the planted ones at the cap, and the corpus's own short paths beside them. The
+    # attribute is read back through the escaping the page wrote it with, which is the point:
+    # every character of a planted path is one of the five-byte ones.
+    widest = unescape(max(shown, key=len))
+    assert len(fields(page, "data-project", widest)["project_dir"]) == queries.LIST_CHARS
+    # ...each row linking by the whole path it shows, which is what the encoded head budgets...
+    assert inside(page, "data-project", widest, "href") == [
+        f"/sessions?sort=started_at&direction=desc&project={quote(widest, safe='')}"
+    ]
+    # ...and what it left out said rather than dropped. Every planted path is a root of its
+    # own, so the store's distinct directories are the rows the page had to choose between.
+    with duckdb.connect(str(path), read_only=True) as connection:
+        (projects,) = one(
+            connection, "SELECT count(DISTINCT coalesce(project_dir, '')) FROM sessions"
+        )
+    assert values(page, "data-more-projects") == [str(projects - bounds.PROJECTS.ceiling)]
+    # What the page carries whatever it holds fits the allowance the ceiling gives it, with the
+    # rows the arithmetic counts separately stripped out...
+    chrome = re.sub(r"<tr data-project=.*?</tr>", "", page, flags=re.S)
+    assert not values(chrome, "data-project") and 'id="projects"' in chrome
+    assert len(chrome.encode()) <= MEASURED_PROJECTS_CHROME
+    # ...and one row costs no more than its markup and the two copies of its path.
+    row_bytes = (len(page.encode()) - len(chrome.encode())) / bounds.PROJECTS.ceiling
+    assert row_bytes <= worst_project_row_bytes()
 
 
 def test_the_digest_rows_no_window_reaches_are_capped_at_what_a_page_budgets(
@@ -1080,7 +1186,7 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
         ("UPDATE tool_calls SET input = ? WHERE session_id = ?", [long, FORK_ORIGIN]),
     )
     with TestClient(build_app(path)) as planted:
-        listing = planted.get("/").text
+        listing = planted.get("/sessions").text
         page = planted.get(f"/session/{SPINE}").text
         run = planted.get(f"/session/{SPINE}/run/{SPINE_RUN}").text
         turn = planted.get(f"/fragment/turn/{ANCESTOR}/main/{DENSE_TURN}").text

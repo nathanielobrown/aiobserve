@@ -85,7 +85,7 @@ def test_the_session_list_shows_what_the_model_said_about_each_session(
     this session" belongs on it — cut to a row's head, because the row is multiplied by the
     page and the whole description is on the session's own page.
     """
-    listing = enriched_client.get("/").text
+    listing = enriched_client.get("/sessions").text
     said = {
         row[0]: (row[1], row[2], row[3])
         for row in enriched_store.execute(
@@ -120,7 +120,7 @@ def test_the_work_cell_counts_the_turn_categories_a_pass_described(
     absent from a store no pass has run over — an empty column would be a claim the store
     cannot support.
     """
-    row = fields(enriched_client.get("/").text, "data-session-id", SPINE)
+    row = fields(enriched_client.get("/sessions").text, "data-session-id", SPINE)
     kinds = enriched_store.execute(
         "SELECT category, count(*) FROM turn_enrichments WHERE session_id = ?"
         " GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT ?",
@@ -129,7 +129,7 @@ def test_the_work_cell_counts_the_turn_categories_a_pass_described(
     assert kinds, "the described corpus no longer describes this session's turns"
     assert row["work"] == ", ".join(f"{name} ×{turns}" for name, turns in kinds)
     # A store with no enrichment tables at all renders the same row without the column.
-    assert "work" not in fields(client.get("/").text, "data-session-id", SPINE)
+    assert "work" not in fields(client.get("/sessions").text, "data-session-id", SPINE)
 
 
 def test_a_session_page_tags_every_turn_and_run_the_pass_described(
