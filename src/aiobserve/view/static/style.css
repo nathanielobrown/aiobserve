@@ -115,8 +115,6 @@ details.under > summary { color: var(--dim); cursor: pointer; padding-left: var(
 nav.map h3 { margin: var(--space-2) 0 var(--space-1); font-size: var(--type-label);
   color: var(--dim); }
 #nav-more { margin: var(--space-1) 0; color: var(--dim); }
-nav.map ul.citation { margin: var(--space-2) 0 0; padding: 0; list-style: none;
-  color: var(--dim); overflow-wrap: anywhere; }
 
 /* The spend meter: a thin bar along the bottom of each node, anchored left, its length the
    node's decile of what the session spent. A class per decile and not an inline width,
@@ -198,5 +196,8 @@ ol.records li:target { background: color-mix(in srgb, var(--mark) 12%, transpare
 /* Footers and error pages. */
 #citation { border-top: 1px solid var(--line); padding: var(--space-2) var(--space-3);
   color: var(--dim); }
-#citation ul { margin: 0; padding: 0; list-style: none; }
+/* Both lists: the page's own citations, and the ones its map swaps in beside them. Full page
+   width, because a citation is a line someone copies whole and the map's column would wrap a
+   session id three times. */
+#citation ul { margin: 0; padding: 0; list-style: none; overflow-wrap: anywhere; }
 #error p { max-width: 40rem; }

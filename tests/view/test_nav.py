@@ -562,9 +562,16 @@ def test_the_map_cites_every_query_it_ran(client: TestClient) -> None:
     The map reads a run's strings at `NAV_CHARS`, narrower than the head a session page chips
     them to — a line that leaves it out re-runs at the default and answers longer text.
     """
-    assert set(values(nav(client, SPINE), "data-query")) == {
+    fragment = nav(client, SPINE)
+    assert set(values(fragment, "data-query")) == {
         f"-- queries/view_session_nav.sql session_id={SPINE}",
         f"-- queries/view_runs.sql session_id={SPINE} chip_chars={queries.NAV_CHARS}",
         # What every share on the map is a share of, which is a query like the rest.
         f"-- queries/view_session_header.sql session_id={SPINE}",
     }
+    # They land in the page's footer beside the page's own, not in the column the map is drawn
+    # in: a citation is a line of SQL a reader copies whole, and a sidebar wraps a session id
+    # three times. The fragment carries them out of band into the slot the page left for them.
+    assert inside(fragment, "class", "map", "data-query") == []
+    assert 'id="map-citation" hx-swap-oob="true"' in fragment
+    assert "map-citation" in inside(client.get(f"/session/{SPINE}").text, "id", "citation", "id")
