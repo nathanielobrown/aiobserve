@@ -22,24 +22,10 @@ from aiobserve.enrich.store import LEVELS
 from aiobserve.view.app import build_app
 from aiobserve.view.store import Page
 from tests.conftest import SPINE, SPINE_RUN
-from tests.view.conftest import Planter, fields, one, values
+from tests.view.conftest import Planter, fields, one, pages, values
 
 # Every enrichment table, and the statement that empties one — the second absent-safety case.
 EMPTIED = tuple((f"DELETE FROM {spec.table}", ()) for spec in LEVELS.values())
-
-
-def pages(store: duckdb.DuckDBPyConnection) -> list[str]:
-    """Every page one store can serve — the list, every session, every run — as URLs."""
-    sessions = [row[0] for row in store.execute("SELECT id FROM sessions").fetchall()]
-    runs = store.execute("SELECT session_id, id FROM agent_runs").fetchall()
-    return (
-        ["/"]
-        + [f"/session/{session_id}" for session_id in sessions]
-        # The map is its own response, and the one surface that reads what a pass wrote to
-        # *name* a thing rather than to show it — a sweep of pages alone would miss it.
-        + [f"/fragment/nav/{session_id}" for session_id in sessions]
-        + [f"/session/{session_id}/run/{run_id}" for session_id, run_id in runs]
-    )
 
 
 def enrichment_of(
