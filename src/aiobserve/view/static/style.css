@@ -53,10 +53,21 @@ td.title { max-width: 26rem; }
 td.title .secondary { display: -webkit-box; -webkit-box-orient: vertical;
   -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; margin: 0; }
 
-/* One session's timeline. */
-#session-header dl { display: flex; flex-wrap: wrap; gap: 0.25rem 1.5rem; margin: 0.5rem 0; }
-#session-header dt { color: var(--dim); font-size: 0.8rem; }
-#session-header dd { margin: 0; font-variant-numeric: tabular-nums; }
+/* One session's timeline. The header's four clusters sit side by side while there is room:
+   what this session was, when it ran, how much it did, and what it cost. */
+#session-header { display: flex; flex-wrap: wrap; align-items: start; gap: 0 2.5rem; }
+#session-header h1 { flex: 1 0 100%; margin: 0.6rem 0 0; }
+#session-header dl { margin: 0.5rem 0; min-width: 8rem; }
+/* Identity holds the long strings — a session id, a repository path — so it takes the room
+   the three clusters of numbers beside it do not need. */
+#session-header dl[data-cluster="identity"] { flex: 1 1 20rem; overflow-wrap: anywhere; }
+#session-header dl > div { margin-bottom: 0.25rem; }
+#session-header .prs, #session-header section.enrichment { flex: 1 0 100%; }
+/* A run's header is one cluster and not four — its facts flow rather than stacking — but a
+   fact reads the same on either page: a dim label over the value it names. */
+#run-header dl { display: flex; flex-wrap: wrap; gap: 0.25rem 1.5rem; margin: 0.5rem 0; }
+#session-header dt, #run-header dt { color: var(--dim); font-size: 0.75rem; }
+#session-header dd, #run-header dd { margin: 0; font-variant-numeric: tabular-nums; }
 article[data-turn] { border-top: 1px solid var(--line); padding: 0.75rem 0; }
 article[data-turn] h2 { margin: 0 0 0.25rem; font-weight: 600; white-space: pre-wrap; }
 /* The command a slash turn ran, ahead of what was typed after it. Marked rather than merely
