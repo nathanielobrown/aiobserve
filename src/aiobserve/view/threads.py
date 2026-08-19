@@ -260,6 +260,16 @@ def ancestry(run_id: str, runs: Sequence[Row]) -> list[str]:
     return trail[::-1]
 
 
+def permalink(session_id: str, turn_index: int, turn_id: str) -> str:
+    """The link to one turn on a page that starts with it.
+
+    The cursor is one before the turn's own index, because `after` is the last index already
+    shown — so a link a reader saved opens the same turn tomorrow, whatever the session grew
+    in between. Minted here because two surfaces mint it: the timeline and the map.
+    """
+    return f"/session/{session_id}?after={turn_index - 1}#turn-{turn_id}"
+
+
 def children(run_id: str, runs: Sequence[Row]) -> tuple[Chip, ...]:
     """The runs under this one that no turn of its own timeline claims.
 

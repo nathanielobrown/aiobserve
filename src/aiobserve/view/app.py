@@ -67,6 +67,7 @@ from aiobserve.view.threads import (
     children,
     cut_to,
     marks_on_page,
+    permalink,
     session_threads,
     timeline,
 )
@@ -154,6 +155,12 @@ def build_app(db_path: Path) -> FastAPI:
         "pretty": render.pretty,
         "link": render.link,
     }
+
+    # The one link two surfaces mint — the timeline's permalink and the map's out-of-window
+    # node — so the cursor rule lives in one place and both go to the same page.
+    # The namespace is typed by what Jinja seeds it with, which is why the assignment needs a
+    # word: a global is any callable a template can name.
+    templates.env.globals["permalink"] = permalink  # pyrefly: ignore
 
     def error(request: Request, status: int, message: str) -> Response:
         return templates.TemplateResponse(

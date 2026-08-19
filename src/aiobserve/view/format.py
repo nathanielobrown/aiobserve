@@ -81,12 +81,19 @@ def ago(value: dt.datetime | None, now: dt.datetime) -> str:
     return f"{elapsed // _DAY}d ago"
 
 
+def percent(value: float | None) -> str:
+    """A fraction as a percentage, to one decimal: `0.022` prints `2.2%`.
+
+    For a rate something else already worked out — the share of a session one node of its map
+    took. A rate the page divides itself goes through `share`, which lands here.
+    """
+    return ABSENT if value is None else f"{100 * value:.1f}%"
+
+
 def share(part: float | None, whole: float | None) -> str:
     """A part of a whole as a percentage, to one decimal: `2.2%`.
 
     A whole of zero or NULL is a gap rather than 0%: no errors in no tool calls, and no spend
     to take a share of, are things the store does not know rather than rates it recorded.
     """
-    if part is None or not whole:
-        return ABSENT
-    return f"{100 * part / whole:.1f}%"
+    return ABSENT if part is None or not whole else percent(part / whole)

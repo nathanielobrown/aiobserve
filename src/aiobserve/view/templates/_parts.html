@@ -136,9 +136,8 @@
       {# The link to this turn on a page that starts with it. Minted here rather than
          assembled by a reader: the cursor is one before the turn's own index. #}
       {% if sizes and entry.row.turn_index is not none %}
-      {% set permalink = "/session/" ~ session_id ~ "?after=" ~ (entry.row.turn_index - 1) %}
-      <a data-permalink="{{ permalink }}#turn-{{ entry.row.turn_id }}"
-         href="{{ permalink }}#turn-{{ entry.row.turn_id }}">permalink</a>
+      {% set link = permalink(session_id, entry.row.turn_index, entry.row.turn_id) %}
+      <a data-permalink="{{ link }}" href="{{ link }}">permalink</a>
       {% endif %}
     </p>
     {# What the model said this turn did, beside what it cost. A turn has no page of its own,
