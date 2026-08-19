@@ -17,12 +17,12 @@
 <table id="projects">
   <thead>
     <tr>
-      <th>Project</th>
+      <th scope="col">Project</th>
       {# Set the way the cells under them are: a count is read down its column. #}
-      <th class="number">{{ bound.recent_days }}d</th>
-      <th class="number">{{ bound.window_days }}d</th>
-      <th class="number">All time</th>
-      <th>Last active</th>
+      <th scope="col" class="number">{{ bound.recent_days }}d</th>
+      <th scope="col" class="number">{{ bound.window_days }}d</th>
+      <th scope="col" class="number">All time</th>
+      <th scope="col">Last active</th>
     </tr>
   </thead>
   <tbody>

@@ -100,6 +100,10 @@ class Control(NamedTuple):
 # The two orderings a reader can ask for, as the SQL keyword each one puts in the ORDER BY.
 DIRECTIONS: dict[str, str] = {"asc": "ASC", "desc": "DESC"}
 
+# The same two as `aria-sort` spells them. ARIA defines the tokens and `asc` is not one of
+# them, so a heading marked with the query string's own word announces no order at all.
+ARIA_SORT: dict[str, str] = {"asc": "ascending", "desc": "descending"}
+
 # Newest first: the session someone is looking for is usually the one that just ran.
 DEFAULT_SORT = "started_at"
 DEFAULT_DIRECTION = "desc"

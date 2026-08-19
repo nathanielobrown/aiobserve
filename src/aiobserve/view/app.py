@@ -35,6 +35,7 @@ from aiobserve.view import format as fmt
 from aiobserve.view.enrichment import described, enriched
 from aiobserve.view.labels import label
 from aiobserve.view.listing import (
+    ARIA_SORT,
     CONTROLS,
     DEFAULT_DIRECTION,
     DEFAULT_SORT,
@@ -298,6 +299,9 @@ def build_app(db_path: Path) -> FastAPI:
                 "sorts": SORTS,
                 "sort": sort,
                 "direction": direction,
+                # The same ordering in ARIA's vocabulary, for the heading that marks it: the
+                # form and the links carry the query string's word, the mark carries ARIA's.
+                "aria_direction": ARIA_SORT[direction],
                 "links": links,
                 # One input per filter, in `FILTERS` order, carrying what this request asked.
                 "controls": [
