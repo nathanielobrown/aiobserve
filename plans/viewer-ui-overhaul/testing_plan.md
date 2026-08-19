@@ -200,7 +200,14 @@ served store rather than a literal.
   up to `s1`.** *Evidence:* class read with `inside(html, "data-nav", id, "class")` and compared
   against the decile computed from the store's costs; a `plant` giving one turn a share under 10%
   supplies the round-up case. This is the leaf `mise run mutate 'aiobserve.view.threads.*'` should
-  find no survivor under — a `//` or a boundary flip here silently blanks the meter
+  find no survivor under — a `//` or a boundary flip here silently blanks the meter.
+  **As built,** the ten classes survive but the scale is logarithmic over three orders of magnitude
+  rather than a decile — design.md carries the same clause, and a linear decile drew 525 of the
+  store's 977 main-thread turn nodes with the same shortest bar. The leaf that landed asserts the
+  order instead of a computed class: rank the turns by what they took and the steps never go
+  backwards, with the two ends this corpus supplies pinned. It also checks that every class
+  `meter()` can reach is one the served stylesheet draws — a step with no rule is a bar the reader
+  never sees and nothing complains about
 - Planted markup in a nav label arrives inert. *Evidence:* `test_planted_markup_arrives_inert`
   extended — the sentinel already lands on `turns.prompt` and `agent_runs.description`, so the
   fragment URL joins the `served` tuple; nav labels also draw on enrichment text, so the enriched
