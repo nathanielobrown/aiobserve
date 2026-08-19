@@ -2,8 +2,9 @@
 
 Every number a report quotes is quoted in these two windows, so the leaves here check the
 arithmetic that relates them: the trailing window is the corpus restricted, and the weeks
-partition the corpus. Nothing reads the clock — the smoke tier bans the mechanism, and the
-last leaf proves the replacement decides the window on its own.
+partition the corpus. Nothing reads the clock — the smoke tier bans the mechanism, one leaf
+proves the replacement decides the window on its own, and the last one puts the tier's
+far-future guard on a query left to the default.
 """
 
 from dataclasses import replace
@@ -19,6 +20,7 @@ from tests.analyze.conftest import (
     AS_OF_MID,
     AS_OF_PARTIAL,
     AS_OF_WHOLE,
+    FAR_FUTURE,
     IN_WINDOW_AT_MID,
     IN_WINDOW_AT_PARTIAL,
     MYCELIA_SESSIONS,
@@ -115,6 +117,28 @@ def test_as_of_alone_decides_the_window(run_query: QueryRunner) -> None:
         session for session, row in listing.items() if row["started_at"][:10] > AS_OF_MID
     }
     assert len(excluded) == MYCELIA_SESSIONS - IN_WINDOW_AT_MID
+
+
+def test_a_query_left_to_the_clock_runs_long_after_the_corpus(run_query: QueryRunner) -> None:
+    """Nothing here reads the wall clock, and the tier is run in 2030 to keep it that way.
+
+    `--as-of` defaults to today, so a query or a leaf that leaves it unbound answers about
+    the trailing window ending *now*: green while the recordings are recent, red the morning
+    they fall out of it. PR #4 caught one of those days from going off. Under the autouse
+    `far_future` guard the corpus is already years out of window, so the bill arrives with
+    the change that forgot the binding rather than with the calendar.
+    """
+    counts = _periods(run_query)
+    # The window measured back from the faked clock reaches none of the recordings, so the
+    # grouping writes no window row at all — the shape a leaf that forgot to bind `--as-of`
+    # trips over rather than quietly reporting a smaller number...
+    assert TRAILING not in counts
+    # ...while the corpus row, which no window touches, still holds every one of them: the
+    # store is what it always was, and only the date it is read at moved.
+    assert int(counts[CORPUS]["sessions"]) == MYCELIA_SESSIONS
+    # And the citation names that date, so a leaf that fails under the guard says why.
+    cited = run_query("session_counts", "--project", MYCELIA, "--csv").stderr
+    assert f"as_of={FAR_FUTURE.isoformat()}" in cited
 
 
 @pytest.fixture(scope="session")
