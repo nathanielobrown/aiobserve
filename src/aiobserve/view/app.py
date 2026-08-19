@@ -39,6 +39,7 @@ from aiobserve.view.listing import (
     DEFAULT_SORT,
     DIRECTIONS,
     FILTERS,
+    LIST_URL,
     SORTS,
     Control,
     list_url,
@@ -94,6 +95,20 @@ class ToolCalls(NamedTuple):
 
     page: Paged
     citation: str
+
+
+def project_link(project_dir: str | None) -> str | None:
+    """The session list narrowed to one project, or None when there is no list to open.
+
+    The path is the whole one and not the head a row shows — the list's filter matches a path
+    prefix, and a cut one matches nothing. A row the query left NULL is a row with no link:
+    the sessions that named no directory, and a path longer than the head this page shows.
+    """
+    if project_dir is None:
+        return None
+    return list_url(
+        DEFAULT_SORT, DEFAULT_DIRECTION, 1, bounds.SESSIONS.default, {"project": project_dir}
+    )
 
 
 def checked(size: int, ceiling: int) -> int:
@@ -175,6 +190,40 @@ def build_app(db_path: Path) -> FastAPI:
         return error(request, exception.status_code, str(exception.detail))
 
     @app.get("/")
+    def projects_page(request: Request) -> Response:
+        # The clock both trailing windows are measured back from, read here and bound like
+        # any other parameter. The query reads no clock of its own: a page counting "the last
+        # 7 days" from SQL's `now()` would cite a line that answers something else tomorrow,
+        # and the footer's whole promise is that a reader can re-run what the page ran.
+        bound: dict[str, ParamValue] = {
+            "as_of": fmt.utcnow().date(),
+            "recent_days": queries.PAGE_RECENT_DAYS,
+            "window_days": queries.PAGE_WINDOW_DAYS,
+            "head_chars": queries.LIST_CHARS,
+            "projects": bounds.PROJECTS.default,
+        }
+        with open_store(resolved) as connection:
+            rows = page_rows(connection, Page.PROJECT_ROLLUPS, **bound)
+        return templates.TemplateResponse(
+            request,
+            "projects.html",
+            {
+                # Each row beside the list of its own sessions, minted through the list's own
+                # link builder so a project opens the list the way the list links to itself.
+                "projects": [row | {"link": project_link(row["project_filter"])} for row in rows],
+                # What the page cut, which the query counted before its LIMIT: a landing page
+                # that silently dropped projects would be a corpus a reader cannot see.
+                "cut": rows[0]["matched_projects"] - len(rows) if rows else 0,
+                # The bindings, for the two window headings — a heading and its column read
+                # the same numbers, and the citation below carries them too.
+                "bound": bound,
+                "citations": {
+                    Page.PROJECT_ROLLUPS.value: queries.citation(Page.PROJECT_ROLLUPS, bound)
+                },
+            },
+        )
+
+    @app.get(LIST_URL)
     def session_list(
         request: Request,
         sort: str = DEFAULT_SORT,

@@ -24,7 +24,7 @@
 {# One input per filter the list offers, generated from `FILTERS` rather than listed here, so
    a filter added in `view/app.py` appears without a template edit. Submitting keeps the sort
    and drops the page: page 4 of a narrower list is a different page. #}
-<form id="filters" method="get" action="/">
+<form id="filters" method="get" action="/sessions">
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="direction" value="{{ direction }}">
   {% for control in controls %}
@@ -34,7 +34,7 @@
   </label>
   {% endfor %}
   <button type="submit">Filter</button>
-  <a href="/">clear</a>
+  <a href="/sessions">clear</a>
 </form>
 {# Suggestions, not a closed set: a project the store has no sessions for is an empty list
    rather than an error, and typing a path the datalist lacks still runs. #}
@@ -94,9 +94,8 @@
       {# The unpriced count rides beside the cost: a total with calls our price table
          missed is not the session's cost, and the page has to say so. #}
       <td class="number">{% call parts.stacked('cost_usd', row.cost_usd | money,
-        'output_tokens', row.output_tokens | count, 'out') %}{% if row.unpriced_api_calls %}<sup
-        title="{{ row.unpriced_api_calls | count }} call(s) at a model our price table lacks"
-        >*</sup>{% endif %}{% endcall %}</td>
+        'output_tokens', row.output_tokens | count, 'out')
+        %}{{ parts.unpriced(row.unpriced_api_calls) }}{% endcall %}</td>
       <td class="number">{{ parts.stacked('wall_ms', row.wall_ms | duration,
                                           'active_ms', row.active_ms | duration, 'active') }}</td>
       {# The three lists that grow with a session, so the query cuts each and says how many it

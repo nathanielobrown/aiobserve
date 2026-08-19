@@ -114,6 +114,16 @@ COMMAND_HEAD_CHARS = 60
 PAGE_CALLS = 10
 PAGE_TOOLS = 12
 PAGE_RECORDS = 100
+# How many projects the landing page ranks. A corpus grows projects the way it grows sessions,
+# so the page is bound like the list — and a store holding more says how many it left out.
+PAGE_PROJECTS = 100
+
+# The two trailing windows the landing page counts a project in, beside its whole history: a
+# week and a month. Not `WINDOW_DAYS` above, which is what a report's counts are quoted in and
+# four weeks long so a weekly rhythm cannot bias them; these are what a reader scanning for
+# what is running lately means, and the page heads its columns from them.
+PAGE_RECENT_DAYS = 7
+PAGE_WINDOW_DAYS = 30
 
 # How much of an offloaded tool result one chunk of the offload page carries. The only value
 # the viewer serves with no ceiling behind it — `offload_files.content` is whatever a tool
@@ -452,6 +462,21 @@ QUERIES: dict[str, Query] = {
             "name": Param(type=ParamType.TEXT, default=REQUIRED),
             "after_chars": Param(type=ParamType.INTEGER, default=0),
             "chunk_chars": Param(type=ParamType.INTEGER, default=CHUNK_CHARS),
+        },
+    ),
+    "view_project_rollups": Query(
+        scope=Scope.KEYED,
+        params={
+            # The clock both windows are measured back from. No default: a landing page's
+            # "last 7 days" is only reproducible if the day it counted from is bound and
+            # cited, and SQL's own clock would answer something else tomorrow.
+            "as_of": Param(type=ParamType.DATE, default=REQUIRED),
+            "recent_days": Param(type=ParamType.INTEGER, default=PAGE_RECENT_DAYS),
+            "window_days": Param(type=ParamType.INTEGER, default=PAGE_WINDOW_DAYS),
+            # A project path takes a row's head, like the list's — and the row links by the
+            # whole path, so the head is what the page shows and not what it filters by.
+            "head_chars": Param(type=ParamType.INTEGER, default=LIST_CHARS),
+            "projects": Param(type=ParamType.INTEGER, default=PAGE_PROJECTS),
         },
     ),
     "view_projects": Query(

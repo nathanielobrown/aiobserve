@@ -95,6 +95,9 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     # the level holding the most planted rows.
     "enrichment_digest": {"session_id": SPINE},
     "select_enrichments": {"level": "agent_run"},
+    # The landing page's clock. Inside the corpus's own dates, so both trailing windows hold
+    # sessions on a store whose recordings recede: the fixture sessions ran up to 2026-08-06.
+    "view_project_rollups": {"as_of": "2026-07-28"},
     # The viewer's own read of the three tables, at the thread a session page renders: the
     # plant describes `spine/` at every level, so all three arms of the union answer.
     "view_enrichment": {"session_id": SPINE, "source": MAIN},

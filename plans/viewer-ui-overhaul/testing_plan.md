@@ -85,7 +85,9 @@ served store rather than a literal.
   (`output_tokens`, `active_ms`) are refused. *Evidence:*
   `test_every_sort_key_names_a_column_the_query_returns` (auto-covers the shrink) plus the two dropped
   keys added as cases to `test_an_unknown_sort_or_direction_is_refused`
-- The list, its pagers, its sort links, its filter form and its citation all live at `/sessions`.
+- The list, its pagers, its sort links, its filter form and its citation all live at `/sessions`
+  `[S3]` — the move lands with the page that takes `/` over, because a list moved out of `/` before
+  anything replaces it leaves the landing route a 404.
   *Evidence:* `test_the_list_is_served_a_page_at_a_time`, `test_a_filter_rides_the_links_and_the_citation`
   and `test_the_list_footer_cites_its_query_and_what_was_composed_around_it` re-pointed at `/sessions`;
   plus an assertion that every `href` the list mints starts `/sessions` (no `/?sort=` survivor)

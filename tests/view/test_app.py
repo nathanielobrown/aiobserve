@@ -84,7 +84,7 @@ def test_the_list_holds_every_session_with_its_own_numbers(
 ) -> None:
     """The list is one row per session, its counts stacked two to a cell over that session's
     rollup — the primary someone scans for, and the texture under it."""
-    page = client.get("/").text
+    page = client.get("/sessions").text
     # Every session gets a row, and the default order is newest first...
     assert values(page, "data-session-id") == sessions(store)
     # ...whose cells are that session's rollup, not a number computed anywhere else.
@@ -121,7 +121,7 @@ def test_a_column_the_store_left_null_reads_as_one_dash(client: TestClient) -> N
     `fork_byref`'s fork is the recorded case: it carries neither a project directory nor a
     start, so its row is the one place the list has to say "the store does not know" out loud.
     """
-    row = fields(client.get("/").text, "data-session-id", NO_PROJECT_SESSION)
+    row = fields(client.get("/sessions").text, "data-session-id", NO_PROJECT_SESSION)
     assert row["project_dir"] == ABSENT
     assert row["started_at"] == ABSENT
 
@@ -139,7 +139,7 @@ def test_the_list_reads_the_clock_at_render_rather_than_at_startup(
 
     def elapsed(later: dt.timedelta) -> str:
         monkeypatch.setattr(fmt, "utcnow", lambda: started + later)
-        return fields(client.get("/").text, "data-session-id", SPINE)["ago"]
+        return fields(client.get("/sessions").text, "data-session-id", SPINE)["ago"]
 
     assert elapsed(dt.timedelta(hours=2)) == "2h ago"
     assert elapsed(dt.timedelta(days=3)) == "3d ago"
@@ -153,7 +153,7 @@ def test_the_errors_cell_shows_a_rate_over_the_count_it_sorts_by(
     Both recorded failing-tool sessions, because the pair is what makes the rate worth
     showing: one error in five calls and one in seven are the same count and different rates.
     """
-    page = client.get("/").text
+    page = client.get("/sessions").text
     failing = store.execute(
         "SELECT * FROM (SELECT r.session_id, r.tool_calls,"
         " (SELECT count(*) FROM live_tool_calls t"
@@ -196,7 +196,7 @@ def test_every_number_a_list_row_prints_carries_its_separators(
         ),
     )
     with TestClient(build_app(path)) as planted:
-        row = fields(planted.get("/").text, "data-session-id", SPINE)
+        row = fields(planted.get("/sessions").text, "data-session-id", SPINE)
     # Every number the row prints is either grouped in threes or the dash a NULL prints...
     counts = ("turns", "api_calls", "tool_calls", "compactions", "tool_errors", "output_tokens")
     for field in counts:
@@ -213,7 +213,7 @@ def test_the_subagents_cell_counts_the_runs_of_each_agent_type(
     The count is what the recompose bought: `agent_runs` alone said a session spawned six
     subagents and not what any of them were.
     """
-    row = fields(client.get("/").text, "data-session-id", SPINE)
+    row = fields(client.get("/sessions").text, "data-session-id", SPINE)
     kinds = store.execute(
         "SELECT agent_type, count(*) FROM live_agent_runs WHERE session_id = ?"
         " GROUP BY 1 ORDER BY 2 DESC, 1",
@@ -245,7 +245,7 @@ def test_the_subagents_cell_ranks_by_count_and_says_what_it_cut(plant: Planter) 
         ),
     )
     with TestClient(build_app(path)) as planted:
-        row = fields(planted.get("/").text, "data-session-id", SPINE)
+        row = fields(planted.get("/sessions").text, "data-session-id", SPINE)
     listed = row["agent_types"].split(" and ")[0].split(", ")
     counts = [int(entry.rsplit(" ×", 1)[1]) for entry in listed]
     # As many types as the cell shows, no more, ranked by the runs each stood for...
@@ -260,7 +260,7 @@ def test_a_list_row_links_to_the_session_it_names(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
     """The link on a row opens that session's page — the list's whole purpose."""
-    page = client.get("/").text
+    page = client.get("/sessions").text
     session_id = sessions(store)[0]
     assert f"/session/{session_id}" in inside(page, "data-session-id", session_id, "href")
     assert client.get(f"/session/{session_id}").status_code == 200
@@ -285,7 +285,8 @@ def test_a_sort_and_its_reverse_are_exact_opposites(sort: str, client: TestClien
     """Every sort key totally orders the list, so flipping the direction reverses it."""
     order = {
         direction: values(
-            client.get("/", params={"sort": sort, "direction": direction}).text, "data-session-id"
+            client.get("/sessions", params={"sort": sort, "direction": direction}).text,
+            "data-session-id",
         )
         for direction in DIRECTIONS
     }
@@ -313,7 +314,7 @@ def test_an_unknown_sort_or_direction_is_refused(
     parameters: dict[str, str], client: TestClient
 ) -> None:
     """Sort and direction come from closed dictionaries; anything else is a 400."""
-    response = client.get("/", params=parameters)
+    response = client.get("/sessions", params=parameters)
     assert response.status_code == 400
     # The refusal says what is allowed, and does not echo what was asked for.
     for value in parameters.values():
@@ -325,13 +326,13 @@ def test_the_list_footer_cites_its_query_and_what_was_composed_around_it(
     client: TestClient,
 ) -> None:
     """The page carries the query behind it, at the sort and the page this request ran."""
-    page = client.get("/", params={"sort": "cost_usd", "direction": "asc", "size": 5}).text
+    page = client.get("/sessions", params={"sort": "cost_usd", "direction": "asc", "size": 5}).text
     cited = fields(page, "id", "citation")
     assert cited["view_sessions"] == (
         f"-- queries/view_sessions.sql sort=cost_usd direction=asc limit=5 offset=0 {CUT}"
     )
     # A bare request cites the defaults, so a copied line reproduces what was seen.
-    default = fields(client.get("/").text, "id", "citation")
+    default = fields(client.get("/sessions").text, "id", "citation")
     assert default["view_sessions"] == (
         f"-- queries/view_sessions.sql sort={DEFAULT_SORT} direction={DEFAULT_DIRECTION}"
         f" limit={bounds.SESSIONS.default} offset=0 {CUT}"
@@ -346,7 +347,7 @@ def test_the_list_is_served_a_page_at_a_time(
     seen: list[str] = []
     # A size the fixture corpus needs four pages of, followed to the end...
     for page in range(1, 10):
-        html = client.get("/", params={"size": size, "page": page}).text
+        html = client.get("/sessions", params={"size": size, "page": page}).text
         rows = values(html, "data-session-id")
         assert len(rows) <= size
         seen += rows
@@ -357,7 +358,7 @@ def test_the_list_is_served_a_page_at_a_time(
     # ...holds every session once, in the order one long list would have had.
     assert seen == sessions(store)
     # Past the end is an empty page rather than an error: a stale link is not a fault...
-    beyond = client.get("/", params={"page": 99}).text
+    beyond = client.get("/sessions", params={"page": 99}).text
     assert values(beyond, "data-session-id") == []
     # ...and it says so, rather than counting a range that ends before it starts.
     assert fields(beyond, "data-pager", "top")["range"] == "No sessions"
@@ -368,7 +369,7 @@ def test_a_page_outside_the_bounds_is_refused(
     parameters: dict[str, int], client: TestClient
 ) -> None:
     """The page size is bounded on both ends: a page cannot be asked to hold the store."""
-    response = client.get("/", params=parameters)
+    response = client.get("/sessions", params=parameters)
     assert response.status_code == 400
     assert str(bounds.SESSIONS.ceiling) in response.text
 
@@ -399,8 +400,8 @@ def test_every_filter_the_list_offers_has_a_sample_to_check_it_with() -> None:
 @pytest.mark.parametrize("key", sorted(SAMPLES))
 def test_a_filter_narrows_the_list_without_emptying_it(key: str, client: TestClient) -> None:
     """Every filter cuts the list to some of the sessions it held, never to all or none."""
-    whole = values(client.get("/").text, "data-session-id")
-    narrowed = values(client.get("/", params={key: SAMPLES[key]}).text, "data-session-id")
+    whole = values(client.get("/sessions").text, "data-session-id")
+    narrowed = values(client.get("/sessions", params={key: SAMPLES[key]}).text, "data-session-id")
     # A filter that matched everything would pass a subset check while filtering nothing,
     # and one that matched nothing would pass it vacuously. This is a proper, non-empty cut.
     assert set(narrowed) < set(whole)
@@ -420,11 +421,13 @@ def test_a_filter_keeps_exactly_the_sessions_the_store_says_it_should(
             [SAMPLES["skill"]],
         ).fetchall()
     }
-    shown = values(client.get("/", params={"skill": SAMPLES["skill"]}).text, "data-session-id")
+    shown = values(
+        client.get("/sessions", params={"skill": SAMPLES["skill"]}).text, "data-session-id"
+    )
     assert set(shown) == ran_it
     # Every row shown says the skill it was filtered by, so the page shows its own evidence.
     for session_id in shown:
-        page = client.get("/", params={"skill": SAMPLES["skill"]}).text
+        page = client.get("/sessions", params={"skill": SAMPLES["skill"]}).text
         assert SAMPLES["skill"] in fields(page, "data-session-id", session_id)["skills"]
 
 
@@ -433,7 +436,7 @@ def test_a_filter_value_reaches_duckdb_only_as_a_binding(
 ) -> None:
     """A filter value that is SQL rather than a name matches nothing and runs nothing."""
     before = one(store, "SELECT count(*) FROM sessions")[0]
-    response = client.get("/", params={"skill": "'; DROP TABLE sessions; --"})
+    response = client.get("/sessions", params={"skill": "'; DROP TABLE sessions; --"})
     # A value that reached SQL as text would either error or execute; bound, it is a skill
     # name no session ran...
     assert response.status_code == 200
@@ -457,7 +460,7 @@ def test_an_unknown_filter_key_or_unparseable_value_is_refused(
     parameters: dict[str, str], says: str, client: TestClient
 ) -> None:
     """The list reads a closed set of query keys, each at one type; anything else is a 400."""
-    response = client.get("/", params=parameters)
+    response = client.get("/sessions", params=parameters)
     assert response.status_code == 400
     # The refusal says what would have worked, and never echoes what was asked for — a page
     # that reflected the value back would be the one place unescaped request text could land.
@@ -468,13 +471,21 @@ def test_an_unknown_filter_key_or_unparseable_value_is_refused(
 
 def test_a_filter_rides_the_links_and_the_citation(client: TestClient) -> None:
     """A filter survives re-sorting and paging, and the footer says the list was filtered."""
-    page = client.get("/", params={"skill": SAMPLES["skill"], "sort": "cost_usd", "size": 1}).text
+    page = client.get(
+        "/sessions", params={"skill": SAMPLES["skill"], "sort": "cost_usd", "size": 1}
+    ).text
     # Every heading link and every pager link carries the filter, so changing the order or
     # turning the page does not quietly widen the list back to the corpus...
-    links = re.findall(r'href="(/\?[^"]*)"', page)
+    links = re.findall(r'href="(/sessions\?[^"]*)"', page)
     assert links
     for link in links:
         assert "skill=grill-me" in link
+    # The list lives at `/sessions` whole — its form, its clear link and every link it mints
+    # go there. A `/?sort=` survivor would land on the projects page, which answers a
+    # different question and would drop the filter on the way.
+    assert re.findall(r'href="(/\?[^"]*)"', page) == []
+    assert '<form id="filters" method="get" action="/sessions">' in page
+    assert '<a href="/sessions">clear</a>' in page
     # ...and the citation carries it too, after the paging, so the line reproduces the rows.
     assert fields(page, "id", "citation")["view_sessions"] == (
         "-- queries/view_sessions.sql sort=cost_usd direction=desc limit=1 offset=0"
@@ -1256,7 +1267,8 @@ def test_a_session_the_store_does_not_hold_is_a_404(client: TestClient) -> None:
     "path",
     [
         "/",
-        "/?sort=bogus",
+        "/sessions",
+        "/sessions?sort=bogus",
         f"/session/{SPINE}",
         f"/session/{MISSING}",
         f"/fragment/turn/{ANCESTOR}/{MAIN}/{DENSE_TURN}",
@@ -1304,7 +1316,7 @@ def test_planted_markup_arrives_inert(plant: Planter) -> None:
     )
     with TestClient(build_app(path)) as client:
         served = (
-            client.get("/").text,
+            client.get("/sessions").text,
             client.get(f"/session/{SPINE}").text,
             client.get(f"/fragment/turn/{ANCESTOR}/{MAIN}/{DENSE_TURN}").text,
             client.get(f"/fragment/text/{ANCESTOR}/{MAIN}/{DENSE_TURN_CALL}").text,

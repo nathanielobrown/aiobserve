@@ -21,6 +21,11 @@ from aiobserve.analyze.queries import ParamValue
 from aiobserve.view import bounds
 from aiobserve.view.store import Page, Row, fetch
 
+# Where the list is served. Named here because the route and every link the list mints have
+# to agree: `/` is the projects landing, and a link that still points there drops the sort and
+# the filters this module composed. The templates write it out like any other route.
+LIST_URL = "/sessions"
+
 # What the session list can be sorted by: a column of `view_sessions`, mapped to its header
 # label. A closed dictionary, and the only place a request's `sort` value is ever looked up —
 # an unknown key is a 400, never a fragment of SQL. `tests/view/test_app.py` checks every
@@ -234,4 +239,5 @@ def list_url(sort: str, direction: str, page: int, size: int, filters: Mapping[s
         query["page"] = page
     if size != bounds.SESSIONS.default:
         query["size"] = size
-    return "/?" + urlencode(query | {key: value for key, value in filters.items() if value})
+    narrowed = {key: value for key, value in filters.items() if value}
+    return f"{LIST_URL}?" + urlencode(query | narrowed)

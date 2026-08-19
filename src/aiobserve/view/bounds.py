@@ -49,6 +49,12 @@ CHIPS = Bound(default=8, ceiling=100)
 # Cut from 125 when the row grew the columns that say what a session's subagents and its turns
 # were: a row that says more is a row a page holds fewer of.
 SESSIONS = Bound(default=110, ceiling=110)
+# The landing page, which a corpus grows the way it grows sessions — one row per project it
+# holds, worktrees folded in. Not a size a URL carries: a reader picks a project rather than
+# paging through them, so the page shows the most recently active `PROJECTS` and says how many
+# it left. The row is dearer than its own markup because it carries a link holding a whole
+# project path, and percent-encoding writes three bytes for every byte of it.
+PROJECTS = Bound(default=queries.PAGE_PROJECTS, ceiling=queries.PAGE_PROJECTS)
 
 # The most run rows one page renders however `turns` and `chips` are split. The unattached
 # list is capped at `chips` and rides every page, so a page buys `turns + 1` lists of that

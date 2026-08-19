@@ -33,6 +33,9 @@ class Page(StrEnum):
     """The library queries the pages are built from, by the part each one fills."""
 
     SESSIONS = "view_sessions"
+    # Every project the store holds sessions for, which is the landing page: the counts a
+    # reader lands on are a corpus's, so they come from the `corpus_*` views.
+    PROJECT_ROLLUPS = "view_project_rollups"
     # The names the list's project filter offers, which is a column of the store rather than
     # of the page: the projects on one page of sessions are not the projects to filter by.
     PROJECTS = "view_projects"
