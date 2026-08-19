@@ -47,8 +47,9 @@ CHIPS = Bound(default=8, ceiling=100)
 # under that ceiling at the *worst* cost of a row rather than the measured one — every
 # character of a title or a path can escape to five bytes — so the two are the same number.
 # Cut from 125 when the row grew the columns that say what a session's subagents and its turns
-# were: a row that says more is a row a page holds fewer of.
-SESSIONS = Bound(default=110, ceiling=110)
+# were, and from 110 when the row's markup was priced at the dearest row a list holds rather
+# than at whichever one sorted second: a row that costs more is a row a page holds fewer of.
+SESSIONS = Bound(default=104, ceiling=104)
 # The landing page, which a corpus grows the way it grows sessions — one row per project it
 # holds, worktrees folded in. Not a size a URL carries: a reader picks a project rather than
 # paging through them, so the page shows the most recently active `PROJECTS` and says how many
