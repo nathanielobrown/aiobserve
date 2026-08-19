@@ -20,6 +20,7 @@ from aiobserve.view.app import CSP, TEMPLATES, build_app
 from aiobserve.view.format import ABSENT
 from aiobserve.view.labels import LABELS
 from aiobserve.view.listing import (
+    ARIA_SORT,
     DEFAULT_DIRECTION,
     DEFAULT_SORT,
     DIRECTIONS,
@@ -378,6 +379,23 @@ def test_a_sort_and_its_reverse_are_exact_opposites(
     # And the empties trail both lists, rather than riding to the top of one of them.
     for direction, rows in order.items():
         assert set(rows[len(valued[direction]) :]) == empty & set(rows), direction
+
+
+@pytest.mark.parametrize("direction", sorted(DIRECTIONS))
+def test_the_sorted_heading_says_which_way_in_arias_own_words(
+    direction: str, client: TestClient
+) -> None:
+    """The column in force is the only one marked `aria-sort`, in the words ARIA defines.
+
+    The query string's `asc` and `desc` are ours; `ascending` and `descending` are the tokens
+    a screen reader reads. An invalid token is not read as "unsorted" — it is read as nothing
+    at all, which is the one thing the mark exists to prevent.
+    """
+    page = client.get("/sessions", params={"sort": "cost_usd", "direction": direction}).text
+    marked = re.findall(r'<th[^>]*\bdata-column="([^"]*)"[^>]*\baria-sort="([^"]*)"', page)
+    assert marked == [("cost_usd", ARIA_SORT[direction])]
+    # And the vocabulary is ARIA's, not a rewording of ours that happens to be longer.
+    assert ARIA_SORT[direction] in {"ascending", "descending"}
 
 
 @pytest.mark.parametrize(

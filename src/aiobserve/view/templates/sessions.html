@@ -2,16 +2,20 @@
 {% import "_parts.html" as parts %}
 {% block title %}Sessions — aiobserve{% endblock %}
 
-{# A column heading: a link that re-sorts, marked when it is the sort in force. #}
+{# A column heading: a link that re-sorts, marked when it is the sort in force. The mark is
+   spelled in ARIA's own vocabulary and not the query string's — `aria_direction`, from
+   `view/listing.py` — because a token ARIA does not define announces nothing. #}
 {% macro heading(key) %}
-<th data-column="{{ key }}" {% if key == sort %}aria-sort="{{ direction }}"{% endif %}>
+<th scope="col" data-column="{{ key }}"
+    {%- if key == sort %} aria-sort="{{ aria_direction }}"{% endif %}>
   <a href="{{ links[key] }}">{{ sorts[key] }}</a>
 </th>
 {% endmacro %}
 
-{# The list carries the same pager above and below the table; `place` tells them apart. #}
+{# The list carries the same pager above and below the table; `place` tells them apart —
+   including for a reader who hears the two rather than seeing where they sit. #}
 {% macro pager(place) %}
-<nav class="pager" data-pager="{{ place }}">
+<nav class="pager" data-pager="{{ place }}" aria-label="{{ place }} pager">
   {% if previous %}<a data-page="previous" href="{{ previous }}">← newer page</a>{% endif %}
   <span data-field="range">{% if sessions %}Sessions {{ first | count }}–{{ (first
     + (sessions | length) - 1) | count }}{% else %}No sessions{% endif %}</span>
@@ -56,10 +60,10 @@
       {{ heading('cost_usd') }}
       {{ heading('wall_ms') }}
       {{ heading('agent_runs') }}
-      <th>Skills</th>
+      <th scope="col">Skills</th>
       {# Only over a store a pass has described: an empty column would be a claim about what
          these sessions did that the store cannot support. #}
-      {% if described %}<th>Work</th>{% endif %}
+      {% if described %}<th scope="col">Work</th>{% endif %}
     </tr>
   </thead>
   <tbody>

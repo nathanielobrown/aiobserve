@@ -85,7 +85,7 @@ MEASURED_SESSION_ROW_MARKUP = 1_600
 MEASURED_LIST_ENRICHMENT_MARKUP = 300
 # What a list page weighs apart from its rows: the filter form, the project suggestions, the
 # table head and the two pagers. Measured through the app by the leaf at the bottom of this
-# file, with `&` planted in every suggestion and the box at its cap — 8,622 B, a worst case
+# file, with `&` planted in every suggestion and the box at its cap — 8,915 B, a worst case
 # rather than a corpus observation, because the box is bound in SQL like everything else.
 MEASURED_LIST_CHROME = 10_000
 # What the markup around one row of the landing page costs, with the path it carries taken off,
@@ -93,7 +93,7 @@ MEASURED_LIST_CHROME = 10_000
 # projects it left out. Both re-measured through the app by the leaf at the bottom of this
 # file, every project path planted full of `&` and the store filled past the page's ceiling:
 # 2,076 B a row, of which 782 B is a planted path in its cell and in its link, leaving 1,294 B
-# of stacked window cells and the row around them — and 1,933 B of chrome, which is small
+# of stacked window cells and the row around them — and 2,055 B of chrome, which is small
 # because the page carries no form, no pager and no suggestions.
 MEASURED_PROJECT_ROW_MARKUP = 1_400
 MEASURED_PROJECTS_CHROME = 2_500
@@ -140,7 +140,7 @@ MEASURED_CHIP_ENRICHMENT_MARKUP = 300
 # What a session page weighs apart from the rows above: the header, the page's own markup, and
 # the lines a cut list mints. Measured through the app by the leaf at the bottom of this file,
 # with `&` planted at every cap the header carries and the session described at every one of
-# its own — 13,779 B, which is a page's worst case rather than a corpus observation, because
+# its own — 14,419 B, which is a page's worst case rather than a corpus observation, because
 # everything in a header is now cut in SQL.
 MEASURED_SESSION_CHROME = 15_000
 # What the markup around one node of the map beside a session page costs, with the label the
@@ -149,7 +149,7 @@ MEASURED_SESSION_CHROME = 15_000
 # re-measured through the app by the leaf at the bottom of this file, every cap a label reads
 # planted full of `&` and every node's cost left short of a call: 721 B a turn node and 754 B a
 # run node — the nested kind, the dearer of the two — of which 240 B is the label at its cap,
-# leaving 514 B of link, meter class, unpriced mark and the row around them; and 987 B of
+# leaving 514 B of link, meter class, unpriced mark and the row around them; and 1,055 B of
 # chrome, the widest any recorded map reaches. The allowance is larger than that because no
 # recorded session carries the heading and the tail at once.
 MEASURED_NAV_NODE_MARKUP = 600
