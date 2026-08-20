@@ -25,7 +25,7 @@
   {# What the page left out, said rather than dropped: the store keeps every failure, and this
      page shows the first of them in the order they happened. #}
   {% if cut %}
-  <p class="more" data-more-errors="{{ cut }}">+{{ cut | count }} more failed call(s)</p>
+  <p class="more" data-more-errors="{{ cut }}">+<span data-field="cut">{{ cut | count }}</span> more failed call(s)</p>
   {% endif %}
 </section>
 {% endblock %}
