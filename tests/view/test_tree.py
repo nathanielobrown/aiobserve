@@ -421,6 +421,14 @@ def labelled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, str
         "SELECT id, trigger FROM live_compactions WHERE session_id = ?", [session_id]
     ).fetchall():
         said[f"{Kind.COMPACTION}:{compaction_id}"] = f"compaction · {trigger}"
+    for turn_id, prompt, command_name, command_args in store.execute(
+        "SELECT id, prompt, command_name, command_args FROM live_turns WHERE session_id = ?",
+        [session_id],
+    ).fetchall():
+        # The command a turn ran and what followed it, else the prompt as the reader typed it.
+        said[f"{Kind.TURN}:{turn_id}"] = (
+            f"{command_name} {command_args or ''}".strip() if command_name is not None else prompt
+        )
     for run_id, description, agent_type in store.execute(
         "SELECT id, description, agent_type FROM live_agent_runs WHERE session_id = ?",
         [session_id],
@@ -436,23 +444,33 @@ def test_every_row_is_named_from_the_column_its_kind_is_named_by(
     """A row's label is the whole of what it says, so it is read back against its own column.
 
     A tree row carries `TREE_ROW_BYTES` and no more, so the label is where a kind spends what
-    it has to say — and every kind spends it differently. Read on the page of each kind's own
-    node, where the row is on the open path whichever fold the reader picked, and over every
-    other labelled row that page happens to hold.
+    it has to say — and every kind spends it differently. Every node the store names is read
+    on its own page, where its row is on the open path whichever fold the reader picked: a
+    column that only one recorded row exercises — a slash turn with no arguments after it —
+    is one a sample would step over.
     """
-    seen: Counter[Kind] = Counter()
-    for kind in (Kind.TOOL, Kind.CALL, Kind.COMPACTION, Kind.RUN):
-        for session_id, source, node_id in sorted(candidates(store, kind))[:2]:
-            said = labelled(store, session_id)
+    # Keyed by session as well as by row: two sessions of the corpus record an api call under
+    # the same id, and a row carries the id alone.
+    said = {
+        (str(at), key): value
+        for (at,) in store.execute("SELECT id FROM sessions").fetchall()
+        for key, value in labelled(store, str(at)).items()
+    }
+    read: set[tuple[str, str]] = set()
+    for kind in (Kind.TOOL, Kind.CALL, Kind.COMPACTION, Kind.RUN, Kind.TURN):
+        for session_id, source, node_id in candidates(store, kind):
+            # A page holds more than the node it opens, so the ones already read are skipped.
+            if (session_id, f"{kind}:{node_id}") in read:
+                continue
             page = client.get(node_url(kind, session_id, source, node_id)).text
             assert f"{kind}:{node_id}" in values(page, "data-tree"), node_id
             for key in values(page, "data-tree"):
-                if key in said:
-                    assert fields(page, "data-tree", key)["label"] == said[key], key
-                    seen[Kind(key.partition(":")[0])] += 1
-    # Every kind the store names a row from was read. A sweep that reached no compaction would
-    # pass on a compaction labelled from any column at all.
-    assert set(seen) == {Kind.TOOL, Kind.CALL, Kind.COMPACTION, Kind.RUN}, seen
+                if (at := (session_id, key)) in said:
+                    assert fields(page, "data-tree", key)["label"] == said[at], at
+                    read.add(at)
+    # Every row the store names a label for was reached. A sweep that missed one would pass on
+    # a label built from any column at all.
+    assert read == set(said)
 
 
 # The calls of one thread that answer no turn of it — the rows the unattributed bucket stands

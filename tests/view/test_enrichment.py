@@ -315,6 +315,16 @@ def test_a_tree_row_the_model_named_carries_a_bare_glyph(
     )
     undescribed = enriched_client.get(f"/session/{bare_session}").text
     assert GLYPH_CLASS not in inside(undescribed, "data-tree", f"turn:{bare}", "class")
+    # A run reads the same way through a different builder: its row is labelled by the pass
+    # rather than by the brief it was given, and carries the same bare mark.
+    ran = enrichment_of(enriched_store, Level.agent_run, SPINE)
+    run_id = next(iter(ran))
+    page = enriched_client.get(f"/session/{SPINE}/run/{run_id}").text
+    assert fields(page, "data-tree", f"run:{run_id}")["label"] == cut(
+        ran[run_id][0], queries.NAV_CHARS
+    )
+    assert GLYPH_CLASS in inside(page, "data-tree", f"run:{run_id}", "class")
+    assert not inside(page, "data-tree", f"run:{run_id}", "title")
 
 
 def test_a_model_written_description_is_escaped_like_any_other_transcript_text(
