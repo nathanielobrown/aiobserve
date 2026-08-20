@@ -83,6 +83,13 @@ FAT = (
 # `bounds.CHIP_BUDGET` multiplies that 200 times. The alternative was cutting the budget, which
 # would put the widest forest the corpus records behind a "+N more" nobody can open.
 PAGE_BYTES = 500_000
+# What a node page may weigh, which is its own budget rather than the one above. The tree is
+# `DEPTH` levels of `KIN` children, so the window a level opens on prices four fifths of the
+# page — and it is a window, not a limit: a tail row fetches what it left out and stands the
+# rows in its own place, without a page boundary anywhere. Widening the window is a reader
+# reaching further per click, and pinning it here rather than against `PAGE_BYTES` keeps that
+# choice off the list pages, whose ceilings are derived against the number above.
+NODE_BYTES = 900_000
 # What the markup around one row of the list costs, with the content the row carries taken off.
 # Re-measured through the app by the leaf at the bottom of this file, every cap full of `&`,
 # at the dearest row the list holds rather than at whichever one sorted second: that row cost
@@ -301,9 +308,10 @@ def worst_node_bytes() -> int:
     path runs `DEPTH` levels deep — so `bounds.TREE_ROW_BYTES` is four fifths of the ceiling,
     and the row is pinned rather than budgeted.
 
-    `KIN` children per level is the whole of it: `tree._kin` keeps the child the path descends
-    through *inside* the cap rather than past it, and `test_tree.py` pins that. A rescue that
-    added a row would put a level at `KIN + 1` and this page 16 rows over what it prices.
+    `KIN` children per level is the whole of it: `tree.windowed` keeps the child the path
+    descends through *inside* the window rather than past it, and `test_tree.py` pins that. A
+    rescue that added a row would put a level at `KIN + 1` and this page 16 rows over what it
+    prices.
 
     The sizes' own defaults spend it, and each of the three knobs only goes down from there —
     but a knob a reader turns down writes itself into every link on the page, so the rows are
@@ -505,7 +513,7 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     # And the node page, the one page every node URL serves: the tree a reader walks down the
     # left, and the pane beside it. Its three sizes are each their own ceiling, so this is the
     # widest response any node URL can be asked for.
-    assert worst_node_bytes() < PAGE_BYTES
+    assert worst_node_bytes() < NODE_BYTES
     # And no default asks for more than its own ceiling allows, which nothing else checks: a
     # default above the ceiling serves a 400 to a reader who typed no size at all. Read off the
     # module rather than listed, so a size added later cannot dodge the check.
@@ -651,6 +659,16 @@ ROUTES: dict[str, str] = {
         f"/fragment/body/turn/{ANCESTOR}/main/{DENSE_TURN}"
     ),
     "/fragment/body/run/{session_id}/{run_id}": f"/fragment/body/run/{SPINE}/{SPINE_RUN}",
+    # And the rest of a level, the way a `+N more` row opens one. Two shapes again, plus the
+    # thread the reader is on and the depth the rows are going to, neither of which the level
+    # itself can say. The window is turned down because what these serve is whatever a window
+    # left out — at the default, over this corpus, nothing at all.
+    "/fragment/kin/{kind}/{session_id}/{source}/{node_id}": (
+        f"/fragment/kin/turn/{ANCESTOR}/main/{DENSE_TURN}?kin=1&thread=main&depth=2"
+    ),
+    "/fragment/kin/{kind}/{session_id}/{node_id}": (
+        f"/fragment/kin/session/{SPINE}/{SPINE}?kin=1&thread=main&depth=1"
+    ),
     # And the statement behind a citation, which every page's footer links to.
     f"{QUERY_URL}/{{name}}": f"{QUERY_URL}/view_sessions",
 }
@@ -672,7 +690,7 @@ def test_every_route_the_viewer_exposes_is_in_the_payload_sweep(client: TestClie
 
 @pytest.mark.parametrize("path", sorted(ROUTES.values()))
 def test_no_route_serves_more_than_the_page_ceiling(path: str, client: TestClient) -> None:
-    """Every route answers under the ceiling at the production defaults — no size bound down.
+    """Every route answers under the ceiling at the sizes its URL carries.
 
     A smoke check rather than the proof: the fixture corpus is far smaller than a page, so
     what makes the bound hold is the fat-column scan and the page-size arithmetic above. What

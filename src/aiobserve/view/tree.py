@@ -100,6 +100,10 @@ class TreeRow:
     # On a tail row, how many of `node`'s children the cap left out. Zero on a node's own row,
     # which is what tells the two apart.
     cut: int = 0
+    # On a tail row, the key of the child the open path descends through, when this level holds
+    # one. The row's own fetch carries it: the cap keeps that child whatever its place in the
+    # level, so the fetch has to know it to leave it out of what it sends back.
+    opened: str | None = None
 
 
 class Tree(NamedTuple):
@@ -399,7 +403,7 @@ def _tools_level(
     )
 
 
-def _unattached_level(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
+def _unattached_level(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) -> Level:
     """The runs nothing placed. Already read with the session's runs, so this reads nothing."""
     nodes = [
         run_node(corpus.session_id, run, corpus.whole, corpus.run_text(run["run_id"]))
@@ -409,14 +413,14 @@ def _unattached_level(connection: duckdb.DuckDBPyConnection, corpus: Corpus, nod
     return Level(nodes, [])
 
 
-def _leaf(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
+def _leaf(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) -> Level:
     """A node nothing hangs under: a tool call, and a compaction."""
     return Level([], [])
 
 
 # The `agents` preset's levels, which read nothing: a run is placed by an edge `view_runs`
 # already answered, so the whole spawn tree is arithmetic over the runs read for the request.
-def _agent_session(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
+def _agent_session(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) -> Level:
     """The runs the main thread spawned, then the runs nothing placed."""
     placed = _runs(corpus, [run for run in corpus.runs if run["spawn_source"] == MAIN_SOURCE])
     loose = [run for run in corpus.runs if run["spawn_source"] is None]
@@ -425,73 +429,71 @@ def _agent_session(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: 
     return Level(placed, [])
 
 
-def _agent_children(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
+def _agent_children(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) -> Level:
     """The runs a run spawned, by what the transcript says their parent was.
 
     `parent_agent_id` rather than the spawning call, because this is the one level the preset
     is about: a run whose spawning call resolved to nothing still names the run it came from.
     """
-    return Level(
-        _runs(corpus, [r for r in corpus.runs if r["parent_agent_id"] == node.node_id]), []
-    )
+    return Level(_runs(corpus, [r for r in corpus.runs if r["parent_agent_id"] == at.node_id]), [])
 
 
-def _agent_thread(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
+def _agent_thread(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) -> Level:
     """The runs one turn — or, at a bucket, one thread's turnless calls — spawned."""
-    turn_id = None if node.kind is Kind.UNATTRIBUTED else node.node_id
-    return Level(_runs(corpus, _spawned(corpus, str(node.source), turn_id)), [])
+    turn_id = None if at.kind is Kind.UNATTRIBUTED else at.node_id
+    return Level(_runs(corpus, _spawned(corpus, str(at.source), turn_id)), [])
 
 
-def _agent_call(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
+def _agent_call(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) -> Level:
     """The runs one api call spawned. Matched on the thread too: a fork's transcript replays
     its parent's calls, so an id alone would hang the run under the replayed copy as well."""
     placed = [
         run
         for run in corpus.runs
-        if run["spawn_call_id"] == node.node_id and run["spawn_source"] == node.source
+        if run["spawn_call_id"] == at.node_id and run["spawn_source"] == at.source
     ]
     return Level(_runs(corpus, placed), [])
 
 
-def _agent_tool(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
+def _agent_tool(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) -> Level:
     """The run one tool call spawned, matched on the thread for the same reason as the call."""
     placed = [
         run
         for run in corpus.runs
-        if run["tool_use_id"] == node.node_id and run["spawn_source"] == node.source
+        if run["tool_use_id"] == at.node_id and run["spawn_source"] == at.source
     ]
     return Level(_runs(corpus, placed), [])
 
 
-def _session_level(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
+def _session_level(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) -> Level:
     return _thread_level(connection, corpus, MAIN_SOURCE, unattached=True)
 
 
-def _run_level(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
-    return _thread_level(connection, corpus, node.node_id, unattached=False)
+def _run_level(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) -> Level:
+    return _thread_level(connection, corpus, at.node_id, unattached=False)
 
 
-def _turn_calls(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
-    return _calls_level(connection, corpus, str(node.source), node.node_id)
+def _turn_calls(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) -> Level:
+    return _calls_level(connection, corpus, str(at.source), at.node_id)
 
 
-def _bucket_calls(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
-    return _calls_level(connection, corpus, str(node.source), None)
+def _bucket_calls(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) -> Level:
+    return _calls_level(connection, corpus, str(at.source), None)
 
 
-def _turn_tools(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
-    return _tools_level(connection, corpus, str(node.source), None, node.node_id)
+def _turn_tools(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) -> Level:
+    return _tools_level(connection, corpus, str(at.source), None, at.node_id)
 
 
-def _bucket_tools(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
-    return _tools_level(connection, corpus, str(node.source), None, None)
+def _bucket_tools(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) -> Level:
+    return _tools_level(connection, corpus, str(at.source), None, None)
 
 
-def _call_tools(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
-    return _tools_level(connection, corpus, str(node.source), node.node_id, None)
+def _call_tools(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) -> Level:
+    return _tools_level(connection, corpus, str(at.source), at.node_id, None)
 
 
-Builder = Callable[[duckdb.DuckDBPyConnection, Corpus, Node], Level]
+Builder = Callable[[duckdb.DuckDBPyConnection, Corpus, Ref], Level]
 
 # What one kind of node holds under one filter preset — the design's kind × preset table, one
 # entry per cell. Total over `Kind × Preset` on purpose, and spelled out rather than defaulted:
@@ -525,6 +527,32 @@ CHILDREN: dict[tuple[Kind, Preset], Builder] = {
 }
 
 
+def children(
+    connection: duckdb.DuckDBPyConnection,
+    corpus: Corpus,
+    at: Ref,
+    preset: Preset,
+    descends: str | None,
+) -> Level:
+    """What hangs under one node in one fold: the cell of the table above, read.
+
+    Identity is the whole of what a level needs — the cell is picked by kind and the query it
+    runs is keyed by ids — so a caller holding a ref can read a level without rendering the
+    node it hangs under. Which is what a tail row's own fetch does (`view/app.py`).
+
+    `descends` is the key of the child the open path goes through, or None where this level is
+    not on it. A preset filters children and never the expanded chain: where the cell hides
+    that child, the level comes back in full instead, so a reader standing on a kind the fold
+    hides still sees where it sits. Adding the step to the filtered level would draw part of
+    the tree twice — `noapi` hoists a tool call to its turn, so an api call spliced back in
+    would render its own copy of a row already sitting a level higher.
+    """
+    level = CHILDREN[(at.kind, preset)](connection, corpus, at)
+    if descends is not None and all(child.key != descends for child in level.nodes):
+        return CHILDREN[(at.kind, Preset.FULL)](connection, corpus, at)
+    return level
+
+
 def tree(
     connection: duckdb.DuckDBPyConnection,
     corpus: Corpus,
@@ -555,21 +583,17 @@ def tree(
         if node.key not in open_keys:
             return
         chain.append(node)
-        level = CHILDREN[(node.kind, preset)](connection, corpus, node)
         at = open_keys.index(node.key) + 1
-        if at < len(open_keys) and all(child.key != open_keys[at] for child in level.nodes):
-            # A preset filters children and never the expanded chain: where this level's cell
-            # hides the kind the path goes through, the level renders in full instead. Adding
-            # the step to the filtered level would draw part of the tree twice — `noapi`
-            # hoists a tool call to its turn, so an api call spliced back in would render its
-            # own copy of a row already sitting a level higher.
-            level = CHILDREN[(node.kind, Preset.FULL)](connection, corpus, node)
+        descends = open_keys[at] if at < len(open_keys) else None
+        level = children(connection, corpus, node.ref, preset, descends)
         ran.extend(level.ran)
-        kept, cut = _kin(level.nodes, cap, open_keys)
-        for child in kept:
+        shown = windowed(level.nodes, cap, open_keys)
+        for child in shown.kept:
             expand(child, depth + 1)
-        if cut:
-            rows.append(TreeRow(node, depth + 1, selected=False, cut=cut))
+        if shown.cut:
+            rows.append(
+                TreeRow(node, depth + 1, selected=False, cut=len(shown.cut), opened=descends)
+            )
 
     expand(root, 0)
     # The selection renders out of its parent's level, so a chain shorter than the trail means
@@ -579,14 +603,26 @@ def tree(
     return Tree(rows, chain, ran)
 
 
-def _kin(under: Sequence[Node], cap: int, open_keys: Sequence[str]) -> tuple[list[Node], int]:
-    """The first `cap` children, the one the path descends through among them, and what was cut.
+class Window(NamedTuple):
+    """One level split by the cap: the children a page draws, and the ones it leaves for the
+    tail row to fetch."""
+
+    kept: list[Node]
+    cut: list[Node]
+
+
+def windowed(under: Sequence[Node], cap: int, open_keys: Sequence[str]) -> Window:
+    """The first `cap` children, the one the path descends through among them, and the rest.
 
     The path's child takes a slot rather than an extra row: `cap` is what the page's byte
     arithmetic is priced on, so a level that renders `cap + 1` children is a page over the
     bound. Only one child of a level can be on the path, so the rescue costs at most the level's
-    last shown sibling — a row the tail still counts and the parent's own page still lists.
+    last shown sibling — a row the tail still counts and offers.
+
+    One rule for both halves: the tail row fetches what it says it left out, and the two would
+    drift apart if the fetch counted the window a second way.
     """
     rescued = [node for node in under[cap:] if node.key in open_keys]
-    kept = list(under[: max(cap - len(rescued), 0)])
-    return kept + rescued, len(under) - len(kept) - len(rescued)
+    shown = list(under[: max(cap - len(rescued), 0)])
+    keys = {node.key for node in rescued}
+    return Window(shown + rescued, [node for node in under[len(shown) :] if node.key not in keys])

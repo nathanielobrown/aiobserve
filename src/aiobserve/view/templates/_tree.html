@@ -17,13 +17,23 @@
 {% endmacro %}
 
 
-{% macro lines(rows, suffix) %}
+{% macro lines(rows, suffix, thread) %}
 {% for row in rows %}
 {% if row.cut %}
-{# What the cap left out of this level. The link goes to the parent's own page, which pages
-   its children rather than capping them. #}
+{# What the window left out of this level, and the way to it: htmx fetches those rows and
+   stands them where this one stands, so the level opens without the reader losing the pane.
+   A button rather than a link — there is no page at the other end, only the rest of a level —
+   and every part of the swap a tree row inherits is overridden here, because what comes back
+   is rows rather than a pane. The fetch carries the reader's knobs, the thread they are
+   reading on — which is what a row is described by, whatever thread the level belongs to —
+   the depth these rows sit at, and the child the open path descends through, which the cap
+   kept and this must not send twice. #}
+{%- set fetch = suffix ~ ('&' if suffix else '?') ~ 'thread=' ~ thread ~ '&depth=' ~ row.depth
+    ~ ('&opened=' ~ row.opened if row.opened else '') %}
 <li class="row more" data-depth="{{ row.depth }}" data-more="{{ row.node.key }}">
-  <a href="{{ row.node.url }}{{ suffix }}">+<span data-field="cut">{{ row.cut | count }}</span> more</a>
+  <button type="button" hx-get="{{ row.node.rest }}{{ fetch }}" hx-target="closest li"
+          hx-swap="outerHTML" hx-select="unset" hx-select-oob="unset" hx-push-url="false"
+    >+<span data-field="cut">{{ row.cut | count }}</span> more</button>
 </li>
 {% else %}
 <li class="row node {{ row.node.kind }} {{ row.node.meter }}" data-depth="{{ row.depth }}"

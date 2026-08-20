@@ -34,8 +34,8 @@ from aiobserve.view import bounds, tree
 from aiobserve.view.app import build_app
 from aiobserve.view.enrichment import Descriptions
 from aiobserve.view.format import cut, money
-from aiobserve.view.nodes import BODY_URL, Kind, Preset, Ref, meter
-from tests.conftest import MAIN, SPINE
+from aiobserve.view.nodes import BODY_URL, KIN_URL, Kind, Preset, Ref, meter
+from tests.conftest import MAIN, SPINE, SPINE_RUN
 from tests.view.conftest import SPAWNS, Planter, fields, inside, kin, one, rows, values, wired
 
 
@@ -440,8 +440,9 @@ def test_the_kin_cap_cuts_the_children_but_never_the_open_path(
 ) -> None:
     """Children are capped per level, with a row saying how many the cap left out.
 
-    Driven below the fixture corpus's fan-out rather than planted up to the production cap:
-    no recorded session comes near 25 children, and the knob exists for exactly this. The cap
+    Driven below the fixture corpus's fan-out rather than planted up to the production
+    window: no recorded session comes near 50 children, and the knob exists for exactly this.
+    The cap
     bites twice here — once on the level beside the selection, once on the calls under it —
     and the selection survives it either way. A cut that hid the open path would leave the
     pane describing a node the tree does not show.
@@ -456,10 +457,10 @@ def test_the_kin_cap_cuts_the_children_but_never_the_open_path(
     # row still counts and the parent's own page still lists.
     shown = [key for key in values(html, "data-tree") if key in level]
     assert shown == [f"turn:{selection}"]
-    # ...with a tail saying how many rows are off the tree, linking to the page that pages
-    # them rather than capping them: the session's own, still under the size the reader typed.
+    # ...with a tail saying how many rows are off the tree, and no way off the page at all:
+    # what it offers is a fetch for the rest of its own level, which the leaf below follows.
     assert fields(html, "data-more", f"session:{SPINE}")["cut"] == str(len(level) - len(shown))
-    assert inside(html, "data-more", f"session:{SPINE}", "href") == [f"/session/{SPINE}?kin=1"]
+    assert inside(html, "data-more", f"session:{SPINE}", "href") == []
     # And the level under the selection takes the same cap, where no rescue is owed: one child
     # of the several the turn has, and a tail for the rest.
     assert [key for key in values(html, "data-tree") if key in under] == [under[0]]
@@ -468,6 +469,85 @@ def test_the_kin_cap_cuts_the_children_but_never_the_open_path(
     # `DEPTH * (KIN + 1)` rows on exactly this, so it is pinned here rather than left to a
     # reading of `_kin`.
     assert max(Counter(depth for depth, _ in rows(html)).values()) <= 1
+
+
+def test_a_tail_row_stands_the_rest_of_its_level_where_it_stands(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A `+N more` row opens the rest of its level in place, without moving the reader.
+
+    What comes back is rows and not a pane, so the row overrides every part of the swap the
+    tree writes once above it: it swaps out the row it sits in — the row, not the button
+    inside it — selects nothing, sends nothing out of band, and pushes no URL, because the
+    reader has not gone anywhere. The rows arrive at the depth
+    the row stood at and in the level's own order, which is what lets them stand in its place.
+
+    Both halves of one split are read here — the level beside the selection, where the open
+    path holds a child inside the window wherever in the level it sits, and the level under
+    the selection, where nothing is held back. The fetch names the held child so the two
+    halves cannot both send it.
+    """
+    selection = open_turn(store)
+    page = client.get(url(selection), params={"kin": 1}).text
+    level, under = thread_level(store, SPINE, MAIN), turn_level(store, SPINE, MAIN, selection)
+    tails = dict(wired(page, "data-more"))
+    fetch, below = tails[f"session:{SPINE}"], tails[f"turn:{selection}"]
+    # The whole of what the row does, inheritance and all...
+    assert fetch == {
+        "hx-get": (
+            f"{KIN_URL}/session/{SPINE}/{SPINE}?kin=1&thread={MAIN}&depth=1&opened=turn:{selection}"
+        ),
+        "hx-target": "closest li",
+        "hx-swap": "outerHTML",
+        "hx-select": "unset",
+        "hx-select-oob": "unset",
+        "hx-push-url": "false",
+    }
+    # ...and what it fetches is the level less the window, at the depth the row sits at: the
+    # rows the reader could not see, ready to stand where the row that counted them stands.
+    served = client.get(fetch["hx-get"])
+    assert served.status_code == 200
+    assert rows(served.text) == [(1, key) for key in level if key != f"turn:{selection}"]
+    # Each of them reads on under the sizes the reader typed, like any row the page drew, and
+    # by one URL whether it is clicked or pasted.
+    for key, wiring in wired(served.text, "data-tree"):
+        assert wiring["href"] == wiring["hx-get"], key
+        assert parse_qs(urlsplit(wiring["hx-get"]).query) == {"kin": ["1"]}, key
+    # The level under the selection has no open path through it, so its tail row holds nothing
+    # back and asks for everything past the window.
+    assert (
+        below["hx-get"] == f"{KIN_URL}/turn/{SPINE}/{MAIN}/{selection}?kin=1&thread={MAIN}&depth=2"
+    )
+    assert rows(client.get(below["hx-get"]).text) == [(2, key) for key in under[1:]]
+
+
+def test_a_fetched_row_is_described_by_the_thread_the_reader_stands_on(
+    enriched_client: TestClient,
+) -> None:
+    """The rest of a level arrives named the way the page names it, not the way its thread does.
+
+    `view_enrichment` keys turns by thread, so a page reads the descriptions of the one thread
+    the reader is on and every turn of another thread falls back to its prompt. A run page is
+    one such reader: the session's own turns are drawn above it, undescribed. The rows a tail
+    row fetches have to agree — a fetch that read the level's thread instead would serve the
+    same turns under other names, which is the one thing a row standing in another's place
+    cannot do.
+    """
+    page = f"/session/{SPINE}/run/{SPINE_RUN}"
+    # The main thread's turns as this page draws them: the level the run hangs under, whole.
+    whole = enriched_client.get(page).text
+    drawn = {key: fields(whole, "data-tree", key)["label"] for at, key in rows(whole) if at == 1}
+    # The same level under a window of one, and the rows its tail row stands for.
+    tail = dict(wired(enriched_client.get(page, params={"kin": 1}).text, "data-more"))
+    served = enriched_client.get(tail[f"session:{SPINE}"]["hx-get"]).text
+    fetched = {key: fields(served, "data-tree", key)["label"] for _, key in rows(served)}
+    assert fetched, "the window left nothing out: this page no longer proves the case"
+    assert fetched == {key: drawn[key] for key in fetched}
+    # And the claim has teeth: on its own page the main thread reads by its descriptions, so
+    # a fragment that read the level's thread would have served those names instead.
+    home = enriched_client.get(f"/session/{SPINE}").text
+    described = {key: fields(home, "data-tree", key)["label"] for at, key in rows(home) if at == 1}
+    assert any(described[key] != label for key, label in fetched.items())
 
 
 def test_a_chain_is_resolved_to_the_depth_the_page_prices_and_no_deeper(
@@ -872,11 +952,16 @@ def test_a_size_above_its_ceiling_is_refused(
     links.
     """
     at = url(open_turn(store))
-    opening = mounts(client.get(at).text)[0]
+    page = client.get(at, params={"kin": 1}).text
+    opening = mounts(page)[0]
+    # The rest of a level takes them as well, stripped back to the one thing it cannot answer
+    # without: the sizes are what this leaf turns, and a URL carrying two of one is not a case.
+    spilling = spilled(page)[0].partition("?")[0]
     for knob, bound in (("kin", bounds.KIN), ("log", bounds.LOG), ("detail", bounds.DETAIL)):
-        for asked in (at, opening):
-            assert client.get(asked, params={knob: bound.ceiling + 1}).status_code == 400, knob
-            assert client.get(asked, params={knob: bound.ceiling}).status_code == 200, knob
+        for asked, fixed in ((at, {}), (opening, {}), (spilling, {"thread": MAIN, "depth": 1})):
+            for size, answer in ((bound.ceiling + 1, 400), (bound.ceiling, 200)):
+                served = client.get(asked, params=fixed | {knob: size})
+                assert served.status_code == answer, (asked, knob, size)
 
 
 # The runs of one session beside every edge a preset places them by: the spawning edge the
@@ -1107,6 +1192,11 @@ def mounts(html: str) -> list[str]:
     return [unescape(href) for href in values(html, "hx-get") if href.startswith(BODY_URL)]
 
 
+def spilled(html: str) -> list[str]:
+    """Every level a page's tail rows fetch the rest of, unescaped."""
+    return [unescape(href) for href in values(html, "hx-get") if href.startswith(KIN_URL)]
+
+
 # An api call that made a `Task` call: the one call whose tool log mounts a body with a run
 # link in it, read from the tool's side of the join `view_runs` makes.
 SPAWNING_CALL = (
@@ -1322,6 +1412,18 @@ def test_a_preset_rides_every_node_link_the_page_mints(
                 assert parse_qs(unescape(href).partition("?")[2]).get("nav") == ["agents"], href
             opened.add(mount[len(BODY_URL) + 1 :].partition("/")[0])
             led += len(values(served.text, "data-spawned"))
+    # And the rows a tail row fetches are minted by the fragment and not by the page, so the
+    # fold rides the fetch out and comes back on every row it answers with.
+    spilling = spilled(html)
+    assert spilling, "the window left a tail row on the page"
+    for fetch in spilling:
+        assert parse_qs(fetch.partition("?")[2]).get("nav") == ["agents"], fetch
+        served = client.get(fetch)
+        assert served.status_code == 200, fetch
+        onward = [unescape(href) for href in values(served.text, "href")]
+        assert onward, f"the level it left out has rows in it: {fetch}"
+        for href in onward:
+            assert parse_qs(href.partition("?")[2]).get("nav") == ["agents"], href
     # The three kinds of body one route serves, and the run the other one does.
     assert opened == {Kind.TURN, Kind.CALL, Kind.TOOL, Kind.RUN}, opened
     # One of those tool bodies led with the run it started. That link is the only one the pane
