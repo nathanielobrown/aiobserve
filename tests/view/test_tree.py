@@ -266,6 +266,17 @@ def test_a_bucket_home_is_decided_by_the_spawning_edge(
         # The unattached bucket, which is the other home, does not also hold it.
         loose = moved.get(f"/session/{SPINE}/unattached")
         assert f"run:{run_id}" not in values(loose.text, "data-tree")
+        # The run's own page agrees with the bucket that holds it. Read here because the tree
+        # above is drawn from the bucket down while a run page is drawn from the run up: the
+        # two answers come from different code, and a page that disagreed would be a crash —
+        # the trail would look for the run under a bucket the session's tree does not hold.
+        own = moved.get(f"/session/{SPINE}/run/{run_id}")
+        assert own.status_code == 200
+        assert values(own.text, "data-crumb") == [
+            f"session:{SPINE}",
+            f"unattributed:{source}",
+            f"run:{run_id}",
+        ]
         # And the bucket's three cells all place it, which is the shape no recorded session
         # has: a run under a thread's bucket, read under each preset in turn.
         planted = duckdb.connect(str(path), read_only=True)
@@ -312,30 +323,40 @@ def test_the_kin_cap_cuts_the_children_but_never_the_open_path(
     assert max(Counter(depth for depth, _ in rows(html)).values()) <= 1
 
 
-def test_a_chain_deeper_than_the_page_is_priced_for_is_refused(
+def test_a_chain_is_resolved_to_the_depth_the_page_prices_and_no_deeper(
     store: duckdb.DuckDBPyConnection,
 ) -> None:
-    """Resolving a path past `bounds.DEPTH` raises rather than opening a tree nothing priced.
+    """`bounds.DEPTH` is the last chain `ancestry` resolves; one level past it raises.
 
     The response's bound is arithmetic over the depth and the per-level cap, so a deeper chain
-    is not a bigger page — it is a page whose size was never computed. The corpus reaches five
-    levels and a run adds two, so the shape is built rather than recorded: a ladder of runs,
-    each spawned from a turn of the one above it.
+    is not a bigger page — it is a page whose size was never computed. Read at the boundary
+    from both sides, because a bound that refused at `DEPTH` would silently cost the deepest
+    page the arithmetic paid for. The corpus reaches five levels, so the shape is built rather
+    than recorded: a ladder of runs, each spawned from a turn of the one above it.
     """
+    assert bounds.DEPTH % 2 == 0, "a turn lands on an even depth; an odd one would select a run"
+    # Every rung is two levels — a run and the turn that spawned it — so the ladder is sized to
+    # straddle the bound with its last two rungs: a turn on the second-deepest thread stands
+    # exactly `DEPTH` under the session, and the run that turn spawned stands one deeper.
     ladder = [
         {
             "run_id": f"a{step}",
             "spawn_source": f"a{step - 1}" if step else MAIN_SOURCE,
             "spawn_turn_id": f"t{step}",
         }
-        for step in range(bounds.DEPTH)
+        for step in range(bounds.DEPTH // 2)
     ]
     corpus = tree.Corpus(SPINE, whole=0.0, runs=ladder, described=Descriptions(), source=MAIN)
-    # A short ladder resolves: every rung is a run and a turn, and the session caps it.
+    # A short ladder resolves, which is what says a rung is worth two levels and not some other
+    # number: two runs and the turn selected on the second is four levels under the session.
     shallow = tree.Corpus(SPINE, 0.0, ladder[:2], Descriptions(), MAIN)
     assert len(tree.ancestry(shallow, [Ref(Kind.RUN, "a1", "a1")])) == 5
+    # Exactly `DEPTH` is served...
+    spawning, deepest = str(ladder[-2]["run_id"]), str(ladder[-1]["run_id"])
+    assert len(tree.ancestry(corpus, [Ref(Kind.TURN, spawning, "t")])) == bounds.DEPTH
+    # ...and the run that turn spawned, one level deeper, is refused.
     with pytest.raises(ValueError, match=str(bounds.DEPTH)):
-        tree.ancestry(corpus, [Ref(Kind.RUN, ladder[-1]["run_id"], ladder[-1]["run_id"])])
+        tree.ancestry(corpus, [Ref(Kind.RUN, deepest, deepest)])
 
 
 def test_a_row_draws_a_spend_bar_only_where_it_has_a_share_to_draw(
