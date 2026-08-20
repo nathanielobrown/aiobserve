@@ -13,7 +13,7 @@ SELECT
     c.id AS api_call_id,
     -- The two model names, cut like every other string a repeated row shows: what an api
     -- request carried is Claude Code's to lengthen, and a call row rides a page of a hundred.
-    substr(c.model, 1, $log_chars) AS model,
+    substr(c.model, 1, $log_chars + 1) AS model,
     substr(c.fallback_from, 1, $log_chars) AS fallback_from,
     c.effort,
     c.stop_reason,

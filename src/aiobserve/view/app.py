@@ -415,6 +415,16 @@ def build_app(db_path: Path) -> FastAPI:
         """
         return fmt.path(value, fmt.home())
 
+    def line(value: str | None) -> str:
+        """A row's string at the width a children log prints it, marked where it was cut.
+
+        The template's half of the one-extra-character protocol: every string a log row prints
+        comes back from its query one character past this width, so a value that arrives longer
+        than the cut is a value with more behind it. What `nodes.Node.line` does for the words a
+        node is named by, for the columns a row prints straight off the row.
+        """
+        return fmt.ABSENT if value is None else fmt.cut(value, queries.LOG_CHARS)
+
     templates.env.filters |= {
         "money": fmt.money,
         "count": fmt.count,
@@ -423,6 +433,7 @@ def build_app(db_path: Path) -> FastAPI:
         "clock": fmt.clock,
         "duration": fmt.duration,
         "text": fmt.text,
+        "line": line,
         "path": project_path,
         "ago": ago,
         # The three filters that print what a transcript wrote. Each hands back escaped
@@ -665,7 +676,10 @@ def build_app(db_path: Path) -> FastAPI:
         if page < 1:
             raise HTTPException(404, "A children log is numbered from page one.")
         bound = header_bound(session_id)
-        runs_bound = {"session_id": session_id, "chip_chars": queries.NAV_CHARS}
+        # The session's runs are read once and printed twice: as a tree row at a label's width
+        # and as a children log row at a line's. Cut to the wider of the two here, and cut
+        # again at each — a row cut to the narrower would print a line already stopped.
+        runs_bound = {"session_id": session_id, "chip_chars": queries.LOG_CHARS}
         with open_store(resolved) as connection:
             head = page_rows(connection, Page.SESSION_HEADER, **bound)
             if not head:
@@ -833,9 +847,11 @@ def build_app(db_path: Path) -> FastAPI:
 
         def read(connection: duckdb.DuckDBPyConnection, corpus: tree.Corpus, head: Row) -> Seen:
             offset = skipped(page, log)
-            turns = window(
-                connection, Page.TIMELINE, TURN_CURSOR, offset, log, session_id=session_id
-            )
+            bound: dict[str, ParamValue] = {
+                "session_id": session_id,
+                "log_chars": queries.LOG_CHARS,
+            }
+            turns = window(connection, Page.TIMELINE, TURN_CURSOR, offset, log, **bound)
             return Seen(
                 header=head,
                 trail=[Ref(Kind.SESSION, None, session_id)],
@@ -844,7 +860,7 @@ def build_app(db_path: Path) -> FastAPI:
                 total=turns.total,
                 details=[],
                 record=None,
-                ran=[(Page.TIMELINE, {"session_id": session_id, "offset": offset, "limit": log})],
+                ran=[(Page.TIMELINE, bound | {"offset": offset, "limit": log})],
             )
 
         return browse(request, session_id, MAIN_SOURCE, nav, kin, log, detail, page, read)
@@ -936,15 +952,12 @@ def build_app(db_path: Path) -> FastAPI:
             if not rows:
                 raise HTTPException(404, "No run with that id is in this session.")
             offset = skipped(page, log)
-            turns = window(
-                connection,
-                Page.RUN_TIMELINE,
-                TURN_CURSOR,
-                offset,
-                log,
-                session_id=session_id,
-                source=run_id,
-            )
+            timeline: dict[str, ParamValue] = {
+                "session_id": session_id,
+                "source": run_id,
+                "log_chars": queries.LOG_CHARS,
+            }
+            turns = window(connection, Page.RUN_TIMELINE, TURN_CURSOR, offset, log, **timeline)
             return Seen(
                 header=rows[0],
                 trail=[Ref(Kind.RUN, run_id, run_id)],
@@ -967,15 +980,7 @@ def build_app(db_path: Path) -> FastAPI:
                 record=None,
                 ran=[
                     (Page.RUN_HEADER, bound),
-                    (
-                        Page.RUN_TIMELINE,
-                        {
-                            "session_id": session_id,
-                            "source": run_id,
-                            "offset": offset,
-                            "limit": log,
-                        },
-                    ),
+                    (Page.RUN_TIMELINE, timeline | {"offset": offset, "limit": log}),
                 ],
             )
 

@@ -6,13 +6,15 @@
 -- the call that spawned it, so without the exclusion the join matches that copy and the fork
 -- chips onto a turn of its own timeline — listing itself as its own child.
 -- `enrich/store.py:item_parents` applies the same rule for the same reason.
--- The three display columns are cut to `$chip_chars`: a run is a chip on someone else's page,
--- and a page's size is arithmetic over its rows rather than an observation about the corpus.
+-- The three display columns are cut to `$chip_chars`, one character past it: a run is a chip
+-- on someone else's page, and a page's size is arithmetic over its rows rather than an
+-- observation about the corpus. The extra character is what tells a value that ended from one
+-- that was stopped — whoever binds the width cuts again at it and marks what it cut.
 SELECT
     a.id AS run_id,
-    substr(a.agent_type, 1, $chip_chars) AS agent_type,
-    substr(a.description, 1, $chip_chars) AS description,
-    substr(a.model, 1, $chip_chars) AS model,
+    substr(a.agent_type, 1, $chip_chars + 1) AS agent_type,
+    substr(a.description, 1, $chip_chars + 1) AS description,
+    substr(a.model, 1, $chip_chars + 1) AS model,
     a.spawn_depth,
     a.is_fork,
     a.parent_agent_id,
