@@ -796,11 +796,18 @@ def test_every_priced_row_carries_the_spend_the_store_holds_under_it(
 def test_a_size_above_its_ceiling_is_refused(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """The three sizes a node URL carries only go down — the ceiling is the production default."""
+    """The three sizes a node URL carries only go down — the ceiling is the production default.
+
+    A fragment takes the same sizes, because the knobs ride the mount that opens it: a size it
+    would not serve a page under is one it must refuse rather than mint into the fragment's own
+    links.
+    """
     at = url(open_turn(store))
+    opening = mounts(client.get(at).text)[0]
     for knob, bound in (("kin", bounds.KIN), ("log", bounds.LOG), ("detail", bounds.DETAIL)):
-        assert client.get(at, params={knob: bound.ceiling + 1}).status_code == 400, knob
-        assert client.get(at, params={knob: bound.ceiling}).status_code == 200, knob
+        for asked in (at, opening):
+            assert client.get(asked, params={knob: bound.ceiling + 1}).status_code == 400, knob
+            assert client.get(asked, params={knob: bound.ceiling}).status_code == 200, knob
 
 
 # The runs of one session beside every edge a preset places them by: the spawning edge the
@@ -1024,6 +1031,42 @@ def sited(session_id: str, chain: Sequence[str]) -> list[tuple[Kind, str, str, s
     return placed
 
 
+def mounts(html: str) -> list[str]:
+    """Every expansion a page's log rows mount, unescaped — the markup carries `&` as `&amp;`."""
+    return [unescape(href) for href in values(html, "hx-get") if href.startswith(BODY_URL)]
+
+
+# An api call that made a `Task` call: the one call whose tool log mounts a body with a run
+# link in it, read from the tool's side of the join `view_runs` makes.
+SPAWNING_CALL = (
+    "SELECT c.session_id, c.source, c.id FROM live_api_calls c"
+    " JOIN live_tool_calls tc ON tc.session_id = c.session_id AND tc.source = c.source"
+    "  AND tc.api_call_id = c.id"
+    " JOIN live_agent_runs a ON a.session_id = tc.session_id AND a.tool_use_id = tc.id"
+    "  AND tc.source <> a.id"
+    " ORDER BY c.id LIMIT 1"
+)
+
+
+def mounting(store: duckdb.DuckDBPyConnection) -> list[str]:
+    """One page per kind of body a children log can mount.
+
+    A session's log mounts turns, a turn's mounts api calls, a call's mounts tool calls, and
+    the unattached bucket's mounts runs — the only page whose rows reach `run_body`, the
+    second of the two fragment routes. The call is one that spawned a run, because a tool body
+    leads with the run it started and that link is the only node link a pane inside a fragment
+    mints.
+    """
+    session_id, source, call_id = one(store, SPAWNING_CALL)
+    loose, _, _ = candidates(store, Kind.UNATTACHED)[0]
+    return [
+        node_url(Kind.SESSION, str(session_id), MAIN, str(session_id)),
+        url(open_turn(store)),
+        node_url(Kind.CALL, str(session_id), str(source), str(call_id)),
+        node_url(Kind.UNATTACHED, loose, MAIN, loose),
+    ]
+
+
 def node_link(href: str) -> bool:
     """Whether a link goes to a node page — the records browser and an offload file do not."""
     path = href.partition("?")[0].strip("/").split("/")
@@ -1170,7 +1213,8 @@ def test_a_preset_rides_every_node_link_the_page_mints(
 
     The body a log row expands is the same node under the same view, so the fold rides the
     mount as well — and rides out again on the links the fragment itself mints, which are the
-    reader's way on from inside a parent's page.
+    reader's way on from inside a parent's page. Every kind of body is opened, because the two
+    fragment routes mint their suffix apart and only a tool's body mints a link of its own.
     """
     html = client.get(url(open_turn(store)), params={"nav": "agents", "kin": 1}).text
     switching = set(inside(html, "class", "switch", "href"))
@@ -1183,25 +1227,42 @@ def test_a_preset_rides_every_node_link_the_page_mints(
     assert len(links) > 5, "the page mints node links to check"
     for href in links:
         assert parse_qs(href.partition("?")[2]).get("nav") == ["agents"], href
-    # The mounts a log's rows open their children's bodies through carry it too...
-    mounts = [unescape(href) for href in values(html, "hx-get") if href.startswith(BODY_URL)]
-    assert mounts, "the log rows on this page mount an expansion"
-    for mount in mounts:
-        assert parse_qs(mount.partition("?")[2]).get("nav") == ["agents"], mount
-    # ...and what one of them serves links on under the same fold rather than dropping it.
-    served = client.get(mounts[0])
-    assert served.status_code == 200, mounts[0]
-    onward = [href for href in values(served.text, "href") if node_link(href)]
-    assert onward, "the fragment offers the way to the node's own page"
-    for href in onward:
-        assert parse_qs(unescape(href).partition("?")[2]).get("nav") == ["agents"], href
+    opened: set[str] = set()
+    led = 0
+    for at in mounting(store):
+        page = client.get(at, params={"nav": "agents", "kin": 1}).text
+        found = mounts(page)
+        assert found, f"the log rows on {at} mount an expansion"
+        for mount in found:
+            # The mount a log row opens its child's body through carries the fold...
+            assert parse_qs(mount.partition("?")[2]).get("nav") == ["agents"], mount
+            served = client.get(mount)
+            assert served.status_code == 200, mount
+            # ...and the body it serves links on under that fold rather than dropping it.
+            onward = [href for href in values(served.text, "href") if node_link(href)]
+            assert onward, f"the fragment offers the way to its own node: {mount}"
+            for href in onward:
+                assert parse_qs(unescape(href).partition("?")[2]).get("nav") == ["agents"], href
+            opened.add(mount[len(BODY_URL) + 1 :].partition("/")[0])
+            led += len(values(served.text, "data-spawned"))
+    # The three kinds of body one route serves, and the run the other one does.
+    assert opened == {Kind.TURN, Kind.CALL, Kind.TOOL, Kind.RUN}, opened
+    # One of those tool bodies led with the run it started. That link is the only one the pane
+    # macro mints inside a fragment, so without it the suffix the pane is handed goes unread.
+    assert led, "a tool body that leads with its run"
 
 
 def test_a_preset_the_viewer_does_not_have_is_refused(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """`?nav=` names one of the three views or the request is a 400, not a quiet full tree."""
+    """`?nav=` names one of the three views or the request is a 400, not a quiet full tree.
+
+    Asked of a fragment as well as a page: the fold rides the mount an expansion opens, so a
+    fold the viewer does not have has to be refused there too rather than written into every
+    link the fragment serves.
+    """
     at = url(open_turn(store))
-    assert client.get(at, params={"nav": "everything"}).status_code == 400
-    for preset in Preset:
-        assert client.get(at, params={"nav": preset}).status_code == 200, preset
+    for asked in (at, mounts(client.get(at).text)[0]):
+        assert client.get(asked, params={"nav": "everything"}).status_code == 400, asked
+        for preset in Preset:
+            assert client.get(asked, params={"nav": preset}).status_code == 200, preset
