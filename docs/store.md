@@ -33,6 +33,8 @@ Queries use views instead of reading the trace tables directly. `_VIEWS` in `src
 
 Claude Code deletes session transcripts and their `tool-results/` files from disk after a few weeks. This constraint shaped [the trace-pipeline design](../plans/trace-pipeline/design.md). The extractor archives every line: `raw_records` holds transcripts, while `offload_files` holds tool outputs that Claude Code moved out of them. A refresh keeps rows for sessions whose source files are gone instead of making the store mirror the disk.
 
+Nothing is redacted on the way in, and nothing is redacted for now. Every prompt, model output, tool result, and file an agent read stays intact in the store and reachable in [the viewer](viewer.md). Fixtures committed to this repository are the opposite case: they stay redacted excerpts (`.claude/rules/testing.md`).
+
 Once Claude Code deletes those files, the store holds the only copy. Deleting it can destroy sessions that extraction can't recover. The archived `raw_records` contain enough data to reparse a pruned session, but that feature isn't built; the design lists it as out of scope.
 
 ## Choose the right path for each version change
