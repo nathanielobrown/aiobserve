@@ -88,7 +88,9 @@ PAGE_BYTES = 500_000
 # page — and it is a window, not a limit: a tail row fetches what it left out and stands the
 # rows in its own place, without a page boundary anywhere. Widening the window is a reader
 # reaching further per click, and pinning it here rather than against `PAGE_BYTES` keeps that
-# choice off the list pages, whose ceilings are derived against the number above.
+# choice off the list pages, whose ceilings are derived against the number above. The
+# arithmetic under it — `worst_node_bytes`, at every ceiling at once — comes to 832,714 B
+# today, and the leaf at the bottom of this file is what keeps that true.
 NODE_BYTES = 900_000
 # What the markup around one row of the list costs, with the content the row carries taken off.
 # Re-measured through the app by the leaf at the bottom of this file, every cap full of `&`,
