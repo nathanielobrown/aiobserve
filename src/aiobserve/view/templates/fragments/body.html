@@ -4,7 +4,7 @@
    has one. #}
 {% import "_node_body.html" as body %}
 <div class="fragment">
-  {{ body.pane(node, row) }}
+  {{ body.pane(node, row, '') }}
   <p class="children" data-children="{{ node.kind }}">
     <a href="{{ node.url }}">
       {%- if children is not none %}<span data-field="children">{{ children | count }}</span>

@@ -220,6 +220,42 @@ def test_a_log_row_expands_to_the_body_its_own_page_wraps(
     assert opened == {"turn", "call", "tool", "run"}
 
 
+def test_a_tool_call_that_spawned_a_run_leads_with_the_way_to_it(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A `Task` call's body opens with a link to the run it started.
+
+    The tool call is where a run begins, and the run is what a reader came to the call to
+    reach — so it leads the body rather than sitting under the facts. Read out of the store's
+    own spawning edge, and followed: a link to a page that does not serve is not a way there.
+    """
+    session_id, source, tool_id, run_id = one(
+        store,
+        "SELECT tc.session_id, tc.source, tc.id, a.id FROM live_tool_calls tc"
+        " JOIN live_agent_runs a ON a.session_id = tc.session_id AND a.tool_use_id = tc.id"
+        # A fork copies the call that spawned it into its own thread; that copy spawned
+        # nothing, and this is the rule every other query reads the edge by.
+        "  AND tc.source <> a.id"
+        " ORDER BY tc.session_id, tc.id LIMIT 1",
+    )
+    page = client.get(f"/session/{session_id}/tool/{source}/{tool_id}").text
+    (href,) = inside(page, "data-spawned", run_id, "href")
+    assert href == f"/session/{session_id}/run/{run_id}"
+    assert client.get(href).status_code == 200
+    # It leads: the link is above the tool's own facts, not under them.
+    assert page.index(f'data-spawned="{run_id}"') < page.index('data-field="tool_index"')
+    # And a call that started no run says nothing about one, rather than linking nowhere.
+    plain = one(
+        store,
+        "SELECT tc.session_id, tc.source, tc.id FROM live_tool_calls tc"
+        " LEFT JOIN live_agent_runs a ON a.session_id = tc.session_id AND a.tool_use_id = tc.id"
+        "  AND tc.source <> a.id"
+        " WHERE a.id IS NULL ORDER BY tc.session_id, tc.id LIMIT 1",
+    )
+    quiet, thread, call = plain
+    assert not values(client.get(f"/session/{quiet}/tool/{thread}/{call}").text, "data-spawned")
+
+
 def test_the_same_node_url_serves_the_same_bytes_cold_and_warm(client: TestClient) -> None:
     """A tree click and a pasted link produce one response, byte for byte.
 

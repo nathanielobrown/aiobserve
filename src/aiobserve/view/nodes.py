@@ -107,6 +107,16 @@ class Ref:
         return f"{self.kind}:{self.node_id}"
 
 
+def run_url(session_id: str, run_id: str) -> str:
+    """Where an agent run reads.
+
+    Minted here rather than on the node alone: a `Task` tool call's body leads with the way to
+    the run it spawned, and at that point the run is a column of the call's header rather than
+    a node of its own.
+    """
+    return f"/session/{session_id}/run/{run_id}"
+
+
 # Where a node's body alone is served from, written once: the routes in `view/app.py` answer
 # what `Node.expansion` mints.
 BODY_URL = "/fragment/body"
@@ -156,7 +166,7 @@ class Node:
         # A run's id is also the thread its own rows carry, so one key answers both questions
         # and the URL says it once.
         if self.kind is Kind.RUN:
-            return f"/session/{self.session_id}/run/{self.node_id}"
+            return run_url(self.session_id, self.node_id)
         return f"/session/{self.session_id}/{self.kind}/{self.source}/{self.node_id}"
 
     @property
