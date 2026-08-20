@@ -112,9 +112,13 @@ li.node > a {
 li.node [data-field="label"] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #tree .secondary { color: var(--dim); white-space: nowrap; }
 li.node > a:hover { background-color: color-mix(in srgb, var(--mark) 12%, transparent); }
-/* The row the pane is about, held at full strength while everything around it recedes. */
-li.row[data-selected] > a { font-weight: 600;
-  background-color: color-mix(in srgb, var(--mark) 12%, transparent); }
+/* The row the pane is about, held at full strength while everything around it recedes. The
+   wash alone is what a hover already does, so the selection is also railed in the accent —
+   3px, the meter's own weight — which no other row can wear. Inset rather than a border, so
+   the rail costs the row no width and the labels stay in one column. */
+li.row[data-selected] > a { font-weight: 600; color: var(--ink);
+  background-color: color-mix(in srgb, var(--mark) 12%, transparent);
+  box-shadow: inset 3px 0 var(--mark); }
 li.row.more { color: var(--dim); }
 /* Where a node sits, above the node itself. Separators between the steps rather than around
    them, so the trail reads as one line. */
@@ -141,6 +145,10 @@ li.node > a {
   background-repeat: no-repeat;
   background-position: left bottom;
   background-size: 0 3px, 100% 3px;
+  /* Depth is padding on the row's link, so a track over the padding box would start left of
+     the label it prices and a nested row would read as wider than its parent's. Over the
+     content box every track starts under its own label. */
+  background-origin: content-box;
 }
 li.node.s1 > a { background-size: 10% 3px, 100% 3px; }
 li.node.s2 > a { background-size: 20% 3px, 100% 3px; }
@@ -165,7 +173,12 @@ li.node.s10 > a { background-size: 100% 3px, 100% 3px; }
    opened it to read it, and a tool input is not a column of a table. */
 .detail h3 { margin: var(--space-2) 0 var(--space-1); font-size: var(--type-label);
   color: var(--dim); }
-.detail pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: var(--space-1) 0; }
+.detail pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: var(--space-1) 0;
+  border-left: 2px solid var(--line); padding-left: var(--space-2); }
+/* What a tool was passed and what it returned are two walls of the same monospace, and a
+   reader scrolling one needs to know which. The rail says it: the ask is walled in the rule
+   color like every other value, the answer in the accent. */
+.detail[data-detail="result"] pre { border-left-color: var(--mark); }
 /* The pull requests a session's commands touched — a list a reader follows off the page. */
 ul.prs { margin: var(--space-2) 0; padding: 0; list-style: none; overflow-wrap: anywhere; }
 /* The way down to the bytes: the thread's transcript, and the one line this node was read
