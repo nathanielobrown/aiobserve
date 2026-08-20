@@ -56,6 +56,14 @@ them or it goes stale the moment a reader clicks a row, pointing back at the nod
 Put it inside `#tree-rows` rather than adding a second out-of-band target: a target costs bytes
 on every tree row, and the row is the one thing on the page multiplied 417 times.
 
+# The scroller stays outside the swapped element
+
+The tree keeps a reader's place across a click for one reason: `#tree` carries the scrollbar and the swap replaces `#tree-rows` inside it. An untouched scroller keeps its `scrollTop`, so nothing in the markup has to ask for it and `hx-preserve` is not needed.
+
+Move `overflow` down onto the rows and every click drops the reader back at the top of the session. No assertion on served HTML would see it, so the structure is pinned instead by `test_the_tree_keeps_its_place_because_the_scroller_is_not_what_swaps`, which reads the served stylesheet.
+
+Witnessed in a real Chromium on 2026-08-20 at a viewport where the tree overflows. Clicking a row that is scrolled *out* of view does move the tree — the browser scrolls the link into view before focusing it, which is the browser being right. A test script that clicks through a driver's "scroll into view if needed" measures that and not the swap; click a visible row by coordinates.
+
 # Label every value a test reads
 
 A rendered value goes in `<span data-field="{{ name }}">`, and a repeated thing gets a `data-` key naming it (`data-tree`, `data-child`, `data-crumb`, `data-walk`). Tests read the viewer through those attributes, so prose is free to change and the units and marks stay outside the labelled span — a `data-field` carries the value the store holds and nothing else.
