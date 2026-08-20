@@ -554,6 +554,15 @@ def test_a_tail_row_stands_the_rest_of_its_level_where_it_stands(
         below["hx-get"] == f"{KIN_URL}/turn/{SPINE}/{MAIN}/{selection}?kin=1&thread={MAIN}&depth=2"
     )
     assert rows(client.get(below["hx-get"]).text) == [(2, key) for key in under[1:]]
+    # The depth is the one thing a level cannot say for itself, and the tree's arithmetic
+    # prices `DEPTH` of them: rows claiming to stand outside the tree a page draws are rows
+    # no page ever asked for.
+    for depth, answer in ((0, 400), (1, 200), (bounds.DEPTH, 200), (bounds.DEPTH + 1, 400)):
+        asked = client.get(
+            f"{KIN_URL}/turn/{SPINE}/{MAIN}/{selection}",
+            params={"kin": 1, "thread": MAIN, "depth": depth},
+        )
+        assert asked.status_code == answer, depth
 
 
 def test_a_fetched_row_is_described_by_the_thread_the_reader_stands_on(
