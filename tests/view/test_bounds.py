@@ -17,11 +17,12 @@ import duckdb
 import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
+from markupsafe import escape
 
 from aiobserve.analyze import queries
 from aiobserve.analyze.queries import QUERIES, VIEW_PREFIX
-from aiobserve.view import bounds
-from aiobserve.view.app import QUERY_URL, build_app
+from aiobserve.view import bounds, nodes
+from aiobserve.view.app import QUERY_URL, build_app, knobs
 from aiobserve.view.format import ELLIPSIS
 from aiobserve.view.listing import SHOWN
 from aiobserve.view.store import TURN_CURSOR, Fragment, Page, Value, cursorless_rows
@@ -122,17 +123,16 @@ COMMAND_ARGS_CHARS = 300
 # The fixture records are redacted to a few characters, so they project nothing about this.
 MEASURED_RECORD_BYTES = 826
 
-# What the markup around one row of the tree costs, with the label the row carries taken off:
-# the link, the `hx-get` that swaps the pane, the depth, the meter class and the cost beside
-# it. Interim — slice 6 re-measures it through the app, at the glyphs and titles a row will
-# carry by then, the way every other measured constant here is re-measured.
-MEASURED_TREE_ROW_MARKUP = 700
-# The same for one row of the pane's children log, which carries a link, a label and the three
-# or four numbers whichever shape it is. Interim for the same reason.
-MEASURED_LOG_ROW_MARKUP = 700
+# What the markup around one row of the pane's children log costs, with the label and the one
+# string it carries taken off: two copies of the node's URL, the numbers that tell two children
+# apart, and the row around them. Re-measured through the app by the leaf at the bottom of this
+# file, every cap full of `&` and every knob at its longest — 1,316 B, of which 540 B is content
+# at those caps and 76 B the knobs, leaving 700 B.
+MEASURED_LOG_ROW_MARKUP = 720
 # And what the markup around one crumb of the chain down to the selection costs: the link, the
-# node's key, and the kind the label is named by. Interim for the same reason.
-MEASURED_CRUMB_MARKUP = 300
+# node's key, and the glyph that says who named it. Measured the same way: 537 B less 240 B of
+# label and 38 B of knobs, leaving 259 B.
+MEASURED_CRUMB_MARKUP = 280
 # And what the markup around one previewed value costs — the heading, the `<pre>` and the line
 # offering the rest of it — with the preview itself taken off.
 MEASURED_DETAIL_MARKUP = 600
@@ -144,8 +144,8 @@ PANE_DETAILS = 2
 # down to the selection, the node's own facts, and what a pass said about it. The session is
 # the widest of the eight panes — every string in its header is one a transcript wrote, and its
 # two lists grow with the session — so the allowance is a session header's, cut in SQL.
-# Interim, re-measured through the app in slice 6 along with the two row costs above.
-MEASURED_NODE_CHROME = 16_000
+# Re-measured through the app by the leaf at the bottom of this file at 14,820 B.
+MEASURED_NODE_CHROME = 15_500
 
 # The parameter every truncated column of a run row is cut to. Counted per query rather than
 # listed, so a fourth column added to a chip shows up in the arithmetic instead of quietly
@@ -224,15 +224,22 @@ def worst_tag_bytes() -> int:
     return 2 * queries.TAG_CHARS * ESCAPED_CHAR_BYTES
 
 
-def worst_tree_row_bytes() -> int:
-    """What one row of the tree can weigh: its markup, and a label of nothing but `&`.
+def worst_knob_bytes() -> int:
+    """What the sizes a URL carries add to one link on the page it serves.
 
-    One label whatever the row is: a turn's is the head of what a pass said about it, of the
-    command it ran, or of the prompt; a run's is its brief or its definition; a call's is what
-    it said. Each is composed and then cut to the one width the tree reads at, so a row carries
-    one head and not a head per column.
+    Every link a node page writes repeats the knobs the request was made with, so a reader who
+    narrows a page pays for the query string on every row of it. The longest one leaves `?kin=`
+    at its default — a narrower tree costs a whole level of rows to save a byte a link — and
+    takes the longest preset name beside the widest sizes that are not defaults. Escaped,
+    because the `&` between two of them is written into an attribute.
     """
-    return MEASURED_TREE_ROW_MARKUP + queries.NAV_CHARS * ESCAPED_CHAR_BYTES
+    marks = knobs(
+        max(nodes.Preset, key=len),
+        bounds.KIN.default,
+        bounds.LOG.ceiling - 1,
+        bounds.DETAIL.ceiling - 1,
+    )
+    return len(escape(marks).encode())
 
 
 def worst_log_row_bytes() -> int:
@@ -243,12 +250,18 @@ def worst_log_row_bytes() -> int:
     those is a string the store wrote — the model a call ran on, the tool a call called, the
     definition a run ran. All of them are cut where a chip's strings are.
     """
-    return MEASURED_LOG_ROW_MARKUP + (queries.NAV_CHARS + queries.CHIP_CHARS) * ESCAPED_CHAR_BYTES
+    return (
+        MEASURED_LOG_ROW_MARKUP
+        + (queries.NAV_CHARS + queries.CHIP_CHARS) * ESCAPED_CHAR_BYTES
+        # A row links where it fetches, so it carries the knobs twice.
+        + 2 * worst_knob_bytes()
+    )
 
 
 def worst_crumb_bytes() -> int:
-    """What one crumb of the chain above a node can weigh: its markup, and a label of `&`."""
-    return MEASURED_CRUMB_MARKUP + queries.NAV_CHARS * ESCAPED_CHAR_BYTES
+    """What one crumb of the chain above a node can weigh: its markup, a label of `&`, and the
+    knobs its link carries once."""
+    return MEASURED_CRUMB_MARKUP + queries.NAV_CHARS * ESCAPED_CHAR_BYTES + worst_knob_bytes()
 
 
 def worst_detail_bytes() -> int:
@@ -262,14 +275,18 @@ def worst_node_bytes() -> int:
     A page is its chrome, the crumbs down to the selection, the tree beside it, the values the
     pane previews, and the log under it. The tree is the part that multiplies: every level of
     the open path admits `KIN` children and a tail row saying what the cap left out, and the
-    path runs `DEPTH` levels deep — so the ceiling is spent by the sizes' own defaults, and
-    each of the three knobs only goes down from there.
+    path runs `DEPTH` levels deep — so `bounds.TREE_ROW_BYTES` is four fifths of the ceiling,
+    and the row is pinned rather than budgeted.
+
+    The sizes' own defaults spend it, and each of the three knobs only goes down from there —
+    but a knob a reader turns down writes itself into every link on the page, so the rows are
+    priced with the longest query string one can carry rather than with none.
     """
     tree_rows = 1 + bounds.DEPTH * (bounds.KIN.ceiling + 1)
     return (
         MEASURED_NODE_CHROME
         + bounds.DEPTH * worst_crumb_bytes()
-        + tree_rows * worst_tree_row_bytes()
+        + tree_rows * bounds.TREE_ROW_BYTES
         + bounds.LOG.ceiling * worst_log_row_bytes()
         + PANE_DETAILS * worst_detail_bytes()
     )
@@ -473,6 +490,16 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
         "SESSIONS",
         "PROJECTS",
     }
+    # The same for the bounds that are not sizes a URL carries: how deep a chain opens, how
+    # many turn rows no cursor reaches, how much of a string a log row shows, how long a value
+    # is marked up in its own syntax, and what one row of the tree may weigh.
+    assert {name for name, value in vars(bounds).items() if isinstance(value, int)} == {
+        "DEPTH",
+        "CURSORLESS_TURNS",
+        "LOG_CHARS",
+        "HIGHLIGHT_CHARS",
+        "TREE_ROW_BYTES",
+    }
 
 
 def limits(sql: str) -> list[str]:
@@ -665,6 +692,16 @@ PRICED_ROWS = {
 }
 
 
+# The sizes that make every link on a node page longest, which is what `worst_knob_bytes`
+# prices. Written as a request rather than derived from `knobs`, so the leaf below fails if the
+# app stops accepting one of them rather than quietly measuring a page with no knobs at all.
+WORST_KNOBS = {
+    "nav": max(nodes.Preset, key=len).value,
+    "log": bounds.LOG.ceiling - 1,
+    "detail": bounds.DETAIL.ceiling - 1,
+}
+
+
 def priced(html: str) -> tuple[str, dict[str, list[str]]]:
     """A node page split into the rows the arithmetic prices and the chrome it does not."""
     rows: dict[str, list[str]] = {}
@@ -733,16 +770,21 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     )
     with TestClient(build_app(path)) as planted:
         served = []
-        for url in pages(store):
-            response = planted.get(url)
-            assert response.status_code == 200, (url, response.text[:200])
-            served.append(response.text)
+        # Twice over the store: once at the defaults, where the tree holds a row of every kind
+        # there is, and once at the knobs that make every link on the page longest. A reader
+        # who narrows a page pays for the query string on every row of it, and the two sweeps
+        # together hold the widest row of each kind beside the dearest link.
+        for marks in ({}, WORST_KNOBS):
+            for url in pages(store):
+                response = planted.get(url, params=marks)
+                assert response.status_code == 200, (url, response.text[:200])
+                served.append(response.text)
     # The list and the two pages that are not nodes come back too; only a node page splits.
     split = [priced(page) for page in served if 'id="tree-rows"' in page]
     # A crumb, a tree row, a log row and a preview each weigh what the arithmetic budgets...
     for name, budget in (
         ("crumb", worst_crumb_bytes()),
-        ("tree", worst_tree_row_bytes()),
+        ("tree", bounds.TREE_ROW_BYTES),
         ("log", worst_log_row_bytes()),
         ("detail", worst_detail_bytes()),
     ):
