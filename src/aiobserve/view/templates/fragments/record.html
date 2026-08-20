@@ -1,5 +1,7 @@
-{# One raw transcript record whole. A record is JSON, so it is indented rather than rendered
-   as markdown — what a reader wants here is the shape Claude Code wrote, field by field. #}
+{# One raw transcript record whole. A record is JSON, so it is indented and marked up rather
+   than rendered as markdown — what a reader wants here is the shape Claude Code wrote, field
+   by field. #}
+{% import "_parts.html" as parts %}
 <div class="value" data-record-value="{{ row.line_no }}" data-query="{{ citation }}">
   <p class="numbers">
     <span data-field="type" class="type">{{ row.type }}</span>
@@ -9,5 +11,5 @@
     <span data-field="timestamp">{{ row.timestamp | clock }}</span>
     <span><span data-field="raw_chars">{{ row.raw_chars | count }}</span> chars</span>
   </p>
-  <pre data-field="raw">{{ row.raw | pretty }}</pre>
+  {{ parts.code(row.raw, SYNTAX.JSON, 'raw') }}
 </div>

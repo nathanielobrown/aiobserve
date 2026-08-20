@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}aiobserve{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
+  {# What paints the classes `view/highlight.py` writes. Its own file rather than a block of
+     `style.css`, because the classes are Pygments' vocabulary and not this viewer's. #}
+  <link rel="stylesheet" href="/static/pygments.css">
   {# htmx, vendored — the version is in the filename because that is where an upgrade has to
      be seen. Fetched from https://unpkg.com/htmx.org@2.0.6/dist/htmx.min.js, sha256
      b6768eed4f3af85b73a75054701bd60e17cac718aef2b7f6b254e5e0e2045616. No CDN: the viewer
@@ -15,14 +18,19 @@
 <body>
   <nav id="masthead"><a href="/">aiobserve</a></nav>
   <main>{% block main %}{% endblock %}</main>
-  {# Every page says what produced it: the query file and the bindings, ready to re-run. #}
+  {# Every page says what produced it: the query file and the bindings, ready to re-run. Folded
+     shut, because it is provenance rather than content — and each line links to the query it
+     names, so a reader who wants to know what a column means can read the SQL. #}
   {% if citations %}
   <footer id="citation">
-    <ul>
-      {% for name, line in citations.items() %}
-      <li data-field="{{ name }}"><code>{{ line }}</code></li>
-      {% endfor %}
-    </ul>
+    <details data-citations="{{ citations | length }}">
+      <summary>what produced this page</summary>
+      <ul>
+        {% for name, ran in citations.items() %}
+        <li><a data-field="{{ name }}" href="{{ ran.url }}"><code>{{ ran.line }}</code></a></li>
+        {% endfor %}
+      </ul>
+    </details>
     {# Where a fragment's own citations land. A page that loads one leaves the slot; the
        fragment fills it out of band, so both sets read as one footer. #}
     {% block citation_extra %}{% endblock %}

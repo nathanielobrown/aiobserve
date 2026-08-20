@@ -36,7 +36,7 @@ from aiobserve.analyze import queries
 from aiobserve.analyze.queries import ParamValue
 from aiobserve.export.duckdb import SCHEMA_VERSION
 from aiobserve.model import MAIN_SOURCE
-from aiobserve.view import bounds, nodes, render, tree, walk
+from aiobserve.view import bounds, highlight, nodes, render, tree, walk
 from aiobserve.view import format as fmt
 from aiobserve.view.enrichment import (
     GLYPH,
@@ -115,6 +115,29 @@ class Detail(NamedTuple):
     head: str
     cut: int
     url: str
+
+
+# Where the SQL behind a page is read. Every citation in a footer links here, so the path is
+# written once and the route below takes the query's name from it.
+QUERY_URL = "/query"
+
+
+class Cited(NamedTuple):
+    """One query a page ran, as the footer shows it: the line to re-run, and where to read it."""
+
+    line: str
+    url: str
+
+
+def cited(name: str, bindings: Mapping[str, ParamValue]) -> Cited:
+    """What produced a page, both ways a reader follows it.
+
+    The line is what a report quotes and a shell re-runs; the URL is the same query as a page,
+    bindings and all. Both spell a binding the one way `queries.shown` does, so the link a
+    footer carries and the comment beside it cannot disagree about what was bound.
+    """
+    written = {key: queries.shown(value) for key, value in bindings.items()}
+    return Cited(queries.citation(name, bindings), f"{QUERY_URL}/{name}?{urlencode(written)}")
 
 
 class LogRow(NamedTuple):
@@ -278,10 +301,10 @@ def build_app(db_path: Path) -> FastAPI:
         "path": project_path,
         "ago": ago,
         # The three filters that print what a transcript wrote. Each hands back escaped
-        # markup; `view/render.py` is where that escaping lives, and nothing here may add
-        # `|safe`.
+        # markup; `view/render.py` and `view/highlight.py` are where that escaping lives, and
+        # nothing here may add `|safe`.
         "markdown": render.markdown,
-        "pretty": render.pretty,
+        "lit": highlight.lit,
         "link": render.link,
     }
 
@@ -291,6 +314,12 @@ def build_app(db_path: Path) -> FastAPI:
     # And the mark every model-written string carries, beside the class that styles it.
     templates.env.globals["GLYPH"] = GLYPH  # pyrefly: ignore
     templates.env.globals["GLYPH_CLASS"] = GLYPH_CLASS  # pyrefly: ignore
+    # And how long a value may be before a page prints it plain rather than marked up, which
+    # is what the line beside a plain value says.
+    templates.env.globals["HIGHLIGHT_CHARS"] = bounds.HIGHLIGHT_CHARS  # pyrefly: ignore
+    # The syntaxes a template may ask for, so that asking for one it does not mark up raises
+    # here rather than rendering a value as a line of error tokens.
+    templates.env.globals["SYNTAX"] = highlight.Syntax  # pyrefly: ignore
 
     def error(request: Request, status: int, message: str) -> Response:
         return templates.TemplateResponse(
@@ -354,9 +383,7 @@ def build_app(db_path: Path) -> FastAPI:
                 # The bindings, for the two window headings — a heading and its column read
                 # the same numbers, and the citation below carries them too.
                 "bound": bound,
-                "citations": {
-                    Page.PROJECT_ROLLUPS.value: queries.citation(Page.PROJECT_ROLLUPS, bound)
-                },
+                "citations": {Page.PROJECT_ROLLUPS.value: cited(Page.PROJECT_ROLLUPS, bound)},
             },
         )
 
@@ -428,7 +455,7 @@ def build_app(db_path: Path) -> FastAPI:
                 "previous": list_url(sort, direction, page - 1, size, given) if page > 1 else None,
                 "next": list_url(sort, direction, page + 1, size, given) if more else None,
                 "citations": {
-                    Page.SESSIONS.value: queries.citation(
+                    Page.SESSIONS.value: cited(
                         Page.SESSIONS,
                         {
                             "sort": sort,
@@ -448,7 +475,7 @@ def build_app(db_path: Path) -> FastAPI:
                     # own — and only over a store whose enrichment tables exist to join.
                     **(
                         {
-                            Page.DESCRIBED_SESSIONS.value: queries.citation(
+                            Page.DESCRIBED_SESSIONS.value: cited(
                                 Page.DESCRIBED_SESSIONS,
                                 {
                                     "head_chars": queries.LIST_CHARS,
@@ -564,7 +591,7 @@ def build_app(db_path: Path) -> FastAPI:
                 ),
                 # What every href on the page carries, so a click serves the URL it displays.
                 "suffix": marks,
-                "citations": {named.value: queries.citation(named, bound) for named, bound in ran},
+                "citations": {named.value: cited(named, bound) for named, bound in ran},
             },
         )
 
@@ -1045,6 +1072,24 @@ def build_app(db_path: Path) -> FastAPI:
 
         return browse(request, session_id, MAIN_SOURCE, nav, kin, log, detail, after, read)
 
+    @app.get(f"{QUERY_URL}/{{name}}")
+    def query_page(request: Request, name: str) -> Response:
+        """One library query's SQL, under the bindings a page cited it with.
+
+        Where every citation in a footer goes. `name` is a key of the query manifest and never
+        a path: a name the manifest does not declare is a 404 before anything is read, which is
+        what makes a request for `../../secret` a miss rather than a file.
+        """
+        if name not in queries.QUERIES:
+            raise HTTPException(404, "No query by that name ships with this build.")
+        return templates.TemplateResponse(
+            request,
+            "query.html",
+            # Whatever the citation carried, printed back rather than bound to anything: this
+            # page runs no query, so a binding here is a fact about the page that sent you.
+            {"name": name, "sql": queries.load(name), "bindings": dict(request.query_params)},
+        )
+
     @app.get("/session/{session_id}/records/{source}")
     def records_page(
         request: Request,
@@ -1079,7 +1124,7 @@ def build_app(db_path: Path) -> FastAPI:
                 "source": source,
                 "page": page,
                 "size": size,
-                "citations": {Page.RECORDS.value: queries.citation(Page.RECORDS, bound)},
+                "citations": {Page.RECORDS.value: cited(Page.RECORDS, bound)},
             },
         )
 
@@ -1121,7 +1166,7 @@ def build_app(db_path: Path) -> FastAPI:
                 "size": size,
                 # Where the next chunk starts, or None when this one reached the end.
                 "after": served if served < row["content_chars"] else None,
-                "citations": {Page.OFFLOAD.value: queries.citation(Page.OFFLOAD, bound)},
+                "citations": {Page.OFFLOAD.value: cited(Page.OFFLOAD, bound)},
             },
         )
 

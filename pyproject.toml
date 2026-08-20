@@ -22,6 +22,9 @@ dependencies = [
   "opentelemetry-proto>=1.30",
   # POSTs the OTLP batches, and the viewer's test client rides on it.
   "httpx>=0.28",
+  # Highlights the JSON a tool wrote and the SQL behind a page (`view/highlight.py`). Class
+  # names only, never inline styles: the viewer's CSP allows no `style` attribute.
+  "pygments>=2.19",
 ]
 
 [project.scripts]

@@ -71,3 +71,9 @@ DEPTH = 16
 # row. Bound because a level renders it: a digest answering with more than one raises rather
 # than serving a row nothing counted.
 CURSORLESS_TURNS = 1
+# How long a value may be and still be marked up in its own syntax (`view/highlight.py`).
+# Characters rather than bytes: what the ceiling guards is the tokenizer's time and the markup
+# a span per token adds — about five bytes of `<span class="…">` for every byte of value — and
+# neither of those is counted in bytes. So a multibyte value under this ceiling is marked up
+# even where its bytes run past it, which is deliberate: the cost follows the tokens.
+HIGHLIGHT_CHARS = 256_000

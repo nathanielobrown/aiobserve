@@ -1,0 +1,149 @@
+"""The `/query/{name}` page and the footer that links to it.
+
+Every page says what produced it. This tier is about the other half of that promise: the
+citation is a link, and following it lands on the SQL this build ships — bound the way the
+page bound it, so a reader who doubts a number can read the statement behind it.
+
+The bindings are never written down here. Each leaf reads the citation line off the page and
+checks the link against it, so the two spellings of one fact — the comment a reader copies and
+the URL a reader clicks — cannot drift apart.
+"""
+
+import re
+from urllib.parse import parse_qs, urlsplit
+
+import duckdb
+import pytest
+from fastapi.testclient import TestClient
+
+from aiobserve.analyze import queries
+from aiobserve.view.app import QUERY_URL
+from aiobserve.view.highlight import Syntax, lit
+from tests.conftest import ANCESTOR, CONFIG_ONLY, MAIN, OFFLOAD_FILE, SPINE, SPINE_RUN
+from tests.view.conftest import block, fields, inside, plain, values
+
+# One page of each shape that cites anything: the two lists, a node, and the two pages that
+# are not nodes. Between them they cover every citation the app composes.
+CITING = [
+    "/",
+    "/sessions",
+    f"/session/{SPINE}",
+    f"/session/{SPINE}/run/{SPINE_RUN}",
+    f"/session/{ANCESTOR}/records/{MAIN}",
+    f"/session/{CONFIG_ONLY}/offload/{OFFLOAD_FILE}",
+]
+
+
+def bound(line: str) -> dict[str, str]:
+    """The bindings a citation line quotes, keyed by parameter — `-- queries/x.sql a=1 b=2`."""
+    return dict(binding.split("=", 1) for binding in line.split()[2:])
+
+
+def echoed(html: str) -> dict[str, str]:
+    """The bindings a query page shows, keyed by parameter."""
+    return dict(re.findall(r'data-binding="(\w+)">([^<]*)<', html))
+
+
+def classed(html: str) -> set[str]:
+    """Every class the highlighter wrote into one run of markup."""
+    return set(re.findall(r'class="(\w+)"', html))
+
+
+@pytest.mark.parametrize("path", CITING)
+def test_every_citation_a_page_carries_links_to_the_query_it_names(
+    path: str, client: TestClient
+) -> None:
+    """Each line in the footer is a link to its own query, carrying that line's bindings.
+
+    The footer's own count is checked against the links so a page that cites five queries and
+    shows four is a failure rather than a quieter page.
+    """
+    page = client.get(path).text
+    lines = fields(page, "id", "citation")
+    names = inside(page, "id", "citation", "data-field")
+    hrefs = inside(page, "id", "citation", "href")
+    assert names and names == list(lines)
+    assert values(page, "data-citations") == [str(len(names))]
+    for name, href in zip(names, hrefs, strict=True):
+        target = urlsplit(href)
+        # The link goes to the query the line names...
+        assert target.path == f"{QUERY_URL}/{name}"
+        # ...carrying exactly the bindings the line quotes, and no others.
+        asked = parse_qs(target.query, keep_blank_values=True)
+        assert {key: found for key, [found] in asked.items()} == bound(lines[name])
+        # ...and it answers.
+        assert client.get(href).status_code == 200, href
+
+
+def test_the_query_page_serves_the_statement_the_citation_named(client: TestClient) -> None:
+    """Following a citation lands on that query's file, whole, under the bindings cited.
+
+    The session node is the page with the most reads behind it, so every one of its links is
+    followed rather than the first. The SQL is compared to the file this build ships: a page
+    that reformatted or cut a statement would be showing a reader something they cannot run.
+    """
+    page = client.get(f"/session/{SPINE}").text
+    lines = fields(page, "id", "citation")
+    for href in inside(page, "id", "citation", "href"):
+        name = urlsplit(href).path.removeprefix(f"{QUERY_URL}/")
+        shown = client.get(href).text
+        assert values(shown, "data-sql") == [name]
+        assert plain(block(shown, "sql")) == queries.load(name)
+        # And the bindings are echoed as the page ran them, so the statement reads in context.
+        assert echoed(shown) == bound(lines[name])
+
+
+def test_a_query_asked_for_with_no_bindings_still_serves(client: TestClient) -> None:
+    """The page is a reader's entry point as much as a link target — the URL alone is enough."""
+    page = client.get(f"{QUERY_URL}/view_sessions")
+    assert page.status_code == 200
+    assert plain(block(page.text, "sql")) == queries.load("view_sessions")
+    assert echoed(page.text) == {}
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        # A name no build ships...
+        "nope",
+        # ...the file name rather than the query name, which is the near miss a reader makes...
+        "view_sessions.sql",
+        # ...and a name shaped like a path out of the query directory. It is a miss before
+        # anything is read, which is what keeps the route from being a file server.
+        "..%2f..%2fpyproject",
+        "..%2f..%2f.env",
+    ],
+)
+def test_only_a_name_the_library_declares_is_served(name: str, client: TestClient) -> None:
+    """A name outside the manifest is a 404, and the response repeats nothing back."""
+    response = client.get(f"{QUERY_URL}/{name}")
+    assert response.status_code == 404
+    assert name not in response.text
+
+
+def test_the_sheet_paints_only_classes_the_highlighter_can_emit(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """Every class `static/pygments.css` styles is one the two lexers actually write.
+
+    A hand-written sheet's failure mode is a rule nobody can see fail — a class from another
+    language, or a typo. Both syntaxes are swept over their own real material: the SQL is every
+    file this build ships, and the JSON is every value the viewer marks up — what the recorded
+    tool calls were passed and returned, and the raw records a transcript browser shows.
+    """
+    sheet = client.get("/static/pygments.css")
+    assert sheet.status_code == 200
+    # Selectors only: a comment names files, and `.py` in one is not a class anyone styles.
+    selectors = re.sub(r"/\*.*?\*/", "", sheet.text, flags=re.DOTALL).split("{")
+    # Pygments' classes are one to three letters, which leaves this viewer's own class
+    # names (`code`, `plain`) out of the comparison.
+    painted = {found for rule in selectors for found in re.findall(r"\.([a-z]{1,3}\d?)\b", rule)}
+    emitted: set[str] = set()
+    for name in queries.QUERIES:
+        emitted |= classed(lit(queries.load(name), Syntax.SQL).html)
+    for (value,) in store.execute(
+        "SELECT input FROM live_tool_calls UNION ALL SELECT result FROM live_tool_calls"
+        " UNION ALL SELECT raw FROM raw_records"
+    ).fetchall():
+        emitted |= classed(lit(value, Syntax.JSON).html)
+    assert painted <= emitted, painted - emitted

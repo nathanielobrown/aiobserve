@@ -1,6 +1,7 @@
 {# One whole value that was never prose — what a tool call was passed, or what it returned.
-   Rendered as recorded rather than as markdown: a tool's arguments are JSON, and JSON put
-   through a markdown renderer stops being the thing a reader came to re-read. #}
+   Marked up as the JSON it usually is rather than as markdown: a tool's arguments are JSON,
+   and JSON put through a markdown renderer stops being the thing a reader came to re-read. #}
+{% import "_parts.html" as parts %}
 <div class="value" data-value="{{ (row.value or '') | length }}" data-query="{{ citation }}">
-  <pre>{{ row.value | pretty }}</pre>
+  {{ parts.code(row.value, SYNTAX.JSON, 'value') }}
 </div>

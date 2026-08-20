@@ -5,6 +5,8 @@ line_no)`, so the leaves here are about the walk and the mapping: paging that ne
 nor skips a line, and a URL derived from the tuple that opens on the record it names.
 """
 
+import json
+
 import duckdb
 import pytest
 from fastapi.testclient import TestClient
@@ -14,7 +16,7 @@ from aiobserve.view import bounds
 from aiobserve.view.app import build_app
 from aiobserve.view.store import Page
 from tests.conftest import ANCESTOR, MAIN, RESUME, RESUME_LONG_RECORD, SPINE, SPINE_RUN
-from tests.view.conftest import MISSING, Planter, fields, inside, one, values
+from tests.view.conftest import MISSING, Planter, block, fields, inside, one, plain, values
 
 
 def test_the_browser_pages_by_line_number_without_repeating_or_skipping(
@@ -165,8 +167,9 @@ def test_a_record_fragment_holds_the_one_record_it_names(
     served = client.get(f"/fragment/record/{RESUME}/{MAIN}/{RESUME_LONG_RECORD}")
     assert served.status_code == 200
     shown = fields(served.text, "data-record-value", str(RESUME_LONG_RECORD))
-    # The whole record arrived — pretty-printed, so at least as long as what was stored...
-    assert len(shown["raw"]) >= len(stored)
+    # The whole record arrived — indented and marked up, so it is read back through the
+    # markup: every field the store holds, and nothing the page invented.
+    assert json.loads(plain(block(served.text, "raw"))) == json.loads(stored)
     # ...saying its stored length in the grouping every count on a page carries...
     assert shown["raw_chars"] == f"{len(stored):,}"
     # ...and no other line of the same thread rode along with it.
