@@ -177,6 +177,9 @@ ul.prs { margin: var(--space-2) 0; padding: 0; list-style: none; overflow-wrap: 
    session has nothing after it, and its back link still belongs on the left. */
 .walk [data-walk="previous"] { margin-right: auto; }
 .walk [data-walk="next"] { margin-left: auto; text-align: right; }
+/* The kind ahead of the label: the walk crosses levels, so a reader sees what they are
+   stepping to before they step. Dimmed — the node's own words are what they came for. */
+.walk [data-field="kind"] { color: var(--dim); }
 
 /* A row of counts under a heading, on the pages built out of one list. */
 .numbers { margin: 0; color: var(--dim); display: flex; gap: var(--space-3); }
