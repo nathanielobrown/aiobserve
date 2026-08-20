@@ -1,7 +1,10 @@
 """Code as a page shows it: a value's own syntax, marked by class rather than by color.
 
-Two syntaxes and no more — the JSON a tool was passed and returned, and the SQL behind a page.
-Everything else a transcript wrote is prose, and `view/render.py` renders it.
+A syntax is here because a session writes it: the JSON a tool was passed and returned, the SQL
+behind a page, the shell a `Bash` call ran, the markdown a `Read` returned, and the languages a
+model fences a block of code in. Everything else a transcript wrote is prose, and
+`view/render.py` renders it — marking up a file the viewer shows is a reading aid over the
+source, never a rendering of it: a tool result is evidence, and it prints as it was stored.
 
 The markup is Pygments' with `nowrap`, so what comes back is a run of classed spans and the
 template owns the `<pre>` around them. Classes rather than inline colors because the policy in
@@ -13,6 +16,7 @@ instead, so both arms leave by the same door.
 """
 
 import json
+import re
 from collections.abc import Iterable, Iterator
 from enum import StrEnum
 from typing import NamedTuple
@@ -22,7 +26,7 @@ from pygments import highlight
 from pygments.filter import Filter
 from pygments.formatters import HtmlFormatter
 from pygments.lexer import Lexer
-from pygments.lexers import JsonLexer, SqlLexer
+from pygments.lexers import BashLexer, JsonLexer, MarkdownLexer, PythonLexer, SqlLexer
 from pygments.token import Text, Whitespace, _TokenType
 
 from aiobserve.view import bounds
@@ -49,6 +53,9 @@ class Syntax(StrEnum):
 
     JSON = "json"
     SQL = "sql"
+    BASH = "bash"
+    MARKDOWN = "markdown"
+    PYTHON = "python"
 
 
 def _lexer(built: Lexer) -> Lexer:
@@ -60,7 +67,23 @@ def _lexer(built: Lexer) -> Lexer:
 _LEXERS: dict[Syntax, Lexer] = {
     Syntax.JSON: _lexer(JsonLexer()),
     Syntax.SQL: _lexer(SqlLexer()),
+    Syntax.BASH: _lexer(BashLexer()),
+    Syntax.MARKDOWN: _lexer(MarkdownLexer()),
+    Syntax.PYTHON: _lexer(PythonLexer()),
 }
+
+# What a file's name says its contents are. Only the suffixes this viewer has a lexer for: a
+# `Read` result carries no type of its own, so the path the call asked for is the only evidence
+# of what came back, and anything this map misses is shown as it was stored.
+_SUFFIXES: dict[str, Syntax] = {
+    ".md": Syntax.MARKDOWN,
+    ".markdown": Syntax.MARKDOWN,
+}
+
+# The line-number gutter Claude Code writes down the left of a file it read — `12\t`, one per
+# line. It is not part of the file: a lexer that meets it reads a different language, where a
+# heading whose `#` follows a number is no longer a heading.
+_GUTTER = re.compile(r"^\s*\d+\t")
 
 # No wrapper: the `<pre>` and its `data-field` belong to the template, and a formatter that
 # brought its own `<div class="highlight">` would put a second box around every value.
@@ -115,6 +138,47 @@ def _indent_fits(parsed: object) -> bool:
     return True
 
 
+def by_suffix(suffix: str | None) -> Syntax | None:
+    """The syntax a read file's name implies, or None where the viewer shows it as stored.
+
+    Takes the suffix rather than the path because the queries that ask this extract one: a
+    header query cuts every column it returns, and a path cut to a pane's width would lose the
+    end that names it. Case is folded here so the store keeps what the session wrote.
+    """
+    return _SUFFIXES.get(suffix.lower()) if suffix else None
+
+
+def _run(text: str, lexer: Lexer) -> str:
+    """One stretch of text marked up, ending where the text ended.
+
+    Pygments closes every run with a newline. Inside a `<pre>` that is a blank line the value
+    does not have, so it goes wherever the text did not end with one itself.
+    """
+    marked = highlight(text, lexer, _FORMATTER)
+    return marked if text.endswith("\n") else marked.removesuffix("\n")
+
+
+def _marked(text: str, lexer: Lexer) -> str:
+    """A value marked up: in one pass, or a line at a time behind a `Read` result's gutter.
+
+    Lexing line by line is what peeling the gutter costs — a lexer reading one line forgets
+    what the line before it opened — so it is done only for a value whose first line is
+    numbered, and the numbers are classed as the gutter they are. They hold digits and a tab
+    by construction, so there is nothing in them to escape.
+    """
+    lines = text.splitlines(keepends=True)
+    if not lines or not _GUTTER.match(lines[0]):
+        return _run(text, lexer)
+    pieces = []
+    for line in lines:
+        gutter = _GUTTER.match(line)
+        if gutter:
+            pieces.append(f'<span class="lineno">{gutter.group()}</span>')
+            line = line[gutter.end() :]
+        pieces.append(_run(line, lexer))
+    return "".join(pieces)
+
+
 def _readable(value: str) -> tuple[str, bool]:
     """A stored JSON value indented for reading, and whether it was JSON at all.
 
@@ -150,9 +214,4 @@ def lit(value: str | None, syntax: Syntax) -> Lit:
         return Lit(escape(text), None, 0)
     if len(text) > bounds.HIGHLIGHT_CHARS:
         return Lit(escape(text), None, len(text))
-    marked = highlight(text, _LEXERS[syntax], _FORMATTER)
-    # Pygments ends every run with a newline. Inside a `<pre>` that is a blank line the value
-    # does not have, so it goes wherever the value did not end with one itself.
-    if not text.endswith("\n"):
-        marked = marked.removesuffix("\n")
-    return Lit(Markup(marked), syntax, 0)
+    return Lit(Markup(_marked(text, _LEXERS[syntax])), syntax, 0)
