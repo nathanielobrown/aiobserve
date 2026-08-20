@@ -722,12 +722,14 @@ def test_every_filter_the_app_registers_is_one_a_template_names() -> None:
     """
     source = Path(view_app.__file__).read_text()
     block = source.partition("templates.env.filters |= {")[2].partition("}")[0]
-    registered = set(re.findall(r'"([a-z]+)":', block))
+    # Both halves read a Python identifier, not a word: a filter named `to_json` or `md2` has
+    # to reach both sides of this comparison or the leaf passes by never seeing it.
+    registered = set(re.findall(r'"(\w+)":', block))
     assert len(registered) > 5, "the registration block is not where this expects it"
     named = {
         name
         for path in TEMPLATES.rglob("*.html")
-        for name in re.findall(r"\|\s*([a-z]+)", path.read_text())
+        for name in re.findall(r"\|\s*(\w+)", path.read_text())
     }
     assert not registered - named
 
