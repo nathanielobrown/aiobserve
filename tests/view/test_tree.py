@@ -368,19 +368,32 @@ def test_a_row_draws_a_spend_bar_only_where_it_has_a_share_to_draw(
     Rows that cost nothing of their own — a tool call, a compaction — carry no bar rather than
     an empty one, because a bar drawn at zero reads as a measurement.
     """
-    html = client.get(f"/session/{SPINE}").text
+    sessions = [str(row[0]) for row in store.execute("SELECT id FROM sessions").fetchall()]
     (whole,) = one(
         store,
         "SELECT sum(cost_usd) FROM live_api_calls WHERE session_id = ?",
         [SPINE],
     )
-    # The session is the basis, so its own row is the full bar.
-    assert "s10" in inside(html, "data-tree", f"session:{SPINE}", "class")[0].split()
-    for key in values(html, "data-tree"):
-        classes = set(inside(html, "data-tree", key, "class")[0].split())
-        steps = {name for name in classes if name.startswith("s") and name[1:].isdigit()}
-        # Every row either shows what it cost with a bar beside it, or shows neither.
-        assert bool(steps) == ("cost_usd" in fields(html, "data-tree", key)), key
+    # The session is the basis, so a session that spent anything is its own full bar.
+    spine = client.get(f"/session/{SPINE}").text
+    assert "s10" in inside(spine, "data-tree", f"session:{SPINE}", "class")[0].split()
+    # Swept over every session under every fold rather than over the deepest session alone.
+    # The rows that take their own share — the buckets, which are not rows of the store — are
+    # gathered by a different builder under each fold, and are not all on one session's page.
+    for session_id in sessions:
+        bars: dict[str, tuple[str | None, frozenset[str]]] = {}
+        for preset in Preset:
+            html = client.get(f"/session/{session_id}", params={"nav": preset}).text
+            for key in values(html, "data-tree"):
+                classes = inside(html, "data-tree", key, "class")[0].split()
+                steps = frozenset(n for n in classes if n.startswith("s") and n[1:].isdigit())
+                cost = fields(html, "data-tree", key).get("cost_usd")
+                # Every row either shows what it cost with a bar beside it, or shows neither.
+                assert bool(steps) == (cost is not None), key
+                # And a fold decides which rows are drawn, never what one of them spent or how
+                # much of the session that was: a bar that moved between folds is a share taken
+                # against something other than the session.
+                assert bars.setdefault(key, (cost, steps)) == (cost, steps), (key, preset)
     assert whole, "the session this reads has a spend to take shares of"
 
 
@@ -648,6 +661,18 @@ def test_every_kind_under_every_preset_opens_the_children_its_cell_defines(
     html = client.get(node_url(kind, *picked), params={"nav": preset}).text
     assert kin(html) == expected, picked
     assert bool(expected) == ((kind, preset) not in UNFILLED), picked
+    # The fullest node cannot see a level that leaks sideways: children matched on the thread
+    # alone would land under every node of the kind on it, and under the fullest one that is
+    # the answer the cell wanted anyway. So the same cell is read again at a sibling on the
+    # same thread that the corpus leaves empty, where a leak has nothing to hide behind.
+    beside = [
+        at
+        for at in candidates(store, kind)
+        if at[:2] == picked[:2] and at != picked and not cell(store, preset, kind, *at)
+    ]
+    if beside:
+        empty = client.get(node_url(kind, *beside[0]), params={"nav": preset}).text
+        assert kin(empty) == [], beside[0]
 
 
 @pytest.mark.parametrize("preset", list(Preset))
