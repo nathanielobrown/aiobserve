@@ -73,7 +73,8 @@ Extra context can confuse an AI and weaken its instruction-following. Minimize w
 Transcripts can contain anything an agent read, including source, credentials, and customer data. Treat session data as private and untrusted:
 
 - Raw extracts belong in gitignored `data/`. Never commit one
-- Fixtures must be redacted excerpts trimmed to the records a test needs (`.claude/rules/testing.md`)
+- The store keeps everything. Every input, output, tool result, and file read stays intact and reachable in the viewer; we are not redacting the store for now (`docs/store.md`)
+- Fixtures must be redacted excerpts trimmed to the records a test needs (`.claude/rules/testing.md`). That rule is about the repository, not the store
 - Don't paste transcript text into a PR, report, or chat message until you've read it
 - Keep ingest keys in gitignored `.env`. Validate them at startup, refuse to run when they're missing or empty, and never print them
 
