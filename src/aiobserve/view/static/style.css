@@ -110,7 +110,7 @@ li.node > a {
   padding: 0 var(--space-1); color: inherit; text-decoration: none;
 }
 li.node [data-field="label"] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#tree .secondary, .tie { color: var(--dim); white-space: nowrap; }
+#tree .secondary { color: var(--dim); white-space: nowrap; }
 li.node > a:hover { background-color: color-mix(in srgb, var(--mark) 12%, transparent); }
 /* The row the pane is about, held at full strength while everything around it recedes. */
 li.row[data-selected] > a { font-weight: 600;

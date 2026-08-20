@@ -112,7 +112,7 @@ def turn_level(
         ).fetchall()
     ]
     hoisted: dict[str, list[str]] = {}
-    for run_id, spawn_source, spawn_turn, spawn_call, _ in spawned(store, session_id):
+    for run_id, spawn_source, spawn_turn, spawn_call in spawned(store, session_id):
         if spawn_source == source and spawn_turn == turn_id:
             hoisted.setdefault(str(spawn_call), []).append(f"run:{run_id}")
     placed: list[str] = []
@@ -290,17 +290,17 @@ def test_the_tree_keeps_its_place_because_the_scroller_is_not_what_swaps(
     assert not [rule for rule in scrolls if "#tree-rows" in rule or "#tree .rows" in rule]
 
 
-def test_a_run_hoists_after_the_call_that_spawned_it_and_says_which(
+def test_a_run_hoists_after_the_call_that_spawned_it(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """A run renders inside the turn it belongs to, right after its spawning call, with a tie.
+    """A run renders inside the turn it belongs to, right after its spawning call.
 
     A run is a child of the turn and not of the api call — it has a thread of its own, and the
-    call is only where it was asked for — so the row that says where it came from is the tie
-    rather than the nesting. Read here at the level, where the neighbour on either side is the
-    whole point.
+    call is only where it was asked for — so where it came from is said by the place it renders
+    in rather than by a note on the row. Read here at the level, where the neighbour on either
+    side is the whole point.
     """
-    run_id, source, turn_id, call_id, index = one(store, SPAWNS + " LIMIT 1", [SPINE])
+    run_id, source, turn_id, call_id = one(store, SPAWNS + " LIMIT 1", [SPINE])
     assert turn_id is not None, "the recorded run this reads is placed under a turn"
     html = client.get(url(str(turn_id))).text
     level = turn_level(store, SPINE, str(source), str(turn_id))
@@ -308,8 +308,9 @@ def test_a_run_hoists_after_the_call_that_spawned_it_and_says_which(
     # The run sits immediately after the call that spawned it, and the level renders as read.
     assert level[at - 1] == f"call:{call_id}"
     assert [key for key in values(html, "data-tree") if key in level] == level
-    # And the row names the call by its place in the thread, which is what the tie is for.
-    assert str(index) in fields(html, "data-tree", f"run:{run_id}")["tie"]
+    # And the row carries the node's label and its cost, and nothing naming that call: the
+    # place is the whole of what says where the run came from.
+    assert set(fields(html, "data-tree", f"run:{run_id}")) == {"label", "cost_usd"}
 
 
 def test_a_bucket_home_is_decided_by_the_spawning_edge(
@@ -323,7 +324,7 @@ def test_a_bucket_home_is_decided_by_the_spawning_edge(
     first, so the first is planted: one recorded run's spawning call loses its turn, and the
     run has to move one bucket and not the other.
     """
-    run_id, source, turn_id, call_id, _ = one(store, SPAWNS + " LIMIT 1", [SPINE])
+    run_id, source, turn_id, call_id = one(store, SPAWNS + " LIMIT 1", [SPINE])
     assert turn_id is not None, "the run this moves starts out under a turn"
     path = plant(
         (
@@ -805,7 +806,7 @@ def test_a_size_above_its_ceiling_is_refused(
 # The runs of one session beside every edge a preset places them by: the spawning edge the
 # full tree reads (`SPAWNS`), plus the tool call that edge resolved through and the run's own
 # declared parent, which is the one edge `agents` reads that an unresolvable call cannot lose.
-EDGES = SPAWNS.replace('c."index"', "tc.id, a.parent_agent_id")
+EDGES = SPAWNS.replace("c.id FROM", "c.id, tc.id, a.parent_agent_id FROM")
 
 
 class Edge(NamedTuple):

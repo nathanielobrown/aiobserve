@@ -34,10 +34,8 @@ SELECT
     c.source AS spawn_source,
     st.id AS spawn_turn_id,
     -- The call itself, which is where the run hoists: a run renders after the api call that
-    -- spawned it, under whichever node that call sits in, and the tie names the call by its
-    -- index in the thread.
-    c.id AS spawn_call_id,
-    c."index" AS spawn_call_index
+    -- spawned it, under whichever node that call sits in.
+    c.id AS spawn_call_id
 FROM live_agent_runs a
 LEFT JOIN live_tool_calls tc
     ON tc.session_id = a.session_id AND tc.id = a.tool_use_id AND tc.source <> a.id
