@@ -38,7 +38,7 @@ Where a label repeats — a tree row, a crumb, a log row, a walk control — the
 
 `bounds.TREE_ROW_BYTES` is measured through the app, pinned with no slack, and spent 417 times on the worst page. An attribute added to `_tree.html` is that many bytes of page, so re-measure with `tests/view/test_bounds.py` rather than guessing — the pin fails first, which is the point.
 
-Link where you fetch: a row's `href` and its `hx-get` are the same URL, and both carry the page's knob suffix, so a click, a paste, and a bookmark serve the same bytes.
+Link where you fetch: a row's `href` and its `hx-get` are the same URL, and both carry the page's knob suffix, so a click, a paste, and a bookmark serve the same bytes. The mount an expansion opens through carries it too, so the fragment's own links come back under the fold the reader was in.
 
 # A pane swap says where it lands
 

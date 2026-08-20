@@ -33,7 +33,7 @@ from aiobserve.view import bounds, tree
 from aiobserve.view.app import build_app
 from aiobserve.view.enrichment import Descriptions
 from aiobserve.view.format import cut, money
-from aiobserve.view.nodes import Kind, Preset, Ref, meter
+from aiobserve.view.nodes import BODY_URL, Kind, Preset, Ref, meter
 from tests.conftest import MAIN, SPINE
 from tests.view.conftest import SPAWNS, Planter, fields, inside, kin, one, rows, values, wired
 
@@ -1167,6 +1167,10 @@ def test_a_preset_rides_every_node_link_the_page_mints(
     The switcher above the tree is the one exception, and the only one: its whole job is to
     change the fold, so its three links are excluded here and checked on their own leaf. Read
     with `?kin=1` so the tail row is on the page to check too.
+
+    The body a log row expands is the same node under the same view, so the fold rides the
+    mount as well — and rides out again on the links the fragment itself mints, which are the
+    reader's way on from inside a parent's page.
     """
     html = client.get(url(open_turn(store)), params={"nav": "agents", "kin": 1}).text
     switching = set(inside(html, "class", "switch", "href"))
@@ -1179,6 +1183,18 @@ def test_a_preset_rides_every_node_link_the_page_mints(
     assert len(links) > 5, "the page mints node links to check"
     for href in links:
         assert parse_qs(href.partition("?")[2]).get("nav") == ["agents"], href
+    # The mounts a log's rows open their children's bodies through carry it too...
+    mounts = [unescape(href) for href in values(html, "hx-get") if href.startswith(BODY_URL)]
+    assert mounts, "the log rows on this page mount an expansion"
+    for mount in mounts:
+        assert parse_qs(mount.partition("?")[2]).get("nav") == ["agents"], mount
+    # ...and what one of them serves links on under the same fold rather than dropping it.
+    served = client.get(mounts[0])
+    assert served.status_code == 200, mounts[0]
+    onward = [href for href in values(served.text, "href") if node_link(href)]
+    assert onward, "the fragment offers the way to the node's own page"
+    for href in onward:
+        assert parse_qs(unescape(href).partition("?")[2]).get("nav") == ["agents"], href
 
 
 def test_a_preset_the_viewer_does_not_have_is_refused(

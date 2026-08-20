@@ -4,9 +4,9 @@
    has one. #}
 {% import "_node_body.html" as body %}
 <div class="fragment">
-  {{ body.pane(node, row, '') }}
+  {{ body.pane(node, row, suffix) }}
   <p class="children" data-children="{{ node.kind }}">
-    <a href="{{ node.url }}">
+    <a href="{{ node.url }}{{ suffix }}">
       {%- if children is not none %}<span data-field="children">{{ children | count }}</span>
       {{ shape }}{% else %}its own page{% endif %}</a>
   </p>
