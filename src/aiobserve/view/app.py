@@ -358,7 +358,6 @@ def build_app(db_path: Path) -> FastAPI:
         "money": fmt.money,
         "count": fmt.count,
         "share": fmt.share,
-        "percent": fmt.percent,
         "when": fmt.when,
         "clock": fmt.clock,
         "duration": fmt.duration,
