@@ -267,6 +267,66 @@ def test_a_compaction_hangs_off_the_turn_whose_span_covers_it(
         assert (at < turn_at) is above, (moment, placed)
 
 
+def moved(compaction_id: str, at: dt.datetime) -> tuple[str, list[str]]:
+    """One recorded compaction, moved onto `SPINE`'s main thread at the instant named."""
+    return (
+        "UPDATE compactions SET session_id = ?, source = ?, timestamp = ?::TIMESTAMPTZ"
+        " WHERE id = ?",
+        [SPINE, MAIN, str(at), compaction_id],
+    )
+
+
+def test_a_turn_holds_its_own_compactions_and_an_overlapped_instant_goes_to_the_later_turn(
+    store: duckdb.DuckDBPyConnection, plant: Planter
+) -> None:
+    """Two turns running at once, one compaction inside both and one inside only the outer.
+
+    A turn's level holds the compactions of that turn and no other's. Where two turns cover
+    one instant — 44 of the canonical store's 1,269 compactions sit inside more than one span
+    — the turn that started last holds it, because that is the one still running when the
+    context was dropped.
+
+    Both claims need a thread with two turns owning a compaction apiece, and no recorded
+    session has one: every thread holding a compaction holds a single turn. The overlap is
+    real, though, so only the compactions are planted — two of them moved onto a thread whose
+    turns already overlap, one at an instant both cover and one at an instant only the outer
+    turn does.
+    """
+    outer, outer_started, inner, inner_started, inner_ended = one(
+        store,
+        "SELECT a.id, a.started_at, b.id, b.started_at, b.ended_at FROM live_turns a"
+        " JOIN live_turns b ON b.session_id = a.session_id AND b.source = a.source"
+        "  AND b.id <> a.id AND b.started_at > a.started_at AND b.ended_at <= a.ended_at"
+        "  AND b.started_at < b.ended_at"
+        ' WHERE a.session_id = ? AND a.source = ? ORDER BY a."index", b."index" LIMIT 1',
+        [SPINE, MAIN],
+    )
+    shared, alone = [
+        row[0]
+        for row in store.execute("SELECT id FROM live_compactions ORDER BY id LIMIT 2").fetchall()
+    ]
+    path = plant(
+        # Inside both spans: the instant belongs to the turn that started last.
+        moved(shared, inner_started + (inner_ended - inner_started) / 2),
+        # And inside the outer turn alone, before the inner one started.
+        moved(alone, outer_started + (inner_started - outer_started) / 2),
+    )
+    with TestClient(build_app(path)) as served:
+        pages = {
+            turn_id: served.get(f"/session/{SPINE}/turn/{MAIN}/{turn_id}").text
+            for turn_id in (outer, inner)
+        }
+    for turn_id, expected in ((outer, alone), (inner, shared)):
+        held = [key for key in kin(pages[turn_id]) if key.startswith(f"{Kind.COMPACTION}:")]
+        assert held == [f"{Kind.COMPACTION}:{expected}"], turn_id
+    # And the page says what placed them: the query that answered which turn each compaction
+    # happened during is cited, at the thread both levels of this page read it on.
+    cited = fields(pages[inner], "id", "citation")
+    assert cited["view_compactions"] == (
+        f"-- queries/view_compactions.sql session_id={SPINE} source={MAIN}"
+    )
+
+
 def test_the_tree_opens_the_selections_path_and_leaves_the_rest_shut(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
