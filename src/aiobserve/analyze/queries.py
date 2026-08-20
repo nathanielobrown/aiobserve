@@ -355,7 +355,10 @@ QUERIES: dict[str, Query] = {
             "max_chars": Param(type=ParamType.INTEGER, default=RAW_CHARS),
         },
     ),
-    "run_digest": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID, "source": SOURCE}),
+    "run_digest": Query(
+        scope=Scope.KEYED,
+        params={"session_id": SESSION_ID, "source": SOURCE, "log_chars": LOG_CHARS_PARAM},
+    ),
     "select_runs": Query(
         scope=Scope.CORPUS,
         params={
@@ -405,7 +408,9 @@ QUERIES: dict[str, Query] = {
         },
     ),
     "session_counts": Query(scope=Scope.CORPUS, params={}),
-    "session_digest": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
+    "session_digest": Query(
+        scope=Scope.KEYED, params={"session_id": SESSION_ID, "log_chars": LOG_CHARS_PARAM}
+    ),
     "session_overview": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
     "session_shapes": Query(
         scope=Scope.CORPUS,

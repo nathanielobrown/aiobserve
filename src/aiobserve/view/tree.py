@@ -189,9 +189,10 @@ def home(source: str, turn_id: str | None) -> Ref:
 
 def _digest(session_id: str, source: str) -> tuple[Library, dict[str, ParamValue]]:
     """Which digest answers for a thread, and what it binds: `main` has one of its own."""
+    bound: dict[str, ParamValue] = {"session_id": session_id, "log_chars": queries.LOG_CHARS}
     if source == MAIN_SOURCE:
-        return Page.TIMELINE, {"session_id": session_id}
-    return Page.RUN_TIMELINE, {"session_id": session_id, "source": source}
+        return Page.TIMELINE, bound
+    return Page.RUN_TIMELINE, bound | {"source": source}
 
 
 def unattributed(

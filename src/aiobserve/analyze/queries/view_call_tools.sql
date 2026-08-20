@@ -19,7 +19,7 @@ WITH page AS (
     SELECT
         t."index" AS tool_index,
         t.id AS tool_call_id,
-        substr(t.name, 1, $log_chars) AS name,
+        substr(t.name, 1, $log_chars + 1) AS name,
         t.server_side,
         t.is_error,
         t.incomplete,

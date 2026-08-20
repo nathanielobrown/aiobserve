@@ -74,18 +74,22 @@
         {{ cell('cost_usd', item.node.cost_usd | money, 'number') }}
         {%- elif shape == 'calls' %}
         {{ cell('call_index', item.row.call_index | count, 'number') }}
-        {{ what(item.node, suffix, 'model', item.row.model | text) }}
+        {{ what(item.node, suffix, 'model', item.row.model | line) }}
         {{ cell('tool_calls', item.row.tool_calls | count, 'number') }}
         {{ cell('text_chars', item.row.text_chars | count, 'number') }}
         {{ cell('cost_usd', item.node.cost_usd | money, 'number') }}
         {%- elif shape == 'tools' %}
         {{ cell('tool_index', item.row.tool_index | count, 'number') }}
-        {{ cell('name', item.row.name | text) }}
-        {{ what(item.node, suffix, 'input_head', item.row.input_head | text, item.row.command) }}
+        {{ cell('name', item.row.name | line) }}
+        {#- The command reads through the same cut as the head above it, and is left out
+            rather than dashed where the tool ran none: a dash under a description is a line
+            of nothing where the second line means "and this is what it ran". #}
+        {{ what(item.node, suffix, 'input_head', item.row.input_head | line,
+                item.row.command | line if item.row.command else '') }}
         {{ cell('is_error', ('error' if item.row.is_error else none) | text) }}
         {{ cell('result_chars', item.row.result_chars | count, 'number') }}
         {%- elif shape == 'runs' %}
-        {{ cell('agent_type', item.row.agent_type | text) }}
+        {{ cell('agent_type', item.row.agent_type | line) }}
         {{ what(item.node, suffix, 'label', item.node.line) }}
         {{ cell('tool_errors', item.row.tool_errors | count, 'number') }}
         {{ cell('cost_usd', item.node.cost_usd | money, 'number') }}

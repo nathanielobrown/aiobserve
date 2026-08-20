@@ -22,7 +22,7 @@ from fastapi.testclient import TestClient
 from markupsafe import escape
 
 from aiobserve.analyze import queries
-from aiobserve.analyze.queries import QUERIES, VIEW_PREFIX
+from aiobserve.analyze.queries import QUERIES, VIEW_PREFIX, ParamValue
 from aiobserve.view import bounds, nodes
 from aiobserve.view.app import QUERY_URL, build_app, knobs
 from aiobserve.view.format import ELLIPSIS
@@ -131,14 +131,6 @@ MEASURED_PROJECTS_CHROME = 2_500
 MEASURED_ERROR_ROW_MARKUP = 400
 MEASURED_ERRORS_CHROME = 2_500
 
-# How much of a turn's prompt a digest shows, from `session_digest`'s own `substr`, and the
-# same two for what a slash-command turn shows instead: the name of the command, and what was
-# typed after it. A command is named by whoever wrote the file that defines it, so the cut is
-# in SQL like everything else rather than assumed short. All three reach a page through a
-# children log's turn row, which cuts them again to the width of a line.
-PROMPT_CHARS = 300
-COMMAND_NAME_CHARS = 60
-COMMAND_ARGS_CHARS = 300
 # What a row of the records browser really costs — the preview plus the row's own markup, most
 # of it the `hx-get` that fetches the record whole. Measured against `data/traces.duckdb` on
 # 2026-08-08: 83,659 B for a 100-record page less 1,865 B of chrome, over the 99 rows between.
@@ -150,8 +142,10 @@ MEASURED_RECORD_BYTES = 826
 # node's URL — the link, the `hx-get` behind it, and the mount the View button opens through —
 # the swap the link performs, the numbers that tell two children apart, and the row around
 # them. Re-measured through the app by the leaf at the bottom of this file, every cap full of
-# `&` and every knob at its longest — 6,009 B, of which 4,515 B is content at those caps and
-# 114 B the knobs, leaving 1,385 B.
+# `&` and every knob at its longest — 6,008 B, of which 4,509 B is content at those caps and
+# 114 B the knobs, leaving 1,385 B. A string at its cap is 300 escapes and the mark that says
+# it was cut; the arithmetic below charges the 301 escapes the cut selected, which is 2 B a
+# string more than a row can really carry.
 MEASURED_LOG_ROW_MARKUP = 1_450
 # How many strings one row of a children log prints, each cut to `LOG_CHARS` and selected a
 # character past it. Three is the widest row there is: a tool row is the tool's name, the head
@@ -888,12 +882,10 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
             " '2026-01-01T00:00:00Z' FROM sessions s, range(1, ?) t(i))",
             [item, over + 1],
         ),
-        # What a turn's tree row, log row and pane read: the prompt is the pane's one preview
-        # and the row's label both, so it goes in at the wider of the two cuts.
-        (
-            "UPDATE turns SET prompt = ?, command_name = ?, command_args = ?",
-            [fat, "&" * COMMAND_NAME_CHARS, "&" * COMMAND_ARGS_CHARS],
-        ),
+        # What a turn's tree row, log row and pane read. All three go in past every cut that
+        # touches them: the digest cuts each to a log line's width, and the prompt is the
+        # pane's one preview as well as the row's label, which is the wider of the two.
+        ("UPDATE turns SET prompt = ?, command_name = ?, command_args = ?", [fat] * 3),
         ("UPDATE agent_runs SET agent_type = ?, model = ?, description = ?", [fat, fat, fat]),
         ("UPDATE api_calls SET model = ?, text = ?, thinking = ?", [fat, fat, fat]),
         # The input parses, and says both of the things a tool row reads out of one: a log row
@@ -1199,12 +1191,11 @@ def test_the_digest_rows_no_window_reaches_are_capped_at_what_a_page_budgets(
     recorded digest crosses: more of these rows than the ceiling budgets raises rather than
     riding a page nothing counted them on.
     """
-    rows = cursorless_rows(
-        store, Page.TIMELINE, TURN_CURSOR, bounds.CURSORLESS_TURNS, session_id=RESUME
-    )
+    bound: dict[str, ParamValue] = {"session_id": RESUME, "log_chars": queries.LOG_CHARS}
+    rows = cursorless_rows(store, Page.TIMELINE, TURN_CURSOR, bounds.CURSORLESS_TURNS, **bound)
     assert [row["turn_id"] for row in rows] == [queries.UNATTRIBUTED]
     with pytest.raises(ValueError, match="more than 0"):
-        cursorless_rows(store, Page.TIMELINE, TURN_CURSOR, 0, session_id=RESUME)
+        cursorless_rows(store, Page.TIMELINE, TURN_CURSOR, 0, **bound)
 
 
 def test_a_deeply_nested_value_is_served_at_the_size_it_was_stored(plant: Planter) -> None:
@@ -1238,11 +1229,15 @@ def test_a_deeply_nested_value_is_served_at_the_size_it_was_stored(plant: Plante
 
 
 def printed(html: str) -> list[str]:
-    """Every value a children log's rows print, as a reader sees it — the marks and all."""
+    """Every value a children log's rows print, as a reader sees it — the marks and all.
+
+    Any attribute may sit in front of the field's own: the second line of a wide column is
+    classed as well as named, and a pattern anchored on `data-field` reads past it.
+    """
     return [
         value
         for row in re.findall(r"<tr data-child=.*?</tr>", html, flags=re.S)
-        for value in re.findall(r'<span data-field="[^"]*">(.*?)</span>', row, flags=re.S)
+        for value in re.findall(r'<span [^>]*data-field="[^"]*">(.*?)</span>', row, flags=re.S)
     ]
 
 
@@ -1271,6 +1266,16 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
         ' AND command_name IS NOT NULL ORDER BY "index"',
         [SPINE],
     )
+    # And one tool call to dress as a command, on a page of its own: what a tool row shows is
+    # read out of the input JSON rather than selected, so the two strings a command row prints
+    # are cut on the way out and nowhere else. It has to be a second call, because the one
+    # below keeps an input that is not JSON — the arm that shows the input as stored.
+    asked_session, asked_source, asked_call, asked_id = one(
+        store,
+        "SELECT session_id, source, api_call_id, id FROM live_tool_calls WHERE session_id <> ?"
+        ' ORDER BY session_id, source, api_call_id, "index"',
+        [ANCESTOR],
+    )
     # Each value is planted well past its own cap, onto the real row a fixture recorded...
     long = "x" * (queries.DETAIL_CHARS + 5_000)
     path: Path = plant(
@@ -1286,6 +1291,10 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
         ),
         ("UPDATE api_calls SET text = ?, model = ? WHERE session_id = ?", [long, long, ANCESTOR]),
         ("UPDATE tool_calls SET input = ?, name = ? WHERE session_id = ?", [long, long, ANCESTOR]),
+        (
+            "UPDATE tool_calls SET name = ?, input = ? WHERE id = ?",
+            ["Bash", json.dumps({"description": long, "command": long}), asked_id],
+        ),
     )
     with TestClient(build_app(path)) as planted:
         listing = planted.get("/sessions").text
@@ -1294,6 +1303,7 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
         slash = planted.get(f"/session/{SPINE}/turn/main/{command_id}").text
         run = planted.get(f"/session/{SPINE}/run/{SPINE_RUN}").text
         call = planted.get(f"/session/{ANCESTOR}/call/main/{DENSE_TURN_CALL}").text
+        asked = planted.get(f"/session/{asked_session}/call/{asked_source}/{asked_call}").text
     # ...and what each of them shows is its cap, not the value. The list's cuts are the
     # viewer's own composition rather than its query's, because its filters read the whole
     # values — a project path cut to a head would match no session under a longer one.
@@ -1310,10 +1320,16 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # Cut and marked as cut: every column a label is composed from comes back one character
     # past the width, so a row that fills the line says the value went on.
     assert max(labels, key=len) == "x" * queries.NAV_CHARS + ELLIPSIS
-    # A children log row is a line of a table, so it takes the next cut up, marked where it
-    # was cut: a turn's label composed past the width, and the head of what a tool was asked.
-    assert max(len(value) for value in printed(pane)) == queries.LOG_CHARS + 1
-    assert max(len(value) for value in printed(call)) == queries.LOG_CHARS + 1
+    # A children log row is a line of a table, so it takes the next cut up — and every value
+    # the plant reached is marked where it was cut, not merely short enough. Per value and not
+    # at the maximum: a maximum is satisfied by whichever sibling overflowed furthest, which
+    # is how a whole column of silently-truncated values hid behind a marked neighbour here.
+    # What the three pages between them print: a plain turn's prompt and a slash turn's command
+    # with its arguments, a tool's name, the head of what it was asked read out of an input
+    # that is not JSON and out of one that is, and the command that head describes.
+    reached = [value for value in printed(pane) + printed(call) + printed(asked) if "x" in value]
+    assert len(reached) == 6
+    assert set(reached) == {"x" * queries.LOG_CHARS + ELLIPSIS}
     # And the pane heads the node it is about at the widest of the three, because nothing on
     # the page repeats it. Every kind, not the session alone: the tree built the row the pane
     # stands on and cut its words to a tree row's width, and a title that took the tree's
