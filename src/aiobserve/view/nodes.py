@@ -78,6 +78,20 @@ class Preset(StrEnum):
     # Agent runs only, each under the run that spawned it: the session as a spawn tree.
     AGENTS = "agents"
 
+    @property
+    def label(self) -> str:
+        """What the tree's switcher calls this fold, for a reader who never reads the URL."""
+        return _PRESET_LABELS[self]
+
+
+# Beside the enum rather than in it: a StrEnum member holds its URL value, and this is the
+# other thing a preset is — the words on the control that turns it on.
+_PRESET_LABELS = {
+    Preset.FULL: "full",
+    Preset.NO_API: "no api calls",
+    Preset.AGENTS: "agents only",
+}
+
 
 def meter(share: float | None) -> str:
     """The step class a share's spend bar is drawn with, or `s0` for nothing to draw."""

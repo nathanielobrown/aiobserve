@@ -234,6 +234,22 @@ def knobs(nav: nodes.Preset, kin: int, log: int, detail: int) -> str:
     return f"?{urlencode(given)}" if given else ""
 
 
+class Switch(NamedTuple):
+    """One fold as the control above the tree offers it: where it goes, and whether we are in it."""
+
+    preset: nodes.Preset
+    url: str
+    current: bool
+
+
+def switcher(node: nodes.Node, nav: nodes.Preset, kin: int, log: int, detail: int) -> list[Switch]:
+    """The node the reader is on under each fold, so switching never costs them their place."""
+    return [
+        Switch(choice, f"{node.url}{knobs(choice, kin, log, detail)}", choice is nav)
+        for choice in nodes.Preset
+    ]
+
+
 def continued(url: str, marks: str, after: int) -> str:
     """Where a children log's "+N more" goes: this same node, one page further on."""
     return f"{url}{marks}{'&' if marks else '?'}after={after}"
@@ -623,6 +639,7 @@ def build_app(db_path: Path) -> FastAPI:
             "node.html",
             {
                 "selection": selection,
+                "presets": switcher(selection, preset, kin, log, detail),
                 "chain": built.chain,
                 "rows": built.rows,
                 "header": seen.header,

@@ -145,8 +145,9 @@ PANE_DETAILS = 2
 # down to the selection, the node's own facts, and what a pass said about it. The session is
 # the widest of the eight panes — every string in its header is one a transcript wrote, and its
 # two lists grow with the session — so the allowance is a session header's, cut in SQL.
-# Re-measured through the app by the leaf at the bottom of this file at 14,820 B.
-MEASURED_NODE_CHROME = 15_500
+# The preset switcher rides here too, three links carrying the node's own URL.
+# Re-measured through the app by the leaf at the bottom of this file at 15,349 B.
+MEASURED_NODE_CHROME = 16_000
 
 # The parameter every truncated column of a run row is cut to. Counted per query rather than
 # listed, so a fourth column added to a chip shows up in the arithmetic instead of quietly
