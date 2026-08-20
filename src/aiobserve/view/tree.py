@@ -525,7 +525,13 @@ def tree(
 
 
 def _kin(under: Sequence[Node], cap: int, open_keys: Sequence[str]) -> tuple[list[Node], int]:
-    """The first `cap` children plus the one the path descends through, and what was cut."""
-    kept = list(under[:cap])
+    """The first `cap` children, the one the path descends through among them, and what was cut.
+
+    The path's child takes a slot rather than an extra row: `cap` is what the page's byte
+    arithmetic is priced on, so a level that renders `cap + 1` children is a page over the
+    bound. Only one child of a level can be on the path, so the rescue costs at most the level's
+    last shown sibling — a row the tail still counts and the parent's own page still lists.
+    """
     rescued = [node for node in under[cap:] if node.key in open_keys]
+    kept = list(under[: max(cap - len(rescued), 0)])
     return kept + rescued, len(under) - len(kept) - len(rescued)

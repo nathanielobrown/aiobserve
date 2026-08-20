@@ -16,6 +16,7 @@ table written out — every cell in full, including the ones a preset passes thr
 table edit has to be an edit here before it can pass.
 """
 
+from collections import Counter
 from collections.abc import Callable, Sequence
 from typing import NamedTuple
 from urllib.parse import parse_qs
@@ -291,9 +292,12 @@ def test_the_kin_cap_cuts_the_children_but_never_the_open_path(
     html = client.get(url(selection), params={"kin": 1}).text
     level, under = thread_level(store, SPINE, MAIN), turn_level(store, SPINE, MAIN, selection)
     assert len(level) > 2 and len(under) > 1, "the cap has to have something to cut"
-    # The cap admits one child, and the path through the selection is kept beside it...
+    # The cap admits one child, and the path through the selection takes that slot rather than
+    # being kept past it: the rescue rides inside the cap. A level of `kin + 1` children is a
+    # page the byte arithmetic never priced, and the sibling the reader loses is one the tail
+    # row still counts and the parent's own page still lists.
     shown = [key for key in values(html, "data-tree") if key in level]
-    assert shown == [level[0], f"turn:{selection}"]
+    assert shown == [f"turn:{selection}"]
     # ...with a tail saying how many rows are off the tree, linking to the page that pages
     # them rather than capping them: the session's own, still under the size the reader typed.
     assert fields(html, "data-more", f"session:{SPINE}")["cut"] == str(len(level) - len(shown))
@@ -302,6 +306,10 @@ def test_the_kin_cap_cuts_the_children_but_never_the_open_path(
     # of the several the turn has, and a tail for the rest.
     assert [key for key in values(html, "data-tree") if key in under] == [under[0]]
     assert fields(html, "data-more", f"turn:{selection}")["cut"] == str(len(under) - 1)
+    # And no level on the page exceeds the cap, anywhere. `worst_node_bytes()` prices
+    # `DEPTH * (KIN + 1)` rows on exactly this, so it is pinned here rather than left to a
+    # reading of `_kin`.
+    assert max(Counter(depth for depth, _ in rows(html)).values()) <= 1
 
 
 def test_a_chain_deeper_than_the_page_is_priced_for_is_refused(
