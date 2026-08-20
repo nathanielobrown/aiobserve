@@ -13,12 +13,14 @@ in the order the tree drew it — so the reading order is checked against what t
 rather than derived from the store a second time.
 """
 
+import re
+
 import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
 from tests.conftest import FORK_ORIGIN, MAIN, SPINE
-from tests.view.conftest import fields, inside, kin, one, pages, rows, values
+from tests.view.conftest import fields, inside, kin, one, pages, plain, rows, values
 
 
 class Page:
@@ -63,12 +65,30 @@ class Page:
         return {"previous": previous, "next": after_it}
 
 
+# The arrow each control shows, by direction and by whether the step leaves the level: along
+# the level it points the way the reader is going, and out of it both point up. This is the
+# half a reader sees — `data-climb` is a hook for these leaves, and the stylesheet reads
+# neither — so the two are checked as one claim below.
+ARROW = {("previous", False): "\u2190", ("next", False): "\u2192"}
+CLIMB = "\u2191"
+
+
+def shown(html: str, named: str) -> str:
+    """The arrow one control shows: leading on prev, trailing on next, as each points away."""
+    found = re.search(rf'<button[^>]*data-walk="{named}"[^>]*>(.*?)</button>', html, re.DOTALL)
+    assert found is not None, f"no {named} control on the page"
+    text = plain(found.group(1)).strip()
+    return text[0] if named == "previous" else text[-1]
+
+
 def control(html: str, named: str) -> tuple[str, bool] | None:
     """What one control on a served page points at, and whether it is marked as a climb."""
     found = inside(html, "data-walk", named, "data-node")
     if not found:
         return None
-    return found[0], bool(inside(html, "data-walk", named, "data-climb"))
+    climbed = bool(inside(html, "data-walk", named, "data-climb"))
+    assert shown(html, named) == (CLIMB if climbed else ARROW[(named, climbed)]), named
+    return found[0], climbed
 
 
 def follow(client: TestClient, start: str, named: str) -> list[Page]:
