@@ -669,9 +669,15 @@ def spend(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, tuple[
     """What the store holds under each priced row of one session: its cost and its unpriced calls.
 
     A turn is worth the calls that answered it on its own thread; a call is worth itself, and a
-    call our price table could not price is worth nothing rather than being free.
+    call our price table could not price is worth nothing rather than being free. The session
+    is worth all of them, which is also the whole every share on its page is taken against.
     """
     said: dict[str, tuple[float, int]] = {}
+    for cost, unpriced in store.execute(
+        "SELECT round(cost_usd, 4), unpriced_api_calls FROM session_rollups WHERE session_id = ?",
+        [session_id],
+    ).fetchall():
+        said[f"{Kind.SESSION}:{session_id}"] = (cost or 0, unpriced)
     for turn_id, cost, unpriced in store.execute(
         "SELECT t.id, coalesce(round(sum(c.cost_usd), 4), 0),"
         "  count(c.id) FILTER (c.cost_usd IS NULL)"
@@ -709,7 +715,7 @@ def test_every_priced_row_carries_the_spend_the_store_holds_under_it(
         for key, value in spend(store, str(at)).items()
     }
     read: set[tuple[str, str]] = set()
-    for kind in (Kind.TURN, Kind.CALL, Kind.RUN):
+    for kind in (Kind.SESSION, Kind.TURN, Kind.CALL, Kind.RUN):
         for session_id, source, node_id in candidates(store, kind):
             # A page holds more than the node it opens, so the ones already read are skipped.
             if (session_id, f"{kind}:{node_id}") in read:
@@ -722,7 +728,8 @@ def test_every_priced_row_carries_the_spend_the_store_holds_under_it(
     # Every priced row of the store was reached, so no kind is priced by a sample of itself.
     assert read == set(said)
     # Our price table prices every call the corpus recorded, so the mark that says otherwise is
-    # planted on one call: it has to reach both the call's own row and the turn above it.
+    # planted on one call: it has to reach the call's own row, the turn above it, and the
+    # session at the root, each of which counts what went unpriced for itself.
     session_id, source, call_id, turn_id = one(
         store,
         "SELECT c.session_id, c.source, c.id, t.id FROM live_api_calls c"
@@ -736,7 +743,11 @@ def test_every_priced_row_carries_the_spend_the_store_holds_under_it(
         said = spend(planted, session_id)
         assert said[f"{Kind.CALL}:{call_id}"] == (0, 1), "the plant left the call unpriced"
         page = marked.get(node_url(Kind.CALL, session_id, source, call_id)).text
-        for key in (f"{Kind.CALL}:{call_id}", f"{Kind.TURN}:{turn_id}"):
+        for key in (
+            f"{Kind.CALL}:{call_id}",
+            f"{Kind.TURN}:{turn_id}",
+            f"{Kind.SESSION}:{session_id}",
+        ):
             weighed(page, key, planted, session_id, *said[key])
     planted.close()
 

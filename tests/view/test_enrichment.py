@@ -305,6 +305,14 @@ def test_a_tree_row_the_model_named_carries_a_bare_glyph(
     # ...and marked as the model's words, with nothing hanging off the mark.
     assert GLYPH_CLASS in inside(page, "data-tree", f"turn:{turn_id}", "class")
     assert not inside(page, "data-tree", f"turn:{turn_id}", "title")
+    # The session's own row is built by a third builder and marked the same way, for the pass
+    # that named the whole session rather than one of its turns.
+    named = enrichment_of(enriched_store, Level.session, SPINE)
+    assert fields(page, "data-tree", f"session:{SPINE}")["label"] == cut(
+        named[SPINE][0], queries.NAV_CHARS
+    )
+    assert GLYPH_CLASS in inside(page, "data-tree", f"session:{SPINE}", "class")
+    assert not inside(page, "data-tree", f"session:{SPINE}", "title")
     # The one turn of the corpus no pass reached sits on another session's tree, labelled by
     # what the session itself recorded and carrying no mark.
     bare_session, bare = one(
