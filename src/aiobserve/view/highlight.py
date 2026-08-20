@@ -80,6 +80,16 @@ _SUFFIXES: dict[str, Syntax] = {
     ".markdown": Syntax.MARKDOWN,
 }
 
+# What a model writes after the three backticks of a fence, for the syntaxes this viewer
+# reads. The enum's own names, plus the short spellings a model actually types.
+_FENCED: dict[str, Syntax] = {syntax.value: syntax for syntax in Syntax} | {
+    "py": Syntax.PYTHON,
+    "sh": Syntax.BASH,
+    "shell": Syntax.BASH,
+    "zsh": Syntax.BASH,
+    "md": Syntax.MARKDOWN,
+}
+
 # The line-number gutter Claude Code writes down the left of a file it read — `12\t`, one per
 # line. It is not part of the file: a lexer that meets it reads a different language, where a
 # heading whose `#` follows a number is no longer a heading.
@@ -146,6 +156,17 @@ def by_suffix(suffix: str | None) -> Syntax | None:
     end that names it. Case is folded here so the store keeps what the session wrote.
     """
     return _SUFFIXES.get(suffix.lower()) if suffix else None
+
+
+def by_fence(info: str | None) -> Syntax | None:
+    """The syntax a fenced block claims, or None where this viewer has no lexer for it.
+
+    The info string is what a model typed above its code, so it is a claim rather than a fact:
+    an unknown one prints the block as it was written. Only the first word is read — a fence
+    can carry a filename or attributes after the language.
+    """
+    named = (info or "").strip().split(" ")[0].lower()
+    return _FENCED.get(named)
 
 
 def _run(text: str, lexer: Lexer) -> str:
