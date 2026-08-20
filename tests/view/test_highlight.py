@@ -12,7 +12,7 @@ import json
 
 from aiobserve.analyze import queries
 from aiobserve.view import bounds
-from aiobserve.view.highlight import Syntax, lit
+from aiobserve.view.highlight import Syntax, by_suffix, lit
 from tests.view.conftest import plain
 
 # One tool argument in the shape a recorded one has — a path and a pattern — with markup put
@@ -145,3 +145,64 @@ def test_sql_is_marked_up_whole_and_loses_nothing() -> None:
     shown = lit(sql, Syntax.SQL)
     assert shown.syntax is Syntax.SQL
     assert plain(shown.html) == sql
+
+
+def test_a_shell_command_is_marked_up_as_a_shell_reads_it() -> None:
+    """What a `Bash` call ran is code, and the densest line a tool call holds.
+
+    Real: a command this repo's own tasks run, rather than one out of a session — the store's
+    commands are private and a fixture's are redacted. Every character survives the markup,
+    which is what makes a marked-up command still quotable as evidence.
+    """
+    command = "cd /tmp && rg -n 'x' *.py | head -3"
+    shown = lit(command, Syntax.BASH)
+    assert shown.syntax is Syntax.BASH
+    assert plain(shown.html) == command
+    # The builtin, the operator and the quoted argument each carry a class of their own.
+    assert '<span class="nb">cd</span>' in shown.html
+    assert '<span class="o">&amp;&amp;</span>' in shown.html
+
+
+def test_a_line_number_gutter_is_peeled_off_before_the_lexer_reads_the_line() -> None:
+    """A file the `Read` tool returned arrives behind a gutter, and the gutter is not the file.
+
+    Claude Code writes `12\\t` down the left of every line it returns (verified against the
+    canonical store on 2026-08-20), and a lexer that meets it reads a different language: a
+    heading whose `#` follows a number is no longer a heading, and neither is a list's `-`.
+    So the number is peeled off, classed as the gutter it is, and the line behind it is lexed
+    on its own. The markdown here is invented — a fixture's strings are redacted flat — but
+    the numbering is the recorded shape.
+    """
+    read = "1\t# Title\n2\t\n3\t- an item\n"
+    shown = lit(read, Syntax.MARKDOWN)
+    assert shown.syntax is Syntax.MARKDOWN
+    # Every character comes back, gutter included: the result is evidence before it is markup.
+    assert plain(shown.html) == read
+    assert '<span class="lineno">1\t</span>' in shown.html
+    # ...and the heading behind the number is read as a heading, which is the whole point.
+    assert '<span class="gh"># Title</span>' in shown.html
+    assert '<span class="k">-</span>' in shown.html
+
+
+def test_a_value_with_no_gutter_is_lexed_whole() -> None:
+    """The gutter is a shape, not a syntax: a query file is lexed in one pass and loses none.
+
+    Real, and the strongest check available — the value is a file this repo ships, so the
+    round trip is exact. Line by line, a lexer forgets what the line before it opened.
+    """
+    sql = queries.load("view_sessions")
+    assert plain(lit(sql, Syntax.SQL).html) == sql
+
+
+def test_a_file_name_is_what_says_which_syntax_a_read_returned() -> None:
+    """A result is marked up by what the call asked for, because the result itself says nothing.
+
+    The `Read` tool returns text with no type on it, so the only evidence of what the file
+    holds is the name that was read — a false positive is a `.md` file that is not markdown,
+    and a false negative is markdown in a file named anything else. Both show the file as it
+    was stored, which is what the viewer does with every value it cannot place.
+    """
+    assert by_suffix(".md") is Syntax.MARKDOWN
+    assert by_suffix(".MD") is Syntax.MARKDOWN, "the store keeps the case the session wrote"
+    assert by_suffix(".py") is None, "a suffix with no lexer here is shown as it was stored"
+    assert by_suffix(None) is None, "and a tool that read no file at all has no suffix"
