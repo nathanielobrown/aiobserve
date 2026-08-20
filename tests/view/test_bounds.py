@@ -278,6 +278,10 @@ def worst_node_bytes() -> int:
     path runs `DEPTH` levels deep — so `bounds.TREE_ROW_BYTES` is four fifths of the ceiling,
     and the row is pinned rather than budgeted.
 
+    `KIN` children per level is the whole of it: `tree._kin` keeps the child the path descends
+    through *inside* the cap rather than past it, and `test_tree.py` pins that. A rescue that
+    added a row would put a level at `KIN + 1` and this page 16 rows over what it prices.
+
     The sizes' own defaults spend it, and each of the three knobs only goes down from there —
     but a knob a reader turns down writes itself into every link on the page, so the rows are
     priced with the longest query string one can carry rather than with none.
