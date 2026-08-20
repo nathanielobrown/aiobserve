@@ -1314,6 +1314,19 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # was cut: a turn's label composed past the width, and the head of what a tool was asked.
     assert max(len(value) for value in printed(pane)) == queries.LOG_CHARS + 1
     assert max(len(value) for value in printed(call)) == queries.LOG_CHARS + 1
+    # And the pane heads the node it is about at the widest of the three, because nothing on
+    # the page repeats it. Every kind, not the session alone: the tree built the row the pane
+    # stands on and cut its words to a tree row's width, and a title that took the tree's
+    # word for it would head a turn with a third of the prompt it is about.
+    #
+    # The session's title comes back cut to the width exactly, so there is nothing left to
+    # mark it with; the four names composed from a column selected a character past the cut
+    # say the value went on.
+    assert fields(session, "data-body", "session")["label"] == "x" * queries.HEADER_CHARS
+    for named, kind in ((turn, "turn"), (call, "call"), (run, "run")):
+        assert fields(named, "data-body", kind)["label"] == "x" * queries.HEADER_CHARS + ELLIPSIS, (
+            kind
+        )
     # A pane reads one node, so its strings take a header's cut — and the one value the node
     # is about takes the widest of the four, with the rest of it offered as its own fetch.
     assert fields(turn, "data-detail", "prompt")["prompt"] == "x" * queries.DETAIL_CHARS + ELLIPSIS

@@ -8,7 +8,7 @@
    render a heading and nothing under it, which reads as a node with no facts. #}
 {% macro pane(node, row, suffix) %}
 <section class="body" data-body="{{ node.kind }}">
-  <h1 data-field="label">{{ node.label }}</h1>
+  <h1 data-field="label">{{ node.title }}</h1>
   {% if node.kind == 'session' %}{{ session(row) }}
   {% elif node.kind == 'turn' %}{{ turn(row) }}
   {% elif node.kind == 'run' %}{{ run(row) }}
