@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from aiobserve.analyze import queries
 from aiobserve.view import bounds
-from aiobserve.view.app import build_app
+from aiobserve.view.app import build_app, continued
 from aiobserve.view.format import ELLIPSIS
 from aiobserve.view.labels import LABELS
 from aiobserve.view.nodes import BODY_URL
@@ -403,6 +403,12 @@ def test_a_children_log_pages_by_keyset_and_says_what_it_left(
     # And a page past the last one is nothing, rather than an empty log that reads as a node
     # with no children.
     assert client.get(TURN, params={"after": 10_000}).status_code == 404
+    # Every page above turned the log down with `?log=`, and it had to: the corpus's fullest
+    # level is five children against a production log of twelve, so no recorded node overflows
+    # and no page mints this link with the cursor as its *first* query parameter. That arm is
+    # read on the helper the template links with — a `&` where a `?` belongs is a 404.
+    assert continued(TURN, "", 3) == f"{TURN}?after=3"
+    assert continued(TURN, "?log=1", 3) == f"{TURN}?log=1&after=3"
 
 
 def test_a_page_asked_for_the_first_cursor_is_the_page_with_no_cursor_at_all(
