@@ -453,6 +453,19 @@ def test_a_level_divides_into_the_pages_it_has_and_no_empty_one(
     assert "data-pager" not in client.get(TURN, params={"log": held}).text
     # And a page number below the first is a miss rather than a level read backwards.
     assert client.get(TURN, params={"page": 0}).status_code == 404
+    # A level with nothing in it counts nothing. The count comes off the page's own rows, so an
+    # empty page is the one place it has no row to read it from.
+    empty = store.execute(
+        "SELECT c.session_id, c.source, c.id FROM live_api_calls c"
+        " LEFT JOIN live_tool_calls t"
+        " ON t.session_id = c.session_id AND t.api_call_id = c.id"
+        " GROUP BY ALL HAVING count(t.id) = 0 ORDER BY 1, 2, 3 LIMIT 1"
+    ).fetchone()
+    assert empty, "the corpus has to hold an api call that called no tool"
+    session_id, source, call_id = empty
+    childless = client.get(f"/session/{session_id}/call/{source}/{call_id}").text
+    assert fields(childless, "data-log", "tools")["children"] == "0"
+    assert "data-pager" not in childless
 
 
 def test_the_bucket_that_pages_in_memory_walks_the_same_way_the_query_does(
