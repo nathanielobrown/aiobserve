@@ -514,7 +514,7 @@ def test_a_bucket_row_carries_the_totals_of_what_it_gathers(
             else f"/session/{session_id}/run/{source}"
         )
         cost, unpriced = one(store, STANDING, [str(session_id), str(source)])
-        bucket(client.get(at).text, f"unattributed:{source}", store, session_id, cost, unpriced)
+        weighed(client.get(at).text, f"unattributed:{source}", store, session_id, cost, unpriced)
     for (session_id,) in store.execute("SELECT id FROM sessions ORDER BY 1").fetchall():
         loose = [edge.run_id for edge in edges(store, str(session_id)) if edge.spawn_source is None]
         if not loose:
@@ -524,7 +524,7 @@ def test_a_bucket_row_carries_the_totals_of_what_it_gathers(
         totals = [one(store, THREAD, [str(session_id), run_id]) for run_id in loose]
         cost, unpriced = sum(row[0] for row in totals), sum(row[1] for row in totals)
         page = client.get(f"/session/{session_id}").text
-        bucket(page, f"unattached:{session_id}", store, str(session_id), cost, unpriced)
+        weighed(page, f"unattached:{session_id}", store, str(session_id), cost, unpriced)
         # Opening it hands its children the same basis: a run under the bucket draws its share
         # of the session, like every other run, and not a share of the bucket that gathered it.
         (whole,) = one(
@@ -559,12 +559,12 @@ def test_a_bucket_row_carries_the_totals_of_what_it_gathers(
         cost, unpriced = one(planted, STANDING, [thread, source])
         assert unpriced, "the plant leaves the unattributed bucket calls to mark"
         at = f"/session/{thread}" if source == MAIN_SOURCE else f"/session/{thread}/run/{source}"
-        bucket(marked.get(at).text, f"unattributed:{source}", planted, thread, cost, unpriced)
+        weighed(marked.get(at).text, f"unattributed:{source}", planted, thread, cost, unpriced)
         totals = [one(planted, THREAD, [loose_at, run_id]) for run_id in loose_runs]
         cost, unpriced = sum(row[0] for row in totals), sum(row[1] for row in totals)
         assert unpriced, "and leaves the unattached bucket calls to mark"
         page = marked.get(f"/session/{loose_at}").text
-        bucket(page, f"unattached:{loose_at}", planted, loose_at, cost, unpriced)
+        weighed(page, f"unattached:{loose_at}", planted, loose_at, cost, unpriced)
         # A child of the bucket says the same thing for itself: the run whose calls the plant
         # left unpriced carries its own count, and the runs beside it carry no mark at all.
         opened = marked.get(f"/session/{loose_at}/unattached").text
@@ -575,7 +575,7 @@ def test_a_bucket_row_carries_the_totals_of_what_it_gathers(
     planted.close()
 
 
-def bucket(
+def weighed(
     page: str,
     key: str,
     store: duckdb.DuckDBPyConnection,
@@ -583,19 +583,95 @@ def bucket(
     cost: float,
     unpriced: int,
 ) -> None:
-    """One bucket row read against the totals it gathers."""
+    """One row read against what the store holds under it: its spend, and what went unpriced."""
     (whole,) = one(store, "SELECT cost_usd FROM session_rollups WHERE session_id = ?", [session_id])
     row = fields(page, "data-tree", key)
     assert row["cost_usd"] == money(cost), key
-    # The bar is that spend against the session, not against the bucket or its own children —
-    # and a session with nothing to take a share of draws every row of itself at nothing.
+    # The bar is that spend against the session, not against the row's parent or its own
+    # children — and a session with nothing to take a share of draws every row at nothing.
     share = cost / whole if whole else None
     assert meter(share) in inside(page, "data-tree", key, "class")[0].split(), key
     # A `title` inside the row is the mark on a total our price table could not complete —
-    # there where some call under the bucket went unpriced, and nowhere else.
+    # there where some call under the row went unpriced, and nowhere else.
     marks = inside(page, "data-tree", key, "title")
     assert bool(marks) == bool(unpriced), key
     assert not unpriced or str(unpriced) in marks[0], key
+
+
+def spend(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, tuple[float, int]]:
+    """What the store holds under each priced row of one session: its cost and its unpriced calls.
+
+    A turn is worth the calls that answered it on its own thread; a call is worth itself, and a
+    call our price table could not price is worth nothing rather than being free.
+    """
+    said: dict[str, tuple[float, int]] = {}
+    for turn_id, cost, unpriced in store.execute(
+        "SELECT t.id, coalesce(round(sum(c.cost_usd), 4), 0),"
+        "  count(c.id) FILTER (c.cost_usd IS NULL)"
+        " FROM live_turns t LEFT JOIN live_api_calls c"
+        "  ON c.session_id = t.session_id AND c.source = t.source AND c.turn_id = t.id"
+        " WHERE t.session_id = ? GROUP BY t.id",
+        [session_id],
+    ).fetchall():
+        said[f"{Kind.TURN}:{turn_id}"] = (cost, unpriced)
+    for call_id, cost in store.execute(
+        "SELECT id, round(cost_usd, 4) FROM live_api_calls WHERE session_id = ?", [session_id]
+    ).fetchall():
+        said[f"{Kind.CALL}:{call_id}"] = (cost or 0, int(cost is None))
+    for (run_id,) in store.execute(
+        "SELECT id FROM live_agent_runs WHERE session_id = ?", [session_id]
+    ).fetchall():
+        # A run is worth its own thread — the same sum an unattached bucket gathers per run.
+        said[f"{Kind.RUN}:{run_id}"] = one(store, THREAD, [session_id, str(run_id)])
+    return said
+
+
+def test_every_priced_row_carries_the_spend_the_store_holds_under_it(
+    client: TestClient, store: duckdb.DuckDBPyConnection, plant: Planter
+) -> None:
+    """The cost on a row, the bar beside it and the mark above it, read against the store.
+
+    The buckets add up for themselves; every other priced row is handed the store's own
+    number, and this is where that number is read back. Read on the page of each priced node,
+    where its own row is on the open path whichever fold the reader picked.
+    """
+    # Keyed by session as well as by row, for the reason the labels are.
+    said = {
+        (str(at), key): value
+        for (at,) in store.execute("SELECT id FROM sessions").fetchall()
+        for key, value in spend(store, str(at)).items()
+    }
+    read: set[tuple[str, str]] = set()
+    for kind in (Kind.TURN, Kind.CALL, Kind.RUN):
+        for session_id, source, node_id in candidates(store, kind):
+            # A page holds more than the node it opens, so the ones already read are skipped.
+            if (session_id, f"{kind}:{node_id}") in read:
+                continue
+            page = client.get(node_url(kind, session_id, source, node_id)).text
+            for key in values(page, "data-tree"):
+                if (at := (session_id, key)) in said:
+                    weighed(page, key, store, session_id, *said[at])
+                    read.add(at)
+    # Every priced row of the store was reached, so no kind is priced by a sample of itself.
+    assert read == set(said)
+    # Our price table prices every call the corpus recorded, so the mark that says otherwise is
+    # planted on one call: it has to reach both the call's own row and the turn above it.
+    session_id, source, call_id, turn_id = one(
+        store,
+        "SELECT c.session_id, c.source, c.id, t.id FROM live_api_calls c"
+        " JOIN live_turns t ON t.session_id = c.session_id AND t.source = c.source"
+        "  AND t.id = c.turn_id"
+        " WHERE c.cost_usd IS NOT NULL ORDER BY c.session_id, c.source, c.id LIMIT 1",
+    )
+    path = plant(("UPDATE api_calls SET cost_usd = NULL WHERE id = ?", [call_id]))
+    planted = duckdb.connect(str(path), read_only=True)
+    with TestClient(build_app(path)) as marked:
+        said = spend(planted, session_id)
+        assert said[f"{Kind.CALL}:{call_id}"] == (0, 1), "the plant left the call unpriced"
+        page = marked.get(node_url(Kind.CALL, session_id, source, call_id)).text
+        for key in (f"{Kind.CALL}:{call_id}", f"{Kind.TURN}:{turn_id}"):
+            weighed(page, key, planted, session_id, *said[key])
+    planted.close()
 
 
 def test_a_size_above_its_ceiling_is_refused(
