@@ -10,7 +10,7 @@
 {% macro switcher(choices) %}
 <p class="switch" aria-label="Fold the tree">
   {%- for choice in choices %}
-  <a data-nav="{{ choice.preset }}" href="{{ choice.url }}"
+  <a class="button" data-nav="{{ choice.preset }}" href="{{ choice.url }}"
     {%- if choice.current %} aria-current="true"{% endif %}>{{ choice.preset.label }}</a>
   {%- endfor %}
 </p>
