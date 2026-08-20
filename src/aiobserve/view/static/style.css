@@ -102,11 +102,14 @@ td.title .secondary { display: -webkit-box; -webkit-box-orient: vertical;
   font-family: ui-monospace, monospace; font-size: var(--type-label); line-height: 1.6; }
 #tree .rows { margin: 0; padding: 0; list-style: none; }
 /* The fold in force, and the two beside it. Held at the top of the tree's own scroller, so a
-   deep session scrolls its rows under the control rather than past it. */
-#tree .switch { position: sticky; top: 0; z-index: 1; margin: 0; display: flex;
-  gap: var(--space-2); padding: var(--space-1); background: var(--paper); }
-#tree .switch a { color: var(--dim); text-decoration: none; }
-#tree .switch [aria-current] { color: var(--ink); font-weight: 600; }
+   deep session scrolls its rows under the control rather than past it — and ruled off from
+   them, because three words above a tree read as the tree's root until they look clickable. */
+#tree .switch { position: sticky; top: 0; z-index: 1; margin: 0 0 var(--space-1); display: flex;
+  gap: var(--space-2); padding: var(--space-1); background: var(--paper);
+  border-bottom: 1px solid var(--line); }
+#tree .switch .button { color: var(--dim); font-size: var(--type-label);
+  padding: 0 var(--space-1); }
+#tree .switch [aria-current] { color: var(--ink); border-color: var(--mark); font-weight: 600; }
 li.row[data-depth="1"] > a { padding-left: var(--space-3); }
 li.row[data-depth="2"] > a { padding-left: var(--space-4); }
 li.row[data-depth="3"] > a { padding-left: calc(2 * var(--space-4)); }
