@@ -433,6 +433,39 @@ def test_a_row_draws_a_spend_bar_only_where_it_has_a_share_to_draw(
     assert whole, "the session this reads has a spend to take shares of"
 
 
+def test_a_spend_bar_steps_by_decade_so_three_orders_of_magnitude_fill_it(
+    store: duckdb.DuckDBPyConnection, plant: Planter
+) -> None:
+    """Which step a share is drawn at, read at the top of the scale, the bottom, and between.
+
+    A recorded session's rows do not span the scale, so the ladder itself — ten steps over
+    three decades of share — is a rule no fixture exercises: every bar could be drawn a step
+    too wide and the corpus would agree. The shares are planted instead, on the calls of one
+    session, whose spend is the whole every share on its pages is taken against.
+    """
+    calls = store.execute(
+        "SELECT source, id FROM live_api_calls WHERE session_id = ? ORDER BY id LIMIT 3",
+        [SPINE],
+    ).fetchall()
+    assert len(calls) == 3, "three calls to hang the scale on"
+    # A decade apart each time, against a whole of 1101: the dearest call takes almost all of
+    # it, the next a tenth of that, and the last a thousandth — which is where the scale runs
+    # out, and the step is held at its first rather than going below it.
+    ladder = {1000: "s10", 100: "s7", 1: "s1"}
+    path = plant(
+        ("UPDATE api_calls SET cost_usd = 0 WHERE session_id = ?", [SPINE]),
+        *(
+            ("UPDATE api_calls SET cost_usd = ? WHERE session_id = ? AND id = ?", [cost, SPINE, at])
+            for cost, (_, at) in zip(ladder, calls, strict=True)
+        ),
+    )
+    with TestClient(build_app(path)) as scaled:
+        for (cost, step), (source, call_id) in zip(ladder.items(), calls, strict=True):
+            page = scaled.get(node_url(Kind.CALL, SPINE, str(source), str(call_id))).text
+            classes = inside(page, "data-tree", f"{Kind.CALL}:{call_id}", "class")[0].split()
+            assert step in classes, (cost, classes)
+
+
 def labelled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, str]:
     """Every row of one session whose label the store composes, keyed the way a row is.
 
