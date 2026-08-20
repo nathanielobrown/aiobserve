@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 from aiobserve.analyze import queries
 from aiobserve.analyze.queries import QUERIES, VIEW_PREFIX
 from aiobserve.view import bounds
-from aiobserve.view.app import build_app
+from aiobserve.view.app import QUERY_URL, build_app
 from aiobserve.view.format import ELLIPSIS
 from aiobserve.view.listing import SHOWN
 from aiobserve.view.store import TURN_CURSOR, Fragment, Page, Value, cursorless_rows
@@ -41,7 +41,16 @@ from tests.conftest import (
     SPINE,
     SPINE_RUN,
 )
-from tests.view.conftest import Planter, Statement, fields, inside, one, pages, values
+from tests.view.conftest import (
+    Planter,
+    Statement,
+    block,
+    fields,
+    inside,
+    one,
+    pages,
+    values,
+)
 
 # The columns that hold whatever the agent read or wrote: one of them can be megabytes, and
 # none of them belongs on a page whole. `raw` is a transcript line, `result` a tool's output,
@@ -571,6 +580,8 @@ ROUTES: dict[str, str] = {
     ),
     "/fragment/brief/{session_id}/{run_id}": f"/fragment/brief/{SPINE}/{SPINE_RUN}",
     "/fragment/record/{session_id}/{source}/{line_no}": f"/fragment/record/{ANCESTOR}/main/1",
+    # And the statement behind a citation, which every page's footer links to.
+    f"{QUERY_URL}/{{name}}": f"{QUERY_URL}/view_sessions",
 }
 
 
@@ -601,6 +612,22 @@ def test_no_route_serves_more_than_the_page_ceiling(path: str, client: TestClien
     assert len(response.content) < PAGE_BYTES, path
 
 
+@pytest.mark.parametrize("name", sorted(QUERIES))
+def test_every_query_the_library_ships_serves_under_the_ceiling(
+    name: str, client: TestClient
+) -> None:
+    """A query page weighs its file marked up, and no library file is near the ceiling.
+
+    The one page whose size is a file's rather than a bound's: the SQL is served whole, because
+    a statement a reader cannot run is not a citation. Marking it up multiplies it about
+    fourfold, so what this pins is that no query in the library is long enough for that to
+    matter — and that a query added later is measured rather than assumed.
+    """
+    page = client.get(f"{QUERY_URL}/{name}")
+    assert page.status_code == 200, name
+    assert len(page.content) < PAGE_BYTES, name
+
+
 def test_an_offload_of_nothing_but_escapes_still_serves_under_the_ceiling(
     plant: Planter,
 ) -> None:
@@ -620,8 +647,9 @@ def test_an_offload_of_nothing_but_escapes_still_serves_under_the_ceiling(
             f"/session/{CONFIG_ONLY}/offload/{OFFLOAD_FILE}", params={"size": bounds.CHUNK.ceiling}
         )
     assert page.status_code == 200
-    # Served whole — the chunk is not silently cut — and still under the ceiling.
-    assert page.text.count("&amp;") == bounds.CHUNK.ceiling
+    # Served whole — the chunk is not silently cut — and still under the ceiling. Counted
+    # inside the block rather than over the page, which also carries escaped `&` in its links.
+    assert block(page.text, "content").count("&amp;") == bounds.CHUNK.ceiling
     assert len(page.content) < PAGE_BYTES
 
 

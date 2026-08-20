@@ -55,45 +55,6 @@ def test_a_bare_url_does_not_become_a_link() -> None:
     assert "https://evil.test/path" in rendered
 
 
-def test_pretty_json_escapes_the_markup_inside_a_value() -> None:
-    """A tool argument that holds markup is readable JSON on the page and inert in it."""
-    body = '{"pattern": "</script><img src=x onerror=y>", "path": "/tmp/a.py"}'
-    shown = render.pretty(body)
-    # Indented for reading — the quotes escaped along with everything else, which is what
-    # the browser turns back into a readable `"path"`...
-    assert "\n  &#34;path&#34;: &#34;/tmp/a.py&#34;" in shown
-    # ...with everything the value held escaped, closing tag and attribute alike.
-    assert "&lt;/script&gt;&lt;img src=x onerror=y&gt;" in shown
-    assert "<img" not in shown
-    assert "</script>" not in shown
-
-
-def test_a_deeply_nested_value_is_shown_as_stored_rather_than_indented() -> None:
-    """A value nested past what anyone reads costs its own length to serve, not more.
-
-    Indenting is quadratic in nesting, so these two invented values — and they have to be
-    invented; nothing recorded nests near this deep — are the whole risk in one line. The
-    first parses and would indent to 50 MB; the second overflows the parser's own stack.
-    Both arms answer the same way: the value, escaped, as the store holds it.
-    """
-    for depth in (5_000, 10_000):
-        value = "[" * depth + "]" * depth
-        shown = render.pretty(value)
-        # Nothing was added — no newline, no indentation, just the characters stored.
-        # (Length rather than equality: a failure here is megabytes of diff.)
-        assert "\n" not in shown
-        assert len(shown) == len(value)
-    # ...while a value that nests as deep as a real record does is still indented.
-    assert "\n    " in render.pretty('{"a": {"b": {"c": [1, 2]}}}')
-
-
-def test_a_value_that_is_not_json_is_shown_as_it_was_stored() -> None:
-    """Not every stored value parses — a tool's plain-text output is shown, not swallowed."""
-    shown = render.pretty("Traceback: <module> failed\n  at line 3")
-    assert "&lt;module&gt; failed" in shown
-    assert "at line 3" in shown
-
-
 def test_only_an_http_url_becomes_a_link() -> None:
     """A URL a browser should follow is a link; every other scheme is shown as text."""
     # An http or https URL reaches the `href`, upper-case scheme and all...
@@ -113,5 +74,4 @@ def test_only_an_http_url_becomes_a_link() -> None:
 def test_an_absent_value_renders_to_nothing() -> None:
     """A NULL column reaches the template as None, and an empty block beats a crash."""
     assert render.markdown(None) == ""
-    assert render.pretty(None) == ""
     assert render.link(None) == ""

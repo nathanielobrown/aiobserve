@@ -1,0 +1,31 @@
+/* Pygments' class vocabulary, painted in this viewer's colors (`view/highlight.py`).
+
+   Hand-written rather than generated from a Pygments theme, for two reasons. A shipped theme
+   is a block of hex that reads as one scheme and washes out in the other, while every color
+   below is a token `style.css` already declares for both — so what clears 4.5:1 there clears
+   it here, and `test_both_schemes_print_every_color_of_text_readably` covers this sheet by
+   covering those. And a theme names two hundred classes for languages this viewer never marks
+   up; a rule for a class the highlighter cannot emit is a rule nobody can see fail.
+
+   Two roles and no more: what a value *is* takes the accent, what holds it together recedes.
+   A class with no rule here inherits the body color, which is where a SQL name belongs — and
+   where `err` belongs too, since a `$binding` is the commonest thing the SQL lexer cannot
+   place and is not an error at all. */
+pre.code {
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: var(--type-label);
+  margin: var(--space-1) 0;
+}
+/* The values: strings, numbers, and JSON's three bare literals. */
+.s1, .s2, .ss, .mi, .mf, .kc { color: var(--mark); }
+/* What a reader scans a record for — the field names down the left edge. */
+.nt { font-weight: 600; }
+/* What a statement is made of rather than what it says. */
+.k, .nb { font-weight: 600; }
+.p, .o { color: var(--dim); }
+.c1 { color: var(--dim); font-style: italic; }
+/* A value printed as stored because it is past the ceiling the highlighter stops at, and the
+   line above it saying so. */
+.plain { color: var(--dim); }

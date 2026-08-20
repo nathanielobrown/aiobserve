@@ -69,6 +69,23 @@
 </section>
 {% endmacro %}
 
+{# One value in the syntax it was written in — a tool's arguments, an archived record, a query
+   file. Marked up by class rather than by inline color, because the policy in `app.CSP` allows
+   no `style` attribute; `static/pygments.css` paints the classes. A value past the ceiling
+   prints as stored and says so: the markup costs about four bytes for every byte of value, and
+   past a point that is a page nobody can read rather than a page that reads better. #}
+{% macro code(value, syntax, field) %}
+{%- set shown = value | lit(syntax) %}
+{%- if shown.over %}
+<p class="plain" data-plain="{{ field }}">Printed as stored:
+  <span data-field="over">{{ shown.over | count }}</span> characters is past the
+  {{ HIGHLIGHT_CHARS | count }} this viewer marks up.</p>
+{%- endif %}
+<pre data-field="{{ field }}"
+  {%- if shown.syntax %} class="code {{ shown.syntax }}"{% endif %}>{{ shown.html }}</pre>
+{%- endmacro %}
+
+
 {# One labelled fact of a header. Every value goes through `text`, so a column the store left
    NULL prints the dash the rest of the viewer prints rather than Python's `None`: a header
    names its fields whether or not the session filled them. #}

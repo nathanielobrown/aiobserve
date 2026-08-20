@@ -12,6 +12,7 @@ the page.
 
 import re
 from collections.abc import Callable, Iterator, Sequence
+from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -205,6 +206,27 @@ def chipped(store: duckdb.DuckDBPyConnection) -> Chipped:
         [SPINE, MAIN],
     )
     return Chipped(run_id, call_id, turn_id, turn_index)
+
+
+def block(html: str, field: str) -> str:
+    """The markup inside one `<pre data-field="…">`, whole.
+
+    What `fields` cannot give back: that reader stops at the first closing tag, and a block of
+    marked-up code is nothing but nested spans.
+    """
+    found = re.search(rf'<pre data-field="{field}"[^>]*>(.*?)</pre>', html, re.DOTALL)
+    assert found is not None, f"no {field} block on the page"
+    return found.group(1)
+
+
+def plain(html: str) -> str:
+    """What a browser shows of a run of markup: the tags dropped, the escapes undone.
+
+    For the two places a value is marked up rather than printed — highlighted code, and the
+    spans a cut leaves behind — where reading the text back is how a leaf proves the markup
+    added nothing and lost nothing.
+    """
+    return unescape(re.sub(r"<[^>]*>", "", html))
 
 
 def suggestions(page: str) -> list[str]:
