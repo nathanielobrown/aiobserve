@@ -71,8 +71,29 @@ def test_a_deeply_nested_value_is_shown_at_the_size_it_was_stored() -> None:
         # Nothing was added — no newline, no indentation, and every character still there.
         assert "\n" not in shown.html
         assert plain(shown.html) == value
+    # Unindented is not unmarked: a value that parses is still JSON, and the page still classes
+    # it. Only the value the parser itself refused comes back as plain text.
+    assert lit("[" * 5_000 + "]" * 5_000, Syntax.JSON).syntax is Syntax.JSON
+    assert lit("[" * 10_000 + "]" * 10_000, Syntax.JSON).syntax is None
+    # An empty member does not excuse the nesting beside it. The walk is a stack, so a `{}` or
+    # `[]` is the first thing it reaches here — measuring has to step over it and carry on.
+    beside = json.dumps({"deep": json.loads("[" * 3_000 + "]" * 3_000), "empty": []})
+    assert "\n" not in lit(beside, Syntax.JSON).html
     # ...while a value that nests as deep as a real record does is still indented.
     assert "\n    " in lit('{"a": {"b": {"c": [1, 2]}}}', Syntax.JSON).html
+
+
+def test_whitespace_is_written_bare_rather_than_wrapped_in_a_span_of_its_own() -> None:
+    """The one thing this viewer changes about Pygments' markup, and it is worth 10 KB.
+
+    Pygments classes every run of whitespace `w`, and `static/pygments.css` paints none of
+    them. On the widest query the repo ships that is 10 KB of markup for nothing, so the
+    lexers carry a filter that re-types whitespace as text — which the formatter writes bare.
+    Read on SQL, which is indented enough for the spans to be most of it.
+    """
+    shown = lit(queries.load("view_sessions"), Syntax.SQL)
+    assert '<span class="k">' in shown.html, "the tokens that are painted are still classed"
+    assert 'class="w"' not in shown.html
 
 
 def test_a_value_past_the_ceiling_is_printed_as_stored_and_says_how_long_it_is() -> None:
