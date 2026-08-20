@@ -715,6 +715,26 @@ def test_every_fact_a_header_asks_for_has_a_label() -> None:
     assert asked | previewed | headed == set(LABELS)
 
 
+def test_a_column_that_prints_a_length_says_so_in_its_heading() -> None:
+    """A column of bare numbers has to name its unit, or the number is unreadable.
+
+    A children log prints lengths where the page under it prints the values — `text_chars` is
+    how much the model said, `result_chars` how much a tool answered. Heading either with the
+    word the pane gives the value itself leaves a reader deciding whether the column counts
+    characters, calls or answers. Read off the column table, so a length column added to any
+    shape lands in this check.
+    """
+    lengths = {
+        column.field
+        for columns in nodes.COLUMNS.values()
+        for column in columns
+        if column.field.endswith("_chars")
+    }
+    assert lengths, "the log heads no length column, so this contract has no subject"
+    for field in lengths:
+        assert "chars" in LABELS[field].lower(), field
+
+
 def test_every_filter_the_app_registers_is_one_a_template_names() -> None:
     """A filter is registered so a template can name it, so every registration has a caller.
 

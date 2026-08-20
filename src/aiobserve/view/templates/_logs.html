@@ -57,7 +57,7 @@
     <thead>
       <tr data-columns="{{ shape }}">
         {%- for column in COLUMNS[shape] %}
-        <th data-column="{{ column.field }}"{% if column.css %} class="{{ column.css }}"{% endif
+        <th scope="col" data-column="{{ column.field }}"{% if column.css %} class="{{ column.css }}"{% endif
           %}><span class="icon" aria-hidden="true">{{ column.icon }}</span>
           {{ label(column.field) }}</th>
         {%- endfor %}

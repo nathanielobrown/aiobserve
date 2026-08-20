@@ -73,14 +73,14 @@ LABELS: dict[str, str] = {
     # under it says what.
     "prompt": "Prompt",
     "text": "Said",
-    "text_chars": "Said",
+    "text_chars": "Said (chars)",
     "thinking": "Thought",
     "input": "Arguments",
     # The head of a tool call's input: the file a `Read` read, the description a `Bash` ran
     # under. What the tool was asked, in the width of a column.
     "input_head": "Arguments",
     "result": "Result",
-    "result_chars": "Result",
+    "result_chars": "Result (chars)",
     # The two columns a children log prints that no query returns. `label` is what the viewer
     # calls a node — a pass's description, else the words the session itself wrote — and `body`
     # is the column holding the control that opens one under its row.
