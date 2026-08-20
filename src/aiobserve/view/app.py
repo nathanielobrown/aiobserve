@@ -560,6 +560,19 @@ def build_app(db_path: Path) -> FastAPI:
             },
         )
 
+    def header_bound(session_id: str) -> dict[str, ParamValue]:
+        """What `Page.SESSION_HEADER` binds for one session, named once for every reader of it.
+
+        A node page reads the row whole; `errors_page` reads it only to word a 404, but both
+        have to bind the same params or a change to one silently stops answering for the other.
+        """
+        return {
+            "session_id": session_id,
+            "head_chars": queries.HEADER_CHARS,
+            "item_chars": queries.HEADER_ITEM_CHARS,
+            "head_items": queries.HEADER_ITEMS,
+        }
+
     def browse(
         request: Request,
         session_id: str,
@@ -583,15 +596,10 @@ def build_app(db_path: Path) -> FastAPI:
         checked(kin, bounds.KIN.ceiling)
         checked(log, bounds.LOG.ceiling)
         checked(detail, bounds.DETAIL.ceiling)
-        keyed: dict[str, ParamValue] = {"session_id": session_id}
-        header_bound = keyed | {
-            "head_chars": queries.HEADER_CHARS,
-            "item_chars": queries.HEADER_ITEM_CHARS,
-            "head_items": queries.HEADER_ITEMS,
-        }
-        runs_bound = keyed | {"chip_chars": queries.NAV_CHARS}
+        bound = header_bound(session_id)
+        runs_bound = {"session_id": session_id, "chip_chars": queries.NAV_CHARS}
         with open_store(resolved) as connection:
-            head = page_rows(connection, Page.SESSION_HEADER, **header_bound)
+            head = page_rows(connection, Page.SESSION_HEADER, **bound)
             if not head:
                 raise HTTPException(404, "No session with that id is in this store.")
             # The session's runs whole, once: a run is placed by the call that spawned it
@@ -631,7 +639,7 @@ def build_app(db_path: Path) -> FastAPI:
             raise HTTPException(404, "This node has no children after that one.")
         selection = built.chain[-1]
         ran: tree.Ran = [
-            (Page.SESSION_HEADER, header_bound),
+            (Page.SESSION_HEADER, bound),
             (Page.RUNS, runs_bound),
             *seen.ran,
             *built.ran,
@@ -640,7 +648,7 @@ def build_app(db_path: Path) -> FastAPI:
         # Only when the store held the tables to ask: a page cites what it ran, and over an
         # un-enriched store this query is not one of them.
         if corpus.described.queried:
-            ran.append((Page.ENRICHMENT, keyed | {"source": source}))
+            ran.append((Page.ENRICHMENT, {"session_id": session_id, "source": source}))
         # The same rule for the stepper's own read: a page cites what it ran, and most node
         # pages do not run this one.
         if failed is not None:
@@ -1172,14 +1180,7 @@ def build_app(db_path: Path) -> FastAPI:
             # nothing at this URL, and not the same nothing. The header is read only when
             # there is a 404 to word, so the page a reader actually opens runs one query.
             held = bool(failed.listed) or bool(
-                page_rows(
-                    connection,
-                    Page.SESSION_HEADER,
-                    session_id=session_id,
-                    head_chars=queries.HEADER_CHARS,
-                    item_chars=queries.HEADER_ITEM_CHARS,
-                    head_items=queries.HEADER_ITEMS,
-                )
+                page_rows(connection, Page.SESSION_HEADER, **header_bound(session_id))
             )
         if not failed.listed:
             raise HTTPException(
