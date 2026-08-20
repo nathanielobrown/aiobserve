@@ -609,7 +609,7 @@ def headings(html: str) -> dict[str, str]:
     return {
         column: " ".join(plain(inner).split())
         for column, inner in re.findall(
-            r'<th data-column="([^"]*)"[^>]*>(.*?)</th>', html, flags=re.S
+            r'<th [^>]*data-column="([^"]*)"[^>]*>(.*?)</th>', html, flags=re.S
         )
     }
 
@@ -636,6 +636,8 @@ def test_every_children_log_heads_the_columns_its_rows_fill(
     assert inside(page, "data-columns", shape, "data-column") == named, url
     # ...each heading an icon over a word from the registry every header on the page reads...
     headed = headings(page)
+    # ...each a column heading a screen reader can attribute a cell to...
+    assert inside(page, "data-columns", shape, "scope") == ["col"] * len(named), url
     assert headed == {
         column.field: f"{column.icon} {label(column.field)}" for column in COLUMNS[Shape(shape)]
     }, url
