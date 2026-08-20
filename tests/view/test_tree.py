@@ -26,11 +26,12 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
+from aiobserve.analyze import queries
 from aiobserve.model import MAIN_SOURCE
 from aiobserve.view import bounds, tree
 from aiobserve.view.app import build_app
 from aiobserve.view.enrichment import Descriptions
-from aiobserve.view.format import money
+from aiobserve.view.format import cut, money
 from aiobserve.view.nodes import Kind, Preset, Ref, meter
 from tests.conftest import MAIN, SPINE
 from tests.view.conftest import SPAWNS, Planter, fields, inside, kin, one, rows, values
@@ -398,6 +399,62 @@ def test_a_row_draws_a_spend_bar_only_where_it_has_a_share_to_draw(
     assert whole, "the session this reads has a spend to take shares of"
 
 
+def labelled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, str]:
+    """Every row of one session whose label the store composes, keyed the way a row is.
+
+    Read off the columns the design names a node from, not off the page: a tool call named by
+    its input alone, or a run named by the definition it ran where its own brief was recorded,
+    is a row pointing at a node the reader did not ask for.
+    """
+    said: dict[str, str] = {}
+    for tool_id, name, given in store.execute(
+        "SELECT id, name, input FROM live_tool_calls WHERE session_id = ?", [session_id]
+    ).fetchall():
+        # The tool and the head of what it was asked, which is what tells two Bash calls apart.
+        said[f"{Kind.TOOL}:{tool_id}"] = f"{name} {given or ''}".strip()
+    for call_id, spoken, model in store.execute(
+        "SELECT id, text, model FROM live_api_calls WHERE session_id = ?", [session_id]
+    ).fetchall():
+        # What the call said, and where it said nothing the model that was asked.
+        said[f"{Kind.CALL}:{call_id}"] = spoken or model
+    for compaction_id, trigger in store.execute(
+        "SELECT id, trigger FROM live_compactions WHERE session_id = ?", [session_id]
+    ).fetchall():
+        said[f"{Kind.COMPACTION}:{compaction_id}"] = f"compaction · {trigger}"
+    for run_id, description, agent_type in store.execute(
+        "SELECT id, description, agent_type FROM live_agent_runs WHERE session_id = ?",
+        [session_id],
+    ).fetchall():
+        # The brief the run was given, and where none was recorded the definition it ran.
+        said[f"{Kind.RUN}:{run_id}"] = description or agent_type
+    return {key: cut(value, queries.NAV_CHARS).strip() for key, value in said.items()}
+
+
+def test_every_row_is_named_from_the_column_its_kind_is_named_by(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A row's label is the whole of what it says, so it is read back against its own column.
+
+    A tree row carries `TREE_ROW_BYTES` and no more, so the label is where a kind spends what
+    it has to say — and every kind spends it differently. Read on the page of each kind's own
+    node, where the row is on the open path whichever fold the reader picked, and over every
+    other labelled row that page happens to hold.
+    """
+    seen: Counter[Kind] = Counter()
+    for kind in (Kind.TOOL, Kind.CALL, Kind.COMPACTION, Kind.RUN):
+        for session_id, source, node_id in sorted(candidates(store, kind))[:2]:
+            said = labelled(store, session_id)
+            page = client.get(node_url(kind, session_id, source, node_id)).text
+            assert f"{kind}:{node_id}" in values(page, "data-tree"), node_id
+            for key in values(page, "data-tree"):
+                if key in said:
+                    assert fields(page, "data-tree", key)["label"] == said[key], key
+                    seen[Kind(key.partition(":")[0])] += 1
+    # Every kind the store names a row from was read. A sweep that reached no compaction would
+    # pass on a compaction labelled from any column at all.
+    assert set(seen) == {Kind.TOOL, Kind.CALL, Kind.COMPACTION, Kind.RUN}, seen
+
+
 # The calls of one thread that answer no turn of it — the rows the unattributed bucket stands
 # for — summed the way a page of them would be read.
 STANDING = (
@@ -490,6 +547,13 @@ def test_a_bucket_row_carries_the_totals_of_what_it_gathers(
         assert unpriced, "and leaves the unattached bucket calls to mark"
         page = marked.get(f"/session/{loose_at}").text
         bucket(page, f"unattached:{loose_at}", planted, loose_at, cost, unpriced)
+        # A child of the bucket says the same thing for itself: the run whose calls the plant
+        # left unpriced carries its own count, and the runs beside it carry no mark at all.
+        opened = marked.get(f"/session/{loose_at}/unattached").text
+        for run_id, (_, missing) in zip(loose_runs, totals, strict=True):
+            marks = inside(opened, "data-tree", f"run:{run_id}", "title")
+            assert bool(marks) == bool(missing), run_id
+            assert not missing or str(missing) in marks[0], run_id
     planted.close()
 
 
