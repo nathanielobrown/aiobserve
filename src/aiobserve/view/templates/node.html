@@ -58,17 +58,24 @@
     </details>
     {% endif %}
     {{ logs.log(shape, log, more, suffix, next) }}
-    {# Reading in order. The tree opens one path, so these two links are how a reader gets
-       through everything it is not showing — depth-first over the whole session, into the
-       buckets as well, and the same order whatever the tree beside it was capped to. #}
-    <nav class="walk" aria-label="Read in order">
+    {# Reading in order. Going down is what the tree is for, so these two go along the level
+       the reader is standing on and back out of it, never into a node. Buttons because they
+       move the pane rather than leading anywhere new: the swap they carry is the one a tree
+       row carries, written here because the pane is what the click replaces. A step that
+       leaves the level says so with an up arrow. #}
+    <nav class="walk" aria-label="Read in order" hx-target="#pane" hx-swap="outerHTML"
+         hx-select="#pane" hx-select-oob="#tree-rows" hx-push-url="true">
       {% if previous %}
-      <a data-walk="previous" data-node="{{ previous.key }}" href="{{ previous.url }}{{ suffix }}"
-        >← {{ parts.glyph(previous) }}<span data-field="kind">{{ previous.kind }}</span> <span data-field="label">{{ previous.label }}</span></a>
+      <button type="button" class="button" data-walk="previous" data-node="{{ previous.node.key }}"
+        {%- if previous.climbed %} data-climb="previous"{% endif %}
+        hx-get="{{ previous.node.url }}{{ suffix }}"
+        >{% if previous.climbed %}↑{% else %}←{% endif %} {{ parts.glyph(previous.node) }}<span data-field="kind">{{ previous.node.kind }}</span> <span data-field="label">{{ previous.node.label }}</span></button>
       {% endif %}
       {% if following %}
-      <a data-walk="next" data-node="{{ following.key }}" href="{{ following.url }}{{ suffix }}"
-        >{{ parts.glyph(following) }}<span data-field="kind">{{ following.kind }}</span> <span data-field="label">{{ following.label }}</span> →</a>
+      <button type="button" class="button" data-walk="next" data-node="{{ following.node.key }}"
+        {%- if following.climbed %} data-climb="next"{% endif %}
+        hx-get="{{ following.node.url }}{{ suffix }}"
+        >{{ parts.glyph(following.node) }}<span data-field="kind">{{ following.node.kind }}</span> <span data-field="label">{{ following.node.label }}</span> {% if following.climbed %}↑{% else %}→{% endif %}</button>
       {% endif %}
     </nav>
     {# Where this session failed. Written once here rather than per kind of node, because it
