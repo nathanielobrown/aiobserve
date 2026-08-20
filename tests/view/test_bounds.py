@@ -108,6 +108,14 @@ MEASURED_LIST_CHROME = 10_000
 # because the page carries no form, no pager and no suggestions.
 MEASURED_PROJECT_ROW_MARKUP = 1_400
 MEASURED_PROJECTS_CHROME = 2_500
+# The same two for the page that lists where a session failed, whose row is a link to the
+# failed tool call's own page, the thread it ran on and a timestamp. Measured through the app
+# by the leaf at the bottom of this file, every label planted full of `&` and the session
+# failing more calls than the page shows: 620 B a row, of which 240 B is a planted label,
+# leaving 380 B of the link and the two cells after it — and 2,339 B of chrome, which is small
+# for the same reason the landing page's is: no form, no pager and no suggestions.
+MEASURED_ERROR_ROW_MARKUP = 400
+MEASURED_ERRORS_CHROME = 2_500
 
 # How much of a turn's prompt a digest shows, from `session_digest`'s own `substr`, and the
 # same two for what a slash-command turn shows instead: the name of the command, and what was
@@ -145,8 +153,9 @@ PANE_DETAILS = 2
 # down to the selection, the node's own facts, and what a pass said about it. The session is
 # the widest of the eight panes — every string in its header is one a transcript wrote, and its
 # two lists grow with the session — so the allowance is a session header's, cut in SQL.
-# The preset switcher rides here too, three links carrying the node's own URL.
-# Re-measured through the app by the leaf at the bottom of this file at 15,465 B.
+# The preset switcher rides here too, three links carrying the node's own URL, and — on a pane
+# reading a failed tool call — the step to the failure before it and the one after.
+# Re-measured through the app by the leaf at the bottom of this file at 15,666 B.
 MEASURED_NODE_CHROME = 16_000
 
 # The parameter every truncated column of a run row is cut to. Counted per query rather than
@@ -215,6 +224,17 @@ def worst_project_row_bytes() -> int:
     return MEASURED_PROJECT_ROW_MARKUP + queries.LIST_CHARS * (
         ESCAPED_CHAR_BYTES + ENCODED_CHAR_BYTES
     )
+
+
+def worst_error_row_bytes() -> int:
+    """What one row of a session's errors list can weigh: its markup, and a label of `&`.
+
+    A row is a link to the failed tool call, labelled the way a tree row labels it — the tool's
+    name and the head of what it was passed, cut to one width between them — beside the thread
+    it ran on and the clock. The thread is an agent id the store minted, and the timestamp is
+    as long as its type allows; only the label is text a transcript wrote.
+    """
+    return MEASURED_ERROR_ROW_MARKUP + queries.NAV_CHARS * ESCAPED_CHAR_BYTES
 
 
 def worst_tag_bytes() -> int:
@@ -460,6 +480,10 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     # in are not sizes, and `tests/view/test_projects.py` pins those against what it cites.
     assert QUERIES["view_project_rollups"].params["head_chars"].default == queries.LIST_CHARS
     assert QUERIES["view_project_rollups"].params["projects"].default == 100
+    # And the errors list, bound the same way — a session can fail arbitrarily many calls —
+    # and labelled at a tree row's width, because each of its rows leads to a node.
+    assert QUERIES["view_session_errors"].params["nav_chars"].default == queries.NAV_CHARS
+    assert QUERIES["view_session_errors"].params["errors"].default == 100
     # Every ceiling is projected at the largest page a URL can ask for, because a size is
     # something a reader types.
     assert bounds.RECORDS.ceiling * worst_record_bytes() < PAGE_BYTES
@@ -473,6 +497,10 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     assert (
         MEASURED_PROJECTS_CHROME + bounds.PROJECTS.ceiling * worst_project_row_bytes() < PAGE_BYTES
     )
+    # And a session's errors list, which grows the way both of those do — nothing about a
+    # session caps how often its tools fail — and is not a size a URL carries either: a reader
+    # jumps to a failure rather than paging through them.
+    assert MEASURED_ERRORS_CHROME + bounds.ERRORS.ceiling * worst_error_row_bytes() < PAGE_BYTES
     # And the node page, the one page every node URL serves: the tree a reader walks down the
     # left, and the pane beside it. Its three sizes are each their own ceiling, so this is the
     # widest response any node URL can be asked for.
@@ -495,6 +523,7 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
         "CHUNK",
         "SESSIONS",
         "PROJECTS",
+        "ERRORS",
     }
     # The same for the bounds that are not sizes a URL carries: how deep a chain opens, how
     # many turn rows no cursor reaches, how much of a string a log row shows, how long a value
@@ -592,7 +621,9 @@ ROUTES: dict[str, str] = {
     ),
     "/session/{session_id}/unattributed/{source}": f"/session/{RESUME}/unattributed/main",
     "/session/{session_id}/unattached": f"/session/{FORK_ORIGIN}/unattached",
-    # The two pages that are not nodes: a thread's raw transcript, and a file a tool wrote.
+    # The three pages that are not nodes: where a session failed, a thread's raw transcript,
+    # and a file a tool wrote.
+    "/session/{session_id}/errors": f"/session/{FORK_ORIGIN}/errors",
     "/session/{session_id}/records/{source}": f"/session/{ANCESTOR}/records/main",
     "/session/{session_id}/offload/{name:path}": f"/session/{CONFIG_ONLY}/offload/{OFFLOAD_FILE}",
     # And the per-value fetches a pane's previews offer: one per fat column a node can hold.
@@ -777,7 +808,14 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
         ),
         ("UPDATE agent_runs SET agent_type = ?, model = ?, description = ?", [label, label, fat]),
         ("UPDATE api_calls SET model = ?, text = ?, thinking = ?", [label, fat, fat]),
-        ("UPDATE tool_calls SET name = ?, input = ?, result = ?", [label, fat, fat]),
+        # Every tool call failed, which is the dearest a tool row gets: the mark the tree puts
+        # on a failure is markup no other kind of row carries, and a tree row is the one thing
+        # on the page multiplied 417 times. It is also what puts the stepper on every tool
+        # page, which is the dearest the chrome under a pane gets.
+        (
+            "UPDATE tool_calls SET name = ?, input = ?, result = ?, is_error = true",
+            [label, fat, fat],
+        ),
         *DESCRIBED_AT_EVERY_CAP,
     )
     with TestClient(build_app(path)) as planted:
@@ -824,6 +862,9 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     assert max(escaped) == queries.NAV_CHARS
     cuts = {row.count("more character(s)") for _, rows in split for row in rows["detail"]}
     assert cuts == {1}
+    # And the mark a failed call carries reached the rows the tree priced, so `TREE_ROW_BYTES`
+    # is a price for the dearest tool row rather than for one that happened to succeed.
+    assert any('data-field="is_error"' in row for _, rows in split for row in rows["tree"])
     # The enrichment sits in the chrome, stale tag and all, so it is planted with the rest.
     described = fields(session, "data-enrichment", values(session, "data-enrichment")[0])
     assert len(described["description"]) == len(described["friction"]) == queries.ENRICHMENT_CHARS
@@ -990,6 +1031,59 @@ def test_a_projects_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     # ...and one row costs no more than its markup and the two copies of its path.
     row_bytes = (len(page.encode()) - len(chrome.encode())) / bounds.PROJECTS.ceiling
     assert row_bytes <= worst_project_row_bytes()
+
+
+def test_an_errors_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
+    plant: Planter,
+) -> None:
+    """A session's errors list at its ceiling weighs no more than the arithmetic gives it.
+
+    Nothing about a session caps how often its tools fail, so the store is filled past the
+    page's own ceiling and every label planted full of `&` — the character that escapes to
+    five bytes. The failures are clones of a recorded tool call rather than invented rows;
+    what is planted on each is the flag the store already records on two of them.
+    """
+    over = bounds.ERRORS.ceiling + 20
+    # A label longer than the width a row cuts it to, so the cut bites on every row. The index
+    # differs per clone because it is half of what orders the list: a page showing the first
+    # `ERRORS` of a partial order is a page that cannot say what it cut.
+    label = "&" * (queries.NAV_CHARS + 1)
+    path = plant(
+        (
+            "INSERT INTO tool_calls (SELECT c.* REPLACE (c.id || '-planted-' || i AS id,"
+            ' ? AS name, ? AS input, true AS is_error, 9000 + i AS "index")'
+            " FROM (SELECT * FROM live_tool_calls WHERE session_id = ? LIMIT 1) c,"
+            " range(1, ?) g(i))",
+            [label, label, FORK_ORIGIN, over + 1],
+        ),
+    )
+    with TestClient(build_app(path)) as planted:
+        response = planted.get(f"/session/{FORK_ORIGIN}/errors")
+    assert response.status_code == 200, response.text[:200]
+    page = response.text
+    # A page a reader jumps to stays under the ceiling with every label at its cap...
+    assert len(response.content) < PAGE_BYTES
+    shown = values(page, "data-error")
+    assert len(shown) == bounds.ERRORS.ceiling
+    # ...every one of them a planted failure cut to the width a row reads it at...
+    labels = {len(fields(page, "data-error", key)["label"]) for key in shown}
+    assert max(labels) == queries.NAV_CHARS + len(ELLIPSIS)
+    # ...and what it left out said rather than dropped, against the store's own count.
+    with duckdb.connect(str(path), read_only=True) as connection:
+        (failures,) = one(
+            connection,
+            "SELECT count(*) FROM live_tool_calls WHERE session_id = ? AND is_error",
+            [FORK_ORIGIN],
+        )
+    assert values(page, "data-more-errors") == [str(failures - bounds.ERRORS.ceiling)]
+    # What the page carries whatever it holds fits the allowance the ceiling gives it, with the
+    # rows the arithmetic counts separately stripped out...
+    chrome = re.sub(r"<li data-error=.*?</li>", "", page, flags=re.S)
+    assert not values(chrome, "data-error") and 'id="errors"' in chrome
+    assert len(chrome.encode()) <= MEASURED_ERRORS_CHROME
+    # ...and one row costs no more than its markup and the label it carries.
+    row_bytes = (len(page.encode()) - len(chrome.encode())) / bounds.ERRORS.ceiling
+    assert row_bytes <= worst_error_row_bytes()
 
 
 def test_the_digest_rows_no_window_reaches_are_capped_at_what_a_page_budgets(

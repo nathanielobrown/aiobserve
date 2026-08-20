@@ -71,6 +71,27 @@
         >{{ parts.glyph(following) }}<span data-field="kind">{{ following.kind }}</span> <span data-field="label">{{ following.label }}</span> →</a>
       {% endif %}
     </nav>
+    {# Where this session failed. Written once here rather than per kind of node, because it
+       is a fact about the session and every node page reads the session's header: the way to
+       the whole list rides every page, and the step between two failures only appears where
+       the pane is standing on one — the walk above reaches the next *node*, and a reader
+       hunting failures wants the next *failure*, five spawns and two threads away. #}
+    {% if session_tool_errors %}
+    <nav class="errors" aria-label="Where this session failed">
+      {%- if step and step.previous %}
+      <a data-step="previous" data-node="{{ step.previous.key }}"
+         href="{{ step.previous.url }}{{ suffix }}"
+        >← <span data-field="label">{{ step.previous.label }}</span></a>
+      {%- endif %}
+      <a data-step="all" href="/session/{{ selection.session_id }}/errors"
+        ><span data-field="tool_errors">{{ session_tool_errors | count }}</span> tool error(s)</a>
+      {%- if step and step.following %}
+      <a data-step="next" data-node="{{ step.following.key }}"
+         href="{{ step.following.url }}{{ suffix }}"
+        ><span data-field="label">{{ step.following.label }}</span> →</a>
+      {%- endif %}
+    </nav>
+    {% endif %}
   </article>
 </div>
 {% endblock %}

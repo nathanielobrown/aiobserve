@@ -187,6 +187,26 @@ ul.prs { margin: var(--space-2) 0; padding: 0; list-style: none; overflow-wrap: 
    stepping to before they step. Dimmed — the node's own words are what they came for. */
 .walk [data-field="kind"] { color: var(--dim); }
 
+/* Where the session failed, laid out like the walk above it: the step back on the left, the
+   step on on the right, and the way to the whole list between them. The list is the one
+   control here that is always there, so it holds the middle rather than an end. */
+nav.errors { display: flex; gap: var(--space-3); align-items: baseline;
+  margin-top: var(--space-2); }
+nav.errors a { max-width: 20rem; text-decoration: none; }
+nav.errors [data-step="previous"] { margin-right: auto; }
+nav.errors [data-step="next"] { margin-left: auto; text-align: right; }
+/* The count, which is the one number on the page that says how much there is to jump to. */
+nav.errors [data-field="tool_errors"] { color: var(--bad); }
+
+/* One session's failures, whichever thread each ran on. */
+ol.errors { margin: var(--space-2) 0; padding: 0; list-style: none; }
+ol.errors li { border-top: 1px solid var(--line); padding: var(--space-1) 0;
+  display: flex; gap: var(--space-2); align-items: baseline; }
+/* The thread and the clock sit after the label and give it the room: what a reader scans is
+   which call failed, and the rest tells two failures of one tool apart. */
+ol.errors a { flex: 1; text-decoration: none; }
+ol.errors .source { color: var(--dim); }
+
 /* A row of counts under a heading, on the pages built out of one list. */
 .numbers { margin: 0; color: var(--dim); display: flex; gap: var(--space-3); }
 

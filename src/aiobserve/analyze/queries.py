@@ -119,6 +119,11 @@ PAGE_RECORDS = 100
 # How many projects the landing page ranks. A corpus grows projects the way it grows sessions,
 # so the page is bound like the list — and a store holding more says how many it left out.
 PAGE_PROJECTS = 100
+# And how many of a session's failed tool calls its errors page lists. Bound the same way and
+# for the same reason: nothing about a session caps how often its tools fail. The busiest
+# session read so far failed 43 calls (`reports/2026_08_07_mycelia_agent_friction.md`), so
+# this is headroom over what the corpus records rather than a number a page has reached.
+PAGE_ERRORS = 100
 
 # The two trailing windows the landing page counts a project in, beside its whole history: a
 # week and a month. Not `WINDOW_DAYS` above, which is what a report's counts are quoted in and
@@ -553,6 +558,16 @@ QUERIES: dict[str, Query] = {
             "head_chars": Param(type=ParamType.INTEGER, default=HEADER_CHARS),
             "item_chars": Param(type=ParamType.INTEGER, default=HEADER_ITEM_CHARS),
             "head_items": Param(type=ParamType.INTEGER, default=HEADER_ITEMS),
+        },
+    ),
+    "view_session_errors": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            # Labelled at a tree row's width, because the rows link to nodes: a failure reads
+            # as the same line here as it does in the tree beside its own page.
+            "nav_chars": NAV_CHARS_PARAM,
+            "errors": Param(type=ParamType.INTEGER, default=PAGE_ERRORS),
         },
     ),
     "view_sessions": Query(

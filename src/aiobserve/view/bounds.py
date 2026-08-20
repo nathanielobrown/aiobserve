@@ -54,6 +54,13 @@ SESSIONS = Bound(default=104, ceiling=104)
 # it left. The row is dearer than its own markup because it carries a link holding a whole
 # project path, and percent-encoding writes three bytes for every byte of it.
 PROJECTS = Bound(default=queries.PAGE_PROJECTS, ceiling=queries.PAGE_PROJECTS)
+# One session's failed tool calls, bound like the landing page rather than paged like the
+# records browser: nothing about a session caps how often its tools fail, and a reader jumps
+# to a failure rather than paging through them — so the page shows the first `ERRORS` in
+# reading order and says how many it left. The prev/next stepper reads the same list, which is
+# why there is one number and not two: a failure past the cap is one neither surface reaches,
+# rather than one the stepper steps to and the list denies.
+ERRORS = Bound(default=queries.PAGE_ERRORS, ceiling=queries.PAGE_ERRORS)
 
 # How much of a string one row of the pane's children log carries. Not a size a URL names —
 # a reader picks the next node out of a log rather than reading one — so it is the arithmetic's

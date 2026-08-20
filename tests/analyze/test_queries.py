@@ -69,6 +69,10 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     "view_run_header": {"session_id": SPINE, "run_id": SPINE_RUN},
     "view_runs": {"session_id": SPINE},
     "view_session_header": {"session_id": SPINE},
+    # `spine/` failed nothing, so the errors list is bound at one of the two fixture sessions
+    # that did — the one whose failure sits on a run thread rather than on `main`, which is
+    # the shape the session-wide list exists for.
+    "view_session_errors": {"session_id": FORK_ORIGIN},
     # The tree levels beside a node page, bound at the session the tree tests open and
     # at the turn under it holding 4 api calls, so each level answers with more than one row.
     "view_tree_turns": {"session_id": ANCESTOR, "source": MAIN},
