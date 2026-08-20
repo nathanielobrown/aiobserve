@@ -1433,6 +1433,123 @@ def build_app(db_path: Path) -> FastAPI:
             ran,
         )
 
+    def spilled(
+        request: Request,
+        session_id: str,
+        at: Ref,
+        thread: str,
+        depth: int,
+        opened: str,
+        nav: str,
+        kin: int,
+        log: int,
+        detail: int,
+    ) -> Response:
+        """The children one level's window left out: the rows a `+N more` row stands in for.
+
+        The tree draws a window on a level and a tail row saying how many it left out; this
+        serves the rest of that level, at the depth the tree had reached, so a click can stand
+        them where the tail row stood. `opened` is the key of the child the open path descends
+        through, which the window keeps wherever in the level it sits — the page sent it so
+        that the two halves of one split agree, and this is the half that must not repeat it.
+
+        `thread` is the reader's, not the level's: the enrichment is keyed by thread, so a page
+        draws a turn of any other thread by its prompt, and a row served here has to read the
+        way the page beside it would have drawn it.
+
+        Unbounded on purpose: what comes back is a level less a window, so a node with ten
+        thousand children answers with ten thousand rows.
+        """
+        preset = viewed(nav)
+        cap = checked(kin, bounds.KIN.ceiling)
+        checked(log, bounds.LOG.ceiling)
+        checked(detail, bounds.DETAIL.ceiling)
+        if not 0 < depth <= bounds.DEPTH:
+            raise HTTPException(400, f"A tree row sits between depth 1 and {bounds.DEPTH}.")
+        keyed: dict[str, ParamValue] = {"session_id": session_id}
+        with open_store(resolved) as connection:
+            head = page_rows(
+                connection,
+                Page.SESSION_HEADER,
+                **keyed,
+                head_chars=queries.HEADER_CHARS,
+                item_chars=queries.HEADER_ITEM_CHARS,
+                head_items=queries.HEADER_ITEMS,
+            )
+            if not head:
+                raise HTTPException(404, "No session with that id is in this store.")
+            corpus = tree.Corpus(
+                session_id=session_id,
+                whole=head[0]["cost_usd"] or 0,
+                runs=page_rows(connection, Page.RUNS, **keyed, chip_chars=queries.NAV_CHARS),
+                described=described(connection, session_id, thread),
+                source=thread,
+            )
+            level = tree.children(connection, corpus, at, preset, opened or None)
+        return templates.TemplateResponse(
+            request,
+            "fragments/kin.html",
+            {
+                "rows": [
+                    tree.TreeRow(node, depth, selected=False)
+                    for node in tree.windowed(level.nodes, cap, [opened]).cut
+                ],
+                "thread": thread,
+                "suffix": carried(nav, kin, log, detail),
+            },
+        )
+
+    @app.get(f"{nodes.KIN_URL}/{{kind}}/{{session_id}}/{{source}}/{{node_id}}")
+    def node_kin(
+        request: Request,
+        kind: str,
+        session_id: str,
+        source: str,
+        node_id: str,
+        thread: str,
+        depth: int,
+        opened: str = "",
+        nav: str = nodes.Preset.FULL,
+        kin: int = bounds.KIN.default,
+        log: int = bounds.LOG.default,
+        detail: int = bounds.DETAIL.default,
+    ) -> Response:
+        """The rest of one level, under a node recorded on a thread.
+
+        Neither `thread` nor `depth` has a default: these rows are going somewhere in a tree
+        that already exists, and only the row that asked for them knows where they land and
+        which thread's descriptions the tree around them was drawn by.
+        """
+        if kind not in set(Kind):
+            raise HTTPException(404, "No level is served for that kind of node.")
+        at = Ref(kind=Kind(kind), source=source, node_id=node_id)
+        return spilled(request, session_id, at, thread, depth, opened, nav, kin, log, detail)
+
+    @app.get(f"{nodes.KIN_URL}/{{kind}}/{{session_id}}/{{node_id}}")
+    def loose_kin(
+        request: Request,
+        kind: str,
+        session_id: str,
+        node_id: str,
+        thread: str,
+        depth: int,
+        opened: str = "",
+        nav: str = nodes.Preset.FULL,
+        kin: int = bounds.KIN.default,
+        log: int = bounds.LOG.default,
+        detail: int = bounds.DETAIL.default,
+    ) -> Response:
+        """The rest of one level, under a node that carries no thread of its own.
+
+        The session, an agent run, and the unattached bucket: their URLs have no room for the
+        thread the node was recorded on, and the level does not need it — each builder reads
+        the thread out of the node it hangs under.
+        """
+        if kind not in set(Kind):
+            raise HTTPException(404, "No level is served for that kind of node.")
+        at = Ref(kind=Kind(kind), source=None, node_id=node_id)
+        return spilled(request, session_id, at, thread, depth, opened, nav, kin, log, detail)
+
     def whole(
         request: Request, value: Value, template: str, keyed: Mapping[str, ParamValue]
     ) -> Response:

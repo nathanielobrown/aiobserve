@@ -19,7 +19,7 @@ from typing import NamedTuple
 import duckdb
 
 from aiobserve.view.nodes import Node, Preset
-from aiobserve.view.tree import CHILDREN, Corpus, Ran
+from aiobserve.view.tree import Corpus, Ran, children
 
 
 class _Reader:
@@ -36,7 +36,7 @@ class _Reader:
         Always full: a filter preset is a view of the session, not a reading order, and three
         orders would be three reading needs to test for the one a reader has.
         """
-        level = CHILDREN[(node.kind, Preset.FULL)](self.connection, self.corpus, node)
+        level = children(self.connection, self.corpus, node.ref, Preset.FULL, None)
         self.ran.extend(level.ran)
         return level.nodes
 

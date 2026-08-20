@@ -22,7 +22,7 @@
     <div id="tree-rows" hx-target="#pane" hx-swap="outerHTML"
          hx-select="#pane" hx-select-oob="#tree-rows" hx-push-url="true">
       {{ treeview.switcher(presets) }}
-      <ul class="rows">{{ treeview.lines(rows, suffix) }}</ul>
+      <ul class="rows">{{ treeview.lines(rows, suffix, source) }}</ul>
     </div>
   </nav>
   <article id="pane">

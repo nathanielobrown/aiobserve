@@ -130,6 +130,9 @@ def run_url(session_id: str, run_id: str) -> str:
 # Where a node's body alone is served from, written once: the routes in `view/app.py` answer
 # what `Node.expansion` mints.
 BODY_URL = "/fragment/body"
+# And where the children one level's window left out are served from, which is what a tail
+# row fetches (`Node.rest`).
+KIN_URL = "/fragment/kin"
 
 
 @dataclass(frozen=True)
@@ -190,6 +193,18 @@ class Node:
         if self.kind is Kind.RUN:
             return f"{BODY_URL}/{Kind.RUN}/{self.session_id}/{self.node_id}"
         return f"{BODY_URL}/{self.kind}/{self.session_id}/{self.source}/{self.node_id}"
+
+    @property
+    def rest(self) -> str:
+        """Where the children this node's window left out are fetched, for a tail row to open.
+
+        The same level the tree drew, past the window it drew — rows ready to stand where the
+        tail row stands. Two shapes like `expansion`, because a node not recorded on a thread
+        carries no thread segment: the session, an agent run, and the unattached bucket.
+        """
+        if self.source is None:
+            return f"{KIN_URL}/{self.kind}/{self.session_id}/{self.node_id}"
+        return f"{KIN_URL}/{self.kind}/{self.session_id}/{self.source}/{self.node_id}"
 
     @property
     def meter(self) -> str:

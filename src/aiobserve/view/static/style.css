@@ -110,9 +110,9 @@ td.title .secondary { display: -webkit-box; -webkit-box-orient: vertical;
 #tree .switch .button { color: var(--dim); font-size: var(--type-label);
   padding: 0 var(--space-1); }
 #tree .switch [aria-current] { color: var(--ink); border-color: var(--mark); font-weight: 600; }
-li.row[data-depth="1"] > a { padding-left: var(--space-3); }
-li.row[data-depth="2"] > a { padding-left: var(--space-4); }
-li.row[data-depth="3"] > a { padding-left: calc(2 * var(--space-4)); }
+li.row[data-depth="1"] > :is(a, button) { padding-left: var(--space-3); }
+li.row[data-depth="2"] > :is(a, button) { padding-left: var(--space-4); }
+li.row[data-depth="3"] > :is(a, button) { padding-left: calc(2 * var(--space-4)); }
 /* A row is one line: what the node is on the left, what it cost on the right, and a label too
    long for the column cut rather than wrapped. */
 li.node > a {
@@ -129,7 +129,15 @@ li.node > a:hover { background-color: color-mix(in srgb, var(--mark) 12%, transp
 li.row[data-selected] > a { font-weight: 600; color: var(--ink);
   background-color: color-mix(in srgb, var(--mark) 12%, transparent);
   box-shadow: inset 3px 0 var(--mark); }
+/* The tail of a level, which fetches the rest of it and stands the rows in its own place. A
+   button, because there is no page at the other end — and dressed as the row it sits in
+   rather than as a control, so the tree stays one column of one kind of line. Held to the
+   weight of `li.node > a` above, so the rules that indent a row by its depth outrank it here
+   the same way they outrank the anchor's own padding. */
 li.row.more { color: var(--dim); }
+li.more > button { display: block; width: 100%; padding: 0 var(--space-1); border: 0;
+  background: none; color: inherit; font: inherit; text-align: inherit; cursor: pointer; }
+li.more > button:hover { background-color: color-mix(in srgb, var(--mark) 12%, transparent); }
 /* Where a node sits, above the node itself. Separators between the steps rather than around
    them, so the trail reads as one line. */
 .crumbs a + a::before { content: "/"; color: var(--dim); margin: 0 var(--space-1); }
