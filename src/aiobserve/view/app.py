@@ -427,6 +427,10 @@ def build_app(db_path: Path) -> FastAPI:
     # And where an agent run reads, for the one link a template mints from a column rather than
     # from a node: the `Task` call that started the run.
     templates.env.globals["run_url"] = nodes.run_url  # pyrefly: ignore
+    # The columns each children log heads and fills, so the head and the rows cannot drift
+    # apart, and how many of them an expansion opened under a row has to span.
+    templates.env.globals["COLUMNS"] = nodes.COLUMNS  # pyrefly: ignore
+    templates.env.globals["spanned"] = nodes.spanned  # pyrefly: ignore
 
     def error(request: Request, status: int, message: str) -> Response:
         return templates.TemplateResponse(

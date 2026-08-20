@@ -1,9 +1,14 @@
 {# One node's body alone, for an expansion opened in someone else's children log: the same
    section a node page wraps, with a count and a link where the page has the log itself. The
    nesting stops here on purpose — an accordion of accordions is a page, and the node already
-   has one. #}
+   has one.
+
+   A row of the log's own table, swapped in after the row that asked for it, spanning every
+   column that row fills: the parent's shape is not in the URL, so the span comes from the
+   kind of node this is — `nodes.spanned` maps it back to the log that lists it. #}
 {% import "_node_body.html" as body %}
-<div class="fragment">
+<tr class="expansion" data-expansion="{{ node.kind }}">
+  <td colspan="{{ spanned(node.kind) }}">
   {{ body.pane(node, row, suffix) }}
   <p class="children" data-children="{{ node.kind }}">
     <a href="{{ node.url }}{{ suffix }}">
@@ -17,4 +22,5 @@
     <li><a data-field="{{ name }}" href="{{ ran.url }}"><code>{{ ran.line }}</code></a></li>
     {% endfor %}
   </ul>
-</div>
+  </td>
+</tr>

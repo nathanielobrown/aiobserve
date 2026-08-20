@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 
 from aiobserve.analyze import queries
 from aiobserve.view import app as view_app
-from aiobserve.view import bounds
+from aiobserve.view import bounds, nodes
 from aiobserve.view import format as fmt
 from aiobserve.view.app import CSP, TEMPLATES, build_app
 from aiobserve.view.format import ABSENT
@@ -699,9 +699,11 @@ def test_every_fact_a_header_asks_for_has_a_label() -> None:
 
     A header field with no label would reach a reader as a column name, which is the thing
     `LABELS` exists to stop, and an entry nothing asks for is a word nobody sees. Read off the
-    templates and the panes rather than listed here, so a fact added to either lands in this
-    check. The panes are the second source because a previewed value is labelled by the name
-    the route passed it under, which no template holds.
+    templates, the panes and the log's column table rather than listed here, so a fact added
+    to any of them lands in this check. The panes are a source because a previewed value is
+    labelled by the name the route passed it under, which no template holds; the column table
+    is one because a children log heads itself from a variable, which no regex over a template
+    can see.
     """
     asked = {
         name
@@ -709,7 +711,8 @@ def test_every_fact_a_header_asks_for_has_a_label() -> None:
         for name in re.findall(r"(?:parts\.fact|label)\('([a-z_]+)'", path.read_text())
     }
     previewed = set(re.findall(r'detail_of\(\s*"([a-z_]+)"', Path(view_app.__file__).read_text()))
-    assert asked | previewed == set(LABELS)
+    headed = {column.field for columns in nodes.COLUMNS.values() for column in columns}
+    assert asked | previewed | headed == set(LABELS)
 
 
 def test_every_filter_the_app_registers_is_one_a_template_names() -> None:
