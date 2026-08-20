@@ -75,10 +75,13 @@ def test_a_deeply_nested_value_is_shown_at_the_size_it_was_stored() -> None:
     # it. Only the value the parser itself refused comes back as plain text.
     assert lit("[" * 5_000 + "]" * 5_000, Syntax.JSON).syntax is Syntax.JSON
     assert lit("[" * 10_000 + "]" * 10_000, Syntax.JSON).syntax is None
-    # An empty member does not excuse the nesting beside it. The walk is a stack, so a `{}` or
-    # `[]` is the first thing it reaches here — measuring has to step over it and carry on.
-    beside = json.dumps({"deep": json.loads("[" * 3_000 + "]" * 3_000), "empty": []})
-    assert "\n" not in lit(beside, Syntax.JSON).html
+    # Nothing beside the nesting excuses it. The walk is a stack, so the *last* member is the
+    # first thing it reaches — and whether that member is an empty container or a number, the
+    # measuring has to step over it and carry on to the deep one behind it.
+    deep = json.loads("[" * 3_000 + "]" * 3_000)
+    for neighbour in ([], 1):
+        beside = json.dumps({"deep": deep, "beside": neighbour})
+        assert "\n" not in lit(beside, Syntax.JSON).html, neighbour
     # ...while a value that nests as deep as a real record does is still indented.
     assert "\n    " in lit('{"a": {"b": {"c": [1, 2]}}}', Syntax.JSON).html
 
