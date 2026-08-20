@@ -13,7 +13,14 @@
 {% block main %}
 <div id="browser">
   <nav id="tree" aria-label="Session tree">
-    <div id="tree-rows">
+    {# What every row of the tree does on a click, written once: fetch the row's own URL, take
+       `#pane` out of the response and put it where the pane is, and swap these rows in out of
+       band. htmx reads each of these off the closest ancestor carrying it, so the rows below
+       carry only the URL that differs between them — 417 rows is most of a node page's budget
+       (`.claude/rules/viewer-ui.md`). `outerHTML` because `hx-select` hands back the `#pane`
+       element itself; without `hx-target` htmx would swap it into the clicked link. #}
+    <div id="tree-rows" hx-target="#pane" hx-swap="outerHTML"
+         hx-select="#pane" hx-select-oob="#tree-rows" hx-push-url="true">
       {{ treeview.switcher(presets) }}
       <ul class="rows">{{ treeview.lines(rows, suffix) }}</ul>
     </div>

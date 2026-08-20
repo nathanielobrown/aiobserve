@@ -85,8 +85,9 @@ HIGHLIGHT_CHARS = 256_000
 #
 # Measured through the app rather than budgeted, at every label full of `&` and the longest
 # query string a link can carry (`tests/view/test_bounds.py`). Pinned at exactly what it
-# measures, with no slack, for the same reason: a byte of slack here is 417 bytes of page, and
-# the arithmetic has little left over. Most of the row is its URL written twice — the href a
-# reader sees and the `hx-get` htmx fetches — so a store whose agent runs carry longer ids than
-# the recorded corpus does is a re-measure.
-TREE_ROW_BYTES = 983
+# measures, with no slack, for the same reason: a byte of slack here is 417 bytes of page.
+# Nearly all of the row is its URL written twice — the href a reader sees and the `hx-get`
+# htmx fetches — because the swap the two of them perform is written once on `#tree-rows` and
+# inherited. A store whose agent runs carry longer ids than the recorded corpus does is a
+# re-measure.
+TREE_ROW_BYTES = 914

@@ -34,7 +34,7 @@ from aiobserve.view.enrichment import Descriptions
 from aiobserve.view.format import cut, money
 from aiobserve.view.nodes import Kind, Preset, Ref, meter
 from tests.conftest import MAIN, SPINE
-from tests.view.conftest import SPAWNS, Planter, fields, inside, kin, one, rows, values
+from tests.view.conftest import SPAWNS, Planter, fields, inside, kin, one, rows, values, wired
 
 
 def url(turn_id: str) -> str:
@@ -223,28 +223,38 @@ def test_the_tree_opens_the_selections_path_and_leaves_the_rest_shut(
     assert values(html, "data-selected") == [f"turn:{selection}"]
 
 
-def test_every_tree_row_swaps_the_pane_from_its_own_node_url(
+def test_every_link_that_swaps_the_pane_lands_the_pane_in_the_pane(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """Each row is an `hx-get` of the URL it links to, swapping the pane and the tree.
+    """The whole of what a click does, on both the mounts that mount a node link.
 
-    The server-side half of a tree click: the same URL a reader can paste, fetched by htmx,
-    with the pane taken out of the response and the rows swapped out of band. Both targets
-    have to be unique in the document or the swap lands somewhere else.
+    A tree row and a children-log row are the two ways a reader moves without leaving the
+    page, and both do the same thing: fetch the URL the link points at, take `#pane` out of
+    the response, put it where the pane already is, and swap the rows out of band. Read as
+    htmx composes it, inheritance and all, because that is what the browser acts on.
+
+    `hx-target` is the half that has no default worth having: htmx aims at the clicked
+    element, so a page missing it swaps the whole pane inside the `<a>` the reader clicked
+    and leaves the pane itself showing the node they came from. `hx-swap` is `outerHTML`
+    because `hx-select` hands back the `#pane` element itself, not its contents.
     """
     html = client.get(url(open_turn(store))).text
-    rows = values(html, "data-tree")
-    assert len(rows) > 1
-    for key in rows:
-        wiring = {
-            name: inside(html, "data-tree", key, name)
-            for name in ("href", "hx-get", "hx-select", "hx-select-oob", "hx-push-url")
-        }
-        # A row fetches what it links to: one URL, however the reader gets there.
-        assert wiring["hx-get"] == wiring["href"], key
-        assert wiring["hx-select"] == ["#pane"], key
-        assert wiring["hx-select-oob"] == ["#tree-rows"], key
-        assert wiring["hx-push-url"] == ["true"], key
+    swap = {
+        "hx-target": "#pane",
+        "hx-swap": "outerHTML",
+        "hx-select": "#pane",
+        "hx-select-oob": "#tree-rows",
+        "hx-push-url": "true",
+    }
+    for mount in ("data-tree", "data-child"):
+        # A row's other fetch is its body toggle, which opens in place and has nowhere to go:
+        # the links are the ones with an `href`, which is also what makes them pasteable.
+        links = [(key, wiring) for key, wiring in wired(html, mount) if "href" in wiring]
+        assert len(links) > 1, mount
+        for key, wiring in links:
+            # A link fetches what it points at: one URL, however the reader gets there.
+            assert wiring["hx-get"] == wiring["href"], (mount, key)
+            assert {name: wiring.get(name) for name in swap} == swap, (mount, key)
     # The two ids the swap aims at, each written exactly once.
     assert html.count('id="pane"') == 1
     assert html.count('id="tree-rows"') == 1

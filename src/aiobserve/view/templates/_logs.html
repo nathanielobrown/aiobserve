@@ -12,7 +12,11 @@
   <ul>
     {% for item in rows %}
     <li data-child="{{ item.node.key }}">
+      {# The same swap a tree row does, written out rather than hoisted onto the list: the
+         body toggle two lines down is an `hx-get` of its own with none of this, and a log is
+         twelve rows, so disinheriting it would cost more than repeating this does. #}
       <a href="{{ item.node.url }}{{ suffix }}" hx-get="{{ item.node.url }}{{ suffix }}"
+         hx-target="#pane" hx-swap="outerHTML"
          hx-select="#pane" hx-select-oob="#tree-rows" hx-push-url="true"
         >{{ parts.glyph(item.node) }}<span data-field="label">{{ item.node.label }}</span></a>
       {%- if shape == 'turns' %}

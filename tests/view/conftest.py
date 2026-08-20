@@ -311,3 +311,64 @@ def inside(html: str, attribute: str, value: str, inner: str) -> list[str]:
     return [
         found for tag in _element(html, attribute, value).attributes if (found := tag.get(inner))
     ]
+
+
+# Attributes htmx reads off the closest ancestor that carries one, so a page can write the
+# half every link shares once and leave each link carrying only what differs. `hx-get` and
+# `href` are not among them: htmx finds the elements to wire by their own `hx-get`.
+INHERITED = ("hx-target", "hx-swap", "hx-select", "hx-select-oob", "hx-push-url")
+# Tags that never close, so the reader below must not wait for an end tag to pop them.
+VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source"}
+
+
+class _Wiring(HTMLParser):
+    """Every `hx-get` element's wiring as htmx composes it, keyed by the row it sits in."""
+
+    def __init__(self, key: str) -> None:
+        super().__init__()
+        self.key = key
+        self.stack: list[dict[str, str | None]] = []
+        self.wiring: list[tuple[str, dict[str, str]]] = []
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.handle_starttag(tag, attrs)
+        self.stack.pop()
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        found = dict(attrs)
+        self.stack.append(found)
+        if tag not in VOID and "hx-get" in found:
+            # Innermost first, which is the order htmx resolves an inherited attribute in.
+            near = list(reversed(self.stack))
+            row = next((tag[self.key] for tag in near if tag.get(self.key)), None)
+            if row is not None:
+                self.wiring.append(
+                    (
+                        row,
+                        {
+                            name: value
+                            for name in ("href", "hx-get", *INHERITED)
+                            if (value := next((at[name] for at in near if at.get(name)), None))
+                            is not None
+                        },
+                    )
+                )
+        if tag in VOID:
+            self.stack.pop()
+
+    def handle_endtag(self, tag: str) -> None:
+        if self.stack:
+            self.stack.pop()
+
+
+def wired(html: str, key: str) -> list[tuple[str, dict[str, str]]]:
+    """What htmx would do, for every fetching element under a `key` attribute, in page order.
+
+    Inheritance and all: the tree writes the swap its rows share on the element it hands back,
+    so an assertion on a row's own attributes would read a page that works and one that does
+    not the same way. Each pair is the `key` of the row an element sits in and its wiring; a
+    row holding two of them — a link and a body toggle — gives two pairs.
+    """
+    parser = _Wiring(key)
+    parser.feed(html)
+    return parser.wiring
