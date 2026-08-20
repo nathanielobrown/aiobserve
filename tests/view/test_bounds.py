@@ -41,6 +41,7 @@ from tests.conftest import (
     FORK_ORIGIN_RUN,
     OFFLOAD_FILE,
     RESUME,
+    SLASH_TURN,
     SPINE,
     SPINE_RUN,
 )
@@ -711,6 +712,7 @@ ROUTES: dict[str, str] = {
     "/fragment/prompt/{session_id}/{source}/{turn_id}": (
         f"/fragment/prompt/{ANCESTOR}/main/{DENSE_TURN}"
     ),
+    "/fragment/args/{session_id}/{source}/{turn_id}": f"/fragment/args/{SPINE}/main/{SLASH_TURN}",
     "/fragment/brief/{session_id}/{run_id}": f"/fragment/brief/{SPINE}/{SPINE_RUN}",
     "/fragment/record/{session_id}/{source}/{line_no}": f"/fragment/record/{ANCESTOR}/main/1",
     # And a node's body alone, the way a log row expands its child. Two shapes: a run's URL
@@ -1347,10 +1349,13 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # is about takes the widest of the four, with the rest of it offered as its own fetch.
     assert fields(turn, "data-detail", "prompt")["prompt"] == "x" * queries.DETAIL_CHARS + ELLIPSIS
     assert inside(turn, "data-detail", "prompt", "data-whole") == ["prompt"]
-    # A slash turn's own two strings are facts of its pane rather than the value it is about,
-    # so both take a header's cut instead.
-    command = fields(slash, "data-body", "turn")
-    assert len(command["command_name"]) == len(command["command_args"]) == queries.HEADER_CHARS
+    # A slash turn shows the same two widths on one page: the command it ran is a word the
+    # pane leads with, cut to a header's width, and what followed it is a second value of the
+    # turn, cut to a pane's and offering the rest of itself like the prompt does.
+    assert len(fields(slash, "data-command", command_id)["command_name"]) == queries.HEADER_CHARS
+    arguments = fields(slash, "data-detail", "command_args")
+    assert arguments["command_args"] == "x" * queries.DETAIL_CHARS + ELLIPSIS
+    assert inside(slash, "data-detail", "command_args", "data-whole") == ["command_args"]
     header = fields(run, "data-body", "run")
     assert {len(header[field]) for field in ("agent_type", "model")} == {queries.HEADER_CHARS}
     brief = fields(run, "data-detail", "description")["description"]

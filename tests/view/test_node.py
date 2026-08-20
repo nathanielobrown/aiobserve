@@ -22,7 +22,7 @@ from aiobserve.view.format import ELLIPSIS
 from aiobserve.view.labels import LABELS, label
 from aiobserve.view.nodes import BODY_URL, COLUMNS, Shape
 from tests.conftest import ANCESTOR, DENSE_TURN, MAIN, SPINE
-from tests.view.conftest import MISSING, Planter, fields, inside, one, plain, values
+from tests.view.conftest import MISSING, Planter, block, fields, inside, one, plain, values
 
 # The corpus's densest main-thread turn — 4 api calls under it — so the pane's children log
 # has more than one row and the tree has a level under the selection worth rendering.
@@ -159,6 +159,37 @@ def test_a_turn_node_serves_the_turn_the_store_holds(
     assert shown["tool_calls"] == str(tools)
     # And the log under the pane lists those api calls, one row each.
     assert len(values(response.text, "data-child")) == calls
+
+
+def test_a_slash_turn_leads_with_the_command_it_ran(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A turn typed as a slash command shows the command, not the block it was expanded into.
+
+    Claude Code stores such a turn's prompt as the `<command-name>`/`<command-args>` wrapper it
+    built, and the extractor pulls the two halves into columns of their own. The pane reads
+    those columns — the command on a line of its own, and what followed it as a value of the
+    turn — and keeps the prompt beside them, because the wrapper is what the model was sent.
+    """
+    turn_id, name, args = one(
+        store,
+        "SELECT id, command_name, command_args FROM live_turns"
+        " WHERE session_id = ? AND source = ? AND command_name IS NOT NULL"
+        ' AND length(command_args) > 0 ORDER BY "index" LIMIT 1',
+        [SPINE, MAIN],
+    )
+    page = client.get(f"/session/{SPINE}/turn/{MAIN}/{turn_id}").text
+    # The command, off the store's own column and on the command line the pane leads with
+    # rather than among the counts the header rows.
+    assert fields(page, "data-command", turn_id)["command_name"] == name
+    # What followed it is a value of the turn like the prompt is, so it is previewed under its
+    # own heading with the way to the rest of it — arguments run to thousands of characters.
+    assert fields(page, "data-detail", "command_args")["command_args"] == args
+    # And the wrapper Claude Code built is still on the page as the record of what was sent.
+    assert "<command-name>" in plain(block(page, "prompt"))
+    # A turn nobody typed a command at has no command line at all: the pane leads with the
+    # prompt, and there is no empty heading over a column the store left NULL.
+    assert not values(client.get(TURN).text, "data-command")
 
 
 # What column of a node's own facts counts the children its expansion links to instead of
@@ -316,7 +347,7 @@ def test_a_pane_previews_a_fat_value_and_offers_the_rest_as_its_own_fetch(
 def test_every_value_a_pane_previews_is_fetchable_whole_from_its_own_url(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """The four fat columns a node page previews each round-trip through a value route.
+    """The five fat columns a node page previews each round-trip through a value route.
 
     One route per column rather than one per row: a tool call's input and its result are two
     values a reader opens apart, and a route that served the row whole would send the other
@@ -325,6 +356,13 @@ def test_every_value_a_pane_previews_is_fetchable_whole_from_its_own_url(
     """
     columns = {
         # The node URL that previews it, the value route, and where the store keeps it.
+        "command_args": (
+            f"/session/{SPINE}/turn/{MAIN}/{{0}}",
+            f"/fragment/args/{SPINE}/{MAIN}/{{0}}",
+            "SELECT id, length(command_args) FROM live_turns WHERE session_id = ? AND source = ?"
+            " AND command_name IS NOT NULL AND length(command_args) > 0"
+            " ORDER BY length(command_args) DESC LIMIT 1",
+        ),
         "prompt": (
             f"/session/{SPINE}/turn/{MAIN}/{{0}}",
             f"/fragment/prompt/{SPINE}/{MAIN}/{{0}}",

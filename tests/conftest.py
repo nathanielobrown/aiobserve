@@ -77,6 +77,9 @@ DENSE_CALL = "msg_011CdFxfStgUUn3Q59b4RFii"
 # The turn `DENSE_CALL` was made in, so a fragment of that turn nests the dense tool list.
 DENSE_CALL_TURN = "33438141-776f-4e1e-9bc5-e5d85df18d22"
 DENSE_TOOL = "toolu_015wiqbosE2nUYZBYdd9urjA"
+# `SPINE`'s main-thread turn typed as a slash command — `/night-run`, with arguments recorded
+# after it — which is the one shape that fills the two command columns.
+SLASH_TURN = "30aad8e5-21f8-486d-b9d9-e118c703a5a1"
 
 # `ANCESTOR` is the session `RESUME` resumed, and one of the two pool sessions that compacted.
 # `FORK_ORIGIN` holds the fork whose spawning call sits in the fork's own transcript:
