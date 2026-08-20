@@ -374,6 +374,85 @@ def test_every_value_a_pane_previews_is_fetchable_whole_from_its_own_url(
     assert LABELS["description"] == "Task brief"
 
 
+# The widest parent the store holds for each shape a children log takes, and the URL of the page
+# that logs it. Every shape is here because the log is assembled per shape — a shape missing from
+# the sweep is a shape whose page size and whose count above it nothing reads. Widest because a
+# page has to be shorter than its level for either to be legible: against a level of one, a page
+# that served an extra row and a heading that counted the page would both look right.
+LEVELS: dict[str, tuple[str, str, str]] = {
+    "session": (
+        "SELECT session_id FROM live_turns WHERE source = 'main' GROUP BY 1"
+        " ORDER BY count(*) DESC, 1 LIMIT 1",
+        "/session/{0}",
+        "turns",
+    ),
+    "run": (
+        "SELECT a.session_id, a.id FROM live_agent_runs a"
+        " JOIN live_turns t ON t.session_id = a.session_id AND t.source = a.id"
+        " GROUP BY 1, 2 ORDER BY count(*) DESC, 1, 2 LIMIT 1",
+        "/session/{0}/run/{1}",
+        "turns",
+    ),
+    "turn": (
+        "SELECT session_id, source, turn_id FROM live_api_calls WHERE turn_id IS NOT NULL"
+        " GROUP BY 1, 2, 3 ORDER BY count(*) DESC, 1, 2, 3 LIMIT 1",
+        "/session/{0}/turn/{1}/{2}",
+        "calls",
+    ),
+    "call": (
+        "SELECT session_id, source, api_call_id FROM live_tool_calls"
+        " GROUP BY 1, 2, 3 ORDER BY count(*) DESC, 1, 2, 3 LIMIT 1",
+        "/session/{0}/call/{1}/{2}",
+        "tools",
+    ),
+    # The two buckets, which page the same way: one out of a query, one out of a list the page
+    # already holds.
+    "unattributed": (
+        "SELECT c.session_id, c.source FROM live_api_calls c"
+        " LEFT JOIN live_turns t ON t.session_id = c.session_id AND t.source = c.source"
+        "  AND t.id = c.turn_id"
+        " WHERE t.id IS NULL GROUP BY 1, 2 ORDER BY count(*) DESC, 1, 2 LIMIT 1",
+        "/session/{0}/unattributed/{1}",
+        "calls",
+    ),
+    "unattached": (
+        "SELECT a.session_id FROM live_agent_runs a"
+        " LEFT JOIN live_tool_calls tc ON tc.session_id = a.session_id"
+        "  AND tc.id = a.tool_use_id AND tc.source <> a.id"
+        " LEFT JOIN live_api_calls c ON c.session_id = a.session_id AND c.source = tc.source"
+        "  AND c.id = tc.api_call_id"
+        " WHERE c.id IS NULL GROUP BY 1 ORDER BY count(*) DESC, 1 LIMIT 1",
+        "/session/{0}/unattached",
+        "runs",
+    ),
+}
+
+
+@pytest.mark.parametrize("parent", list(LEVELS))
+def test_every_shape_of_log_serves_the_page_asked_for_and_counts_its_level(
+    client: TestClient, store: duckdb.DuckDBPyConnection, parent: str
+) -> None:
+    """A page holds what the URL asked for, and the heading above it counts the level.
+
+    Swept per shape at `?log=1`: the corpus's widest level is five children against a page of a
+    hundred, so at the production size every page is its whole level and both clauses read true
+    however the code got there. One row a page is what tells a page from the level it came from.
+    """
+    sql, template, shape = LEVELS[parent]
+    url = template.format(*one(store, sql))
+    children = values(client.get(url).text, "data-child")
+    assert len(children) > 1, f"{url}: the widest {parent} has to hold a level worth paging"
+    for number, child in enumerate(children, start=1):
+        page = client.get(url, params={"log": 1, "page": number}).text
+        # The page is the one row the URL asked for, in the level's own order...
+        assert values(page, "data-child") == [child], f"{url} page {number}"
+        # ...under a heading counting the level rather than the row beneath it...
+        assert fields(page, "data-log", shape)["children"] == str(len(children)), url
+        # ...and a pager placing the page in the level.
+        place = fields(page, "data-pager", shape)["place"]
+        assert place == f"Page {number} of {len(children)}", url
+
+
 def walked_log(client: TestClient, at: str, held: int) -> list[str]:
     """Every child a log lists, gathered by following its pager from the page given.
 
