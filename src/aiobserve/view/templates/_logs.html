@@ -45,7 +45,7 @@
           request, and stops there — what is under it is a count and a link to its own page.
           Written tight and unlabelled: this rides every row of every log the viewer serves,
           and the row it sits in already carries the child's key. -#}
-      <details hx-get="{{ item.node.expansion }}" hx-trigger="toggle once" hx-swap="beforeend"
+      <details hx-get="{{ item.node.expansion }}{{ suffix }}" hx-trigger="toggle once" hx-swap="beforeend"
         ><summary>body</summary></details>
     </li>
     {% endfor %}

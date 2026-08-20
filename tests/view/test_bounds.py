@@ -135,8 +135,8 @@ MEASURED_RECORD_BYTES = 826
 # string it carries taken off: three copies of the node's URL — the link, the `hx-get` behind
 # it, and the mount its expansion opens through — the swap the link performs, the numbers that
 # tell two children apart, and the row around them. Re-measured through the app by the leaf at
-# the bottom of this file, every cap full of `&` and every knob at its longest — 1,599 B, of
-# which 540 B is content at those caps and 76 B the knobs, leaving 983 B.
+# the bottom of this file, every cap full of `&` and every knob at its longest — 1,637 B, of
+# which 540 B is content at those caps and 114 B the knobs, leaving 983 B.
 MEASURED_LOG_ROW_MARKUP = 1_000
 # And what the markup around one crumb of the chain down to the selection costs: the link, the
 # node's key, and the glyph that says who named it. Measured the same way: 537 B less 240 B of
@@ -275,8 +275,9 @@ def worst_log_row_bytes() -> int:
     return (
         MEASURED_LOG_ROW_MARKUP
         + (queries.NAV_CHARS + queries.CHIP_CHARS) * ESCAPED_CHAR_BYTES
-        # A row links where it fetches, so it carries the knobs twice.
-        + 2 * worst_knob_bytes()
+        # A row links where it fetches and mounts where it expands, so it carries the knobs
+        # three times.
+        + 3 * worst_knob_bytes()
     )
 
 

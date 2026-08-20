@@ -326,6 +326,16 @@ def viewed(nav: str) -> nodes.Preset:
     return nodes.Preset(nav)
 
 
+def carried(nav: str, kin: int, log: int, detail: int) -> str:
+    """The knobs a request asked for, checked and minted back into the suffix its links carry."""
+    return knobs(
+        viewed(nav),
+        checked(kin, bounds.KIN.ceiling),
+        checked(log, bounds.LOG.ceiling),
+        checked(detail, bounds.DETAIL.ceiling),
+    )
+
+
 def build_app(db_path: Path) -> FastAPI:
     """The viewer over the store at `db_path`, which must exist and hold this schema."""
     resolved = db_path.resolve()
@@ -1303,13 +1313,15 @@ def build_app(db_path: Path) -> FastAPI:
         row: Row,
         shape: Shape,
         children: int | None,
+        marks: str,
         ran: tree.Ran,
     ) -> Response:
         """One node's body alone, the way an expansion in someone else's log mounts it.
 
         The same macro the full view's pane renders through, so the two cannot drift apart;
         where the page has the crumbs, the log and prev/next, this has how many children the
-        node holds and the way to its own page.
+        node holds and the way to its own page. `marks` is the knobs the page around the
+        expansion was read under, which every link out of here carries on.
         """
         return templates.TemplateResponse(
             request,
@@ -1319,15 +1331,29 @@ def build_app(db_path: Path) -> FastAPI:
                 "row": row,
                 "shape": shape,
                 "children": children,
+                "suffix": marks,
                 "citations": {named.value: cited(named, bound) for named, bound in ran},
             },
         )
 
     @app.get(f"{nodes.BODY_URL}/{{kind}}/{{session_id}}/{{source}}/{{node_id}}")
     def node_body(
-        request: Request, kind: str, session_id: str, source: str, node_id: str
+        request: Request,
+        kind: str,
+        session_id: str,
+        source: str,
+        node_id: str,
+        nav: str = nodes.Preset.FULL,
+        kin: int = bounds.KIN.default,
+        log: int = bounds.LOG.default,
+        detail: int = bounds.DETAIL.default,
     ) -> Response:
-        """The body of a turn, an api call, or a tool call, for an expansion in its parent."""
+        """The body of a turn, an api call, or a tool call, for an expansion in its parent.
+
+        The knobs come along for the links this serves, not for what it reads: the mount
+        carries the page's own query string so a reader who opens an expansion and clicks
+        through it keeps the fold and the sizes they were reading under.
+        """
         shaped = BODIES.get(kind)
         if shaped is None:
             raise HTTPException(404, "No expansion is served for that kind of node.")
@@ -1358,11 +1384,20 @@ def build_app(db_path: Path) -> FastAPI:
             rows[0],
             shaped.shape,
             rows[0][shaped.children] if shaped.children else None,
+            carried(nav, kin, log, detail),
             ran,
         )
 
     @app.get(f"{nodes.BODY_URL}/{Kind.RUN}/{{session_id}}/{{run_id}}")
-    def run_body(request: Request, session_id: str, run_id: str) -> Response:
+    def run_body(
+        request: Request,
+        session_id: str,
+        run_id: str,
+        nav: str = nodes.Preset.FULL,
+        kin: int = bounds.KIN.default,
+        log: int = bounds.LOG.default,
+        detail: int = bounds.DETAIL.default,
+    ) -> Response:
         """One agent run's body. Its own mount: a run's URL carries its id where a thread goes."""
         bound: dict[str, ParamValue] = {
             "session_id": session_id,
@@ -1387,6 +1422,7 @@ def build_app(db_path: Path) -> FastAPI:
             rows[0],
             Shape.TURNS,
             rows[0]["turns"],
+            carried(nav, kin, log, detail),
             ran,
         )
 
