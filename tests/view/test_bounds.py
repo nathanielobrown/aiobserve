@@ -125,11 +125,11 @@ MEASURED_RECORD_BYTES = 826
 
 # What the markup around one row of the pane's children log costs, with the label and the one
 # string it carries taken off: three copies of the node's URL — the link, the `hx-get` behind
-# it, and the mount its expansion opens through — the numbers that tell two children apart, and
-# the row around them. Re-measured through the app by the leaf at the bottom of this file, every
-# cap full of `&` and every knob at its longest — 1,545 B, of which 540 B is content at those
-# caps and 76 B the knobs, leaving 929 B.
-MEASURED_LOG_ROW_MARKUP = 950
+# it, and the mount its expansion opens through — the swap the link performs, the numbers that
+# tell two children apart, and the row around them. Re-measured through the app by the leaf at
+# the bottom of this file, every cap full of `&` and every knob at its longest — 1,599 B, of
+# which 540 B is content at those caps and 76 B the knobs, leaving 983 B.
+MEASURED_LOG_ROW_MARKUP = 1_000
 # And what the markup around one crumb of the chain down to the selection costs: the link, the
 # node's key, and the glyph that says who named it. Measured the same way: 537 B less 240 B of
 # label and 38 B of knobs, leaving 259 B.
@@ -146,7 +146,7 @@ PANE_DETAILS = 2
 # the widest of the eight panes — every string in its header is one a transcript wrote, and its
 # two lists grow with the session — so the allowance is a session header's, cut in SQL.
 # The preset switcher rides here too, three links carrying the node's own URL.
-# Re-measured through the app by the leaf at the bottom of this file at 15,349 B.
+# Re-measured through the app by the leaf at the bottom of this file at 15,465 B.
 MEASURED_NODE_CHROME = 16_000
 
 # The parameter every truncated column of a run row is cut to. Counted per query rather than

@@ -30,10 +30,9 @@
     data-tree="{{ row.node.key }}"
     {%- if row.selected %} data-selected="{{ row.node.key }}" aria-current="true"{% endif %}>
   {# A row links where it fetches: one URL, whether the reader clicks it, pastes it, or comes
-     back to it from a bookmark. htmx takes the pane out of the response and swaps the rows
-     out of band, so the bytes served are the same either way. #}
-  <a href="{{ row.node.url }}{{ suffix }}" hx-get="{{ row.node.url }}{{ suffix }}"
-     hx-select="#pane" hx-select-oob="#tree-rows" hx-push-url="true">
+     back to it from a bookmark. What the click does with the response is written once, on
+     `#tree-rows` in `node.html`, and inherited from there. #}
+  <a href="{{ row.node.url }}{{ suffix }}" hx-get="{{ row.node.url }}{{ suffix }}">
     {{ parts.glyph(row.node) }}<span data-field="label">{{ row.node.label }}</span>
     {%- if row.node.tie %}
     {# A run renders under the turn it belongs to, after the api call that spawned it; the tie
