@@ -1092,9 +1092,16 @@ def build_app(db_path: Path) -> FastAPI:
             ]
             if not found:
                 raise HTTPException(404, "No compaction with that id is in this thread.")
+            # Where it hangs is what the query already answered: under the turn it happened
+            # during, else beside the turns of its thread. Seeded rather than resolved,
+            # because a turn a timestamp lands in is a read this row has made.
+            turn_id = found[0]["turn_id"]
             return Seen(
                 header=found[0],
-                trail=[Ref(Kind.COMPACTION, source, compaction_id)],
+                trail=[
+                    *([Ref(Kind.TURN, source, turn_id)] if turn_id is not None else []),
+                    Ref(Kind.COMPACTION, source, compaction_id),
+                ],
                 shape=Shape.NONE,
                 rows=[],
                 more=0,

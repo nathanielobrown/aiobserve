@@ -17,6 +17,9 @@ SELECT
     -- calls of the same tool apart in the width of a tree.
     substr(t.name, 1, $nav_chars + 1) AS name,
     substr(t.input, 1, $nav_chars + 1) AS input_head,
+    -- When it ran, which is what the compactions of the same turn interleave against where
+    -- the api calls are folded away and the tool calls stand under the turn.
+    t.started_at,
     t.is_error
 FROM live_tool_calls t
 JOIN live_api_calls c
