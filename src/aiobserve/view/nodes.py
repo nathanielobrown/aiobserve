@@ -157,6 +157,9 @@ class Node:
     # Whether the label is the model's words rather than the session's, which is what the
     # glyph beside it marks. Three kinds can be: a session, a turn and a run.
     enriched: bool = False
+    # Whether the tool call came back an error. Only ever True for a `Kind.TOOL` node: it is
+    # the column the tree's mark and the errors list (`view/errors.py`) are both read from.
+    is_error: bool = False
 
     @property
     def ref(self) -> Ref:
@@ -305,6 +308,10 @@ def tool_node(session_id: str, source: str, row: Row) -> Node:
         cost_usd=None,
         unpriced_api_calls=0,
         share=None,
+        # Every query a tool node is built from selects it, and the column is NOT NULL, so a
+        # row arriving without it is a query that forgot rather than a call that may have
+        # failed (`export/duckdb.py`).
+        is_error=row["is_error"],
     )
 
 
