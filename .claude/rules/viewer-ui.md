@@ -40,6 +40,16 @@ Where a label repeats — a tree row, a crumb, a log row, a walk control — the
 
 Link where you fetch: a row's `href` and its `hx-get` are the same URL, and both carry the page's knob suffix, so a click, a paste, and a bookmark serve the same bytes.
 
+# A control beside the tree lives inside the swapped element
+
+A tree row swaps `#tree-rows` out of band and takes `#pane` out of the response, so those two
+elements are the whole of what a click refreshes. Anything that names the selected node — the
+preset switcher does, three links to the node under each fold — has to render inside one of
+them or it goes stale the moment a reader clicks a row, pointing back at the node they left.
+
+Put it inside `#tree-rows` rather than adding a second out-of-band target: a target costs bytes
+on every tree row, and the row is the one thing on the page multiplied 417 times.
+
 # Label every value a test reads
 
 A rendered value goes in `<span data-field="{{ name }}">`, and a repeated thing gets a `data-` key naming it (`data-tree`, `data-child`, `data-crumb`, `data-walk`). Tests read the viewer through those attributes, so prose is free to change and the units and marks stay outside the labelled span — a `data-field` carries the value the store holds and nothing else.

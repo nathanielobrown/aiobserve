@@ -18,8 +18,9 @@ table edit has to be an edit here before it can pass.
 
 from collections import Counter
 from collections.abc import Callable, Sequence
+from html import unescape
 from typing import NamedTuple
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlsplit
 
 import duckdb
 import pytest
@@ -674,6 +675,38 @@ def test_every_open_level_is_its_own_cell_or_the_full_one_that_holds_the_path(
                 assert below == expected, f"{at}: under {chain[depth]}"
 
 
+@pytest.mark.parametrize("preset", list(Preset))
+def test_the_tree_offers_every_fold_at_the_node_the_reader_stands_on(
+    client: TestClient, store: duckdb.DuckDBPyConnection, preset: Preset
+) -> None:
+    """A fold is a control above the tree, not a query string a reader has to know to type.
+
+    One link per preset, each pointing at the *same* node under a different fold, and the fold
+    in force marked. Read on a node of every kind because every kind's page carries the tree,
+    and read with a knob turned down because a link that dropped `?kin=` would quietly serve a
+    wider page than the one the reader is standing on.
+    """
+    for kind in Kind:
+        (picked,) = richest(store, preset, kind, 1)
+        at = node_url(kind, *picked)
+        html = client.get(at, params={"nav": preset, "kin": 2}).text
+        # Every fold is offered, in the order the enum declares them, and the control rides the
+        # rows: it sits inside the element a tree click swaps out of band, so the links follow
+        # the reader to the node they land on instead of pointing back at the one they left.
+        assert inside(html, "id", "tree-rows", "data-nav") == [choice.value for choice in Preset]
+        for choice in Preset:
+            (href,) = inside(html, "data-nav", choice, "href")
+            went = urlsplit(href)
+            # The same node under a different fold, carrying the knobs the reader arrived with.
+            assert went.path == at, (kind, choice)
+            carried = {name: value for name, (value,) in parse_qs(went.query).items()}
+            wanted = {"kin": "2"} | ({} if choice is Preset.FULL else {"nav": str(choice)})
+            assert carried == wanted, (kind, choice)
+            # And the fold in force is the marked one, so the control says where the reader is.
+            marked = ["true"] if choice is preset else []
+            assert inside(html, "data-nav", choice, "aria-current") == marked, (kind, choice)
+
+
 def test_a_preset_hides_a_kind_without_hiding_the_path_down_to_one(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
@@ -710,10 +743,18 @@ def test_a_preset_rides_every_node_link_the_page_mints(
 
     The tree's rows, the tail a cap left, the crumbs, the pane's children log and the two walk
     controls are all node URLs, and a reader who picked a view keeps it through any of them.
-    Read with `?kin=1` so the tail row is on the page to check too.
+    The switcher above the tree is the one exception, and the only one: its whole job is to
+    change the fold, so its three links are excluded here and checked on their own leaf. Read
+    with `?kin=1` so the tail row is on the page to check too.
     """
     html = client.get(url(open_turn(store)), params={"nav": "agents", "kin": 1}).text
-    links = [href for href in values(html, "href") if node_link(href)]
+    switching = set(inside(html, "class", "switch", "href"))
+    assert len(switching) == len(Preset), "the switcher's own links, which change the fold"
+    # `values` reads the markup and `inside` reads it parsed, so an href with two knobs on it
+    # arrives `&amp;`-escaped from one and bare from the other.
+    links = [
+        href for href in values(html, "href") if node_link(href) and unescape(href) not in switching
+    ]
     assert len(links) > 5, "the page mints node links to check"
     for href in links:
         assert parse_qs(href.partition("?")[2]).get("nav") == ["agents"], href

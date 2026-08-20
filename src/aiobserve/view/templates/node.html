@@ -13,7 +13,10 @@
 {% block main %}
 <div id="browser">
   <nav id="tree" aria-label="Session tree">
-    <ul id="tree-rows">{{ treeview.lines(rows, suffix) }}</ul>
+    <div id="tree-rows">
+      {{ treeview.switcher(presets) }}
+      <ul class="rows">{{ treeview.lines(rows, suffix) }}</ul>
+    </div>
   </nav>
   <article id="pane">
     {# Where the node sits, outermost first: the same chain the tree has open. #}

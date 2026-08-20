@@ -68,6 +68,8 @@ Beside every node page is the session's tree, with one path open: the selection,
 
 A session's children are the main thread's turns, its compactions in the place they happened, its calls that answer no turn, and the runs nothing placed. A turn's children are its api calls; an api call's are its tool calls. An agent run reads like a session: its children are its own turns. A run renders under the *turn* it belongs to, right after the api call that spawned it, and a `↖ from api call 2` tie says which call that was — the run is the turn's child, not the call's, and a `Task` tool call keeps its own slot with a link to the run at the head of its page.
 
+Above the rows is the fold: **full**, **no api calls**, **agents only**, with the one in force marked. Each is the node you are reading under a different tree, so a switch keeps your place and your knobs — the fold is [`?nav=`](#urls-preserve-the-query-behind-what-you-saw), and the control is the only link on the page that changes it.
+
 Every row with spend carries a bar along its edge: its share of what the session cost, logarithmic over three orders of magnitude, because a session's cheapest turn and its dearest are that far apart and a linear scale draws all but the largest as nothing. Tool calls have no bar; what a tool call took is the api call's.
 
 A level shows at most 25 children, and a `+N more` row says what the cap left out and links to the parent's own page, which pages its children rather than capping them. The row the open path descends through is always kept, inside the cap.
@@ -111,7 +113,7 @@ Node pages take four knobs, and every link on a page carries the ones that aren'
 
 The three sizes only go down. Each default is also its ceiling, because the page's byte bound is arithmetic over the defaults and there is no headroom to spend. A size outside its range or a `nav` the viewer doesn't have returns 400 rather than a guess.
 
-The presets have no on-screen switch — type one into the URL. Every preset leaves every visible node with a visible parent, and a level whose preset would hide the path you are standing on renders in full instead.
+The presets are the [fold above the tree](#the-tree-opens-one-path-and-nothing-else), and typing one into the URL does the same thing. Every preset leaves every visible node with a visible parent, and a level whose preset would hide the path you are standing on renders in full instead.
 
 The session list accepts `sort`, `direction`, `page`, `size`, and its filter keys, and returns 400 for an unknown key, an unknown sort or direction, a filter value of the wrong type, or a page outside its bounds. Sort keys map to fixed columns, filter keys map to fixed predicates, and request values reach SQL only as bound parameters. A children log pages with `?after=`, the index of the last child already shown.
 
@@ -156,7 +158,7 @@ Full-value requests are the declared exception. Each returns one transcript line
 | Offload | 50,000 characters by default, at most 60,000 |
 | Syntax highlighting | 256,000 characters, above which the value prints as stored |
 
-The worst node page comes to 494,331 bytes of the 500,000 allowed. The tree is what multiplies: an open path is `1 + 16 × (25 + 1)` = 417 rows, and a row is pinned at 983 bytes, which is 409,911 of the page. The rest is 16 crumbs at 558 bytes, 12 log rows at 1,566, two previewed values at 20,600, and 15,500 of chrome — leaving 5,669 spare. `TREE_ROW_BYTES` is measured through the app rather than budgeted, at a label of nothing but `&` and the longest query string a link can carry, and pinned with no slack: a byte of slack there is 417 bytes of page. Most of a row is its URL written twice, the `href` a reader follows and the `hx-get` htmx fetches, so a store whose agent runs carry longer ids than the recorded corpus does is a re-measure.
+The worst node page comes to 494,831 bytes of the 500,000 allowed. The tree is what multiplies: an open path is `1 + 16 × (25 + 1)` = 417 rows, and a row is pinned at 983 bytes, which is 409,911 of the page. The rest is 16 crumbs at 558 bytes, 12 log rows at 1,566, two previewed values at 20,600, and 16,000 of chrome — leaving 5,169 spare. `TREE_ROW_BYTES` is measured through the app rather than budgeted, at a label of nothing but `&` and the longest query string a link can carry, and pinned with no slack: a byte of slack there is 417 bytes of page. Most of a row is its URL written twice, the `href` a reader follows and the `hx-get` htmx fetches, so a store whose agent runs carry longer ids than the recorded corpus does is a re-measure.
 
 The session list is bound independently of corpus size. Its filter box offers the 10 busiest project paths that fit its bound, whole or not at all; a cut path would filter by a directory nobody named. The projects page cuts a long path the same way and leaves that row unlinked. The same rule keeps row filtering correct: the viewer filters whole titles, paths, and skill lists, then cuts only the rows it renders. The worst-case list projects to 499 KB: 10 KB of page chrome plus 104 rows at 4.7 KB each.
 
