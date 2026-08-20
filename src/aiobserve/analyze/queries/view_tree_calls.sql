@@ -14,6 +14,8 @@ SELECT
     -- reaches a row.
     substr(c.text, 1, $nav_chars + 1) AS text_head,
     substr(c.model, 1, $nav_chars + 1) AS model,
+    -- When it was made, which is what the compactions of the same turn interleave against.
+    c.started_at,
     round(c.cost_usd, 4) AS cost_usd,
     -- A NULL cost is a model our price table lacks, not a call that was free.
     (c.cost_usd IS NULL)::INTEGER AS unpriced_api_calls

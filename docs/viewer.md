@@ -12,6 +12,7 @@ flowchart LR
     session_list -->|"a row"| session["a session"]
     session -->|"a turn of its main thread"| turn["a turn"]
     session -->|"a context rewrite between turns"| compaction["a compaction"]
+    turn -->|"a context rewrite during it"| compaction
     session -->|"what attached to nothing"| bucket["a bucket"]
     turn -->|"an api call"| api_call["an api call"]
     turn -->|"a run spawned under it"| run["an agent run"]
@@ -69,7 +70,7 @@ Filters survive sorting and paging. The `clear` link beside the form drops them.
 
 Beside every node page is the session's tree, with one path open: the selection, its ancestors, each ancestor's children, and the selection's own children. Clicking a row selects it, which opens that row's path and closes the one you left. There are no independent twisties and no way to open two branches at once, so no session makes the tree wider than one open path. Its depth is a hard limit rather than a cap: an open path runs at most 16 levels, and a node deeper than that fails instead of serving a page the byte arithmetic never priced. The deepest chain the recorded corpus holds is 14 — a tool call inside a run five spawns down — so the margin is one more spawn level.
 
-A session's children are the main thread's turns, its compactions in the place they happened, its calls that answer no turn, and the runs nothing placed. A turn's children are its api calls; an api call's are its tool calls. An agent run reads like a session: its children are its own turns. A run renders under the *turn* it belongs to, right after the api call that spawned it — the run is the turn's child, not the call's, and a `Task` tool call keeps its own slot with a link to the run at the head of its page.
+A session's children are the main thread's turns, the compactions that happened between two of them, its calls that answer no turn, and the runs nothing placed. A turn's children are its api calls and the compactions that happened while it ran, in the order they happened; an api call's are its tool calls. An agent run reads like a session: its children are its own turns. A run renders under the *turn* it belongs to, right after the api call that spawned it — the run is the turn's child, not the call's, and a `Task` tool call keeps its own slot with a link to the run at the head of its page.
 
 Above the rows is the fold: **full**, **no api calls**, **agents only**, with the one in force marked. Each is the node you are reading under a different tree, so a switch keeps your place and your knobs — the fold is [`?nav=`](#urls-preserve-the-query-behind-what-you-saw), and the control is the only link on the page that changes it.
 

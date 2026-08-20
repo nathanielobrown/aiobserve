@@ -16,6 +16,7 @@ table written out — every cell in full, including the ones a preset passes thr
 table edit has to be an edit here before it can pass.
 """
 
+import datetime as dt
 import re
 from collections import Counter
 from collections.abc import Callable, Sequence
@@ -60,20 +61,13 @@ def thread_level(store: duckdb.DuckDBPyConnection, session_id: str, source: str)
         ' ORDER BY "index"',
         [session_id, source],
     ).fetchall()
-    marks = store.execute(
-        "SELECT id, timestamp FROM live_compactions WHERE session_id = ? AND source = ?"
-        " ORDER BY timestamp",
-        [session_id, source],
-    ).fetchall()
-    placed: list[str] = []
-    pending = list(marks)
-    for turn_id, started in turns:
-        # A compaction lands before the first turn that started after it, which is when it
-        # happened; a turn the store has no start for cannot move one.
-        while pending and started is not None and pending[0][1] < started:
-            placed.append(f"compaction:{pending.pop(0)[0]}")
-        placed.append(f"turn:{turn_id}")
-    placed += [f"compaction:{mark}" for mark, _ in pending]
+    # A compaction lands before the first turn that started after it, which is when it
+    # happened — but only the ones that happened between two turns: one that happened during
+    # a turn is a child of that turn (`turn_marks`), not a sibling of it.
+    placed = dropped_in(
+        [(f"turn:{turn_id}", started) for turn_id, started in turns],
+        [(mark, at) for mark, at, turn in marks(store, session_id, source) if turn is None],
+    )
     # The thread's calls that answer no turn *of this thread*, as one bucket. A fork replays
     # calls whose `turn_id` names a turn of the thread it forked from, so the resolution is a
     # join and not a NULL check.
@@ -92,33 +86,85 @@ def thread_level(store: duckdb.DuckDBPyConnection, session_id: str, source: str)
     return placed
 
 
+def marks(
+    store: duckdb.DuckDBPyConnection, session_id: str, source: str
+) -> list[tuple[str, dt.datetime, str | None]]:
+    """One thread's compactions in time order, each beside the turn it happened during.
+
+    The placement rule in the test's own SQL: a turn holds a compaction its span covers, and
+    where two spans cover one — the corpus records turns that overlap — the turn that started
+    last holds it, because that is the one still running. Half-open at both ends: a compaction
+    at the instant a turn starts is that turn's, one at the instant it ends is the next thing's.
+    """
+    return [
+        (str(mark), at, turn)
+        for mark, at, turn in store.execute(
+            "SELECT k.id, k.timestamp,"
+            "  (SELECT t.id FROM live_turns t"
+            "     WHERE t.session_id = k.session_id AND t.source = k.source"
+            "       AND k.timestamp >= t.started_at AND k.timestamp < t.ended_at"
+            '     ORDER BY t.started_at DESC, t."index" DESC LIMIT 1)'
+            " FROM live_compactions k WHERE k.session_id = ? AND k.source = ?"
+            " ORDER BY k.timestamp",
+            [session_id, source],
+        ).fetchall()
+    ]
+
+
+def dropped_in(
+    rows: Sequence[tuple[str, dt.datetime | None]], pending: Sequence[tuple[str, dt.datetime]]
+) -> list[str]:
+    """A level's own rows with `pending`'s compactions dropped in where they happened."""
+    placed: list[str] = []
+    waiting = list(pending)
+    for key, started in rows:
+        while waiting and started is not None and waiting[0][1] < started:
+            placed.append(f"compaction:{waiting.pop(0)[0]}")
+        placed.append(key)
+    return placed + [f"compaction:{mark}" for mark, _ in waiting]
+
+
+def turn_marks(
+    store: duckdb.DuckDBPyConnection, session_id: str, source: str, turn_id: str | None
+) -> list[tuple[str, dt.datetime]]:
+    """The compactions that happened during one turn, in time order.
+
+    None at a bucket: a bucket holds the calls that answer no turn, and a compaction that
+    answers none stays beside the turns of its thread.
+    """
+    if turn_id is None:
+        return []
+    return [(mark, at) for mark, at, turn in marks(store, session_id, source) if turn == turn_id]
+
+
 def turn_level(
     store: duckdb.DuckDBPyConnection, session_id: str, source: str, turn_id: str | None
 ) -> list[str]:
-    """The api calls under one turn, each run hoisted after the call that spawned it.
+    """The api calls under one turn and the compactions among them, each run hoisted after the
+    call that spawned it.
 
     `turn_id` None is the unattributed bucket's own level, which reads the same way: the calls
     that answer no turn, and the runs those calls spawned.
     """
-    calls = [
-        row[0]
-        for row in store.execute(
-            "SELECT c.id FROM live_api_calls c"
-            " LEFT JOIN live_turns t ON t.session_id = c.session_id AND t.source = c.source"
-            "  AND t.id = c.turn_id"
-            " WHERE c.session_id = ? AND c.source = ? AND t.id IS NOT DISTINCT FROM ?"
-            ' ORDER BY c."index"',
-            [session_id, source, turn_id],
-        ).fetchall()
-    ]
+    calls = store.execute(
+        "SELECT c.id, c.started_at FROM live_api_calls c"
+        " LEFT JOIN live_turns t ON t.session_id = c.session_id AND t.source = c.source"
+        "  AND t.id = c.turn_id"
+        " WHERE c.session_id = ? AND c.source = ? AND t.id IS NOT DISTINCT FROM ?"
+        ' ORDER BY c."index"',
+        [session_id, source, turn_id],
+    ).fetchall()
     hoisted: dict[str, list[str]] = {}
     for run_id, spawn_source, spawn_turn, spawn_call in spawned(store, session_id):
         if spawn_source == source and spawn_turn == turn_id:
             hoisted.setdefault(str(spawn_call), []).append(f"run:{run_id}")
     placed: list[str] = []
-    for call_id in calls:
-        placed.append(f"call:{call_id}")
-        placed += hoisted.pop(call_id, [])
+    for key in dropped_in(
+        [(f"call:{call_id}", started) for call_id, started in calls],
+        turn_marks(store, session_id, source, turn_id),
+    ):
+        placed.append(key)
+        placed += hoisted.pop(key.removeprefix("call:"), [])
     # A run whose spawning call this level does not hold still belongs to the turn the edge
     # resolved to, so it trails the level rather than being dropped.
     for leftover in hoisted.values():
@@ -166,38 +212,59 @@ def test_every_sessions_own_page_opens_the_level_its_thread_holds(
     assert {"compaction", "unattributed", "unattached"} <= seen
 
 
-def test_a_compaction_lands_before_the_turn_that_started_after_it(
+def test_a_compaction_hangs_off_the_turn_whose_span_covers_it(
     store: duckdb.DuckDBPyConnection, plant: Planter
 ) -> None:
-    """Where a compaction sits among the turns of its thread, read at the instant it turns on.
+    """Where a compaction sits, read at each instant the placement rule turns on.
 
-    No recorded compaction has a turn of its own thread starting after it, so every one of them
-    trails the thread and the placement rule above is never exercised: the level would read the
-    same with the rule deleted. A compaction is where the reader sees the context being
-    dropped, so the rule is planted — the same compaction moved to just before a turn, and then
-    onto that turn's own instant, which is the side the rule closes on.
+    A compaction that happened while a turn was running is a child of that turn; one that
+    happened between two turns is a sibling of them, in time order. The corpus exercises both
+    sides but neither edge: no recorded compaction has a turn of its own thread starting after
+    it, and none lands on the instant a turn starts or the instant one ends, so the tree would
+    read the same with the rule's boundaries deleted. A compaction is where the reader sees the
+    context being dropped, so the edges are planted — the same compaction moved to each of the
+    three instants, and read off the turn's own page, where both levels are open at once.
+
+    The pair is picked so the plant has one answer: a turn whose start no sibling shares, and
+    whose end no turn of the thread is still running through.
     """
-    session_id, compaction_id, turn_id, started = one(
+    session_id, source, compaction_id, turn_id, started, ended = one(
         store,
-        "SELECT k.session_id, k.id, t.id, t.started_at FROM live_compactions k"
+        "SELECT k.session_id, k.source, k.id, t.id, t.started_at, t.ended_at"
+        " FROM live_compactions k"
         " JOIN live_turns t ON t.session_id = k.session_id AND t.source = k.source"
-        " WHERE t.started_at IS NOT NULL"
+        " WHERE t.started_at IS NOT NULL AND t.ended_at IS NOT NULL"
+        "   AND NOT EXISTS (SELECT 1 FROM live_turns o WHERE o.session_id = t.session_id"
+        "     AND o.source = t.source AND o.id <> t.id AND o.started_at = t.started_at)"
+        "   AND NOT EXISTS (SELECT 1 FROM live_turns o WHERE o.session_id = t.session_id"
+        "     AND o.source = t.source AND t.ended_at >= o.started_at AND t.ended_at < o.ended_at)"
         ' ORDER BY k.session_id, k.source, t."index" LIMIT 1',
     )
-    for seconds, above in ((1, True), (0, False)):
+    for moment, under, above in (
+        # The instant before the turn starts is nobody's turn, so the compaction stands beside
+        # the turns and above the one that started after it...
+        (started - dt.timedelta(seconds=1), False, True),
+        # ...the instant the turn starts is the turn's own, which is the edge the span closes
+        # on, so the same compaction hangs off it instead...
+        (started, True, False),
+        # ...and the instant the turn ends belongs to whatever comes next, so it drops back
+        # beside the turns, below the one it just left.
+        (ended, False, False),
+    ):
         path = plant(
             (
-                "UPDATE compactions SET timestamp = ?::TIMESTAMPTZ - ? * INTERVAL 1 SECOND"
-                " WHERE id = ?",
-                [str(started), seconds, compaction_id],
+                "UPDATE compactions SET timestamp = ?::TIMESTAMPTZ WHERE id = ?",
+                [str(moment), compaction_id],
             )
         )
         with TestClient(build_app(path)) as moved:
-            keys = values(moved.get(f"/session/{session_id}").text, "data-tree")
+            placed = rows(moved.get(f"/session/{session_id}/turn/{source}/{turn_id}").text)
+        keys = [key for _, key in placed]
         at, turn_at = keys.index(f"compaction:{compaction_id}"), keys.index(f"turn:{turn_id}")
-        # A compaction that happened before the turn started belongs above it; one that
-        # happened at the instant the turn started did not happen during the turn before it.
-        assert (at < turn_at) is above, (seconds, keys)
+        # A child of the turn is one level deeper than it; a sibling shares its depth, and its
+        # side of the turn says which way the time comparison went.
+        assert (placed[at][0] == placed[turn_at][0] + 1) is under, (moment, placed)
+        assert (at < turn_at) is above, (moment, placed)
 
 
 def test_the_tree_opens_the_selections_path_and_leaves_the_rest_shut(
@@ -851,33 +918,35 @@ def call_tools(
 def tool_level(
     store: duckdb.DuckDBPyConnection, session_id: str, source: str, turn_id: str | None
 ) -> list[str]:
-    """`noapi`'s level under a turn: its calls' tool calls, with the runs hoisted among them.
+    """`noapi`'s level under a turn: its calls' tool calls and its compactions, with the runs
+    hoisted among them.
 
     The api calls are hidden, so their tool calls rise to the turn in call-then-tool order and
-    a run follows the tool call that spawned it rather than the api call that held it.
-    `turn_id` None is the unattributed bucket's level, which reads the same way.
+    a run follows the tool call that spawned it rather than the api call that held it. A
+    compaction hangs off the turn whichever fold the reader is in, so it drops in by time here
+    too. `turn_id` None is the unattributed bucket's level, which reads the same way.
     """
-    tools = [
-        row[0]
-        for row in store.execute(
-            "SELECT tc.id FROM live_tool_calls tc"
-            " JOIN live_api_calls c ON c.session_id = tc.session_id AND c.source = tc.source"
-            "  AND c.id = tc.api_call_id"
-            " LEFT JOIN live_turns t ON t.session_id = c.session_id AND t.source = c.source"
-            "  AND t.id = c.turn_id"
-            " WHERE tc.session_id = ? AND tc.source = ? AND t.id IS NOT DISTINCT FROM ?"
-            ' ORDER BY c."index", tc."index"',
-            [session_id, source, turn_id],
-        ).fetchall()
-    ]
+    tools = store.execute(
+        "SELECT tc.id, tc.started_at FROM live_tool_calls tc"
+        " JOIN live_api_calls c ON c.session_id = tc.session_id AND c.source = tc.source"
+        "  AND c.id = tc.api_call_id"
+        " LEFT JOIN live_turns t ON t.session_id = c.session_id AND t.source = c.source"
+        "  AND t.id = c.turn_id"
+        " WHERE tc.session_id = ? AND tc.source = ? AND t.id IS NOT DISTINCT FROM ?"
+        ' ORDER BY c."index", tc."index"',
+        [session_id, source, turn_id],
+    ).fetchall()
     hoisted: dict[str | None, list[str]] = {}
     for edge in edges(store, session_id):
         if edge.spawn_source == source and edge.spawn_turn_id == turn_id:
             hoisted.setdefault(edge.spawn_tool_id, []).append(f"run:{edge.run_id}")
     placed: list[str] = []
-    for tool_id in tools:
-        placed.append(f"tool:{tool_id}")
-        placed += hoisted.pop(tool_id, [])
+    for key in dropped_in(
+        [(f"tool:{tool_id}", started) for tool_id, started in tools],
+        turn_marks(store, session_id, source, turn_id),
+    ):
+        placed.append(key)
+        placed += hoisted.pop(key.removeprefix("tool:"), [])
     # A run whose spawning tool call this level does not hold still belongs to the turn the
     # edge resolved to, exactly as it does when the api calls are showing.
     for leftover in hoisted.values():

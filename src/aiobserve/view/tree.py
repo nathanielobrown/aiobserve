@@ -133,6 +133,8 @@ def _parent(corpus: Corpus, ref: Ref) -> Ref | None:
             return None
         case Kind.UNATTACHED:
             return Ref(Kind.SESSION, None, corpus.session_id)
+        # A compaction reaches here only where it happened between two turns: one that
+        # happened during a turn is that turn's child, and its page seeds the turn.
         case Kind.TURN | Kind.COMPACTION | Kind.UNATTRIBUTED:
             return _thread_parent(corpus, str(ref.source))
         case Kind.RUN:
@@ -204,10 +206,12 @@ def unattributed(
 def _thread_level(
     connection: duckdb.DuckDBPyConnection, corpus: Corpus, source: str, *, unattached: bool
 ) -> Level:
-    """One thread's own children: its turns and compactions in time order, then its buckets.
+    """One thread's own children: its turns and the compactions between them, then its buckets.
 
     A session and a run read alike — the difference is the source, and that only the session
-    holds the unattached bucket, which spans every thread rather than sitting on one.
+    holds the unattached bucket, which spans every thread rather than sitting on one. Only the
+    compactions that happened between two turns are here; one that happened *during* a turn is
+    a child of that turn (`_marks`).
     """
     keyed: dict[str, ParamValue] = {"session_id": corpus.session_id, "source": source}
     turns = page_rows(connection, Page.TREE_TURNS, **keyed, nav_chars=queries.NAV_CHARS)
@@ -230,7 +234,11 @@ def _thread_level(
             )
             for row in turns
         ],
-        [(compaction_node(corpus.session_id, source, row), row["timestamp"]) for row in marks],
+        [
+            (compaction_node(corpus.session_id, source, row), row["timestamp"])
+            for row in marks
+            if row["turn_id"] is None
+        ],
     )
     if standing is not None:
         placed.append(unattributed_node(corpus.session_id, source, standing.row, corpus.whole))
@@ -241,23 +249,49 @@ def _thread_level(
     return Level(placed, [(Page.TREE_TURNS, keyed), (Page.COMPACTIONS, keyed), (digest, bound)])
 
 
-def _interleave(
-    turns: list[tuple[Node, dt.datetime | None]], marks: list[tuple[Node, dt.datetime]]
-) -> list[Node]:
-    """A thread's turns in index order with its compactions dropped in by time.
+def _interleave[T](
+    ordered: Sequence[tuple[T, dt.datetime | None]], marks: Sequence[tuple[T, dt.datetime]]
+) -> list[T]:
+    """A level in its own order with the compactions of the same thread dropped in by time.
 
-    A compaction lands before the first turn that started after it, which is where it happened.
-    A turn the store has no start for does not move one, and whatever is left over trails the
-    thread — a compaction after the last turn is a compaction after the last turn.
+    A compaction lands before the first row that started after it, which is where it happened.
+    A row the store has no start for does not move one, and whatever is left over trails the
+    level — a compaction after the last row is a compaction after the last row.
+
+    Generic in what it places because two levels want it: a thread's turns, and the calls or
+    tool calls under one turn.
     """
-    placed: list[Node] = []
+    placed: list[T] = []
     pending = list(marks)
-    for node, started in turns:
+    for item, started in ordered:
         while pending and started is not None and pending[0][1] < started:
             placed.append(pending.pop(0)[0])
-        placed.append(node)
-    placed.extend(node for node, _ in pending)
+        placed.append(item)
+    placed.extend(item for item, _ in pending)
     return placed
+
+
+def _marks(
+    connection: duckdb.DuckDBPyConnection, corpus: Corpus, source: str, turn_id: str | None
+) -> tuple[list[tuple[tuple[str, Node], dt.datetime]], Ran]:
+    """One turn's compactions, paired with their ids the way a level's own rows are.
+
+    A compaction is a child of the turn it happened during, so a turn's level holds its own —
+    interleaved with the calls or tool calls by time. Nothing at `turn_id` NULL: a bucket
+    holds calls that answer no turn, and a compaction that answers none is the thread's.
+    """
+    if turn_id is None:
+        return [], []
+    keyed: dict[str, ParamValue] = {"session_id": corpus.session_id, "source": source}
+    rows = page_rows(connection, Page.COMPACTIONS, **keyed, chip_chars=queries.NAV_CHARS)
+    return [
+        (
+            (row["compaction_id"], compaction_node(corpus.session_id, source, row)),
+            row["timestamp"],
+        )
+        for row in rows
+        if row["turn_id"] == turn_id
+    ], [(Page.COMPACTIONS, keyed)]
 
 
 def _runs(corpus: Corpus, rows: Iterable[Row]) -> list[Node]:
@@ -303,7 +337,8 @@ def _hoisted(
 def _calls_level(
     connection: duckdb.DuckDBPyConnection, corpus: Corpus, source: str, turn_id: str | None
 ) -> Level:
-    """The api calls under one turn, each run hoisted after the call that spawned it.
+    """The api calls under one turn, its compactions among them, each run hoisted after the
+    call that spawned it.
 
     `turn_id` NULL is the unattributed bucket's level — the calls that answer no turn, and the
     runs those calls spawned. One function for both because the two differ by that binding.
@@ -311,12 +346,21 @@ def _calls_level(
     keyed: dict[str, ParamValue] = {"session_id": corpus.session_id, "source": source}
     bound = keyed | {"turn_id": turn_id}
     calls = page_rows(connection, Page.TREE_CALLS, **bound, nav_chars=queries.NAV_CHARS)
-    placed = [
-        (row["api_call_id"], call_node(corpus.session_id, source, row, corpus.whole))
-        for row in calls
-    ]
+    marks, mark_ran = _marks(connection, corpus, source, turn_id)
+    # Each row keyed by its own id, which is what `_hoisted` reads to place a run after the
+    # call that spawned it. A compaction's id answers no spawning edge, so it just passes.
+    placed = _interleave(
+        [
+            (
+                (row["api_call_id"], call_node(corpus.session_id, source, row, corpus.whole)),
+                row["started_at"],
+            )
+            for row in calls
+        ],
+        marks,
+    )
     level = _hoisted(corpus, placed, _spawned(corpus, source, turn_id), "spawn_call_id")
-    return Level(level, [(Page.TREE_CALLS, bound)])
+    return Level(level, [(Page.TREE_CALLS, bound), *mark_ran])
 
 
 def _tools_level(
@@ -330,7 +374,8 @@ def _tools_level(
 
     The second is `noapi`'s level: the api calls are folded away, so their tool calls stand
     under the turn in call-then-tool order with each run hoisted after the tool call that
-    spawned it. A call's own level hoists nothing, because a run is a child of the turn.
+    spawned it, and the turn's compactions interleave by time. A call's own level hoists
+    nothing and holds no compaction, because both hang off the turn.
     """
     bound: dict[str, ParamValue] = {
         "session_id": corpus.session_id,
@@ -339,9 +384,19 @@ def _tools_level(
         "turn_id": turn_id,
     }
     rows = page_rows(connection, Page.TREE_TOOLS, **bound, nav_chars=queries.NAV_CHARS)
-    placed = [(row["tool_call_id"], tool_node(corpus.session_id, source, row)) for row in rows]
+    under = None if api_call_id is not None else turn_id
+    marks, mark_ran = _marks(connection, corpus, source, under)
+    placed = _interleave(
+        [
+            ((row["tool_call_id"], tool_node(corpus.session_id, source, row)), row["started_at"])
+            for row in rows
+        ],
+        marks,
+    )
     spawned = [] if api_call_id is not None else _spawned(corpus, source, turn_id)
-    return Level(_hoisted(corpus, placed, spawned, "tool_use_id"), [(Page.TREE_TOOLS, bound)])
+    return Level(
+        _hoisted(corpus, placed, spawned, "tool_use_id"), [(Page.TREE_TOOLS, bound), *mark_ran]
+    )
 
 
 def _unattached_level(connection: duckdb.DuckDBPyConnection, corpus: Corpus, node: Node) -> Level:
