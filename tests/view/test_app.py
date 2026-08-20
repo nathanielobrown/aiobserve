@@ -712,6 +712,26 @@ def test_every_fact_a_header_asks_for_has_a_label() -> None:
     assert asked | previewed == set(LABELS)
 
 
+def test_every_filter_the_app_registers_is_one_a_template_names() -> None:
+    """A filter is registered so a template can name it, so every registration has a caller.
+
+    The formatters themselves are Python one page or another calls directly; what this closes
+    is the Jinja registry, where a filter nothing names is a name in the environment of every
+    render for no reader. Read off the app's own registration block and the templates rather
+    than listed here, so a filter added to either lands in this check.
+    """
+    source = Path(view_app.__file__).read_text()
+    block = source.partition("templates.env.filters |= {")[2].partition("}")[0]
+    registered = set(re.findall(r'"([a-z]+)":', block))
+    assert len(registered) > 5, "the registration block is not where this expects it"
+    named = {
+        name
+        for path in TEMPLATES.rglob("*.html")
+        for name in re.findall(r"\|\s*([a-z]+)", path.read_text())
+    }
+    assert not registered - named
+
+
 def test_every_number_a_header_prints_carries_its_separators(plant: Planter) -> None:
     """A header's counts go through the same formatter every count on a page does.
 
