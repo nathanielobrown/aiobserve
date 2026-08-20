@@ -296,10 +296,10 @@ def test_every_link_that_swaps_the_pane_lands_the_pane_in_the_pane(
 ) -> None:
     """The whole of what a click does, on both the mounts that mount a node link.
 
-    A tree row and a children-log row are the two ways a reader moves without leaving the
-    page, and both do the same thing: fetch the URL the link points at, take `#pane` out of
-    the response, put it where the pane already is, and swap the rows out of band. Read as
-    htmx composes it, inheritance and all, because that is what the browser acts on.
+    A tree row, a children-log row and the two walk controls are how a reader moves without
+    leaving the page, and all of them do the same thing: fetch the node's URL, take `#pane`
+    out of the response, put it where the pane already is, and swap the rows out of band.
+    Read as htmx composes it, inheritance and all, because that is what the browser acts on.
 
     `hx-target` is the half that has no default worth having: htmx aims at the clicked
     element, so a page missing it swaps the whole pane inside the `<a>` the reader clicked
@@ -314,14 +314,16 @@ def test_every_link_that_swaps_the_pane_lands_the_pane_in_the_pane(
         "hx-select-oob": "#tree-rows",
         "hx-push-url": "true",
     }
-    for mount in ("data-tree", "data-child"):
+    for mount in ("data-tree", "data-child", "data-walk"):
         # A row's other fetch is its body toggle, which opens in place and has nowhere to go:
-        # the links are the ones with an `href`, which is also what makes them pasteable.
-        links = [(key, wiring) for key, wiring in wired(html, mount) if "href" in wiring]
-        assert len(links) > 1, mount
-        for key, wiring in links:
-            # A link fetches what it points at: one URL, however the reader gets there.
-            assert wiring["hx-get"] == wiring["href"], (mount, key)
+        # the ones that move the reader are the ones fetching a node's own URL.
+        moving = [(key, w) for key, w in wired(html, mount) if node_link(w["hx-get"])]
+        assert len(moving) > 1, mount
+        for key, wiring in moving:
+            # A link fetches what it points at: one URL, however the reader gets there. A walk
+            # control has no `href` to agree with — it is a button, because what it offers is
+            # a move through the pane and not a place of its own to paste.
+            assert wiring.get("href", wiring["hx-get"]) == wiring["hx-get"], (mount, key)
             assert {name: wiring.get(name) for name in swap} == swap, (mount, key)
     # The two ids the swap aims at, each written exactly once.
     assert html.count('id="pane"') == 1
@@ -1276,9 +1278,11 @@ def test_a_preset_rides_every_node_link_the_page_mints(
 
     The tree's rows, the tail a cap left, the crumbs, the pane's children log and the two walk
     controls are all node URLs, and a reader who picked a view keeps it through any of them.
-    The switcher above the tree is the one exception, and the only one: its whole job is to
-    change the fold, so its three links are excluded here and checked on their own leaf. Read
-    with `?kin=1` so the tail row is on the page to check too.
+    Both the `href` a reader can paste and the `hx-get` a click follows, because the walk
+    controls are buttons and mint only the second. The switcher above the tree is the one
+    exception, and the only one: its whole job is to change the fold, so its three links are
+    excluded here and checked on their own leaf. Read with `?kin=1` so the tail row is on the
+    page to check too.
 
     The body a log row expands is the same node under the same view, so the fold rides the
     mount as well — and rides out again on the links the fragment itself mints, which are the
@@ -1291,9 +1295,13 @@ def test_a_preset_rides_every_node_link_the_page_mints(
     # `values` reads the markup and `inside` reads it parsed, so an href with two knobs on it
     # arrives `&amp;`-escaped from one and bare from the other.
     links = [
-        href for href in values(html, "href") if node_link(href) and unescape(href) not in switching
+        href
+        for attribute in ("href", "hx-get")
+        for href in values(html, attribute)
+        if node_link(href) and unescape(href) not in switching
     ]
     assert len(links) > 5, "the page mints node links to check"
+    assert values(html, "data-walk"), "the walk controls are among them"
     for href in links:
         assert parse_qs(href.partition("?")[2]).get("nav") == ["agents"], href
     opened: set[str] = set()

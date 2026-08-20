@@ -45,6 +45,13 @@ main { padding: 0 var(--space-3) var(--space-4); }
 h1 { font-size: var(--type-title); }
 h2 { font-size: var(--type-head); }
 
+/* A control the reader clicks rather than reads: it looks the same whether it is a link that
+   leads somewhere or a button that swaps the pane under them, because which one it is is not
+   a thing they can act on. `font: inherit` because a button takes none of the page's type. */
+.button { display: inline-block; border: 1px solid var(--line); border-radius: var(--space-1);
+  padding: var(--space-1) var(--space-2); background: none; color: var(--mark); font: inherit;
+  text-align: inherit; text-decoration: none; cursor: pointer; }
+
 /* The session list. */
 #filters { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-2) var(--space-3);
   margin: var(--space-2) 0; }
@@ -191,7 +198,7 @@ ul.prs { margin: var(--space-2) 0; padding: 0; list-style: none; overflow-wrap: 
    so it wraps like the prose it is and is capped near a reading measure. */
 .walk { display: flex; gap: var(--space-3); border-top: 1px solid var(--line);
   margin-top: var(--space-3); padding-top: var(--space-2); }
-.walk a { max-width: 24rem; text-decoration: none; }
+.walk .button { max-width: 24rem; }
 /* Each control holds its own end whether or not the other is there: the last node of a
    session has nothing after it, and its back link still belongs on the left. */
 .walk [data-walk="previous"] { margin-right: auto; }
