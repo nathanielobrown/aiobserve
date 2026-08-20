@@ -175,6 +175,55 @@ class Seen(NamedTuple):
 Reader = Callable[[duckdb.DuckDBPyConnection, tree.Corpus, Row], Seen]
 
 
+class Body(NamedTuple):
+    """How one kind answers an expansion: the header it reads, and what it says is under it.
+
+    An expansion is the node's own body and nothing else, so `children` is the column counting
+    what the full view would have listed — a count and a link stand in for the list, because an
+    accordion of accordions is a page and the node already has one. `shape` names those
+    children the way the full view's log heading does. A kind with neither ends the tree.
+    """
+
+    page: Page
+    # The binding the header query takes the node's id as.
+    keyed: str
+    build: Callable[[str, str, Row, str | None], nodes.Node]
+    shape: Shape
+    children: str | None
+    # Whether a pass can have described this kind, and so whether the label may be the model's.
+    described: bool
+
+
+# Every kind a children log lists, except the run: a run's URL carries its id where the others
+# carry a thread, so it has a mount of its own.
+BODIES: dict[str, Body] = {
+    Kind.TURN: Body(
+        Page.TURN_HEADER,
+        "turn_id",
+        lambda session_id, source, row, text: nodes.turn_node(session_id, source, row, 0, text),
+        Shape.CALLS,
+        "api_calls",
+        described=True,
+    ),
+    Kind.CALL: Body(
+        Page.CALL_HEADER,
+        "api_call_id",
+        lambda session_id, source, row, _: nodes.call_node(session_id, source, row, 0),
+        Shape.TOOLS,
+        "tool_calls",
+        described=False,
+    ),
+    Kind.TOOL: Body(
+        Page.TOOL_HEADER,
+        "tool_call_id",
+        lambda session_id, source, row, _: nodes.tool_node(session_id, source, row),
+        Shape.NONE,
+        None,
+        described=False,
+    ),
+}
+
+
 def knobs(nav: nodes.Preset, kin: int, log: int, detail: int) -> str:
     """The query string every link on a node page carries: whatever is not a default."""
     given = {
@@ -1168,6 +1217,99 @@ def build_app(db_path: Path) -> FastAPI:
                 "after": served if served < row["content_chars"] else None,
                 "citations": {Page.OFFLOAD.value: cited(Page.OFFLOAD, bound)},
             },
+        )
+
+    def expanded(
+        request: Request,
+        node: nodes.Node,
+        row: Row,
+        shape: Shape,
+        children: int | None,
+        ran: tree.Ran,
+    ) -> Response:
+        """One node's body alone, the way an expansion in someone else's log mounts it.
+
+        The same macro the full view's pane renders through, so the two cannot drift apart;
+        where the page has the crumbs, the log and prev/next, this has how many children the
+        node holds and the way to its own page.
+        """
+        return templates.TemplateResponse(
+            request,
+            "fragments/body.html",
+            {
+                "node": node,
+                "row": row,
+                "shape": shape,
+                "children": children,
+                "citations": {named.value: cited(named, bound) for named, bound in ran},
+            },
+        )
+
+    @app.get(f"{nodes.BODY_URL}/{{kind}}/{{session_id}}/{{source}}/{{node_id}}")
+    def node_body(
+        request: Request, kind: str, session_id: str, source: str, node_id: str
+    ) -> Response:
+        """The body of a turn, an api call, or a tool call, for an expansion in its parent."""
+        shaped = BODIES.get(kind)
+        if shaped is None:
+            raise HTTPException(404, "No expansion is served for that kind of node.")
+        bound: dict[str, ParamValue] = {
+            "session_id": session_id,
+            "source": source,
+            shaped.keyed: node_id,
+            "head_chars": queries.HEADER_CHARS,
+            # A body renders facts and no fat value, so the columns a pane would preview are
+            # read at the width the label is cut from rather than at the reader's `?detail=`.
+            "detail_chars": queries.HEADER_CHARS,
+        }
+        keyed: dict[str, ParamValue] = {"session_id": session_id, "source": source}
+        with open_store(resolved) as connection:
+            rows = page_rows(connection, shaped.page, **bound)
+            if not rows:
+                raise HTTPException(404, "No node with that id is in this thread.")
+            # The label is the model's words wherever a pass reached the node, exactly as the
+            # log row that opened this expansion has it.
+            describes = described(connection, session_id, source) if shaped.described else None
+        told = describes.turns.get(node_id) if describes else None
+        ran: tree.Ran = [(shaped.page, bound)]
+        if describes is not None and describes.queried:
+            ran.append((Page.ENRICHMENT, keyed))
+        return expanded(
+            request,
+            shaped.build(session_id, source, rows[0], told.description if told else None),
+            rows[0],
+            shaped.shape,
+            rows[0][shaped.children] if shaped.children else None,
+            ran,
+        )
+
+    @app.get(f"{nodes.BODY_URL}/{Kind.RUN}/{{session_id}}/{{run_id}}")
+    def run_body(request: Request, session_id: str, run_id: str) -> Response:
+        """One agent run's body. Its own mount: a run's URL carries its id where a thread goes."""
+        bound: dict[str, ParamValue] = {
+            "session_id": session_id,
+            "run_id": run_id,
+            "head_chars": queries.HEADER_CHARS,
+            "detail_chars": queries.HEADER_CHARS,
+        }
+        keyed: dict[str, ParamValue] = {"session_id": session_id, "source": run_id}
+        with open_store(resolved) as connection:
+            rows = page_rows(connection, Page.RUN_HEADER, **bound)
+            if not rows:
+                raise HTTPException(404, "No agent run with that id is in this session.")
+            # A run's id is the thread its own rows carry, so it is what the pass keyed on too.
+            describes = described(connection, session_id, run_id)
+        row = describes.runs.get(run_id)
+        ran: tree.Ran = [(Page.RUN_HEADER, bound)]
+        if describes.queried:
+            ran.append((Page.ENRICHMENT, keyed))
+        return expanded(
+            request,
+            nodes.run_node(session_id, rows[0], 0, row.description if row else None),
+            rows[0],
+            Shape.TURNS,
+            rows[0]["turns"],
+            ran,
         )
 
     def whole(

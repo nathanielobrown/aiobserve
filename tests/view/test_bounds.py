@@ -124,11 +124,12 @@ COMMAND_ARGS_CHARS = 300
 MEASURED_RECORD_BYTES = 826
 
 # What the markup around one row of the pane's children log costs, with the label and the one
-# string it carries taken off: two copies of the node's URL, the numbers that tell two children
-# apart, and the row around them. Re-measured through the app by the leaf at the bottom of this
-# file, every cap full of `&` and every knob at its longest — 1,316 B, of which 540 B is content
-# at those caps and 76 B the knobs, leaving 700 B.
-MEASURED_LOG_ROW_MARKUP = 720
+# string it carries taken off: three copies of the node's URL — the link, the `hx-get` behind
+# it, and the mount its expansion opens through — the numbers that tell two children apart, and
+# the row around them. Re-measured through the app by the leaf at the bottom of this file, every
+# cap full of `&` and every knob at its longest — 1,545 B, of which 540 B is content at those
+# caps and 76 B the knobs, leaving 929 B.
+MEASURED_LOG_ROW_MARKUP = 950
 # And what the markup around one crumb of the chain down to the selection costs: the link, the
 # node's key, and the glyph that says who named it. Measured the same way: 537 B less 240 B of
 # label and 38 B of knobs, leaving 259 B.
@@ -611,6 +612,12 @@ ROUTES: dict[str, str] = {
     ),
     "/fragment/brief/{session_id}/{run_id}": f"/fragment/brief/{SPINE}/{SPINE_RUN}",
     "/fragment/record/{session_id}/{source}/{line_no}": f"/fragment/record/{ANCESTOR}/main/1",
+    # And a node's body alone, the way a log row expands its child. Two shapes: a run's URL
+    # carries its id where every other kind carries a thread.
+    "/fragment/body/{kind}/{session_id}/{source}/{node_id}": (
+        f"/fragment/body/turn/{ANCESTOR}/main/{DENSE_TURN}"
+    ),
+    "/fragment/body/run/{session_id}/{run_id}": f"/fragment/body/run/{SPINE}/{SPINE_RUN}",
     # And the statement behind a citation, which every page's footer links to.
     f"{QUERY_URL}/{{name}}": f"{QUERY_URL}/view_sessions",
 }
