@@ -153,7 +153,10 @@ MEASURED_LOG_ROW_MARKUP = 1_000
 # them, the place between them, and two copies of the node's own URL carrying the page's knobs
 # and a page number. Nearly all of it is those two URLs. Measured through the app by the leaf at
 # the bottom of this file, on logs driven to one row a page and read at a middle page, which is
-# the only page carrying both links — 533 B, the widest of the 30 that sweep renders.
+# the only page carrying both links — 533 B, the widest of the 30 that sweep renders, 20 of them
+# with both links. Driving the log to one row a page is also what writes `log=1` into the suffix
+# on both of those URLs, where `worst_knob_bytes()` prices two digits: the worst pager is 2 B
+# wider than what was measured, inside the 67 B this leaves over it.
 MEASURED_PAGER_BYTES = 600
 # And what the markup around one crumb of the chain down to the selection costs: the link, the
 # node's key, and the glyph that says who named it. Measured the same way: 537 B less 240 B of
