@@ -113,8 +113,10 @@ COMMAND_HEAD_CHARS = 60
 # `view/bounds.py` names each of them beside the ceiling a URL may not pass, and
 # `tests/view/test_bounds.py` asserts the arithmetic still fits.
 # How many children one node page's log lists — its api calls, its tool calls, its turns.
-# One size for every kind of child, because one pane holds one log.
-LOG_ROWS = 12
+# One size for every kind of child, because one pane holds one log. A hundred because the log
+# is numbered rather than a cursor: a reader who can see how many pages a level has is reading
+# the level, and a level of a hundred rows is one page of it rather than nine.
+LOG_ROWS = 100
 PAGE_RECORDS = 100
 # How many projects the landing page ranks. A corpus grows projects the way it grows sessions,
 # so the page is bound like the list — and a store holding more says how many it left out.
@@ -207,6 +209,9 @@ DETAIL_CHARS_PARAM = Param(type=ParamType.INTEGER, default=DETAIL_CHARS)
 # at 0. Defaulted to it, so a bare invocation of a paging query returns its first page.
 FIRST_PAGE = -1
 AFTER = Param(type=ParamType.INTEGER, default=FIRST_PAGE)
+# The other way a query skips what a reader has already seen: how many rows lie before this
+# page of a numbered set. Defaulted to none, so a bare invocation returns page one.
+SKIPPED = Param(type=ParamType.INTEGER, default=0)
 
 # What every seeded draw hashes its keys with. Any fixed value serves; what matters is that
 # the citation carries it, so a draw can be re-run — and rotated when a read wants new ground.
@@ -438,7 +443,7 @@ QUERIES: dict[str, Query] = {
             "session_id": SESSION_ID,
             "source": SOURCE,
             "api_call_id": API_CALL_ID,
-            "after": AFTER,
+            "skipped": SKIPPED,
             "page_tools": Param(type=ParamType.INTEGER, default=LOG_ROWS),
             "log_chars": LOG_CHARS_PARAM,
         },
@@ -631,7 +636,7 @@ QUERIES: dict[str, Query] = {
             # NULL is the real question "which calls sit under no turn", so the key is
             # required rather than defaulted: absence cannot stand in for it.
             "turn_id": TURN_ID,
-            "after": AFTER,
+            "skipped": SKIPPED,
             "page_calls": Param(type=ParamType.INTEGER, default=LOG_ROWS),
             # The two model names a call row shows, cut like every other log row's strings.
             "log_chars": LOG_CHARS_PARAM,
