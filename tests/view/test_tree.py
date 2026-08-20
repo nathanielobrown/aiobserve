@@ -1476,14 +1476,15 @@ def test_a_preset_rides_every_node_link_the_page_mints(
     controls are buttons and mint only the second. The switcher above the tree is the one
     exception, and the only one: its whole job is to change the fold, so its three links are
     excluded here and checked on their own leaf. Read with `?kin=1` so the tail row is on the
-    page to check too.
+    page to check too, and with `?log=1` so the children log runs past one page: the corpus's
+    widest level is five children, so at the production page size no pager is ever minted.
 
     The body a log row expands is the same node under the same view, so the fold rides the
     mount as well — and rides out again on the links the fragment itself mints, which are the
     reader's way on from inside a parent's page. Every kind of body is opened, because the two
     fragment routes mint their suffix apart and only a tool's body mints a link of its own.
     """
-    html = client.get(url(open_turn(store)), params={"nav": "agents", "kin": 1}).text
+    html = client.get(url(open_turn(store)), params={"nav": "agents", "kin": 1, "log": 1}).text
     switching = set(inside(html, "class", "switch", "href"))
     assert len(switching) == len(Preset), "the switcher's own links, which change the fold"
     # `values` reads the markup and `inside` reads it parsed, so an href with two knobs on it
