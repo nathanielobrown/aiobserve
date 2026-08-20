@@ -150,8 +150,29 @@ li.more > button:hover { background-color: color-mix(in srgb, var(--mark) 12%, t
 /* Where a node sits, above the node itself. Separators between the steps rather than around
    them, so the trail reads as one line. */
 .crumbs a + a::before { content: "/"; color: var(--dim); margin: 0 var(--space-1); }
-#pane .log ul { margin: 0; padding: 0; list-style: none; }
-#pane .log li { display: flex; gap: var(--space-3); color: var(--dim); }
+/* The children log: a table of what is under the node, on the pane's full width. It reuses
+   the session list's table rules above — the same numbers right-aligned, the same two-line
+   cell — and adds only what a log has that a list does not.
+
+   Every column but one is a number, a stamp or a short name, so they take what they need and
+   the column the child is identified by takes the rest. `width: 100%` on that one cell is how
+   a table gives it the remainder; `min-width: 0` is what lets it then be cut rather than
+   pushing the numbers off the right. */
+#pane .log th { color: var(--dim); font-size: var(--type-label); font-weight: 600; }
+/* The mark before a heading's word. It says nothing a screen reader needs — the word beside
+   it is the same fact — so it is dim and small, and the markup hides it from the reader. */
+#pane .log th .icon { color: var(--dim); font-style: normal; }
+#pane .log td.what { width: 100%; min-width: 0; }
+#pane .log td.what .primary { overflow-wrap: anywhere; }
+/* The line under it is the command a description described: one long line of shell, held to
+   one line and cut with an ellipsis. A reader who wants the whole of it opens the row. */
+#pane .log td.what .secondary { font-family: ui-monospace, SFMono-Regular, monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A row opened in place, standing under the row that opened it. The rail and the wash are
+   what say so: the body inside is a whole node's, headings and all, and without them a
+   reader scrolling meets a second pane with nothing tying it to the line above. */
+#pane .log tr.expansion > td { background: color-mix(in srgb, var(--mark) 12%, transparent);
+  box-shadow: inset 3px 0 var(--mark); padding: var(--space-2) var(--space-3); }
 
 /* Narrow enough that two columns would leave neither readable: the tree folds above the pane
    and is scrolled inside itself, so the node stays in reach. */

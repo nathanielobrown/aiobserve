@@ -68,12 +68,24 @@ LABELS: dict[str, str] = {
     "pre_tokens": "Tokens before",
     "post_tokens": "Tokens after",
     "duration_ms": "Took",
-    # The fat columns a pane previews, each with its own way to the whole of it.
+    # The fat columns a pane previews, each with its own way to the whole of it, and the
+    # lengths a children log prints in their place — a row says how much was said, the page
+    # under it says what.
     "prompt": "Prompt",
     "text": "Said",
+    "text_chars": "Said",
     "thinking": "Thought",
     "input": "Arguments",
+    # The head of a tool call's input: the file a `Read` read, the description a `Bash` ran
+    # under. What the tool was asked, in the width of a column.
+    "input_head": "Arguments",
     "result": "Result",
+    "result_chars": "Result",
+    # The two columns a children log prints that no query returns. `label` is what the viewer
+    # calls a node — a pass's description, else the words the session itself wrote — and `body`
+    # is the column holding the control that opens one under its row.
+    "label": "Description",
+    "body": "Body",
 }
 
 

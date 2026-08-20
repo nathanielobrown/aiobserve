@@ -9,6 +9,8 @@ The node of each kind is read from the store rather than pinned, so a re-recorde
 the selection instead of reddening the tier.
 """
 
+import re
+
 import duckdb
 import pytest
 from fastapi.testclient import TestClient
@@ -16,10 +18,10 @@ from fastapi.testclient import TestClient
 from aiobserve.view import bounds
 from aiobserve.view.app import build_app, numbered
 from aiobserve.view.format import ELLIPSIS
-from aiobserve.view.labels import LABELS
-from aiobserve.view.nodes import BODY_URL
+from aiobserve.view.labels import LABELS, label
+from aiobserve.view.nodes import BODY_URL, COLUMNS, Shape
 from tests.conftest import ANCESTOR, DENSE_TURN, MAIN, SPINE
-from tests.view.conftest import MISSING, Planter, fields, inside, one, values
+from tests.view.conftest import MISSING, Planter, fields, inside, one, plain, values
 
 # The corpus's densest main-thread turn — 4 api calls under it — so the pane's children log
 # has more than one row and the tree has a level under the selection worth rendering.
@@ -595,3 +597,154 @@ def test_the_page_the_log_opens_at_is_the_url_with_no_page_on_it(client: TestCli
     assert numbered(TURN, "?log=1", 1) == f"{TURN}?log=1"
     assert numbered(TURN, "", 3) == f"{TURN}?page=3"
     assert numbered(TURN, "?log=1", 3) == f"{TURN}?log=1&page=3"
+
+
+def headings(html: str) -> dict[str, str]:
+    """What each column of a children log heads itself with, keyed by the column it heads.
+
+    Whitespace collapsed the way a browser collapses it, so the heading a reader sees is what
+    the assertion reads and the template stays free to break a long line.
+    """
+    return {
+        column: " ".join(plain(inner).split())
+        for column, inner in re.findall(
+            r'<th data-column="([^"]*)"[^>]*>(.*?)</th>', html, flags=re.S
+        )
+    }
+
+
+@pytest.mark.parametrize("parent", list(LEVELS))
+def test_every_children_log_heads_the_columns_its_rows_fill(
+    client: TestClient, store: duckdb.DuckDBPyConnection, parent: str
+) -> None:
+    """The log is a table: one head naming the columns, and every row filling all of them.
+
+    The reason it is a table at all — a row of bare numbers is unreadable, and a reader who
+    cannot tell an api-call count from a tool-call count from a time of day is reading nothing.
+    So the contract is that head and row agree, column for column, in order: a cell rendered
+    under some other column's heading is a number attributed to the wrong question.
+
+    Swept per shape, because the columns are the shape's own — a turn's children are counted
+    by what a call did, a call's by what a tool answered.
+    """
+    sql, template, shape = LEVELS[parent]
+    url = template.format(*one(store, sql))
+    page = client.get(url).text
+    named = [column.field for column in COLUMNS[Shape(shape)]]
+    # The head names the shape's columns, in the order the shape declares them...
+    assert inside(page, "data-columns", shape, "data-column") == named, url
+    # ...each heading an icon over a word from the registry every header on the page reads...
+    headed = headings(page)
+    assert headed == {
+        column.field: f"{column.icon} {label(column.field)}" for column in COLUMNS[Shape(shape)]
+    }, url
+    # ...and every row fills every one of them, so no cell sits under a heading not its own.
+    children = values(page, "data-child")
+    assert children, url
+    for key in children:
+        assert inside(page, "data-child", key, "data-column") == named, (url, key)
+
+
+def test_a_log_row_opens_the_body_from_a_button_that_says_so(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The expansion is a labelled control, and what it opens stands in the log's own table.
+
+    A `<details>` summary said `body` and looked like text; a reader has to be able to see
+    that a row can be opened. And what arrives is a row of the same table — the fragment is
+    swapped in after the row that asked for it, so a body wrapped in anything but a `<tr>`
+    lands outside the table the browser is drawing.
+    """
+    url = LEVELS["call"][1].format(*one(store, LEVELS["call"][0]))
+    page = client.get(url).text
+    for key in values(page, "data-child"):
+        # The control names the row it opens, and it is a button rather than a disclosure.
+        assert inside(page, "data-child", key, "data-view") == [key], key
+        (mount,) = [
+            at for at in inside(page, "data-child", key, "hx-get") if at.startswith(BODY_URL)
+        ]
+        served = client.get(mount)
+        assert served.status_code == 200, mount
+        # The body arrives as one row spanning the table it opens under.
+        assert served.text.lstrip().startswith("<tr"), mount
+        (span,) = inside(served.text, "data-expansion", "tool", "colspan")
+        assert span == str(len(COLUMNS[Shape.TOOLS])), mount
+    # And the disclosure the button replaced is gone from the log. Scoped to the log because
+    # the page footer keeps one for the queries it ran, which no reader has to find to read
+    # a row.
+    (log,) = re.findall(r'<section class="log".*?</section>', page, flags=re.S)
+    assert "<details" not in log
+
+
+def test_a_tool_row_says_what_the_tool_was_asked(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A tool row leads with the input that identifies the call, not with its size.
+
+    What identifies one differs by tool, so the row reads the field rather than the name: a
+    file tool is its path, and a path inside the session's own project reads relative to it —
+    the repository is the frame the reader is holding, and an absolute path spends the width
+    of the column saying where the machine keeps it. A command is its description, with the
+    command itself under it, because a reader scanning a call's tools wants what was intended
+    before what was typed. Anything else is the head of the input as stored.
+
+    Planted: the fixture corpus is redacted, so no recorded tool call carries a path, a
+    description or a command — only the shape around them survives redaction.
+    """
+    session_id, source, call_id, held = one(
+        store,
+        "SELECT session_id, source, api_call_id, count(*) FROM live_tool_calls"
+        " GROUP BY 1, 2, 3 ORDER BY 4 DESC, 1, 2, 3 LIMIT 1",
+    )
+    assert held >= 4, "the plant needs an api call with four tool calls to dress"
+    tools = [
+        row[0]
+        for row in store.execute(
+            "SELECT id FROM live_tool_calls WHERE session_id = ? AND source = ? AND api_call_id = ?"
+            ' ORDER BY "index" LIMIT 4',
+            [session_id, source, call_id],
+        ).fetchall()
+    ]
+    project = "/Users/planted/repos/aiobserve"
+    asked = {
+        # A file the session's own project holds, and one it does not.
+        tools[0]: ("Read", f'{{"file_path": "{project}/src/aiobserve/view/app.py"}}'),
+        tools[1]: ("Read", '{"file_path": "/etc/hosts"}'),
+        # A command, which carries both what it was for and what it ran.
+        tools[2]: ("Bash", '{"command": "git status --short", "description": "Read the tree"}'),
+        # And a tool the rule knows no field of, which falls back to the input as stored.
+        tools[3]: ("TodoWrite", '{"todos": [{"content": "write the test"}]}'),
+    }
+    path = plant(
+        ("UPDATE sessions SET project_dir = ? WHERE id = ?", [project, session_id]),
+        *(
+            ("UPDATE tool_calls SET name = ?, input = ? WHERE id = ?", [name, input, tool_id])
+            for tool_id, (name, input) in asked.items()
+        ),
+    )
+    with TestClient(build_app(path)) as planted:
+        page = planted.get(f"/session/{session_id}/call/{source}/{call_id}").text
+    rows = {tool_id: fields(page, "data-child", f"tool:{tool_id}") for tool_id in tools}
+    # The project's own file reads from the project root, and the one outside it in full.
+    assert rows[tools[0]]["input_head"] == "src/aiobserve/view/app.py"
+    assert rows[tools[1]]["input_head"] == "/etc/hosts"
+    # The command reads as what it was for, with what it ran under it.
+    assert rows[tools[2]]["input_head"] == "Read the tree"
+    assert rows[tools[2]]["command"] == "git status --short"
+    # And the tool with no field the rule knows shows the input as stored.
+    assert rows[tools[3]]["input_head"] == '{"todos": [{"content": "write the test"}]}'
+    assert "command" not in rows[tools[3]]
+    # A session whose project the store never recorded has no frame to read a path against,
+    # so the path reads absolute rather than against nothing.
+    homeless = plant(
+        ("UPDATE sessions SET project_dir = NULL WHERE id = ?", [session_id]),
+        (
+            "UPDATE tool_calls SET name = ?, input = ? WHERE id = ?",
+            ["Read", asked[tools[0]][1], tools[0]],
+        ),
+    )
+    with TestClient(build_app(homeless)) as planted:
+        loose = planted.get(f"/session/{session_id}/call/{source}/{call_id}").text
+    assert fields(loose, "data-child", f"tool:{tools[0]}")["input_head"] == (
+        f"{project}/src/aiobserve/view/app.py"
+    )

@@ -7,6 +7,7 @@ they are what makes the bound hold by construction rather than by the fixture co
 a per-value fetch is the one exception, and it is exempt because its unit *is* one value.
 """
 
+import json
 import re
 from collections.abc import Iterator
 from html import unescape
@@ -90,11 +91,12 @@ PAGE_BYTES = 500_000
 # rows in its own place, without a page boundary anywhere. Widening the window is a reader
 # reaching further per click, and pinning it here rather than against `PAGE_BYTES` keeps that
 # choice off the list pages, whose ceilings are derived against the number above. The
-# arithmetic under it — `worst_node_bytes`, at every ceiling at once — comes to 978,866 B
-# today, and the leaf at the bottom of this file is what keeps that true. Raised from 900,000
-# when the children log went from twelve rows to a hundred: 88 more log rows at 1,654 B each
-# is 145,552 B of page, which buys a reader a level of a hundred read in one go.
-NODE_BYTES = 1_050_000
+# arithmetic under it — `worst_node_bytes`, at every ceiling at once — comes to 1,422,366 B
+# today, and the leaf at the bottom of this file is what keeps that true. Raised from 1,050,000
+# when the children log's rows began saying what each child was asked: a row went from 1,654 B
+# to 6,079 B, and 100 of them is 442,500 B more page. That is what a reader gets for it — a
+# level of a hundred read without opening one, where before it was a hundred bare numbers.
+NODE_BYTES = 1_450_000
 # What the markup around one row of the list costs, with the content the row carries taken off.
 # Re-measured through the app by the leaf at the bottom of this file, every cap full of `&`,
 # at the dearest row the list holds rather than at whichever one sorted second: that row cost
@@ -144,12 +146,20 @@ COMMAND_ARGS_CHARS = 300
 MEASURED_RECORD_BYTES = 826
 
 # What the markup around one row of the pane's children log costs, with the label and the one
-# string it carries taken off: three copies of the node's URL — the link, the `hx-get` behind
-# it, and the mount its expansion opens through — the swap the link performs, the numbers that
-# tell two children apart, and the row around them. Re-measured through the app by the leaf at
-# the bottom of this file, every cap full of `&` and every knob at its longest — 1,637 B, of
-# which 540 B is content at those caps and 114 B the knobs, leaving 983 B.
-MEASURED_LOG_ROW_MARKUP = 1_000
+# strings it carries taken off: a cell per column of the shape's own table, three copies of the
+# node's URL — the link, the `hx-get` behind it, and the mount the View button opens through —
+# the swap the link performs, the numbers that tell two children apart, and the row around
+# them. Re-measured through the app by the leaf at the bottom of this file, every cap full of
+# `&` and every knob at its longest — 6,009 B, of which 4,515 B is content at those caps and
+# 114 B the knobs, leaving 1,385 B.
+MEASURED_LOG_ROW_MARKUP = 1_450
+# How many strings one row of a children log prints, each cut to `LOG_CHARS` and selected a
+# character past it. Three is the widest row there is: a tool row is the tool's name, the head
+# of what the tool was asked, and the command that head describes. A turn row prints one, an
+# api call one, a run two. Listed rather than counted off `nodes.COLUMNS`, because most of
+# those columns are a number or a stamp; what keeps the number honest is the leaf at the bottom
+# of this file, which plants every string a row can print past its cut and weighs the row.
+LOG_ROW_STRINGS = 3
 # What the control under a children log costs, with both of its links rendered: the nav around
 # them, the place between them, and two copies of the node's own URL carrying the page's knobs
 # and a page number. Nearly all of it is those two URLs. Measured through the app by the leaf at
@@ -174,10 +184,11 @@ PANE_DETAILS = 2
 # down to the selection, the node's own facts, and what a pass said about it. The session is
 # the widest of the eight panes — every string in its header is one a transcript wrote, and its
 # two lists grow with the session — so the allowance is a session header's, cut in SQL.
-# The preset switcher rides here too, three links carrying the node's own URL, and — on a pane
-# reading a failed tool call — the step to the failure before it and the one after.
-# Re-measured through the app by the leaf at the bottom of this file at 15,666 B.
-MEASURED_NODE_CHROME = 16_000
+# The preset switcher rides here too, three links carrying the node's own URL, the children
+# log's own table head — a word and an icon for each column of the shape the log lists — and,
+# on a pane reading a failed tool call, the step to the failure before it and the one after.
+# Re-measured through the app by the leaf at the bottom of this file at 16,337 B.
+MEASURED_NODE_CHROME = 17_000
 
 # The parameter every truncated column of a run row is cut to. Counted per query rather than
 # listed, so a fourth column added to a chip shows up in the arithmetic instead of quietly
@@ -286,16 +297,16 @@ def worst_knob_bytes() -> int:
 
 
 def worst_log_row_bytes() -> int:
-    """What one row of the pane's children log can weigh: its markup, its label, and its one
-    string.
+    """What one row of the pane's children log can weigh: its markup and the strings it prints.
 
-    A log row is a link plus the numbers that tell two children apart, and at most one of
-    those is a string the store wrote — the model a call ran on, the tool a call called, the
-    definition a run ran. All of them are cut where a chip's strings are.
+    A log row is a link, the numbers that tell two children apart, and the strings the store
+    wrote — a turn's label, the model a call ran on, the tool a call called and the head of
+    what it was asked. Every one of them is cut to a log column's width in the query that
+    selects it, a character past the cut so a row that fills its column says so.
     """
     return (
         MEASURED_LOG_ROW_MARKUP
-        + (queries.NAV_CHARS + queries.CHIP_CHARS) * ESCAPED_CHAR_BYTES
+        + LOG_ROW_STRINGS * (queries.LOG_CHARS + 1) * ESCAPED_CHAR_BYTES
         # A row links where it fetches and mounts where it expands, so it carries the knobs
         # three times.
         + 3 * worst_knob_bytes()
@@ -804,7 +815,7 @@ def test_an_offload_of_nothing_but_escapes_still_serves_under_the_ceiling(
 PRICED_ROWS = {
     "crumb": r"<a data-crumb=.*?</a>",
     "tree": r'<li class="row.*?</li>',
-    "log": r"<li data-child=.*?</li>",
+    "log": r"<tr data-child=.*?</tr>",
     # The control under the log, which is once a page rather than once a row — priced apart
     # from the chrome because it renders only where the level runs past one page, so a page
     # that happens to hold every child of its node would otherwise weigh it at nothing.
@@ -851,7 +862,6 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     falls back to. The sweep is every node of every session, not one page: the widest chrome
     belongs to whichever pane is dearest, and that is a question about the corpus.
     """
-    label = "&" * queries.CHIP_CHARS
     head = "&" * queries.HEADER_CHARS
     # Longer than the widest cut any query makes, so every cut bites and every preview offers
     # the rest of itself: what this weighs is the page at its caps, not at the corpus's sizes.
@@ -884,15 +894,18 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
             "UPDATE turns SET prompt = ?, command_name = ?, command_args = ?",
             [fat, "&" * COMMAND_NAME_CHARS, "&" * COMMAND_ARGS_CHARS],
         ),
-        ("UPDATE agent_runs SET agent_type = ?, model = ?, description = ?", [label, label, fat]),
-        ("UPDATE api_calls SET model = ?, text = ?, thinking = ?", [label, fat, fat]),
-        # Every tool call failed, which is the dearest a tool row gets: the mark the tree puts
+        ("UPDATE agent_runs SET agent_type = ?, model = ?, description = ?", [fat, fat, fat]),
+        ("UPDATE api_calls SET model = ?, text = ?, thinking = ?", [fat, fat, fat]),
+        # The input parses, and says both of the things a tool row reads out of one: a log row
+        # that could not find a description would print the raw input in its place and leave
+        # the line under it empty, which is a row two columns short of the widest one there is.
+        # Every call failed, too, which is the dearest a tool row gets: the mark the tree puts
         # on a failure is markup no other kind of row carries, and a tree row is the one thing
         # on the page multiplied 417 times. It is also what puts the stepper on every tool
         # page, which is the dearest the chrome under a pane gets.
         (
             "UPDATE tool_calls SET name = ?, input = ?, result = ?, is_error = true",
-            [label, fat, fat],
+            [fat, json.dumps({"description": fat, "command": fat}), fat],
         ),
         *DESCRIBED_AT_EVERY_CAP,
     )
@@ -1224,6 +1237,15 @@ def test_a_deeply_nested_value_is_served_at_the_size_it_was_stored(plant: Plante
         assert len(response.content) < stored + PAGE_BYTES
 
 
+def printed(html: str) -> list[str]:
+    """Every value a children log's rows print, as a reader sees it — the marks and all."""
+    return [
+        value
+        for row in re.findall(r"<tr data-child=.*?</tr>", html, flags=re.S)
+        for value in re.findall(r'<span data-field="[^"]*">(.*?)</span>', row, flags=re.S)
+    ]
+
+
 def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     plant: Planter, store: duckdb.DuckDBPyConnection
 ) -> None:
@@ -1281,16 +1303,17 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # half a path fills the filter in with a value that matches nothing.
     assert not [path for path in re.findall(r'<option value="([^"]*)"', listing) if "x" in path]
     # A tree row is a line in a sidebar, so its label takes the narrowest cut of the four —
-    # the same one whatever kind of node the row stands for.
-    labels = re.findall(r'<span data-field="label">(.*?)</span>', session, flags=re.S)
+    # the same one whatever kind of node the row stands for. Read off the tree half of the
+    # page: the same `label` field names the node in three places, each at its own width.
+    tree, pane = session.split('<article id="pane">')
+    labels = re.findall(r'<span data-field="label">(.*?)</span>', tree, flags=re.S)
     # Cut and marked as cut: every column a label is composed from comes back one character
     # past the width, so a row that fills the line says the value went on.
     assert max(labels, key=len) == "x" * queries.NAV_CHARS + ELLIPSIS
-    # A children log row is a line of a table, so it takes the next cut up.
-    log = re.findall(r"<li data-child=.*?</li>", session, flags=re.S)
-    assert (
-        max(len(field) for row in log for field in values(row, "data-field")) <= queries.LOG_CHARS
-    )
+    # A children log row is a line of a table, so it takes the next cut up, marked where it
+    # was cut: a turn's label composed past the width, and the head of what a tool was asked.
+    assert max(len(value) for value in printed(pane)) == queries.LOG_CHARS + 1
+    assert max(len(value) for value in printed(call)) == queries.LOG_CHARS + 1
     # A pane reads one node, so its strings take a header's cut — and the one value the node
     # is about takes the widest of the four, with the rest of it offered as its own fetch.
     assert fields(turn, "data-detail", "prompt")["prompt"] == "x" * queries.DETAIL_CHARS + ELLIPSIS
