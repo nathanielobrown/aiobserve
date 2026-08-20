@@ -6,14 +6,14 @@
 
 {# The pane's one dispatch. Total over the kinds a URL can name — a kind with no arm would
    render a heading and nothing under it, which reads as a node with no facts. #}
-{% macro pane(node, row) %}
+{% macro pane(node, row, suffix) %}
 <section class="body" data-body="{{ node.kind }}">
   <h1 data-field="label">{{ node.label }}</h1>
   {% if node.kind == 'session' %}{{ session(row) }}
   {% elif node.kind == 'turn' %}{{ turn(row) }}
   {% elif node.kind == 'run' %}{{ run(row) }}
   {% elif node.kind == 'call' %}{{ call(row) }}
-  {% elif node.kind == 'tool' %}{{ tool(row) }}
+  {% elif node.kind == 'tool' %}{{ tool(row, suffix) }}
   {% elif node.kind == 'compaction' %}{{ compaction(row) }}
   {% else %}{{ bucket(node) }}{% endif %}
 </section>
@@ -119,7 +119,13 @@
 {% endmacro %}
 
 {# One tool call. No cost of its own: what it took is the api call's. #}
-{% macro tool(row) %}
+{% macro tool(row, suffix) %}
+{# A `Task` call is where an agent run begins, so the run leads the body: it is what a reader
+   came to the call to reach, and everything else about the call is what it took to start it. #}
+{% if row.run_id %}
+<p class="spawned" data-spawned="{{ row.run_id }}">
+  <a href="{{ run_url(row.session_id, row.run_id) }}{{ suffix }}">the run it started</a></p>
+{% endif %}
 <dl class="facts">
   {{ parts.fact('tool_index', row.tool_index | count) }}
   {{ parts.fact('name', row.name) }}

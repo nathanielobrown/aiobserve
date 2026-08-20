@@ -23,7 +23,7 @@
         >{{ parts.glyph(step) }}<span data-field="{{ step.kind }}">{{ step.label }}</span></a>
       {% endfor %}
     </nav>
-    {{ body.pane(selection, header) }}
+    {{ body.pane(selection, header, suffix) }}
     {# What an enrichment pass said about this node, when a pass has reached it. #}
     {% if enrichment %}{{ parts.summary(enrichment) }}{% endif %}
     {# The node's own values, cut to the pane's width, each with the way to the whole of it. #}

@@ -369,6 +369,9 @@ def build_app(db_path: Path) -> FastAPI:
     # The syntaxes a template may ask for, so that asking for one it does not mark up raises
     # here rather than rendering a value as a line of error tokens.
     templates.env.globals["SYNTAX"] = highlight.Syntax  # pyrefly: ignore
+    # And where an agent run reads, for the one link a template mints from a column rather than
+    # from a node: the `Task` call that started the run.
+    templates.env.globals["run_url"] = nodes.run_url  # pyrefly: ignore
 
     def error(request: Request, status: int, message: str) -> Response:
         return templates.TemplateResponse(
