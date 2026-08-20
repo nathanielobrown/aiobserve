@@ -8,6 +8,7 @@ a per-value fetch is the one exception, and it is exempt because its unit *is* o
 """
 
 import re
+from collections.abc import Iterator
 from html import unescape
 from itertools import pairwise
 from pathlib import Path
@@ -383,21 +384,42 @@ def _described_at_every_cap() -> tuple[Statement, ...]:
 
 DESCRIBED_AT_EVERY_CAP = _described_at_every_cap()
 
-# What a query may wrap a fat column in and still be bounded: a fixed-width prefix of it, or
-# a count of what it holds. Anything else puts the whole value on the page.
-BOUNDING = ("substr", "length")
+# What a query may wrap a fat column in and still be bounded: a fixed-width prefix of it, a
+# count of what it holds, or the check that it parses. Anything else puts the whole value on
+# the page. Read at any depth — `substr(coalesce(json_extract_string(input, …), …), 1, $n)`
+# is a cut of whatever it wraps, so what a bounding call opens is exempt to its close.
+BOUNDING = ("substr", "length", "json_valid")
+
+
+def _named(sql: str) -> Iterator[str]:
+    """Every word a statement names outside a bounding call, however deeply they nest."""
+    # Whether each open bracket opened a bounding call, and how many of those are still open.
+    opened: list[bool] = []
+    bounding = 0
+    word = ""
+    for token in re.finditer(r"[A-Za-z_][A-Za-z0-9_]*|\(|\)", sql):
+        found = token.group()
+        if found == "(":
+            opened.append(word in BOUNDING)
+            bounding += opened[-1]
+        elif found == ")":
+            bounding -= opened.pop() if opened else 0
+        elif not bounding:
+            yield found
+        word = found.lower() if found != ")" else ""
 
 
 def unbounded(sql: str) -> set[str]:
     """The fat columns a statement selects outside a bounding call — what a page can't afford.
 
     An output name is not a selected column, so `AS` and what follows it comes out first: a
-    cut column keeps the name of the column it cuts, and the cut is what the page shows.
+    cut column keeps the name of the column it cuts, and the cut is what the page shows. A
+    quoted string is not a column either — `'$.description'` names a key inside a value.
     """
     without_comments = re.sub(r"--[^\n]*", " ", sql)
-    named = re.sub(r"\bAS\s+[A-Za-z_][A-Za-z0-9_]*", " ", without_comments, flags=re.IGNORECASE)
-    truncated = re.sub(rf"(?:{'|'.join(BOUNDING)})\s*\([^()]*\)", " ", named)
-    return {word for word in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", truncated) if word in FAT}
+    without_strings = re.sub(r"'[^']*'", " ", without_comments)
+    named = re.sub(r"\bAS\s+[A-Za-z_][A-Za-z0-9_]*", " ", without_strings, flags=re.IGNORECASE)
+    return {word for word in _named(named) if word in FAT}
 
 
 def test_the_fat_column_scan_catches_one() -> None:
@@ -414,6 +436,24 @@ def test_the_fat_column_scan_catches_one() -> None:
     assert unbounded("SELECT substr(e.description, 1, 200) AS description FROM turns e") == set()
     # ...but the column under that name still counts.
     assert unbounded("SELECT e.description AS description FROM turns e") == {"description"}
+    # A cut of what a call read out of a fat column is a cut, however deep the call nests...
+    parsed = "json_extract_string(t.input, '$.file_path')"
+    assert (
+        unbounded(f"SELECT substr(coalesce({parsed}, t.input), 1, 200) AS head FROM tools t")
+        == set()
+    )
+    # ...and the check that a value parses hands back a flag rather than the value.
+    assert unbounded("SELECT json_valid(t.input) AS ok FROM tools t") == set()
+    # A key inside a JSON path is a string, not the column that happens to share its name...
+    assert (
+        unbounded("SELECT substr(json_extract_string(t.input, '$.description'), 1, 9) AS a FROM t")
+        == set()
+    )
+    # ...while a fat column read by a call that is not a cut is the whole value on the page.
+    assert unbounded(f"SELECT {parsed} AS path FROM tools t") == {"input"}
+    assert unbounded("SELECT coalesce(substr(t.input, 1, 9), t.result) AS head FROM tools t") == {
+        "result"
+    }
 
 
 @pytest.mark.parametrize("name", sorted(Page) + sorted(Fragment))
