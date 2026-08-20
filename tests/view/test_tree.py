@@ -165,6 +165,40 @@ def test_every_sessions_own_page_opens_the_level_its_thread_holds(
     assert {"compaction", "unattributed", "unattached"} <= seen
 
 
+def test_a_compaction_lands_before_the_turn_that_started_after_it(
+    store: duckdb.DuckDBPyConnection, plant: Planter
+) -> None:
+    """Where a compaction sits among the turns of its thread, read at the instant it turns on.
+
+    No recorded compaction has a turn of its own thread starting after it, so every one of them
+    trails the thread and the placement rule above is never exercised: the level would read the
+    same with the rule deleted. A compaction is where the reader sees the context being
+    dropped, so the rule is planted — the same compaction moved to just before a turn, and then
+    onto that turn's own instant, which is the side the rule closes on.
+    """
+    session_id, compaction_id, turn_id, started = one(
+        store,
+        "SELECT k.session_id, k.id, t.id, t.started_at FROM live_compactions k"
+        " JOIN live_turns t ON t.session_id = k.session_id AND t.source = k.source"
+        " WHERE t.started_at IS NOT NULL"
+        ' ORDER BY k.session_id, k.source, t."index" LIMIT 1',
+    )
+    for seconds, above in ((1, True), (0, False)):
+        path = plant(
+            (
+                "UPDATE compactions SET timestamp = ?::TIMESTAMPTZ - ? * INTERVAL 1 SECOND"
+                " WHERE id = ?",
+                [str(started), seconds, compaction_id],
+            )
+        )
+        with TestClient(build_app(path)) as moved:
+            keys = values(moved.get(f"/session/{session_id}").text, "data-tree")
+        at, turn_at = keys.index(f"compaction:{compaction_id}"), keys.index(f"turn:{turn_id}")
+        # A compaction that happened before the turn started belongs above it; one that
+        # happened at the instant the turn started did not happen during the turn before it.
+        assert (at < turn_at) is above, (seconds, keys)
+
+
 def test_the_tree_opens_the_selections_path_and_leaves_the_rest_shut(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
