@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ session_id }} errors — aiobserve{% endblock %}
+
+{# Where one session failed, whichever thread it happened on. A list rather than a pane: a
+   failure is not a place in the tree, so there is nothing to open a path to — each row leads
+   to the tool call's own page, which carries the crumbs that place it. #}
+{% block main %}
+<section id="errors">
+  <h1>Failed tool calls</h1>
+  <p class="numbers">
+    <a href="/session/{{ session_id }}">{{ session_id }}</a>
+    <span><span data-field="matched">{{ ((listed | length) + cut) | count }}</span> failed call(s)</span>
+  </p>
+  <ol class="errors">
+    {% for item in listed %}
+    <li data-error="{{ item.node.key }}">
+      <a href="{{ item.node.url }}"><span data-field="label">{{ item.node.label }}</span></a>
+      {# The thread it ran on, because the list spans all of them: two failures of one tool
+         name are told apart by which agent hit them. #}
+      <span data-field="source" class="source">{{ item.node.source }}</span>
+      <span data-field="started_at">{{ item.started_at | when }}</span>
+    </li>
+    {% endfor %}
+  </ol>
+  {# What the page left out, said rather than dropped: the store keeps every failure, and this
+     page shows the first of them in the order they happened. #}
+  {% if cut %}
+  <p class="more" data-more-errors="{{ cut }}">+<span data-field="cut">{{ cut | count }}</span> more failed call(s)</p>
+  {% endif %}
+</section>
+{% endblock %}

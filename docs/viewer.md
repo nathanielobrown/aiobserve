@@ -18,6 +18,8 @@ flowchart LR
     api_call -->|"a tool call"| tool["a tool call"]
     tool -->|"the run a Task call started"| run
     run -->|"its own turns"| turn
+    session -->|"every tool call that failed"| errors["where it failed"]
+    errors -->|"one of them"| tool
     bucket -->|"a call or a run it holds"| api_call
     turn -->|"the transcript line it was read from"| records["raw records"]
     tool -->|"a result written to a file"| offload["an offloaded result"]
@@ -42,6 +44,7 @@ Solid edges lead to pages with their own URLs. Dotted edges fetch a fragment int
 | A compaction | `/session/{session_id}/compaction/{source}/{compaction_id}` |
 | A thread's calls under no turn | `/session/{session_id}/unattributed/{source}` |
 | The runs nothing placed | `/session/{session_id}/unattached` |
+| Where a session failed | `/session/{session_id}/errors` |
 | Raw records | `/session/{session_id}/records/{source}` |
 | An offloaded result | `/session/{session_id}/offload/{name}` |
 | The SQL behind a page | `/query/{name}` |
@@ -74,6 +77,16 @@ Every row with spend carries a bar along its edge: its share of what the session
 
 A level shows at most 25 children, and a `+N more` row says what the cap left out and links to the parent's own page, which pages its children rather than capping them. The row the open path descends through is always kept, inside the cap.
 
+A tool call that came back an error carries an `error` mark on its row, in the same red the children log and the list use.
+
+## Jump straight to where a session failed
+
+The tree opens one path, so a failure five spawns down a run tree is behind everything in front of it. `/session/{session_id}/errors` is the way past that: every `is_error` tool call the session made, on every thread, in the order they happened, each row a link to that call's own page. Every node page of a session that failed something carries the count and the way in, under the walk controls.
+
+Standing on a failed tool call, the same block gains a step to the failure before it and the one after — across threads, because the list is the session's rather than one thread's. No other page runs the query: a pane reading anything else has no step to offer.
+
+The list is bounded like the landing page rather than paged: it shows the first 100 failures in that order and says how many it left. The stepper reads the same capped list, so a failure past the cap is one neither surface reaches. A session that failed nothing has no page here — the URL is a 404, worded apart from a session the store never held.
+
 ## The pane reads one node
 
 The pane leads with the crumb chain down to the node, then the node's label and the facts the store holds for it. Under those:
@@ -83,6 +96,7 @@ The pane leads with the crumb chain down to the node, then the node's label and 
 - The thread's transcript, and — for a turn — the archived line it was read from, in a `<details>` that fetches on open
 - The children log: a page of 12 children, each a link to its own page and a `body` toggle that opens the child's own pane in place, without leaving the parent. An opened body stops there; what's under it is a count and a link
 - `←` and `→`, which walk the whole session depth-first — into a node's children, on to its next sibling, then out. Each names the neighbour's kind and its label, so a change of level is never a surprise. The buckets and the compactions are stops like any other, and the walk ignores what the tree was capped to: a reading order that shortened with the sidebar would skip nodes silently
+- [Where the session failed](#jump-straight-to-where-a-session-failed): how many tool calls it failed, the way to the list of them, and — on a failed call — the step to the failure before it and the one after
 
 JSON and SQL are marked up in their own syntax; everything else a transcript wrote is prose, and Markdown renders as Markdown. A value past 256,000 characters prints as stored with a line saying why. Every page's footer cites the queries behind it, and each citation links to `/query/{name}`, which shows that query's SQL under the bindings the page used.
 
@@ -151,6 +165,7 @@ Full-value requests are the declared exception. Each returns one transcript line
 | --- | --- |
 | Session list | 104 sessions; each long string is cut to 100 characters, skills and agent types to four 20-character names, and work to three |
 | Projects | 100 projects; the path is cut to 100 characters |
+| A session's errors | 100 failed tool calls; each label is cut to 48 characters |
 | Tree | 25 children per open level, 16 levels deep, each label cut to 48 characters |
 | Children log | 12 rows, each string cut to 300 characters |
 | Previewed value | 4,000 characters, with the rest a fetch away |
@@ -159,6 +174,8 @@ Full-value requests are the declared exception. Each returns one transcript line
 | Syntax highlighting | 256,000 characters, above which the value prints as stored |
 
 The worst node page comes to 466,658 bytes of the 500,000 allowed. The tree is what multiplies: an open path is `1 + 16 × (25 + 1)` = 417 rows, and a row is pinned at 914 bytes, which is 381,138 of the page. The rest is 16 crumbs at 558 bytes, 12 log rows at 1,616, two previewed values at 20,600, and 16,000 of chrome — leaving 33,342 spare. `TREE_ROW_BYTES` is measured through the app rather than budgeted, at a label of nothing but `&` and the longest query string a link can carry, and pinned with no slack: a byte of slack there is 417 bytes of page. Nearly all of a row is its URL written twice, the `href` a reader follows and the `hx-get` htmx fetches — what the fetch then does with the response is written once on `#tree-rows` — so a store whose agent runs carry longer ids than the recorded corpus does is a re-measure.
+
+A session's errors list grows the way the corpus pages do — nothing about a session caps how often its tools fail — so it is bounded the same way and projects to 67 KB: 2.5 KB of chrome plus 100 rows at 640 bytes, of which 240 is a label of nothing but `&`.
 
 The session list is bound independently of corpus size. Its filter box offers the 10 busiest project paths that fit its bound, whole or not at all; a cut path would filter by a directory nobody named. The projects page cuts a long path the same way and leaves that row unlinked. The same rule keeps row filtering correct: the viewer filters whole titles, paths, and skill lists, then cuts only the rows it renders. The worst-case list projects to 499 KB: 10 KB of page chrome plus 104 rows at 4.7 KB each.
 

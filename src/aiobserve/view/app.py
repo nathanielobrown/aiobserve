@@ -36,7 +36,7 @@ from aiobserve.analyze import queries
 from aiobserve.analyze.queries import ParamValue
 from aiobserve.export.duckdb import SCHEMA_VERSION
 from aiobserve.model import MAIN_SOURCE
-from aiobserve.view import bounds, highlight, nodes, render, tree, walk
+from aiobserve.view import bounds, errors, highlight, nodes, render, tree, walk
 from aiobserve.view import format as fmt
 from aiobserve.view.enrichment import (
     GLYPH,
@@ -560,6 +560,19 @@ def build_app(db_path: Path) -> FastAPI:
             },
         )
 
+    def header_bound(session_id: str) -> dict[str, ParamValue]:
+        """What `Page.SESSION_HEADER` binds for one session, named once for every reader of it.
+
+        A node page reads the row whole; `errors_page` reads it only to word a 404, but both
+        have to bind the same params or a change to one silently stops answering for the other.
+        """
+        return {
+            "session_id": session_id,
+            "head_chars": queries.HEADER_CHARS,
+            "item_chars": queries.HEADER_ITEM_CHARS,
+            "head_items": queries.HEADER_ITEMS,
+        }
+
     def browse(
         request: Request,
         session_id: str,
@@ -583,15 +596,10 @@ def build_app(db_path: Path) -> FastAPI:
         checked(kin, bounds.KIN.ceiling)
         checked(log, bounds.LOG.ceiling)
         checked(detail, bounds.DETAIL.ceiling)
-        keyed: dict[str, ParamValue] = {"session_id": session_id}
-        header_bound = keyed | {
-            "head_chars": queries.HEADER_CHARS,
-            "item_chars": queries.HEADER_ITEM_CHARS,
-            "head_items": queries.HEADER_ITEMS,
-        }
-        runs_bound = keyed | {"chip_chars": queries.NAV_CHARS}
+        bound = header_bound(session_id)
+        runs_bound = {"session_id": session_id, "chip_chars": queries.NAV_CHARS}
         with open_store(resolved) as connection:
-            head = page_rows(connection, Page.SESSION_HEADER, **header_bound)
+            head = page_rows(connection, Page.SESSION_HEADER, **bound)
             if not head:
                 raise HTTPException(404, "No session with that id is in this store.")
             # The session's runs whole, once: a run is placed by the call that spawned it
@@ -617,13 +625,21 @@ def build_app(db_path: Path) -> FastAPI:
             # inside the request's own connection because it asks the store for levels the
             # tree did not open.
             walked = walk.neighbours(connection, corpus, built.chain)
+            # The failures either side of this one, read only where the pane is standing on a
+            # failure. A session-wide list is a query per page load and the step it answers
+            # does not exist anywhere else, so every other node page asks the store nothing.
+            failed = (
+                errors.failures(connection, session_id)
+                if built.chain[-1].kind is Kind.TOOL and built.chain[-1].is_error
+                else None
+            )
         # A cursor past the last child and a node that never had one are the same answer. The
         # first page is not: a node with no children still has its own facts to show.
         if after != queries.FIRST_PAGE and not seen.rows:
             raise HTTPException(404, "This node has no children after that one.")
         selection = built.chain[-1]
         ran: tree.Ran = [
-            (Page.SESSION_HEADER, header_bound),
+            (Page.SESSION_HEADER, bound),
             (Page.RUNS, runs_bound),
             *seen.ran,
             *built.ran,
@@ -632,7 +648,11 @@ def build_app(db_path: Path) -> FastAPI:
         # Only when the store held the tables to ask: a page cites what it ran, and over an
         # un-enriched store this query is not one of them.
         if corpus.described.queried:
-            ran.append((Page.ENRICHMENT, keyed | {"source": source}))
+            ran.append((Page.ENRICHMENT, {"session_id": session_id, "source": source}))
+        # The same rule for the stepper's own read: a page cites what it ran, and most node
+        # pages do not run this one.
+        if failed is not None:
+            ran.extend(failed.ran)
         marks = knobs(preset, kin, log, detail)
         return templates.TemplateResponse(
             request,
@@ -652,6 +672,10 @@ def build_app(db_path: Path) -> FastAPI:
                 # Where the reading order goes from here, in both directions.
                 "previous": walked.previous,
                 "following": walked.following,
+                # And where the session failed: how many failures it holds, which is what the
+                # way into the list says, beside the step to the next one where there is one.
+                "session_tool_errors": head[0]["tool_errors"],
+                "step": errors.stepped(failed.listed, selection) if failed else None,
                 "shape": seen.shape,
                 "log": seen.rows,
                 "more": seen.more,
@@ -1140,6 +1164,41 @@ def build_app(db_path: Path) -> FastAPI:
             )
 
         return browse(request, session_id, MAIN_SOURCE, nav, kin, log, detail, after, read)
+
+    @app.get("/session/{session_id}/errors")
+    def errors_page(request: Request, session_id: str) -> Response:
+        """Every failed tool call of one session, in the order they happened.
+
+        Not a node page: a failure is a property of a tool call rather than a place in the
+        tree, and a session's failures are scattered across every thread it ran. So this is a
+        list, and each row leads to the tool call's own page — which opens the tree at it and
+        carries the crumbs that place it.
+        """
+        with open_store(resolved) as connection:
+            failed = errors.failures(connection, session_id)
+            # A session the store never held and one whose calls all succeeded are both
+            # nothing at this URL, and not the same nothing. The header is read only when
+            # there is a 404 to word, so the page a reader actually opens runs one query.
+            held = bool(failed.listed) or bool(
+                page_rows(connection, Page.SESSION_HEADER, **header_bound(session_id))
+            )
+        if not failed.listed:
+            raise HTTPException(
+                404,
+                "This session's tool calls all succeeded."
+                if held
+                else "No session with that id is in this store.",
+            )
+        return templates.TemplateResponse(
+            request,
+            "errors.html",
+            {
+                "session_id": session_id,
+                "listed": failed.listed,
+                "cut": failed.cut,
+                "citations": {named.value: cited(named, bound) for named, bound in failed.ran},
+            },
+        )
 
     @app.get(f"{QUERY_URL}/{{name}}")
     def query_page(request: Request, name: str) -> Response:
