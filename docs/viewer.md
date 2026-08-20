@@ -96,7 +96,7 @@ The pane leads with the crumb chain down to the node, then the node's label and 
 - What an enrichment pass said about the node, when a pass has reached it
 - The node's own fat values, cut to 4,000 characters, each with a link that fetches the rest: a turn's prompt, a run's task brief, an api call's text and thinking, a tool call's input and result
 - The thread's transcript, and — for a turn — the archived line it was read from, in a `<details>` that fetches on open
-- The children log: a page of 12 children, each a link to its own page and a `body` toggle that opens the child's own pane in place, without leaving the parent. An opened body stops there; what's under it is a count and a link
+- The children log: one numbered page of 100 children, each a link to its own page and a `body` toggle that opens the child's own pane in place, without leaving the parent. An opened body stops there; what's under it is a count and a link. The heading counts the level, not the page; a level running past one page carries prev and next under it, and says which page of how many you are on
 - Prev and next, two buttons that read the level the node is on: the row beside it, and at the end of the level whatever follows the branch. Neither descends — going down is what the tree is for — and a step that leaves the level shows `↑` instead of an arrow along it. Each names the neighbour's kind and its label. The buckets and the compactions are stops like any other, and the controls ignore what the tree was capped to: a reading order that shortened with the sidebar would skip nodes silently
 - [Where the session failed](#jump-straight-to-where-a-session-failed): how many tool calls it failed, the way to the list of them, and — on a failed call — the step to the failure before it and the one after
 
@@ -124,7 +124,7 @@ Node pages take four knobs, and every link on a page carries the ones that aren'
 | `?nav=noapi` | The api calls folded away, each turn's tool calls standing directly under it |
 | `?nav=agents` | The runs alone, each under the run that spawned it — the session's org chart |
 | `?kin=` | Children per open level, at most 50 |
-| `?log=` | Rows in the pane's children log, at most 12 |
+| `?log=` | Rows in one page of the pane's children log, at most 100 |
 | `?detail=` | Characters of each value the pane previews, at most 4,000 |
 
 The three sizes only go down. Each default is also its ceiling, because the page's byte bound is arithmetic over the defaults and there is no headroom to spend. A size outside its range or a `nav` the viewer doesn't have returns 400 rather than a guess.
@@ -133,7 +133,7 @@ How wide the tree is drawn is the one thing you set that no URL carries: it belo
 
 The presets are the [fold above the tree](#the-tree-opens-one-path-and-nothing-else), and typing one into the URL does the same thing. Every preset leaves every visible node with a visible parent, and a level whose preset would hide the path you are standing on renders in full instead.
 
-The session list accepts `sort`, `direction`, `page`, `size`, and its filter keys, and returns 400 for an unknown key, an unknown sort or direction, a filter value of the wrong type, or a page outside its bounds. Sort keys map to fixed columns, filter keys map to fixed predicates, and request values reach SQL only as bound parameters. A children log pages with `?after=`, the index of the last child already shown.
+The session list accepts `sort`, `direction`, `page`, `size`, and its filter keys, and returns 400 for an unknown key, an unknown sort or direction, a filter value of the wrong type, or a page outside its bounds. Sort keys map to fixed columns, filter keys map to fixed predicates, and request values reach SQL only as bound parameters. A children log pages with `?page=`, numbered from one; page one is the node's own URL, and a number past the level's last page is a 404.
 
 Reports cite raw records as `(session_id, source, line_no)`. The records URL derives from that natural key, so a later port or route change does not invalidate the saved tuple. This form opens the records browser on the cited line:
 
@@ -171,13 +171,13 @@ Full-value requests are the declared exception. Each returns one transcript line
 | Projects | 100 projects; the path is cut to 100 characters |
 | A session's errors | 100 failed tool calls; each label is cut to 48 characters |
 | Tree | 50 children per open level, 16 levels deep, each label cut to 48 characters |
-| Children log | 12 rows, each string cut to 300 characters |
+| Children log | 100 rows a page, each string cut to 300 characters |
 | Previewed value | 4,000 characters, with the rest a fetch away |
 | Raw records | 100 rows by default, at most 200 |
 | Offload | 50,000 characters by default, at most 60,000 |
 | Syntax highlighting | 256,000 characters, above which the value prints as stored |
 
-The worst node page comes to 832,714 bytes of the 900,000 a node page is allowed — its own budget rather than the 500,000 every other page is weighed against, because the tree is a window a reader widens in place and not a page. The tree is what multiplies: an open path is `1 + 16 × (50 + 1)` = 817 rows, and a row is pinned at 914 bytes, which is 746,738 of the page. The rest is 16 crumbs at 558 bytes, 12 log rows at 1,654, two previewed values at 20,600, and 16,000 of chrome — leaving 67,286 spare. `TREE_ROW_BYTES` is measured through the app rather than budgeted, at a label of nothing but `&` and the longest query string a link can carry, and pinned with no slack: a byte of slack there is 417 bytes of page. Nearly all of a row is its URL written twice, the `href` a reader follows and the `hx-get` htmx fetches — what the fetch then does with the response is written once on `#tree-rows` — so a store whose agent runs carry longer ids than the recorded corpus does is a re-measure.
+The worst node page comes to 978,866 bytes of the 1,050,000 a node page is allowed — its own budget rather than the 500,000 every other page is weighed against, because the tree is a window a reader widens in place and not a page. The tree is what multiplies: an open path is `1 + 16 × (50 + 1)` = 817 rows, and a row is pinned at 914 bytes, which is 746,738 of the page. The rest is 16 crumbs at 558 bytes, 100 log rows at 1,654, a pager at 600, two previewed values at 20,600, and 16,000 of chrome — leaving 71,134 spare. `TREE_ROW_BYTES` is measured through the app rather than budgeted, at a label of nothing but `&` and the longest query string a link can carry, and pinned with no slack: a byte of slack there is 417 bytes of page. Nearly all of a row is its URL written twice, the `href` a reader follows and the `hx-get` htmx fetches — what the fetch then does with the response is written once on `#tree-rows` — so a store whose agent runs carry longer ids than the recorded corpus does is a re-measure.
 
 A session's errors list grows the way the corpus pages do — nothing about a session caps how often its tools fail — so it is bounded the same way and projects to 67 KB: 2.5 KB of chrome plus 100 rows at 640 bytes, of which 240 is a label of nothing but `&`.
 
