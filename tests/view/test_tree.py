@@ -30,7 +30,8 @@ from aiobserve.model import MAIN_SOURCE
 from aiobserve.view import bounds, tree
 from aiobserve.view.app import build_app
 from aiobserve.view.enrichment import Descriptions
-from aiobserve.view.nodes import Kind, Preset, Ref
+from aiobserve.view.format import money
+from aiobserve.view.nodes import Kind, Preset, Ref, meter
 from tests.conftest import MAIN, SPINE
 from tests.view.conftest import SPAWNS, Planter, fields, inside, kin, one, rows, values
 
@@ -395,6 +396,124 @@ def test_a_row_draws_a_spend_bar_only_where_it_has_a_share_to_draw(
                 # against something other than the session.
                 assert bars.setdefault(key, (cost, steps)) == (cost, steps), (key, preset)
     assert whole, "the session this reads has a spend to take shares of"
+
+
+# The calls of one thread that answer no turn of it — the rows the unattributed bucket stands
+# for — summed the way a page of them would be read.
+STANDING = (
+    "SELECT coalesce(round(sum(c.cost_usd), 4), 0), count(*) FILTER (c.cost_usd IS NULL)"
+    " FROM live_api_calls c"
+    " LEFT JOIN live_turns t ON t.session_id = c.session_id AND t.source = c.source"
+    "  AND t.id = c.turn_id"
+    " WHERE c.session_id = ? AND c.source = ? AND t.id IS NULL"
+)
+# One run's own thread, which is what an unattached run brings to the bucket that gathers it.
+THREAD = (
+    "SELECT coalesce(round(sum(cost_usd), 4), 0), count(*) FILTER (cost_usd IS NULL)"
+    " FROM live_api_calls WHERE session_id = ? AND source = ?"
+)
+
+
+def test_a_bucket_row_carries_the_totals_of_what_it_gathers(
+    client: TestClient, store: duckdb.DuckDBPyConnection, plant: Planter
+) -> None:
+    """Neither bucket is a row of the store: its numbers are sums over what it holds.
+
+    The rest of the tree hands a row the store's own numbers, so a bucket is the one place the
+    viewer adds up. What it adds up is read back here — the spend, the bar that spend takes
+    against the session, and the mark saying some of the calls under it went unpriced — for
+    every bucket the corpus records, on the page the bucket hangs on.
+    """
+    # The session's threads whose calls answer no turn of them, and the runs nothing placed.
+    standing = store.execute(
+        "SELECT DISTINCT c.session_id, c.source FROM live_api_calls c"
+        " LEFT JOIN live_turns t ON t.session_id = c.session_id AND t.source = c.source"
+        "  AND t.id = c.turn_id"
+        " WHERE t.id IS NULL ORDER BY 1, 2"
+    ).fetchall()
+    gathered: tuple[str, list[str]] | None = None
+    for session_id, source in standing:
+        at = (
+            f"/session/{session_id}"
+            if source == MAIN_SOURCE
+            else f"/session/{session_id}/run/{source}"
+        )
+        cost, unpriced = one(store, STANDING, [str(session_id), str(source)])
+        bucket(client.get(at).text, f"unattributed:{source}", store, session_id, cost, unpriced)
+    for (session_id,) in store.execute("SELECT id FROM sessions ORDER BY 1").fetchall():
+        loose = [edge.run_id for edge in edges(store, str(session_id)) if edge.spawn_source is None]
+        if not loose:
+            continue
+        # The bucket's own row is every loose run's thread at once, which is the sum the
+        # session's page shows against a row that has no children of the store's to point at.
+        totals = [one(store, THREAD, [str(session_id), run_id]) for run_id in loose]
+        cost, unpriced = sum(row[0] for row in totals), sum(row[1] for row in totals)
+        page = client.get(f"/session/{session_id}").text
+        bucket(page, f"unattached:{session_id}", store, str(session_id), cost, unpriced)
+        # Opening it hands its children the same basis: a run under the bucket draws its share
+        # of the session, like every other run, and not a share of the bucket that gathered it.
+        (whole,) = one(
+            store, "SELECT cost_usd FROM session_rollups WHERE session_id = ?", [str(session_id)]
+        )
+        opened = client.get(f"/session/{session_id}/unattached").text
+        for run_id, (spent, _) in zip(loose, totals, strict=True):
+            drawn = inside(opened, "data-tree", f"run:{run_id}", "class")[0].split()
+            assert meter(spent / whole if whole else None) in drawn, run_id
+        gathered = gathered or (str(session_id), loose)
+    # Both buckets are read above rather than one of them: they are built by different code
+    # over different rows, and only one of them can span threads.
+    assert standing and gathered is not None
+    # No recorded bucket holds a call our price table could not price, so the mark that says
+    # one does is planted: a thread under each bucket loses its costs, and the bucket has to
+    # both count what went unpriced and total what is left. The expectations read the planted
+    # store through the same sums, so the plant moves the page and the oracle together.
+    thread, source = str(standing[0][0]), str(standing[0][1])
+    loose_at, loose_runs = gathered
+    path = plant(
+        (
+            "UPDATE api_calls SET cost_usd = NULL WHERE session_id = ? AND source = ?",
+            [thread, source],
+        ),
+        (
+            "UPDATE api_calls SET cost_usd = NULL WHERE session_id = ? AND source = ?",
+            [loose_at, loose_runs[0]],
+        ),
+    )
+    planted = duckdb.connect(str(path), read_only=True)
+    with TestClient(build_app(path)) as marked:
+        cost, unpriced = one(planted, STANDING, [thread, source])
+        assert unpriced, "the plant leaves the unattributed bucket calls to mark"
+        at = f"/session/{thread}" if source == MAIN_SOURCE else f"/session/{thread}/run/{source}"
+        bucket(marked.get(at).text, f"unattributed:{source}", planted, thread, cost, unpriced)
+        totals = [one(planted, THREAD, [loose_at, run_id]) for run_id in loose_runs]
+        cost, unpriced = sum(row[0] for row in totals), sum(row[1] for row in totals)
+        assert unpriced, "and leaves the unattached bucket calls to mark"
+        page = marked.get(f"/session/{loose_at}").text
+        bucket(page, f"unattached:{loose_at}", planted, loose_at, cost, unpriced)
+    planted.close()
+
+
+def bucket(
+    page: str,
+    key: str,
+    store: duckdb.DuckDBPyConnection,
+    session_id: str,
+    cost: float,
+    unpriced: int,
+) -> None:
+    """One bucket row read against the totals it gathers."""
+    (whole,) = one(store, "SELECT cost_usd FROM session_rollups WHERE session_id = ?", [session_id])
+    row = fields(page, "data-tree", key)
+    assert row["cost_usd"] == money(cost), key
+    # The bar is that spend against the session, not against the bucket or its own children —
+    # and a session with nothing to take a share of draws every row of itself at nothing.
+    share = cost / whole if whole else None
+    assert meter(share) in inside(page, "data-tree", key, "class")[0].split(), key
+    # A `title` inside the row is the mark on a total our price table could not complete —
+    # there where some call under the bucket went unpriced, and nowhere else.
+    marks = inside(page, "data-tree", key, "title")
+    assert bool(marks) == bool(unpriced), key
+    assert not unpriced or str(unpriced) in marks[0], key
 
 
 def test_a_size_above_its_ceiling_is_refused(
