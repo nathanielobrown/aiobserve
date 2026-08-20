@@ -411,6 +411,49 @@ def test_a_children_log_pages_by_keyset_and_says_what_it_left(
     assert continued(TURN, "?log=1", 3) == f"{TURN}?log=1&after=3"
 
 
+def test_the_bucket_that_pages_in_memory_walks_the_same_way_the_query_does(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The unattached bucket's log pages by slicing, and owes what the keyset log owes.
+
+    Its runs arrive with the session's, which every level of the tree needs anyway, so this one
+    level cuts a list it already holds instead of asking the store for a page. Read on the one
+    recorded bucket that holds more than one run: the pages have to concatenate to the level,
+    the "+N more" has to count what was left, and the cursor has to resume on the row it
+    stopped at rather than repeat or skip one.
+    """
+    sessions = [str(row[0]) for row in store.execute("SELECT id FROM sessions").fetchall()]
+    paged = [
+        (f"/session/{session_id}/unattached", page.text)
+        for session_id in sessions
+        if (page := client.get(f"/session/{session_id}/unattached")).status_code == 200
+        and len(values(page.text, "data-child")) > 1
+    ]
+    assert paged, "the corpus has a bucket holding more than one unattached run"
+    at, whole = paged[0]
+    children = values(whole, "data-child")
+    first = client.get(at, params={"log": 1}).text
+    assert values(first, "data-child") == children[:1]
+    assert fields(first, "data-log", "runs")["cut"] == str(len(children) - 1)
+    # Walking to the end lands on every run exactly once, in the level's own order...
+    walked: list[str] = []
+    visited: list[str] = []
+    following: str | None = f"{at}?log=1"
+    while following is not None and len(visited) <= len(children):
+        visited.append(following)
+        page = client.get(following).text
+        walked += values(page, "data-child")
+        onward = inside(page, "data-page", "runs", "href")
+        following = onward[0] if onward else None
+    assert walked == children
+    # ...in one page each and not one page more. A last page that still offered a way on would
+    # send the reader to an empty page, or round the same one again.
+    assert len(visited) == len(children)
+    assert not inside(
+        client.get(at, params={"log": len(children)}).text, "data-page", "runs", "href"
+    )
+
+
 def test_a_page_asked_for_the_first_cursor_is_the_page_with_no_cursor_at_all(
     client: TestClient,
 ) -> None:
