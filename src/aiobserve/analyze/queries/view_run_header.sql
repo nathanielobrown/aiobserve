@@ -30,7 +30,6 @@ SELECT
     c.source AS spawn_source,
     st.id AS spawn_turn_id,
     c.id AS spawn_call_id,
-    c."index" AS spawn_call_index,
     (SELECT count(*) FROM live_turns t
         WHERE t.session_id = a.session_id AND t.source = a.id) AS turns,
     (SELECT count(*) FROM live_api_calls k

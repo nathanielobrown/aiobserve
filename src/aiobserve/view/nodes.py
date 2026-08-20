@@ -29,10 +29,6 @@ DECADES = 3
 UNATTRIBUTED_LABEL = "calls under no turn of this thread"
 UNATTACHED_LABEL = "runs attached to no turn"
 
-# Where a hoisted run renders: after the api call that spawned it, wherever that call sits.
-# The tie says which, because the run is a child of the turn rather than of the call.
-TIE = "↖ from api call {index}"
-
 
 class Shape(StrEnum):
     """What the pane's children log lists, which decides the macro a row renders through.
@@ -152,8 +148,6 @@ class Node:
     unpriced_api_calls: int
     # Its share of what the session spent, or None when there is no share to draw.
     share: float | None
-    # Where a hoisted run sits, or None for a node that is where it was recorded.
-    tie: str | None = None
     # Whether the label is the model's words rather than the session's, which is what the
     # glyph beside it marks. Three kinds can be: a session, a turn and a run.
     enriched: bool = False
@@ -269,11 +263,6 @@ def run_node(session_id: str, row: Row, whole: float, described: str | None) -> 
         cost_usd=cost,
         unpriced_api_calls=row["unpriced_api_calls"],
         share=_share(cost, whole),
-        tie=(
-            TIE.format(index=row["spawn_call_index"])
-            if row["spawn_call_index"] is not None
-            else None
-        ),
         enriched=described is not None,
     )
 

@@ -151,9 +151,9 @@ def enriched_plant(enriched_db: Path, tmp_path: Path) -> Planter:
 
 
 # What `view_runs` joins, in the expectation's own SQL: a run against the api call that spawned
-# it, the turn that call answers *on the call's own thread*, and where the call sits in it.
+# it, and the turn that call answers *on the call's own thread*.
 SPAWNS = (
-    'SELECT a.id, c.source, st.id, c.id, c."index" FROM live_agent_runs a'
+    "SELECT a.id, c.source, st.id, c.id FROM live_agent_runs a"
     " LEFT JOIN live_tool_calls tc ON tc.session_id = a.session_id AND tc.id = a.tool_use_id"
     "  AND tc.source <> a.id"
     " LEFT JOIN live_api_calls c ON c.session_id = a.session_id AND c.source = tc.source"
