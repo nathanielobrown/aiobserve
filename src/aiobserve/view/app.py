@@ -915,6 +915,13 @@ def build_app(db_path: Path) -> FastAPI:
                             f"/fragment/prompt/{session_id}/{source}/{turn_id}",
                             detail,
                         ),
+                        detail_of(
+                            "command_args",
+                            rows[0]["command_args"],
+                            rows[0]["command_args_chars"],
+                            f"/fragment/args/{session_id}/{source}/{turn_id}",
+                            detail,
+                        ),
                     )
                     if item is not None
                 ],
@@ -1681,6 +1688,16 @@ def build_app(db_path: Path) -> FastAPI:
         return whole(
             request,
             Value.TURN_PROMPT,
+            "value",
+            {"session_id": session_id, "source": source, "turn_id": turn_id},
+        )
+
+    @app.get("/fragment/args/{session_id}/{source}/{turn_id}")
+    def turn_command_args(request: Request, session_id: str, source: str, turn_id: str) -> Response:
+        """What followed the slash command one turn ran, whole."""
+        return whole(
+            request,
+            Value.TURN_COMMAND_ARGS,
             "value",
             {"session_id": session_id, "source": source, "turn_id": turn_id},
         )

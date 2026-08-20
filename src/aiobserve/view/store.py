@@ -102,9 +102,11 @@ class Value(StrEnum):
     TOOL_INPUT = "view_tool_input"
     TOOL_RESULT = "view_tool_result"
     RECORD = "view_record"
-    # What a turn was asked, and what an agent run was briefed with. Both are a pane's one
-    # value, cut in the node's header query and fetched whole here.
+    # What a turn was asked, what followed the command a slash turn ran, and what an agent
+    # run was briefed with. Each is a value a pane previews, cut in the node's header query
+    # and fetched whole here.
     TURN_PROMPT = "view_turn_prompt"
+    TURN_COMMAND_ARGS = "view_turn_command_args"
     RUN_BRIEF = "view_run_brief"
 
 

@@ -60,8 +60,9 @@ LABELS: dict[str, str] = {
     "incomplete": "Incomplete",
     # A replayed turn is one a resume re-read, not one the model answered again.
     "replayed": "Replayed",
-    "command_name": "Command",
-    "command_args": "Arguments",
+    # The command a slash turn ran needs no label — a pane leads with it, in the form it was
+    # typed — but what followed it is previewed like any other value, under this heading.
+    "command_args": "Command arguments",
     # What a compaction was, when it ran, and what it cost the thread's context.
     "trigger": "Trigger",
     "timestamp": "At",

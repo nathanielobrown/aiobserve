@@ -217,6 +217,11 @@ li.node.s10 > a { background-size: 100% 3px, 100% 3px; }
   margin: var(--space-2) 0; }
 .facts dt { color: var(--dim); font-size: var(--type-label); }
 .facts dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+/* The command a slash turn ran, over the facts it made: the one line of a turn's pane a
+   reader scans for, in the accent and the monospace the command was typed in. */
+.command { margin: var(--space-2) 0; }
+.command span { color: var(--mark); font-family: ui-monospace, SFMono-Regular, monospace;
+  font-weight: 600; }
 /* One of the node's own values, cut to the pane's width. Its name reads as a label and not
    as a heading — the pane's one heading is the node — and the value itself wraps: the reader
    opened it to read it, and a tool input is not a column of a table. */

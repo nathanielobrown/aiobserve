@@ -647,6 +647,14 @@ QUERIES: dict[str, Query] = {
             "log_chars": LOG_CHARS_PARAM,
         },
     ),
+    "view_turn_command_args": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            "source": SOURCE,
+            "turn_id": TURN_ID,
+        },
+    ),
     "view_turn_header": Query(
         scope=Scope.KEYED,
         params={
