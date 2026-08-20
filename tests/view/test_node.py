@@ -9,6 +9,7 @@ The node of each kind is read from the store rather than pinned, so a re-recorde
 the selection instead of reddening the tier.
 """
 
+import json
 import re
 
 import duckdb
@@ -734,6 +735,50 @@ def test_a_tool_row_says_what_the_tool_was_asked(
     # And the tool with no field the rule knows shows the input as stored.
     assert rows[tools[3]]["input_head"] == '{"todos": [{"content": "write the test"}]}'
     assert "command" not in rows[tools[3]]
+    # A directory whose name merely starts with the project's reads absolute: `aiobserve2` is
+    # not inside `aiobserve`, and without the separator the guard carries it would relativise
+    # to `/src/x.py` — a path that looks like it sits at the repository root. Real: 2,053 of
+    # the 67,252 `file_path` rows in the recorded store share the project's prefix from
+    # outside it.
+    sibling = f"{project}2/src/x.py"
+    guarded = plant(
+        ("UPDATE sessions SET project_dir = ? WHERE id = ?", [project, session_id]),
+        (
+            "UPDATE tool_calls SET name = ?, input = ? WHERE id = ?",
+            ["Read", f'{{"file_path": "{sibling}"}}', tools[0]],
+        ),
+        # A call that carries every field the rule reads. The path wins the head, and the
+        # command stays off the row: the line under a head is what the head describes, and
+        # this head describes a file.
+        (
+            "UPDATE tool_calls SET name = ?, input = ? WHERE id = ?",
+            [
+                "Bash",
+                json.dumps(
+                    {
+                        "file_path": f"{project}/notes.md",
+                        "description": "Read the notes",
+                        "command": "cat notes.md",
+                    }
+                ),
+                tools[1],
+            ],
+        ),
+        # And a command with nothing saying what it was for. The head falls back to the input
+        # as stored, which already holds the command, so the row does not print it twice.
+        (
+            "UPDATE tool_calls SET name = ?, input = ? WHERE id = ?",
+            ["Bash", '{"command": "ls"}', tools[2]],
+        ),
+    )
+    with TestClient(build_app(guarded)) as planted:
+        edges = planted.get(f"/session/{session_id}/call/{source}/{call_id}").text
+    beside = {tool_id: fields(edges, "data-child", f"tool:{tool_id}") for tool_id in tools}
+    assert beside[tools[0]]["input_head"] == sibling
+    assert beside[tools[1]]["input_head"] == "notes.md"
+    assert "command" not in beside[tools[1]]
+    assert beside[tools[2]]["input_head"] == '{"command": "ls"}'
+    assert "command" not in beside[tools[2]]
     # A session whose project the store never recorded has no frame to read a path against,
     # so the path reads absolute rather than against nothing.
     homeless = plant(
