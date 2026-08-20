@@ -16,6 +16,7 @@ table written out — every cell in full, including the ones a preset passes thr
 table edit has to be an edit here before it can pass.
 """
 
+import re
 from collections import Counter
 from collections.abc import Callable, Sequence
 from html import unescape
@@ -258,6 +259,35 @@ def test_every_link_that_swaps_the_pane_lands_the_pane_in_the_pane(
     # The two ids the swap aims at, each written exactly once.
     assert html.count('id="pane"') == 1
     assert html.count('id="tree-rows"') == 1
+
+
+def test_the_tree_keeps_its_place_because_the_scroller_is_not_what_swaps(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """What holds a reader's place in a long tree when a click replaces its rows.
+
+    Nothing in the markup says "keep the scroll offset" — the tree keeps it because the
+    element carrying the scrollbar is `#tree`, and the swap replaces `#tree-rows` inside it.
+    An untouched scroller keeps its `scrollTop`, which is why the design could drop
+    `hx-preserve`. Move `overflow` down onto the rows and every click sends the reader back to
+    the top of the session, and no assertion on served HTML would notice.
+
+    So the structure is what gets pinned: the rows the swap replaces are nested inside the
+    element the stylesheet scrolls, and nothing scrolls below it.
+    """
+    page = client.get(url(open_turn(store))).text
+    # The element the swap replaces sits inside the one the tree is scrolled by.
+    assert "tree-rows" in inside(page, "id", "tree", "id")
+    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.S)
+    scrolls = {
+        selector.strip()
+        for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", style)
+        if "overflow:" in body
+    }
+    # One of them scrolls, and it is the one the swap leaves alone. The two selectors that
+    # could take the scrollbar off it are the rows themselves, under either name.
+    assert "#tree" in scrolls
+    assert not [rule for rule in scrolls if "#tree-rows" in rule or "#tree .rows" in rule]
 
 
 def test_a_run_hoists_after_the_call_that_spawned_it_and_says_which(
