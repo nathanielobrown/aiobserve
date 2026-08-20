@@ -107,6 +107,11 @@ class Ref:
         return f"{self.kind}:{self.node_id}"
 
 
+# Where a node's body alone is served from, written once: the routes in `view/app.py` answer
+# what `Node.expansion` mints.
+BODY_URL = "/fragment/body"
+
+
 @dataclass(frozen=True)
 class Node:
     """One node of a session, wherever it is read — a tree row, a crumb, or the pane itself."""
@@ -153,6 +158,17 @@ class Node:
         if self.kind is Kind.RUN:
             return f"/session/{self.session_id}/run/{self.node_id}"
         return f"/session/{self.session_id}/{self.kind}/{self.source}/{self.node_id}"
+
+    @property
+    def expansion(self) -> str:
+        """Where the node's body alone is fetched — the mount a log row opens it through.
+
+        The same node, read without the page around it: an expansion is the body and a count of
+        what is under it, so a reader can look inside a child without leaving the parent.
+        """
+        if self.kind is Kind.RUN:
+            return f"{BODY_URL}/{Kind.RUN}/{self.session_id}/{self.node_id}"
+        return f"{BODY_URL}/{self.kind}/{self.session_id}/{self.source}/{self.node_id}"
 
     @property
     def meter(self) -> str:

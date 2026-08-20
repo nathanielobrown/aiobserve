@@ -18,6 +18,7 @@ from aiobserve.view import bounds
 from aiobserve.view.app import build_app
 from aiobserve.view.format import ELLIPSIS
 from aiobserve.view.labels import LABELS
+from aiobserve.view.nodes import BODY_URL
 from tests.conftest import ANCESTOR, DENSE_TURN, MAIN, SPINE
 from tests.view.conftest import MISSING, Planter, fields, inside, one, values
 
@@ -156,6 +157,67 @@ def test_a_turn_node_serves_the_turn_the_store_holds(
     assert shown["tool_calls"] == str(tools)
     # And the log under the pane lists those api calls, one row each.
     assert len(values(response.text, "data-child")) == calls
+
+
+# What column of a node's own facts counts the children its expansion links to instead of
+# listing. A kind absent from here has none — a tool call ends the tree.
+CHILDREN = {"turn": "api_calls", "call": "tool_calls", "run": "turns"}
+
+
+@pytest.mark.parametrize("named", ["client", "enriched_client"])
+def test_a_log_row_expands_to_the_body_its_own_page_wraps(
+    request: pytest.FixtureRequest, store: duckdb.DuckDBPyConnection, named: str
+) -> None:
+    """A children-log row opens the child's body alone: one body, two mounts.
+
+    The full view wraps that body with the crumbs above it, the log under it and prev/next
+    beside it; the expansion adds none of them, and the child's own children are a count and a
+    link rather than a second accordion. Swept over every kind of page so every shape of log
+    row is opened, because an expansion is built from the child's kind, not the parent's.
+
+    Run over the described store as well as the plain one: a label is the model's words where a
+    pass reached the node, and a body that read enrichment differently from the page wrapping
+    it would tell a reader two things about one node.
+    """
+    client: TestClient = request.getfixturevalue(named)
+    opened = set()
+    # Every kind's own page, plus the corpus's densest session: the first session by id holds
+    # no turns of its own, so without it no turn expansion is ever opened.
+    urls = [node_url(store, kind) for kind in KINDS] + [f"/session/{ANCESTOR}"]
+    for url in urls:
+        page = client.get(url).text
+        for key in values(page, "data-child"):
+            child, _, _ = key.partition(":")
+            # The mount rides the row rather than carrying a label of its own, so it is the
+            # fetch under the body URL among the row's two.
+            (mount,) = [
+                url for url in inside(page, "data-child", key, "hx-get") if url.startswith(BODY_URL)
+            ]
+            served = client.get(mount)
+            assert served.status_code == 200, mount
+            # The body is the one the child's own page wraps, fact for fact.
+            (own,) = inside(page, "data-child", key, "href")
+            assert fields(served.text, "data-body", child) == fields(
+                client.get(own).text, "data-body", child
+            ), mount
+            # And it is only the body: everything the full view wraps it in is absent.
+            for wrapper in ("data-crumb", "data-tree", "data-walk", "data-log", "data-detail"):
+                assert not values(served.text, wrapper), (mount, wrapper)
+            # What is under the child is a count and the way to its own page, and the count is
+            # the one the body itself reports.
+            (link,) = inside(served.text, "data-children", child, "href")
+            assert link == own, mount
+            counted = fields(served.text, "data-children", child)
+            if child in CHILDREN:
+                assert (
+                    counted["children"] == fields(served.text, "data-body", child)[CHILDREN[child]]
+                ), mount
+            else:
+                assert "children" not in counted, mount
+            opened.add(child)
+    # Every kind a log lists was opened: a shape the sweep never reached is a mount nothing
+    # proved serves.
+    assert opened == {"turn", "call", "tool", "run"}
 
 
 def test_the_same_node_url_serves_the_same_bytes_cold_and_warm(client: TestClient) -> None:

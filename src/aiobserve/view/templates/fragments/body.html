@@ -1,0 +1,20 @@
+{# One node's body alone, for an expansion opened in someone else's children log: the same
+   section a node page wraps, with a count and a link where the page has the log itself. The
+   nesting stops here on purpose — an accordion of accordions is a page, and the node already
+   has one. #}
+{% import "_node_body.html" as body %}
+<div class="fragment">
+  {{ body.pane(node, row) }}
+  <p class="children" data-children="{{ node.kind }}">
+    <a href="{{ node.url }}">
+      {%- if children is not none %}<span data-field="children">{{ children | count }}</span>
+      {{ shape }}{% else %}its own page{% endif %}</a>
+  </p>
+  {# What the fragment ran, beside what it rendered — the same provenance a page's footer
+     carries, on the element that was swapped in. #}
+  <ul class="citations" data-citations="{{ citations | length }}">
+    {% for name, ran in citations.items() %}
+    <li><a data-field="{{ name }}" href="{{ ran.url }}"><code>{{ ran.line }}</code></a></li>
+    {% endfor %}
+  </ul>
+</div>
