@@ -264,10 +264,12 @@ class Node:
     def title(self) -> str:
         """The node's name at the head of its own pane, where nothing repeats it.
 
-        The widest of the three, because a pane heads one node. Every header query cuts
-        its strings here, and a pane names its node from the header it read rather than
-        from the tree row it stands on (`view/app.py:TITLED`) — the tree cuts at a row's
-        width, which would head a turn with a third of the prompt it is about.
+        The widest of the three, because a pane heads one node. A header query returns its
+        strings at this width or wider — a tool header's input comes back at a preview's,
+        because the same pane previews it — so a name is cut here and marked where the query
+        left more behind. A pane names its node from the header it read rather than from the
+        tree row it stands on (`view/app.py:TITLED`) — the tree cuts at a row's width, which
+        would head a turn with a third of the prompt it is about.
         """
         return cut(self.words, queries.HEADER_CHARS)
 
