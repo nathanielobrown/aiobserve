@@ -172,18 +172,22 @@ def test_a_control_says_what_the_neighbour_is_and_what_it_was(
 ) -> None:
     """A control names the neighbour's kind and its label — the same label its tree row carries.
 
-    A reader deciding whether to step has the node's own words, not the word "next".
+    A reader deciding whether to step has the node's own words, not the word "next". The kind
+    is printed rather than left in an attribute: the walk crosses levels — a turn's next is its
+    first api call — and a reader who cannot see that has no warning before the step.
     """
     walked = follow(client, f"/session/{SPINE}", "next")
     step = walked[2]
     for control, neighbour in (("previous", walked[1]), ("next", walked[3])):
         (key,) = inside(step.html, "data-walk", control, "data-node")
         assert key == neighbour.key
-        # The kind labels the control's one field, and what it says is the label the
-        # neighbour's own tree row carries — one node, one name, wherever it is read.
+        # Both halves are text on the page: what the neighbour is, and what it is called. The
+        # label is the one the neighbour's own tree row carries — one node, one name, wherever
+        # it is read.
         kind, _, _ = neighbour.key.partition(":")
         assert fields(step.html, "data-walk", control) == {
-            kind: fields(neighbour.html, "data-selected", neighbour.key)["label"]
+            "kind": kind,
+            "label": fields(neighbour.html, "data-selected", neighbour.key)["label"],
         }
 
 
