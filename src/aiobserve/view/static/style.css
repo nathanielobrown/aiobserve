@@ -93,8 +93,17 @@ td.title .secondary { display: -webkit-box; -webkit-box-orient: vertical;
    right. The tree is one flat list — a click swaps the whole of it out of band — so a row's
    place in the hierarchy is drawn from `data-depth` rather than from nesting. The ladder
    stops at the depths a chain reaches today; it grows with the kinds that get pages. */
-#browser { display: grid; grid-template-columns: minmax(16rem, 24rem) minmax(0, 1fr);
-  gap: var(--space-4); align-items: start; }
+#browser { display: grid;
+  grid-template-columns: var(--tree-width, 24rem) auto minmax(0, 1fr);
+  column-gap: var(--space-3); align-items: start; }
+/* The handle between the two columns. It carries the width the reader dragged to and nothing
+   else does: `static/tree-width.js` writes `--tree-width` above, and the bounds it may take
+   are that file's, so a drag has one stop rather than a clamp here and a limit there. Held
+   beside the tree's own scroller, the full height of it, so there is something to grab
+   wherever the reader's eye already is. */
+#tree-grip { position: sticky; top: var(--space-2); height: calc(100vh - 4rem); width: 5px;
+  border-radius: 3px; background: var(--line); cursor: col-resize; }
+#tree-grip:hover, #tree-grip:focus-visible { background: var(--mark); }
 /* The tree scrolls on its own, so a deep session scrolls its rows without losing the pane
    beside them. Monospaced at the label step, because a name's cut and the numbers after it
    line up down the column: the tree is scanned rather than read. */
@@ -148,6 +157,7 @@ li.more > button:hover { background-color: color-mix(in srgb, var(--mark) 12%, t
    and is scrolled inside itself, so the node stays in reach. */
 @media (max-width: 900px) {
   #browser { display: block; }
+  #tree-grip { display: none; }
   #tree { position: static; max-height: 50vh; margin-bottom: var(--space-3); }
 }
 

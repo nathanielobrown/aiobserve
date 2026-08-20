@@ -359,6 +359,41 @@ def test_the_tree_keeps_its_place_because_the_scroller_is_not_what_swaps(
     assert not [rule for rule in scrolls if "#tree-rows" in rule or "#tree .rows" in rule]
 
 
+def test_the_tree_is_widened_by_a_handle_and_the_width_outlives_the_page(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A handle beside the tree drags it wider, and the browser remembers how wide.
+
+    Every other thing a reader sets rides the URL. A width cannot: it belongs to the screen
+    they are reading on and not to the node they linked to, so a pasted link would carry
+    someone else's column. What this pins is the chain that lets a script set it instead —
+    a handle in the markup, a grid whose tree column is one custom property, and a script
+    served from this app, because `app.CSP` forbids an inline one and a page load would
+    forget a width that CSS alone had kept.
+    """
+    page = client.get(url(open_turn(store))).text
+    # The handle sits between the two columns it divides, and says what it is to a reader who
+    # cannot see it.
+    assert [at for at in values(page, "id") if at in {"tree", "tree-grip", "pane"}] == [
+        "tree",
+        "tree-grip",
+        "pane",
+    ]
+    grip = re.findall(r"<div id=\"tree-grip\"[^>]*>", page)
+    assert len(grip) == 1 and 'role="separator"' in grip[0] and 'tabindex="0"' in grip[0]
+    # The tree's column is one custom property, which is the whole of what the script writes:
+    # a width the stylesheet fixed some other way is a handle that drags nothing.
+    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.S)
+    (columns,) = re.findall(r"#browser\s*\{[^}]*grid-template-columns:([^;]*);", style)
+    assert "var(--tree-width" in columns
+    # And the script that writes it is a file this app serves, keeping the width where a page
+    # load cannot reach it.
+    (src,) = [asset for asset in values(page, "src") if "tree-width" in asset]
+    served = client.get(src)
+    assert served.status_code == 200
+    assert "--tree-width" in served.text and "localStorage" in served.text
+
+
 def test_a_run_hoists_after_the_call_that_spawned_it(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:

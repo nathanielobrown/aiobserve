@@ -14,6 +14,8 @@
      reads private transcripts on a laptop that may be offline, and the CSP that keeps a
      transcript from calling out would refuse a remote script anyway. #}
   <script src="/static/htmx-2.0.6.min.js" defer></script>
+  {# What a page needs beyond htmx. Only the node page has any, and only for its tree. #}
+  {% block scripts %}{% endblock %}
 </head>
 <body>
   <nav id="masthead"><a href="/">aiobserve</a></nav>
