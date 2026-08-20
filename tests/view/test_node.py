@@ -270,7 +270,7 @@ def test_the_same_node_url_serves_the_same_bytes_cold_and_warm(client: TestClien
 
 
 def test_a_pane_previews_a_fat_value_and_offers_the_rest_as_its_own_fetch(
-    plant: Planter, store: duckdb.DuckDBPyConnection
+    client: TestClient, plant: Planter, store: duckdb.DuckDBPyConnection
 ) -> None:
     """A value past the pane's width is cut, counted, and fetched whole from its own URL.
 
@@ -304,6 +304,11 @@ def test_a_pane_previews_a_fat_value_and_offers_the_rest_as_its_own_fetch(
         # A reader who asks for less gets less, which is what makes the width a knob.
         narrow = grown.get(TURN, params={"detail": 10}).text
         assert fields(narrow, "data-detail", "prompt")["prompt"] == prompt[:10] + ELLIPSIS
+    # The recorded prompt at that same URL fits, and a value that fits offers nothing: no count
+    # of what is left, and no fetch of a rest that is not there.
+    fits = client.get(TURN).text
+    assert "cut" not in fields(fits, "data-detail", "prompt")
+    assert not inside(fits, "data-detail", "prompt", "data-whole")
 
 
 def test_every_value_a_pane_previews_is_fetchable_whole_from_its_own_url(

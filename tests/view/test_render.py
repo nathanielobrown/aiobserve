@@ -7,6 +7,7 @@ two escaping layers the design names; the outer one is the planted-sentinel rout
 """
 
 from aiobserve.view import render
+from tests.view.conftest import plain
 
 
 def test_html_in_markdown_source_arrives_as_text() -> None:
@@ -67,6 +68,9 @@ def test_only_an_http_url_becomes_a_link() -> None:
         assert "href" not in shown
         assert "<script>" not in shown
         assert url.split(":")[0] in shown
+    # What the reader sees is the URL itself: a link whose text says something else is one
+    # they cannot check before following it.
+    assert plain(render.link("https://example.test/pr/1")) == "https://example.test/pr/1"
     # A quote in a URL cannot close the attribute it lands in.
     assert 'href="https://example.test/?q=&#34;' in render.link('https://example.test/?q="')
 
