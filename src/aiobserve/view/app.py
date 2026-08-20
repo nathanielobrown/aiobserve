@@ -20,6 +20,7 @@ import datetime as dt
 import socket
 import webbrowser
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from math import ceil
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -222,6 +223,26 @@ BODIES: dict[str, Body] = {
         Shape.NONE,
         None,
         described=False,
+    ),
+}
+
+
+# How a pane names the node it is about, per kind, from the header its own route read. The
+# tree built the row the pane stands on and cut its words where a tree row ends, which is a
+# third of what a title has to spend (`nodes.Node.title`) — so a page that took the tree's
+# word for it would head a turn with the first line of the prompt and stop. The kinds absent
+# are the ones no cut reaches: a session's node is read from its own header already, a
+# compaction is named by its trigger, and a bucket is named by the viewer.
+TITLED: dict[str, Callable[[str, str, Row, tree.Corpus], nodes.Node]] = {
+    Kind.TURN: lambda session_id, source, row, corpus: nodes.turn_node(
+        session_id, source, row, corpus.whole, corpus.turn_text(source, row["turn_id"])
+    ),
+    Kind.CALL: lambda session_id, source, row, corpus: nodes.call_node(
+        session_id, source, row, corpus.whole
+    ),
+    Kind.TOOL: lambda session_id, source, row, _: nodes.tool_node(session_id, source, row),
+    Kind.RUN: lambda session_id, _, row, corpus: nodes.run_node(
+        session_id, row, corpus.whole, corpus.run_text(row["run_id"])
     ),
 }
 
@@ -685,6 +706,13 @@ def build_app(db_path: Path) -> FastAPI:
         if page > 1 and not seen.rows:
             raise HTTPException(404, "This node's children do not run to that page.")
         selection = built.chain[-1]
+        # Named from its own header rather than from the tree row it stands on (`TITLED`).
+        # The words alone: what the node cost and what share of the session that is are the
+        # tree's to work out, against the whole session rather than against one header.
+        if (title := TITLED.get(selection.kind)) is not None:
+            selection = replace(
+                selection, words=title(session_id, source, seen.header, corpus).words
+            )
         ran: tree.Ran = [
             (Page.SESSION_HEADER, bound),
             (Page.RUNS, runs_bound),
