@@ -26,14 +26,15 @@ class Bound(NamedTuple):
 # for. Each is its own ceiling — `?kin=`, `?log=` and `?detail=` only go down — because the
 # response's bound is arithmetic over them at the default, so there is no headroom to spend.
 # How many children one expanded level of the tree shows before a tail row says how many it
-# left; how many rows the pane's children log lists; and how much of the one value the pane
-# is about it shows before offering the rest as its own fetch.
+# left; how many rows one numbered page of the pane's children log lists; and how much of the
+# one value the pane is about it shows before offering the rest as its own fetch.
 #
-# The window on a level, not a limit on it: the tail row fetches whatever the window left out
-# and stands the rows in its own place, so a reader reaches the rest of a level without
-# leaving the page. That fetch is bound by the level, not by this — which is why the node
-# page has a ceiling of its own (`tests/view/test_bounds.py`) rather than sharing the one
-# every other page is weighed against.
+# The tree's is a window on a level rather than a limit on it: the tail row fetches whatever
+# the window left out and stands the rows in its own place, so a reader reaches the rest of a
+# level without leaving the page. That fetch is bound by the level, not by this — which is why
+# the node page has a ceiling of its own (`tests/view/test_bounds.py`) rather than sharing the
+# one every other page is weighed against. The log's is a page: it says which of how many it
+# is and offers the ones either side, so a level of a hundred is read in one go and not nine.
 KIN = Bound(default=50, ceiling=50)
 LOG = Bound(default=queries.LOG_ROWS, ceiling=queries.LOG_ROWS)
 DETAIL = Bound(default=queries.DETAIL_CHARS, ceiling=queries.DETAIL_CHARS)

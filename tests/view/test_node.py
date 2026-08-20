@@ -13,9 +13,8 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from aiobserve.analyze import queries
 from aiobserve.view import bounds
-from aiobserve.view.app import build_app, continued
+from aiobserve.view.app import build_app, numbered
 from aiobserve.view.format import ELLIPSIS
 from aiobserve.view.labels import LABELS
 from aiobserve.view.nodes import BODY_URL
@@ -375,99 +374,132 @@ def test_every_value_a_pane_previews_is_fetchable_whole_from_its_own_url(
     assert LABELS["description"] == "Task brief"
 
 
-def test_a_children_log_pages_by_keyset_and_says_what_it_left(
+def walked_log(client: TestClient, at: str, held: int) -> list[str]:
+    """Every child a log lists, gathered by following its pager from the page given.
+
+    Bounded by the level's own size: a pager that offered a way on from its last page would
+    otherwise walk for as long as the store answers.
+    """
+    found: list[str] = []
+    following: str | None = at
+    for _ in range(held + 1):
+        if following is None:
+            return found
+        page = client.get(following).text
+        found += values(page, "data-child")
+        onward = inside(page, "data-page", "next", "href")
+        following = onward[0] if onward else None
+    raise AssertionError(f"{at}: the pager never reached a last page")
+
+
+def test_a_children_log_pages_by_number_and_counts_the_whole_level(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """The log is one page of children, and "+N more" resumes at the last row rather than an
-    offset.
+    """The log is one numbered page of a level, and the heading counts the level.
 
     Driven below the corpus's fan-out with `?log=`, because no recorded turn has more children
-    than the production page. What is read is that the second page starts where the first
-    stopped and that the two together are the level — a page built on an offset would repeat or
-    skip a row when the level is read twice.
+    than the production page. What is read is that the pages concatenate to the level exactly
+    once, that each says which of how many it is, and that the count above them is the level's
+    own — a heading counting the rows in front of the reader says a turn of four calls has one.
     """
     whole = client.get(TURN).text
     children = values(whole, "data-child")
     assert len(children) > 2, "the log has to have something to page"
-    first = client.get(TURN, params={"log": 1})
-    assert values(first.text, "data-child") == children[:1]
-    assert fields(first.text, "data-log", "calls")["cut"] == str(len(children) - 1)
-    # The link says where to resume, by the cursor of the row it stopped on and not by a count.
-    (nxt,) = inside(first.text, "data-page", "calls", "href")
-    assert "after=" in nxt and "offset" not in nxt.lower()
-    assert values(client.get(nxt).text, "data-child") == children[1:2]
-    # Walking the log to its end lands on every child exactly once, in the level's own order.
-    walked: list[str] = []
-    at: str | None = f"{TURN}?log=1"
-    while at is not None:
-        page = client.get(at).text
-        walked += values(page, "data-child")
-        following = inside(page, "data-page", "calls", "href")
-        at = following[0] if following else None
-    assert walked == children
-    # And a page past the last one is nothing, rather than an empty log that reads as a node
-    # with no children.
-    assert client.get(TURN, params={"after": 10_000}).status_code == 404
-    # Every page above turned the log down with `?log=`, and it had to: the corpus's fullest
-    # level is five children against a production log of twelve, so no recorded node overflows
-    # and no page mints this link with the cursor as its *first* query parameter. That arm is
-    # read on the helper the template links with — a `&` where a `?` belongs is a 404.
-    assert continued(TURN, "", 3) == f"{TURN}?after=3"
-    assert continued(TURN, "?log=1", 3) == f"{TURN}?log=1&after=3"
+    # One child to a page: the first page holds the first child...
+    first = client.get(TURN, params={"log": 1}).text
+    assert values(first, "data-child") == children[:1]
+    # ...under a heading counting the whole level rather than the row beneath it...
+    assert fields(first, "data-log", "calls")["children"] == str(len(children))
+    # ...and a pager saying which page of how many this is.
+    assert fields(first, "data-pager", "calls")["place"] == f"Page 1 of {len(children)}"
+    # The first page offers no way back, and its way on is numbered rather than a cursor.
+    assert not inside(first, "data-page", "previous", "href")
+    (onward,) = inside(first, "data-page", "next", "href")
+    assert "page=2" in onward and "after=" not in onward
+    second = client.get(onward).text
+    assert values(second, "data-child") == children[1:2]
+    assert fields(second, "data-pager", "calls")["place"] == f"Page 2 of {len(children)}"
+    # The way back from the second page lands on the first, which is the page with no number.
+    (back,) = inside(second, "data-page", "previous", "href")
+    assert back == f"{TURN}?log=1"
+    assert values(client.get(back).text, "data-child") == children[:1]
+    # Walking forward lands on every child exactly once, in the level's own order.
+    assert walked_log(client, f"{TURN}?log=1", len(children)) == children
+
+
+def test_a_level_divides_into_the_pages_it_has_and_no_empty_one(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The page count is the level's own arithmetic, at any size a URL asks for.
+
+    Read at three sizes against one recorded level: one that divides it, one that leaves a
+    remainder, and one that holds the whole thing. The arithmetic is where a paginator goes
+    wrong, and the failure is quiet — an off-by-one mints a last page with nothing on it.
+    """
+    children = values(client.get(TURN).text, "data-child")
+    held = len(children)
+    for size, count in ((1, held), (held - 1, 2), (held, 1)):
+        for number in range(1, count + 1):
+            page = client.get(TURN, params={"log": size, "page": number}).text
+            assert values(page, "data-child") == children[(number - 1) * size : number * size]
+            # Every page of the level says the same total, and its own place in it...
+            assert fields(page, "data-log", "calls")["children"] == str(held)
+            if count > 1:
+                assert fields(page, "data-pager", "calls")["place"] == f"Page {number} of {count}"
+        # ...and one page past the last is nothing at all, rather than an empty log that reads
+        # as a node with no children.
+        assert client.get(TURN, params={"log": size, "page": count + 1}).status_code == 404
+    # A level that fits on one page carries no pager: there is no page to go to.
+    assert "data-pager" not in client.get(TURN, params={"log": held}).text
+    # And a page number below the first is a miss rather than a level read backwards.
+    assert client.get(TURN, params={"page": 0}).status_code == 404
 
 
 def test_the_bucket_that_pages_in_memory_walks_the_same_way_the_query_does(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """The unattached bucket's log pages by slicing, and owes what the keyset log owes.
+    """The unattached bucket's log pages by slicing, and owes what the queried log owes.
 
     Its runs arrive with the session's, which every level of the tree needs anyway, so this one
     level cuts a list it already holds instead of asking the store for a page. Read on the one
     recorded bucket that holds more than one run: the pages have to concatenate to the level,
-    the "+N more" has to count what was left, and the cursor has to resume on the row it
-    stopped at rather than repeat or skip one.
+    the heading has to count the level rather than the page, and the last page has to be last.
     """
     sessions = [str(row[0]) for row in store.execute("SELECT id FROM sessions").fetchall()]
-    paged = [
+    bucketed = [
         (f"/session/{session_id}/unattached", page.text)
         for session_id in sessions
         if (page := client.get(f"/session/{session_id}/unattached")).status_code == 200
         and len(values(page.text, "data-child")) > 1
     ]
-    assert paged, "the corpus has a bucket holding more than one unattached run"
-    at, whole = paged[0]
+    assert bucketed, "the corpus has a bucket holding more than one unattached run"
+    at, whole = bucketed[0]
     children = values(whole, "data-child")
     first = client.get(at, params={"log": 1}).text
     assert values(first, "data-child") == children[:1]
-    assert fields(first, "data-log", "runs")["cut"] == str(len(children) - 1)
+    assert fields(first, "data-log", "runs")["children"] == str(len(children))
+    assert fields(first, "data-pager", "runs")["place"] == f"Page 1 of {len(children)}"
     # Walking to the end lands on every run exactly once, in the level's own order...
-    walked: list[str] = []
-    visited: list[str] = []
-    following: str | None = f"{at}?log=1"
-    while following is not None and len(visited) <= len(children):
-        visited.append(following)
-        page = client.get(following).text
-        walked += values(page, "data-child")
-        onward = inside(page, "data-page", "runs", "href")
-        following = onward[0] if onward else None
-    assert walked == children
-    # ...in one page each and not one page more. A last page that still offered a way on would
-    # send the reader to an empty page, or round the same one again.
-    assert len(visited) == len(children)
-    assert not inside(
-        client.get(at, params={"log": len(children)}).text, "data-page", "runs", "href"
-    )
+    assert walked_log(client, f"{at}?log=1", len(children)) == children
+    # ...and the whole level on one page ends the walk there.
+    assert "data-pager" not in client.get(at, params={"log": len(children)}).text
+    assert client.get(at, params={"log": len(children), "page": 2}).status_code == 404
 
 
-def test_a_page_asked_for_the_first_cursor_is_the_page_with_no_cursor_at_all(
-    client: TestClient,
-) -> None:
-    """`?after=` at the opening cursor serves the same page the URL without it serves.
+def test_the_page_the_log_opens_at_is_the_url_with_no_page_on_it(client: TestClient) -> None:
+    """`?page=1` serves the same page the URL without it serves.
 
     The two have to agree or a reader who pages back to the start gets a different document
     from the one they were linked, and the payload sweep prices only one of them.
     """
     bare = client.get(TURN)
-    opened = client.get(TURN, params={"after": queries.FIRST_PAGE})
+    opened = client.get(TURN, params={"page": 1})
     assert opened.status_code == bare.status_code == 200
     assert values(opened.text, "data-child") == values(bare.text, "data-child")
+    # Which is what the helper every pager link is minted through says: the first page is the
+    # node's own URL, and a later one hangs off whatever knobs the reader is carrying. A `&`
+    # where a `?` belongs is a 404, so both arms are read.
+    assert numbered(TURN, "", 1) == TURN
+    assert numbered(TURN, "?log=1", 1) == f"{TURN}?log=1"
+    assert numbered(TURN, "", 3) == f"{TURN}?page=3"
+    assert numbered(TURN, "?log=1", 3) == f"{TURN}?log=1&page=3"

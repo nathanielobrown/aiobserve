@@ -1,8 +1,8 @@
 -- One page of the api calls under one turn: the children log under a turn's node page.
 -- A turn is not a bounded unit — the largest in the canonical store aggregates megabytes
 -- across hundreds of tool calls — so the page is the unit and `$page_calls` is its size.
--- Keyset on "index", which is unique and ascending within a (session, source): `$after` is
--- the last index already shown, and -1 asks for the first page.
+-- Ordered by "index", which is unique and ascending within a (session, source): `$skipped`
+-- is how many calls the pages before this one held, and 0 asks for the first page.
 -- `$turn_id` NULL selects this thread's unattributed calls, which is the bucket's own page.
 -- Unattributed is decided by the join and not by `c.turn_id IS NULL`, for the reason
 -- `view_tree_calls` states: a call naming a turn recorded on another thread is this thread's.
@@ -12,7 +12,7 @@ SELECT
     c."index" AS call_index,
     c.id AS api_call_id,
     -- The two model names, cut like every other string a repeated row shows: what an api
-    -- request carried is Claude Code's to lengthen, and a call row rides a page of twelve.
+    -- request carried is Claude Code's to lengthen, and a call row rides a page of a hundred.
     substr(c.model, 1, $log_chars) AS model,
     substr(c.fallback_from, 1, $log_chars) AS fallback_from,
     c.effort,
@@ -29,15 +29,15 @@ SELECT
     (c.cost_usd IS NULL)::INTEGER AS unpriced_api_calls,
     -- How much the call said and thought. Sizes only: what it said is on the call's own
     -- page, which this row links to, and a log row that carried a preview would price a page
-    -- of twelve of them at a preview each.
+    -- of a hundred of them at a preview each.
     length(c.text) AS text_chars,
     length(c.thinking) AS thinking_chars,
     (
         SELECT count(*) FROM live_tool_calls t
         WHERE t.session_id = c.session_id AND t.source = c.source AND t.api_call_id = c.id
     ) AS tool_calls,
-    -- How many calls the cursor still has ahead of it, counted before the LIMIT bites, so
-    -- the page knows whether to offer another without a second query.
+    -- How many calls the turn holds in all, counted before the LIMIT bites, so the page
+    -- knows how many pages there are without a second query.
     count(*) OVER () AS matched_api_calls
 FROM live_api_calls c
 LEFT JOIN live_turns t
@@ -45,6 +45,5 @@ LEFT JOIN live_turns t
 WHERE c.session_id = $session_id
   AND c.source = $source
   AND t.id IS NOT DISTINCT FROM $turn_id
-  AND c."index" > $after
 ORDER BY c."index"
-LIMIT $page_calls;
+LIMIT $page_calls OFFSET $skipped;

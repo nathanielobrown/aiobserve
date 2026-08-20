@@ -1,20 +1,23 @@
-{# The pane's children log: one page of what is under the node, a row per child. A row is a
-   line that gets a reader to the child's own page, not a preview of it — a log of twelve
-   previews is twelve panes, and the response is priced for one. The shape follows the kind of
-   child, because a turn's children are api calls however the reader arrived at the turn. #}
+{# The pane's children log: one numbered page of what is under the node, a row per child. A
+   row is a line that gets a reader to the child's own page, not a preview of it — a log of a
+   hundred previews is a hundred panes, and the response is priced for one. The shape follows
+   the kind of child: a turn's children are api calls however the reader arrived at the turn.
+
+   The heading counts the level and not the page. A reader who lands on page 2 of a turn's
+   calls is reading a turn of however many calls it made, not a turn of a hundred. #}
 
 {% import "_parts.html" as parts %}
 
-{% macro log(shape, rows, more, suffix, next) %}
+{% macro log(shape, rows, total, suffix, pager) %}
 {% if shape != 'none' %}
 <section class="log" data-log="{{ shape }}">
-  <h2><span data-field="children">{{ rows | length | count }}</span> {{ shape }}</h2>
+  <h2><span data-field="children">{{ total | count }}</span> {{ shape }}</h2>
   <ul>
     {% for item in rows %}
     <li data-child="{{ item.node.key }}">
       {# The same swap a tree row does, written out rather than hoisted onto the list: the
-         body toggle two lines down is an `hx-get` of its own with none of this, and a log is
-         twelve rows, so disinheriting it would cost more than repeating this does. #}
+         body toggle two lines down is an `hx-get` of its own that must not swap the pane, so
+         a hoisted attribute would have to be undone on it — a line per row either way. #}
       <a href="{{ item.node.url }}{{ suffix }}" hx-get="{{ item.node.url }}{{ suffix }}"
          hx-target="#pane" hx-swap="outerHTML"
          hx-select="#pane" hx-select-oob="#tree-rows" hx-push-url="true"
@@ -50,12 +53,15 @@
     </li>
     {% endfor %}
   </ul>
-  {% if more %}
-  <p class="more">
-    {%- if next %}<a data-page="{{ shape }}" href="{{ next }}"
-      >+<span data-field="cut">{{ more | count }}</span> more</a>
-    {%- else %}+<span data-field="cut">{{ more | count }}</span> more{% endif %}
-  </p>
+  {#- Only where the level runs past one page: a control offering no page to go to is a
+      control a reader has to read to learn there is nothing under it. Plain links, because
+      turning a page is a page load — the tree beside it opens on the child the reader is on. #}
+  {% if pager %}
+  <nav class="pager" data-pager="{{ shape }}" aria-label="{{ shape }} pager">
+    {%- if pager.previous %}<a data-page="previous" href="{{ pager.previous }}">← previous page</a>{% endif %}
+    <span data-field="place">{{ pager.place }}</span>
+    {%- if pager.following %}<a data-page="next" href="{{ pager.following }}">next page →</a>{% endif %}
+  </nav>
   {% endif %}
 </section>
 {% endif %}

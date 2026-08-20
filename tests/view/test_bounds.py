@@ -89,9 +89,11 @@ PAGE_BYTES = 500_000
 # rows in its own place, without a page boundary anywhere. Widening the window is a reader
 # reaching further per click, and pinning it here rather than against `PAGE_BYTES` keeps that
 # choice off the list pages, whose ceilings are derived against the number above. The
-# arithmetic under it — `worst_node_bytes`, at every ceiling at once — comes to 832,714 B
-# today, and the leaf at the bottom of this file is what keeps that true.
-NODE_BYTES = 900_000
+# arithmetic under it — `worst_node_bytes`, at every ceiling at once — comes to 978,866 B
+# today, and the leaf at the bottom of this file is what keeps that true. Raised from 900,000
+# when the children log went from twelve rows to a hundred: 88 more log rows at 1,654 B each
+# is 145,552 B of page, which buys a reader a level of a hundred read in one go.
+NODE_BYTES = 1_050_000
 # What the markup around one row of the list costs, with the content the row carries taken off.
 # Re-measured through the app by the leaf at the bottom of this file, every cap full of `&`,
 # at the dearest row the list holds rather than at whichever one sorted second: that row cost
@@ -147,6 +149,12 @@ MEASURED_RECORD_BYTES = 826
 # the bottom of this file, every cap full of `&` and every knob at its longest — 1,637 B, of
 # which 540 B is content at those caps and 114 B the knobs, leaving 983 B.
 MEASURED_LOG_ROW_MARKUP = 1_000
+# What the control under a children log costs, with both of its links rendered: the nav around
+# them, the place between them, and two copies of the node's own URL carrying the page's knobs
+# and a page number. Nearly all of it is those two URLs. Measured through the app by the leaf at
+# the bottom of this file, on logs driven to one row a page and read at a middle page, which is
+# the only page carrying both links — 533 B, the widest of the 30 that sweep renders.
+MEASURED_PAGER_BYTES = 600
 # And what the markup around one crumb of the chain down to the selection costs: the link, the
 # node's key, and the glyph that says who named it. Measured the same way: 537 B less 240 B of
 # label and 38 B of knobs, leaving 259 B.
@@ -325,6 +333,7 @@ def worst_node_bytes() -> int:
         + bounds.DEPTH * worst_crumb_bytes()
         + tree_rows * bounds.TREE_ROW_BYTES
         + bounds.LOG.ceiling * worst_log_row_bytes()
+        + MEASURED_PAGER_BYTES
         + PANE_DETAILS * worst_detail_bytes()
     )
 
@@ -456,8 +465,9 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     # words of a prompt beside the numbers.
     assert QUERIES["view_turn_calls"].params["log_chars"].default == 300
     assert QUERIES["view_call_tools"].params["log_chars"].default == 300
-    assert QUERIES["view_turn_calls"].params["page_calls"].default == 12
-    assert QUERIES["view_call_tools"].params["page_tools"].default == 12
+    assert QUERIES["view_turn_calls"].params["page_calls"].default == queries.LOG_ROWS
+    assert QUERIES["view_call_tools"].params["page_tools"].default == queries.LOG_ROWS
+    assert queries.LOG_ROWS == 100
     # A node header cuts every string it carries to a head, and the one fat value its pane
     # previews to a detail — the four kinds that have fields of their own take the same two.
     for header in ("view_turn_header", "view_call_header", "view_tool_header", "view_run_header"):
@@ -752,6 +762,10 @@ PRICED_ROWS = {
     "crumb": r"<a data-crumb=.*?</a>",
     "tree": r'<li class="row.*?</li>',
     "log": r"<li data-child=.*?</li>",
+    # The control under the log, which is once a page rather than once a row — priced apart
+    # from the chrome because it renders only where the level runs past one page, so a page
+    # that happens to hold every child of its node would otherwise weigh it at nothing.
+    "pager": r'<nav class="pager".*?</nav>',
     "detail": r'<section class="detail".*?</section>',
 }
 
@@ -850,6 +864,14 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
                 response = planted.get(url, params=marks)
                 assert response.status_code == 200, (url, response.text[:200])
                 served.append(response.text)
+        # And once more one child to a page, at the second page of each level: no recorded
+        # node has children enough to page at a size a reader would type, and the control
+        # under the log is what a level running past its page costs. A level of fewer than
+        # three has no second page and no middle page, and answers 404 by design.
+        for url in pages(store):
+            response = planted.get(url, params={**WORST_KNOBS, "log": 1, "page": 2})
+            if response.status_code == 200:
+                served.append(response.text)
     # The list and the two pages that are not nodes come back too; only a node page splits.
     split = [priced(page) for page in served if 'id="tree-rows"' in page]
     # A crumb, a tree row, a log row and a preview each weigh what the arithmetic budgets...
@@ -857,6 +879,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
         ("crumb", worst_crumb_bytes()),
         ("tree", bounds.TREE_ROW_BYTES),
         ("log", worst_log_row_bytes()),
+        ("pager", MEASURED_PAGER_BYTES),
         ("detail", worst_detail_bytes()),
     ):
         found = [row for _, rows in split for row in rows[name]]

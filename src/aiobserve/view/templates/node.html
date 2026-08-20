@@ -68,7 +68,7 @@
       <div class="value"></div>
     </details>
     {% endif %}
-    {{ logs.log(shape, log, more, suffix, next) }}
+    {{ logs.log(shape, log, total, suffix, pager) }}
     {# Reading in order. Going down is what the tree is for, so these two go along the level
        the reader is standing on and back out of it, never into a node. Buttons because they
        move the pane rather than leading anywhere new: the swap they carry is the one a tree

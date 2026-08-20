@@ -28,8 +28,8 @@ _LOCKED = "Conflicting lock is held"
 
 Row = dict[str, Any]
 
-# The column both turn digests are ordered and windowed by: unique and ascending within one
-# thread, which is what makes a page of turns a keyset rather than an offset.
+# The column both turn digests are ordered by: unique and ascending within one thread, and
+# NULL on the row standing for the calls that answer no turn, which rides no page of them.
 TURN_CURSOR = "turn_index"
 
 
@@ -163,13 +163,28 @@ def page_rows(
 
 
 class Paged(NamedTuple):
-    """One keyset page of a fragment: the rows, what is behind them, and where to resume."""
+    """One keyset page: the rows, what is behind them, and where to resume.
+
+    The records browser's way of paging, and the only one left: a citation names a line, so the
+    page for it is the one that *starts* at that line rather than the nth page of the thread.
+    """
 
     rows: list[Row]
     # How many rows the cap cut, for the "+N more" the page shows instead of losing them.
     more: int
     # The `$after` cursor the next fetch binds, or None when this page is the last.
     after: int | None
+
+
+class Listed(NamedTuple):
+    """One numbered page of a level: the rows, and how many the level holds in all.
+
+    `total` is the count before the LIMIT bit, which is what lets a page say which of how many
+    it is — and what lets a heading count the level rather than the rows in front of the reader.
+    """
+
+    rows: list[Row]
+    total: int
 
 
 # What the composed window counts its pre-LIMIT matches into. A name of the composition and
@@ -186,24 +201,25 @@ def window(
     connection: duckdb.DuckDBPyConnection,
     page: Library,
     cursor: str,
-    after: int,
+    skipped: int,
     size: int,
     **bindings: ParamValue,
-) -> Paged:
-    """One keyset page of a library query that limits nothing itself.
+) -> Listed:
+    """One numbered page of a library query that limits nothing itself.
 
     The session list's composition (`view/listing.py`) for the other case: a query whose
     whole result a report quotes cannot carry a viewer's LIMIT, so the viewer wraps it. Rows
     come back ordered by `cursor`, which is a column name this package supplies — never
-    request text — while `after` and `size` bind.
+    request text — while `skipped` and `size` bind. A row the query gives no cursor value is
+    outside every page and outside the count (`cursorless_rows`).
     """
     rows = fetch(
         connection,
         f"SELECT *, count(*) OVER () AS {MATCHED_ROWS} FROM ({_core(page)})"
-        f" WHERE {cursor} > $after ORDER BY {cursor} LIMIT $size",
-        {"after": after, "size": size, **bindings},
+        f" WHERE {cursor} IS NOT NULL ORDER BY {cursor} LIMIT $size OFFSET $skipped",
+        {"skipped": skipped, "size": size, **bindings},
     )
-    return paged(rows, MATCHED_ROWS, cursor)
+    return listed(rows, MATCHED_ROWS)
 
 
 def thread_outline(
@@ -245,6 +261,16 @@ def cursorless_rows(
     if len(rows) > limit:
         raise ValueError(f"{page} gave more than {limit} row(s) with no {cursor}")
     return rows
+
+
+def listed(rows: list[Row], matched: str) -> Listed:
+    """A page of rows and the size of the level it came from, out of the query's own count.
+
+    `matched` names the column carrying how many rows matched before the LIMIT, which the
+    paging queries compute with a window function — so a page knows the whole level without a
+    second query, and a level whose page is empty is one whose pages ran out.
+    """
+    return Listed(rows, rows[0][matched] if rows else 0)
 
 
 def paged(rows: list[Row], matched: str, cursor: str) -> Paged:

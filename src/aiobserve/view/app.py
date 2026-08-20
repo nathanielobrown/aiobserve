@@ -20,6 +20,7 @@ import datetime as dt
 import socket
 import webbrowser
 from collections.abc import Callable, Mapping, Sequence
+from math import ceil
 from pathlib import Path
 from typing import Any, NamedTuple
 from urllib.parse import urlencode
@@ -65,12 +66,13 @@ from aiobserve.view.nodes import Kind, Ref, Shape
 from aiobserve.view.store import (
     TURN_CURSOR,
     Fragment,
+    Listed,
     Page,
-    Paged,
     Row,
     SchemaMoved,
     StoreLocked,
     Value,
+    listed,
     open_store,
     page_rows,
     paged,
@@ -159,9 +161,9 @@ class Seen(NamedTuple):
     trail: list[Ref]
     shape: Shape
     rows: list[LogRow]
-    # How many children the log's page left behind, and the cursor the next one resumes at.
-    more: int
-    after: int | None
+    # How many children the level holds in all, which is more than the page shows whenever
+    # the level runs past `?log=`: the heading counts the level, and the pager divides it.
+    total: int
     details: list[Detail]
     # The transcript line the node was read from, where the store archived one. Only a turn
     # has one: `turns.id` is a record's `uuid`, which is the store's own join down to the
@@ -250,9 +252,40 @@ def switcher(node: nodes.Node, nav: nodes.Preset, kin: int, log: int, detail: in
     ]
 
 
-def continued(url: str, marks: str, after: int) -> str:
-    """Where a children log's "+N more" goes: this same node, one page further on."""
-    return f"{url}{marks}{'&' if marks else '?'}after={after}"
+def numbered(url: str, marks: str, page: int) -> str:
+    """One page of a node's children log as a URL: the node, its knobs, and the page number.
+
+    Page one is the node's own URL. A reader who pages back to the start has to land on the
+    document a link to the node serves, and it is the one the payload sweep prices.
+    """
+    if page == 1:
+        return f"{url}{marks}"
+    return f"{url}{marks}{'&' if marks else '?'}page={page}"
+
+
+class Pager(NamedTuple):
+    """A children log's place in its level, and the way to either side of it."""
+
+    # Which page of how many, in words — the label the control is read and heard by.
+    place: str
+    previous: str | None
+    following: str | None
+
+
+def pager(url: str, marks: str, page: int, pages: int) -> Pager | None:
+    """The control under a children log, or None where the level is one page long."""
+    if pages < 2:
+        return None
+    return Pager(
+        place=f"Page {page} of {pages}",
+        previous=numbered(url, marks, page - 1) if page > 1 else None,
+        following=numbered(url, marks, page + 1) if page < pages else None,
+    )
+
+
+def skipped(page: int, size: int) -> int:
+    """How many children the pages before this one held — what a numbered page binds to skip."""
+    return (page - 1) * size
 
 
 def detail_of(name: str, head: str | None, chars: int | None, url: str, size: int) -> Detail | None:
@@ -266,17 +299,14 @@ def detail_of(name: str, head: str | None, chars: int | None, url: str, size: in
     return Detail(name, fmt.cut(head, size), (chars or 0) - size if len(head) > size else 0, url)
 
 
-def sliced(items: Sequence[Row], after: int, size: int) -> Paged:
-    """A page of rows already in memory, cut the way a query's keyset cuts one.
+def sliced(items: Sequence[Row], page: int, size: int) -> Listed:
+    """One numbered page of rows already in memory, cut the way a query's OFFSET cuts one.
 
     The unattached runs are the case: they arrive with the session's runs, which every level of
-    the tree needs anyway, so paging them is slicing rather than a second read. `after` is the
-    position of the last row already shown, which is what every other `?after=` means too.
+    the tree needs anyway, so paging them is slicing rather than a second read.
     """
-    start = max(after + 1, 0)
-    rows = list(items[start : start + size])
-    behind = max(len(items) - start - len(rows), 0)
-    return Paged(rows, behind, start + len(rows) - 1 if behind else None)
+    start = skipped(page, size)
+    return Listed(list(items[start : start + size]), len(items))
 
 
 def described_node(descriptions: Descriptions, node: nodes.Node) -> Described | None:
@@ -590,7 +620,7 @@ def build_app(db_path: Path) -> FastAPI:
         kin: int,
         log: int,
         detail: int,
-        after: int,
+        page: int,
         read: Reader,
     ) -> Response:
         """One node page: the tree with the path to the node open, beside the pane reading it.
@@ -605,6 +635,10 @@ def build_app(db_path: Path) -> FastAPI:
         checked(kin, bounds.KIN.ceiling)
         checked(log, bounds.LOG.ceiling)
         checked(detail, bounds.DETAIL.ceiling)
+        # A page number below the first names no page of any level, and is asked before
+        # anything is read: it would otherwise bind a negative offset.
+        if page < 1:
+            raise HTTPException(404, "A children log is numbered from page one.")
         bound = header_bound(session_id)
         runs_bound = {"session_id": session_id, "chip_chars": queries.NAV_CHARS}
         with open_store(resolved) as connection:
@@ -642,10 +676,10 @@ def build_app(db_path: Path) -> FastAPI:
                 if built.chain[-1].kind is Kind.TOOL and built.chain[-1].is_error
                 else None
             )
-        # A cursor past the last child and a node that never had one are the same answer. The
-        # first page is not: a node with no children still has its own facts to show.
-        if after != queries.FIRST_PAGE and not seen.rows:
-            raise HTTPException(404, "This node has no children after that one.")
+        # A page past the last of a level and a node that never had one are the same answer.
+        # The first page is not: a node with no children still has its own facts to show.
+        if page > 1 and not seen.rows:
+            raise HTTPException(404, "This node's children do not run to that page.")
         selection = built.chain[-1]
         ran: tree.Ran = [
             (Page.SESSION_HEADER, bound),
@@ -687,10 +721,10 @@ def build_app(db_path: Path) -> FastAPI:
                 "step": errors.stepped(failed.listed, selection) if failed else None,
                 "shape": seen.shape,
                 "log": seen.rows,
-                "more": seen.more,
-                "next": (
-                    continued(selection.url, marks, seen.after) if seen.after is not None else None
-                ),
+                # The level's own size, and where in it this page sits — the heading counts
+                # the first, the control under the log reads the second.
+                "total": seen.total,
+                "pager": pager(selection.url, marks, page, ceil(seen.total / log)),
                 # What every href on the page carries, so a click serves the URL it displays.
                 "suffix": marks,
                 "citations": {named.value: cited(named, bound) for named, bound in ran},
@@ -718,9 +752,9 @@ def build_app(db_path: Path) -> FastAPI:
         corpus: tree.Corpus,
         source: str,
         turn_id: str | None,
-        after: int,
+        page: int,
         log: int,
-    ) -> tuple[Paged, list[LogRow], tree.Ran]:
+    ) -> tuple[Listed, list[LogRow], tree.Ran]:
         """One page of the api calls under a turn — or, at `turn_id` NULL, under a bucket.
 
         One function for both because the two differ by that binding alone, which is the same
@@ -730,18 +764,16 @@ def build_app(db_path: Path) -> FastAPI:
             "session_id": corpus.session_id,
             "source": source,
             "turn_id": turn_id,
-            "after": after,
+            "skipped": skipped(page, log),
             "page_calls": log,
             "log_chars": queries.LOG_CHARS,
         }
-        page = paged(
-            page_rows(connection, Fragment.TURN_CALLS, **bound), "matched_api_calls", "call_index"
-        )
+        calls = listed(page_rows(connection, Fragment.TURN_CALLS, **bound), "matched_api_calls")
         rows = [
             LogRow(nodes.call_node(corpus.session_id, source, row, corpus.whole), row)
-            for row in page.rows
+            for row in calls.rows
         ]
-        return page, rows, [(Fragment.TURN_CALLS, bound)]
+        return calls, rows, [(Fragment.TURN_CALLS, bound)]
 
     def run_log(corpus: tree.Corpus, rows: list[Row]) -> list[LogRow]:
         """A list of agent runs as a children log reads it: a row per run."""
@@ -763,29 +795,27 @@ def build_app(db_path: Path) -> FastAPI:
         kin: int = bounds.KIN.default,
         log: int = bounds.LOG.default,
         detail: int = bounds.DETAIL.default,
-        after: int = queries.FIRST_PAGE,
+        page: int = 1,
     ) -> Response:
-        """A session's own node: what it was, and its main thread as the tree's first level.
-
-        `after` is *the last turn index already shown*, the records browser's semantics — so
-        the turn at index N is the first row of `?after={N - 1}`.
-        """
+        """A session's own node: what it was, and its main thread as the tree's first level."""
 
         def read(connection: duckdb.DuckDBPyConnection, corpus: tree.Corpus, head: Row) -> Seen:
-            page = window(connection, Page.TIMELINE, TURN_CURSOR, after, log, session_id=session_id)
+            offset = skipped(page, log)
+            turns = window(
+                connection, Page.TIMELINE, TURN_CURSOR, offset, log, session_id=session_id
+            )
             return Seen(
                 header=head,
                 trail=[Ref(Kind.SESSION, None, session_id)],
                 shape=Shape.TURNS,
-                rows=turn_log(corpus, MAIN_SOURCE, page.rows),
-                more=page.more,
-                after=page.after,
+                rows=turn_log(corpus, MAIN_SOURCE, turns.rows),
+                total=turns.total,
                 details=[],
                 record=None,
-                ran=[(Page.TIMELINE, {"session_id": session_id, "after": after, "limit": log})],
+                ran=[(Page.TIMELINE, {"session_id": session_id, "offset": offset, "limit": log})],
             )
 
-        return browse(request, session_id, MAIN_SOURCE, nav, kin, log, detail, after, read)
+        return browse(request, session_id, MAIN_SOURCE, nav, kin, log, detail, page, read)
 
     @app.get("/session/{session_id}/turn/{source}/{turn_id}")
     def turn_page(
@@ -797,7 +827,7 @@ def build_app(db_path: Path) -> FastAPI:
         kin: int = bounds.KIN.default,
         log: int = bounds.LOG.default,
         detail: int = bounds.DETAIL.default,
-        after: int = queries.FIRST_PAGE,
+        page: int = 1,
     ) -> Response:
         """One turn: what it was asked, and the api calls that answered it."""
 
@@ -820,14 +850,13 @@ def build_app(db_path: Path) -> FastAPI:
                 row["turn_id"]: row["line_no"]
                 for row in page_rows(connection, Page.TURN_RECORDS, **thread)
             }
-            page, log_rows, ran = call_log(connection, corpus, source, turn_id, after, log)
+            calls, log_rows, ran = call_log(connection, corpus, source, turn_id, page, log)
             return Seen(
                 header=rows[0],
                 trail=[Ref(Kind.TURN, source, turn_id)],
                 shape=Shape.CALLS,
                 rows=log_rows,
-                more=page.more,
-                after=page.after,
+                total=calls.total,
                 details=[
                     item
                     for item in (
@@ -845,7 +874,7 @@ def build_app(db_path: Path) -> FastAPI:
                 ran=[(Page.TURN_HEADER, bound), *ran, (Page.TURN_RECORDS, thread)],
             )
 
-        return browse(request, session_id, source, nav, kin, log, detail, after, read)
+        return browse(request, session_id, source, nav, kin, log, detail, page, read)
 
     @app.get("/session/{session_id}/run/{run_id}")
     def run_page(
@@ -856,7 +885,7 @@ def build_app(db_path: Path) -> FastAPI:
         kin: int = bounds.KIN.default,
         log: int = bounds.LOG.default,
         detail: int = bounds.DETAIL.default,
-        after: int = queries.FIRST_PAGE,
+        page: int = 1,
     ) -> Response:
         """One agent run: the brief it was given, and its own thread of turns.
 
@@ -874,11 +903,12 @@ def build_app(db_path: Path) -> FastAPI:
             rows = page_rows(connection, Page.RUN_HEADER, **bound)
             if not rows:
                 raise HTTPException(404, "No run with that id is in this session.")
-            page = window(
+            offset = skipped(page, log)
+            turns = window(
                 connection,
                 Page.RUN_TIMELINE,
                 TURN_CURSOR,
-                after,
+                offset,
                 log,
                 session_id=session_id,
                 source=run_id,
@@ -887,9 +917,8 @@ def build_app(db_path: Path) -> FastAPI:
                 header=rows[0],
                 trail=[Ref(Kind.RUN, run_id, run_id)],
                 shape=Shape.TURNS,
-                rows=turn_log(corpus, run_id, page.rows),
-                more=page.more,
-                after=page.after,
+                rows=turn_log(corpus, run_id, turns.rows),
+                total=turns.total,
                 details=[
                     item
                     for item in (
@@ -911,14 +940,14 @@ def build_app(db_path: Path) -> FastAPI:
                         {
                             "session_id": session_id,
                             "source": run_id,
-                            "after": after,
+                            "offset": offset,
                             "limit": log,
                         },
                     ),
                 ],
             )
 
-        return browse(request, session_id, run_id, nav, kin, log, detail, after, read)
+        return browse(request, session_id, run_id, nav, kin, log, detail, page, read)
 
     @app.get("/session/{session_id}/call/{source}/{api_call_id}")
     def call_page(
@@ -930,7 +959,7 @@ def build_app(db_path: Path) -> FastAPI:
         kin: int = bounds.KIN.default,
         log: int = bounds.LOG.default,
         detail: int = bounds.DETAIL.default,
-        after: int = queries.FIRST_PAGE,
+        page: int = 1,
     ) -> Response:
         """One api call: what it answered, what it thought, and the tools it called."""
 
@@ -950,14 +979,12 @@ def build_app(db_path: Path) -> FastAPI:
                 "session_id": session_id,
                 "source": source,
                 "api_call_id": api_call_id,
-                "after": after,
+                "skipped": skipped(page, log),
                 "page_tools": log,
                 "log_chars": queries.LOG_CHARS,
             }
-            page = paged(
-                page_rows(connection, Fragment.CALL_TOOLS, **tools),
-                "matched_tool_calls",
-                "tool_index",
+            called = listed(
+                page_rows(connection, Fragment.CALL_TOOLS, **tools), "matched_tool_calls"
             )
             return Seen(
                 header=row,
@@ -966,10 +993,9 @@ def build_app(db_path: Path) -> FastAPI:
                 trail=[tree.home(source, row["turn_id"]), Ref(Kind.CALL, source, api_call_id)],
                 shape=Shape.TOOLS,
                 rows=[
-                    LogRow(nodes.tool_node(session_id, source, item), item) for item in page.rows
+                    LogRow(nodes.tool_node(session_id, source, item), item) for item in called.rows
                 ],
-                more=page.more,
-                after=page.after,
+                total=called.total,
                 details=[
                     item
                     for item in (
@@ -994,7 +1020,7 @@ def build_app(db_path: Path) -> FastAPI:
                 ran=[(Page.CALL_HEADER, bound), (Fragment.CALL_TOOLS, tools)],
             )
 
-        return browse(request, session_id, source, nav, kin, log, detail, after, read)
+        return browse(request, session_id, source, nav, kin, log, detail, page, read)
 
     @app.get("/session/{session_id}/tool/{source}/{tool_call_id}")
     def tool_page(
@@ -1006,7 +1032,7 @@ def build_app(db_path: Path) -> FastAPI:
         kin: int = bounds.KIN.default,
         log: int = bounds.LOG.default,
         detail: int = bounds.DETAIL.default,
-        after: int = queries.FIRST_PAGE,
+        page: int = 1,
     ) -> Response:
         """One tool call: what it was passed, and what it returned. Nothing hangs under it."""
 
@@ -1033,8 +1059,7 @@ def build_app(db_path: Path) -> FastAPI:
                 ],
                 shape=Shape.NONE,
                 rows=[],
-                more=0,
-                after=None,
+                total=0,
                 details=[
                     item
                     for item in (
@@ -1059,7 +1084,7 @@ def build_app(db_path: Path) -> FastAPI:
                 ran=[(Page.TOOL_HEADER, bound)],
             )
 
-        return browse(request, session_id, source, nav, kin, log, detail, after, read)
+        return browse(request, session_id, source, nav, kin, log, detail, page, read)
 
     @app.get("/session/{session_id}/compaction/{source}/{compaction_id}")
     def compaction_page(
@@ -1071,7 +1096,7 @@ def build_app(db_path: Path) -> FastAPI:
         kin: int = bounds.KIN.default,
         log: int = bounds.LOG.default,
         detail: int = bounds.DETAIL.default,
-        after: int = queries.FIRST_PAGE,
+        page: int = 1,
     ) -> Response:
         """One compaction: where a thread's context was rewritten, and what that cost it.
 
@@ -1104,14 +1129,13 @@ def build_app(db_path: Path) -> FastAPI:
                 ],
                 shape=Shape.NONE,
                 rows=[],
-                more=0,
-                after=None,
+                total=0,
                 details=[],
                 record=None,
                 ran=[(Page.COMPACTIONS, bound)],
             )
 
-        return browse(request, session_id, source, nav, kin, log, detail, after, read)
+        return browse(request, session_id, source, nav, kin, log, detail, page, read)
 
     @app.get("/session/{session_id}/unattributed/{source}")
     def unattributed_page(
@@ -1122,7 +1146,7 @@ def build_app(db_path: Path) -> FastAPI:
         kin: int = bounds.KIN.default,
         log: int = bounds.LOG.default,
         detail: int = bounds.DETAIL.default,
-        after: int = queries.FIRST_PAGE,
+        page: int = 1,
     ) -> Response:
         """One thread's api calls that answer no turn — a resume's calls answer turns that
         live in the session it resumed, and this is where they are read."""
@@ -1131,20 +1155,19 @@ def build_app(db_path: Path) -> FastAPI:
             standing = tree.unattributed(connection, corpus, source)
             if standing is None:
                 raise HTTPException(404, "Every api call on this thread answers a turn.")
-            page, log_rows, ran = call_log(connection, corpus, source, None, after, log)
+            calls, log_rows, ran = call_log(connection, corpus, source, None, page, log)
             return Seen(
                 header=standing.row,
                 trail=[Ref(Kind.UNATTRIBUTED, source, source)],
                 shape=Shape.CALLS,
                 rows=log_rows,
-                more=page.more,
-                after=page.after,
+                total=calls.total,
                 details=[],
                 record=None,
                 ran=[standing.ran, *ran],
             )
 
-        return browse(request, session_id, source, nav, kin, log, detail, after, read)
+        return browse(request, session_id, source, nav, kin, log, detail, page, read)
 
     @app.get("/session/{session_id}/unattached")
     def unattached_page(
@@ -1154,7 +1177,7 @@ def build_app(db_path: Path) -> FastAPI:
         kin: int = bounds.KIN.default,
         log: int = bounds.LOG.default,
         detail: int = bounds.DETAIL.default,
-        after: int = queries.FIRST_PAGE,
+        page: int = 1,
     ) -> Response:
         """The session's agent runs no spawning call resolved.
 
@@ -1166,20 +1189,19 @@ def build_app(db_path: Path) -> FastAPI:
             loose = [run for run in corpus.runs if run["spawn_source"] is None]
             if not loose:
                 raise HTTPException(404, "Every agent run in this session was placed.")
-            page = sliced(loose, after, log)
+            runs = sliced(loose, page, log)
             return Seen(
                 header=head,
                 trail=[Ref(Kind.UNATTACHED, None, session_id)],
                 shape=Shape.RUNS,
-                rows=run_log(corpus, page.rows),
-                more=page.more,
-                after=page.after,
+                rows=run_log(corpus, runs.rows),
+                total=runs.total,
                 details=[],
                 record=None,
                 ran=[],
             )
 
-        return browse(request, session_id, MAIN_SOURCE, nav, kin, log, detail, after, read)
+        return browse(request, session_id, MAIN_SOURCE, nav, kin, log, detail, page, read)
 
     @app.get("/session/{session_id}/errors")
     def errors_page(request: Request, session_id: str) -> Response:
