@@ -18,14 +18,20 @@ pre.code {
   font-size: var(--type-label);
   margin: var(--space-1) 0;
 }
-/* The values: strings, numbers, and JSON's three bare literals. */
-.s1, .s2, .ss, .mi, .mf, .kc { color: var(--mark); }
+/* The values: strings of every flavor, numbers, a shell's variables, and JSON's three bare
+   literals. `sb` is a markdown span of code as well as a shell's backticks. */
+.s, .s1, .s2, .sb, .si, .sa, .se, .ss, .m, .mi, .mf, .kc, .nv { color: var(--mark); }
 /* What a reader scans a record for — the field names down the left edge. */
 .nt { font-weight: 600; }
-/* What a statement is made of rather than what it says. */
-.k, .nb { font-weight: 600; }
+/* What a statement is made of rather than what it says, and what a markdown file's own
+   structure is made of: its headings, its strong spans and its bullets. */
+.k, .kn, .ow, .nb, .gh, .gu, .gs { font-weight: 600; }
+.ge { font-style: italic; }
 .p, .o { color: var(--dim); }
 .c1 { color: var(--dim); font-style: italic; }
+/* The line numbers Claude Code writes down the left of a file it read. Part of the result and
+   not of the file, so they recede — the reader came for what is behind them. */
+.lineno { color: var(--dim); }
 /* A value printed as stored because it is past the ceiling the highlighter stops at, and the
    line above it saying so. */
 .plain { color: var(--dim); }

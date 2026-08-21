@@ -10,6 +10,7 @@ leaves own what is true of a run whichever tree it appears in.
 import duckdb
 from fastapi.testclient import TestClient
 
+from aiobserve.analyze import queries
 from tests.conftest import (
     BYREF_FORK,
     FORK_ORIGIN,
@@ -66,7 +67,7 @@ def test_a_nested_run_breadcrumbs_through_every_run_above_it(
     """
     trail = [f"session:{SPINE}"]
     for run_id in (SPINE_RUN, SPINE_LEAF):
-        _, _, turn_id, _, _ = one(store, SPAWN_OF, [run_id])
+        _, _, turn_id, _ = one(store, SPAWN_OF, [run_id])
         assert turn_id is not None, f"{run_id} no longer resolves a spawning turn"
         trail += [f"turn:{turn_id}", f"run:{run_id}"]
     page = client.get(f"/session/{SPINE}/run/{SPINE_LEAF}").text
@@ -87,7 +88,7 @@ def test_a_run_whose_spawning_call_resolves_to_nothing_is_unattached(
     store says the run hangs off the session's main thread, so the trail does not claim it
     does.
     """
-    _, source, turn_id, _, _ = one(store, SPAWN_OF, [BYREF_FORK])
+    _, source, turn_id, _ = one(store, SPAWN_OF, [BYREF_FORK])
     assert (source, turn_id) == (None, None), "this fork's spawning call now resolves"
     page = client.get(f"/session/{NO_PROJECT_SESSION}/run/{BYREF_FORK}").text
     assert values(page, "data-crumb") == [
@@ -159,5 +160,6 @@ def test_the_run_page_cites_the_two_queries_that_read_its_thread(client: TestCli
         " head_chars=100 detail_chars=4000"
     )
     assert citations["run_digest"] == (
-        f"-- queries/run_digest.sql session_id={SPINE} source={SPINE_RUN}"
+        f"-- queries/run_digest.sql session_id={SPINE} log_chars={queries.LOG_CHARS}"
+        f" source={SPINE_RUN}"
     )

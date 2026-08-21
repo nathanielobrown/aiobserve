@@ -16,13 +16,15 @@ SELECT
     t.id AS turn_id,
     substr(t.prompt, 1, $detail_chars + 1) AS prompt,
     length(t.prompt) AS prompt_chars,
-    -- A slash turn's heading shows the command it ran and what followed it instead of the
-    -- prompt, which still holds the tags Claude Code wrapped it in.
+    -- A slash turn leads with the command it ran rather than with the prompt, which holds
+    -- the `<command-…>` wrapper Claude Code expanded it into. The name is a word, so it is
+    -- cut to a fact's width...
     substr(t.command_name, 1, $head_chars) AS command_name,
-    -- Cut at a fact row's width and not at the pane's: a slash turn's `prompt` holds the
-    -- whole `<command-…>` wrapper Claude Code built, arguments included, so the pane's one
-    -- value is still the prompt.
-    substr(t.command_args, 1, $head_chars) AS command_args,
+    -- ...and what followed it is a value of the turn like the prompt is — arguments run to
+    -- thousands of characters — so it is cut one past `$detail_chars` with its whole length
+    -- beside it, and `view_turn_command_args` has the rest.
+    substr(t.command_args, 1, $detail_chars + 1) AS command_args,
+    length(t.command_args) AS command_args_chars,
     t.started_at,
     t.ended_at,
     -- A replayed turn is one a resume re-read rather than one the model answered again.

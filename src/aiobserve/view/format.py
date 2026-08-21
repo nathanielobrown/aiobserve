@@ -123,8 +123,8 @@ def ago(value: dt.datetime | None, now: dt.datetime) -> str:
 def percent(value: float | None) -> str:
     """A fraction as a percentage, to one decimal: `0.022` prints `2.2%`.
 
-    For a rate something else already worked out — the share of a session one node of its map
-    took. A rate the page divides itself goes through `share`, which lands here.
+    The printing half of `share`, for a rate something else already worked out. A page reaches
+    it through `share`, which is the filter every rate on screen goes through.
     """
     return ABSENT if value is None else f"{100 * value:.1f}%"
 

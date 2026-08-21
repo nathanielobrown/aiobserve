@@ -151,9 +151,9 @@ def enriched_plant(enriched_db: Path, tmp_path: Path) -> Planter:
 
 
 # What `view_runs` joins, in the expectation's own SQL: a run against the api call that spawned
-# it, the turn that call answers *on the call's own thread*, and where the call sits in it.
+# it, and the turn that call answers *on the call's own thread*.
 SPAWNS = (
-    'SELECT a.id, c.source, st.id, c.id, c."index" FROM live_agent_runs a'
+    "SELECT a.id, c.source, st.id, c.id FROM live_agent_runs a"
     " LEFT JOIN live_tool_calls tc ON tc.session_id = a.session_id AND tc.id = a.tool_use_id"
     "  AND tc.source <> a.id"
     " LEFT JOIN live_api_calls c ON c.session_id = a.session_id AND c.source = tc.source"
@@ -217,6 +217,15 @@ def block(html: str, field: str) -> str:
     found = re.search(rf'<pre data-field="{field}"[^>]*>(.*?)</pre>', html, re.DOTALL)
     assert found is not None, f"no {field} block on the page"
     return found.group(1)
+
+
+def classed(html: str) -> set[str]:
+    """Every class the highlighter wrote into one run of markup.
+
+    Split on whitespace: an element may carry more than one class, and a reader that took the
+    attribute whole would silently skip exactly the tokens Pygments has no short name for.
+    """
+    return {name for found in re.findall(r'class="([^"]*)"', html) for name in found.split()}
 
 
 def plain(html: str) -> str:

@@ -34,6 +34,7 @@ from tests.conftest import (
     RESUME,
     RESUME_LONG_RECORD,
     SERVER_TOOLS,
+    SLASH_TURN,
     SPINE,
     SPINE_RUN,
 )
@@ -116,12 +117,22 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
         "source": FORK_ORIGIN_RUN,
         "tool_call_id": DENSE_TOOL,
     },
+    # The command arm answers NULL off a call that is not a `Bash` call, which is a row and
+    # not a failure — the smoke run asks whether the query runs.
+    "view_tool_command": {
+        "session_id": FORK_ORIGIN,
+        "source": FORK_ORIGIN_RUN,
+        "tool_call_id": DENSE_TOOL,
+    },
     "view_tool_result": {
         "session_id": FORK_ORIGIN,
         "source": FORK_ORIGIN_RUN,
         "tool_call_id": DENSE_TOOL,
     },
     "view_turn_prompt": {"session_id": ANCESTOR, "source": MAIN, "turn_id": DENSE_TURN},
+    # A turn the corpus records a command on, so the value comes back as one a reader reads
+    # rather than as the NULL every turn nobody typed a slash at holds.
+    "view_turn_command_args": {"session_id": SPINE, "source": MAIN, "turn_id": SLASH_TURN},
     "view_run_brief": {"session_id": SPINE, "run_id": SPINE_RUN},
     "view_record": {"session_id": RESUME, "source": MAIN, "line_no": str(RESUME_LONG_RECORD)},
     # The enrichment family, at the fixture session the plant describes at every level and

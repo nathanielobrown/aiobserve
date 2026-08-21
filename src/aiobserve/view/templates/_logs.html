@@ -1,61 +1,114 @@
-{# The pane's children log: one page of what is under the node, a row per child. A row is a
-   line that gets a reader to the child's own page, not a preview of it — a log of twelve
-   previews is twelve panes, and the response is priced for one. The shape follows the kind of
-   child, because a turn's children are api calls however the reader arrived at the turn. #}
+{# The pane's children log: one numbered page of what is under the node, a row per child.
+
+   A table, because the row is a handful of numbers and a reader who cannot tell an api-call
+   count from a tool-call count from a time of day is reading nothing. The columns are the
+   shape's own and come from `view/nodes.py:COLUMNS` — the head below writes them and every
+   row fills all of them, so a cell is always under its own heading. The words above them are
+   the registry's, the same one a pane's facts read.
+
+   A row is still a line that gets a reader to the child's own page rather than a preview of
+   it, with one exception: what a tool was asked is what tells two calls of one tool apart, so
+   a tool row carries the head of its input in the column it is identified by.
+
+   The heading counts the level and not the page. A reader who lands on page 2 of a turn's
+   calls is reading a turn of however many calls it made, not a turn of a hundred. #}
 
 {% import "_parts.html" as parts %}
 
-{% macro log(shape, rows, more, suffix, next) %}
+{# One cell of a row: the value under its own column, labelled for a test to read. #}
+{% macro cell(field, value, css='') -%}
+<td data-column="{{ field }}"{% if css %} class="{{ css }}"{% endif %}
+  ><span data-field="{{ field }}">{{ value }}</span></td>
+{%- endmacro %}
+
+{# The one wide column of a row: what the child is called, linking to the child's own page.
+   `second` is the line under it, in lower hierarchy — what the first line left out, which
+   today is the command a Bash tool call ran under the description it ran under.
+
+   The swap is written out per row rather than hoisted onto the table: the button in the last
+   column is an `hx-get` of its own that must not swap the pane, so a hoisted attribute would
+   have to be undone on it — a line per row either way. #}
+{% macro what(node, suffix, field, words, second='') -%}
+<td data-column="{{ field }}" class="what">
+  <a class="primary" href="{{ node.url }}{{ suffix }}" hx-get="{{ node.url }}{{ suffix }}"
+     hx-target="#pane" hx-swap="outerHTML"
+     hx-select="#pane" hx-select-oob="#tree-rows" hx-push-url="true"
+    >{{ parts.glyph(node) }}<span data-field="{{ field }}">{{ words }}</span></a>
+  {%- if second %}<span class="secondary" data-field="command">{{ second }}</span>{% endif %}
+</td>
+{%- endmacro %}
+
+{# The child's body, opened in place: one body, two mounts. It arrives on click, one request,
+   and stops there — what is under it is a count and a link to its own page. A button rather
+   than a disclosure triangle, because a reader has to be able to see that a row opens; it
+   fires once, since a second fetch would stand a second copy of the same body under the row.
+   What arrives is a row of this table (`fragments/body.html`), swapped in after this one. #}
+{% macro opener(node, suffix) -%}
+<td data-column="body"><button type="button" class="button" data-view="{{ node.key }}"
+   hx-get="{{ node.expansion }}{{ suffix }}" hx-trigger="click once"
+   hx-target="closest tr" hx-swap="afterend">View</button></td>
+{%- endmacro %}
+
+{% macro log(shape, rows, total, suffix, pager) %}
 {% if shape != 'none' %}
 <section class="log" data-log="{{ shape }}">
-  <h2><span data-field="children">{{ rows | length | count }}</span> {{ shape }}</h2>
-  <ul>
-    {% for item in rows %}
-    <li data-child="{{ item.node.key }}">
-      {# The same swap a tree row does, written out rather than hoisted onto the list: the
-         body toggle two lines down is an `hx-get` of its own with none of this, and a log is
-         twelve rows, so disinheriting it would cost more than repeating this does. #}
-      <a href="{{ item.node.url }}{{ suffix }}" hx-get="{{ item.node.url }}{{ suffix }}"
-         hx-target="#pane" hx-swap="outerHTML"
-         hx-select="#pane" hx-select-oob="#tree-rows" hx-push-url="true"
-        >{{ parts.glyph(item.node) }}<span data-field="label">{{ item.node.label }}</span></a>
-      {%- if shape == 'turns' %}
-      <span data-field="turn_index">{{ item.row.turn_index | count }}</span>
-      <span data-field="api_calls">{{ item.row.api_calls | count }}</span>
-      <span data-field="tool_calls">{{ item.row.tool_calls | count }}</span>
-      {%- elif shape == 'calls' %}
-      <span data-field="model" class="model">{{ item.row.model }}</span>
-      <span data-field="tool_calls">{{ item.row.tool_calls | count }}</span>
-      <span data-field="text_chars">{{ item.row.text_chars | count }}</span>
-      {%- elif shape == 'tools' %}
-      <span data-field="name" class="tool">{{ item.row.name }}</span>
-      {%- if item.row.is_error %}<span data-field="is_error">error</span>{% endif %}
-      <span data-field="result_chars">{{ item.row.result_chars | count }}</span>
-      {%- elif shape == 'runs' %}
-      <span data-field="agent_type">{{ item.row.agent_type }}</span>
-      <span data-field="tool_errors">{{ item.row.tool_errors | count }}</span>
-      {%- endif %}
-      {%- if item.node.cost_usd is not none %}
-      <span data-field="cost_usd">{{ item.node.cost_usd | money }}</span>
-      {%- endif %}
-      {%- if item.row.started_at %}
-      <span data-field="started_at">{{ item.row.started_at | clock }}</span>
-      {%- endif %}
-      {#- The child's body, opened in place: one body, two mounts. It arrives on open, one
-          request, and stops there — what is under it is a count and a link to its own page.
-          Written tight and unlabelled: this rides every row of every log the viewer serves,
-          and the row it sits in already carries the child's key. -#}
-      <details hx-get="{{ item.node.expansion }}" hx-trigger="toggle once" hx-swap="beforeend"
-        ><summary>body</summary></details>
-    </li>
-    {% endfor %}
-  </ul>
-  {% if more %}
-  <p class="more">
-    {%- if next %}<a data-page="{{ shape }}" href="{{ next }}"
-      >+<span data-field="cut">{{ more | count }}</span> more</a>
-    {%- else %}+<span data-field="cut">{{ more | count }}</span> more{% endif %}
-  </p>
+  <h2><span data-field="children">{{ total | count }}</span> {{ shape }}</h2>
+  <table>
+    <thead>
+      <tr data-columns="{{ shape }}">
+        {%- for column in COLUMNS[shape] %}
+        <th scope="col" data-column="{{ column.field }}"{% if column.css %} class="{{ column.css }}"{% endif
+          %}><span class="icon" aria-hidden="true">{{ column.icon }}</span>
+          {{ label(column.field) }}</th>
+        {%- endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in rows %}
+      <tr data-child="{{ item.node.key }}">
+        {%- if shape == 'turns' %}
+        {{ cell('turn_index', item.row.turn_index | count, 'number') }}
+        {{ what(item.node, suffix, 'label', item.node.line) }}
+        {{ cell('api_calls', item.row.api_calls | count, 'number') }}
+        {{ cell('tool_calls', item.row.tool_calls | count, 'number') }}
+        {{ cell('cost_usd', item.node.cost_usd | money, 'number') }}
+        {%- elif shape == 'calls' %}
+        {{ cell('call_index', item.row.call_index | count, 'number') }}
+        {{ what(item.node, suffix, 'model', item.row.model | line) }}
+        {{ cell('tool_calls', item.row.tool_calls | count, 'number') }}
+        {{ cell('text_chars', item.row.text_chars | count, 'number') }}
+        {{ cell('cost_usd', item.node.cost_usd | money, 'number') }}
+        {%- elif shape == 'tools' %}
+        {{ cell('tool_index', item.row.tool_index | count, 'number') }}
+        {{ cell('name', item.row.name | line) }}
+        {#- The command reads through the same cut as the head above it, and is left out
+            rather than dashed where the tool ran none: a dash under a description is a line
+            of nothing where the second line means "and this is what it ran". #}
+        {{ what(item.node, suffix, 'input_head', item.row.input_head | line,
+                item.row.command | line if item.row.command else '') }}
+        {{ cell('is_error', ('error' if item.row.is_error else none) | text) }}
+        {{ cell('result_chars', item.row.result_chars | count, 'number') }}
+        {%- elif shape == 'runs' %}
+        {{ cell('agent_type', item.row.agent_type | line) }}
+        {{ what(item.node, suffix, 'label', item.node.line) }}
+        {{ cell('tool_errors', item.row.tool_errors | count, 'number') }}
+        {{ cell('cost_usd', item.node.cost_usd | money, 'number') }}
+        {%- endif %}
+        {{ cell('started_at', item.row.started_at | clock, 'when') }}
+        {{ opener(item.node, suffix) }}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {#- Only where the level runs past one page: a control offering no page to go to is a
+      control a reader has to read to learn there is nothing under it. Plain links, because
+      turning a page is a page load — the tree beside it opens on the child the reader is on. #}
+  {% if pager %}
+  <nav class="pager" data-pager="{{ shape }}" aria-label="{{ shape }} pager">
+    {%- if pager.previous %}<a data-page="previous" href="{{ pager.previous }}">← previous page</a>{% endif %}
+    <span data-field="place">{{ pager.place }}</span>
+    {%- if pager.following %}<a data-page="next" href="{{ pager.following }}">next page →</a>{% endif %}
+  </nav>
   {% endif %}
 </section>
 {% endif %}

@@ -3,6 +3,22 @@
 SELECT
     k.id AS compaction_id,
     k.timestamp,
+    -- The turn it happened during, NULL where it happened between two of them — which is
+    -- what decides whether the tree hangs it under a turn or beside one. Half-open, so a
+    -- compaction at the instant a turn starts is that turn's and one at the instant it ends
+    -- is the next thing's. Turn spans overlap, so a compaction can sit in two — 44 of the
+    -- canonical store's 1,269 do. The turn that started last wins, because that is the one
+    -- still running when the context was dropped.
+    -- `max_by` rather than an ordered `LIMIT 1`, because every limit in a viewer query is a
+    -- page size a caller can bind (`tests/view/test_bounds.py`) and this one is neither.
+    (
+        SELECT max_by(t.id, (t.started_at, t."index"))
+        FROM live_turns t
+        WHERE t.session_id = k.session_id
+          AND t.source = k.source
+          AND k.timestamp >= t.started_at
+          AND k.timestamp < t.ended_at
+    ) AS turn_id,
     -- Cut like a chip's columns are: a marker is a row of a page whose size is arithmetic.
     substr(k.trigger, 1, $chip_chars) AS trigger,
     k.pre_tokens,

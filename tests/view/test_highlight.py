@@ -12,8 +12,8 @@ import json
 
 from aiobserve.analyze import queries
 from aiobserve.view import bounds
-from aiobserve.view.highlight import Syntax, lit
-from tests.view.conftest import plain
+from aiobserve.view.highlight import Syntax, by_suffix, lit
+from tests.view.conftest import classed, plain
 
 # One tool argument in the shape a recorded one has — a path and a pattern — with markup put
 # inside it. Invented: redaction flattens the recorded strings, so no fixture carries a `<`.
@@ -99,6 +99,26 @@ def test_whitespace_is_written_bare_rather_than_wrapped_in_a_span_of_its_own() -
     assert 'class="w"' not in shown.html
 
 
+def test_every_class_the_markup_carries_is_one_of_pygments_short_names() -> None:
+    """How wide a class can be is a term in the page's byte budget, so the viewer sets it.
+
+    Left alone, the formatter walks a token type it has no name for up to one it does and
+    joins a class for every step (`l l-Scalar l-Scalar-Plain`). Those types are reachable: the
+    markdown lexer hands a fenced block to whatever lexer the fence names, and that is any
+    lexer Pygments ships — so the widest class on the page would be a property of a library
+    rather than of this viewer, and `tests/view/test_bounds.py:MARKED_CHAR_BYTES` prices one
+    at three characters. The nearest named type is what a token is classed as instead, which
+    is also the only class `static/pygments.css` paints.
+    """
+    fenced = lit("```yaml\na: {b: c, d: e}\n```\n", Syntax.MARKDOWN)
+    # The block was delegated — a yaml key is not a token the markdown lexer has...
+    assert '<span class="nt">a</span>' in fenced.html
+    # ...and the yaml scalar's own type, which Pygments has no short name for, is classed as
+    # the literal it is under rather than as the three names on the way there.
+    assert "l-Scalar" not in fenced.html
+    assert max(len(name) for name in classed(fenced.html)) <= 3
+
+
 def test_a_value_past_the_ceiling_is_printed_as_stored_and_says_how_long_it_is() -> None:
     """The ceiling is a line, not a slope: one character over and the markup stops.
 
@@ -145,3 +165,110 @@ def test_sql_is_marked_up_whole_and_loses_nothing() -> None:
     shown = lit(sql, Syntax.SQL)
     assert shown.syntax is Syntax.SQL
     assert plain(shown.html) == sql
+
+
+def test_a_shell_command_is_marked_up_as_a_shell_reads_it() -> None:
+    """What a `Bash` call ran is code, and the densest line a tool call holds.
+
+    Real: a command this repo's own tasks run, rather than one out of a session — the store's
+    commands are private and a fixture's are redacted. Every character survives the markup,
+    which is what makes a marked-up command still quotable as evidence.
+    """
+    command = "cd /tmp && rg -n 'x' *.py | head -3"
+    shown = lit(command, Syntax.BASH)
+    assert shown.syntax is Syntax.BASH
+    assert plain(shown.html) == command
+    # The builtin, the operator and the quoted argument each carry a class of their own.
+    assert '<span class="nb">cd</span>' in shown.html
+    assert '<span class="o">&amp;&amp;</span>' in shown.html
+
+
+def test_a_line_number_gutter_is_peeled_off_before_the_lexer_reads_the_line() -> None:
+    """A file the `Read` tool returned arrives behind a gutter, and the gutter is not the file.
+
+    Claude Code writes `12\\t` down the left of every line it returns (verified against the
+    canonical store on 2026-08-20), and a lexer that meets it reads a different language: a
+    heading whose `#` follows a number is no longer a heading, and neither is a list's `-`.
+    So the number is peeled off, classed as the gutter it is, and the line behind it is lexed
+    on its own. The markdown here is invented — a fixture's strings are redacted flat — but
+    the numbering is the recorded shape.
+    """
+    read = "1\t# Title\n2\t\n3\t- an item\n"
+    shown = lit(read, Syntax.MARKDOWN)
+    assert shown.syntax is Syntax.MARKDOWN
+    # Every character comes back, gutter included: the result is evidence before it is markup.
+    assert plain(shown.html) == read
+    assert '<span class="lineno">1\t</span>' in shown.html
+    # ...and the heading behind the number is read as a heading, which is the whole point.
+    assert '<span class="gh"># Title</span>' in shown.html
+    assert '<span class="k">-</span>' in shown.html
+
+
+# The characters Pygments moves before a lexer ever sees them, one shape each: it strips the
+# newlines at either end of what it lexes, rewrites `\r\n` and a lone `\r` as `\n`, and drops a
+# leading byte-order mark (`Lexer._preprocess_lexer_input`). Invented, and they have to be —
+# redaction flattened every string the fixture corpus holds — but the first is recorded: 27 of
+# 107,253 `Bash` commands in the canonical store begin with a newline (read 2026-08-20).
+EXACT = {
+    "a leading newline": "\n\ncd /tmp\n",
+    "trailing newlines": "cd /tmp\n\n\n",
+    "no newline at the end": "cd /tmp",
+    "windows line endings": "cd /tmp\r\nls\r\n",
+    "a lone carriage return": "cd /tmp\rls",
+    "a byte-order mark": "\ufeffcd /tmp\n",
+    "nothing but newlines": "\n\n",
+    # Multibyte, combining and right-to-left characters, and a tab in the middle of a line —
+    # what a transcript holds that a byte count and a character count disagree about.
+    "characters wider than a byte": "echo 'é\u0301 — 👋 שלום'\t# naïve\n",
+}
+
+
+def test_a_marked_up_value_prints_the_characters_that_were_stored() -> None:
+    """The whole of the module's promise in one leaf: markup adds, and never edits.
+
+    A tool result is evidence, so a viewer that quietly dropped the newline a command began
+    with would make a page unquotable — and Pygments does exactly that unless its lexers are
+    built out of it. Swept over every syntax but JSON, which is re-laid-out for reading before
+    it is marked up and so is exact against the indented text rather than the stored one
+    (`test_the_markup_inside_a_value_arrives_as_text` reads that arm).
+    """
+    for syntax in (Syntax.SQL, Syntax.BASH, Syntax.MARKDOWN, Syntax.PYTHON):
+        for shape, value in EXACT.items():
+            shown = lit(value, syntax)
+            assert plain(shown.html) == value, f"{syntax} lost {shape}"
+            # And it went through the lexer rather than out the plain arm, which would print
+            # the same characters while proving nothing about the markup.
+            assert shown.syntax is syntax, f"{syntax} did not mark up {shape}"
+    # The gutter path is the other way a value reaches a lexer — line by line — so it is swept
+    # too, over a file whose lines carry the same shapes.
+    read = "1\t# Title\r\n2\t\n3\tshalom שלום\n4\t"
+    assert plain(lit(read, Syntax.MARKDOWN).html) == read
+
+
+def test_a_value_with_no_gutter_is_lexed_whole() -> None:
+    """The gutter is a shape, not a syntax: a query file is lexed in one pass and loses none.
+
+    Real, and the strongest check available — the value is a file this repo ships, so the
+    round trip is exact. Line by line, a lexer forgets what the line before it opened.
+    """
+    sql = queries.load("view_sessions")
+    assert plain(lit(sql, Syntax.SQL).html) == sql
+
+
+def test_a_file_name_is_what_says_which_syntax_a_read_returned() -> None:
+    """A result is marked up by what the call asked for, because the result itself says nothing.
+
+    The `Read` tool returns text with no type on it, so the only evidence of what the file
+    holds is the name that was read — a false positive is a `.md` file that is not markdown,
+    and a false negative is markdown in a file named anything else. Both show the file as it
+    was stored, which is what the viewer does with every value it cannot place.
+    """
+    markdown = by_suffix(".md")
+    assert markdown is Syntax.MARKDOWN
+    assert by_suffix(".py") is Syntax.PYTHON
+    assert by_suffix(".MD") is Syntax.MARKDOWN, "the store keeps the case the session wrote"
+    assert by_suffix(".bin") is None, "a suffix with no lexer here is shown as it was stored"
+    assert by_suffix(None) is None, "and a tool that read no file at all has no suffix"
+    # And a name this map does place is one the marker can read: a suffix with no lexer
+    # behind it would raise on the first file that carried it.
+    assert lit("# Title", markdown).syntax is Syntax.MARKDOWN

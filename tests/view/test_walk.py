@@ -1,73 +1,26 @@
 """Reading a session in order: the prev/next controls beside the pane.
 
-The tree shows one open path, so a reader who wants the whole session reads it with these two
-links instead. The order is depth-first over the whole session — into a node's children, then
-on to its next sibling, then out — and both buckets are stops the walk descends into, because
-the calls and runs they hold happened and nothing else reaches them.
+Neither control descends. A click on a tree row is how a reader goes down, so these two go
+along the level the reader is standing on — the next row, then the next — and at the end of it
+out to whatever follows the thing that level sits in. Prev is the same level backwards, and
+from its first row the node that holds it. A step that changes level is marked, because a
+reader who did not ask to leave the branch should see it coming.
 
-These leaves follow the links themselves rather than calling `walk.py`: what a reader gets is
-the chain of pages, and only fetching them proves the chain closes. Every page is kept as it
-was served, so the order the tree drew each node's children is read back out of the same
-response the walk stepped through.
+These leaves follow the controls themselves rather than calling `walk.py`: what a reader gets
+is the chain of pages, and only fetching them proves the chain closes. The expectation is read
+off the tree each page was served with — the rows at the selection's own depth are its level,
+in the order the tree drew it — so the reading order is checked against what the reader sees
+rather than derived from the store a second time.
 """
+
+import re
 
 import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import FORK_ORIGIN, SPINE
-from tests.view.conftest import fields, inside, kin, values
-
-# Every session the fixture corpus holds, walked whole. The corpus is small on purpose — its
-# largest session is 24 nodes — so "the whole session" is a claim every session can carry.
-SESSIONS = "SELECT id FROM sessions ORDER BY id"
-
-
-def held(store: duckdb.DuckDBPyConnection, session_id: str) -> set[str]:
-    """Every node key one session holds, in the test's own SQL: the walk's population.
-
-    One row of the store is one node, plus the two buckets, which are not rows: a thread has
-    an unattributed bucket where one of its calls answers no turn *of that thread* — a fork
-    replays its parent's turn — and the session has an unattached bucket where a run's
-    spawning call resolves to nothing at all.
-    """
-    keys = {f"session:{session_id}"}
-    for kind, table in (
-        ("turn", "live_turns"),
-        ("call", "live_api_calls"),
-        ("tool", "live_tool_calls"),
-        ("run", "live_agent_runs"),
-        ("compaction", "live_compactions"),
-    ):
-        keys |= {
-            f"{kind}:{node_id}"
-            for (node_id,) in store.execute(
-                f"SELECT id FROM {table} WHERE session_id = ?", [session_id]
-            ).fetchall()
-        }
-    keys |= {
-        f"unattributed:{source}"
-        for (source,) in store.execute(
-            "SELECT DISTINCT c.source FROM live_api_calls c"
-            " LEFT JOIN live_turns t ON t.session_id = c.session_id AND t.source = c.source"
-            "   AND t.id = c.turn_id"
-            " WHERE c.session_id = ? AND t.id IS NULL",
-            [session_id],
-        ).fetchall()
-    }
-    loose = store.execute(
-        "SELECT count(*) FROM live_agent_runs a"
-        " LEFT JOIN live_tool_calls tc ON tc.session_id = a.session_id"
-        "   AND tc.id = a.tool_use_id AND tc.source <> a.id"
-        " LEFT JOIN live_api_calls c ON c.session_id = a.session_id AND c.source = tc.source"
-        "   AND c.id = tc.api_call_id"
-        " WHERE a.session_id = ? AND c.id IS NULL",
-        [session_id],
-    ).fetchone()
-    assert loose is not None
-    if loose[0]:
-        keys.add(f"unattached:{session_id}")
-    return keys
+from tests.conftest import FORK_ORIGIN, MAIN, SPINE
+from tests.view.conftest import fields, inside, kin, one, pages, plain, rows, values
 
 
 class Page:
@@ -79,18 +32,71 @@ class Page:
         # last is this page's own node and the rest is where it hangs.
         self.chain = tuple(values(html, "data-crumb"))
         self.key = self.chain[-1]
-        # This node's own children as its tree drew them: only the open path expands, so
-        # nothing else on the page renders one level below the chain.
-        self.children = kin(html)
         self.html = html
 
+    @property
+    def levels(self) -> list[list[str]]:
+        """Each open level of the tree, outermost first — the level each crumb stands in.
 
-def follow(client: TestClient, start: str, control: str) -> list[Page]:
-    """Every page one control reaches from `start`, the starting page first.
+        The tree opens one path, so the rows at depth `d` are the whole of the level the
+        `d`-th crumb sits in and nothing else. A cap would cut one, which is why the sweep
+        checks no level was cut before reading a level off a page.
+        """
+        found: dict[int, list[str]] = {}
+        for depth, key in rows(self.html):
+            found.setdefault(depth, []).append(key)
+        return [found[depth] for depth in range(len(self.chain))]
 
-    Stops at the page that carries no such control, which is the end of the session in that
-    direction. The cap is the corpus's own size with room to spare: a walk that did not close
-    would loop here rather than hang.
+    @property
+    def expected(self) -> dict[str, tuple[str, bool] | None]:
+        """Where each control should go and whether it climbs, read off this page's own tree."""
+        levels, chain = self.levels, self.chain
+        after_it: tuple[str, bool] | None = None
+        for depth in range(len(chain) - 1, 0, -1):
+            level = levels[depth]
+            after = level.index(chain[depth]) + 1
+            if after < len(level):
+                after_it = (level[after], depth != len(chain) - 1)
+                break
+        previous: tuple[str, bool] | None = None
+        if len(chain) > 1:
+            place = levels[-1].index(chain[-1])
+            previous = (levels[-1][place - 1], False) if place else (chain[-2], True)
+        return {"previous": previous, "next": after_it}
+
+
+# The arrow each control shows, by direction and by whether the step leaves the level: along
+# the level it points the way the reader is going, and out of it both point up. This is the
+# half a reader sees — `data-climb` is a hook for these leaves, and the stylesheet reads
+# neither — so the two are checked as one claim below.
+ARROW = {("previous", False): "\u2190", ("next", False): "\u2192"}
+CLIMB = "\u2191"
+
+
+def shown(html: str, named: str) -> str:
+    """The arrow one control shows: leading on prev, trailing on next, as each points away."""
+    found = re.search(rf'<button[^>]*data-walk="{named}"[^>]*>(.*?)</button>', html, re.DOTALL)
+    assert found is not None, f"no {named} control on the page"
+    text = plain(found.group(1)).strip()
+    return text[0] if named == "previous" else text[-1]
+
+
+def control(html: str, named: str) -> tuple[str, bool] | None:
+    """What one control on a served page points at, and whether it is marked as a climb."""
+    found = inside(html, "data-walk", named, "data-node")
+    if not found:
+        return None
+    climbed = bool(inside(html, "data-walk", named, "data-climb"))
+    assert shown(html, named) == (CLIMB if climbed else ARROW[(named, climbed)]), named
+    return found[0], climbed
+
+
+def follow(client: TestClient, start: str, named: str) -> list[Page]:
+    """Every page one control reaches from `start` without leaving the level, `start` first.
+
+    Stops at the row whose control climbs, or where there is no control at all: what this
+    returns is one level, walked. The cap is the corpus's own size with room to spare — a walk
+    that did not close would loop here rather than hang.
     """
     walked: list[Page] = []
     url: str | None = start
@@ -98,73 +104,114 @@ def follow(client: TestClient, start: str, control: str) -> list[Page]:
         served = client.get(url)
         assert served.status_code == 200, f"{url}: {served.status_code}"
         walked.append(Page(url, served.text))
-        step = inside(served.text, "data-walk", control, "href")
-        url = step[0] if step else None
+        step = control(served.text, named)
+        url = (
+            None
+            if step is None or step[1]
+            else inside(served.text, "data-walk", named, "hx-get")[0]
+        )
         assert len(walked) < 500, f"{start}: the walk did not end"
     return walked
 
 
-def test_next_from_a_session_reads_every_node_it_holds_exactly_once(
+def first_child(client: TestClient, at: str) -> str:
+    """The URL of the first row of the level under one page's selection.
+
+    Where a walk of that level starts: the controls never descend, so a leaf that wants to
+    read a level has to arrive on it the way a reader does, by clicking a tree row.
+    """
+    html = client.get(at).text
+    (href,) = inside(html, "data-tree", kin(html)[0], "href")
+    return href
+
+
+def deep_turn(store: duckdb.DuckDBPyConnection) -> str:
+    """A turn with siblings on both sides and more than one call under it.
+
+    The level below it is what the leaves walk, and the turns beside it are what its own level
+    offers a climb out to — so this one turn exercises stepping along a level and both ways out.
+    """
+    (turn_id,) = one(
+        store,
+        'SELECT t.id FROM live_turns t WHERE t.session_id = ? AND t.source = ? AND t."index" > 0'
+        " AND (SELECT count(*) FROM live_api_calls c WHERE c.session_id = t.session_id"
+        "   AND c.source = t.source AND c.turn_id = t.id) > 1"
+        " AND EXISTS (SELECT 1 FROM live_turns o WHERE o.session_id = t.session_id"
+        '   AND o.source = t.source AND o."index" > t."index")'
+        ' ORDER BY t."index" LIMIT 1',
+        [SPINE, MAIN],
+    )
+    return str(turn_id)
+
+
+def test_every_control_in_the_corpus_walks_its_own_level_or_climbs_out_of_it(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """The walk is the way to the whole session, so it reaches all of it and repeats none of it.
+    """Neither control ever descends: every page in the corpus, both controls, against its tree.
 
-    Checked against every session in the corpus, and against the store's own rows rather than
-    against the tree: what the walk has to cover is what the session recorded, including the
-    calls and runs that attach to nothing and are only reachable through a bucket.
+    The claim is the whole rule at once — next is the following row of the reader's own level,
+    or, at the end of it, what follows the branch they are in; prev is the row ahead of them,
+    or the node that holds the level. A control that stepped into a node's children would land
+    somewhere no level on the page holds, and fail here.
     """
-    for (session_id,) in store.execute(SESSIONS).fetchall():
-        walked = [page.key for page in follow(client, f"/session/{session_id}", "next")]
-        assert len(walked) == len(set(walked)), f"{session_id}: a node was walked twice"
-        assert set(walked) == held(store, session_id), session_id
+    seen: set[str] = set()
+    for url in pages(store):
+        if not url.startswith("/session/"):
+            continue
+        html = client.get(url).text
+        page = Page(url, html)
+        # The expectation is a level read off the tree, so a level the cap cut would make it a
+        # different claim. Nothing in this corpus comes near the window.
+        assert values(html, "data-more") == [], url
+        for named, expected in page.expected.items():
+            assert control(html, named) == expected, (url, named)
+            if expected is not None:
+                seen.add(f"{named}:{expected[1]}")
+    # And every arm of the rule was reached: both controls, each stepping along a level and
+    # each climbing out of one. An arm the corpus never reaches is an arm nothing above pins.
+    assert seen == {"previous:True", "previous:False", "next:True", "next:False"}
 
 
-def test_the_walk_descends_before_it_moves_on_and_keeps_the_trees_order(
+def test_the_two_controls_walk_one_level_and_mark_the_way_out_of_it(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """Depth-first, in the order the tree drew each level.
+    """A reader who keeps pressing next reads the level they are on, in the tree's order.
 
-    Two properties together say that: every step lands on a child of the node it came from or
-    on a sibling of one of that node's ancestors — which is what depth-first means — and the
-    children of any node arrive in the order that node's own page rendered them. The tree's
-    order is what `tests/view/test_tree.py` pins against the store, so this leaf checks the
-    reading order against what the reader sees rather than deriving it twice.
+    Followed as a reader follows it — each page fetched, the next control read off what came
+    back — so the leaf proves the chain closes rather than that one page's markup is right.
+    Both ways out of the level are read at the ends: the row after the last is the turn's own
+    next sibling, and the row before the first is the turn.
     """
-    for (session_id,) in store.execute(SESSIONS).fetchall():
-        walked = follow(client, f"/session/{session_id}", "next")
-        for before, after in zip(walked, walked[1:], strict=False):
-            # `after`'s parent is on `before`'s chain: either `before` itself, or something
-            # `before` sits inside. Anything else is a jump across the tree.
-            assert after.chain[:-1] == before.chain[: len(after.chain) - 1], (
-                f"{session_id}: {after.key} does not follow {before.key} depth-first"
-            )
-        # Every node's children, gathered off the walk, in the order its own tree drew them.
-        for page in walked:
-            reached = [step.key for step in walked if step.chain[:-1] == page.chain]
-            assert reached == page.children, f"{session_id}: {page.key}"
+    turn = deep_turn(store)
+    at = f"/session/{SPINE}/turn/{MAIN}/{turn}"
+    level = kin(client.get(at).text)
+    assert len(level) > 1, "a level with more than one row to walk"
+    forward = follow(client, first_child(client, at), "next")
+    assert [page.key for page in forward] == level
+    # The end of the level climbs out of it, to the row after the turn the level hangs under.
+    turns = Page(at, client.get(at).text).levels[1]
+    assert control(forward[-1].html, "next") == (turns[turns.index(f"turn:{turn}") + 1], True)
+    # And the same level backwards, out through the turn itself.
+    back = follow(client, forward[-1].url, "previous")
+    assert [page.key for page in back] == list(reversed(level))
+    assert control(back[-1].html, "previous") == (f"turn:{turn}", True)
 
 
 @pytest.mark.parametrize("session_id", [SPINE, FORK_ORIGIN])
-def test_prev_walks_the_same_session_back(client: TestClient, session_id: str) -> None:
-    """The two controls are one order read in two directions.
-
-    `FORK_ORIGIN` is here for the nesting: its walk descends into a run, into the run that run
-    spawned, and back out, so the mirror covers popping out of a chain and not only stepping
-    along a level.
-    """
-    forward = follow(client, f"/session/{session_id}", "next")
-    back = follow(client, forward[-1].url, "previous")
-    assert [page.key for page in back] == [page.key for page in reversed(forward)]
-
-
-def test_the_first_node_has_nothing_before_it_and_the_last_nothing_after(
-    client: TestClient,
+def test_a_session_is_read_from_its_tree_and_not_from_the_controls(
+    client: TestClient, session_id: str
 ) -> None:
-    """A session is the first thing read and its last leaf the last, so each control stops."""
-    first = client.get(f"/session/{SPINE}").text
-    assert inside(first, "data-walk", "previous", "href") == []
-    walked = follow(client, f"/session/{SPINE}", "next")
-    assert inside(walked[-1].html, "data-walk", "next", "href") == []
+    """A session page offers no step in either direction: it is the only node at its level.
+
+    Which is the shape of the whole design — the controls read one level, and going down into
+    the session is what the tree is for. `FORK_ORIGIN` is here for the nesting: a session that
+    spawned runs that spawned runs still offers nothing, because depth is not what they walk.
+    """
+    html = client.get(f"/session/{session_id}").text
+    assert values(html, "data-walk") == []
+    # And the tree it was served with does hold the level a reader goes down into, so the
+    # absence above is the controls' rule and not an empty page.
+    assert kin(html)
 
 
 def test_a_control_says_what_the_neighbour_is_and_what_it_was(
@@ -173,35 +220,34 @@ def test_a_control_says_what_the_neighbour_is_and_what_it_was(
     """A control names the neighbour's kind and its label — the same label its tree row carries.
 
     A reader deciding whether to step has the node's own words, not the word "next". The kind
-    is printed rather than left in an attribute: the walk crosses levels — a turn's next is its
-    first api call — and a reader who cannot see that has no warning before the step.
+    is printed rather than left in an attribute: a step can climb out of the level, and a
+    reader who cannot see that has no warning before it.
     """
-    walked = follow(client, f"/session/{SPINE}", "next")
-    step = walked[2]
-    for control, neighbour in (("previous", walked[1]), ("next", walked[3])):
-        (key,) = inside(step.html, "data-walk", control, "data-node")
-        assert key == neighbour.key
+    # The thread's own level, which is the longest the corpus offers: four turns in a row.
+    walked = follow(client, first_child(client, f"/session/{SPINE}"), "next")
+    step = walked[1]
+    for named, neighbour in (("previous", walked[0]), ("next", walked[2])):
+        assert control(step.html, named) == (neighbour.key, False)
         # Both halves are text on the page: what the neighbour is, and what it is called. The
         # label is the one the neighbour's own tree row carries — one node, one name, wherever
         # it is read.
         kind, _, _ = neighbour.key.partition(":")
-        assert fields(step.html, "data-walk", control) == {
+        assert fields(step.html, "data-walk", named) == {
             "kind": kind,
             "label": fields(neighbour.html, "data-selected", neighbour.key)["label"],
         }
 
 
-def test_the_walk_is_the_same_however_the_tree_is_capped(client: TestClient) -> None:
+def test_the_walk_is_the_same_however_the_tree_is_capped(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
     """`?kin=` cuts the tree, never the reading order: the walk reads the store, not the rows.
 
     The cap is dropped to one child a level, which is the smallest the knob goes, so the tree
     beside the pane loses everything but the open path — and the controls do not move.
     """
-    walked = follow(client, f"/session/{SPINE}", "next")
-    for page in walked:
+    for page in follow(client, f"/session/{SPINE}/turn/{MAIN}/{deep_turn(store)}", "next"):
         capped = client.get(f"{page.url}?kin=1")
         assert capped.status_code == 200, page.url
-        for control in ("previous", "next"):
-            assert inside(capped.text, "data-walk", control, "data-node") == inside(
-                page.html, "data-walk", control, "data-node"
-            ), f"{page.key}: {control}"
+        for named in ("previous", "next"):
+            assert control(capped.text, named) == control(page.html, named), (page.key, named)

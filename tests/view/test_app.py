@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 
 from aiobserve.analyze import queries
 from aiobserve.view import app as view_app
-from aiobserve.view import bounds
+from aiobserve.view import bounds, nodes
 from aiobserve.view import format as fmt
 from aiobserve.view.app import CSP, TEMPLATES, build_app
 from aiobserve.view.format import ABSENT
@@ -46,6 +46,7 @@ from tests.conftest import (
     MAIN,
     MYCELIA,
     NO_PROJECT_SESSION,
+    SLASH_TURN,
     SPINE,
     SPINE_LEAF,
     SPINE_RUN,
@@ -699,9 +700,11 @@ def test_every_fact_a_header_asks_for_has_a_label() -> None:
 
     A header field with no label would reach a reader as a column name, which is the thing
     `LABELS` exists to stop, and an entry nothing asks for is a word nobody sees. Read off the
-    templates and the panes rather than listed here, so a fact added to either lands in this
-    check. The panes are the second source because a previewed value is labelled by the name
-    the route passed it under, which no template holds.
+    templates, the panes and the log's column table rather than listed here, so a fact added
+    to any of them lands in this check. The panes are a source because a previewed value is
+    labelled by the name the route passed it under, which no template holds; the column table
+    is one because a children log heads itself from a variable, which no regex over a template
+    can see.
     """
     asked = {
         name
@@ -709,7 +712,50 @@ def test_every_fact_a_header_asks_for_has_a_label() -> None:
         for name in re.findall(r"(?:parts\.fact|label)\('([a-z_]+)'", path.read_text())
     }
     previewed = set(re.findall(r'detail_of\(\s*"([a-z_]+)"', Path(view_app.__file__).read_text()))
-    assert asked | previewed == set(LABELS)
+    headed = {column.field for columns in nodes.COLUMNS.values() for column in columns}
+    assert asked | previewed | headed == set(LABELS)
+
+
+def test_a_column_that_prints_a_length_says_so_in_its_heading() -> None:
+    """A column of bare numbers has to name its unit, or the number is unreadable.
+
+    A children log prints lengths where the page under it prints the values — `text_chars` is
+    how much the model said, `result_chars` how much a tool answered. Heading either with the
+    word the pane gives the value itself leaves a reader deciding whether the column counts
+    characters, calls or answers. Read off the column table, so a length column added to any
+    shape lands in this check.
+    """
+    lengths = {
+        column.field
+        for columns in nodes.COLUMNS.values()
+        for column in columns
+        if column.field.endswith("_chars")
+    }
+    assert lengths, "the log heads no length column, so this contract has no subject"
+    for field in lengths:
+        assert "chars" in LABELS[field].lower(), field
+
+
+def test_every_filter_the_app_registers_is_one_a_template_names() -> None:
+    """A filter is registered so a template can name it, so every registration has a caller.
+
+    The formatters themselves are Python one page or another calls directly; what this closes
+    is the Jinja registry, where a filter nothing names is a name in the environment of every
+    render for no reader. Read off the app's own registration block and the templates rather
+    than listed here, so a filter added to either lands in this check.
+    """
+    source = Path(view_app.__file__).read_text()
+    block = source.partition("templates.env.filters |= {")[2].partition("}")[0]
+    # Both halves read a Python identifier, not a word: a filter named `to_json` or `md2` has
+    # to reach both sides of this comparison or the leaf passes by never seeing it.
+    registered = set(re.findall(r'"(\w+)":', block))
+    assert len(registered) > 5, "the registration block is not where this expects it"
+    named = {
+        name
+        for path in TEMPLATES.rglob("*.html")
+        for name in re.findall(r"\|\s*(\w+)", path.read_text())
+    }
+    assert not registered - named
 
 
 def test_every_number_a_header_prints_carries_its_separators(plant: Planter) -> None:
@@ -765,12 +811,14 @@ def test_a_node_page_cites_every_query_it_ran(client: TestClient) -> None:
             " head_chars=100 item_chars=60 head_items=5"
         ),
         "view_tree_turns": f"-- queries/view_tree_turns.sql session_id={SPINE} source={MAIN}",
-        # The tree cuts a run's label to a row's width, not a chip's, so the citation says
-        # which width this page read them at.
-        "view_runs": f"-- queries/view_runs.sql session_id={SPINE} chip_chars={queries.NAV_CHARS}",
+        # A run is printed twice on this page — as a tree row and as a children log row — so
+        # the citation says which of the two widths this request read them at: the wider.
+        "view_runs": f"-- queries/view_runs.sql session_id={SPINE} chip_chars={queries.LOG_CHARS}",
         "view_compactions": f"-- queries/view_compactions.sql session_id={SPINE} source={MAIN}",
         # The whole thread in outline, which is what places the runs: no window, so no paging.
-        "session_digest": f"-- queries/session_digest.sql session_id={SPINE}",
+        "session_digest": (
+            f"-- queries/session_digest.sql session_id={SPINE} log_chars={queries.LOG_CHARS}"
+        ),
     }
 
 
@@ -903,6 +951,9 @@ def test_planted_markup_arrives_inert(plant: Planter) -> None:
             client.get(f"/fragment/text/{ANCESTOR}/{MAIN}/{DENSE_TURN_CALL}").text,
             client.get(f"/fragment/input/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}").text,
             client.get(f"/fragment/result/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}").text,
+            # What followed a slash command, which is rendered rather than escaped, like the
+            # prompt a plain turn shows in its place.
+            client.get(f"/fragment/args/{SPINE}/{MAIN}/{SLASH_TURN}").text,
             client.get(f"/session/{ANCESTOR}/records/{MAIN}").text,
             client.get(f"/fragment/record/{ANCESTOR}/{MAIN}/1").text,
         )
@@ -976,7 +1027,7 @@ def test_a_fragment_cites_the_query_that_fetched_it(client: TestClient) -> None:
     """Every whole-value fragment carries the query and the keys it was fetched by.
 
     A fragment arrives on a page that has already been served, so it cannot ride the footer
-    the pages share: each one carries the line itself. All seven routes hand one shared seam
+    the pages share: each one carries the line itself. All nine routes hand one shared seam
     their own keys, so each is here — a seam pinned through one route alone would still let
     another cite a key it was not fetched by.
     """
@@ -996,11 +1047,22 @@ def test_a_fragment_cites_the_query_that_fetched_it(client: TestClient) -> None:
         ),
         (
             f"/fragment/result/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}",
-            f"-- queries/view_tool_result.sql {keyed} tool_call_id={DENSE_TOOL}",
+            f"-- queries/view_tool_result.sql {keyed} tool_call_id={DENSE_TOOL}"
+            f" head_chars={queries.HEADER_CHARS}",
+        ),
+        (
+            f"/fragment/command/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}",
+            f"-- queries/view_tool_command.sql {keyed} tool_call_id={DENSE_TOOL}",
         ),
         (
             f"/fragment/prompt/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL_TURN}",
             f"-- queries/view_turn_prompt.sql {keyed} turn_id={DENSE_CALL_TURN}",
+        ),
+        # The arguments of a slash turn, which only the one recorded slash turn has.
+        (
+            f"/fragment/args/{SPINE}/{MAIN}/{SLASH_TURN}",
+            f"-- queries/view_turn_command_args.sql session_id={SPINE} source={MAIN}"
+            f" turn_id={SLASH_TURN}",
         ),
         # A run is keyed by the session and its own id: a run has one home, so no thread
         # names it.

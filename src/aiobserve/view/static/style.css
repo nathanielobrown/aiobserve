@@ -45,6 +45,13 @@ main { padding: 0 var(--space-3) var(--space-4); }
 h1 { font-size: var(--type-title); }
 h2 { font-size: var(--type-head); }
 
+/* A control the reader clicks rather than reads: it looks the same whether it is a link that
+   leads somewhere or a button that swaps the pane under them, because which one it is is not
+   a thing they can act on. `font: inherit` because a button takes none of the page's type. */
+.button { display: inline-block; border: 1px solid var(--line); border-radius: var(--space-1);
+  padding: var(--space-1) var(--space-2); background: none; color: var(--mark); font: inherit;
+  text-align: inherit; text-decoration: none; cursor: pointer; }
+
 /* The session list. */
 #filters { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-2) var(--space-3);
   margin: var(--space-2) 0; }
@@ -86,8 +93,17 @@ td.title .secondary { display: -webkit-box; -webkit-box-orient: vertical;
    right. The tree is one flat list — a click swaps the whole of it out of band — so a row's
    place in the hierarchy is drawn from `data-depth` rather than from nesting. The ladder
    stops at the depths a chain reaches today; it grows with the kinds that get pages. */
-#browser { display: grid; grid-template-columns: minmax(16rem, 24rem) minmax(0, 1fr);
-  gap: var(--space-4); align-items: start; }
+#browser { display: grid;
+  grid-template-columns: var(--tree-width, 24rem) auto minmax(0, 1fr);
+  column-gap: var(--space-3); align-items: start; }
+/* The handle between the two columns. It carries the width the reader dragged to and nothing
+   else does: `static/tree-width.js` writes `--tree-width` above, and the bounds it may take
+   are that file's, so a drag has one stop rather than a clamp here and a limit there. Held
+   beside the tree's own scroller, the full height of it, so there is something to grab
+   wherever the reader's eye already is. */
+#tree-grip { position: sticky; top: var(--space-2); height: calc(100vh - 4rem); width: 5px;
+  border-radius: 3px; background: var(--line); cursor: col-resize; }
+#tree-grip:hover, #tree-grip:focus-visible { background: var(--mark); }
 /* The tree scrolls on its own, so a deep session scrolls its rows without losing the pane
    beside them. Monospaced at the label step, because a name's cut and the numbers after it
    line up down the column: the tree is scanned rather than read. */
@@ -95,14 +111,17 @@ td.title .secondary { display: -webkit-box; -webkit-box-orient: vertical;
   font-family: ui-monospace, monospace; font-size: var(--type-label); line-height: 1.6; }
 #tree .rows { margin: 0; padding: 0; list-style: none; }
 /* The fold in force, and the two beside it. Held at the top of the tree's own scroller, so a
-   deep session scrolls its rows under the control rather than past it. */
-#tree .switch { position: sticky; top: 0; z-index: 1; margin: 0; display: flex;
-  gap: var(--space-2); padding: var(--space-1); background: var(--paper); }
-#tree .switch a { color: var(--dim); text-decoration: none; }
-#tree .switch [aria-current] { color: var(--ink); font-weight: 600; }
-li.row[data-depth="1"] > a { padding-left: var(--space-3); }
-li.row[data-depth="2"] > a { padding-left: var(--space-4); }
-li.row[data-depth="3"] > a { padding-left: calc(2 * var(--space-4)); }
+   deep session scrolls its rows under the control rather than past it — and ruled off from
+   them, because three words above a tree read as the tree's root until they look clickable. */
+#tree .switch { position: sticky; top: 0; z-index: 1; margin: 0 0 var(--space-1); display: flex;
+  gap: var(--space-2); padding: var(--space-1); background: var(--paper);
+  border-bottom: 1px solid var(--line); }
+#tree .switch .button { color: var(--dim); font-size: var(--type-label);
+  padding: 0 var(--space-1); }
+#tree .switch [aria-current] { color: var(--ink); border-color: var(--mark); font-weight: 600; }
+li.row[data-depth="1"] > :is(a, button) { padding-left: var(--space-3); }
+li.row[data-depth="2"] > :is(a, button) { padding-left: var(--space-4); }
+li.row[data-depth="3"] > :is(a, button) { padding-left: calc(2 * var(--space-4)); }
 /* A row is one line: what the node is on the left, what it cost on the right, and a label too
    long for the column cut rather than wrapped. */
 li.node > a {
@@ -110,22 +129,56 @@ li.node > a {
   padding: 0 var(--space-1); color: inherit; text-decoration: none;
 }
 li.node [data-field="label"] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#tree .secondary, .tie { color: var(--dim); white-space: nowrap; }
+#tree .secondary { color: var(--dim); white-space: nowrap; }
 li.node > a:hover { background-color: color-mix(in srgb, var(--mark) 12%, transparent); }
-/* The row the pane is about, held at full strength while everything around it recedes. */
-li.row[data-selected] > a { font-weight: 600;
-  background-color: color-mix(in srgb, var(--mark) 12%, transparent); }
+/* The row the pane is about, held at full strength while everything around it recedes. The
+   wash alone is what a hover already does, so the selection is also railed in the accent —
+   3px, the meter's own weight — which no other row can wear. Inset rather than a border, so
+   the rail costs the row no width and the labels stay in one column. */
+li.row[data-selected] > a { font-weight: 600; color: var(--ink);
+  background-color: color-mix(in srgb, var(--mark) 12%, transparent);
+  box-shadow: inset 3px 0 var(--mark); }
+/* The tail of a level, which fetches the rest of it and stands the rows in its own place. A
+   button, because there is no page at the other end — and dressed as the row it sits in
+   rather than as a control, so the tree stays one column of one kind of line. Held to the
+   weight of `li.node > a` above, so the rules that indent a row by its depth outrank it here
+   the same way they outrank the anchor's own padding. */
 li.row.more { color: var(--dim); }
+li.more > button { display: block; width: 100%; padding: 0 var(--space-1); border: 0;
+  background: none; color: inherit; font: inherit; text-align: inherit; cursor: pointer; }
+li.more > button:hover { background-color: color-mix(in srgb, var(--mark) 12%, transparent); }
 /* Where a node sits, above the node itself. Separators between the steps rather than around
    them, so the trail reads as one line. */
 .crumbs a + a::before { content: "/"; color: var(--dim); margin: 0 var(--space-1); }
-#pane .log ul { margin: 0; padding: 0; list-style: none; }
-#pane .log li { display: flex; gap: var(--space-3); color: var(--dim); }
+/* The children log: a table of what is under the node, on the pane's full width. It reuses
+   the session list's table rules above — the same numbers right-aligned, the same two-line
+   cell — and adds only what a log has that a list does not.
+
+   Every column but one is a number, a stamp or a short name, so they take what they need and
+   the column the child is identified by takes the rest. `width: 100%` on that one cell is how
+   a table gives it the remainder; `min-width: 0` is what lets it then be cut rather than
+   pushing the numbers off the right. */
+#pane .log th { color: var(--dim); font-size: var(--type-label); font-weight: 600; }
+/* The mark before a heading's word. It says nothing a screen reader needs — the word beside
+   it is the same fact — so it is dim and small, and the markup hides it from the reader. */
+#pane .log th .icon { color: var(--dim); font-style: normal; }
+#pane .log td.what { width: 100%; min-width: 0; }
+#pane .log td.what .primary { overflow-wrap: anywhere; }
+/* The line under it is the command a description described: one long line of shell, held to
+   one line and cut with an ellipsis. A reader who wants the whole of it opens the row. */
+#pane .log td.what .secondary { font-family: ui-monospace, SFMono-Regular, monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A row opened in place, standing under the row that opened it. The rail and the wash are
+   what say so: the body inside is a whole node's, headings and all, and without them a
+   reader scrolling meets a second pane with nothing tying it to the line above. */
+#pane .log tr.expansion > td { background: color-mix(in srgb, var(--mark) 12%, transparent);
+  box-shadow: inset 3px 0 var(--mark); padding: var(--space-2) var(--space-3); }
 
 /* Narrow enough that two columns would leave neither readable: the tree folds above the pane
    and is scrolled inside itself, so the node stays in reach. */
 @media (max-width: 900px) {
   #browser { display: block; }
+  #tree-grip { display: none; }
   #tree { position: static; max-height: 50vh; margin-bottom: var(--space-3); }
 }
 
@@ -141,6 +194,10 @@ li.node > a {
   background-repeat: no-repeat;
   background-position: left bottom;
   background-size: 0 3px, 100% 3px;
+  /* Depth is padding on the row's link, so a track over the padding box would start left of
+     the label it prices and a nested row would read as wider than its parent's. Over the
+     content box every track starts under its own label. */
+  background-origin: content-box;
 }
 li.node.s1 > a { background-size: 10% 3px, 100% 3px; }
 li.node.s2 > a { background-size: 20% 3px, 100% 3px; }
@@ -160,12 +217,24 @@ li.node.s10 > a { background-size: 100% 3px, 100% 3px; }
   margin: var(--space-2) 0; }
 .facts dt { color: var(--dim); font-size: var(--type-label); }
 .facts dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+/* The command a slash turn ran, over the facts it made: the one line of a turn's pane a
+   reader scans for, in the accent and the monospace the command was typed in. */
+.command { margin: var(--space-2) 0; }
+.command span { color: var(--mark); font-family: ui-monospace, SFMono-Regular, monospace;
+  font-weight: 600; }
 /* One of the node's own values, cut to the pane's width. Its name reads as a label and not
    as a heading — the pane's one heading is the node — and the value itself wraps: the reader
    opened it to read it, and a tool input is not a column of a table. */
-.detail h3 { margin: var(--space-2) 0 var(--space-1); font-size: var(--type-label);
+   The label is the section's own: a value opened whole is rendered where the preview was, and
+   a heading a model wrote inside it is prose rather than a name for what it sits in. */
+.detail > h3 { margin: var(--space-2) 0 var(--space-1); font-size: var(--type-label);
   color: var(--dim); }
-.detail pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: var(--space-1) 0; }
+.detail pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: var(--space-1) 0;
+  border-left: 2px solid var(--line); padding-left: var(--space-2); }
+/* What a tool was passed and what it returned are two walls of the same monospace, and a
+   reader scrolling one needs to know which. The rail says it: the ask is walled in the rule
+   color like every other value, the answer in the accent. */
+.detail[data-detail="result"] pre { border-left-color: var(--mark); }
 /* The pull requests a session's commands touched — a list a reader follows off the page. */
 ul.prs { margin: var(--space-2) 0; padding: 0; list-style: none; overflow-wrap: anywhere; }
 /* The way down to the bytes: the thread's transcript, and the one line this node was read
@@ -178,7 +247,7 @@ ul.prs { margin: var(--space-2) 0; padding: 0; list-style: none; overflow-wrap: 
    so it wraps like the prose it is and is capped near a reading measure. */
 .walk { display: flex; gap: var(--space-3); border-top: 1px solid var(--line);
   margin-top: var(--space-3); padding-top: var(--space-2); }
-.walk a { max-width: 24rem; text-decoration: none; }
+.walk .button { max-width: 24rem; }
 /* Each control holds its own end whether or not the other is there: the last node of a
    session has nothing after it, and its back link still belongs on the left. */
 .walk [data-walk="previous"] { margin-right: auto; }

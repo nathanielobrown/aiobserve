@@ -12,6 +12,7 @@ flowchart LR
     session_list -->|"a row"| session["a session"]
     session -->|"a turn of its main thread"| turn["a turn"]
     session -->|"a context rewrite between turns"| compaction["a compaction"]
+    turn -->|"a context rewrite during it"| compaction
     session -->|"what attached to nothing"| bucket["a bucket"]
     turn -->|"an api call"| api_call["an api call"]
     turn -->|"a run spawned under it"| run["an agent run"]
@@ -28,6 +29,7 @@ flowchart LR
     tool -.-> value
     records -.->|"opening a row"| value
     turn -.->|"a child's body, in place"| body["a node's body"]
+    turn -.->|"what the tree's window left out"| kin["the rest of a level"]
 ```
 
 Solid edges lead to pages with their own URLs. Dotted edges fetch a fragment into the open page.
@@ -69,13 +71,13 @@ Filters survive sorting and paging. The `clear` link beside the form drops them.
 
 Beside every node page is the session's tree, with one path open: the selection, its ancestors, each ancestor's children, and the selection's own children. Clicking a row selects it, which opens that row's path and closes the one you left. There are no independent twisties and no way to open two branches at once, so no session makes the tree wider than one open path. Its depth is a hard limit rather than a cap: an open path runs at most 16 levels, and a node deeper than that fails instead of serving a page the byte arithmetic never priced. The deepest chain the recorded corpus holds is 14 — a tool call inside a run five spawns down — so the margin is one more spawn level.
 
-A session's children are the main thread's turns, its compactions in the place they happened, its calls that answer no turn, and the runs nothing placed. A turn's children are its api calls; an api call's are its tool calls. An agent run reads like a session: its children are its own turns. A run renders under the *turn* it belongs to, right after the api call that spawned it, and a `↖ from api call 2` tie says which call that was — the run is the turn's child, not the call's, and a `Task` tool call keeps its own slot with a link to the run at the head of its page.
+A session's children are the main thread's turns, the compactions that happened between two of them, its calls that answer no turn, and the runs nothing placed. A turn's children are its api calls and the compactions that happened while it ran, in the order they happened; an api call's are its tool calls. An agent run reads like a session: its children are its own turns. A run renders under the *turn* it belongs to, right after the api call that spawned it — the run is the turn's child, not the call's, and a `Task` tool call keeps its own slot with a link to the run at the head of its page.
 
 Above the rows is the fold: **full**, **no api calls**, **agents only**, with the one in force marked. Each is the node you are reading under a different tree, so a switch keeps your place and your knobs — the fold is [`?nav=`](#urls-preserve-the-query-behind-what-you-saw), and the control is the only link on the page that changes it.
 
 Every row with spend carries a bar along its edge: its share of what the session cost, logarithmic over three orders of magnitude, because a session's cheapest turn and its dearest are that far apart and a linear scale draws all but the largest as nothing. Tool calls have no bar; what a tool call took is the api call's.
 
-A level shows at most 25 children, and a `+N more` row says what the cap left out and links to the parent's own page, which pages its children rather than capping them. The row the open path descends through is always kept, inside the cap.
+A level opens on 50 children, and a `+N more` row says how many it left out. Clicking it fetches the rest of that level and stands the rows in its own place, so a wide branch opens where it is rather than sending you to another page. The row the open path descends through is always kept, inside the window. Nothing bounds what that click can bring back: a branch of ten thousand children answers with ten thousand rows.
 
 A tool call that came back an error carries an `error` mark on its row, in the same red the children log and the list use.
 
@@ -92,13 +94,14 @@ The list is bounded like the landing page rather than paged: it shows the first 
 The pane leads with the crumb chain down to the node, then the node's label and the facts the store holds for it. Under those:
 
 - What an enrichment pass said about the node, when a pass has reached it
-- The node's own fat values, cut to 4,000 characters, each with a link that fetches the rest: a turn's prompt, a run's task brief, an api call's text and thinking, a tool call's input and result
+- The node's own fat values, cut to 4,000 characters, each with a link that fetches the rest: a turn's prompt, a run's task brief, an api call's text and thinking, a tool call's input and result, and the command a `Bash` call ran. A turn typed as a slash command leads with the command instead of the prompt — the prompt holds the wrapper Claude Code expanded it into — and what followed the command is one of its values
 - The thread's transcript, and — for a turn — the archived line it was read from, in a `<details>` that fetches on open
-- The children log: a page of 12 children, each a link to its own page and a `body` toggle that opens the child's own pane in place, without leaving the parent. An opened body stops there; what's under it is a count and a link
-- `←` and `→`, which walk the whole session depth-first — into a node's children, on to its next sibling, then out. Each names the neighbour's kind and its label, so a change of level is never a surprise. The buckets and the compactions are stops like any other, and the walk ignores what the tree was capped to: a reading order that shortened with the sidebar would skip nodes silently
+- The children log: one numbered page of 100 children, as a table. A column per number the children are told apart by, each under a heading that names it — a turn's api calls read nothing like its tool calls, and a start time is not a duration. One wide column names the child and links to its page, and a `View` button opens the child's own pane in place, as a row of the same table, without leaving the parent. An opened body stops there; what's under it is a count and a link. The heading counts the level, not the page; a level running past one page carries prev and next under it, and says which page of how many you are on
+- A tool row is named by what the tool was asked, because that is what tells two calls of one tool apart: a `Read`'s file path, relative to the session's project directory where the file is inside it and absolute where it is not; a `Bash` call's description, with the command itself under it; and the head of the input JSON for every other tool
+- Prev and next, two buttons that read the level the node is on: the row beside it, and at the end of the level whatever follows the branch. Neither descends — going down is what the tree is for — and a step that leaves the level shows `↑` instead of an arrow along it. Each names the neighbour's kind and its label. The buckets and the compactions are stops like any other, and the controls ignore what the tree was capped to: a reading order that shortened with the sidebar would skip nodes silently
 - [Where the session failed](#jump-straight-to-where-a-session-failed): how many tool calls it failed, the way to the list of them, and — on a failed call — the step to the failure before it and the one after
 
-JSON and SQL are marked up in their own syntax; everything else a transcript wrote is prose, and Markdown renders as Markdown. A value past 256,000 characters prints as stored with a line saying why. Every page's footer cites the queries behind it, and each citation links to `/query/{name}`, which shows that query's SQL under the bindings the page used.
+A value is marked up in the syntax the record says it is written in: the JSON a tool was passed, the SQL behind a page, the shell a `Bash` call ran, and the file a `Read` returned — read off the name the call asked for, so a `.md`, `.py`, `.sql` or `.sh` result is shown as its source rather than rendered. A tool result is evidence, and a heading made out of a `#` is a character the agent saw and the page does not. What a model wrote is prose: the pane previews it as plain text, and the fetch that opens it whole renders it as Markdown, with a fenced block inside marked up in the language the fence names. Anything the viewer cannot place prints as it was stored, and so does a value past 256,000 characters, with a line saying why. Every page's footer cites the queries behind it, and each citation links to `/query/{name}`, which shows that query's SQL under the bindings the page used.
 
 `agent_runs.description` shows as **task brief**: it is the brief Claude Code recorded for the run, not a description of what the run did. On this screen "description" always means enrichment.
 
@@ -121,15 +124,17 @@ Node pages take four knobs, and every link on a page carries the ones that aren'
 | `?nav=full` | The whole tree. The default |
 | `?nav=noapi` | The api calls folded away, each turn's tool calls standing directly under it |
 | `?nav=agents` | The runs alone, each under the run that spawned it — the session's org chart |
-| `?kin=` | Children per open level, at most 25 |
-| `?log=` | Rows in the pane's children log, at most 12 |
+| `?kin=` | Children per open level, at most 50 |
+| `?log=` | Rows in one page of the pane's children log, at most 100 |
 | `?detail=` | Characters of each value the pane previews, at most 4,000 |
 
 The three sizes only go down. Each default is also its ceiling, because the page's byte bound is arithmetic over the defaults and there is no headroom to spend. A size outside its range or a `nav` the viewer doesn't have returns 400 rather than a guess.
 
+How wide the tree is drawn is the one thing you set that no URL carries: it belongs to the screen you are reading on, not to the node you linked to, so a pasted link would hand someone else your column. Drag the handle between the tree and the pane — or focus it and press the arrow keys — and this browser keeps the width for every session you open.
+
 The presets are the [fold above the tree](#the-tree-opens-one-path-and-nothing-else), and typing one into the URL does the same thing. Every preset leaves every visible node with a visible parent, and a level whose preset would hide the path you are standing on renders in full instead.
 
-The session list accepts `sort`, `direction`, `page`, `size`, and its filter keys, and returns 400 for an unknown key, an unknown sort or direction, a filter value of the wrong type, or a page outside its bounds. Sort keys map to fixed columns, filter keys map to fixed predicates, and request values reach SQL only as bound parameters. A children log pages with `?after=`, the index of the last child already shown.
+The session list accepts `sort`, `direction`, `page`, `size`, and its filter keys, and returns 400 for an unknown key, an unknown sort or direction, a filter value of the wrong type, or a page outside its bounds. Sort keys map to fixed columns, filter keys map to fixed predicates, and request values reach SQL only as bound parameters. A children log pages with `?page=`, numbered from one; page one is the node's own URL, and a number past the level's last page is a 404.
 
 Reports cite raw records as `(session_id, source, line_no)`. The records URL derives from that natural key, so a later port or route change does not invalidate the saved tuple. This form opens the records browser on the cited line:
 
@@ -166,17 +171,17 @@ Full-value requests are the declared exception. Each returns one transcript line
 | Session list | 104 sessions; each long string is cut to 100 characters, skills and agent types to four 20-character names, and work to three |
 | Projects | 100 projects; the path is cut to 100 characters |
 | A session's errors | 100 failed tool calls; each label is cut to 48 characters |
-| Tree | 25 children per open level, 16 levels deep, each label cut to 48 characters |
-| Children log | 12 rows, each string cut to 300 characters |
+| Tree | 50 children per open level, 16 levels deep, each label cut to 48 characters |
+| Children log | 100 rows a page, each string cut to 300 characters |
 | Previewed value | 4,000 characters, with the rest a fetch away |
 | Raw records | 100 rows by default, at most 200 |
 | Offload | 50,000 characters by default, at most 60,000 |
 | Syntax highlighting | 256,000 characters, above which the value prints as stored |
 
-The worst node page comes to 466,658 bytes of the 500,000 allowed. The tree is what multiplies: an open path is `1 + 16 × (25 + 1)` = 417 rows, and a row is pinned at 914 bytes, which is 381,138 of the page. The rest is 16 crumbs at 558 bytes, 12 log rows at 1,616, two previewed values at 20,600, and 16,000 of chrome — leaving 33,342 spare. `TREE_ROW_BYTES` is measured through the app rather than budgeted, at a label of nothing but `&` and the longest query string a link can carry, and pinned with no slack: a byte of slack there is 417 bytes of page. Nearly all of a row is its URL written twice, the `href` a reader follows and the `hx-get` htmx fetches — what the fetch then does with the response is written once on `#tree-rows` — so a store whose agent runs carry longer ids than the recorded corpus does is a re-measure.
+The worst node page comes to 1,542,966 bytes of the 1,570,000 a node page is allowed — its own budget rather than the 500,000 every other page is weighed against, because the tree is a window a reader widens in place and not a page. The tree is what multiplies: an open path is `1 + 16 × (50 + 1)` = 817 rows, and a row is pinned at 914 bytes, which is 746,738 of the page. The rest is 16 crumbs at 558 bytes, 100 log rows at 6,079, a pager at 600, three previewed values — two of prose at 20,600 and one marked up in its own syntax at 120,600 — and 17,000 of chrome, leaving 27,034 spare. A marked-up preview is priced at 30 bytes a character against a prose preview's five: a span and a class around every token the lexer finds. A log row is the dearest thing on the page after the tree: it prints up to three of the store's own strings at 300 characters each, which is what a reader gets for reading a level without opening it. `TREE_ROW_BYTES` is measured through the app rather than budgeted, at a label of nothing but `&` and the longest query string a link can carry, and pinned with no slack: a byte of slack there is 817 bytes of page. Nearly all of a row is its URL written twice, the `href` a reader follows and the `hx-get` htmx fetches — what the fetch then does with the response is written once on `#tree-rows` — so a store whose agent runs carry longer ids than the recorded corpus does is a re-measure.
 
 A session's errors list grows the way the corpus pages do — nothing about a session caps how often its tools fail — so it is bounded the same way and projects to 67 KB: 2.5 KB of chrome plus 100 rows at 640 bytes, of which 240 is a label of nothing but `&`.
 
 The session list is bound independently of corpus size. Its filter box offers the 10 busiest project paths that fit its bound, whole or not at all; a cut path would filter by a directory nobody named. The projects page cuts a long path the same way and leaves that row unlinked. The same rule keeps row filtering correct: the viewer filters whole titles, paths, and skill lists, then cuts only the rows it renders. The worst-case list projects to 499 KB: 10 KB of page chrome plus 104 rows at 4.7 KB each.
 
-A session header does not have a reader-controlled size, so its query cuts every string, skill list, PR list, session description, and friction line. `tests/view/test_bounds.py` measures these fixed costs and checks every route the viewer exposes against the 500 KB ceiling, once with no query string and once with the dearest knobs a URL can carry.
+A session header does not have a reader-controlled size, so its query cuts every string, skill list, PR list, session description, and friction line. `tests/view/test_bounds.py` measures these fixed costs and checks every route the viewer exposes against its own ceiling, once with no query string and once with the dearest knobs a URL can carry.

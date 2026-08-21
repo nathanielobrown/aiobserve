@@ -16,6 +16,7 @@ table written out — every cell in full, including the ones a preset passes thr
 table edit has to be an edit here before it can pass.
 """
 
+import datetime as dt
 import re
 from collections import Counter
 from collections.abc import Callable, Sequence
@@ -33,8 +34,8 @@ from aiobserve.view import bounds, tree
 from aiobserve.view.app import build_app
 from aiobserve.view.enrichment import Descriptions
 from aiobserve.view.format import cut, money
-from aiobserve.view.nodes import Kind, Preset, Ref, meter
-from tests.conftest import MAIN, SPINE
+from aiobserve.view.nodes import BODY_URL, KIN_URL, Kind, Preset, Ref, meter
+from tests.conftest import MAIN, SPINE, SPINE_RUN
 from tests.view.conftest import SPAWNS, Planter, fields, inside, kin, one, rows, values, wired
 
 
@@ -60,20 +61,13 @@ def thread_level(store: duckdb.DuckDBPyConnection, session_id: str, source: str)
         ' ORDER BY "index"',
         [session_id, source],
     ).fetchall()
-    marks = store.execute(
-        "SELECT id, timestamp FROM live_compactions WHERE session_id = ? AND source = ?"
-        " ORDER BY timestamp",
-        [session_id, source],
-    ).fetchall()
-    placed: list[str] = []
-    pending = list(marks)
-    for turn_id, started in turns:
-        # A compaction lands before the first turn that started after it, which is when it
-        # happened; a turn the store has no start for cannot move one.
-        while pending and started is not None and pending[0][1] < started:
-            placed.append(f"compaction:{pending.pop(0)[0]}")
-        placed.append(f"turn:{turn_id}")
-    placed += [f"compaction:{mark}" for mark, _ in pending]
+    # A compaction lands before the first turn that started after it, which is when it
+    # happened — but only the ones that happened between two turns: one that happened during
+    # a turn is a child of that turn (`turn_marks`), not a sibling of it.
+    placed = dropped_in(
+        [(f"turn:{turn_id}", started) for turn_id, started in turns],
+        [(mark, at) for mark, at, turn in marks(store, session_id, source) if turn is None],
+    )
     # The thread's calls that answer no turn *of this thread*, as one bucket. A fork replays
     # calls whose `turn_id` names a turn of the thread it forked from, so the resolution is a
     # join and not a NULL check.
@@ -92,33 +86,85 @@ def thread_level(store: duckdb.DuckDBPyConnection, session_id: str, source: str)
     return placed
 
 
+def marks(
+    store: duckdb.DuckDBPyConnection, session_id: str, source: str
+) -> list[tuple[str, dt.datetime, str | None]]:
+    """One thread's compactions in time order, each beside the turn it happened during.
+
+    The placement rule in the test's own SQL: a turn holds a compaction its span covers, and
+    where two spans cover one — the corpus records turns that overlap — the turn that started
+    last holds it, because that is the one still running. Half-open at both ends: a compaction
+    at the instant a turn starts is that turn's, one at the instant it ends is the next thing's.
+    """
+    return [
+        (str(mark), at, turn)
+        for mark, at, turn in store.execute(
+            "SELECT k.id, k.timestamp,"
+            "  (SELECT t.id FROM live_turns t"
+            "     WHERE t.session_id = k.session_id AND t.source = k.source"
+            "       AND k.timestamp >= t.started_at AND k.timestamp < t.ended_at"
+            '     ORDER BY t.started_at DESC, t."index" DESC LIMIT 1)'
+            " FROM live_compactions k WHERE k.session_id = ? AND k.source = ?"
+            " ORDER BY k.timestamp",
+            [session_id, source],
+        ).fetchall()
+    ]
+
+
+def dropped_in(
+    rows: Sequence[tuple[str, dt.datetime | None]], pending: Sequence[tuple[str, dt.datetime]]
+) -> list[str]:
+    """A level's own rows with `pending`'s compactions dropped in where they happened."""
+    placed: list[str] = []
+    waiting = list(pending)
+    for key, started in rows:
+        while waiting and started is not None and waiting[0][1] < started:
+            placed.append(f"compaction:{waiting.pop(0)[0]}")
+        placed.append(key)
+    return placed + [f"compaction:{mark}" for mark, _ in waiting]
+
+
+def turn_marks(
+    store: duckdb.DuckDBPyConnection, session_id: str, source: str, turn_id: str | None
+) -> list[tuple[str, dt.datetime]]:
+    """The compactions that happened during one turn, in time order.
+
+    None at a bucket: a bucket holds the calls that answer no turn, and a compaction that
+    answers none stays beside the turns of its thread.
+    """
+    if turn_id is None:
+        return []
+    return [(mark, at) for mark, at, turn in marks(store, session_id, source) if turn == turn_id]
+
+
 def turn_level(
     store: duckdb.DuckDBPyConnection, session_id: str, source: str, turn_id: str | None
 ) -> list[str]:
-    """The api calls under one turn, each run hoisted after the call that spawned it.
+    """The api calls under one turn and the compactions among them, each run hoisted after the
+    call that spawned it.
 
     `turn_id` None is the unattributed bucket's own level, which reads the same way: the calls
     that answer no turn, and the runs those calls spawned.
     """
-    calls = [
-        row[0]
-        for row in store.execute(
-            "SELECT c.id FROM live_api_calls c"
-            " LEFT JOIN live_turns t ON t.session_id = c.session_id AND t.source = c.source"
-            "  AND t.id = c.turn_id"
-            " WHERE c.session_id = ? AND c.source = ? AND t.id IS NOT DISTINCT FROM ?"
-            ' ORDER BY c."index"',
-            [session_id, source, turn_id],
-        ).fetchall()
-    ]
+    calls = store.execute(
+        "SELECT c.id, c.started_at FROM live_api_calls c"
+        " LEFT JOIN live_turns t ON t.session_id = c.session_id AND t.source = c.source"
+        "  AND t.id = c.turn_id"
+        " WHERE c.session_id = ? AND c.source = ? AND t.id IS NOT DISTINCT FROM ?"
+        ' ORDER BY c."index"',
+        [session_id, source, turn_id],
+    ).fetchall()
     hoisted: dict[str, list[str]] = {}
-    for run_id, spawn_source, spawn_turn, spawn_call, _ in spawned(store, session_id):
+    for run_id, spawn_source, spawn_turn, spawn_call in spawned(store, session_id):
         if spawn_source == source and spawn_turn == turn_id:
             hoisted.setdefault(str(spawn_call), []).append(f"run:{run_id}")
     placed: list[str] = []
-    for call_id in calls:
-        placed.append(f"call:{call_id}")
-        placed += hoisted.pop(call_id, [])
+    for key in dropped_in(
+        [(f"call:{call_id}", started) for call_id, started in calls],
+        turn_marks(store, session_id, source, turn_id),
+    ):
+        placed.append(key)
+        placed += hoisted.pop(key.removeprefix("call:"), [])
     # A run whose spawning call this level does not hold still belongs to the turn the edge
     # resolved to, so it trails the level rather than being dropped.
     for leftover in hoisted.values():
@@ -166,38 +212,119 @@ def test_every_sessions_own_page_opens_the_level_its_thread_holds(
     assert {"compaction", "unattributed", "unattached"} <= seen
 
 
-def test_a_compaction_lands_before_the_turn_that_started_after_it(
+def test_a_compaction_hangs_off_the_turn_whose_span_covers_it(
     store: duckdb.DuckDBPyConnection, plant: Planter
 ) -> None:
-    """Where a compaction sits among the turns of its thread, read at the instant it turns on.
+    """Where a compaction sits, read at each instant the placement rule turns on.
 
-    No recorded compaction has a turn of its own thread starting after it, so every one of them
-    trails the thread and the placement rule above is never exercised: the level would read the
-    same with the rule deleted. A compaction is where the reader sees the context being
-    dropped, so the rule is planted — the same compaction moved to just before a turn, and then
-    onto that turn's own instant, which is the side the rule closes on.
+    A compaction that happened while a turn was running is a child of that turn; one that
+    happened between two turns is a sibling of them, in time order. The corpus exercises both
+    sides but neither edge: no recorded compaction has a turn of its own thread starting after
+    it, and none lands on the instant a turn starts or the instant one ends, so the tree would
+    read the same with the rule's boundaries deleted. A compaction is where the reader sees the
+    context being dropped, so the edges are planted — the same compaction moved to each of the
+    three instants, and read off the turn's own page, where both levels are open at once.
+
+    The pair is picked so the plant has one answer: a turn whose start no sibling shares, and
+    whose end no turn of the thread is still running through.
     """
-    session_id, compaction_id, turn_id, started = one(
+    session_id, source, compaction_id, turn_id, started, ended = one(
         store,
-        "SELECT k.session_id, k.id, t.id, t.started_at FROM live_compactions k"
+        "SELECT k.session_id, k.source, k.id, t.id, t.started_at, t.ended_at"
+        " FROM live_compactions k"
         " JOIN live_turns t ON t.session_id = k.session_id AND t.source = k.source"
-        " WHERE t.started_at IS NOT NULL"
+        " WHERE t.started_at IS NOT NULL AND t.ended_at IS NOT NULL"
+        "   AND NOT EXISTS (SELECT 1 FROM live_turns o WHERE o.session_id = t.session_id"
+        "     AND o.source = t.source AND o.id <> t.id AND o.started_at = t.started_at)"
+        "   AND NOT EXISTS (SELECT 1 FROM live_turns o WHERE o.session_id = t.session_id"
+        "     AND o.source = t.source AND t.ended_at >= o.started_at AND t.ended_at < o.ended_at)"
         ' ORDER BY k.session_id, k.source, t."index" LIMIT 1',
     )
-    for seconds, above in ((1, True), (0, False)):
+    for moment, under, above in (
+        # The instant before the turn starts is nobody's turn, so the compaction stands beside
+        # the turns and above the one that started after it...
+        (started - dt.timedelta(seconds=1), False, True),
+        # ...the instant the turn starts is the turn's own, which is the edge the span closes
+        # on, so the same compaction hangs off it instead...
+        (started, True, False),
+        # ...and the instant the turn ends belongs to whatever comes next, so it drops back
+        # beside the turns, below the one it just left.
+        (ended, False, False),
+    ):
         path = plant(
             (
-                "UPDATE compactions SET timestamp = ?::TIMESTAMPTZ - ? * INTERVAL 1 SECOND"
-                " WHERE id = ?",
-                [str(started), seconds, compaction_id],
+                "UPDATE compactions SET timestamp = ?::TIMESTAMPTZ WHERE id = ?",
+                [str(moment), compaction_id],
             )
         )
         with TestClient(build_app(path)) as moved:
-            keys = values(moved.get(f"/session/{session_id}").text, "data-tree")
+            placed = rows(moved.get(f"/session/{session_id}/turn/{source}/{turn_id}").text)
+        keys = [key for _, key in placed]
         at, turn_at = keys.index(f"compaction:{compaction_id}"), keys.index(f"turn:{turn_id}")
-        # A compaction that happened before the turn started belongs above it; one that
-        # happened at the instant the turn started did not happen during the turn before it.
-        assert (at < turn_at) is above, (seconds, keys)
+        # A child of the turn is one level deeper than it; a sibling shares its depth, and its
+        # side of the turn says which way the time comparison went.
+        assert (placed[at][0] == placed[turn_at][0] + 1) is under, (moment, placed)
+        assert (at < turn_at) is above, (moment, placed)
+
+
+def moved(compaction_id: str, at: dt.datetime) -> tuple[str, list[str]]:
+    """One recorded compaction, moved onto `SPINE`'s main thread at the instant named."""
+    return (
+        "UPDATE compactions SET session_id = ?, source = ?, timestamp = ?::TIMESTAMPTZ"
+        " WHERE id = ?",
+        [SPINE, MAIN, str(at), compaction_id],
+    )
+
+
+def test_a_turn_holds_its_own_compactions_and_an_overlapped_instant_goes_to_the_later_turn(
+    store: duckdb.DuckDBPyConnection, plant: Planter
+) -> None:
+    """Two turns running at once, one compaction inside both and one inside only the outer.
+
+    A turn's level holds the compactions of that turn and no other's. Where two turns cover
+    one instant — 44 of the canonical store's 1,269 compactions sit inside more than one span
+    — the turn that started last holds it, because that is the one still running when the
+    context was dropped.
+
+    Both claims need a thread with two turns owning a compaction apiece, and no recorded
+    session has one: every thread holding a compaction holds a single turn. The overlap is
+    real, though, so only the compactions are planted — two of them moved onto a thread whose
+    turns already overlap, one at an instant both cover and one at an instant only the outer
+    turn does.
+    """
+    outer, outer_started, inner, inner_started, inner_ended = one(
+        store,
+        "SELECT a.id, a.started_at, b.id, b.started_at, b.ended_at FROM live_turns a"
+        " JOIN live_turns b ON b.session_id = a.session_id AND b.source = a.source"
+        "  AND b.id <> a.id AND b.started_at > a.started_at AND b.ended_at <= a.ended_at"
+        "  AND b.started_at < b.ended_at"
+        ' WHERE a.session_id = ? AND a.source = ? ORDER BY a."index", b."index" LIMIT 1',
+        [SPINE, MAIN],
+    )
+    shared, alone = [
+        row[0]
+        for row in store.execute("SELECT id FROM live_compactions ORDER BY id LIMIT 2").fetchall()
+    ]
+    path = plant(
+        # Inside both spans: the instant belongs to the turn that started last.
+        moved(shared, inner_started + (inner_ended - inner_started) / 2),
+        # And inside the outer turn alone, before the inner one started.
+        moved(alone, outer_started + (inner_started - outer_started) / 2),
+    )
+    with TestClient(build_app(path)) as served:
+        pages = {
+            turn_id: served.get(f"/session/{SPINE}/turn/{MAIN}/{turn_id}").text
+            for turn_id in (outer, inner)
+        }
+    for turn_id, expected in ((outer, alone), (inner, shared)):
+        held = [key for key in kin(pages[turn_id]) if key.startswith(f"{Kind.COMPACTION}:")]
+        assert held == [f"{Kind.COMPACTION}:{expected}"], turn_id
+    # And the page says what placed them: the query that answered which turn each compaction
+    # happened during is cited, at the thread both levels of this page read it on.
+    cited = fields(pages[inner], "id", "citation")
+    assert cited["view_compactions"] == (
+        f"-- queries/view_compactions.sql session_id={SPINE} source={MAIN}"
+    )
 
 
 def test_the_tree_opens_the_selections_path_and_leaves_the_rest_shut(
@@ -229,10 +356,10 @@ def test_every_link_that_swaps_the_pane_lands_the_pane_in_the_pane(
 ) -> None:
     """The whole of what a click does, on both the mounts that mount a node link.
 
-    A tree row and a children-log row are the two ways a reader moves without leaving the
-    page, and both do the same thing: fetch the URL the link points at, take `#pane` out of
-    the response, put it where the pane already is, and swap the rows out of band. Read as
-    htmx composes it, inheritance and all, because that is what the browser acts on.
+    A tree row, a children-log row and the two walk controls are how a reader moves without
+    leaving the page, and all of them do the same thing: fetch the node's URL, take `#pane`
+    out of the response, put it where the pane already is, and swap the rows out of band.
+    Read as htmx composes it, inheritance and all, because that is what the browser acts on.
 
     `hx-target` is the half that has no default worth having: htmx aims at the clicked
     element, so a page missing it swaps the whole pane inside the `<a>` the reader clicked
@@ -247,14 +374,16 @@ def test_every_link_that_swaps_the_pane_lands_the_pane_in_the_pane(
         "hx-select-oob": "#tree-rows",
         "hx-push-url": "true",
     }
-    for mount in ("data-tree", "data-child"):
+    for mount in ("data-tree", "data-child", "data-walk"):
         # A row's other fetch is its body toggle, which opens in place and has nowhere to go:
-        # the links are the ones with an `href`, which is also what makes them pasteable.
-        links = [(key, wiring) for key, wiring in wired(html, mount) if "href" in wiring]
-        assert len(links) > 1, mount
-        for key, wiring in links:
-            # A link fetches what it points at: one URL, however the reader gets there.
-            assert wiring["hx-get"] == wiring["href"], (mount, key)
+        # the ones that move the reader are the ones fetching a node's own URL.
+        moving = [(key, w) for key, w in wired(html, mount) if node_link(w["hx-get"])]
+        assert len(moving) > 1, mount
+        for key, wiring in moving:
+            # A link fetches what it points at: one URL, however the reader gets there. A walk
+            # control has no `href` to agree with — it is a button, because what it offers is
+            # a move through the pane and not a place of its own to paste.
+            assert wiring.get("href", wiring["hx-get"]) == wiring["hx-get"], (mount, key)
             assert {name: wiring.get(name) for name in swap} == swap, (mount, key)
     # The two ids the swap aims at, each written exactly once.
     assert html.count('id="pane"') == 1
@@ -290,17 +419,52 @@ def test_the_tree_keeps_its_place_because_the_scroller_is_not_what_swaps(
     assert not [rule for rule in scrolls if "#tree-rows" in rule or "#tree .rows" in rule]
 
 
-def test_a_run_hoists_after_the_call_that_spawned_it_and_says_which(
+def test_the_tree_is_widened_by_a_handle_and_the_width_outlives_the_page(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """A run renders inside the turn it belongs to, right after its spawning call, with a tie.
+    """A handle beside the tree drags it wider, and the browser remembers how wide.
+
+    Every other thing a reader sets rides the URL. A width cannot: it belongs to the screen
+    they are reading on and not to the node they linked to, so a pasted link would carry
+    someone else's column. What this pins is the chain that lets a script set it instead —
+    a handle in the markup, a grid whose tree column is one custom property, and a script
+    served from this app, because `app.CSP` forbids an inline one and a page load would
+    forget a width that CSS alone had kept.
+    """
+    page = client.get(url(open_turn(store))).text
+    # The handle sits between the two columns it divides, and says what it is to a reader who
+    # cannot see it.
+    assert [at for at in values(page, "id") if at in {"tree", "tree-grip", "pane"}] == [
+        "tree",
+        "tree-grip",
+        "pane",
+    ]
+    grip = re.findall(r"<div id=\"tree-grip\"[^>]*>", page)
+    assert len(grip) == 1 and 'role="separator"' in grip[0] and 'tabindex="0"' in grip[0]
+    # The tree's column is one custom property, which is the whole of what the script writes:
+    # a width the stylesheet fixed some other way is a handle that drags nothing.
+    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.S)
+    (columns,) = re.findall(r"#browser\s*\{[^}]*grid-template-columns:([^;]*);", style)
+    assert "var(--tree-width" in columns
+    # And the script that writes it is a file this app serves, keeping the width where a page
+    # load cannot reach it.
+    (src,) = [asset for asset in values(page, "src") if "tree-width" in asset]
+    served = client.get(src)
+    assert served.status_code == 200
+    assert "--tree-width" in served.text and "localStorage" in served.text
+
+
+def test_a_run_hoists_after_the_call_that_spawned_it(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A run renders inside the turn it belongs to, right after its spawning call.
 
     A run is a child of the turn and not of the api call — it has a thread of its own, and the
-    call is only where it was asked for — so the row that says where it came from is the tie
-    rather than the nesting. Read here at the level, where the neighbour on either side is the
-    whole point.
+    call is only where it was asked for — so where it came from is said by the place it renders
+    in rather than by a note on the row. Read here at the level, where the neighbour on either
+    side is the whole point.
     """
-    run_id, source, turn_id, call_id, index = one(store, SPAWNS + " LIMIT 1", [SPINE])
+    run_id, source, turn_id, call_id = one(store, SPAWNS + " LIMIT 1", [SPINE])
     assert turn_id is not None, "the recorded run this reads is placed under a turn"
     html = client.get(url(str(turn_id))).text
     level = turn_level(store, SPINE, str(source), str(turn_id))
@@ -308,8 +472,9 @@ def test_a_run_hoists_after_the_call_that_spawned_it_and_says_which(
     # The run sits immediately after the call that spawned it, and the level renders as read.
     assert level[at - 1] == f"call:{call_id}"
     assert [key for key in values(html, "data-tree") if key in level] == level
-    # And the row names the call by its place in the thread, which is what the tie is for.
-    assert str(index) in fields(html, "data-tree", f"run:{run_id}")["tie"]
+    # And the row carries the node's label and its cost, and nothing naming that call: the
+    # place is the whole of what says where the run came from.
+    assert set(fields(html, "data-tree", f"run:{run_id}")) == {"label", "cost_usd"}
 
 
 def test_a_bucket_home_is_decided_by_the_spawning_edge(
@@ -323,7 +488,7 @@ def test_a_bucket_home_is_decided_by_the_spawning_edge(
     first, so the first is planted: one recorded run's spawning call loses its turn, and the
     run has to move one bucket and not the other.
     """
-    run_id, source, turn_id, call_id, _ = one(store, SPAWNS + " LIMIT 1", [SPINE])
+    run_id, source, turn_id, call_id = one(store, SPAWNS + " LIMIT 1", [SPINE])
     assert turn_id is not None, "the run this moves starts out under a turn"
     path = plant(
         (
@@ -370,8 +535,9 @@ def test_the_kin_cap_cuts_the_children_but_never_the_open_path(
 ) -> None:
     """Children are capped per level, with a row saying how many the cap left out.
 
-    Driven below the fixture corpus's fan-out rather than planted up to the production cap:
-    no recorded session comes near 25 children, and the knob exists for exactly this. The cap
+    Driven below the fixture corpus's fan-out rather than planted up to the production
+    window: no recorded session comes near 50 children, and the knob exists for exactly this.
+    The cap
     bites twice here — once on the level beside the selection, once on the calls under it —
     and the selection survives it either way. A cut that hid the open path would leave the
     pane describing a node the tree does not show.
@@ -386,10 +552,10 @@ def test_the_kin_cap_cuts_the_children_but_never_the_open_path(
     # row still counts and the parent's own page still lists.
     shown = [key for key in values(html, "data-tree") if key in level]
     assert shown == [f"turn:{selection}"]
-    # ...with a tail saying how many rows are off the tree, linking to the page that pages
-    # them rather than capping them: the session's own, still under the size the reader typed.
+    # ...with a tail saying how many rows are off the tree, and no way off the page at all:
+    # what it offers is a fetch for the rest of its own level, which the leaf below follows.
     assert fields(html, "data-more", f"session:{SPINE}")["cut"] == str(len(level) - len(shown))
-    assert inside(html, "data-more", f"session:{SPINE}", "href") == [f"/session/{SPINE}?kin=1"]
+    assert inside(html, "data-more", f"session:{SPINE}", "href") == []
     # And the level under the selection takes the same cap, where no rescue is owed: one child
     # of the several the turn has, and a tail for the rest.
     assert [key for key in values(html, "data-tree") if key in under] == [under[0]]
@@ -398,6 +564,94 @@ def test_the_kin_cap_cuts_the_children_but_never_the_open_path(
     # `DEPTH * (KIN + 1)` rows on exactly this, so it is pinned here rather than left to a
     # reading of `_kin`.
     assert max(Counter(depth for depth, _ in rows(html)).values()) <= 1
+
+
+def test_a_tail_row_stands_the_rest_of_its_level_where_it_stands(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A `+N more` row opens the rest of its level in place, without moving the reader.
+
+    What comes back is rows and not a pane, so the row overrides every part of the swap the
+    tree writes once above it: it swaps out the row it sits in — the row, not the button
+    inside it — selects nothing, sends nothing out of band, and pushes no URL, because the
+    reader has not gone anywhere. The rows arrive at the depth
+    the row stood at and in the level's own order, which is what lets them stand in its place.
+
+    Both halves of one split are read here — the level beside the selection, where the open
+    path holds a child inside the window wherever in the level it sits, and the level under
+    the selection, where nothing is held back. The fetch names the held child so the two
+    halves cannot both send it.
+    """
+    selection = open_turn(store)
+    page = client.get(url(selection), params={"kin": 1}).text
+    level, under = thread_level(store, SPINE, MAIN), turn_level(store, SPINE, MAIN, selection)
+    tails = dict(wired(page, "data-more"))
+    fetch, below = tails[f"session:{SPINE}"], tails[f"turn:{selection}"]
+    # The whole of what the row does, inheritance and all...
+    assert fetch == {
+        "hx-get": (
+            f"{KIN_URL}/session/{SPINE}/{SPINE}?kin=1&thread={MAIN}&depth=1&opened=turn:{selection}"
+        ),
+        "hx-target": "closest li",
+        "hx-swap": "outerHTML",
+        "hx-select": "unset",
+        "hx-select-oob": "unset",
+        "hx-push-url": "false",
+    }
+    # ...and what it fetches is the level less the window, at the depth the row sits at: the
+    # rows the reader could not see, ready to stand where the row that counted them stands.
+    served = client.get(fetch["hx-get"])
+    assert served.status_code == 200
+    assert rows(served.text) == [(1, key) for key in level if key != f"turn:{selection}"]
+    # Each of them reads on under the sizes the reader typed, like any row the page drew, and
+    # by one URL whether it is clicked or pasted.
+    for key, wiring in wired(served.text, "data-tree"):
+        assert wiring["href"] == wiring["hx-get"], key
+        assert parse_qs(urlsplit(wiring["hx-get"]).query) == {"kin": ["1"]}, key
+    # The level under the selection has no open path through it, so its tail row holds nothing
+    # back and asks for everything past the window.
+    assert (
+        below["hx-get"] == f"{KIN_URL}/turn/{SPINE}/{MAIN}/{selection}?kin=1&thread={MAIN}&depth=2"
+    )
+    assert rows(client.get(below["hx-get"]).text) == [(2, key) for key in under[1:]]
+    # The depth is the one thing a level cannot say for itself, and the tree's arithmetic
+    # prices `DEPTH` of them: rows claiming to stand outside the tree a page draws are rows
+    # no page ever asked for.
+    for depth, answer in ((0, 400), (1, 200), (bounds.DEPTH, 200), (bounds.DEPTH + 1, 400)):
+        asked = client.get(
+            f"{KIN_URL}/turn/{SPINE}/{MAIN}/{selection}",
+            params={"kin": 1, "thread": MAIN, "depth": depth},
+        )
+        assert asked.status_code == answer, depth
+
+
+def test_a_fetched_row_is_described_by_the_thread_the_reader_stands_on(
+    enriched_client: TestClient,
+) -> None:
+    """The rest of a level arrives named the way the page names it, not the way its thread does.
+
+    `view_enrichment` keys turns by thread, so a page reads the descriptions of the one thread
+    the reader is on and every turn of another thread falls back to its prompt. A run page is
+    one such reader: the session's own turns are drawn above it, undescribed. The rows a tail
+    row fetches have to agree — a fetch that read the level's thread instead would serve the
+    same turns under other names, which is the one thing a row standing in another's place
+    cannot do.
+    """
+    page = f"/session/{SPINE}/run/{SPINE_RUN}"
+    # The main thread's turns as this page draws them: the level the run hangs under, whole.
+    whole = enriched_client.get(page).text
+    drawn = {key: fields(whole, "data-tree", key)["label"] for at, key in rows(whole) if at == 1}
+    # The same level under a window of one, and the rows its tail row stands for.
+    tail = dict(wired(enriched_client.get(page, params={"kin": 1}).text, "data-more"))
+    served = enriched_client.get(tail[f"session:{SPINE}"]["hx-get"]).text
+    fetched = {key: fields(served, "data-tree", key)["label"] for _, key in rows(served)}
+    assert fetched, "the window left nothing out: this page no longer proves the case"
+    assert fetched == {key: drawn[key] for key in fetched}
+    # And the claim has teeth: on its own page the main thread reads by its descriptions, so
+    # a fragment that read the level's thread would have served those names instead.
+    home = enriched_client.get(f"/session/{SPINE}").text
+    described = {key: fields(home, "data-tree", key)["label"] for at, key in rows(home) if at == 1}
+    assert any(described[key] != label for key, label in fetched.items())
 
 
 def test_a_chain_is_resolved_to_the_depth_the_page_prices_and_no_deeper(
@@ -795,17 +1049,29 @@ def test_every_priced_row_carries_the_spend_the_store_holds_under_it(
 def test_a_size_above_its_ceiling_is_refused(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """The three sizes a node URL carries only go down — the ceiling is the production default."""
+    """The three sizes a node URL carries only go down — the ceiling is the production default.
+
+    A fragment takes the same sizes, because the knobs ride the mount that opens it: a size it
+    would not serve a page under is one it must refuse rather than mint into the fragment's own
+    links.
+    """
     at = url(open_turn(store))
+    page = client.get(at, params={"kin": 1}).text
+    opening = mounts(page)[0]
+    # The rest of a level takes them as well, stripped back to the one thing it cannot answer
+    # without: the sizes are what this leaf turns, and a URL carrying two of one is not a case.
+    spilling = spilled(page)[0].partition("?")[0]
     for knob, bound in (("kin", bounds.KIN), ("log", bounds.LOG), ("detail", bounds.DETAIL)):
-        assert client.get(at, params={knob: bound.ceiling + 1}).status_code == 400, knob
-        assert client.get(at, params={knob: bound.ceiling}).status_code == 200, knob
+        for asked, fixed in ((at, {}), (opening, {}), (spilling, {"thread": MAIN, "depth": 1})):
+            for size, answer in ((bound.ceiling + 1, 400), (bound.ceiling, 200)):
+                served = client.get(asked, params=fixed | {knob: size})
+                assert served.status_code == answer, (asked, knob, size)
 
 
 # The runs of one session beside every edge a preset places them by: the spawning edge the
 # full tree reads (`SPAWNS`), plus the tool call that edge resolved through and the run's own
 # declared parent, which is the one edge `agents` reads that an unresolvable call cannot lose.
-EDGES = SPAWNS.replace('c."index"', "tc.id, a.parent_agent_id")
+EDGES = SPAWNS.replace("c.id FROM", "c.id, tc.id, a.parent_agent_id FROM")
 
 
 class Edge(NamedTuple):
@@ -843,33 +1109,35 @@ def call_tools(
 def tool_level(
     store: duckdb.DuckDBPyConnection, session_id: str, source: str, turn_id: str | None
 ) -> list[str]:
-    """`noapi`'s level under a turn: its calls' tool calls, with the runs hoisted among them.
+    """`noapi`'s level under a turn: its calls' tool calls and its compactions, with the runs
+    hoisted among them.
 
     The api calls are hidden, so their tool calls rise to the turn in call-then-tool order and
-    a run follows the tool call that spawned it rather than the api call that held it.
-    `turn_id` None is the unattributed bucket's level, which reads the same way.
+    a run follows the tool call that spawned it rather than the api call that held it. A
+    compaction hangs off the turn whichever fold the reader is in, so it drops in by time here
+    too. `turn_id` None is the unattributed bucket's level, which reads the same way.
     """
-    tools = [
-        row[0]
-        for row in store.execute(
-            "SELECT tc.id FROM live_tool_calls tc"
-            " JOIN live_api_calls c ON c.session_id = tc.session_id AND c.source = tc.source"
-            "  AND c.id = tc.api_call_id"
-            " LEFT JOIN live_turns t ON t.session_id = c.session_id AND t.source = c.source"
-            "  AND t.id = c.turn_id"
-            " WHERE tc.session_id = ? AND tc.source = ? AND t.id IS NOT DISTINCT FROM ?"
-            ' ORDER BY c."index", tc."index"',
-            [session_id, source, turn_id],
-        ).fetchall()
-    ]
+    tools = store.execute(
+        "SELECT tc.id, tc.started_at FROM live_tool_calls tc"
+        " JOIN live_api_calls c ON c.session_id = tc.session_id AND c.source = tc.source"
+        "  AND c.id = tc.api_call_id"
+        " LEFT JOIN live_turns t ON t.session_id = c.session_id AND t.source = c.source"
+        "  AND t.id = c.turn_id"
+        " WHERE tc.session_id = ? AND tc.source = ? AND t.id IS NOT DISTINCT FROM ?"
+        ' ORDER BY c."index", tc."index"',
+        [session_id, source, turn_id],
+    ).fetchall()
     hoisted: dict[str | None, list[str]] = {}
     for edge in edges(store, session_id):
         if edge.spawn_source == source and edge.spawn_turn_id == turn_id:
             hoisted.setdefault(edge.spawn_tool_id, []).append(f"run:{edge.run_id}")
     placed: list[str] = []
-    for tool_id in tools:
-        placed.append(f"tool:{tool_id}")
-        placed += hoisted.pop(tool_id, [])
+    for key in dropped_in(
+        [(f"tool:{tool_id}", started) for tool_id, started in tools],
+        turn_marks(store, session_id, source, turn_id),
+    ):
+        placed.append(key)
+        placed += hoisted.pop(key.removeprefix("tool:"), [])
     # A run whose spawning tool call this level does not hold still belongs to the turn the
     # edge resolved to, exactly as it does when the api calls are showing.
     for leftover in hoisted.values():
@@ -1023,6 +1291,47 @@ def sited(session_id: str, chain: Sequence[str]) -> list[tuple[Kind, str, str, s
     return placed
 
 
+def mounts(html: str) -> list[str]:
+    """Every expansion a page's log rows mount, unescaped — the markup carries `&` as `&amp;`."""
+    return [unescape(href) for href in values(html, "hx-get") if href.startswith(BODY_URL)]
+
+
+def spilled(html: str) -> list[str]:
+    """Every level a page's tail rows fetch the rest of, unescaped."""
+    return [unescape(href) for href in values(html, "hx-get") if href.startswith(KIN_URL)]
+
+
+# An api call that made a `Task` call: the one call whose tool log mounts a body with a run
+# link in it, read from the tool's side of the join `view_runs` makes.
+SPAWNING_CALL = (
+    "SELECT c.session_id, c.source, c.id FROM live_api_calls c"
+    " JOIN live_tool_calls tc ON tc.session_id = c.session_id AND tc.source = c.source"
+    "  AND tc.api_call_id = c.id"
+    " JOIN live_agent_runs a ON a.session_id = tc.session_id AND a.tool_use_id = tc.id"
+    "  AND tc.source <> a.id"
+    " ORDER BY c.id LIMIT 1"
+)
+
+
+def mounting(store: duckdb.DuckDBPyConnection) -> list[str]:
+    """One page per kind of body a children log can mount.
+
+    A session's log mounts turns, a turn's mounts api calls, a call's mounts tool calls, and
+    the unattached bucket's mounts runs — the only page whose rows reach `run_body`, the
+    second of the two fragment routes. The call is one that spawned a run, because a tool body
+    leads with the run it started and that link is the only node link a pane inside a fragment
+    mints.
+    """
+    session_id, source, call_id = one(store, SPAWNING_CALL)
+    loose, _, _ = candidates(store, Kind.UNATTACHED)[0]
+    return [
+        node_url(Kind.SESSION, str(session_id), MAIN, str(session_id)),
+        url(open_turn(store)),
+        node_url(Kind.CALL, str(session_id), str(source), str(call_id)),
+        node_url(Kind.UNATTACHED, loose, MAIN, loose),
+    ]
+
+
 def node_link(href: str) -> bool:
     """Whether a link goes to a node page — the records browser and an offload file do not."""
     path = href.partition("?")[0].strip("/").split("/")
@@ -1163,28 +1472,81 @@ def test_a_preset_rides_every_node_link_the_page_mints(
 
     The tree's rows, the tail a cap left, the crumbs, the pane's children log and the two walk
     controls are all node URLs, and a reader who picked a view keeps it through any of them.
-    The switcher above the tree is the one exception, and the only one: its whole job is to
-    change the fold, so its three links are excluded here and checked on their own leaf. Read
-    with `?kin=1` so the tail row is on the page to check too.
+    Both the `href` a reader can paste and the `hx-get` a click follows, because the walk
+    controls are buttons and mint only the second. The switcher above the tree is the one
+    exception, and the only one: its whole job is to change the fold, so its three links are
+    excluded here and checked on their own leaf. Read with `?kin=1` so the tail row is on the
+    page to check too, and with `?log=1` so the children log runs past one page: the corpus's
+    widest level is five children, so at the production page size no pager is ever minted.
+
+    The body a log row expands is the same node under the same view, so the fold rides the
+    mount as well — and rides out again on the links the fragment itself mints, which are the
+    reader's way on from inside a parent's page. Every kind of body is opened, because the two
+    fragment routes mint their suffix apart and only a tool's body mints a link of its own.
     """
-    html = client.get(url(open_turn(store)), params={"nav": "agents", "kin": 1}).text
+    html = client.get(url(open_turn(store)), params={"nav": "agents", "kin": 1, "log": 1}).text
     switching = set(inside(html, "class", "switch", "href"))
     assert len(switching) == len(Preset), "the switcher's own links, which change the fold"
     # `values` reads the markup and `inside` reads it parsed, so an href with two knobs on it
     # arrives `&amp;`-escaped from one and bare from the other.
     links = [
-        href for href in values(html, "href") if node_link(href) and unescape(href) not in switching
+        href
+        for attribute in ("href", "hx-get")
+        for href in values(html, attribute)
+        if node_link(href) and unescape(href) not in switching
     ]
     assert len(links) > 5, "the page mints node links to check"
+    assert values(html, "data-walk"), "the walk controls are among them"
     for href in links:
         assert parse_qs(href.partition("?")[2]).get("nav") == ["agents"], href
+    opened: set[str] = set()
+    led = 0
+    for at in mounting(store):
+        page = client.get(at, params={"nav": "agents", "kin": 1}).text
+        found = mounts(page)
+        assert found, f"the log rows on {at} mount an expansion"
+        for mount in found:
+            # The mount a log row opens its child's body through carries the fold...
+            assert parse_qs(mount.partition("?")[2]).get("nav") == ["agents"], mount
+            served = client.get(mount)
+            assert served.status_code == 200, mount
+            # ...and the body it serves links on under that fold rather than dropping it.
+            onward = [href for href in values(served.text, "href") if node_link(href)]
+            assert onward, f"the fragment offers the way to its own node: {mount}"
+            for href in onward:
+                assert parse_qs(unescape(href).partition("?")[2]).get("nav") == ["agents"], href
+            opened.add(mount[len(BODY_URL) + 1 :].partition("/")[0])
+            led += len(values(served.text, "data-spawned"))
+    # And the rows a tail row fetches are minted by the fragment and not by the page, so the
+    # fold rides the fetch out and comes back on every row it answers with.
+    spilling = spilled(html)
+    assert spilling, "the window left a tail row on the page"
+    for fetch in spilling:
+        assert parse_qs(fetch.partition("?")[2]).get("nav") == ["agents"], fetch
+        served = client.get(fetch)
+        assert served.status_code == 200, fetch
+        onward = [unescape(href) for href in values(served.text, "href")]
+        assert onward, f"the level it left out has rows in it: {fetch}"
+        for href in onward:
+            assert parse_qs(href.partition("?")[2]).get("nav") == ["agents"], href
+    # The three kinds of body one route serves, and the run the other one does.
+    assert opened == {Kind.TURN, Kind.CALL, Kind.TOOL, Kind.RUN}, opened
+    # One of those tool bodies led with the run it started. That link is the only one the pane
+    # macro mints inside a fragment, so without it the suffix the pane is handed goes unread.
+    assert led, "a tool body that leads with its run"
 
 
 def test_a_preset_the_viewer_does_not_have_is_refused(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """`?nav=` names one of the three views or the request is a 400, not a quiet full tree."""
+    """`?nav=` names one of the three views or the request is a 400, not a quiet full tree.
+
+    Asked of a fragment as well as a page: the fold rides the mount an expansion opens, so a
+    fold the viewer does not have has to be refused there too rather than written into every
+    link the fragment serves.
+    """
     at = url(open_turn(store))
-    assert client.get(at, params={"nav": "everything"}).status_code == 400
-    for preset in Preset:
-        assert client.get(at, params={"nav": preset}).status_code == 200, preset
+    for asked in (at, mounts(client.get(at).text)[0]):
+        assert client.get(asked, params={"nav": "everything"}).status_code == 400, asked
+        for preset in Preset:
+            assert client.get(asked, params={"nav": preset}).status_code == 200, preset

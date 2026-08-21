@@ -10,21 +10,32 @@
    in one response, and a click on a tree row re-fetches this same URL — htmx takes `#pane`
    out of the response and swaps `#tree-rows` out of band, so a pasted link and a click serve
    the same bytes. #}
+{% block scripts %}
+{# The tree's width, which the reader sets by dragging and this browser keeps. Not a knob on
+   the URL: a column width belongs to the screen and not to the node a link names. #}
+<script src="/static/tree-width.js" defer></script>
+{% endblock %}
+
 {% block main %}
 <div id="browser">
   <nav id="tree" aria-label="Session tree">
     {# What every row of the tree does on a click, written once: fetch the row's own URL, take
        `#pane` out of the response and put it where the pane is, and swap these rows in out of
        band. htmx reads each of these off the closest ancestor carrying it, so the rows below
-       carry only the URL that differs between them — 417 rows is most of a node page's budget
+       carry only the URL that differs between them — 817 rows is about half a node page's budget
        (`.claude/rules/viewer-ui.md`). `outerHTML` because `hx-select` hands back the `#pane`
        element itself; without `hx-target` htmx would swap it into the clicked link. #}
     <div id="tree-rows" hx-target="#pane" hx-swap="outerHTML"
          hx-select="#pane" hx-select-oob="#tree-rows" hx-push-url="true">
       {{ treeview.switcher(presets) }}
-      <ul class="rows">{{ treeview.lines(rows, suffix) }}</ul>
+      <ul class="rows">{{ treeview.lines(rows, suffix, source) }}</ul>
     </div>
   </nav>
+  {# What the reader drags to widen the tree. A separator rather than a button: it divides the
+     two columns rather than doing anything, and arrow keys move it for a reader who is not
+     dragging. `static/tree-width.js` is what it moves. #}
+  <div id="tree-grip" role="separator" aria-orientation="vertical" aria-label="Tree width"
+       tabindex="0"></div>
   <article id="pane">
     {# Where the node sits, outermost first: the same chain the tree has open. #}
     <nav class="crumbs" data-crumbs="{{ selection.kind }}" aria-label="Where this node sits">
@@ -57,18 +68,25 @@
       <div class="value"></div>
     </details>
     {% endif %}
-    {{ logs.log(shape, log, more, suffix, next) }}
-    {# Reading in order. The tree opens one path, so these two links are how a reader gets
-       through everything it is not showing — depth-first over the whole session, into the
-       buckets as well, and the same order whatever the tree beside it was capped to. #}
-    <nav class="walk" aria-label="Read in order">
+    {{ logs.log(shape, log, total, suffix, pager) }}
+    {# Reading in order. Going down is what the tree is for, so these two go along the level
+       the reader is standing on and back out of it, never into a node. Buttons because they
+       move the pane rather than leading anywhere new: the swap they carry is the one a tree
+       row carries, written here because the pane is what the click replaces. A step that
+       leaves the level says so with an up arrow. #}
+    <nav class="walk" aria-label="Read in order" hx-target="#pane" hx-swap="outerHTML"
+         hx-select="#pane" hx-select-oob="#tree-rows" hx-push-url="true">
       {% if previous %}
-      <a data-walk="previous" data-node="{{ previous.key }}" href="{{ previous.url }}{{ suffix }}"
-        >← {{ parts.glyph(previous) }}<span data-field="kind">{{ previous.kind }}</span> <span data-field="label">{{ previous.label }}</span></a>
+      <button type="button" class="button" data-walk="previous" data-node="{{ previous.node.key }}"
+        {%- if previous.climbed %} data-climb="previous"{% endif %}
+        hx-get="{{ previous.node.url }}{{ suffix }}"
+        >{% if previous.climbed %}↑{% else %}←{% endif %} {{ parts.glyph(previous.node) }}<span data-field="kind">{{ previous.node.kind }}</span> <span data-field="label">{{ previous.node.label }}</span></button>
       {% endif %}
       {% if following %}
-      <a data-walk="next" data-node="{{ following.key }}" href="{{ following.url }}{{ suffix }}"
-        >{{ parts.glyph(following) }}<span data-field="kind">{{ following.kind }}</span> <span data-field="label">{{ following.label }}</span> →</a>
+      <button type="button" class="button" data-walk="next" data-node="{{ following.node.key }}"
+        {%- if following.climbed %} data-climb="next"{% endif %}
+        hx-get="{{ following.node.url }}{{ suffix }}"
+        >{{ parts.glyph(following.node) }}<span data-field="kind">{{ following.node.kind }}</span> <span data-field="label">{{ following.node.label }}</span> {% if following.climbed %}↑{% else %}→{% endif %}</button>
       {% endif %}
     </nav>
     {# Where this session failed. Written once here rather than per kind of node, because it

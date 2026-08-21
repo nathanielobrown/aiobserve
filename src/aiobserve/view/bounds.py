@@ -26,9 +26,16 @@ class Bound(NamedTuple):
 # for. Each is its own ceiling — `?kin=`, `?log=` and `?detail=` only go down — because the
 # response's bound is arithmetic over them at the default, so there is no headroom to spend.
 # How many children one expanded level of the tree shows before a tail row says how many it
-# left; how many rows the pane's children log lists; and how much of the one value the pane
-# is about it shows before offering the rest as its own fetch.
-KIN = Bound(default=25, ceiling=25)
+# left; how many rows one numbered page of the pane's children log lists; and how much of the
+# one value the pane is about it shows before offering the rest as its own fetch.
+#
+# The tree's is a window on a level rather than a limit on it: the tail row fetches whatever
+# the window left out and stands the rows in its own place, so a reader reaches the rest of a
+# level without leaving the page. That fetch is bound by the level, not by this — which is why
+# the node page has a ceiling of its own (`tests/view/test_bounds.py`) rather than sharing the
+# one every other page is weighed against. The log's is a page: it says which of how many it
+# is and offers the ones either side, so a level of a hundred is read in one go and not nine.
+KIN = Bound(default=50, ceiling=50)
 LOG = Bound(default=queries.LOG_ROWS, ceiling=queries.LOG_ROWS)
 DETAIL = Bound(default=queries.DETAIL_CHARS, ceiling=queries.DETAIL_CHARS)
 
@@ -86,13 +93,13 @@ CURSORLESS_TURNS = 1
 HIGHLIGHT_CHARS = 256_000
 # What one row of the tree may weigh, whole: its markup, a label of `queries.NAV_CHARS`
 # characters that each escape to five bytes, and the knobs every link repeats. The tree is
-# what multiplies — `1 + DEPTH * (KIN + 1)` rows spend this 417 times, four fifths of the
+# what multiplies — `1 + DEPTH * (KIN + 1)` rows spend this 817 times, about half the
 # ceiling — so it is a price to defend rather than a knob to turn: a row that grows past it
 # is a page over the bound, and the answer is a slimmer row.
 #
 # Measured through the app rather than budgeted, at every label full of `&` and the longest
 # query string a link can carry (`tests/view/test_bounds.py`). Pinned at exactly what it
-# measures, with no slack, for the same reason: a byte of slack here is 417 bytes of page.
+# measures, with no slack, for the same reason: a byte of slack here is 817 bytes of page.
 # Nearly all of the row is its URL written twice — the href a reader sees and the `hx-get`
 # htmx fetches — because the swap the two of them perform is written once on `#tree-rows` and
 # inherited. A store whose agent runs carry longer ids than the recorded corpus does is a

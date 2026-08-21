@@ -12,6 +12,7 @@ and a pane all read the same node.
 import math
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import NamedTuple
 
 from aiobserve.analyze import queries
 from aiobserve.view.enrichment import Descriptions
@@ -29,10 +30,6 @@ DECADES = 3
 UNATTRIBUTED_LABEL = "calls under no turn of this thread"
 UNATTACHED_LABEL = "runs attached to no turn"
 
-# Where a hoisted run renders: after the api call that spawned it, wherever that call sits.
-# The tie says which, because the run is a child of the turn rather than of the call.
-TIE = "↖ from api call {index}"
-
 
 class Shape(StrEnum):
     """What the pane's children log lists, which decides the macro a row renders through.
@@ -46,6 +43,71 @@ class Shape(StrEnum):
     TOOLS = "tools"
     RUNS = "runs"
     NONE = "none"
+
+
+class Column(NamedTuple):
+    """One column of the pane's children log: what it prints, and how it heads itself.
+
+    The word above the column is not here — it comes from `labels.label(field)`, the registry
+    every header on every page reads, so a column and a pane's fact call the same store column
+    the same thing. What is here is the icon beside that word and the class the cell carries:
+    a number is read down a column, a time is read across a row, and neither survives being
+    printed as prose.
+    """
+
+    field: str
+    icon: str
+    # `number` right-aligns and figures the digits, `when` keeps a time on one line, `what`
+    # is the one wide column a row is identified by and links from. Plain text otherwise.
+    css: str = ""
+
+
+# What each shape of children log shows, column by column, in the order it shows them. Per
+# shape because the columns are the shape's own: what tells two turns apart is not what tells
+# two tool calls apart. Every row fills every column of its shape — a log that skipped a cell
+# where the store held nothing would slide every later value under the wrong heading — and
+# `tests/view/test_node.py` reads head and rows against this table.
+#
+# One column of each shape is `what`: the wide one carrying the node's own words and the link
+# to its page. The last is the control that opens the child's body in place.
+COLUMNS: dict[Shape, tuple[Column, ...]] = {
+    Shape.TURNS: (
+        Column("turn_index", "#", css="number"),
+        Column("label", "☰", css="what"),
+        Column("api_calls", "⇄", css="number"),
+        Column("tool_calls", "⚒", css="number"),
+        Column("cost_usd", "$", css="number"),
+        Column("started_at", "◷", css="when"),
+        Column("body", "⌄"),
+    ),
+    Shape.CALLS: (
+        Column("call_index", "#", css="number"),
+        # A call's own words are on its page: the row is named by the model that answered.
+        Column("model", "◈", css="what"),
+        Column("tool_calls", "⚒", css="number"),
+        Column("text_chars", "¶", css="number"),
+        Column("cost_usd", "$", css="number"),
+        Column("started_at", "◷", css="when"),
+        Column("body", "⌄"),
+    ),
+    Shape.TOOLS: (
+        Column("tool_index", "#", css="number"),
+        Column("name", "⚒"),
+        Column("input_head", "⌨", css="what"),
+        Column("is_error", "⚠"),
+        Column("result_chars", "¶", css="number"),
+        Column("started_at", "◷", css="when"),
+        Column("body", "⌄"),
+    ),
+    Shape.RUNS: (
+        Column("agent_type", "◎"),
+        Column("label", "☰", css="what"),
+        Column("tool_errors", "⚠", css="number"),
+        Column("cost_usd", "$", css="number"),
+        Column("started_at", "◷", css="when"),
+        Column("body", "⌄"),
+    ),
+}
 
 
 class Kind(StrEnum):
@@ -62,6 +124,23 @@ class Kind(StrEnum):
     # under something they did not come from.
     UNATTRIBUTED = "unattributed"
     UNATTACHED = "unattached"
+
+
+# Which shape of log lists a kind. For the one reader that knows a child and needs its
+# parent's table: an expansion arrives as a row of the log it opens under, and that row spans
+# the log's columns. A kind lists in one shape of log wherever it lists at all, which is what
+# makes the width answerable from the child alone.
+LISTED: dict[Kind, Shape] = {
+    Kind.TURN: Shape.TURNS,
+    Kind.CALL: Shape.CALLS,
+    Kind.TOOL: Shape.TOOLS,
+    Kind.RUN: Shape.RUNS,
+}
+
+
+def spanned(kind: str) -> int:
+    """How many columns the log listing a node of `kind` has, for a row that spans them."""
+    return len(COLUMNS[LISTED[Kind(kind)]])
 
 
 class Preset(StrEnum):
@@ -134,6 +213,9 @@ def run_url(session_id: str, run_id: str) -> str:
 # Where a node's body alone is served from, written once: the routes in `view/app.py` answer
 # what `Node.expansion` mints.
 BODY_URL = "/fragment/body"
+# And where the children one level's window left out are served from, which is what a tail
+# row fetches (`Node.rest`).
+KIN_URL = "/fragment/kin"
 
 
 @dataclass(frozen=True)
@@ -144,7 +226,11 @@ class Node:
     session_id: str
     source: str | None
     node_id: str
-    label: str
+    # What the node is called, before any surface cuts it: the model's description where a
+    # pass wrote one, else what the session called it. Every query that composes it comes
+    # back one character past the width it was cut to, so a name that fills a row is one the
+    # reader can tell was stopped (`view/format.py:cut`).
+    words: str
     # What it cost, and how many calls under it our price table could not price: a total
     # missing calls is not what the node cost, so the two always travel together. None where
     # the node has no spend of its own — a tool call's cost is the api call's.
@@ -152,14 +238,40 @@ class Node:
     unpriced_api_calls: int
     # Its share of what the session spent, or None when there is no share to draw.
     share: float | None
-    # Where a hoisted run sits, or None for a node that is where it was recorded.
-    tie: str | None = None
     # Whether the label is the model's words rather than the session's, which is what the
     # glyph beside it marks. Three kinds can be: a session, a turn and a run.
     enriched: bool = False
     # Whether the tool call came back an error. Only ever True for a `Kind.TOOL` node: it is
     # the column the tree's mark and the errors list (`view/errors.py`) are both read from.
     is_error: bool = False
+
+    @property
+    def label(self) -> str:
+        """The node's name at the width of a tree row, a crumb, or a walk control."""
+        return cut(self.words, queries.NAV_CHARS)
+
+    @property
+    def line(self) -> str:
+        """The node's name at the width of a children log's own column.
+
+        Wider than a label because the log is a table and the column is the width of the
+        pane: a description cut to a tree row's 48 characters is the reason a reader opens
+        a node to find out what it was.
+        """
+        return cut(self.words, queries.LOG_CHARS)
+
+    @property
+    def title(self) -> str:
+        """The node's name at the head of its own pane, where nothing repeats it.
+
+        The widest of the three, because a pane heads one node. A header query returns its
+        strings at this width or wider — a tool header's input comes back at a preview's,
+        because the same pane previews it — so a name is cut here and marked where the query
+        left more behind. A pane names its node from the header it read rather than from the
+        tree row it stands on (`view/app.py:TITLED`) — the tree cuts at a row's width, which
+        would head a turn with a third of the prompt it is about.
+        """
+        return cut(self.words, queries.HEADER_CHARS)
 
     @property
     def ref(self) -> Ref:
@@ -198,6 +310,18 @@ class Node:
         return f"{BODY_URL}/{self.kind}/{self.session_id}/{self.source}/{self.node_id}"
 
     @property
+    def rest(self) -> str:
+        """Where the children this node's window left out are fetched, for a tail row to open.
+
+        The same level the tree drew, past the window it drew — rows ready to stand where the
+        tail row stands. Two shapes like `expansion`, because a node not recorded on a thread
+        carries no thread segment: the session, an agent run, and the unattached bucket.
+        """
+        if self.source is None:
+            return f"{KIN_URL}/{self.kind}/{self.session_id}/{self.node_id}"
+        return f"{KIN_URL}/{self.kind}/{self.session_id}/{self.source}/{self.node_id}"
+
+    @property
     def meter(self) -> str:
         """The step class this node's spend bar is drawn with, or nothing to draw."""
         return meter(self.share) if self.cost_usd is not None else ""
@@ -208,13 +332,9 @@ def _share(cost: float | None, whole: float) -> float | None:
     return cost / whole if cost is not None and whole else None
 
 
-def _cut(text: str | None) -> str:
-    """A label at the width of a tree row, marked where the rest was left behind.
-
-    Every column a label is composed from comes back one character past this width, so a
-    label that fills the row is one the reader can tell was stopped (`view/format.py:cut`).
-    """
-    return cut(text or "", queries.NAV_CHARS)
+def _words(text: str | None) -> str:
+    """What a node is called, whatever the query that composed it left NULL."""
+    return text or ""
 
 
 def session_node(header: Row, described: Descriptions) -> Node:
@@ -227,7 +347,7 @@ def session_node(header: Row, described: Descriptions) -> Node:
         node_id=header["session_id"],
         # What the enrichment pass said it was, else the title Claude Code gave it, else the
         # id — which is what a reader pasted to arrive here, so the row is never blank.
-        label=_cut(
+        words=_words(
             (described.session.description if described.session else None)
             or header["title"]
             or header["session_id"]
@@ -247,7 +367,7 @@ def turn_node(session_id: str, source: str, row: Row, whole: float, described: s
         session_id=session_id,
         source=source,
         node_id=row["turn_id"],
-        label=_cut(described or _turn_label(row)),
+        words=_words(described or _turn_label(row)),
         cost_usd=cost,
         unpriced_api_calls=row["unpriced_api_calls"],
         share=_share(cost, whole),
@@ -265,15 +385,10 @@ def run_node(session_id: str, row: Row, whole: float, described: str | None) -> 
         source=row["run_id"],
         node_id=row["run_id"],
         # What the pass said it did, else the brief it was given, else the definition it ran.
-        label=_cut(described or row["description"] or row["agent_type"]),
+        words=_words(described or row["description"] or row["agent_type"]),
         cost_usd=cost,
         unpriced_api_calls=row["unpriced_api_calls"],
         share=_share(cost, whole),
-        tie=(
-            TIE.format(index=row["spawn_call_index"])
-            if row["spawn_call_index"] is not None
-            else None
-        ),
         enriched=described is not None,
     )
 
@@ -288,7 +403,7 @@ def call_node(session_id: str, source: str, row: Row, whole: float) -> Node:
         node_id=row["api_call_id"],
         # A call that answered with tool calls and no text has nothing to quote, so the
         # model names the row rather than leaving it blank.
-        label=_cut(row.get("text_head") or row["model"]),
+        words=_words(row.get("text_head") or row["model"]),
         cost_usd=cost,
         unpriced_api_calls=row["unpriced_api_calls"],
         share=_share(cost, whole),
@@ -304,7 +419,7 @@ def tool_node(session_id: str, source: str, row: Row) -> Node:
         node_id=row["tool_call_id"],
         # The name and the head of what it was asked, which is what tells two calls of one
         # tool apart in the width of a tree.
-        label=_cut(f"{row['name']} {row.get('input_head') or ''}".strip()),
+        words=_words(f"{row['name']} {row.get('input_head') or ''}".strip()),
         cost_usd=None,
         unpriced_api_calls=0,
         share=None,
@@ -322,7 +437,7 @@ def compaction_node(session_id: str, source: str, row: Row) -> Node:
         session_id=session_id,
         source=source,
         node_id=row["compaction_id"],
-        label=_cut(f"compaction · {row['trigger']}"),
+        words=_words(f"compaction · {row['trigger']}"),
         cost_usd=None,
         unpriced_api_calls=0,
         share=None,
@@ -337,7 +452,7 @@ def unattributed_node(session_id: str, source: str, row: Row, whole: float) -> N
         session_id=session_id,
         source=source,
         node_id=source,
-        label=UNATTRIBUTED_LABEL,
+        words=UNATTRIBUTED_LABEL,
         cost_usd=cost,
         unpriced_api_calls=row["unpriced_api_calls"],
         share=_share(cost, whole),
@@ -356,7 +471,7 @@ def unattached_node(session_id: str, rows: list[Row], whole: float) -> Node:
         session_id=session_id,
         source=None,
         node_id=session_id,
-        label=UNATTACHED_LABEL,
+        words=UNATTACHED_LABEL,
         cost_usd=cost,
         unpriced_api_calls=sum(row["unpriced_api_calls"] for row in rows),
         share=_share(cost, whole),

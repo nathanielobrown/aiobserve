@@ -13,8 +13,9 @@ the difference, and the first two are each one argument from being lost:
   `javascript:` URL intact, and an `href` is the one place a transcript's text is acted on
 
 `tests/view/test_render.py` pins all three. It cannot see a template that pipes a value
-through `|safe`, which is why the route-level sentinel test exists as well. Code a transcript
-wrote is not prose and does not come through here: `view/highlight.py` marks it up.
+through `|safe`, which is why the route-level sentinel test exists as well. The one place code
+meets prose is a fenced block, and `view/highlight.py` marks that up; a value that is code
+whole never comes through here at all.
 """
 
 from collections.abc import MutableMapping, Sequence
@@ -24,6 +25,8 @@ from markdown_it import MarkdownIt
 from markdown_it.renderer import RendererHTML
 from markdown_it.token import Token
 from markupsafe import Markup, escape
+
+from aiobserve.view import highlight
 
 # Explicit `html=False`, because the preset's default is True. Linkify off as well: a bare
 # URL in a transcript is a string someone typed, not an invitation to make it clickable.
@@ -53,7 +56,30 @@ def _image(
     )
 
 
+def _fence(
+    renderer: RendererHTML,
+    tokens: Sequence[Token],
+    index: int,
+    options: Any,
+    env: MutableMapping[str, Any],
+) -> str:
+    """A fenced block as the code the fence says it is, in the same `<pre>` the rest of the
+    viewer prints code in.
+
+    A block whose language this viewer has no lexer for is escaped here instead, and so is one
+    past the highlighter's ceiling — the class says what was marked up rather than what the
+    fence claimed. JSON is re-laid-out for reading, the way every other JSON on a page is.
+    """
+    token = tokens[index]
+    syntax = highlight.by_fence(token.info)
+    shown = highlight.lit(token.content, syntax) if syntax else None
+    if shown is None or shown.syntax is None:
+        return f'<pre class="code">{escape(token.content)}</pre>\n'
+    return f'<pre class="code {shown.syntax}">{shown.html}</pre>\n'
+
+
 _MARKDOWN.add_render_rule("image", _image)
+_MARKDOWN.add_render_rule("fence", _fence)
 
 
 def markdown(text: str | None) -> Markup:

@@ -23,13 +23,16 @@ WITH turn AS (
 SELECT
     t."index" AS turn_index,
     coalesce(t.id, '(unattributed)') AS turn_id,
-    substr(t.prompt, 1, 300) AS prompt,
+    -- The three strings a turn is named by, each cut to `$log_chars` and selected one
+    -- character past it: they reach a reader through a children log's row, which cuts them
+    -- again at that width and marks whichever of them the extra character says went on.
+    substr(t.prompt, 1, $log_chars + 1) AS prompt,
     -- A slash turn's heading shows the command it ran and what followed it *instead of*
     -- the prompt, which still holds the `<command-…>` tags Claude Code wrapped it in.
     -- Cut like the prompt: a command is named by whoever wrote the file defining it,
     -- and its arguments are whatever was typed after it.
-    substr(t.command_name, 1, 60) AS command_name,
-    substr(t.command_args, 1, 300) AS command_args,
+    substr(t.command_name, 1, $log_chars + 1) AS command_name,
+    substr(t.command_args, 1, $log_chars + 1) AS command_args,
     coalesce(t.started_at, s.first_call) AS started_at,
     coalesce(s.api_calls, 0) AS api_calls,
     coalesce(l.tool_calls, 0) AS tool_calls,

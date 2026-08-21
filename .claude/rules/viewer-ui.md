@@ -36,15 +36,15 @@ Where a label repeats — a tree row, a crumb, a log row, a walk control — the
 
 # A tree row is priced, not budgeted
 
-`bounds.TREE_ROW_BYTES` is measured through the app, pinned with no slack, and spent 417 times on the worst page. An attribute added to `_tree.html` is that many bytes of page, so re-measure with `tests/view/test_bounds.py` rather than guessing — the pin fails first, which is the point.
+`bounds.TREE_ROW_BYTES` is measured through the app, pinned with no slack, and spent 817 times on the worst page. An attribute added to `_tree.html` is that many bytes of page, so re-measure with `tests/view/test_bounds.py` rather than guessing — the pin fails first, which is the point.
 
-Link where you fetch: a row's `href` and its `hx-get` are the same URL, and both carry the page's knob suffix, so a click, a paste, and a bookmark serve the same bytes.
+Link where you fetch: a row's `href` and its `hx-get` are the same URL, and both carry the page's knob suffix, so a click, a paste, and a bookmark serve the same bytes. The mount an expansion opens through carries it too, so the fragment's own links come back under the fold the reader was in.
 
 # A pane swap says where it lands
 
 A link that moves the reader without leaving the page carries six attributes, and all six have to be in effect on it: `hx-get` the node's URL, `hx-select="#pane"`, `hx-target="#pane"`, `hx-swap="outerHTML"`, `hx-select-oob="#tree-rows"`, and `hx-push-url="true"`. The two that are easy to leave off are the two with defaults that look harmless: htmx aims at the clicked element, so a link without `hx-target` swaps the whole pane inside the `<a>` and leaves the pane showing the node the reader came from — the URL changes and the page does not. `hx-select` hands back the `#pane` element itself rather than its contents, which is why the swap is `outerHTML` and not the default.
 
-htmx reads all but `hx-get` off the closest ancestor carrying one, so the tree writes the five shared ones on `#tree-rows` and its rows carry only the URL. A children log writes them out per row instead: the body toggle beside each link is an `hx-get` with none of them, and twelve rows are cheaper to repeat than to disinherit. `test_every_link_that_swaps_the_pane_lands_the_pane_in_the_pane` reads both mounts the way htmx resolves them, inheritance and all.
+htmx reads all but `hx-get` off the closest ancestor carrying one, so the tree writes the five shared ones on `#tree-rows` and its rows carry only the URL. A children log writes them out per row instead: the body toggle beside each link is an `hx-get` that must not swap the pane, so a hoisted attribute would have to be undone on it — a line per row either way. `test_every_link_that_swaps_the_pane_lands_the_pane_in_the_pane` reads both mounts the way htmx resolves them, inheritance and all.
 
 # A control beside the tree lives inside the swapped element
 
@@ -54,7 +54,7 @@ preset switcher does, three links to the node under each fold — has to render 
 them or it goes stale the moment a reader clicks a row, pointing back at the node they left.
 
 Put it inside `#tree-rows` rather than adding a second out-of-band target: a target costs bytes
-on every tree row, and the row is the one thing on the page multiplied 417 times.
+on every tree row, and the row is the one thing on the page multiplied 817 times.
 
 # The scroller stays outside the swapped element
 

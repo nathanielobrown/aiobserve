@@ -10,20 +10,30 @@
 {% macro switcher(choices) %}
 <p class="switch" aria-label="Fold the tree">
   {%- for choice in choices %}
-  <a data-nav="{{ choice.preset }}" href="{{ choice.url }}"
+  <a class="button" data-nav="{{ choice.preset }}" href="{{ choice.url }}"
     {%- if choice.current %} aria-current="true"{% endif %}>{{ choice.preset.label }}</a>
   {%- endfor %}
 </p>
 {% endmacro %}
 
 
-{% macro lines(rows, suffix) %}
+{% macro lines(rows, suffix, thread) %}
 {% for row in rows %}
 {% if row.cut %}
-{# What the cap left out of this level. The link goes to the parent's own page, which pages
-   its children rather than capping them. #}
+{# What the window left out of this level, and the way to it: htmx fetches those rows and
+   stands them where this one stands, so the level opens without the reader losing the pane.
+   A button rather than a link — there is no page at the other end, only the rest of a level —
+   and every part of the swap a tree row inherits is overridden here, because what comes back
+   is rows rather than a pane. The fetch carries the reader's knobs, the thread they are
+   reading on — which is what a row is described by, whatever thread the level belongs to —
+   the depth these rows sit at, and the child the open path descends through, which the cap
+   kept and this must not send twice. #}
+{%- set fetch = suffix ~ ('&' if suffix else '?') ~ 'thread=' ~ thread ~ '&depth=' ~ row.depth
+    ~ ('&opened=' ~ row.opened if row.opened else '') %}
 <li class="row more" data-depth="{{ row.depth }}" data-more="{{ row.node.key }}">
-  <a href="{{ row.node.url }}{{ suffix }}">+<span data-field="cut">{{ row.cut | count }}</span> more</a>
+  <button type="button" hx-get="{{ row.node.rest }}{{ fetch }}" hx-target="closest li"
+          hx-swap="outerHTML" hx-select="unset" hx-select-oob="unset" hx-push-url="false"
+    >+<span data-field="cut">{{ row.cut | count }}</span> more</button>
 </li>
 {% else %}
 <li class="row node {{ row.node.kind }} {{ row.node.meter }}" data-depth="{{ row.depth }}"
@@ -39,11 +49,6 @@
        came back an error. Spelled the way the children log spells it, so the stylesheet's one
        alarm rule paints both and a test reads either the same way. #}
     <span data-field="is_error">error</span>
-    {%- endif %}
-    {%- if row.node.tie %}
-    {# A run renders under the turn it belongs to, after the api call that spawned it; the tie
-       says which call, because the run is not that call's child. #}
-    <span class="tie" data-field="tie">{{ row.node.tie }}</span>
     {%- endif %}
     {%- if row.node.cost_usd is not none %}
     <span class="secondary"><span data-field="cost_usd">{{ row.node.cost_usd | money }}</span>

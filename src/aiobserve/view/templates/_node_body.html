@@ -8,7 +8,7 @@
    render a heading and nothing under it, which reads as a node with no facts. #}
 {% macro pane(node, row, suffix) %}
 <section class="body" data-body="{{ node.kind }}">
-  <h1 data-field="label">{{ node.label }}</h1>
+  <h1 data-field="label">{{ node.title }}</h1>
   {% if node.kind == 'session' %}{{ session(row) }}
   {% elif node.kind == 'turn' %}{{ turn(row) }}
   {% elif node.kind == 'run' %}{{ run(row) }}
@@ -59,14 +59,17 @@
 {% endif %}
 {% endmacro %}
 
-{# One turn: what it was asked, when, and what answering it took. #}
+{# One turn: what it was asked, when, and what answering it took. A turn typed as a slash
+   command leads with the command — its prompt is the `<command-…>` wrapper Claude Code
+   expanded it into, and what a reader is looking for is the command. What followed it is a
+   value of the turn, previewed under the facts beside the prompt. #}
 {% macro turn(row) %}
+{% if row.command_name is not none %}
+<p class="command" data-command="{{ row.turn_id }}">
+  <span data-field="command_name">{{ row.command_name }}</span></p>
+{% endif %}
 <dl class="facts">
   {{ parts.fact('turn_index', row.turn_index | count) }}
-  {% if row.command_name is not none %}
-  {{ parts.fact('command_name', row.command_name) }}
-  {{ parts.fact('command_args', row.command_args) }}
-  {% endif %}
   {{ parts.fact('started_at', row.started_at | clock) }}
   {{ parts.fact('replayed', row.replayed) }}
   {{ parts.fact('api_calls', row.api_calls | count) }}

@@ -1,23 +1,25 @@
-"""Prev and next beside the pane: the order a reader gets through a whole session in.
+"""Prev and next beside the pane: how a reader gets along a level and back out of it.
 
-The tree opens one path, so the two controls are how a reader reaches everything the tree is
-not showing. The order is depth-first over the session as the tree draws it — into a node's
-children, then on to its next sibling, then out — and both buckets are steps like any other,
-descended into rather than stepped over: the calls and runs they hold happened, and nothing
-else on the page reaches them.
+Neither control ever descends. Going down is what the tree is for — a click on a row opens
+it — so the two controls read the level the reader is standing on: the next sibling, then the
+next, and at the end of the level whatever follows the thing it sits inside. Prev is the same
+level backwards, and from its first row the node that holds it. A step that leaves the level
+says so, because a control that changed depth without warning would move the reader somewhere
+they did not ask to be.
 
 What the walk reads is the store, never the rendered rows. A `?kin=` cap cuts what is drawn
 beside the pane; it cannot cut what comes next, because a reading order that shortened with
-the sidebar would silently skip nodes. Each step is one level read — the selection's children,
-or an ancestor's — on top of the chain the page already resolved.
+the sidebar would silently skip nodes. Each step is one level read — an ancestor's children —
+on top of the chain the page already resolved.
 """
 
 from collections.abc import Sequence
+from typing import NamedTuple
 
 import duckdb
 
 from aiobserve.view.nodes import Node, Preset
-from aiobserve.view.tree import CHILDREN, Corpus, Ran
+from aiobserve.view.tree import Corpus, Ran, children
 
 
 class _Reader:
@@ -34,7 +36,7 @@ class _Reader:
         Always full: a filter preset is a view of the session, not a reading order, and three
         orders would be three reading needs to test for the one a reader has.
         """
-        level = CHILDREN[(node.kind, Preset.FULL)](self.connection, self.corpus, node)
+        level = children(self.connection, self.corpus, node.ref, Preset.FULL, None)
         self.ran.extend(level.ran)
         return level.nodes
 
@@ -46,10 +48,19 @@ class _Reader:
         raise ValueError(f"{node.key} is not in the level it was reached through")
 
 
+class Step(NamedTuple):
+    """Where one control goes, and whether taking it leaves the level the reader is on."""
+
+    node: Node
+    # True where the step lands at an ancestor's level rather than beside the selection, which
+    # is what the control marks: the reader is coming out of the branch they were reading.
+    climbed: bool
+
+
 class Walk:
     """What the two controls point at, and every query answering them."""
 
-    def __init__(self, previous: Node | None, following: Node | None, ran: Ran) -> None:
+    def __init__(self, previous: Step | None, following: Step | None, ran: Ran) -> None:
         self.previous = previous
         self.following = following
         self.ran = ran
@@ -67,38 +78,32 @@ def neighbours(
     return Walk(_previous(reader, chain), _following(reader, chain), reader.ran)
 
 
-def _following(reader: _Reader, chain: Sequence[Node]) -> Node | None:
-    """The node read next: this node's first child, else the nearest following sibling.
+def _following(reader: _Reader, chain: Sequence[Node]) -> Step | None:
+    """The node read next: the following sibling, else what follows the thing this sits inside.
 
     Climbing is what closes the walk — a node at the end of its level hands on to whatever
-    follows the thing it sits inside, and a session whose last leaf is reached has nowhere
-    left to climb to.
+    follows its parent, and its parent's level can be at its end too, so the climb repeats
+    until a level has something left or the session runs out.
     """
-    children = reader.children(chain[-1])
-    if children:
-        return children[0]
     for depth in range(len(chain) - 1, 0, -1):
         siblings = reader.children(chain[depth - 1])
         after = reader.place(siblings, chain[depth]) + 1
         if after < len(siblings):
-            return siblings[after]
+            return Step(siblings[after], climbed=depth != len(chain) - 1)
     return None
 
 
-def _previous(reader: _Reader, chain: Sequence[Node]) -> Node | None:
-    """The node read before: the last thing inside the previous sibling, else the parent.
+def _previous(reader: _Reader, chain: Sequence[Node]) -> Step | None:
+    """The node read before: the sibling ahead of this one, else the node that holds it.
 
-    The mirror of `_following`'s descent — where next enters a subtree at its first node,
-    prev leaves one at its last, so the two walk the same order in opposite directions.
+    The parent rather than the parent's previous sibling, which is what next's climb would
+    mirror: the first row of a level has to lead somewhere, and the thing it sits inside is
+    where a reader who ran out of level wants to be.
     """
     if len(chain) == 1:
         return None
-    parent = chain[-2]
-    siblings = reader.children(parent)
+    siblings = reader.children(chain[-2])
     place = reader.place(siblings, chain[-1])
     if place == 0:
-        return parent
-    node = siblings[place - 1]
-    while children := reader.children(node):
-        node = children[-1]
-    return node
+        return Step(chain[-2], climbed=True)
+    return Step(siblings[place - 1], climbed=False)
