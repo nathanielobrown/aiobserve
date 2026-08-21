@@ -21,7 +21,7 @@ from aiobserve.view.app import build_app, numbered
 from aiobserve.view.format import ELLIPSIS
 from aiobserve.view.labels import LABELS, label
 from aiobserve.view.nodes import BODY_URL, COLUMNS, Shape
-from tests.conftest import ANCESTOR, DENSE_TOOL, DENSE_TURN, FORK_ORIGIN, FORK_RUN, MAIN, SPINE
+from tests.conftest import ANCESTOR, DENSE_TURN, MAIN, SPINE
 from tests.view.conftest import MISSING, Planter, block, fields, inside, one, plain, values
 
 # The corpus's densest main-thread turn — 4 api calls under it — so the pane's children log
@@ -352,14 +352,26 @@ COMMAND = "cd /tmp && rg -n 'x' *.py | head -3"
 # And what a `Read` of a markdown file returns: the source, behind the line-number gutter
 # Claude Code adds. Planted for the same reason — a recorded file path reads `[redacted]`.
 READ = "1\t# Title\n2\t\n3\t- an item\n"
+# What an `Edit` of a python file returns instead: a sentence about the file, which is the
+# shape the guards below exist to keep apart from the file itself.
+EDITED = "The file /tmp/notes.py has been updated."
+# And a command argument passed to a tool that runs no shell, for the same guards read the
+# other way round.
+NOT_RUN = "ls -la"
 
 
-def bash_call(store: duckdb.DuckDBPyConnection) -> tuple[str, str, str]:
-    """One recorded `Bash` call: the session, the thread, and the call's id."""
+def call_to(store: duckdb.DuckDBPyConnection, tool: str) -> tuple[str, str, str]:
+    """One recorded call to `tool`: the session, the thread, and the call's id.
+
+    Read out of the store rather than pinned, because a tool call this tier can render is one
+    the tree reaches — an id copied out of a transcript may name a record a later line
+    replaced, and its page is a 404 an absence assertion cannot tell from an answer.
+    """
     return one(
         store,
-        "SELECT session_id, source, id FROM live_tool_calls WHERE name = 'Bash'"
+        "SELECT session_id, source, id FROM live_tool_calls WHERE name = ?"
         " ORDER BY session_id, source, id LIMIT 1",
+        [tool],
     )
 
 
@@ -373,7 +385,8 @@ def test_a_bash_call_reads_the_command_it_ran_as_a_shell_reads_it(
     JSON string. So it is a value of the pane like the input and the result are, with the rest
     of a long command behind its own route.
     """
-    session_id, source, tool_id = bash_call(store)
+    session_id, source, tool_id = call_to(store, "Bash")
+    read_session, read_source, read_id = call_to(store, "Read")
     path = plant(
         (
             "UPDATE tool_calls SET input = ? WHERE session_id = ? AND source = ? AND id = ?",
@@ -383,7 +396,19 @@ def test_a_bash_call_reads_the_command_it_ran_as_a_shell_reads_it(
                 source,
                 tool_id,
             ],
-        )
+        ),
+        # ...and the same argument on a `Read`, which runs nothing. Real in shape: 86 recorded
+        # calls to tools other than `Bash` were passed a `command` of their own (the canonical
+        # store, read 2026-08-20), 2 of them to `Read`.
+        (
+            "UPDATE tool_calls SET input = ? WHERE session_id = ? AND source = ? AND id = ?",
+            [
+                json.dumps({"file_path": "[redacted]", "command": NOT_RUN}),
+                read_session,
+                read_source,
+                read_id,
+            ],
+        ),
     )
     with TestClient(build_app(path)) as ran:
         page = ran.get(f"/session/{session_id}/tool/{source}/{tool_id}").text
@@ -401,10 +426,18 @@ def test_a_bash_call_reads_the_command_it_ran_as_a_shell_reads_it(
         assert plain(block(served.text, "value")) == COMMAND
         # And the input is still on the page as the record: the command is a reading of it.
         assert json.loads(plain(block(page, "input")))["command"] == COMMAND
-        # A call to a tool that runs no command has none to show — the arm is the tool's, not
-        # every input that happens to carry the word.
-        read = ran.get(f"/session/{FORK_ORIGIN}/tool/{FORK_RUN}/{DENSE_TOOL}").text
-        assert "command" not in values(read, "data-detail")
+        # A call to a tool that runs no command has none to show, though its arguments carry
+        # the word: the arm is the tool's name. A page that marked that argument up as shell
+        # would be saying a `Read` ran it.
+        read = ran.get(f"/session/{read_session}/tool/{read_source}/{read_id}")
+        assert read.status_code == 200
+        assert "command" not in values(read.text, "data-detail")
+        # The argument is still on the page inside the input it was passed in — as the record,
+        # not as a shell. And the route the pane would have linked to serves nothing: the row
+        # is there, so it answers, and what it answers with is an empty value.
+        assert NOT_RUN in plain(block(read.text, "input"))
+        missing = ran.get(f"/fragment/command/{read_session}/{read_source}/{read_id}")
+        assert values(missing.text, "data-value") == ["0"]
 
 
 def test_a_read_of_a_markdown_file_shows_the_source_marked_up_and_not_rendered(
@@ -416,7 +449,7 @@ def test_a_read_of_a_markdown_file_shows_the_source_marked_up_and_not_rendered(
     agent was actually shown. What the file was is read off the path it was read from, which
     is the only thing in the record that says so.
     """
-    session_id, source, tool_id = bash_call(store)
+    session_id, source, tool_id = call_to(store, "Bash")
     path = plant(
         (
             "UPDATE tool_calls SET name = 'Read', input = ?, result = ?"
@@ -450,6 +483,25 @@ def test_a_read_of_a_markdown_file_shows_the_source_marked_up_and_not_rendered(
         page = binary.get(f"/session/{session_id}/tool/{source}/{tool_id}").text
         assert plain(block(page, "result")) == READ
         assert "<span" not in block(page, "result")
+    # And a tool that names a file without returning one is shown as stored too. `Edit` and
+    # `Write` name a file whose suffix this viewer has a lexer for in 30,491 recorded calls
+    # (the canonical store, read 2026-08-20), and what they return is a sentence about the
+    # file — a page that marked it up as python would be claiming it is the file.
+    edited = plant(
+        (
+            "UPDATE tool_calls SET name = 'Edit', input = ?, result = ?"
+            " WHERE session_id = ? AND source = ? AND id = ?",
+            [json.dumps({"file_path": "/tmp/notes.py"}), EDITED, session_id, source, tool_id],
+        )
+    )
+    with TestClient(build_app(edited)) as edit:
+        page = edit.get(f"/session/{session_id}/tool/{source}/{tool_id}").text
+        assert plain(block(page, "result")) == EDITED
+        assert "<span" not in block(page, "result")
+        # The rule is spelled once for the preview and once for the whole fetch, so both are
+        # read here: the second query answers off the same file name as the first.
+        served = edit.get(f"/fragment/result/{session_id}/{source}/{tool_id}")
+        assert "<span" not in block(served.text, "value")
 
 
 def test_every_value_a_pane_previews_is_fetchable_whole_from_its_own_url(
