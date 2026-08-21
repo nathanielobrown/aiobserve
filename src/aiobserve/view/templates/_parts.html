@@ -96,11 +96,16 @@
 
 {# One of a node's own values as the pane shows it: the head the header query cut, and the way
    to the rest. The link fetches the whole value and replaces this block, which is the one
-   place a fat column crosses the wire whole (`view/store.py`'s per-value queries). #}
+   place a fat column crosses the wire whole (`view/store.py`'s per-value queries). A head
+   whose row said what it was written in is marked up in that syntax; the rest is prose. #}
 {% macro detail(item) %}
 <section class="detail" data-detail="{{ item.name }}">
   <h3>{{ label(item.name) }}</h3>
+  {%- if item.syntax %}
+  {{ code(item.head, item.syntax, item.name) }}
+  {%- else %}
   <pre data-field="{{ item.name }}">{{ item.head }}</pre>
+  {%- endif %}
   {% if item.cut %}
   <p class="more"><a data-whole="{{ item.name }}" href="{{ item.url }}" hx-get="{{ item.url }}"
      hx-target="closest .detail" hx-swap="outerHTML"

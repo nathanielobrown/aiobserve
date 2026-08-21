@@ -118,6 +118,10 @@ class Detail(NamedTuple):
     head: str
     cut: int
     url: str
+    # What the head is marked up as, where the record says what the value is written in — the
+    # shell a `Bash` call ran, the file a `Read` returned. None is prose, which is most of a
+    # transcript and which the pane prints as it was stored.
+    syntax: highlight.Syntax | None
 
 
 # Where the SQL behind a page is read. Every citation in a footer links here, so the path is
@@ -309,15 +313,25 @@ def skipped(page: int, size: int) -> int:
     return (page - 1) * size
 
 
-def detail_of(name: str, head: str | None, chars: int | None, url: str, size: int) -> Detail | None:
+def detail_of(
+    name: str,
+    head: str | None,
+    chars: int | None,
+    url: str,
+    size: int,
+    syntax: highlight.Syntax | None = None,
+) -> Detail | None:
     """One fat column as a pane shows it, or None where the store holds nothing under it.
 
     `head` arrives one character past `size`, which is how a value with more behind it is told
     from one that ends where the pane does; `chars` is the whole length the link offers.
+    `syntax` is what the record says the value is written in, and the default is prose:
+    everything a session wrote is prose until something in the row says otherwise.
     """
     if not head:
         return None
-    return Detail(name, fmt.cut(head, size), (chars or 0) - size if len(head) > size else 0, url)
+    cut = (chars or 0) - size if len(head) > size else 0
+    return Detail(name, fmt.cut(head, size), cut, url, syntax)
 
 
 def sliced(items: Sequence[Row], page: int, size: int) -> Listed:
@@ -1107,6 +1121,16 @@ def build_app(db_path: Path) -> FastAPI:
                 details=[
                     item
                     for item in (
+                        # The command first, where the call ran one: it is what the input is
+                        # about, and the input below it is the record it was read out of.
+                        detail_of(
+                            "command",
+                            row["command"],
+                            row["command_chars"],
+                            f"/fragment/command/{session_id}/{source}/{tool_call_id}",
+                            detail,
+                            highlight.Syntax.BASH,
+                        ),
                         detail_of(
                             "input",
                             row["input_head"],
@@ -1120,6 +1144,7 @@ def build_app(db_path: Path) -> FastAPI:
                             row["result_chars"],
                             f"/fragment/result/{session_id}/{source}/{tool_call_id}",
                             detail,
+                            highlight.by_suffix(row["result_type"]),
                         ),
                     )
                     if item is not None
@@ -1617,19 +1642,34 @@ def build_app(db_path: Path) -> FastAPI:
         return spilled(request, session_id, at, thread, depth, opened, nav, kin, log, detail)
 
     def whole(
-        request: Request, value: Value, template: str, keyed: Mapping[str, ParamValue]
+        request: Request,
+        value: Value,
+        template: str,
+        keyed: Mapping[str, ParamValue],
+        syntax: highlight.Syntax | None = None,
     ) -> Response:
-        """One per-value fragment: the whole value, or a 404 when nothing is stored under it."""
+        """One per-value fragment: the whole value, or a 404 when nothing is stored under it.
+
+        `syntax` is what the route knows the value is written in. A value whose language is a
+        property of the row instead — the file a `Read` returned — carries it in the query's
+        own `result_type`, so the fetch is marked up the way its preview on the pane was.
+        """
         with open_store(resolved) as connection:
             rows = page_rows(connection, value, **keyed)
         if not rows:
             raise HTTPException(404, "Nothing in this store is stored under that id.")
+        row = rows[0]
         # The keys travel into the context as well: a fragment that links anywhere needs the
         # session and thread it was fetched for, and they are exactly what keyed it.
         return templates.TemplateResponse(
             request,
             f"fragments/{template}.html",
-            dict(keyed) | {"row": rows[0], "citation": queries.citation(value, keyed)},
+            dict(keyed)
+            | {
+                "row": row,
+                "citation": queries.citation(value, keyed),
+                "syntax": syntax or highlight.by_suffix(row.get("result_type")),
+            },
         )
 
     @app.get("/fragment/text/{session_id}/{source}/{api_call_id}")
@@ -1679,7 +1719,25 @@ def build_app(db_path: Path) -> FastAPI:
             request,
             Value.TOOL_RESULT,
             "raw",
+            {
+                "session_id": session_id,
+                "source": source,
+                "tool_call_id": tool_call_id,
+                # Not a cut of the answer, which rides whole: the bound on the file suffix
+                # beside it, which is what says how the answer is marked up.
+                "head_chars": queries.HEADER_CHARS,
+            },
+        )
+
+    @app.get("/fragment/command/{session_id}/{source}/{tool_call_id}")
+    def tool_command(request: Request, session_id: str, source: str, tool_call_id: str) -> Response:
+        """What one `Bash` call ran, whole — read as the shell reads it."""
+        return whole(
+            request,
+            Value.TOOL_COMMAND,
+            "raw",
             {"session_id": session_id, "source": source, "tool_call_id": tool_call_id},
+            highlight.Syntax.BASH,
         )
 
     @app.get("/fragment/prompt/{session_id}/{source}/{turn_id}")

@@ -31,7 +31,26 @@ SELECT
     length(t.input) AS input_chars,
     -- NULL where the tool returned nothing at all, which is not the same as returning "".
     substr(t.result, 1, $detail_chars + 1) AS result_head,
-    length(t.result) AS result_chars
+    length(t.result) AS result_chars,
+    -- What a `Bash` call ran, as a value of its own: the input holds it escaped onto one line
+    -- among the call's other arguments, and a shell command is the thing a reader opened the
+    -- call to read. `Bash` and not every input carrying the word — a value marked up as shell
+    -- claims to be shell — and guarded like every other read of `input`, which is whatever
+    -- the transcript held and raises `json_extract_string` when it is not JSON.
+    CASE WHEN t.name = 'Bash' AND json_valid(t.input)
+         THEN substr(json_extract_string(t.input, '$.command'), 1, $detail_chars + 1)
+         END AS command,
+    CASE WHEN t.name = 'Bash' AND json_valid(t.input)
+         THEN length(json_extract_string(t.input, '$.command'))
+         END AS command_chars,
+    -- And the suffix of the file a `Read` returned, lowercased, which is the only evidence in
+    -- the record of what its result holds (`view/highlight.py:by_suffix` places it). `Read`
+    -- alone: an `Edit` names a file too, but what it returns is a confirmation, not the file.
+    CASE WHEN t.name = 'Read' AND json_valid(t.input)
+         THEN substr(
+             lower(regexp_extract(json_extract_string(t.input, '$.file_path'), '\.[^./]+$')),
+             1, $head_chars)
+         END AS result_type
 FROM live_tool_calls t
 JOIN live_api_calls c
     ON c.session_id = t.session_id AND c.source = t.source AND c.id = t.api_call_id

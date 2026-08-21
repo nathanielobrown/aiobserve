@@ -117,6 +117,13 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
         "source": FORK_ORIGIN_RUN,
         "tool_call_id": DENSE_TOOL,
     },
+    # The command arm answers NULL off a call that is not a `Bash` call, which is a row and
+    # not a failure — the smoke run asks whether the query runs.
+    "view_tool_command": {
+        "session_id": FORK_ORIGIN,
+        "source": FORK_ORIGIN_RUN,
+        "tool_call_id": DENSE_TOOL,
+    },
     "view_tool_result": {
         "session_id": FORK_ORIGIN,
         "source": FORK_ORIGIN_RUN,

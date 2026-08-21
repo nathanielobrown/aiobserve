@@ -78,6 +78,12 @@ _LEXERS: dict[Syntax, Lexer] = {
 _SUFFIXES: dict[str, Syntax] = {
     ".md": Syntax.MARKDOWN,
     ".markdown": Syntax.MARKDOWN,
+    ".py": Syntax.PYTHON,
+    ".sql": Syntax.SQL,
+    ".json": Syntax.JSON,
+    ".sh": Syntax.BASH,
+    ".bash": Syntax.BASH,
+    ".zsh": Syntax.BASH,
 }
 
 # What a model writes after the three backticks of a fence, for the syntaxes this viewer
