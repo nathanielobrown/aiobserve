@@ -88,6 +88,12 @@ def test_a_fenced_block_is_marked_up_as_the_language_it_names() -> None:
     # ...and the block is a `<pre>` classed like every other marked-up value on the page.
     assert '<pre class="code bash">' in rendered
     assert '<span class="nb">cd</span>' in rendered
+    # The info string is typing rather than a token, so the language is read out of it: the
+    # word a model capitalized, and the first word of a fence that goes on to name a file.
+    for info in ("Bash", "BASH", "bash title=run.sh"):
+        typed = render.markdown(f"```{info}\ncd /tmp && ls\n```\n")
+        assert '<pre class="code bash">' in typed, info
+        assert '<span class="nb">cd</span>' in typed, info
     # A fence naming nothing, or naming a language with no lexer here, is still a block.
     for info in ("", "html", "rust"):
         plain_block = render.markdown(f"```{info}\nx = 1\n```")
