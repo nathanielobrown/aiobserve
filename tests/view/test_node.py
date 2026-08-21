@@ -185,6 +185,12 @@ def test_a_slash_turn_leads_with_the_command_it_ran(
     # What followed it is a value of the turn like the prompt is, so it is previewed under its
     # own heading with the way to the rest of it — arguments run to thousands of characters.
     assert fields(page, "data-detail", "command_args")["command_args"] == args
+    # The rest of it comes off a route of its own, rendered as the prose a person typed —
+    # like the prompt beside it, and unlike a tool's arguments, which are JSON and are marked
+    # up as JSON. A fetch that read the arguments as code would print them in a `<pre>`.
+    served = client.get(f"/fragment/args/{SPINE}/{MAIN}/{turn_id}").text
+    assert "<p>" in served
+    assert "<pre" not in served
     # And the wrapper Claude Code built is still on the page as the record of what was sent.
     assert "<command-name>" in plain(block(page, "prompt"))
     # A turn nobody typed a command at has no command line at all: the pane leads with the
@@ -420,10 +426,13 @@ def test_a_bash_call_reads_the_command_it_ran_as_a_shell_reads_it(
         # asked for a shell rather than for JSON is this leaf's.
         assert '<span class="nb">cd</span>' in marked
         assert '<span class="o">&amp;&amp;</span>' in marked
-        # The whole of it has a route of its own, marked up the same way.
+        # The whole of it has a route of its own, marked up the same way — the syntax is
+        # spelled once for the preview and once for the fetch, so the fetch is read for the
+        # mark too. A route that fell back to JSON would serve the command as a JSON string.
         served = ran.get(f"/fragment/command/{session_id}/{source}/{tool_id}")
         assert served.status_code == 200
         assert plain(block(served.text, "value")) == COMMAND
+        assert '<span class="nb">cd</span>' in block(served.text, "value")
         # And the input is still on the page as the record: the command is a reading of it.
         assert json.loads(plain(block(page, "input")))["command"] == COMMAND
         # A call to a tool that runs no command has none to show, though its arguments carry
