@@ -4,7 +4,8 @@ A syntax is here because a session writes it: the JSON a tool was passed and ret
 behind a page, the shell a `Bash` call ran, the markdown a `Read` returned, and the languages a
 model fences a block of code in. Everything else a transcript wrote is prose, and
 `view/render.py` renders it — marking up a file the viewer shows is a reading aid over the
-source, never a rendering of it: a tool result is evidence, and it prints as it was stored.
+source, never a rendering of it: a tool result is evidence, and it prints as it was stored —
+character for character, which is what `_EXACT` and `_run` are for.
 
 The markup is Pygments' with `nowrap`, so what comes back is a run of classed spans and the
 template owns the `<pre>` around them. Classes rather than inline colors because the policy in
@@ -58,6 +59,14 @@ class Syntax(StrEnum):
     PYTHON = "python"
 
 
+# What every lexer here is built with, so that marking a value up adds to it and edits none of
+# it: Pygments strips the newlines at either end of what it lexes, and a result whose first
+# line went missing is not the evidence it was stored as. The newline at the end is the
+# formatter's rather than the lexer's, and `_lexed` is where that one goes; the two characters
+# Pygments rewrites whatever the options say are `_run`'s.
+_EXACT = {"stripnl": False}
+
+
 def _lexer(built: Lexer) -> Lexer:
     """One lexer as this viewer reads with it: its own tokens, whitespace left plain."""
     built.add_filter(_PlainWhitespace())
@@ -65,11 +74,11 @@ def _lexer(built: Lexer) -> Lexer:
 
 
 _LEXERS: dict[Syntax, Lexer] = {
-    Syntax.JSON: _lexer(JsonLexer()),
-    Syntax.SQL: _lexer(SqlLexer()),
-    Syntax.BASH: _lexer(BashLexer()),
-    Syntax.MARKDOWN: _lexer(MarkdownLexer()),
-    Syntax.PYTHON: _lexer(PythonLexer()),
+    Syntax.JSON: _lexer(JsonLexer(**_EXACT)),
+    Syntax.SQL: _lexer(SqlLexer(**_EXACT)),
+    Syntax.BASH: _lexer(BashLexer(**_EXACT)),
+    Syntax.MARKDOWN: _lexer(MarkdownLexer(**_EXACT)),
+    Syntax.PYTHON: _lexer(PythonLexer(**_EXACT)),
 }
 
 # What a file's name says its contents are. Only the suffixes this viewer has a lexer for: a
@@ -100,6 +109,10 @@ _FENCED: dict[str, Syntax] = {syntax.value: syntax for syntax in Syntax} | {
 # line. It is not part of the file: a lexer that meets it reads a different language, where a
 # heading whose `#` follows a number is no longer a heading.
 _GUTTER = re.compile(r"^\s*\d+\t")
+
+# The characters Pygments rewrites before any lexer reads them, kept out of its way.
+_REWRITTEN = re.compile("([\r\ufeff])")
+
 
 # No wrapper: the `<pre>` and its `data-field` belong to the template, and a formatter that
 # brought its own `<div class="highlight">` would put a second box around every value.
@@ -176,10 +189,28 @@ def by_fence(info: str | None) -> Syntax | None:
 
 
 def _run(text: str, lexer: Lexer) -> str:
-    """One stretch of text marked up, ending where the text ended.
+    """One stretch of text marked up, character for character.
 
-    Pygments closes every run with a newline. Inside a `<pre>` that is a blank line the value
-    does not have, so it goes wherever the text did not end with one itself.
+    Two characters a lexer never sees as themselves: Pygments rewrites every carriage return
+    as a newline and drops a byte-order mark before the options in `_EXACT` apply
+    (`Lexer._preprocess_lexer_input`). Neither can be turned off, so the text is cut at them
+    and they are written back as they were stored — the stretches between are lexed. A lexer
+    reading a stretch forgets what the stretch before it opened, which is the price, and it is
+    rarely paid: of the 134,738 values the canonical store holds that this viewer marks up,
+    none carries a carriage return and six carry a mark (read 2026-08-20).
+    """
+    # `re.split` on a capturing pattern alternates: lexed, rewritten, lexed. Neither character
+    # it splits on is one HTML escapes, so each goes back into the markup as itself.
+    return "".join(
+        piece if at % 2 else _lexed(piece, lexer) for at, piece in enumerate(_REWRITTEN.split(text))
+    )
+
+
+def _lexed(text: str, lexer: Lexer) -> str:
+    """One stretch through the lexer, ending where the stretch ended.
+
+    The formatter closes its last line with a newline of its own. Inside a `<pre>` that is a
+    blank line the value does not have, so it goes wherever the text did not end with one.
     """
     marked = highlight(text, lexer, _FORMATTER)
     return marked if text.endswith("\n") else marked.removesuffix("\n")
