@@ -1646,9 +1646,14 @@ def build_app(db_path: Path) -> FastAPI:
         value: Value,
         template: str,
         keyed: Mapping[str, ParamValue],
+        detail: str | None,
         syntax: highlight.Syntax | None = None,
     ) -> Response:
         """One per-value fragment: the whole value, or a 404 when nothing is stored under it.
+
+        `detail` is the name the pane files this value under, and the fragment replaces that
+        whole section, so it carries the name out with it — the styling that tells an ask from
+        an answer reads it. A fragment that is nobody's detail — the archived record — has none.
 
         `syntax` is what the route knows the value is written in. A value whose language is a
         property of the row instead — the file a `Read` returned — carries it in the query's
@@ -1667,6 +1672,7 @@ def build_app(db_path: Path) -> FastAPI:
             dict(keyed)
             | {
                 "row": row,
+                "detail": detail,
                 "citation": queries.citation(value, keyed),
                 "syntax": syntax or highlight.by_suffix(row.get("result_type")),
             },
@@ -1680,6 +1686,7 @@ def build_app(db_path: Path) -> FastAPI:
             Value.CALL_TEXT,
             "value",
             {"session_id": session_id, "source": source, "api_call_id": api_call_id},
+            "text",
         )
 
     @app.get("/fragment/thinking/{session_id}/{source}/{api_call_id}")
@@ -1690,6 +1697,7 @@ def build_app(db_path: Path) -> FastAPI:
             Value.CALL_THINKING,
             "value",
             {"session_id": session_id, "source": source, "api_call_id": api_call_id},
+            "thinking",
         )
 
     @app.get("/fragment/record/{session_id}/{source}/{line_no}")
@@ -1700,6 +1708,9 @@ def build_app(db_path: Path) -> FastAPI:
             Value.RECORD,
             "record",
             {"session_id": session_id, "source": source, "line_no": line_no},
+            # The line a node was read from, not one of the node's own values: nothing on a
+            # pane files it under a name, and nothing swaps it into a detail.
+            None,
         )
 
     @app.get("/fragment/input/{session_id}/{source}/{tool_call_id}")
@@ -1710,6 +1721,7 @@ def build_app(db_path: Path) -> FastAPI:
             Value.TOOL_INPUT,
             "raw",
             {"session_id": session_id, "source": source, "tool_call_id": tool_call_id},
+            "input",
         )
 
     @app.get("/fragment/result/{session_id}/{source}/{tool_call_id}")
@@ -1727,6 +1739,7 @@ def build_app(db_path: Path) -> FastAPI:
                 # beside it, which is what says how the answer is marked up.
                 "head_chars": queries.HEADER_CHARS,
             },
+            "result",
         )
 
     @app.get("/fragment/command/{session_id}/{source}/{tool_call_id}")
@@ -1737,6 +1750,7 @@ def build_app(db_path: Path) -> FastAPI:
             Value.TOOL_COMMAND,
             "raw",
             {"session_id": session_id, "source": source, "tool_call_id": tool_call_id},
+            "command",
             highlight.Syntax.BASH,
         )
 
@@ -1748,6 +1762,7 @@ def build_app(db_path: Path) -> FastAPI:
             Value.TURN_PROMPT,
             "value",
             {"session_id": session_id, "source": source, "turn_id": turn_id},
+            "prompt",
         )
 
     @app.get("/fragment/args/{session_id}/{source}/{turn_id}")
@@ -1758,13 +1773,18 @@ def build_app(db_path: Path) -> FastAPI:
             Value.TURN_COMMAND_ARGS,
             "value",
             {"session_id": session_id, "source": source, "turn_id": turn_id},
+            "command_args",
         )
 
     @app.get("/fragment/brief/{session_id}/{run_id}")
     def run_brief(request: Request, session_id: str, run_id: str) -> Response:
         """The whole brief one agent run was given."""
         return whole(
-            request, Value.RUN_BRIEF, "value", {"session_id": session_id, "run_id": run_id}
+            request,
+            Value.RUN_BRIEF,
+            "value",
+            {"session_id": session_id, "run_id": run_id},
+            "description",
         )
 
     return app

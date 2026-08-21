@@ -225,7 +225,9 @@ li.node.s10 > a { background-size: 100% 3px, 100% 3px; }
 /* One of the node's own values, cut to the pane's width. Its name reads as a label and not
    as a heading — the pane's one heading is the node — and the value itself wraps: the reader
    opened it to read it, and a tool input is not a column of a table. */
-.detail h3 { margin: var(--space-2) 0 var(--space-1); font-size: var(--type-label);
+   The label is the section's own: a value opened whole is rendered where the preview was, and
+   a heading a model wrote inside it is prose rather than a name for what it sits in. */
+.detail > h3 { margin: var(--space-2) 0 var(--space-1); font-size: var(--type-label);
   color: var(--dim); }
 .detail pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: var(--space-1) 0;
   border-left: 2px solid var(--line); padding-left: var(--space-2); }
