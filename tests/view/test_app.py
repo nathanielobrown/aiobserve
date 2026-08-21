@@ -46,6 +46,7 @@ from tests.conftest import (
     MAIN,
     MYCELIA,
     NO_PROJECT_SESSION,
+    SLASH_TURN,
     SPINE,
     SPINE_LEAF,
     SPINE_RUN,
@@ -950,6 +951,9 @@ def test_planted_markup_arrives_inert(plant: Planter) -> None:
             client.get(f"/fragment/text/{ANCESTOR}/{MAIN}/{DENSE_TURN_CALL}").text,
             client.get(f"/fragment/input/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}").text,
             client.get(f"/fragment/result/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}").text,
+            # What followed a slash command, which is rendered rather than escaped, like the
+            # prompt a plain turn shows in its place.
+            client.get(f"/fragment/args/{SPINE}/{MAIN}/{SLASH_TURN}").text,
             client.get(f"/session/{ANCESTOR}/records/{MAIN}").text,
             client.get(f"/fragment/record/{ANCESTOR}/{MAIN}/1").text,
         )
@@ -1023,7 +1027,7 @@ def test_a_fragment_cites_the_query_that_fetched_it(client: TestClient) -> None:
     """Every whole-value fragment carries the query and the keys it was fetched by.
 
     A fragment arrives on a page that has already been served, so it cannot ride the footer
-    the pages share: each one carries the line itself. All seven routes hand one shared seam
+    the pages share: each one carries the line itself. All nine routes hand one shared seam
     their own keys, so each is here — a seam pinned through one route alone would still let
     another cite a key it was not fetched by.
     """
@@ -1043,11 +1047,22 @@ def test_a_fragment_cites_the_query_that_fetched_it(client: TestClient) -> None:
         ),
         (
             f"/fragment/result/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}",
-            f"-- queries/view_tool_result.sql {keyed} tool_call_id={DENSE_TOOL}",
+            f"-- queries/view_tool_result.sql {keyed} tool_call_id={DENSE_TOOL}"
+            f" head_chars={queries.HEADER_CHARS}",
+        ),
+        (
+            f"/fragment/command/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}",
+            f"-- queries/view_tool_command.sql {keyed} tool_call_id={DENSE_TOOL}",
         ),
         (
             f"/fragment/prompt/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL_TURN}",
             f"-- queries/view_turn_prompt.sql {keyed} turn_id={DENSE_CALL_TURN}",
+        ),
+        # The arguments of a slash turn, which only the one recorded slash turn has.
+        (
+            f"/fragment/args/{SPINE}/{MAIN}/{SLASH_TURN}",
+            f"-- queries/view_turn_command_args.sql session_id={SPINE} source={MAIN}"
+            f" turn_id={SLASH_TURN}",
         ),
         # A run is keyed by the session and its own id: a run has one home, so no thread
         # names it.

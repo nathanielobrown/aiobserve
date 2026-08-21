@@ -21,7 +21,7 @@ from aiobserve.view.app import build_app, numbered
 from aiobserve.view.format import ELLIPSIS
 from aiobserve.view.labels import LABELS, label
 from aiobserve.view.nodes import BODY_URL, COLUMNS, Shape
-from tests.conftest import ANCESTOR, DENSE_TURN, MAIN, SPINE
+from tests.conftest import ANCESTOR, DENSE_TOOL, DENSE_TURN, FORK_ORIGIN, FORK_RUN, MAIN, SPINE
 from tests.view.conftest import MISSING, Planter, block, fields, inside, one, plain, values
 
 # The corpus's densest main-thread turn — 4 api calls under it — so the pane's children log
@@ -342,6 +342,114 @@ def test_a_pane_previews_a_fat_value_and_offers_the_rest_as_its_own_fetch(
     fits = client.get(TURN).text
     assert "cut" not in fields(fits, "data-detail", "prompt")
     assert not inside(fits, "data-detail", "prompt", "data-whole")
+
+
+# A shell command with something for a lexer to find in it: a builtin, an operator, a quoted
+# string and a pipe. Planted rather than recorded — redaction flattened every command the
+# fixture corpus holds to `[redacted]` — and real in the sense that matters here: it is a line
+# this repository's own tasks run.
+COMMAND = "cd /tmp && rg -n 'x' *.py | head -3"
+# And what a `Read` of a markdown file returns: the source, behind the line-number gutter
+# Claude Code adds. Planted for the same reason — a recorded file path reads `[redacted]`.
+READ = "1\t# Title\n2\t\n3\t- an item\n"
+
+
+def bash_call(store: duckdb.DuckDBPyConnection) -> tuple[str, str, str]:
+    """One recorded `Bash` call: the session, the thread, and the call's id."""
+    return one(
+        store,
+        "SELECT session_id, source, id FROM live_tool_calls WHERE name = 'Bash'"
+        " ORDER BY session_id, source, id LIMIT 1",
+    )
+
+
+def test_a_bash_call_reads_the_command_it_ran_as_a_shell_reads_it(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A `Bash` call previews the command itself, marked up as shell.
+
+    The command is in the input JSON, escaped onto one line among the tool's other arguments,
+    and a reader who opened the call to read the command should not be reading it out of a
+    JSON string. So it is a value of the pane like the input and the result are, with the rest
+    of a long command behind its own route.
+    """
+    session_id, source, tool_id = bash_call(store)
+    path = plant(
+        (
+            "UPDATE tool_calls SET input = ? WHERE session_id = ? AND source = ? AND id = ?",
+            [
+                json.dumps({"description": "look for x", "command": COMMAND}),
+                session_id,
+                source,
+                tool_id,
+            ],
+        )
+    )
+    with TestClient(build_app(path)) as ran:
+        page = ran.get(f"/session/{session_id}/tool/{source}/{tool_id}").text
+        marked = block(page, "command")
+        # Every character the store holds is still there to read back...
+        assert plain(marked) == COMMAND
+        # ...and a shell's own words are marked as what they are: `cd` a builtin, `&&` an
+        # operator. Which classes those are is `view/highlight.py`'s business; that the pane
+        # asked for a shell rather than for JSON is this leaf's.
+        assert '<span class="nb">cd</span>' in marked
+        assert '<span class="o">&amp;&amp;</span>' in marked
+        # The whole of it has a route of its own, marked up the same way.
+        served = ran.get(f"/fragment/command/{session_id}/{source}/{tool_id}")
+        assert served.status_code == 200
+        assert plain(block(served.text, "value")) == COMMAND
+        # And the input is still on the page as the record: the command is a reading of it.
+        assert json.loads(plain(block(page, "input")))["command"] == COMMAND
+        # A call to a tool that runs no command has none to show — the arm is the tool's, not
+        # every input that happens to carry the word.
+        read = ran.get(f"/session/{FORK_ORIGIN}/tool/{FORK_RUN}/{DENSE_TOOL}").text
+        assert "command" not in values(read, "data-detail")
+
+
+def test_a_read_of_a_markdown_file_shows_the_source_marked_up_and_not_rendered(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A `Read` result is evidence, so a markdown file is marked up rather than rendered.
+
+    Rendering would turn the `#` the file holds into a heading and lose the characters the
+    agent was actually shown. What the file was is read off the path it was read from, which
+    is the only thing in the record that says so.
+    """
+    session_id, source, tool_id = bash_call(store)
+    path = plant(
+        (
+            "UPDATE tool_calls SET name = 'Read', input = ?, result = ?"
+            " WHERE session_id = ? AND source = ? AND id = ?",
+            [json.dumps({"file_path": "/tmp/notes.md"}), READ, session_id, source, tool_id],
+        )
+    )
+    with TestClient(build_app(path)) as read:
+        page = read.get(f"/session/{session_id}/tool/{source}/{tool_id}").text
+        marked = block(page, "result")
+        # The source, whole, with the heading marked as a heading rather than made one...
+        assert plain(marked) == READ
+        assert '<span class="gh"># Title</span>' in marked
+        assert "<h1>" not in page
+        # ...and the line numbers Claude Code prefixes each line with kept out of the lexer's
+        # way, because a gutter is not part of the file.
+        assert '<span class="lineno">1\t</span>' in marked
+        # The whole fetch reads the same way, off the same file name.
+        served = read.get(f"/fragment/result/{session_id}/{source}/{tool_id}")
+        assert '<span class="gh"># Title</span>' in block(served.text, "value")
+    # A file this viewer has no lexer for is shown as stored, which is the arm every result
+    # took before: nothing claims to know what a `.bin` holds.
+    other = plant(
+        (
+            "UPDATE tool_calls SET name = 'Read', input = ?, result = ?"
+            " WHERE session_id = ? AND source = ? AND id = ?",
+            [json.dumps({"file_path": "/tmp/notes.bin"}), READ, session_id, source, tool_id],
+        )
+    )
+    with TestClient(build_app(other)) as binary:
+        page = binary.get(f"/session/{session_id}/tool/{source}/{tool_id}").text
+        assert plain(block(page, "result")) == READ
+        assert "<span" not in block(page, "result")
 
 
 def test_every_value_a_pane_previews_is_fetchable_whole_from_its_own_url(

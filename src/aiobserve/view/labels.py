@@ -77,6 +77,8 @@ LABELS: dict[str, str] = {
     "text_chars": "Said (chars)",
     "thinking": "Thought",
     "input": "Arguments",
+    # What a `Bash` call ran, lifted out of its arguments so a reader meets the shell first.
+    "command": "Command",
     # The head of a tool call's input: the file a `Read` read, the description a `Bash` ran
     # under. What the tool was asked, in the width of a column.
     "input_head": "Arguments",

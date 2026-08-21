@@ -92,12 +92,16 @@ PAGE_BYTES = 500_000
 # rows in its own place, without a page boundary anywhere. Widening the window is a reader
 # reaching further per click, and pinning it here rather than against `PAGE_BYTES` keeps that
 # choice off the list pages, whose ceilings are derived against the number above. The
-# arithmetic under it — `worst_node_bytes`, at every ceiling at once — comes to 1,422,366 B
+# arithmetic under it — `worst_node_bytes`, at every ceiling at once — comes to 1,542,966 B
 # today, and the leaf at the bottom of this file is what keeps that true. Raised from 1,050,000
 # when the children log's rows began saying what each child was asked: a row went from 1,654 B
 # to 6,079 B, and 100 of them is 442,500 B more page. That is what a reader gets for it — a
 # level of a hundred read without opening one, where before it was a hundred bare numbers.
-NODE_BYTES = 1_450_000
+# Raised again from 1,450,000 when a pane began showing a value in its own syntax: a preview
+# marked up is budgeted at `MARKED_CHAR_BYTES` rather than at an escape, and a `Bash` call
+# previews a third value besides. The two together are 120,600 B, all of it on one preview of
+# one pane — and what a reader gets is the shell and the file read as what they are.
+NODE_BYTES = 1_570_000
 # What the markup around one row of the list costs, with the content the row carries taken off.
 # Re-measured through the app by the leaf at the bottom of this file, every cap full of `&`,
 # at the dearest row the list holds rather than at whichever one sorted second: that row cost
@@ -171,10 +175,15 @@ MEASURED_CRUMB_MARKUP = 280
 # And what the markup around one previewed value costs — the heading, the `<pre>` and the line
 # offering the rest of it — with the preview itself taken off.
 MEASURED_DETAIL_MARKUP = 600
-# How many fat values one pane previews at once. Two is the most any kind shows: an api call
-# previews what it said and what it thought, and a tool call what it was passed and what came
-# back. A third would be a kind whose pane the arithmetic below has not priced.
-PANE_DETAILS = 2
+# How many fat values one pane previews at once. Three is the most any kind shows: a `Bash`
+# call previews the command it ran, the arguments it was passed and what came back, and an api
+# call what it said and what it thought. A fourth would be a kind whose pane the arithmetic
+# below has not priced.
+PANE_DETAILS = 3
+# And how many of those are shown in a syntax rather than as the prose everything else is. One:
+# the two previews a row can say the language of are the command a `Bash` call ran and the file
+# a `Read` returned, and no call is both tools.
+MARKED_PANE_DETAILS = 1
 # What a node page carries outside its tree rows, its log rows and its previews: the crumbs
 # down to the selection, the node's own facts, and what a pass said about it. The session is
 # the widest of the eight panes — every string in its header is one a transcript wrote, and its
@@ -203,6 +212,14 @@ LIST_KIND_HEAD = "$kind_chars"
 # escape is five bytes (`&amp;`, `&#34;`, `&#39;`), and the longest UTF-8 encoding is four, so
 # five bytes a character covers both.
 ESCAPED_CHAR_BYTES = 5
+# And the most one character of it can weigh where the page marks it up in its own syntax. The
+# formatter writes `<span class="xxx">` and `</span>` around every token Pygments hands it, the
+# widest class it writes is three characters, and the character inside still escapes to five —
+# so a value every character of which is its own token costs this. A construction bound like
+# the one above rather than a measurement, for the same reason: what a lexer makes a token of
+# is a property of the lexer, and the dearest content the viewer marks up today reaches 26
+# bytes a character (`&;` repeated, read as `.sql` or `.py`) without any lexer being adversarial.
+MARKED_CHAR_BYTES = 30
 # And the most one character can weigh where a page writes it into a link rather than into
 # text. Percent-encoding spends three bytes on every byte it escapes, and a character is up to
 # four bytes of UTF-8: a project path is a directory someone named, so its link is budgeted at
@@ -319,6 +336,12 @@ def worst_detail_bytes() -> int:
     return MEASURED_DETAIL_MARKUP + bounds.DETAIL.ceiling * ESCAPED_CHAR_BYTES
 
 
+def worst_marked_detail_bytes() -> int:
+    """What one previewed value in its own syntax can weigh: its markup, and a preview whose
+    every character the lexer makes a token of."""
+    return MEASURED_DETAIL_MARKUP + bounds.DETAIL.ceiling * MARKED_CHAR_BYTES
+
+
 def worst_node_bytes() -> int:
     """The largest node page any sizes a URL can carry produce.
 
@@ -344,7 +367,8 @@ def worst_node_bytes() -> int:
         + tree_rows * bounds.TREE_ROW_BYTES
         + bounds.LOG.ceiling * worst_log_row_bytes()
         + MEASURED_PAGER_BYTES
-        + PANE_DETAILS * worst_detail_bytes()
+        + (PANE_DETAILS - MARKED_PANE_DETAILS) * worst_detail_bytes()
+        + MARKED_PANE_DETAILS * worst_marked_detail_bytes()
     )
 
 
@@ -709,6 +733,9 @@ ROUTES: dict[str, str] = {
     "/fragment/result/{session_id}/{source}/{tool_call_id}": (
         f"/fragment/result/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}"
     ),
+    "/fragment/command/{session_id}/{source}/{tool_call_id}": (
+        f"/fragment/command/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}"
+    ),
     "/fragment/prompt/{session_id}/{source}/{turn_id}": (
         f"/fragment/prompt/{ANCESTOR}/main/{DENSE_TURN}"
     ),
@@ -863,6 +890,9 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     # the rest of itself: what this weighs is the page at its caps, not at the corpus's sizes.
     fat = "&" * (queries.DETAIL_CHARS + 1)
     item = "&" * queries.HEADER_ITEM_CHARS
+    # And the same width of the pair every lexer here makes two tokens of, for the two previews
+    # a row can name the syntax of.
+    tokens = "&;" * ((queries.DETAIL_CHARS + 2) // 2)
     over = queries.HEADER_ITEMS + 2
     path = enriched_plant(
         (
@@ -901,6 +931,22 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
             "UPDATE tool_calls SET name = ?, input = ?, result = ?, is_error = true",
             [fat, json.dumps({"description": fat, "command": fat}), fat],
         ),
+        # And the two calls whose panes show a value in its own syntax, planted after the rest
+        # so they keep the widths above and take the tool names that reach the lexers. `&;` is
+        # the pair the shipped lexers make the most tokens of, which is what a preview budgeted
+        # at a span a character has to hold: 26 B a character through the SQL lexer today.
+        (
+            "UPDATE tool_calls SET name = 'Bash', input = ?"
+            " WHERE id = (SELECT min(id) FROM tool_calls)",
+            [json.dumps({"description": fat, "command": tokens})],
+        ),
+        (
+            "UPDATE tool_calls SET name = 'Read', input = ?, result = ?"
+            " WHERE id = (SELECT max(id) FROM tool_calls)",
+            # The path is planted past the cut like every other input here, and its suffix is
+            # what the page reads the result's syntax off — a name, not a length.
+            [json.dumps({"file_path": f"/{fat}/planted.sql"}), tokens],
+        ),
         *DESCRIBED_AT_EVERY_CAP,
     )
     with TestClient(build_app(path)) as planted:
@@ -930,11 +976,25 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
         ("tree", bounds.TREE_ROW_BYTES),
         ("log", worst_log_row_bytes()),
         ("pager", MEASURED_PAGER_BYTES),
-        ("detail", worst_detail_bytes()),
     ):
         found = [row for _, rows in split for row in rows[name]]
         assert found, name
         assert max(len(row.encode()) for row in found) <= budget, name
+    # A preview is priced by whether the page marked it up, which is the whole of the
+    # difference between the two budgets: a span a token against an escape a character.
+    previews = [row for _, rows in split for row in rows["detail"]]
+    marked = [row for row in previews if 'class="code ' in row]
+    assert marked and len(marked) < len(previews)
+    assert max(len(row.encode()) for row in marked) <= worst_marked_detail_bytes()
+    plain_previews = [row for row in previews if row not in marked]
+    assert max(len(row.encode()) for row in plain_previews) <= worst_detail_bytes()
+    # And no pane shows more previews than the arithmetic gives it, or more marked ones: a
+    # kind that grew a third value would otherwise spend the ceiling unpriced.
+    counts = [len(rows["detail"]) for _, rows in split]
+    assert max(counts) == PANE_DETAILS
+    assert max(sum(row in marked for row in rows["detail"]) for _, rows in split) == (
+        MARKED_PANE_DETAILS
+    )
     # ...and what the page carries whatever it holds fits the allowance the ceiling gives it.
     widest = max((chrome for chrome, _ in split), key=lambda page: len(page.encode()))
     assert len(widest.encode()) <= MEASURED_NODE_CHROME

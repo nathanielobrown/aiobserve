@@ -202,7 +202,12 @@ def test_a_file_name_is_what_says_which_syntax_a_read_returned() -> None:
     and a false negative is markdown in a file named anything else. Both show the file as it
     was stored, which is what the viewer does with every value it cannot place.
     """
-    assert by_suffix(".md") is Syntax.MARKDOWN
+    markdown = by_suffix(".md")
+    assert markdown is Syntax.MARKDOWN
+    assert by_suffix(".py") is Syntax.PYTHON
     assert by_suffix(".MD") is Syntax.MARKDOWN, "the store keeps the case the session wrote"
-    assert by_suffix(".py") is None, "a suffix with no lexer here is shown as it was stored"
+    assert by_suffix(".bin") is None, "a suffix with no lexer here is shown as it was stored"
     assert by_suffix(None) is None, "and a tool that read no file at all has no suffix"
+    # And a name this map does place is one the marker can read: a suffix with no lexer
+    # behind it would raise on the first file that carried it.
+    assert lit("# Title", markdown).syntax is Syntax.MARKDOWN

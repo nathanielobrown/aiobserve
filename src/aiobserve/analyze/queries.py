@@ -597,13 +597,24 @@ QUERIES: dict[str, Query] = {
             "detail_chars": DETAIL_CHARS_PARAM,
         },
     ),
+    "view_tool_command": Query(
+        scope=Scope.KEYED,
+        params={"session_id": SESSION_ID, "source": SOURCE, "tool_call_id": TOOL_CALL_ID},
+    ),
     "view_tool_input": Query(
         scope=Scope.KEYED,
         params={"session_id": SESSION_ID, "source": SOURCE, "tool_call_id": TOOL_CALL_ID},
     ),
     "view_tool_result": Query(
         scope=Scope.KEYED,
-        params={"session_id": SESSION_ID, "source": SOURCE, "tool_call_id": TOOL_CALL_ID},
+        params={
+            "session_id": SESSION_ID,
+            "source": SOURCE,
+            "tool_call_id": TOOL_CALL_ID,
+            # Not a width the answer is cut to — the value rides whole — but the bound on the
+            # file suffix beside it, which says what the value is written in.
+            "head_chars": Param(type=ParamType.INTEGER, default=HEADER_CHARS),
+        },
     ),
     "view_tree_calls": Query(
         scope=Scope.KEYED,

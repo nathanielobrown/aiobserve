@@ -101,6 +101,9 @@ class Value(StrEnum):
     # whole: a pane previews the two apart, so each has its own way to the rest of it.
     TOOL_INPUT = "view_tool_input"
     TOOL_RESULT = "view_tool_result"
+    # And what a `Bash` call ran, which the input holds escaped onto one line: a value of its
+    # own because a shell command is read as shell, not as a string inside JSON.
+    TOOL_COMMAND = "view_tool_command"
     RECORD = "view_record"
     # What a turn was asked, what followed the command a slash turn ran, and what an agent
     # run was briefed with. Each is a value a pane previews, cut in the node's header query
