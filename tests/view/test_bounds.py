@@ -132,7 +132,7 @@ MEASURED_PROJECTS_CHROME = 2_500
 # failed tool call's own page, the thread it ran on and a timestamp. Measured through the app
 # by the leaf at the bottom of this file, every label planted full of `&` and the session
 # failing more calls than the page shows: 620 B a row, of which 240 B is a planted label,
-# leaving 380 B of the link and the two cells after it — and 2,339 B of chrome, which is small
+# leaving 380 B of the link and the two cells after it — and 2,375 B of chrome, which is small
 # for the same reason the landing page's is: no form, no pager and no suggestions.
 MEASURED_ERROR_ROW_MARKUP = 400
 MEASURED_ERRORS_CHROME = 2_500
@@ -192,7 +192,7 @@ MARKED_PANE_DETAILS = 1
 # The preset switcher rides here too, three links carrying the node's own URL, the children
 # log's own table head — a word and an icon for each column of the shape the log lists — and,
 # on a pane reading a failed tool call, the step to the failure before it and the one after.
-# Re-measured through the app by the leaf at the bottom of this file at 16,337 B.
+# Re-measured through the app by the leaf at the bottom of this file at 16,680 B.
 MEASURED_NODE_CHROME = 17_000
 
 # The parameter every truncated column of a run row is cut to. Counted per query rather than
@@ -932,9 +932,9 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
         # that could not find a description would print the raw input in its place and leave
         # the line under it empty, which is a row two columns short of the widest one there is.
         # Every call failed, too, which is the dearest a tool row gets: the mark the tree puts
-        # on a failure is markup no other kind of row carries, and a tree row is the one thing
-        # on the page multiplied 417 times. It is also what puts the stepper on every tool
-        # page, which is the dearest the chrome under a pane gets.
+        # on a failure is markup no other kind of row carries. It does not make a tool the
+        # widest row — a turn's row measures 914 B against a tool's 830 — but it is what puts
+        # the stepper on every tool page, and that is the dearest the chrome under a pane gets.
         (
             "UPDATE tool_calls SET name = ?, input = ?, result = ?, is_error = true",
             [fat, json.dumps({"description": fat, "command": fat}), fat],
