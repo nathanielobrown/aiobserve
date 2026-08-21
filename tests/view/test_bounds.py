@@ -53,6 +53,7 @@ from tests.view.conftest import (
     inside,
     one,
     pages,
+    plain,
     values,
 )
 
@@ -1373,6 +1374,7 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
         run = planted.get(f"/session/{SPINE}/run/{SPINE_RUN}").text
         call = planted.get(f"/session/{ANCESTOR}/call/main/{DENSE_TURN_CALL}").text
         asked = planted.get(f"/session/{asked_session}/call/{asked_source}/{asked_call}").text
+        ran = planted.get(f"/session/{asked_session}/tool/{asked_source}/{asked_id}").text
     # ...and what each of them shows is its cap, not the value. The list's cuts are the
     # viewer's own composition rather than its query's, because its filters read the whole
     # values — a project path cut to a head would match no session under a longer one.
@@ -1429,3 +1431,8 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     assert brief == "x" * queries.DETAIL_CHARS + ELLIPSIS
     assert len(fields(call, "data-body", "call")["model"]) == queries.HEADER_CHARS
     assert fields(call, "data-detail", "text")["text"] == "x" * queries.DETAIL_CHARS + ELLIPSIS
+    # A detail the page marks up is cut the same way and says so the same way, which no other
+    # assertion here reaches: the mark lands inside the highlighted block, where it is one
+    # more character for the lexer to make of what it will. Read back through the markup,
+    # because a value that came back marked up is only cut if a reader still sees the cut.
+    assert plain(block(ran, "command")) == "x" * queries.DETAIL_CHARS + ELLIPSIS
