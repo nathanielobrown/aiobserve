@@ -22,7 +22,7 @@ from aiobserve.analyze import queries
 from aiobserve.view.app import QUERY_URL
 from aiobserve.view.highlight import Syntax, lit
 from tests.conftest import ANCESTOR, CONFIG_ONLY, MAIN, OFFLOAD_FILE, SPINE, SPINE_RUN
-from tests.view.conftest import block, fields, inside, plain, values
+from tests.view.conftest import block, classed, fields, inside, plain, values
 
 # This checkout, for the files the stylesheet gate reads: tests/view/test_query.py → the root.
 REPO = Path(__file__).resolve().parents[2]
@@ -47,11 +47,6 @@ def bound(line: str) -> dict[str, str]:
 def echoed(html: str) -> dict[str, str]:
     """The bindings a query page shows, keyed by parameter."""
     return dict(re.findall(r'data-binding="(\w+)">([^<]*)<', html))
-
-
-def classed(html: str) -> set[str]:
-    """Every class the highlighter wrote into one run of markup."""
-    return set(re.findall(r'class="(\w+)"', html))
 
 
 def numbered(text: str) -> str:

@@ -13,7 +13,7 @@ import json
 from aiobserve.analyze import queries
 from aiobserve.view import bounds
 from aiobserve.view.highlight import Syntax, by_suffix, lit
-from tests.view.conftest import plain
+from tests.view.conftest import classed, plain
 
 # One tool argument in the shape a recorded one has — a path and a pattern — with markup put
 # inside it. Invented: redaction flattens the recorded strings, so no fixture carries a `<`.
@@ -97,6 +97,26 @@ def test_whitespace_is_written_bare_rather_than_wrapped_in_a_span_of_its_own() -
     shown = lit(queries.load("view_sessions"), Syntax.SQL)
     assert '<span class="k">' in shown.html, "the tokens that are painted are still classed"
     assert 'class="w"' not in shown.html
+
+
+def test_every_class_the_markup_carries_is_one_of_pygments_short_names() -> None:
+    """How wide a class can be is a term in the page's byte budget, so the viewer sets it.
+
+    Left alone, the formatter walks a token type it has no name for up to one it does and
+    joins a class for every step (`l l-Scalar l-Scalar-Plain`). Those types are reachable: the
+    markdown lexer hands a fenced block to whatever lexer the fence names, and that is any
+    lexer Pygments ships — so the widest class on the page would be a property of a library
+    rather than of this viewer, and `tests/view/test_bounds.py:MARKED_CHAR_BYTES` prices one
+    at three characters. The nearest named type is what a token is classed as instead, which
+    is also the only class `static/pygments.css` paints.
+    """
+    fenced = lit("```yaml\na: {b: c, d: e}\n```\n", Syntax.MARKDOWN)
+    # The block was delegated — a yaml key is not a token the markdown lexer has...
+    assert '<span class="nt">a</span>' in fenced.html
+    # ...and the yaml scalar's own type, which Pygments has no short name for, is classed as
+    # the literal it is under rather than as the three names on the way there.
+    assert "l-Scalar" not in fenced.html
+    assert max(len(name) for name in classed(fenced.html)) <= 3
 
 
 def test_a_value_past_the_ceiling_is_printed_as_stored_and_says_how_long_it_is() -> None:

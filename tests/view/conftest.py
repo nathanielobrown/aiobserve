@@ -219,6 +219,15 @@ def block(html: str, field: str) -> str:
     return found.group(1)
 
 
+def classed(html: str) -> set[str]:
+    """Every class the highlighter wrote into one run of markup.
+
+    Split on whitespace: an element may carry more than one class, and a reader that took the
+    attribute whole would silently skip exactly the tokens Pygments has no short name for.
+    """
+    return {name for found in re.findall(r'class="([^"]*)"', html) for name in found.split()}
+
+
 def plain(html: str) -> str:
     """What a browser shows of a run of markup: the tags dropped, the escapes undone.
 

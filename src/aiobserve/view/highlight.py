@@ -28,7 +28,7 @@ from pygments.filter import Filter
 from pygments.formatters import HtmlFormatter
 from pygments.lexer import Lexer
 from pygments.lexers import BashLexer, JsonLexer, MarkdownLexer, PythonLexer, SqlLexer
-from pygments.token import Text, Whitespace, _TokenType
+from pygments.token import STANDARD_TYPES, Text, Whitespace, _TokenType
 
 from aiobserve.view import bounds
 
@@ -114,9 +114,34 @@ _GUTTER = re.compile(r"^\s*\d+\t")
 _REWRITTEN = re.compile("([\r\ufeff])")
 
 
+class _ShortClasses(HtmlFormatter):
+    """Pygments' own short class for a token, and never the chain of names above it.
+
+    A lexer may hand back token types Pygments has no name for — the markdown lexer delegates a
+    fenced block to whatever lexer the fence names, which is any lexer the library ships — and
+    the formatter classes one of those with a name per step up to a type it does know
+    (`l l-Scalar l-Scalar-Plain`). Two reasons not to: `static/pygments.css` paints the short
+    names and nothing else, and how wide a class can be is a term in the page's byte budget
+    (`tests/view/test_bounds.py:MARKED_CHAR_BYTES`). So an unnamed token is classed as the
+    nearest named one above it, which is a class this viewer chose rather than one a library
+    can widen under it.
+
+    The hook is Pygments' own private one, so a release that renames it would leave this class
+    doing nothing. What holds it is a leaf over a delegated block in `tests/view/test_highlight.py`.
+    """
+
+    def _get_css_classes(self, ttype: _TokenType) -> str:
+        # Every token type descends from `Token`, which Pygments names itself, so the walk up
+        # ends at a name — and a type from outside that tree is written out with no class.
+        named: _TokenType | None = ttype
+        while named is not None and named not in STANDARD_TYPES:
+            named = named.parent
+        return self.classprefix + STANDARD_TYPES[named] if named is not None else ""
+
+
 # No wrapper: the `<pre>` and its `data-field` belong to the template, and a formatter that
 # brought its own `<div class="highlight">` would put a second box around every value.
-_FORMATTER = HtmlFormatter(nowrap=True)
+_FORMATTER = _ShortClasses(nowrap=True)
 
 # How far JSON is indented before it stops being readable and starts being a scroll.
 _INDENT = 2
