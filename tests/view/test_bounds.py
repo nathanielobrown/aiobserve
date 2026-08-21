@@ -212,13 +212,20 @@ LIST_KIND_HEAD = "$kind_chars"
 # escape is five bytes (`&amp;`, `&#34;`, `&#39;`), and the longest UTF-8 encoding is four, so
 # five bytes a character covers both.
 ESCAPED_CHAR_BYTES = 5
-# And the most one character of it can weigh where the page marks it up in its own syntax. The
-# formatter writes `<span class="xxx">` and `</span>` around every token Pygments hands it, the
-# widest class it writes is three characters, and the character inside still escapes to five —
-# so a value every character of which is its own token costs this. A construction bound like
-# the one above rather than a measurement, for the same reason: what a lexer makes a token of
-# is a property of the lexer, and the dearest content the viewer marks up today reaches 26
-# bytes a character (`&;` repeated, read as `.sql` or `.py`) without any lexer being adversarial.
+# And the most one character of it can weigh where the page marks it up in its own syntax: a
+# `<span class="` of 13, a class of 3, a `">` of 2, a `</span>` of 7, and the character itself
+# escaped to 5. A construction bound like the one above rather than a measurement, for the same
+# reason — what a lexer makes a token of is a property of the lexer, and a value every character
+# of which is its own token costs the lot.
+#
+# The class is three characters because `view/highlight.py:_ShortClasses` holds it there. Left
+# alone the formatter joins a name for every step up to a token type Pygments has a name for
+# (`l l-Scalar l-Scalar-Plain`, 25 characters), and those types are reachable — the markdown
+# lexer hands a fenced block to whatever lexer the fence names. `test_highlight.py:
+# test_every_class_the_markup_carries_is_one_of_pygments_short_names` is the pin.
+#
+# The dearest content the viewer marks up today reaches 26 bytes a character (`&;` repeated,
+# read as `.sql` or `.py`) without any lexer being adversarial.
 MARKED_CHAR_BYTES = 30
 # And the most one character can weigh where a page writes it into a link rather than into
 # text. Percent-encoding spends three bytes on every byte it escapes, and a character is up to
