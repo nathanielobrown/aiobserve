@@ -1,5 +1,9 @@
 {# One whole value — an api call's text or its thinking — rendered as the markdown it was
-   written as. The per-value fetch is the one place a fat column crosses the wire whole. #}
-<div class="value" data-value="{{ (row.value or '') | length }}" data-query="{{ citation }}">
+   written as. The per-value fetch is the one place a fat column crosses the wire whole.
+
+   It replaces the whole section the pane previewed it in, so it arrives as one: the name the
+   pane filed the value under is what the styling reads. #}
+<div class="value detail" data-detail="{{ detail }}"
+  data-value="{{ (row.value or '') | length }}" data-query="{{ citation }}">
   {{ row.value | markdown }}
 </div>

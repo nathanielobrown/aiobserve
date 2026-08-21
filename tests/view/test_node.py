@@ -433,6 +433,7 @@ def test_a_bash_call_reads_the_command_it_ran_as_a_shell_reads_it(
         assert served.status_code == 200
         assert plain(block(served.text, "value")) == COMMAND
         assert '<span class="nb">cd</span>' in block(served.text, "value")
+        assert values(served.text, "data-detail") == ["command"]
         # And the input is still on the page as the record: the command is a reading of it.
         assert json.loads(plain(block(page, "input")))["command"] == COMMAND
         # A call to a tool that runs no command has none to show, though its arguments carry
@@ -568,6 +569,10 @@ def test_every_value_a_pane_previews_is_fetchable_whole_from_its_own_url(
         served = client.get(fragment.format(node_id))
         assert served.status_code == 200, name
         assert values(served.text, "data-value") == [str(held)], name
+        # The fetch replaces the section the preview sat in, so it comes back filed under the
+        # same name: what a value is styled as — the rail that tells an ask from an answer —
+        # hangs off that name, and a fragment that dropped it would open unstyled.
+        assert values(served.text, "data-detail") == [name], name
     # And a run's brief, which is the one fat column that hangs off the session rather than a
     # thread, so its route takes no source.
     session_id, run_id, held = one(
@@ -579,6 +584,7 @@ def test_every_value_a_pane_previews_is_fetchable_whole_from_its_own_url(
     assert fields(page, "data-detail", "description")["description"]
     served = client.get(f"/fragment/brief/{session_id}/{run_id}")
     assert values(served.text, "data-value") == [str(held)]
+    assert values(served.text, "data-detail") == ["description"]
     # The brief is what a run was asked to do, so it is labelled as a brief and not as a
     # description of the run — the word the enrichment pass owns.
     assert LABELS["description"] == "Task brief"

@@ -3,6 +3,7 @@
    tool's arguments are JSON, and JSON put through a markdown renderer stops being the thing a
    reader came to re-read. #}
 {% import "_parts.html" as parts %}
-<div class="value" data-value="{{ (row.value or '') | length }}" data-query="{{ citation }}">
+<div class="value detail" data-detail="{{ detail }}"
+  data-value="{{ (row.value or '') | length }}" data-query="{{ citation }}">
   {{ parts.code(row.value, syntax or SYNTAX.JSON, 'value') }}
 </div>
