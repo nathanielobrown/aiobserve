@@ -93,13 +93,13 @@ CURSORLESS_TURNS = 1
 HIGHLIGHT_CHARS = 256_000
 # What one row of the tree may weigh, whole: its markup, a label of `queries.NAV_CHARS`
 # characters that each escape to five bytes, and the knobs every link repeats. The tree is
-# what multiplies — `1 + DEPTH * (KIN + 1)` rows spend this 417 times, four fifths of the
+# what multiplies — `1 + DEPTH * (KIN + 1)` rows spend this 817 times, about half the
 # ceiling — so it is a price to defend rather than a knob to turn: a row that grows past it
 # is a page over the bound, and the answer is a slimmer row.
 #
 # Measured through the app rather than budgeted, at every label full of `&` and the longest
 # query string a link can carry (`tests/view/test_bounds.py`). Pinned at exactly what it
-# measures, with no slack, for the same reason: a byte of slack here is 417 bytes of page.
+# measures, with no slack, for the same reason: a byte of slack here is 817 bytes of page.
 # Nearly all of the row is its URL written twice — the href a reader sees and the `hx-get`
 # htmx fetches — because the swap the two of them perform is written once on `#tree-rows` and
 # inherited. A store whose agent runs carry longer ids than the recorded corpus does is a

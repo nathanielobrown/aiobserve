@@ -88,7 +88,7 @@ FAT = (
 # would put the widest forest the corpus records behind a "+N more" nobody can open.
 PAGE_BYTES = 500_000
 # What a node page may weigh, which is its own budget rather than the one above. The tree is
-# `DEPTH` levels of `KIN` children, so the window a level opens on prices four fifths of the
+# `DEPTH` levels of `KIN` children, so the window a level opens on prices about half of the
 # page — and it is a window, not a limit: a tail row fetches what it left out and stands the
 # rows in its own place, without a page boundary anywhere. Widening the window is a reader
 # reaching further per click, and pinning it here rather than against `PAGE_BYTES` keeps that
