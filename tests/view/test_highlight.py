@@ -184,6 +184,47 @@ def test_a_line_number_gutter_is_peeled_off_before_the_lexer_reads_the_line() ->
     assert '<span class="k">-</span>' in shown.html
 
 
+# The characters Pygments moves before a lexer ever sees them, one shape each: it strips the
+# newlines at either end of what it lexes, rewrites `\r\n` and a lone `\r` as `\n`, and drops a
+# leading byte-order mark (`Lexer._preprocess_lexer_input`). Invented, and they have to be —
+# redaction flattened every string the fixture corpus holds — but the first is recorded: 27 of
+# 107,253 `Bash` commands in the canonical store begin with a newline (read 2026-08-20).
+EXACT = {
+    "a leading newline": "\n\ncd /tmp\n",
+    "trailing newlines": "cd /tmp\n\n\n",
+    "no newline at the end": "cd /tmp",
+    "windows line endings": "cd /tmp\r\nls\r\n",
+    "a lone carriage return": "cd /tmp\rls",
+    "a byte-order mark": "\ufeffcd /tmp\n",
+    "nothing but newlines": "\n\n",
+    # Multibyte, combining and right-to-left characters, and a tab in the middle of a line —
+    # what a transcript holds that a byte count and a character count disagree about.
+    "characters wider than a byte": "echo 'é\u0301 — 👋 שלום'\t# naïve\n",
+}
+
+
+def test_a_marked_up_value_prints_the_characters_that_were_stored() -> None:
+    """The whole of the module's promise in one leaf: markup adds, and never edits.
+
+    A tool result is evidence, so a viewer that quietly dropped the newline a command began
+    with would make a page unquotable — and Pygments does exactly that unless its lexers are
+    built out of it. Swept over every syntax but JSON, which is re-laid-out for reading before
+    it is marked up and so is exact against the indented text rather than the stored one
+    (`test_the_markup_inside_a_value_arrives_as_text` reads that arm).
+    """
+    for syntax in (Syntax.SQL, Syntax.BASH, Syntax.MARKDOWN, Syntax.PYTHON):
+        for shape, value in EXACT.items():
+            shown = lit(value, syntax)
+            assert plain(shown.html) == value, f"{syntax} lost {shape}"
+            # And it went through the lexer rather than out the plain arm, which would print
+            # the same characters while proving nothing about the markup.
+            assert shown.syntax is syntax, f"{syntax} did not mark up {shape}"
+    # The gutter path is the other way a value reaches a lexer — line by line — so it is swept
+    # too, over a file whose lines carry the same shapes.
+    read = "1\t# Title\r\n2\t\n3\tshalom שלום\n4\t"
+    assert plain(lit(read, Syntax.MARKDOWN).html) == read
+
+
 def test_a_value_with_no_gutter_is_lexed_whole() -> None:
     """The gutter is a shape, not a syntax: a query file is lexed in one pass and loses none.
 
