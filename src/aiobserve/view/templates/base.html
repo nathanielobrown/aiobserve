@@ -13,6 +13,11 @@
      b6768eed4f3af85b73a75054701bd60e17cac718aef2b7f6b254e5e0e2045616. No CDN: the viewer
      reads private transcripts on a laptop that may be offline, and the CSP that keeps a
      transcript from calling out would refuse a remote script anyway. #}
+  {# htmx writes a `<style>` block for its indicator class as it loads, which `app.CSP` blocks
+     and the browser reports as an error on every page. Nothing here wears that class, so the
+     styles are turned off rather than allowed: a hash in the policy would pin this htmx build,
+     and a nonce would open the door for the transcript text every page renders. #}
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false}'>
   <script src="/static/htmx-2.0.6.min.js" defer></script>
   {# What a page needs beyond htmx. Only the node page has any, and only for its tree. #}
   {% block scripts %}{% endblock %}

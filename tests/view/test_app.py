@@ -8,6 +8,7 @@ themselves live in `test_node.py`; the tree beside them in `test_tree.py`.
 """
 
 import datetime as dt
+import json
 import re
 from html import unescape
 from pathlib import Path
@@ -1102,12 +1103,19 @@ def test_every_asset_a_page_asks_for_is_one_the_viewer_ships(client: TestClient)
         # ...and nothing carries a style attribute. This is the trap the spend meter's decile
         # classes exist to dodge: a width written inline is a meter no reader ever sees.
         assert ' style="' not in markup, template.name
+        # ...and nothing wears the class htmx paints, which the config below stops it painting.
+        assert "htmx-indicator" not in markup, template.name
     # ...and each asset the base page asks for is served, htmx included.
     page = client.get("/").text
     assets = re.findall(r'(?:src|href)="(/static/[^"]*)"', page)
     assert any("htmx" in asset for asset in assets), page
     for asset in assets:
         assert client.get(asset).status_code == 200, asset
+    # Clean templates are not enough: htmx writes a `<style>` block of its own for the
+    # indicator class as it loads, which the policy blocks and the browser reports on every
+    # page. This meta is what stops it writing one — htmx merges the config before it paints.
+    (config,) = re.findall(r"<meta name=\"htmx-config\" content='([^']*)'>", page)
+    assert json.loads(config)["includeIndicatorStyles"] is False
 
 
 def test_serving_the_store_leaves_it_read_only(corpus_db: Path, client: TestClient) -> None:
