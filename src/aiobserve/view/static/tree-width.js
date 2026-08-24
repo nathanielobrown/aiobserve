@@ -28,9 +28,21 @@
     grip.setAttribute("aria-valuenow", String(held));
     return held;
   };
+  // Storage a browser may refuse: blocked cookies and some private modes throw on the first
+  // touch of `localStorage`, and a full one throws on the way in. A refusal costs the memory
+  // and nothing else — the handle still drags and the arrow keys still move it for as long as
+  // the page lives, which is what the reader came to the handle for.
+  const orNothing = (touch) => {
+    try {
+      return touch();
+    } catch {
+      return null;
+    }
+  };
   // The width this browser last kept, or the one the stylesheet just laid out.
-  let width = apply(Number(localStorage.getItem(KEY)) || tree.getBoundingClientRect().width);
-  const keep = () => localStorage.setItem(KEY, String(width));
+  const remembered = Number(orNothing(() => localStorage.getItem(KEY)));
+  let width = apply(remembered || tree.getBoundingClientRect().width);
+  const keep = () => orNothing(() => localStorage.setItem(KEY, String(width)));
 
   // A drag moves the width by what the pointer moved, rather than setting it to where the
   // pointer is: the handle sits a gap away from the column it drags, and a width read off the
