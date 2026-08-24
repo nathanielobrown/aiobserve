@@ -102,7 +102,14 @@ PAGE_BYTES = 500_000
 # marked up is budgeted at `MARKED_CHAR_BYTES` rather than at an escape, and a `Bash` call
 # previews a third value besides. The two together are 120,600 B, all of it on one preview of
 # one pane — and what a reader gets is the shell and the file read as what they are.
-NODE_BYTES = 1_570_000
+#
+# Raised from 1,570,000 when the tree's window went from 50 children to 200 and its labels
+# from 48 characters to 110: four times the rows at a quarter more each is 3.3 MB of tree, and
+# the tree was already four fifths of the page. That is the whole of the increase, and what a
+# reader gets for it is a level of two hundred read where a level of fifty was — the fetch a
+# tail row offers is the same rows over a second request, so the bytes were already reachable;
+# what moved is how many clicks reach them. The arithmetic under it comes to 4,820,296 B.
+NODE_BYTES = 4_900_000
 # What the markup around one row of the list costs, with the content the row carries taken off.
 # Re-measured through the app by the leaf at the bottom of this file, every cap full of `&`,
 # at the dearest row the list holds rather than at whichever one sorted second: that row cost
@@ -192,8 +199,10 @@ MARKED_PANE_DETAILS = 1
 # The preset switcher rides here too, three links carrying the node's own URL, the children
 # log's own table head — a word and an icon for each column of the shape the log lists — and,
 # on a pane reading a failed tool call, the step to the failure before it and the one after.
-# Re-measured through the app by the leaf at the bottom of this file at 16,680 B.
-MEASURED_NODE_CHROME = 17_000
+# Re-measured through the app by the leaf at the bottom of this file at 17,065 B. Up to five
+# of its strings are tree labels — the page title, and the two steppers under the pane — so it
+# moves with `queries.NAV_CHARS`.
+MEASURED_NODE_CHROME = 17_500
 
 # The parameter every truncated column of a run row is cut to. Counted per query rather than
 # listed, so a fourth column added to a chip shows up in the arithmetic instead of quietly
@@ -302,14 +311,20 @@ def worst_knob_bytes() -> int:
     """What the sizes a URL carries add to one link on the page it serves.
 
     Every link a node page writes repeats the knobs the request was made with, so a reader who
-    narrows a page pays for the query string on every row of it. The longest one leaves `?kin=`
-    at its default — a narrower tree costs a whole level of rows to save a byte a link — and
-    takes the longest preset name beside the widest sizes that are not defaults. Escaped,
-    because the `&` between two of them is written into an attribute.
+    narrows a page pays for the query string on every row of it. The longest one takes the
+    longest preset name beside the widest size that is not a default in each of the three —
+    one under the ceiling, which is where a size stops being silent and starts being written.
+    Escaped, because the `&` between two of them is written into an attribute.
+
+    `?kin=` is priced here rather than left at its default, which is a byte a link cheaper but
+    a whole level of rows dearer. That trade used to fall the other way: at a window of 50 the
+    rows a narrower tree dropped outweighed the string it wrote, and at 200 they no longer do.
+    So the arithmetic prices the dearest row any size produces against the most rows any size
+    produces — one size cannot do both, and the gap is 57 KB of an allowance kept whole.
     """
     marks = knobs(
         max(nodes.Preset, key=len),
-        bounds.KIN.default,
+        bounds.KIN.ceiling - 1,
         bounds.LOG.ceiling - 1,
         bounds.DETAIL.ceiling - 1,
     )
@@ -536,11 +551,12 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     assert QUERIES["view_records"].params["page_records"].default == 100
     assert QUERIES["view_records"].params["preview_chars"].default == 160
     assert QUERIES["view_offload"].params["chunk_chars"].default == 50_000
-    # How much of a label a row of the tree shows. Short by design: a tree row is a line in a
-    # sidebar rather than a row of a table, and the tree is the one list whose rows a reader
-    # sees all of. Every level cuts to the same width, whatever kind of child it holds.
+    # How much of a label a row of the tree shows. Wide enough that a draggable sidebar has
+    # something to show when a reader widens it — the cut is what a row can say, and CSS
+    # decides how much of it fits. Every level cuts to the same width, whatever kind of child
+    # it holds.
     for level in ("view_tree_turns", "view_tree_calls", "view_tree_tools"):
-        assert QUERIES[level].params["nav_chars"].default == 48, level
+        assert QUERIES[level].params["nav_chars"].default == 110, level
     # And how much of each string a row of the pane's children log shows, with the page it is
     # read in. Wider than a tree row: a log row is a line of a table, with room for the first
     # words of a prompt beside the numbers.
@@ -860,6 +876,7 @@ PRICED_ROWS = {
 # app stops accepting one of them rather than quietly measuring a page with no knobs at all.
 WORST_KNOBS = {
     "nav": max(nodes.Preset, key=len).value,
+    "kin": bounds.KIN.ceiling - 1,
     "log": bounds.LOG.ceiling - 1,
     "detail": bounds.DETAIL.ceiling - 1,
 }

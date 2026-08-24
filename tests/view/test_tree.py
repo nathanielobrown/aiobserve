@@ -572,11 +572,10 @@ def test_the_kin_cap_cuts_the_children_but_never_the_open_path(
     """Children are capped per level, with a row saying how many the cap left out.
 
     Driven below the fixture corpus's fan-out rather than planted up to the production
-    window: no recorded session comes near 50 children, and the knob exists for exactly this.
-    The cap
-    bites twice here — once on the level beside the selection, once on the calls under it —
-    and the selection survives it either way. A cut that hid the open path would leave the
-    pane describing a node the tree does not show.
+    window (`bounds.KIN`), which no recorded session comes near: the knob exists for exactly
+    this. The cap bites twice here — once on the level beside the selection, once on the calls
+    under it — and the selection survives it either way. A cut that hid the open path would
+    leave the pane describing a node the tree does not show.
     """
     selection = open_turn(store)
     html = client.get(url(selection), params={"kin": 1}).text

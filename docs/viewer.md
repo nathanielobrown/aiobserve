@@ -77,7 +77,7 @@ Above the rows is the fold: **full**, **no api calls**, **agents only**, with th
 
 Every row with spend carries a bar along its edge: its share of what the session cost, logarithmic over three orders of magnitude, because a session's cheapest turn and its dearest are that far apart and a linear scale draws all but the largest as nothing. Tool calls have no bar; what a tool call took is the api call's.
 
-A level opens on 50 children, and a `+N more` row says how many it left out. Clicking it fetches the rest of that level and stands the rows in its own place, so a wide branch opens where it is rather than sending you to another page. The row the open path descends through is always kept, inside the window. Nothing bounds what that click can bring back: a branch of ten thousand children answers with ten thousand rows.
+A level opens on 200 children, and a `+N more` row says how many it left out. Clicking it fetches the rest of that level and stands the rows in its own place, so a wide branch opens where it is rather than sending you to another page. The row the open path descends through is always kept, inside the window. Nothing bounds what that click can bring back: a branch of ten thousand children answers with ten thousand rows.
 
 A tool call that came back an error carries an `error` mark on its row, in the same red the children log and the list use.
 
@@ -124,7 +124,7 @@ Node pages take four knobs, and every link on a page carries the ones that aren'
 | `?nav=full` | The whole tree. The default |
 | `?nav=noapi` | The api calls folded away, each turn's tool calls standing directly under it |
 | `?nav=agents` | The runs alone, each under the run that spawned it — the session's org chart |
-| `?kin=` | Children per open level, at most 50 |
+| `?kin=` | Children per open level, at most 200 |
 | `?log=` | Rows in one page of the pane's children log, at most 100 |
 | `?detail=` | Characters of each value the pane previews, at most 4,000 |
 
@@ -170,8 +170,8 @@ Full-value requests are the declared exception. Each returns one transcript line
 | --- | --- |
 | Session list | 104 sessions; each long string is cut to 100 characters, skills and agent types to four 20-character names, and work to three |
 | Projects | 100 projects; the path is cut to 100 characters |
-| A session's errors | 100 failed tool calls; each label is cut to 48 characters |
-| Tree | 50 children per open level, 16 levels deep, each label cut to 48 characters |
+| A session's errors | 100 failed tool calls; each label is cut to 110 characters |
+| Tree | 200 children per open level, 16 levels deep, each label cut to 110 characters |
 | Children log | 100 rows a page, each string cut to 300 characters |
 | Previewed value | 4,000 characters, with the rest a fetch away |
 | Raw records | 100 rows by default, at most 200 |
