@@ -19,10 +19,13 @@
       <span><span data-field="raw_chars">{{ row.raw_chars | count }}</span> chars</span>
       <code data-field="raw_head">{{ row.raw_head }}</code>
       {# The whole record on first open, one request per record: a page of them whole is the
-         one payload nothing here bounds. #}
-      <details class="whole" data-open-record="{{ row.line_no }}"
+         one payload nothing here bounds. The first row is the exception: a citation opens this
+         page at `?after={line - 1}`, so the record a reader came for is the one at the top,
+         and it arrives open and fetches itself as the page loads. Still a fetch and not
+         inlined — the page stays bounded, and what is unbounded stays one record at a time. #}
+      <details class="whole"{% if loop.first %} open{% endif %} data-open-record="{{ row.line_no }}"
                hx-get="/fragment/record/{{ session_id }}/{{ source }}/{{ row.line_no }}"
-               hx-trigger="toggle once" hx-target="find .value">
+               hx-trigger="{{ 'load' if loop.first else 'toggle once' }}" hx-target="find .value">
         <summary>whole record</summary>
         <div class="value"></div>
       </details>

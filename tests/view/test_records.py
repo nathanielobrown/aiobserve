@@ -6,6 +6,7 @@ nor skips a line, and a URL derived from the tuple that opens on the record it n
 """
 
 import json
+import re
 
 import duckdb
 import pytest
@@ -17,6 +18,16 @@ from aiobserve.view.app import build_app
 from aiobserve.view.store import Page
 from tests.conftest import ANCESTOR, MAIN, RESUME, RESUME_LONG_RECORD, SPINE, SPINE_RUN
 from tests.view.conftest import MISSING, Planter, block, fields, inside, one, plain, values
+
+# The records a page opens with its own body already fetched, in document order. Read off the
+# start tag rather than through `inside`, because what says a record is open is `open` itself —
+# an attribute with no value, which nothing keyed by value can see.
+OPENED = re.compile(r'<details class="whole" open data-open-record="(\d+)"')
+
+
+def opened(html: str) -> list[str]:
+    """The line numbers of the records the page renders expanded."""
+    return OPENED.findall(html)
 
 
 def test_the_browser_pages_by_line_number_without_repeating_or_skipping(
@@ -78,6 +89,14 @@ def test_a_citation_tuple_maps_to_a_working_url(
     assert f'id="L{line_no}"' in response.text
     # ...the row says which kind of record it is, so a citation reads in place...
     assert fields(response.text, "data-record", str(line_no))["type"] == kind
+    # ...and it is the one record on the page that arrives open, fetching its own body as the
+    # page loads: a reader who followed a citation asked for that record, and a row that
+    # landed collapsed made them click for what they came for. The rest of the page waits to
+    # be opened, which is what keeps a page of records a page and not a transcript.
+    assert opened(response.text) == [str(line_no)]
+    assert inside(response.text, "data-open-record", str(line_no), "hx-trigger") == ["load"]
+    following = values(response.text, "data-record")[1]
+    assert inside(response.text, "data-open-record", following, "hx-trigger") == ["toggle once"]
     # ...and the page cites the query it ran, at this request's cursor and the size it took
     # by default, so a reader can re-run what produced the rows around the cited one.
     assert fields(response.text, "id", "citation") == {
