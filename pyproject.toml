@@ -95,6 +95,14 @@ source_paths = ["src/aiobserve"]
 # The suite is the oracle, so a mutant that survives is a gap in it. `-x` stops at the first
 # test that catches the mutant, which is all a kill needs.
 pytest_add_cli_args = ["-x", "-p", "no:cacheprovider"]
+# mutmut copies `src`, `tests` and `pyproject.toml` and nothing else, so a test that reads a
+# repo file reads it out of `mutants/` and finds it missing. The stylesheet gate in
+# `tests/view/test_query.py` highlights this repo's own prose, task lines and hook scripts:
+# without `mise.toml` it dies on the read, and without `docs` it fails outright. The hooks it
+# reaches by glob, which goes quietly empty — it passes today either way, but only over the
+# commands that are left. mutmut skips a path that does not exist just as quietly, so check
+# `mutants/` holds what this list promises rather than trusting a green run.
+also_copy = ["mise.toml", "docs", ".claude/hooks"]
 
 [tool.pyrefly]
 project-includes = ["src", "tests"]

@@ -82,7 +82,8 @@ description = "Mutation-test the source this branch changed; pass mutant globs t
 # Asks what a green suite cannot: would a leaf notice the code being wrong? Deliberately out
 # of `check` — it re-runs the covering tests once per mutant. Whole-branch scope by default,
 # because a run over the package takes hours; `mise run mutate 'aiobserve.sessions.*'` narrows
-# it. mutmut names a mutant `<module path>.<function>__mutmut_<n>`, and takes globs over that.
+# it. mutmut names a mutant `<module path>.x_<function>__mutmut_<n>`, and a method's
+# `<module path>.xǁ<Class>ǁ<method>__mutmut_<n>`; it takes globs over that.
 # Read the survivors with `uv run mutmut browse`.
 usage = 'arg "[mutants]" var=#true help="mutant globs to score, e.g. aiobserve.view.format.*"'
 run = """
@@ -109,7 +110,14 @@ rm -rf mutants
 # One child at a time, because the number is the point. Run in parallel, the same cold scope
 # gave 7, 9 and 10 survivors over three runs; serial it gives the same 13 every time — the
 # parallel runs were scoring kills the suite did not earn. Costs about 3x wall.
-uv run mutmut run --max-children 1 "$@"
+#
+# `no_proxy` because mutmut runs each mutant in a forked child, and macOS crashes a forked
+# process that asks SystemConfiguration for the system proxies — which is what httpx does when
+# it builds a client and no proxy env var is set. Unset, every mutant scores 💥 segfault
+# instead of a verdict. Any `*_proxy` variable short-circuits the lookup; this one also tells
+# httpx to bypass proxies for every host, which is what a run that never leaves the machine
+# wants anyway.
+no_proxy='*' uv run mutmut run --max-children 1 "$@"
 """
 
 [tasks.check-fast]
