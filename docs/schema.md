@@ -72,7 +72,7 @@ A transcript stores one JSON object per line. Each object has a `type`. `aiobser
 
 When a `user` record contains a string, its leading XML-like tag often determines whether the record starts a turn.
 
-- Count `<command-name>` and `<command-message>` as a turn. They mark a slash command, can appear in either order, and carry `<command-args>` beside them
+- Count `<command-name>` and `<command-message>` as a turn. They mark a slash command, can appear in either order, and carry `<command-args>` beside them. The wrapper is the whole prompt: all 451 command turns in the store hold the tags and nothing else, so a command turn's `prompt` says no more than its `command_name` and `command_args` do (scanned 2026-08-24)
 - Count `<teammate-message>` as a turn
 - Don't count `<task-notification>`, `<local-command-stdout>`, `<bash-input>`, or `<bash-stdout>`. Claude Code wrote these to itself
 
