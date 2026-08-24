@@ -30,6 +30,7 @@ from aiobserve.view.listing import SHOWN
 from aiobserve.view.store import TURN_CURSOR, Fragment, Page, Value, cursorless_rows
 from tests.conftest import (
     ANCESTOR,
+    BASH_TOOL,
     COMPACTED,
     COMPACTED_BOUNDARY,
     CONFIG_ONLY,
@@ -39,6 +40,7 @@ from tests.conftest import (
     DENSE_TURN_CALL,
     FORK_ORIGIN,
     FORK_ORIGIN_RUN,
+    MAIN,
     OFFLOAD_FILE,
     RESUME,
     SLASH_TURN,
@@ -758,7 +760,7 @@ ROUTES: dict[str, str] = {
         f"/fragment/result/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}"
     ),
     "/fragment/command/{session_id}/{source}/{tool_call_id}": (
-        f"/fragment/command/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}"
+        f"/fragment/command/{SPINE}/{MAIN}/{BASH_TOOL}"
     ),
     "/fragment/prompt/{session_id}/{source}/{turn_id}": (
         f"/fragment/prompt/{ANCESTOR}/main/{DENSE_TURN}"

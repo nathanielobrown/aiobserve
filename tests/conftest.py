@@ -77,6 +77,10 @@ DENSE_CALL = "msg_011CdFxfStgUUn3Q59b4RFii"
 # The turn `DENSE_CALL` was made in, so a fragment of that turn nests the dense tool list.
 DENSE_CALL_TURN = "33438141-776f-4e1e-9bc5-e5d85df18d22"
 DENSE_TOOL = "toolu_015wiqbosE2nUYZBYdd9urjA"
+# `SPINE`'s main-thread `Bash` call. The one recorded shape that fills the command column: a
+# command is read out of a `Bash` call's arguments, and every other tool has none, so a route
+# that serves one has nothing to serve for any other call.
+BASH_TOOL = "toolu_012pdUKAdn6qh1dYSBug3rr9"
 # `SPINE`'s main-thread turn typed as a slash command — `/night-run`, with arguments recorded
 # after it — which is the one shape that fills the two command columns.
 SLASH_TURN = "30aad8e5-21f8-486d-b9d9-e118c703a5a1"

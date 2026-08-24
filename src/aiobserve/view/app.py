@@ -1646,10 +1646,16 @@ def build_app(db_path: Path) -> FastAPI:
         value: Value,
         template: str,
         keyed: Mapping[str, ParamValue],
+        column: str,
         detail: str | None,
         syntax: highlight.Syntax | None = None,
     ) -> Response:
         """One per-value fragment: the whole value, or a 404 when nothing is stored under it.
+
+        `column` is where the query puts the value this fragment is for. A row can exist with
+        nothing under it — a `Read` has no command, a turn no prompt — and that is a 404 and
+        not an empty page: nothing on a pane links here unless there is a value to fetch, so a
+        request for one that is not there is a URL somebody typed or a link somebody kept.
 
         `detail` is the name the pane files this value under, and the fragment replaces that
         whole section, so it carries the name out with it — the styling that tells an ask from
@@ -1661,7 +1667,7 @@ def build_app(db_path: Path) -> FastAPI:
         """
         with open_store(resolved) as connection:
             rows = page_rows(connection, value, **keyed)
-        if not rows:
+        if not rows or rows[0][column] is None:
             raise HTTPException(404, "Nothing in this store is stored under that id.")
         row = rows[0]
         # The keys travel into the context as well: a fragment that links anywhere needs the
@@ -1686,6 +1692,7 @@ def build_app(db_path: Path) -> FastAPI:
             Value.CALL_TEXT,
             "value",
             {"session_id": session_id, "source": source, "api_call_id": api_call_id},
+            "value",
             "text",
         )
 
@@ -1697,6 +1704,7 @@ def build_app(db_path: Path) -> FastAPI:
             Value.CALL_THINKING,
             "value",
             {"session_id": session_id, "source": source, "api_call_id": api_call_id},
+            "value",
             "thinking",
         )
 
@@ -1708,6 +1716,8 @@ def build_app(db_path: Path) -> FastAPI:
             Value.RECORD,
             "record",
             {"session_id": session_id, "source": source, "line_no": line_no},
+            # The record itself, which the store holds NOT NULL.
+            "raw",
             # The line a node was read from, not one of the node's own values: nothing on a
             # pane files it under a name, and nothing swaps it into a detail.
             None,
@@ -1721,6 +1731,7 @@ def build_app(db_path: Path) -> FastAPI:
             Value.TOOL_INPUT,
             "raw",
             {"session_id": session_id, "source": source, "tool_call_id": tool_call_id},
+            "value",
             "input",
         )
 
@@ -1739,6 +1750,7 @@ def build_app(db_path: Path) -> FastAPI:
                 # beside it, which is what says how the answer is marked up.
                 "head_chars": queries.HEADER_CHARS,
             },
+            "value",
             "result",
         )
 
@@ -1750,6 +1762,7 @@ def build_app(db_path: Path) -> FastAPI:
             Value.TOOL_COMMAND,
             "raw",
             {"session_id": session_id, "source": source, "tool_call_id": tool_call_id},
+            "value",
             "command",
             highlight.Syntax.BASH,
         )
@@ -1762,6 +1775,7 @@ def build_app(db_path: Path) -> FastAPI:
             Value.TURN_PROMPT,
             "value",
             {"session_id": session_id, "source": source, "turn_id": turn_id},
+            "value",
             "prompt",
         )
 
@@ -1773,6 +1787,7 @@ def build_app(db_path: Path) -> FastAPI:
             Value.TURN_COMMAND_ARGS,
             "value",
             {"session_id": session_id, "source": source, "turn_id": turn_id},
+            "value",
             "command_args",
         )
 
@@ -1784,6 +1799,7 @@ def build_app(db_path: Path) -> FastAPI:
             Value.RUN_BRIEF,
             "value",
             {"session_id": session_id, "run_id": run_id},
+            "value",
             "description",
         )
 

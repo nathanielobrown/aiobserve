@@ -450,11 +450,13 @@ def test_a_bash_call_reads_the_command_it_ran_as_a_shell_reads_it(
         assert read.status_code == 200
         assert "command" not in values(read.text, "data-detail")
         # The argument is still on the page inside the input it was passed in — as the record,
-        # not as a shell. And the route the pane would have linked to serves nothing: the row
-        # is there, so it answers, and what it answers with is an empty value.
+        # not as a shell. And the route the pane would have linked to has no such value to
+        # serve: the row is there and the column under it is null, which is not a value of
+        # nothing but the absence of one. A 200 would make the pane's missing link a bug
+        # rather than the only honest thing the page can do.
         assert NOT_RUN in plain(block(read.text, "input"))
         missing = ran.get(f"/fragment/command/{read_session}/{read_source}/{read_id}")
-        assert values(missing.text, "data-value") == ["0"]
+        assert missing.status_code == 404
 
 
 def test_a_read_of_a_markdown_file_shows_the_source_marked_up_and_not_rendered(

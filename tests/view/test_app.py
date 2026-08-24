@@ -36,6 +36,7 @@ from aiobserve.view.listing import (
 )
 from tests.conftest import (
     ANCESTOR,
+    BASH_TOOL,
     DENSE_CALL,
     DENSE_CALL_TURN,
     DENSE_TOOL,
@@ -1051,9 +1052,12 @@ def test_a_fragment_cites_the_query_that_fetched_it(client: TestClient) -> None:
             f"-- queries/view_tool_result.sql {keyed} tool_call_id={DENSE_TOOL}"
             f" head_chars={queries.HEADER_CHARS}",
         ),
+        # The command a `Bash` call ran, which only a `Bash` call has — so this one is keyed
+        # off the thread that holds one rather than off the dense call above.
         (
-            f"/fragment/command/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}",
-            f"-- queries/view_tool_command.sql {keyed} tool_call_id={DENSE_TOOL}",
+            f"/fragment/command/{SPINE}/{MAIN}/{BASH_TOOL}",
+            f"-- queries/view_tool_command.sql session_id={SPINE} source={MAIN}"
+            f" tool_call_id={BASH_TOOL}",
         ),
         (
             f"/fragment/prompt/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL_TURN}",
