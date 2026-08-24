@@ -758,8 +758,10 @@ def test_a_level_divides_into_the_pages_it_has_and_no_empty_one(
         assert client.get(TURN, params={"log": size, "page": count + 1}).status_code == 404
     # A level that fits on one page carries no pager: there is no page to go to.
     assert "data-pager" not in client.get(TURN, params={"log": held}).text
-    # And a page number below the first is a miss rather than a level read backwards.
-    assert client.get(TURN, params={"page": 0}).status_code == 404
+    # And a page number below the first is a bad ask rather than a miss: no level has one, so
+    # it is the number that is wrong and not the node — the answer every other size a URL
+    # carries gives (`checked`).
+    assert client.get(TURN, params={"page": 0}).status_code == 400
     # A level with nothing in it counts nothing. The count comes off the page's own rows, so an
     # empty page is the one place it has no row to read it from.
     empty = store.execute(

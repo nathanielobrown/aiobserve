@@ -685,10 +685,13 @@ def build_app(db_path: Path) -> FastAPI:
         checked(kin, bounds.KIN.ceiling)
         checked(log, bounds.LOG.ceiling)
         checked(detail, bounds.DETAIL.ceiling)
-        # A page number below the first names no page of any level, and is asked before
-        # anything is read: it would otherwise bind a negative offset.
+        # A page number below the first is a bad ask like a size outside its bounds, and is
+        # answered the same way: no level has such a page, so what is wrong is the number and
+        # not the node the URL names. Asked before anything is read — it would otherwise bind
+        # a negative offset. A number past a level's *last* page is a 404 further down: that
+        # one is a question about the node, and only the level can answer it.
         if page < 1:
-            raise HTTPException(404, "A children log is numbered from page one.")
+            raise HTTPException(400, "Ask for a children log page from one upwards.")
         bound = header_bound(session_id)
         # The session's runs are read once and printed twice: as a tree row at a label's width
         # and as a children log row at a line's. Cut to the wider of the two here, and cut
