@@ -19,6 +19,9 @@
   --space-2: 0.5rem;
   --space-3: 1rem;
   --space-4: 2rem;
+  /* How far one level of the tree sits in from the level above it. Small, because the tree is
+     a narrow column and a session nests as far as an agent spawns. */
+  --tree-step: var(--space-3);
 }
 /* Dark holds the same roles at the same contrast: ink and dim stay legible on paper, and the
    accent lightens so a meter and a link read against a dark row rather than sinking into it. */
@@ -91,8 +94,7 @@ td.title .secondary { display: -webkit-box; -webkit-box-orient: vertical;
 
 /* The node browser: the tree a reader walks on the left, the node they are reading on the
    right. The tree is one flat list — a click swaps the whole of it out of band — so a row's
-   place in the hierarchy is drawn from `data-depth` rather than from nesting. The ladder
-   stops at the depths a chain reaches today; it grows with the kinds that get pages. */
+   place in the hierarchy is drawn from `data-depth` rather than from nesting. */
 #browser { display: grid;
   grid-template-columns: var(--tree-width, 24rem) auto minmax(0, 1fr);
   column-gap: var(--space-3); align-items: start; }
@@ -119,9 +121,28 @@ td.title .secondary { display: -webkit-box; -webkit-box-orient: vertical;
 #tree .switch .button { color: var(--dim); font-size: var(--type-label);
   padding: 0 var(--space-1); }
 #tree .switch [aria-current] { color: var(--ink); border-color: var(--mark); font-weight: 600; }
-li.row[data-depth="1"] > :is(a, button) { padding-left: var(--space-3); }
-li.row[data-depth="2"] > :is(a, button) { padding-left: var(--space-4); }
-li.row[data-depth="3"] > :is(a, button) { padding-left: calc(2 * var(--space-4)); }
+/* One rung per level a chain can open (`view/bounds.py:DEPTH`), each a step further in than
+   the one above: a subagent's turns sit four levels down and its calls deeper still, and a
+   ladder that stopped short laid them flush against the session. Written out rather than
+   computed from `data-depth`, because reading an attribute as a number is not portable CSS
+   and `app.CSP` forbids the inline style that would carry one. `tests/view/test_tree.py` is
+   what keeps the ladder as long as a chain can be. */
+li.row[data-depth="1"] > :is(a, button) { padding-left: calc(1 * var(--tree-step)); }
+li.row[data-depth="2"] > :is(a, button) { padding-left: calc(2 * var(--tree-step)); }
+li.row[data-depth="3"] > :is(a, button) { padding-left: calc(3 * var(--tree-step)); }
+li.row[data-depth="4"] > :is(a, button) { padding-left: calc(4 * var(--tree-step)); }
+li.row[data-depth="5"] > :is(a, button) { padding-left: calc(5 * var(--tree-step)); }
+li.row[data-depth="6"] > :is(a, button) { padding-left: calc(6 * var(--tree-step)); }
+li.row[data-depth="7"] > :is(a, button) { padding-left: calc(7 * var(--tree-step)); }
+li.row[data-depth="8"] > :is(a, button) { padding-left: calc(8 * var(--tree-step)); }
+li.row[data-depth="9"] > :is(a, button) { padding-left: calc(9 * var(--tree-step)); }
+li.row[data-depth="10"] > :is(a, button) { padding-left: calc(10 * var(--tree-step)); }
+li.row[data-depth="11"] > :is(a, button) { padding-left: calc(11 * var(--tree-step)); }
+li.row[data-depth="12"] > :is(a, button) { padding-left: calc(12 * var(--tree-step)); }
+li.row[data-depth="13"] > :is(a, button) { padding-left: calc(13 * var(--tree-step)); }
+li.row[data-depth="14"] > :is(a, button) { padding-left: calc(14 * var(--tree-step)); }
+li.row[data-depth="15"] > :is(a, button) { padding-left: calc(15 * var(--tree-step)); }
+li.row[data-depth="16"] > :is(a, button) { padding-left: calc(16 * var(--tree-step)); }
 /* A row is one line: what the node is on the left, what it cost on the right, and a label too
    long for the column cut rather than wrapped. */
 li.node > a {

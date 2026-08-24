@@ -390,6 +390,42 @@ def test_every_link_that_swaps_the_pane_lands_the_pane_in_the_pane(
     assert html.count('id="tree-rows"') == 1
 
 
+def test_every_level_a_tree_opens_is_indented_one_step_further_than_the_one_above(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A row sits one step further in than its parent, however deep the session nests.
+
+    A subagent's own turns render four levels down and its api calls deeper still, so a
+    stylesheet with a rung for the first three levels laid them flush against the session and
+    the hierarchy vanished exactly where a reader most needs it. CSS cannot read `data-depth`
+    as a number portably and `app.CSP` forbids the inline style that would carry one, so every
+    level a chain can open is written out — and this is what keeps that ladder as long as
+    `bounds.DEPTH` says a chain can be.
+    """
+    # A turn of a subagent's own thread opens the session, the turn that spawned the run, the
+    # run, the turn itself and its api calls — five levels, past the three the ladder had...
+    turn_id, source = one(
+        store,
+        'SELECT id, source FROM live_turns WHERE session_id = ? AND source <> ? ORDER BY "index"'
+        " LIMIT 1",
+        [SPINE, MAIN],
+    )
+    page = client.get(f"/session/{SPINE}/turn/{source}/{turn_id}").text
+    rendered = {depth for depth, _ in rows(page)}
+    assert max(rendered) > 3, "the recorded subagent no longer nests past three levels"
+    # ...and the stylesheet indents each of them by its own depth, in one step a level.
+    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.S)
+    ladder = {
+        int(depth): int(steps)
+        for depth, steps in re.findall(
+            r'li\.row\[data-depth="(\d+)"\][^{]*\{[^}]*calc\((\d+) \* var\(--tree-step\)\)', style
+        )
+    }
+    # Every level a chain can open has a rung, and no rung stands for a level nothing reaches.
+    assert ladder == {depth: depth for depth in range(1, bounds.DEPTH + 1)}
+    assert rendered <= set(ladder) | {0}
+
+
 def test_the_tree_keeps_its_place_because_the_scroller_is_not_what_swaps(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
