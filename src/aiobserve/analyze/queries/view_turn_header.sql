@@ -14,10 +14,14 @@ WITH call AS (
 SELECT
     t."index" AS turn_index,
     t.id AS turn_id,
-    substr(t.prompt, 1, $detail_chars + 1) AS prompt,
-    length(t.prompt) AS prompt_chars,
-    -- A slash turn leads with the command it ran rather than with the prompt, which holds
-    -- the `<command-…>` wrapper Claude Code expanded it into. The name is a word, so it is
+    -- A slash turn has no prompt of its own to show: what was typed is the `<command-…>`
+    -- wrapper Claude Code expanded it into, and the two facts inside it are the columns below.
+    -- Every command turn of the canonical store held the wrapper and nothing else (read
+    -- 2026-08-24), so a pane that showed both printed them a second time in their tags. The
+    -- wrapper is still what was sent, and the thread's transcript has it whole.
+    CASE WHEN t.command_name IS NULL THEN substr(t.prompt, 1, $detail_chars + 1) END AS prompt,
+    CASE WHEN t.command_name IS NULL THEN length(t.prompt) END AS prompt_chars,
+    -- A slash turn leads with the command it ran instead. The name is a word, so it is
     -- cut to a fact's width...
     substr(t.command_name, 1, $head_chars) AS command_name,
     -- ...and what followed it is a value of the turn like the prompt is — arguments run to

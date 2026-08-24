@@ -169,7 +169,9 @@ def test_a_slash_turn_leads_with_the_command_it_ran(
     Claude Code stores such a turn's prompt as the `<command-name>`/`<command-args>` wrapper it
     built, and the extractor pulls the two halves into columns of their own. The pane reads
     those columns — the command on a line of its own, and what followed it as a value of the
-    turn — and keeps the prompt beside them, because the wrapper is what the model was sent.
+    turn — and drops the wrapper from the prompt beside them, which otherwise printed the
+    command and its arguments a second time in their tags. What was sent stays whole in the
+    thread's transcript, which is where the pane links for the record.
     """
     turn_id, name, args = one(
         store,
@@ -191,8 +193,13 @@ def test_a_slash_turn_leads_with_the_command_it_ran(
     served = client.get(f"/fragment/args/{SPINE}/{MAIN}/{turn_id}").text
     assert "<p>" in served
     assert "<pre" not in served
-    # And the wrapper Claude Code built is still on the page as the record of what was sent.
-    assert "<command-name>" in plain(block(page, "prompt"))
+    # The wrapper itself is gone from the pane: everything inside it is already on the page
+    # under the two headings above, and this turn's prompt is nothing else.
+    assert "prompt" not in values(page, "data-detail")
+    # It is still what was sent, though, so the record the pane opens beneath holds it whole.
+    (line_no,) = values(page, "data-open-record")
+    recorded = client.get(f"/fragment/record/{SPINE}/{MAIN}/{line_no}").text
+    assert "&lt;command-name&gt;" in recorded
     # A turn nobody typed a command at has no command line at all: the pane leads with the
     # prompt, and there is no empty heading over a column the store left NULL.
     assert not values(client.get(TURN).text, "data-command")
@@ -536,8 +543,11 @@ def test_every_value_a_pane_previews_is_fetchable_whole_from_its_own_url(
         "prompt": (
             f"/session/{SPINE}/turn/{MAIN}/{{0}}",
             f"/fragment/prompt/{SPINE}/{MAIN}/{{0}}",
+            # Of a turn that was typed rather than run: a slash turn's prompt is the
+            # `<command-…>` wrapper, which the pane shows as the two values inside it instead.
             "SELECT id, length(prompt) FROM live_turns WHERE session_id = ? AND source = ?"
-            " AND length(prompt) > 0 ORDER BY length(prompt) DESC LIMIT 1",
+            " AND command_name IS NULL AND length(prompt) > 0"
+            " ORDER BY length(prompt) DESC LIMIT 1",
         ),
         "input": (
             f"/session/{SPINE}/tool/{MAIN}/{{0}}",
