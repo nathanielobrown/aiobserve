@@ -111,6 +111,10 @@ class Value(StrEnum):
     TURN_PROMPT = "view_turn_prompt"
     TURN_COMMAND_ARGS = "view_turn_command_args"
     RUN_BRIEF = "view_run_brief"
+    # And the two a run's page reads off the call that spawned it: what that call asked for,
+    # and what it returned to the agent that made it.
+    RUN_PROMPT = "view_run_prompt"
+    RUN_RESULT = "view_run_result"
 
 
 # Any of the three, for the fetch helper they share.

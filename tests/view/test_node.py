@@ -518,6 +518,93 @@ def test_a_pane_reads_a_prompt_as_the_markdown_it_was_written_in(
     assert prose(whole.text, "prompt") == pane
 
 
+# What a subagent sends back to the agent that spawned it: prose, written in markdown, with a
+# heading and a list in it. Planted for the reason the prompt above is — redaction flattened
+# every recorded report to `[redacted]` — and real in shape: it is the report this repository
+# asks its own implementer runs for.
+REPORT = """## Done
+
+- landed the branch
+- `mise run check` is green
+"""
+
+
+def test_a_run_page_reads_the_call_that_spawned_it_for_the_ask_and_the_answer(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A run's page says what it was asked and what it sent back, off the call that spawned it.
+
+    Neither fact is on the run's own row. Claude Code records the ask in the spawning `Agent`
+    call's `prompt` and what the parent received as that call's `result`, so the page reads
+    both from there. The answer is deliberately what the parent got rather than the run's last
+    turn: a run that stopped without reporting told its parent nothing, and a page that showed
+    its last turn instead would put words in the parent's mouth.
+    """
+    session_id, run_id = one(
+        store,
+        "SELECT a.session_id, a.id FROM live_agent_runs a JOIN live_tool_calls t"
+        " ON t.session_id = a.session_id AND t.id = a.tool_use_id AND t.source <> a.id"
+        " WHERE json_extract_string(t.input, '$.prompt') IS NOT NULL AND t.result IS NOT NULL"
+        " ORDER BY 1, 2 LIMIT 1",
+    )
+    path = plant(
+        (
+            "UPDATE tool_calls SET input = json_merge_patch(input, ?), result = ?"
+            " WHERE session_id = ? AND id = (SELECT tool_use_id FROM agent_runs"
+            "   WHERE session_id = ? AND id = ?)",
+            [json.dumps({"prompt": MARKDOWN_PROMPT}), REPORT, session_id, session_id, run_id],
+        )
+    )
+    run = f"/session/{session_id}/run/{run_id}"
+    with TestClient(build_app(path)) as spawned:
+        pane = spawned.get(run).text
+        asked = spawned.get(f"/fragment/prompt{run}")
+        answered = spawned.get(f"/fragment/result{run}")
+    # Both are on the pane, rendered as the markdown they were written in rather than as the
+    # JSON the ask was stored inside — and beside the brief, which is a third thing: the line
+    # the spawning agent typed to name the run, not the instructions it gave.
+    assert "<h1>The task</h1>" in prose(pane, "prompt")
+    assert "<h2>Done</h2>" in prose(pane, "result")
+    assert values(pane, "data-detail") == ["description", "prompt", "result"]
+    # And each has a route of its own that answers with the whole value, filed under the same
+    # name the preview sat under, so the fetch swaps into its own block.
+    assert values(asked.text, "data-detail") == ["prompt"]
+    assert values(answered.text, "data-detail") == ["result"]
+    assert prose(asked.text, "prompt") == prose(pane, "prompt")
+    assert prose(answered.text, "result") == prose(pane, "result")
+
+
+def test_a_run_nobody_asked_in_words_shows_no_ask_and_serves_none(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A run whose spawning call carried no prompt has no ask to show, and its route 404s.
+
+    Two ways a run reaches the store without one: spawned by a tool that takes something other
+    than a prompt — a `Workflow` names a workflow — and recorded with no spawning call at all,
+    which is what a resumed or forked transcript replays. Neither is an empty value: nothing on
+    the pane links to the route, so a request for it is a URL somebody kept.
+    """
+    for named, sql in (
+        (
+            "spawned by a tool that takes no prompt",
+            "SELECT a.session_id, a.id FROM live_agent_runs a JOIN live_tool_calls t"
+            " ON t.session_id = a.session_id AND t.id = a.tool_use_id AND t.source <> a.id"
+            " WHERE json_extract_string(t.input, '$.prompt') IS NULL ORDER BY 1, 2 LIMIT 1",
+        ),
+        (
+            "recorded with no spawning call",
+            "SELECT a.session_id, a.id FROM live_agent_runs a WHERE NOT EXISTS ("
+            "  SELECT 1 FROM live_tool_calls t WHERE t.session_id = a.session_id"
+            "   AND t.id = a.tool_use_id AND t.source <> a.id) ORDER BY 1, 2 LIMIT 1",
+        ),
+    ):
+        session_id, run_id = one(store, sql)
+        run = f"/session/{session_id}/run/{run_id}"
+        pane = client.get(run).text
+        assert "prompt" not in values(pane, "data-detail"), named
+        assert client.get(f"/fragment/prompt{run}").status_code == 404, named
+
+
 # A shell command with something for a lexer to find in it: a builtin, an operator, a quoted
 # string and a pipe. Planted rather than recorded — redaction flattened every command the
 # fixture corpus holds to `[redacted]` — and real in the sense that matters here: it is a line

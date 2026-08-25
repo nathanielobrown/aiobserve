@@ -1057,6 +1057,24 @@ def build_app(db_path: Path) -> FastAPI:
                             detail,
                             markdown=True,
                         ),
+                        # The ask and the answer, both markdown: one was written by whoever
+                        # spawned the run and the other by the run itself.
+                        detail_of(
+                            "prompt",
+                            rows[0]["prompt"],
+                            rows[0]["prompt_chars"],
+                            f"/fragment/prompt{nodes.run_url(session_id, run_id)}",
+                            detail,
+                            markdown=True,
+                        ),
+                        detail_of(
+                            "result",
+                            rows[0]["result"],
+                            rows[0]["result_chars"],
+                            f"/fragment/result{nodes.run_url(session_id, run_id)}",
+                            detail,
+                            markdown=True,
+                        ),
                     )
                     if item is not None
                 ],
@@ -1915,6 +1933,30 @@ def build_app(db_path: Path) -> FastAPI:
             {"session_id": session_id, "run_id": run_id},
             "value",
             "description",
+        )
+
+    @app.get("/fragment/prompt/session/{session_id}/run/{run_id}")
+    def run_prompt(request: Request, session_id: str, run_id: str) -> Response:
+        """The whole of what one agent run was asked, off the call that spawned it."""
+        return whole(
+            request,
+            Value.RUN_PROMPT,
+            "value",
+            {"session_id": session_id, "run_id": run_id},
+            "value",
+            "prompt",
+        )
+
+    @app.get("/fragment/result/session/{session_id}/run/{run_id}")
+    def run_result(request: Request, session_id: str, run_id: str) -> Response:
+        """The whole of what one agent run sent back to the agent that spawned it."""
+        return whole(
+            request,
+            Value.RUN_RESULT,
+            "value",
+            {"session_id": session_id, "run_id": run_id},
+            "value",
+            "result",
         )
 
     return app

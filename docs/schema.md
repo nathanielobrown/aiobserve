@@ -182,6 +182,8 @@ Each observed subagent transcript has a neighboring `meta.json`, and each meta h
 | `taskKind`, `teamName`, `color`, `planModeRequired`, `permissionMode` | 71 | Teammate fields; `taskKind` is `in_process_teammate` |
 | `name`, `worktreePath`, `worktreeBranch`, `customAgentType`, `stoppedByUser` | 94, 86, 86, 39, 3 | Recorded but not yet read |
 
+What a run was asked and what it answered are not in the meta. Both are on the spawning call: its `prompt` and its `result`. Read the field rather than the tool name — every one of the 2,629 `Agent` calls that spawned a run carries a `prompt`, and the six `Workflow` calls that spawned one carry `name` and `args` instead. One spawning call of the 2,635 has no `result`, which is a run whose parent received nothing (scanned 2026-08-25).
+
 Of the 254 metas without `toolUseId`, 180 belong to workflow agents, 71 to teammates, and three to forks. The team mechanism starts a teammate without a tool call. Preserve that orphaned run with a warning; dropping it would recreate the prior importer's false claim that all agent runs came from direct tool calls.
 
 *Evidence:* `tests/fixtures/spine/`, CC 2.1.221, contains a spawned and nested run; `tests/fixtures/teammate/`, CC 2.1.211, contains an orphaned teammate.

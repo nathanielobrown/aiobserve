@@ -131,7 +131,14 @@ PAGE_BYTES = 500_000
 # before the column that named them said the same model a hundred times. The arithmetic under
 # it comes to 5,143,767 B, and `TREE_ROW_BYTES` is pinned from below so the 26,233 B left over
 # cannot be spent by a row that quietly grew instead.
-NODE_BYTES = 5_170_000
+#
+# Raised again from 5,170,000 for the two values a run's pane now reads off the call that
+# spawned it: what the run was asked, and what it sent back. Both are markdown, so a run's is
+# the first pane whose three previews are all rendered — `DEAR_PANE_DETAILS` went from two to
+# three, which is 4,000 characters at 25 B more, 100,000 B, on one preview of one pane. What a
+# reader gets is a run read whole where the page used to show only the line it was named by.
+# The arithmetic comes to 5,243,767 B, and the slack under the ceiling is the same 26,233 B.
+NODE_BYTES = 5_270_000
 # What the markup around one row of the list costs, with the content the row carries taken off.
 # Re-measured through the app by the leaf at the bottom of this file, every cap full of `&`,
 # at the dearest row the list holds rather than at whichever one sorted second: that row cost
@@ -224,7 +231,9 @@ PANE_DETAILS = 3
 # api call what it said and what it thought, and all four are markdown someone wrote. The
 # other kind of markup is a syntax the record named — the command a `Bash` call ran, the file
 # a `Read` returned — and no call is both tools, so a tool's pane marks up one of its three.
-DEAR_PANE_DETAILS = 2
+# A run's pane is where all three are markdown: the brief it was named by, the prompt it was
+# given, and the answer it sent back, all written by a person or a model.
+DEAR_PANE_DETAILS = 3
 # What a node page carries outside its tree rows, its log rows and its previews: the crumbs
 # down to the selection, the node's own facts, and what a pass said about it. The session is
 # the widest of the eight panes — every string in its header is one a transcript wrote, and its
@@ -1047,7 +1056,8 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
         ("UPDATE turns SET prompt = ?, command_name = ?, command_args = ?", [fat] * 3),
         ("UPDATE agent_runs SET agent_type = ?, model = ?, description = ?", [fat, fat, fat]),
         ("UPDATE api_calls SET model = ?, text = ?, thinking = ?", [fat, fat, fat]),
-        # The input parses, and says both of the things a tool row reads out of one: a log row
+        # The input parses, and says all three of the things read out of one: the two a tool row
+        # reads — a log row
         # that could not find a description would print the raw input in its place and leave
         # the line under it empty, which is a row two columns short of the widest one there is.
         # Every call failed, too, which is the dearest a tool row gets: the mark the tree puts
@@ -1056,7 +1066,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
         # the stepper on every tool page, and that is the dearest the chrome under a pane gets.
         (
             "UPDATE tool_calls SET name = ?, input = ?, result = ?, is_error = true",
-            [fat, json.dumps({"description": fat, "command": fat}), fat],
+            [fat, json.dumps({"description": fat, "command": fat, "prompt": fat}), fat],
         ),
         # And the two calls whose panes show a value in its own syntax, planted after the rest
         # so they keep the widths above and take the tool names that reach the lexers. `&;` is

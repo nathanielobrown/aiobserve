@@ -134,6 +134,10 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     # rather than as the NULL every turn nobody typed a slash at holds.
     "view_turn_command_args": {"session_id": SPINE, "source": MAIN, "turn_id": SLASH_TURN},
     "view_run_brief": {"session_id": SPINE, "run_id": SPINE_RUN},
+    # A run the corpus records a spawning `Agent` call for, so both values come back as the
+    # strings a pane previews rather than as the NULL a run with no spawning call holds.
+    "view_run_prompt": {"session_id": SPINE, "run_id": SPINE_RUN},
+    "view_run_result": {"session_id": SPINE, "run_id": SPINE_RUN},
     "view_record": {"session_id": RESUME, "source": MAIN, "line_no": str(RESUME_LONG_RECORD)},
     # The enrichment family, at the fixture session the plant describes at every level and
     # the level holding the most planted rows.

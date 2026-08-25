@@ -161,9 +161,9 @@ def test_a_run_page_shows_the_runs_own_enrichment_beside_its_brief(
         category,
         outcome,
     )
-    # The run's recorded task keeps its own place, as one of the pane's own values — what the
-    # run was asked to do and what it did are two different sentences.
-    assert values(page, "data-detail") == ["description"]
+    # The run's recorded task keeps its own place, among the pane's own values — what the run
+    # was asked to do and what a pass said it did are two different sentences.
+    assert values(page, "data-detail") == ["description", "prompt", "result"]
 
 
 def test_a_store_no_enrichment_pass_has_touched_renders_every_page(

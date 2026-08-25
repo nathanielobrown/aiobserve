@@ -18,6 +18,17 @@ SELECT
     substr(a.description, 1, $detail_chars + 1) AS description,
     length(a.description) AS description_chars,
     substr(a.model, 1, $head_chars + 1) AS model,
+    -- What the run was asked and what its parent got back, both read off the one call that
+    -- spawned it: Claude Code records a run's instructions as that call's `prompt` and the
+    -- run's answer as its `result`. The answer is what the parent received and not the run's
+    -- own last turn — a run that stopped without reporting told its parent nothing. Keyed on
+    -- the JSON field rather than on the tool's name, because a run spawned by something other
+    -- than `Agent` is asked in whatever that tool's arguments are called. Both are cut one
+    -- character past a pane's width, and fetched whole as `view_run_prompt`/`view_run_result`.
+    substr(json_extract_string(tc.input, '$.prompt'), 1, $detail_chars + 1) AS prompt,
+    length(json_extract_string(tc.input, '$.prompt')) AS prompt_chars,
+    substr(tc.result, 1, $detail_chars + 1) AS result,
+    length(tc.result) AS result_chars,
     a.spawn_depth,
     a.is_fork,
     a.parent_agent_id,
@@ -45,4 +56,9 @@ SELECT
         WHERE k.session_id = a.session_id AND k.source = a.id
           AND k.cost_usd IS NULL) AS unpriced_api_calls
 FROM live_agent_runs a
+-- The spawning call, by the rule `view_runs` reads it by: a run's `tool_use_id` names a tool
+-- call on some other thread, and the source guard is what keeps a run from matching itself.
+-- LEFT, because a resumed or forked transcript replays runs whose spawning call it never held.
+LEFT JOIN live_tool_calls tc
+    ON tc.session_id = a.session_id AND tc.id = a.tool_use_id AND tc.source <> a.id
 WHERE a.session_id = $session_id AND a.id = $run_id;

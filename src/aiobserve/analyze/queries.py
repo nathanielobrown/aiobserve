@@ -507,6 +507,13 @@ QUERIES: dict[str, Query] = {
         },
     ),
     "view_run_brief": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID, "run_id": RUN_ID}),
+    # The two a run reads off the call that spawned it, keyed the same way the brief is.
+    "view_run_prompt": Query(
+        scope=Scope.KEYED, params={"session_id": SESSION_ID, "run_id": RUN_ID}
+    ),
+    "view_run_result": Query(
+        scope=Scope.KEYED, params={"session_id": SESSION_ID, "run_id": RUN_ID}
+    ),
     "view_offload": Query(
         scope=Scope.KEYED,
         params={

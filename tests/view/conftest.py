@@ -108,6 +108,14 @@ ROUTES: dict[str, str] = {
     "/fragment/brief/session/{session_id}/run/{run_id}": (
         f"/fragment/brief/session/{SPINE}/run/{SPINE_RUN}"
     ),
+    # The run whose spawning `Agent` call the corpus holds, so both of these answer with a
+    # value rather than the 404 a run nobody asked in words serves.
+    "/fragment/prompt/session/{session_id}/run/{run_id}": (
+        f"/fragment/prompt/session/{SPINE}/run/{SPINE_RUN}"
+    ),
+    "/fragment/result/session/{session_id}/run/{run_id}": (
+        f"/fragment/result/session/{SPINE}/run/{SPINE_RUN}"
+    ),
     "/fragment/record/session/{session_id}/thread/{source}/line/{line_no}": (
         f"/fragment/record/session/{ANCESTOR}/thread/main/line/1"
     ),
