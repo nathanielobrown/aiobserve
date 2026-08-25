@@ -39,6 +39,8 @@ LABELS: dict[str, str] = {
     "turn_index": "Turn",
     "api_calls": "API calls",
     "tool_calls": "Tool calls",
+    # The tool calls one api call made, named rather than counted.
+    "tool_titles": "Tools",
     "tool_errors": "Tool errors",
     "agent_runs": "Subagent runs",
     "compactions": "Compactions",

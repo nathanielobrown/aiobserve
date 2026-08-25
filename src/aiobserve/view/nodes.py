@@ -96,9 +96,13 @@ COLUMNS: dict[Shape, tuple[Column, ...]] = {
     ),
     Shape.CALLS: (
         Column("call_index", "#", css="number"),
-        # A call's own words are on its page: the row is named by the model that answered.
+        # The row is named by the model that answered, with what it answered beside it: two
+        # lines of the call's own words, which is what tells two calls of one model apart.
         Column("model", "◈", css="what"),
+        Column("text", "☰", css="said"),
         Column("tool_calls", TOOL_ICON, css="number"),
+        # What those tool calls were, named the way the log inside the call names them.
+        Column("tool_titles", "⌨", css="called"),
         Column("text_chars", "¶", css="number"),
         Column("cost_usd", "$", css="number"),
         Column("started_at", "◷", css="when"),

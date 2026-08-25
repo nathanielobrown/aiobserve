@@ -122,10 +122,16 @@ PAGE_BYTES = 500_000
 # pane's dear previews went from one to two: 4,000 characters at 25 B more each is 100,000 B,
 # all of it on one preview of one pane. What a reader gets is the turn's ask read as prose —
 # headings, lists and fenced code — where the whole-value fetch already rendered it and the
-# head beside it printed the source. The arithmetic under it comes to 5,123,767 B, and
-# `TREE_ROW_BYTES` is pinned from below so the 26,233 B left over cannot be spent by a row
-# that quietly grew instead.
-NODE_BYTES = 5_150_000
+# head beside it printed the source.
+#
+# Raised again from 5,150,000 for the two columns an api call's row now fills: what the call
+# said, and the tools it went on to call. They make a call's the dearest row in any children
+# log — `MEASURED_LOG_ROW_MARKUP` went from 1,450 B to 1,650 B — and a log is a hundred rows,
+# so 20,000 B of page. What a reader gets is a turn's calls read without opening one, where
+# before the column that named them said the same model a hundred times. The arithmetic under
+# it comes to 5,143,767 B, and `TREE_ROW_BYTES` is pinned from below so the 26,233 B left over
+# cannot be spent by a row that quietly grew instead.
+NODE_BYTES = 5_170_000
 # What the markup around one row of the list costs, with the content the row carries taken off.
 # Re-measured through the app by the leaf at the bottom of this file, every cap full of `&`,
 # at the dearest row the list holds rather than at whichever one sorted second: that row cost
@@ -166,20 +172,23 @@ MEASURED_ERRORS_CHROME = 2_500
 # The fixture records are redacted to a few characters, so they project nothing about this.
 MEASURED_RECORD_BYTES = 826
 
-# What the markup around one row of the pane's children log costs, with the title and the one
-# strings it carries taken off: a cell per column of the shape's own table, three copies of the
-# node's URL — the link, the `hx-get` behind it, and the mount the View button opens through —
-# the swap the link performs, the numbers that tell two children apart, and the row around
-# them. Re-measured through the app by the leaf at the bottom of this file, every cap full of
-# `&` and every knob at its longest — 6,008 B, of which 4,509 B is content at those caps and
-# 114 B the knobs, leaving 1,385 B. A string at its cap is 300 escapes and the mark that says
+# What the markup around one row of the pane's children log costs, with the strings it carries
+# taken off: a cell per column of the shape's own table, three copies of the node's URL — the
+# link, the `hx-get` behind it, and the mount the View button opens through — the swap the link
+# performs, the numbers that tell two children apart, and the row around them. Re-measured
+# through the app by the leaf at the bottom of this file, every cap full of `&` and every knob
+# at its longest — 6,226 B on an api call's row, of which 4,515 B is content at those caps and
+# 150 B the knobs, leaving 1,561 B. A string at its cap is 300 escapes and the mark that says
 # it was cut; the arithmetic below charges the 301 escapes the cut selected, which is 2 B a
-# string more than a row can really carry.
-MEASURED_LOG_ROW_MARKUP = 1_450
+# string more than a row can really carry. The dearest row moved from a tool call's to an api
+# call's when a call's row began saying what the call said and which tools it called: nine
+# columns against a tool row's seven, and the same three strings.
+MEASURED_LOG_ROW_MARKUP = 1_650
 # How many strings one row of a children log prints, each cut to `LOG_CHARS` and selected a
-# character past it. Three is the widest row there is: a tool row is the tool's name, the head
-# of what the tool was asked, and the command that head describes. A turn row prints one, an
-# api call one, a run two. Listed rather than counted off `nodes.COLUMNS`, because most of
+# character past it. Three is the widest row there is: an api call's row is the model that
+# answered, the head of what it said, and the tools it went on to call; a tool row is the
+# tool's name, the head of what it was asked, and the command that head describes. A turn row
+# prints one and a run two. Listed rather than counted off `nodes.COLUMNS`, because most of
 # those columns are a number or a stamp; what keeps the number honest is the leaf at the bottom
 # of this file, which plants every string a row can print past its cut and weighs the row.
 LOG_ROW_STRINGS = 3

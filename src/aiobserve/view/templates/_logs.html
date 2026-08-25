@@ -75,7 +75,9 @@
         {%- elif shape == 'calls' %}
         {{ cell('call_index', item.row.call_index | count, 'number') }}
         {{ what(item.node, suffix, 'model', item.row.model | line) }}
+        {{ cell('text', item.row.text_head | line, 'said') }}
         {{ cell('tool_calls', item.row.tool_calls | count, 'number') }}
+        {{ cell('tool_titles', item.row.tool_titles | line, 'called') }}
         {{ cell('text_chars', item.row.text_chars | count, 'number') }}
         {{ cell('cost_usd', item.node.cost_usd | money, 'number') }}
         {%- elif shape == 'tools' %}

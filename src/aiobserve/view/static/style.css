@@ -182,6 +182,16 @@ li.more > button:hover { background-color: color-mix(in srgb, var(--mark) 12%, t
 #pane .log th { color: var(--dim); font-size: var(--type-label); font-weight: 600; }
 #pane .log td.what { width: 100%; min-width: 0; }
 #pane .log td.what .primary { overflow-wrap: anywhere; }
+/* A call's own words, in the column beside the model that said them: prose, so it wraps and
+   is cut at two lines rather than ellipsised on one, and dim so the row still scans by the
+   columns a reader is counting. The list of tools the call went on to make reads the same
+   way, one line of it. Both are held off the numbers by a max-width, like the session list's
+   own title column. */
+#pane .log td.said, #pane .log td.called { max-width: 26rem; color: var(--dim); }
+#pane .log td.said > span { display: -webkit-box; -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+#pane .log td.called > span { display: block; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
 /* The line under it is the command a description described: one long line of shell, held to
    one line and cut with an ellipsis. A reader who wants the whole of it opens the row. */
 #pane .log td.what .secondary { font-family: ui-monospace, SFMono-Regular, monospace;

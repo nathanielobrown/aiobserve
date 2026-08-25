@@ -8,6 +8,12 @@
 -- `view_tree_calls` states: a call naming a turn recorded on another thread is this thread's.
 -- `text` is previewed here and fetched whole one value at a time (`view_call_text`); the
 -- tool rows under a call are their own query (`view_call_tools`), capped the same way.
+--
+-- A row names the tool calls it made as well as counting them, through `tool_title`
+-- (`analyze/macros.py`) — the derivation the tools log's own rows read, so a call's row and
+-- the log inside it name one tool the same way. The list is cut whole rather than per title:
+-- what a reader gets is the first tools of a call that made forty, marked where the column
+-- ran out, rather than forty stubs.
 SELECT
     c."index" AS call_index,
     c.id AS api_call_id,
@@ -15,6 +21,10 @@ SELECT
     -- request carried is Claude Code's to lengthen, and a call row rides a page of a hundred.
     substr(c.model, 1, $log_chars + 1) AS model,
     substr(c.fallback_from, 1, $log_chars) AS fallback_from,
+    -- What the call itself said, at the width of the column that prints it. The row's own
+    -- words: a call that answered with tool calls and nothing else has none, and the model
+    -- beside it is what the row is named by.
+    substr(c.text, 1, $log_chars + 1) AS text_head,
     c.effort,
     c.stop_reason,
     c.attribution_skill,
@@ -36,10 +46,18 @@ SELECT
         SELECT count(*) FROM live_tool_calls t
         WHERE t.session_id = c.session_id AND t.source = c.source AND t.api_call_id = c.id
     ) AS tool_calls,
+    (
+        SELECT substr(string_agg(tool_title(t.input, s.project_dir, $log_chars), ', '
+                                 ORDER BY t."index"), 1, $log_chars + 1)
+        FROM live_tool_calls t
+        WHERE t.session_id = c.session_id AND t.source = c.source AND t.api_call_id = c.id
+    ) AS tool_titles,
     -- How many calls the turn holds in all, counted before the LIMIT bites, so the page
     -- knows how many pages there are without a second query.
     count(*) OVER () AS matched_api_calls
 FROM live_api_calls c
+-- For the project a tool call's path reads against, which is the session's and not the turn's.
+LEFT JOIN sessions s ON s.id = c.session_id
 LEFT JOIN live_turns t
     ON t.session_id = c.session_id AND t.source = c.source AND t.id = c.turn_id
 WHERE c.session_id = $session_id

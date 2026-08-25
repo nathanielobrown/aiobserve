@@ -1177,6 +1177,94 @@ def test_a_tool_row_says_what_the_tool_was_asked(
     )
 
 
+def test_a_call_row_says_what_the_call_said_and_which_tools_it_called(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A turn's calls log carries each call's own words and the tools that call went on to make.
+
+    A page of api calls used to be a page of model names and counts: every row said the same
+    model, and the only way to learn what a call did was to open it. The row now carries the
+    head of what the call itself said — its own text, not a description of it — and the titles
+    of the tool calls it made, in the order it made them, under the count that says how many.
+    The titles are the shared derivation the tools log reads, so a call's row and the log
+    inside it name the same tool the same way.
+
+    Planted: redaction leaves a recorded call's text trimmed and no recorded tool call with a
+    path or a description in its input.
+    """
+    session_id, source, turn_id, call_id, held = one(
+        store,
+        "SELECT c.session_id, c.source, c.turn_id, c.id, count(*) FROM live_api_calls c"
+        " JOIN live_tool_calls t"
+        "   ON t.session_id = c.session_id AND t.source = c.source AND t.api_call_id = c.id"
+        " JOIN live_turns u ON u.session_id = c.session_id AND u.source = c.source"
+        "  AND u.id = c.turn_id"
+        " GROUP BY 1, 2, 3, 4 ORDER BY 5 DESC, 1, 2, 3, 4 LIMIT 1",
+    )
+    assert held >= 2, "the plant needs a call under a turn with two tool calls to name"
+    tools = [
+        row[0]
+        for row in store.execute(
+            "SELECT id FROM live_tool_calls WHERE session_id = ? AND source = ? AND api_call_id = ?"
+            ' ORDER BY "index" LIMIT 2',
+            [session_id, source, call_id],
+        ).fetchall()
+    ]
+    project = "/Users/planted/repos/aiobserve"
+    said = "I will read the app and then check what the tree is standing on."
+    dressed = plant(
+        ("UPDATE sessions SET project_dir = ? WHERE id = ?", [project, session_id]),
+        ("UPDATE api_calls SET text = ? WHERE id = ?", [said, call_id]),
+        # A file inside the session's own project, and a command that says what it was for:
+        # the two derivations the tools log's own rows show.
+        (
+            "UPDATE tool_calls SET name = ?, input = ? WHERE id = ?",
+            ["Read", f'{{"file_path": "{project}/src/aiobserve/view/app.py"}}', tools[0]],
+        ),
+        (
+            "UPDATE tool_calls SET name = ?, input = ? WHERE id = ?",
+            ["Bash", '{"command": "git status", "description": "Read the tree"}', tools[1]],
+        ),
+    )
+    with TestClient(build_app(dressed)) as planted:
+        page = planted.get(f"/session/{session_id}/thread/{source}/turn/{turn_id}").text
+    row = fields(page, "data-child", f"call:{call_id}")
+    # What the call said stands in the row beside the model that said it...
+    assert row["text"] == said
+    # ...and the tools it called are named, in the order it called them, under the count of
+    # them: one title a tool call, the two dressed here first and the redacted rest behind.
+    assert row["tool_titles"].startswith("src/aiobserve/view/app.py, Read the tree, ")
+    assert row["tool_titles"].count(", ") == held - 1
+    assert row["tool_calls"] == str(held)
+
+    # Both are cut to the column's width and marked where they were cut, like every other
+    # string a row of a hundred prints: a call that talked for a page and called forty tools
+    # is a row, not a page of one.
+    long_said = "s" * (queries.LOG_CHARS + 40)
+    long_path = f"src/aiobserve/{'v' * queries.LOG_CHARS}.sql"
+    reach = plant(
+        ("UPDATE sessions SET project_dir = ? WHERE id = ?", [project, session_id]),
+        ("UPDATE api_calls SET text = ? WHERE id = ?", [long_said, call_id]),
+        (
+            "UPDATE tool_calls SET name = ?, input = ? WHERE id = ?",
+            ["Read", json.dumps({"file_path": f"{project}/{long_path}"}), tools[0]],
+        ),
+    )
+    with TestClient(build_app(reach)) as planted:
+        wide = planted.get(f"/session/{session_id}/thread/{source}/turn/{turn_id}").text
+    cut = fields(wide, "data-child", f"call:{call_id}")
+    assert cut["text"] == long_said[: queries.LOG_CHARS] + ELLIPSIS
+    assert cut["tool_titles"] == long_path[: queries.LOG_CHARS] + ELLIPSIS
+
+    # A call that answered with tool calls and no text prints nothing rather than the dash a
+    # missing value takes: `api_calls.text` is NOT NULL, so a call that said nothing holds the
+    # empty string, and the column beside it already names what answered.
+    silent = plant(("UPDATE api_calls SET text = '' WHERE id = ?", [call_id]))
+    with TestClient(build_app(silent)) as planted:
+        quiet = planted.get(f"/session/{session_id}/thread/{source}/turn/{turn_id}").text
+    assert fields(quiet, "data-child", f"call:{call_id}")["text"] == ""
+
+
 def test_one_tool_call_is_titled_the_same_way_wherever_it_is_named(
     plant: Planter, store: duckdb.DuckDBPyConnection
 ) -> None:

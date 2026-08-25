@@ -120,7 +120,7 @@ By kind:
 - a **compaction**: what triggered it
 - a **bucket**: what it gathers, since neither bucket is a thing the session recorded
 
-A title that leads with a word — a run's agent type, a tool call's name — drops that word in a children log heading a column with it: the unattached bucket's log heads a column with the agent type, and a tool log with the tool name, and a row does not print one value twice. A `Bash` call's command hangs under its title there, on a second line. One log names its rows by something other than the child's title: an api call's row is named by the model that answered, and what the call said waits on its page.
+A title that leads with a word — a run's agent type, a tool call's name — drops that word in a children log heading a column with it: the unattached bucket's log heads a column with the agent type, and a tool log with the tool name, and a row does not print one value twice. A `Bash` call's command hangs under its title there, on a second line. One log names its rows by something other than the child's title: an api call's row is named by the model that answered. What the call said stands beside it in a column of its own, two dim lines cut where the second ends, and the tools it went on to call are named under the count of them — so a turn's calls read without opening one.
 
 A tool call's title is derived in SQL, a macro every query that names one calls (`src/aiobserve/analyze/macros.py`), because the input it reads is a fat column no page may load whole. The rest are composed in `src/aiobserve/view/nodes.py`. Either way each kind has one derivation, and the three widths above are the only cuts of it.
 
