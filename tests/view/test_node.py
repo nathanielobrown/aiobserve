@@ -146,7 +146,7 @@ def test_every_kind_of_node_serves_a_page_that_says_what_it_is(
     # Four places on this page name the node, and every one of them says what kind it is with
     # the same character: the pane's heading, the browser tab, the last crumb, and the row the
     # tree marks. A reader learns eight marks once and then reads a tree without reading a
-    # label — which is the whole of what the mark buys, so a surface missing it is a surface
+    # title — which is the whole of what the mark buys, so a surface missing it is a surface
     # where the same node looks like something else.
     mark = MARKS[kind]
     assert icons(page.text, "data-body", kind) == [mark], url
@@ -158,7 +158,7 @@ def test_every_kind_of_node_serves_a_page_that_says_what_it_is(
     assert icons(page.text, "data-crumb", crumbs[0]) == [MARKS["session"]], url
     # Every one of those marks is decoration and the markup says so. It stands for a word
     # already on the page — the pane's kind, the crumb's field name, the row's class — so a
-    # screen reader passes over it and reads the label instead of announcing a character it
+    # screen reader passes over it and reads the title instead of announcing a character it
     # has no word for (`.claude/rules/viewer-ui.md`).
     for where, key in (("data-body", kind), ("data-crumb", crumbs[-1]), ("data-tree", selected)):
         assert inside(page.text, where, key, "aria-hidden") == ["true"], (url, where)
@@ -274,7 +274,7 @@ def test_a_log_row_expands_to_the_body_its_own_page_wraps(
     link rather than a second accordion. Swept over every kind of page so every shape of log
     row is opened, because an expansion is built from the child's kind, not the parent's.
 
-    Run over the described store as well as the plain one: a label is the model's words where a
+    Run over the described store as well as the plain one: a title is the model's words where a
     pass reached the node, and a body that read enrichment differently from the page wrapping
     it would tell a reader two things about one node.
     """
@@ -287,7 +287,7 @@ def test_a_log_row_expands_to_the_body_its_own_page_wraps(
         page = client.get(url).text
         for key in values(page, "data-child"):
             child, _, _ = key.partition(":")
-            # The mount rides the row rather than carrying a label of its own, so it is the
+            # The mount rides the row rather than carrying a title of its own, so it is the
             # fetch under the body URL among the row's two.
             (mount,) = [
                 url for url in inside(page, "data-child", key, "hx-get") if url.startswith(BODY_URL)

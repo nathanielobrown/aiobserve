@@ -79,8 +79,6 @@ LABELS: dict[str, str] = {
     "input": "Arguments",
     # What a `Bash` call ran, lifted out of its arguments so a reader meets the shell first.
     "command": "Command",
-    # The head of a tool call's input: the file a `Read` read, the description a `Bash` ran
-    # under. What the tool was asked, in the width of a column.
     "result": "Result",
     "result_chars": "Result (chars)",
     # The two columns a children log prints that no query returns. `title` is what the viewer

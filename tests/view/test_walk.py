@@ -217,7 +217,7 @@ def test_a_session_is_read_from_its_tree_and_not_from_the_controls(
 def test_a_control_says_what_the_neighbour_is_and_what_it_was(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """A control names the neighbour's kind and its label — the same label its tree row carries.
+    """A control names the neighbour's kind and its title — the same title its tree row carries.
 
     A reader deciding whether to step has the node's own words, not the word "next". The kind
     is printed rather than left in an attribute: a step can climb out of the level, and a
@@ -229,7 +229,7 @@ def test_a_control_says_what_the_neighbour_is_and_what_it_was(
     for named, neighbour in (("previous", walked[0]), ("next", walked[2])):
         assert control(step.html, named) == (neighbour.key, False)
         # Both halves are text on the page: what the neighbour is, and what it is called. The
-        # label is the one the neighbour's own tree row carries — one node, one name, wherever
+        # title is the one the neighbour's own tree row carries — one node, one name, wherever
         # it is read.
         kind, _, _ = neighbour.key.partition(":")
         assert fields(step.html, "data-walk", named) == {

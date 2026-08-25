@@ -10,7 +10,7 @@
   const browser = document.getElementById("browser");
   const tree = document.getElementById("tree");
   const KEY = "aiobserve:tree-width";
-  // What the column may be, in px: narrower than this cuts every label to nothing, wider
+  // What the column may be, in px: narrower than this cuts every title to nothing, wider
   // leaves a pane too short to read a turn in. The bounds live here rather than in a CSS
   // clamp, so a drag past either end stops there instead of running on unseen.
   const NARROWEST = 256;

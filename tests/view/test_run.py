@@ -98,14 +98,14 @@ def test_a_run_whose_spawning_call_resolves_to_nothing_is_unattached(
     ]
 
 
-def test_an_agent_type_leads_a_runs_label_except_where_a_column_already_heads_it(
+def test_an_agent_type_leads_a_runs_title_except_where_a_column_already_heads_it(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
     """Which agent ran is the word a reader picks a run out of a list by, so it leads the
-    label — everywhere the surface has no column to align it in.
+    title — everywhere the surface has no column to align it in.
 
     The tree, the crumbs, the pane's heading and the tab have no such column: the type is
-    there only if the label carries it, and a tree of six runs named by their briefs alone
+    there only if the title carries it, and a tree of six runs named by their briefs alone
     says nothing about which agent did what. The unattached bucket's children log *does* have
     one, headed `◎ Agent`, and it reads the way the tools log reads — the name in its own
     narrow column, what it was asked in the wide one beside it. A row that printed the type in

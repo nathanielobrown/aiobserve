@@ -112,20 +112,20 @@ INDENT_CHARS = 20_000
 # neither of those is counted in bytes. So a multibyte value under this ceiling is marked up
 # even where its bytes run past it, which is deliberate: the cost follows the tokens.
 HIGHLIGHT_CHARS = 256_000
-# What one row of the tree may weigh, whole: its markup, a label of `queries.NAV_CHARS`
+# What one row of the tree may weigh, whole: its markup, a title of `queries.NAV_CHARS`
 # characters that each escape to five bytes, and the knobs every link repeats. The tree is
 # what multiplies — `1 + DEPTH * (KIN + 1)` rows spend this 3,217 times, four fifths of the
 # ceiling — so it is a price to defend rather than a knob to turn: a row that grows past it
 # is a page over the bound, and the answer is a slimmer row.
 #
-# Measured through the app rather than budgeted, at every label full of `&` and the longest
+# Measured through the app rather than budgeted, at every title full of `&` and the longest
 # query string a link can carry (`tests/view/test_bounds.py`). Pinned at exactly what it
 # measures, with no slack, for the same reason: a byte of slack here is 3,217 bytes of page.
 # That leaf holds it from below as well as from above, so slack cannot hide in the room the
 # node page's ceiling keeps for this row's next addition.
 # Nearly all of the row is its URL written twice — the href a reader sees and the `hx-get`
 # htmx fetches — because the swap the two of them perform is written once on `#tree-rows` and
-# inherited. The rest is the label, the mark saying what kind of node the row is, and the
+# inherited. The rest is the title, the mark saying what kind of node the row is, and the
 # spend beside it. A store whose agent runs carry longer ids than the recorded corpus does is
 # a re-measure.
 TREE_ROW_BYTES = 1311

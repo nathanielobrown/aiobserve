@@ -139,7 +139,7 @@ def test_every_described_node_carries_its_own_words_on_its_own_page(
         page = enriched_client.get(f"/session/{SPINE}/thread/main/turn/{turn_id}").text
         shown = fields(page, "data-enrichment", turn_id)
         assert (shown["description"], shown["category"], shown["outcome"]) == said, turn_id
-        # And it is the only enrichment on the page: the tree rows beside it are labels.
+        # And it is the only enrichment on the page: the tree rows beside it only name nodes.
         assert values(page, "data-enrichment") == [turn_id], turn_id
     for run_id, said in enrichment_of(enriched_store, Level.agent_run, SPINE).items():
         page = enriched_client.get(f"/session/{SPINE}/run/{run_id}").text
@@ -299,7 +299,7 @@ def test_a_tree_row_the_model_named_carries_a_bare_glyph(
     described = enrichment_of(enriched_store, Level.turn, SPINE)
     turn_id = next(iter(described))
     page = enriched_client.get(f"/session/{SPINE}").text
-    # The described row is labelled with what the pass said, cut to the width of the tree...
+    # The described row is titled with what the pass said, cut to the width of the tree...
     assert fields(page, "data-tree", f"turn:{turn_id}")["title"] == cut(
         described[turn_id][0], queries.NAV_CHARS
     )
@@ -314,7 +314,7 @@ def test_a_tree_row_the_model_named_carries_a_bare_glyph(
     )
     assert GLYPH_CLASS in inside(page, "data-tree", f"session:{SPINE}", "class")
     assert not inside(page, "data-tree", f"session:{SPINE}", "title")
-    # The one turn of the corpus no pass reached sits on another session's tree, labelled by
+    # The one turn of the corpus no pass reached sits on another session's tree, titled by
     # what the session itself recorded and carrying no mark.
     bare_session, bare = one(
         enriched_store,
@@ -324,7 +324,7 @@ def test_a_tree_row_the_model_named_carries_a_bare_glyph(
     )
     undescribed = enriched_client.get(f"/session/{bare_session}").text
     assert GLYPH_CLASS not in inside(undescribed, "data-tree", f"turn:{bare}", "class")
-    # A run reads the same way through a different builder, with one difference: its label
+    # A run reads the same way through a different builder, with one difference: its title
     # leads with the definition it ran whatever else names it, so what the pass wrote stands
     # after the agent type rather than in place of it — and carries the same bare mark.
     ran = enrichment_of(enriched_store, Level.agent_run, SPINE)
@@ -351,7 +351,7 @@ def test_a_model_written_description_is_escaped_like_any_other_transcript_text(
     injected = "<script>alert('x')</script> & <b>bold</b>"
     path: Path = enriched_plant(
         ("UPDATE session_enrichments SET description = ?, friction = ?", [injected, injected]),
-        # The map labels a node by what the pass said the turn did, so the same words reach a
+        # The map names a node by what the pass said the turn did, so the same words reach a
         # second surface by a second route — as a name rather than as a paragraph.
         ("UPDATE turn_enrichments SET description = ?", [injected]),
     )
@@ -362,10 +362,10 @@ def test_a_model_written_description_is_escaped_like_any_other_transcript_text(
     # ...and the reader still sees the text it wrote, as the session's own summary...
     shown = fields(page, "data-enrichment", SPINE)
     assert shown["description"] == injected and shown["friction"] == injected
-    # ...and as the label of every turn row, which is the second surface and the second route.
-    labelled = [key for key in values(page, "data-tree") if key.startswith("turn:")]
-    assert labelled, "the session that carries the fixture turn tree no longer opens one"
-    for key in labelled:
+    # ...and as the title of every turn row, which is the second surface and the second route.
+    titled = [key for key in values(page, "data-tree") if key.startswith("turn:")]
+    assert titled, "the session that carries the fixture turn tree no longer opens one"
+    for key in titled:
         assert fields(page, "data-tree", key)["title"] == injected[: queries.NAV_CHARS]
 
 

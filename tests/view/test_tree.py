@@ -518,7 +518,7 @@ def test_a_run_hoists_after_the_call_that_spawned_it(
     # The run sits immediately after the call that spawned it, and the level renders as read.
     assert level[at - 1] == f"call:{call_id}"
     assert [key for key in values(html, "data-tree") if key in level] == level
-    # And the row carries the node's label and its cost, and nothing naming that call: the
+    # And the row carries the node's title and its cost, and nothing naming that call: the
     # place is the whole of what says where the run came from.
     assert set(fields(html, "data-tree", f"run:{run_id}")) == {"title", "cost_usd"}
 
@@ -697,7 +697,7 @@ def test_a_fetched_row_is_described_by_the_thread_the_reader_stands_on(
     # a fragment that read the level's thread would have served those names instead.
     home = enriched_client.get(f"/session/{SPINE}").text
     described = {key: fields(home, "data-tree", key)["title"] for at, key in rows(home) if at == 1}
-    assert any(described[key] != label for key, label in fetched.items())
+    assert any(described[key] != title for key, title in fetched.items())
 
 
 def test_a_chain_is_resolved_to_the_depth_the_page_prices_and_no_deeper(
@@ -837,8 +837,8 @@ def _titled(given: str | None, project: str | None, chars: int) -> str:
     return (given or "")[: chars + 1]
 
 
-def labelled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, str]:
-    """Every row of one session whose label the store composes, keyed the way a row is.
+def titled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, str]:
+    """Every row of one session whose title the store composes, keyed the way a row is.
 
     Read off the columns the design names a node from, not off the page: a tool call named by
     its input alone, or a run named by the definition it ran where its own brief was recorded,
@@ -886,9 +886,9 @@ def labelled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, str
 def test_every_row_is_named_from_the_column_its_kind_is_named_by(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """A row's label is the whole of what it says, so it is read back against its own column.
+    """A row's title is the whole of what it says, so it is read back against its own column.
 
-    A tree row carries `TREE_ROW_BYTES` and no more, so the label is where a kind spends what
+    A tree row carries `TREE_ROW_BYTES` and no more, so the title is where a kind spends what
     it has to say — and every kind spends it differently. Every node the store names is read
     on its own page, where its row is on the open path whichever fold the reader picked: a
     column that only one recorded row exercises — a slash turn with no arguments after it —
@@ -899,7 +899,7 @@ def test_every_row_is_named_from_the_column_its_kind_is_named_by(
     said = {
         (str(at), key): value
         for (at,) in store.execute("SELECT id FROM sessions").fetchall()
-        for key, value in labelled(store, str(at)).items()
+        for key, value in titled(store, str(at)).items()
     }
     read: set[tuple[str, str]] = set()
     for kind in (Kind.TOOL, Kind.CALL, Kind.COMPACTION, Kind.RUN, Kind.TURN):
@@ -913,8 +913,8 @@ def test_every_row_is_named_from_the_column_its_kind_is_named_by(
                 if (at := (session_id, key)) in said:
                     assert fields(page, "data-tree", key)["title"] == said[at], at
                     read.add(at)
-    # Every row the store names a label for was reached. A sweep that missed one would pass on
-    # a label built from any column at all.
+    # Every row the store names a title for was reached. A sweep that missed one would pass on
+    # a title built from any column at all.
     assert read == set(said)
 
 
@@ -1086,7 +1086,7 @@ def test_every_priced_row_carries_the_spend_the_store_holds_under_it(
     number, and this is where that number is read back. Read on the page of each priced node,
     where its own row is on the open path whichever fold the reader picked.
     """
-    # Keyed by session as well as by row, for the reason the labels are.
+    # Keyed by session as well as by row, for the reason the titles are.
     said = {
         (str(at), key): value
         for (at,) in store.execute("SELECT id FROM sessions").fetchall()

@@ -197,7 +197,7 @@ class Body(NamedTuple):
     build: Callable[[str, str, Row, str | None], nodes.Node]
     shape: Shape
     children: str | None
-    # Whether a pass can have described this kind, and so whether the label may be the model's.
+    # Whether a pass can have described this kind, and so whether the title may be the model's.
     described: bool
 
 
@@ -711,8 +711,8 @@ def build_app(db_path: Path) -> FastAPI:
         if page < 1:
             raise HTTPException(400, "Ask for a children log page from one upwards.")
         bound = header_bound(session_id)
-        # The session's runs are read once and printed twice: as a tree row at a label's width
-        # and as a children log row at a line's. Cut to the wider of the two here, and cut
+        # The session's runs are read once and printed twice: as a tree row at its width
+        # and as a children log row at the log's. Cut to the wider of the two here, and cut
         # again at each — a row cut to the narrower would print a line already stopped.
         runs_bound = {"session_id": session_id, "chip_chars": queries.LOG_CHARS}
         with open_store(resolved) as connection:
@@ -1500,7 +1500,7 @@ def build_app(db_path: Path) -> FastAPI:
             shaped.keyed: node_id,
             "head_chars": queries.HEADER_CHARS,
             # A body renders facts and no fat value, so the columns a pane would preview are
-            # read at the width the label is cut from rather than at the reader's `?detail=`.
+            # read at the width the title is cut from rather than at the reader's `?detail=`.
             "detail_chars": queries.HEADER_CHARS,
         }
         keyed: dict[str, ParamValue] = {"session_id": session_id, "source": source}
@@ -1508,7 +1508,7 @@ def build_app(db_path: Path) -> FastAPI:
             rows = page_rows(connection, shaped.page, **bound)
             if not rows:
                 raise HTTPException(404, "No node with that id is in this thread.")
-            # The label is the model's words wherever a pass reached the node, exactly as the
+            # The title is the model's words wherever a pass reached the node, exactly as the
             # log row that opened this expansion has it.
             describes = described(connection, session_id, source) if shaped.described else None
         told = describes.turns.get(node_id) if describes else None

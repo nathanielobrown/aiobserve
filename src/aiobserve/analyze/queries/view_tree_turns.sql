@@ -1,6 +1,6 @@
 -- One thread's turns in outline: a row per turn, with what to call it and what it cost.
 -- The rows of one level of the tree beside a node page, so a row is deliberately thinner
--- than `session_digest`'s: one label head at `$nav_chars` + 1 — the cut protocol
+-- than `session_digest`'s: one title head at `$nav_chars` + 1 — the cut protocol
 -- `view/format.py:cut` reads — one cost, and how much of that
 -- cost our price table could not price. `$source` is the thread — `main` for a session's
 -- own, a run's id for a run's — which is what makes one query serve every level that holds
@@ -18,7 +18,7 @@ WITH spend AS (
 SELECT
     t."index" AS turn_index,
     t.id AS turn_id,
-    -- The three label columns the tree reads in order: the command a turn ran and what
+    -- The three columns a turn's title is read from, in order: the command a turn ran and what
     -- followed it, else the prompt — which for a slash turn is the `<command-…>` wrapper
     -- Claude Code put around it, and says nothing in the width of a tree.
     substr(t.prompt, 1, $nav_chars + 1) AS prompt,

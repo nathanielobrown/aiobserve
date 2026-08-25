@@ -155,7 +155,7 @@ li.node > a:hover { background-color: color-mix(in srgb, var(--mark) 12%, transp
 /* The row the pane is about, held at full strength while everything around it recedes. The
    wash alone is what a hover already does, so the selection is also railed in the accent —
    3px, the meter's own weight — which no other row can wear. Inset rather than a border, so
-   the rail costs the row no width and the labels stay in one column. */
+   the rail costs the row no width and the titles stay in one column. */
 li.row[data-selected] > a { font-weight: 600; color: var(--ink);
   background-color: color-mix(in srgb, var(--mark) 12%, transparent);
   box-shadow: inset 3px 0 var(--mark); }
@@ -213,8 +213,8 @@ li.node > a {
   background-position: left bottom;
   background-size: 0 3px, 100% 3px;
   /* Depth is padding on the row's link, so a track over the padding box would start left of
-     the label it prices and a nested row would read as wider than its parent's. Over the
-     content box every track starts under its own label. */
+     the title it prices and a nested row would read as wider than its parent's. Over the
+     content box every track starts under its own title. */
   background-origin: content-box;
 }
 li.node.s1 > a { background-size: 10% 3px, 100% 3px; }
@@ -261,7 +261,7 @@ ul.prs { margin: var(--space-2) 0; padding: 0; list-style: none; overflow-wrap: 
 .raw > summary { cursor: pointer; }
 
 /* Reading in order: back on the left, on to the next on the right, with whatever room is
-   between them. Each control carries the neighbour's own label rather than the word "next",
+   between them. Each control carries the neighbour's own title rather than the word "next",
    so it wraps like the prose it is and is capped near a reading measure. */
 .walk { display: flex; gap: var(--space-3); border-top: 1px solid var(--line);
   margin-top: var(--space-3); padding-top: var(--space-2); }
@@ -270,7 +270,7 @@ ul.prs { margin: var(--space-2) 0; padding: 0; list-style: none; overflow-wrap: 
    session has nothing after it, and its back link still belongs on the left. */
 .walk [data-walk="previous"] { margin-right: auto; }
 .walk [data-walk="next"] { margin-left: auto; text-align: right; }
-/* The kind ahead of the label: the walk crosses levels, so a reader sees what they are
+/* The kind ahead of the title: the walk crosses levels, so a reader sees what they are
    stepping to before they step. Dimmed — the node's own words are what they came for. */
 .walk [data-field="kind"] { color: var(--dim); }
 
@@ -289,7 +289,7 @@ nav.errors [data-field="tool_errors"] { color: var(--bad); }
 ol.errors { margin: var(--space-2) 0; padding: 0; list-style: none; }
 ol.errors li { border-top: 1px solid var(--line); padding: var(--space-1) 0;
   display: flex; gap: var(--space-2); align-items: baseline; }
-/* The thread and the clock sit after the label and give it the room: what a reader scans is
+/* The thread and the clock sit after the title and give it the room: what a reader scans is
    which call failed, and the rest tells two failures of one tool apart. */
 ol.errors a { flex: 1; text-decoration: none; }
 ol.errors .source { color: var(--dim); }
@@ -304,10 +304,10 @@ section.enrichment { border-left: 2px solid var(--line); padding-left: var(--spa
 .friction { font-style: italic; }
 /* The mark saying what a thing is: what kind of node a row, a crumb or a heading names, and
    what a children log's column counts. It says nothing a screen reader needs — the word or the
-   label beside it is the same fact — so it is dim, and the markup hides it. */
+   title beside it is the same fact — so it is dim, and the markup hides it. */
 .icon { color: var(--dim); }
-/* The mark on a string a model wrote. Not dimmed with the rest — it is the one thing on a
-   tree row that says where the label came from, and a dimmed mark reads as decoration. */
+/* The mark on a title a model helped write. Not dimmed with the rest — it is the one thing
+   on a tree row that says where the words came from, and a dimmed mark reads as decoration. */
 .glyph { color: inherit; cursor: help; }
 /* Outlined in the colour it is written in, not in the rule colour: a chip is a thing the
    reader is asked to see, and `--line` against either paper is 1.4:1 — a pill with no edge. */

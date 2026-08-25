@@ -48,8 +48,8 @@ class Failures(NamedTuple):
 def failures(connection: duckdb.DuckDBPyConnection, session_id: str) -> Failures:
     """Every failed tool call of one session, capped at what a page of them shows.
 
-    Read at the tree's label width rather than a log's: a row here leads to a node, so it is
-    labelled the way that node is labelled everywhere else it appears.
+    Read at the tree's title width rather than a log's: a row here leads to a node, so it
+    is named the way that node is named everywhere else it appears.
     """
     bound: dict[str, ParamValue] = {
         "session_id": session_id,

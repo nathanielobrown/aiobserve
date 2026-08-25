@@ -9,7 +9,7 @@
 SELECT
     c."index" AS call_index,
     c.id AS api_call_id,
-    -- What the call said, and the model that said it: the label falls back to the model
+    -- What the call said, and the model that said it: the title falls back to the model
     -- when the answer was tool calls and no text. Both are cut here, and only one of them
     -- reaches a row.
     substr(c.text, 1, $nav_chars + 1) AS text_head,

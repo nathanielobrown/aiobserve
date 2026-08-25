@@ -6,7 +6,7 @@
 -- else on a node page reaches a failure five spawns down without reading everything first.
 -- No join up to the api call or the turn: each row leads to the tool call's own page, which
 -- carries the crumb chain that places it. Thin like `view_tree_tools`, and cut to the same
--- width, because both label a node rather than describe one.
+-- width, because both name a node rather than describe one.
 -- The order is total — `(source, "index")` and `(source, id)` are each unique within a
 -- session (`export/duckdb.py`) — which is what a cut means anything against: a page showing
 -- the first `$errors` of a partial order would show different rows on two reads of one store.

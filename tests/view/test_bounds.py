@@ -106,7 +106,7 @@ PAGE_BYTES = 500_000
 # previews a third value besides. The two together are 120,600 B, all of it on one preview of
 # one pane — and what a reader gets is the shell and the file read as what they are.
 #
-# Raised from 1,570,000 when the tree's window went from 50 children to 200 and its labels
+# Raised from 1,570,000 when the tree's window went from 50 children to 200 and its titles
 # from 48 characters to 110: four times the rows at a quarter more each is 3.3 MB of tree, and
 # the tree was already four fifths of the page. That is the whole of the increase, and what a
 # reader gets for it is a level of two hundred read where a level of fifty was — the fetch a
@@ -120,7 +120,7 @@ PAGE_BYTES = 500_000
 # the crumbs and 73 B on the pane's heading and the browser tab. The old ceiling left 34,666 B,
 # 10 B a row, so the raise landed before the markup rather than a template edit becoming an
 # argument about a ceiling. What a reader gets for it is a tree read by shape rather than by
-# label. The arithmetic under it comes to 5,023,767 B, and `TREE_ROW_BYTES` is pinned from
+# title. The arithmetic under it comes to 5,023,767 B, and `TREE_ROW_BYTES` is pinned from
 # below so the 26,233 B left over cannot be spent by a row that quietly grew instead.
 NODE_BYTES = 5_050_000
 # What the markup around one row of the list costs, with the content the row carries taken off.
@@ -150,8 +150,8 @@ MEASURED_PROJECT_ROW_MARKUP = 1_400
 MEASURED_PROJECTS_CHROME = 2_500
 # The same two for the page that lists where a session failed, whose row is a link to the
 # failed tool call's own page, the thread it ran on and a timestamp. Measured through the app
-# by the leaf at the bottom of this file, every label planted full of `&` and the session
-# failing more calls than the page shows: 620 B a row, of which 240 B is a planted label,
+# by the leaf at the bottom of this file, every title planted full of `&` and the session
+# failing more calls than the page shows: 620 B a row, of which 240 B is a planted title,
 # leaving 380 B of the link and the two cells after it — and 2,375 B of chrome, which is small
 # for the same reason the landing page's is: no form, no pager and no suggestions.
 MEASURED_ERROR_ROW_MARKUP = 400
@@ -163,7 +163,7 @@ MEASURED_ERRORS_CHROME = 2_500
 # The fixture records are redacted to a few characters, so they project nothing about this.
 MEASURED_RECORD_BYTES = 826
 
-# What the markup around one row of the pane's children log costs, with the label and the one
+# What the markup around one row of the pane's children log costs, with the title and the one
 # strings it carries taken off: a cell per column of the shape's own table, three copies of the
 # node's URL — the link, the `hx-get` behind it, and the mount the View button opens through —
 # the swap the link performs, the numbers that tell two children apart, and the row around
@@ -191,7 +191,7 @@ LOG_ROW_STRINGS = 3
 MEASURED_PAGER_BYTES = 600
 # And what the markup around one crumb of the chain down to the selection costs: the link, the
 # node's key, the mark saying what kind of node the step is, and the glyph saying who named it.
-# Measured the same way — 915 B less 550 B of label and 50 B of knobs, leaving 315 B.
+# Measured the same way — 915 B less 550 B of title and 50 B of knobs, leaving 315 B.
 MEASURED_CRUMB_MARKUP = 330
 # And what the markup around one previewed value costs — the heading, the `<pre>` and the line
 # offering the rest of it — with the preview itself taken off.
@@ -215,7 +215,7 @@ MARKED_PANE_DETAILS = 1
 # The pane's own heading and the browser tab each carry the mark saying what kind of node the
 # page is about, which is the whole of what the two of them cost here.
 # Re-measured through the app by the leaf at the bottom of this file at 17,138 B. Up to five
-# of its strings are tree labels — the page title, and the two steppers under the pane — so it
+# of its strings are tree titles — the page title, and the two steppers under the pane — so it
 # moves with `queries.NAV_CHARS`.
 MEASURED_NODE_CHROME = 17_500
 
@@ -303,12 +303,12 @@ def worst_project_row_bytes() -> int:
 
 
 def worst_error_row_bytes() -> int:
-    """What one row of a session's errors list can weigh: its markup, and a label of `&`.
+    """What one row of a session's errors list can weigh: its markup, and a title of `&`.
 
-    A row is a link to the failed tool call, labelled the way a tree row labels it — the tool's
+    A row is a link to the failed tool call, named the way a tree row names it — the tool's
     name and the head of what it was passed, cut to one width between them — beside the thread
     it ran on and the clock. The thread is an agent id the store minted, and the timestamp is
-    as long as its type allows; only the label is text a transcript wrote.
+    as long as its type allows; only the title is text a transcript wrote.
     """
     return MEASURED_ERROR_ROW_MARKUP + queries.NAV_CHARS * ESCAPED_CHAR_BYTES
 
@@ -350,7 +350,7 @@ def worst_log_row_bytes() -> int:
     """What one row of the pane's children log can weigh: its markup and the strings it prints.
 
     A log row is a link, the numbers that tell two children apart, and the strings the store
-    wrote — a turn's label, the model a call ran on, the tool a call called and the head of
+    wrote — a turn's title, the model a call ran on, the tool a call called and the head of
     what it was asked. Every one of them is cut to a log column's width in the query that
     selects it, a character past the cut so a row that fills its column says so.
     """
@@ -364,7 +364,7 @@ def worst_log_row_bytes() -> int:
 
 
 def worst_crumb_bytes() -> int:
-    """What one crumb of the chain above a node can weigh: its markup, a label of `&`, and the
+    """What one crumb of the chain above a node can weigh: its markup, a title of `&`, and the
     knobs its link carries once."""
     return MEASURED_CRUMB_MARKUP + queries.NAV_CHARS * ESCAPED_CHAR_BYTES + worst_knob_bytes()
 
@@ -585,7 +585,7 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     # recomputes from whatever this says, so a literal is the only thing that reds when the
     # window silently narrows back to what it was.
     assert bounds.Bound(200, 200) == bounds.KIN
-    # How much of a label a row of the tree shows. Wide enough that a draggable sidebar has
+    # How much of a title a row of the tree shows. Wide enough that a draggable sidebar has
     # something to show when a reader widens it — the cut is what a row can say, and CSS
     # decides how much of it fits. Every level cuts to the same width, whatever kind of child
     # it holds.
@@ -633,7 +633,7 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     assert QUERIES["view_project_rollups"].params["head_chars"].default == queries.LIST_CHARS
     assert QUERIES["view_project_rollups"].params["projects"].default == 100
     # And the errors list, bound the same way — a session can fail arbitrarily many calls —
-    # and labelled at a tree row's width, because each of its rows leads to a node.
+    # and titled at a tree row's width, because each of its rows leads to a node.
     assert QUERIES["view_session_errors"].params["nav_chars"].default == queries.NAV_CHARS
     assert QUERIES["view_session_errors"].params["errors"].default == 100
     # Every ceiling is projected at the largest page a URL can ask for, because a size is
@@ -1005,7 +1005,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     The node page is the one page `worst_node_bytes` multiplies four ways — a crumb per level
     open, a tree row per child of each, a log row per child of the selection, and the values the
     pane previews — so a template that grows any of them puts the ceiling out by whatever size
-    it is multiplied by. Every cap a label, a heading or a preview reads is planted full of `&`,
+    it is multiplied by. Every cap a title, a heading or a preview reads is planted full of `&`,
     the character that escapes to five bytes, because no recorded node is adversarial: what a
     pass wrote, and the prompt, command, agent type, model, tool name and tool payload a page
     falls back to. The sweep is every node of every session, not one page: the widest chrome
@@ -1042,7 +1042,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
         ),
         # What a turn's tree row, log row and pane read. All three go in past every cut that
         # touches them: the digest cuts each to a log line's width, and the prompt is the
-        # pane's one preview as well as the row's label, which is the wider of the two.
+        # pane's one preview as well as the row's title, which is the wider of the two.
         ("UPDATE turns SET prompt = ?, command_name = ?, command_args = ?", [fat] * 3),
         ("UPDATE agent_runs SET agent_type = ?, model = ?, description = ?", [fat, fat, fat]),
         ("UPDATE api_calls SET model = ?, text = ?, thinking = ?", [fat, fat, fat]),
@@ -1131,7 +1131,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     assert len(widest.encode()) <= MEASURED_NODE_CHROME
     # The plant reached the caps, which is what makes those numbers a worst case: each header
     # string cut to its head, each list cut to its first members and saying how many it left,
-    # every tree label cut to a nav width, and every preview offering the rest of itself.
+    # every tree title cut to a nav width, and every preview offering the rest of itself.
     session = next(chrome for chrome, _ in split if 'data-body="session"' in chrome)
     facts = fields(session, "data-body", "session")
     assert len(facts["git_branch"]) == len(facts["version"]) == queries.HEADER_CHARS
@@ -1141,7 +1141,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
         for row in rows["tree"]
         for found in re.findall(r'<span data-field="title">(.*?)</span>', row, flags=re.S)
     }
-    # No label got past the cut, and one reached it. Not every row's label is planted — a
+    # No title got past the cut, and one reached it. Not every row's title is planted — a
     # bucket is named by the viewer and a compaction by its trigger — so the widest is what
     # says the cut bit rather than every row being the same width.
     assert max(escaped) == queries.NAV_CHARS
@@ -1324,35 +1324,35 @@ def test_an_errors_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     """A session's errors list at its ceiling weighs no more than the arithmetic gives it.
 
     Nothing about a session caps how often its tools fail, so the store is filled past the
-    page's own ceiling and every label planted full of `&` — the character that escapes to
+    page's own ceiling and every title planted full of `&` — the character that escapes to
     five bytes. The failures are clones of a recorded tool call rather than invented rows;
     what is planted on each is the flag the store already records on two of them.
     """
     over = bounds.ERRORS.ceiling + 20
-    # A label longer than the width a row cuts it to, so the cut bites on every row. The index
+    # A title longer than the width a row cuts it to, so the cut bites on every row. The index
     # differs per clone because it is half of what orders the list: a page showing the first
     # `ERRORS` of a partial order is a page that cannot say what it cut.
-    label = "&" * (queries.NAV_CHARS + 1)
+    title = "&" * (queries.NAV_CHARS + 1)
     path = plant(
         (
             "INSERT INTO tool_calls (SELECT c.* REPLACE (c.id || '-planted-' || i AS id,"
             ' ? AS name, ? AS input, true AS is_error, 9000 + i AS "index")'
             " FROM (SELECT * FROM live_tool_calls WHERE session_id = ? LIMIT 1) c,"
             " range(1, ?) g(i))",
-            [label, label, FORK_ORIGIN, over + 1],
+            [title, title, FORK_ORIGIN, over + 1],
         ),
     )
     with TestClient(build_app(path)) as planted:
         response = planted.get(f"/session/{FORK_ORIGIN}/errors")
     assert response.status_code == 200, response.text[:200]
     page = response.text
-    # A page a reader jumps to stays under the ceiling with every label at its cap...
+    # A page a reader jumps to stays under the ceiling with every title at its cap...
     assert len(response.content) < PAGE_BYTES
     shown = values(page, "data-error")
     assert len(shown) == bounds.ERRORS.ceiling
     # ...every one of them a planted failure cut to the width a row reads it at...
-    labels = {len(fields(page, "data-error", key)["title"]) for key in shown}
-    assert max(labels) == queries.NAV_CHARS + len(ELLIPSIS)
+    titles = {len(fields(page, "data-error", key)["title"]) for key in shown}
+    assert max(titles) == queries.NAV_CHARS + len(ELLIPSIS)
     # ...and what it left out said rather than dropped, against the store's own count.
     with duckdb.connect(str(path), read_only=True) as connection:
         (failures,) = one(
@@ -1366,7 +1366,7 @@ def test_an_errors_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     chrome = re.sub(r"<li data-error=.*?</li>", "", page, flags=re.S)
     assert not values(chrome, "data-error") and 'id="errors"' in chrome
     assert len(chrome.encode()) <= MEASURED_ERRORS_CHROME
-    # ...and one row costs no more than its markup and the label it carries.
+    # ...and one row costs no more than its markup and the title it carries.
     row_bytes = (len(page.encode()) - len(chrome.encode())) / bounds.ERRORS.ceiling
     assert row_bytes <= worst_error_row_bytes()
 
@@ -1443,7 +1443,7 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     """Every preview is truncated before it reaches a page, so no one huge value can bloat it.
 
     The four widths the viewer cuts to, checked at once against one planted store: a list
-    row's, a tree row's label, a children log row's, and a pane's — a header's strings at one
+    row's, a tree row's title, a children log row's, and a pane's — a header's strings at one
     cut and the one value it is about at another, wider one. The oversized values are
     invented: redaction flattened every recorded string to a few characters, so no fixture
     reaches a cap.
@@ -1526,14 +1526,14 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # A path too long for the filter box to suggest whole is left out of it rather than cut:
     # half a path fills the filter in with a value that matches nothing.
     assert not [path for path in re.findall(r'<option value="([^"]*)"', listing) if "x" in path]
-    # A tree row is a line in a sidebar, so its label takes the narrowest cut of the four —
+    # A tree row is a line in a sidebar, so its title takes the narrowest cut of the four —
     # the same one whatever kind of node the row stands for. Read off the tree half of the
-    # page: the same `label` field names the node in three places, each at its own width.
+    # page: the same `title` field names the node in three places, each at its own width.
     tree, pane = session.split('<article id="pane">')
-    labels = re.findall(r'<span data-field="title">(.*?)</span>', tree, flags=re.S)
-    # Cut and marked as cut: every column a label is composed from comes back one character
+    titles = re.findall(r'<span data-field="title">(.*?)</span>', tree, flags=re.S)
+    # Cut and marked as cut: every column a title is composed from comes back one character
     # past the width, so a row that fills the line says the value went on.
-    assert max(labels, key=len) == "x" * queries.NAV_CHARS + ELLIPSIS
+    assert max(titles, key=len) == "x" * queries.NAV_CHARS + ELLIPSIS
     # A children log row is a line of a table, so it takes the next cut up — and every value
     # the plant reached is marked where it was cut, not merely short enough. Per value and not
     # at the maximum: a maximum is satisfied by whichever sibling overflowed furthest, which
