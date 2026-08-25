@@ -1439,6 +1439,58 @@ def test_a_call_row_says_what_the_call_said_and_which_tools_it_called(
     assert fields(quiet, "data-child", f"call:{call_id}")["text"] == ""
 
 
+def test_the_two_prose_columns_of_a_calls_log_are_bounded_by_the_stylesheet(
+    client: TestClient,
+) -> None:
+    """What a call said and which tools it called are held to their columns by CSS alone.
+
+    Both columns carry model prose in a table a browser sizes by its content, and neither the
+    query nor the template can bound what that does to a row: the cut those two values arrive
+    under is 300 characters, which is four lines of a wide column and a row as tall as a
+    paragraph. So the shape is the stylesheet's, and nothing renders CSS — a rule dropped here
+    is a page that still serves, still passes, and reads like a wall.
+
+    The floor under the words is the half of this a fixture cannot show. Most api calls say
+    nothing at all, so a column sized by its content collapses to the width of the few rows
+    that filled it, and the two lines it is meant to show arrive one word wide. Found in a
+    browser; pinned here.
+    """
+    # A turn page whose calls log has both columns, read the way a browser reads them: by the
+    # class the cell carries.
+    page = client.get(TURN).text
+    assert 'class="said"' in page and 'class="called"' in page
+    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.S)
+    rules = [
+        (selector.strip(), body)
+        for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", style)
+        if "td.said" in selector or "td.called" in selector
+    ]
+
+    def declared(cell: str) -> dict[str, str]:
+        """Every property the sheet sets on one of the two columns, or on the span inside it."""
+        return {
+            name.strip(): value.strip()
+            for selector, body in rules
+            if f"td.{cell}" in selector
+            for name, _, value in (part.partition(":") for part in body.split(";"))
+            if name.strip()
+        }
+
+    said, called = declared("said"), declared("called")
+    # Both are capped, so a column of prose cannot push the numbers a reader counts by off
+    # the side of the pane, and both are dim, so the row still scans as a row.
+    assert said["max-width"] == called["max-width"] == "26rem"
+    assert said["color"] == called["color"] == "var(--dim)"
+    # The words wrap and stop at two lines, however long the 300 characters run...
+    assert said["display"] == "-webkit-box" and said["overflow"] == "hidden"
+    assert said["-webkit-line-clamp"] == said["line-clamp"] == "2"
+    # ...they never collapse to the width of the calls that said nothing...
+    assert said["min-width"] == "16rem"
+    # ...and the list of tool titles is one line, cut with an ellipsis rather than wrapped.
+    assert called["white-space"] == "nowrap"
+    assert called["text-overflow"] == "ellipsis" and called["overflow"] == "hidden"
+
+
 def test_one_tool_call_is_titled_the_same_way_wherever_it_is_named(
     plant: Planter, store: duckdb.DuckDBPyConnection
 ) -> None:
