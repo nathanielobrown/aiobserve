@@ -1333,6 +1333,11 @@ def test_a_call_row_says_what_the_call_said_and_which_tools_it_called(
     The titles are the shared derivation the tools log reads, so a call's row and the log
     inside it name the same tool the same way.
 
+    The call is picked from a turn whose other calls made tool calls too, and its two tools are
+    dressed in reverse order of their index. A row that named the turn's tools rather than the
+    call's, or named the call's in the order the store happens to hold them, prints a different
+    string here.
+
     Planted: redaction leaves a recorded call's text trimmed and no recorded tool call with a
     path or a description in its input.
     """
@@ -1343,9 +1348,15 @@ def test_a_call_row_says_what_the_call_said_and_which_tools_it_called(
         "   ON t.session_id = c.session_id AND t.source = c.source AND t.api_call_id = c.id"
         " JOIN live_turns u ON u.session_id = c.session_id AND u.source = c.source"
         "  AND u.id = c.turn_id"
+        # A sibling call on the same turn that called tools of its own, so that a row naming
+        # the turn's tools instead of the call's has something extra to name.
+        " WHERE EXISTS (SELECT 1 FROM live_api_calls o JOIN live_tool_calls ot"
+        "   ON ot.session_id = o.session_id AND ot.source = o.source AND ot.api_call_id = o.id"
+        "  WHERE o.session_id = c.session_id AND o.source = c.source AND o.turn_id = c.turn_id"
+        "   AND o.id <> c.id)"
         " GROUP BY 1, 2, 3, 4 ORDER BY 5 DESC, 1, 2, 3, 4 LIMIT 1",
     )
-    assert held >= 2, "the plant needs a call under a turn with two tool calls to name"
+    assert held == 2, "the plant names both of the call's tools, so it needs exactly two"
     tools = [
         row[0]
         for row in store.execute(
@@ -1359,6 +1370,22 @@ def test_a_call_row_says_what_the_call_said_and_which_tools_it_called(
     dressed = plant(
         ("UPDATE sessions SET project_dir = ? WHERE id = ?", [project, session_id]),
         ("UPDATE api_calls SET text = ? WHERE id = ?", [said, call_id]),
+        # Every tool the turn's *other* calls made, named so that a row reaching past its own
+        # call would print the word.
+        (
+            "UPDATE tool_calls SET name = 'Bash', input = ?"
+            " WHERE session_id = ? AND source = ? AND api_call_id <> ? AND api_call_id IN"
+            " (SELECT id FROM api_calls WHERE session_id = ? AND source = ? AND turn_id = ?)",
+            [
+                json.dumps({"command": "git log", "description": "Another call asked"}),
+                session_id,
+                source,
+                call_id,
+                session_id,
+                source,
+                turn_id,
+            ],
+        ),
         # A file inside the session's own project, and a command that says what it was for:
         # the two derivations the tools log's own rows show.
         (
@@ -1369,16 +1396,19 @@ def test_a_call_row_says_what_the_call_said_and_which_tools_it_called(
             "UPDATE tool_calls SET name = ?, input = ? WHERE id = ?",
             ["Bash", '{"command": "git status", "description": "Read the tree"}', tools[1]],
         ),
+        # And the first of them is moved to the end of the call's order, so that the order the
+        # store holds the two rows in and the order the call made them in disagree. A row that
+        # printed the tools in the order they came back names them the other way round.
+        ('UPDATE tool_calls SET "index" = 90000 WHERE id = ?', [tools[0]]),
     )
     with TestClient(build_app(dressed)) as planted:
         page = planted.get(f"/session/{session_id}/thread/{source}/turn/{turn_id}").text
     row = fields(page, "data-child", f"call:{call_id}")
     # What the call said stands in the row beside the model that said it...
     assert row["text"] == said
-    # ...and the tools it called are named, in the order it called them, under the count of
-    # them: one title a tool call, the two dressed here first and the redacted rest behind.
-    assert row["tool_titles"].startswith("src/aiobserve/view/app.py, Read the tree, ")
-    assert row["tool_titles"].count(", ") == held - 1
+    # ...and the tools it called are named, in the order it called them and no others: what
+    # the re-indexed call asked for last comes last, under the count of them.
+    assert row["tool_titles"] == "Read the tree, src/aiobserve/view/app.py"
     assert row["tool_calls"] == str(held)
 
     # Both are cut to the column's width and marked where they were cut, like every other
