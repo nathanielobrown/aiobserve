@@ -112,7 +112,18 @@ PAGE_BYTES = 500_000
 # reader gets for it is a level of two hundred read where a level of fifty was — the fetch a
 # tail row offers is the same rows over a second request, so the bytes were already reachable;
 # what moved is how many clicks reach them. The arithmetic under it comes to 4,865,334 B.
-NODE_BYTES = 4_900_000
+#
+# Raised again from 4,900,000, this time for a page that has not grown yet. The tree is about
+# to carry a glyph saying what kind each row is, in the pattern the children log's column
+# headers already use: `<span class="icon" aria-hidden="true">❖</span>` is 38 B of markup
+# around a 3-byte mark, 48 B a row, and 3,217 rows of it is 154,416 B. The old ceiling left
+# 34,666 B, which is 10 B a row — so the glyph could not land without this line moving, and
+# moving it there rather than here would make a template edit an argument about a ceiling.
+# The headroom is therefore held deliberately and priced: 4,865,334 B today, 154,416 B for the
+# glyph, and 30,250 B of the rounding every ceiling here carries. Until the glyph lands a
+# reader gets nothing for this raise, and `TREE_ROW_BYTES` is pinned from below so the room
+# cannot be spent by a row that quietly grew instead.
+NODE_BYTES = 5_050_000
 # What the markup around one row of the list costs, with the content the row carries taken off.
 # Re-measured through the app by the leaf at the bottom of this file, every cap full of `&`,
 # at the dearest row the list holds rather than at whichever one sorted second: that row cost
@@ -1069,15 +1080,20 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     # The list and the two pages that are not nodes come back too; only a node page splits.
     split = [priced(page) for page in served if 'id="tree-rows"' in page]
     # A crumb, a tree row, a log row and a preview each weigh what the arithmetic budgets...
-    for name, budget in (
-        ("crumb", worst_crumb_bytes()),
-        ("tree", bounds.TREE_ROW_BYTES),
-        ("log", worst_log_row_bytes()),
-        ("pager", MEASURED_PAGER_BYTES),
+    for name, budget, measured in (
+        ("crumb", worst_crumb_bytes(), False),
+        ("tree", bounds.TREE_ROW_BYTES, True),
+        ("log", worst_log_row_bytes(), False),
+        ("pager", MEASURED_PAGER_BYTES, False),
     ):
         found = [row for _, rows in split for row in rows[name]]
         assert found, name
-        assert max(len(row.encode()) for row in found) <= budget, name
+        widest_row = max(len(row.encode()) for row in found)
+        # Three of the four are arithmetic over a cap, so a row that comes in under is a cap
+        # with room left in it. The tree row is measured rather than budgeted, and the tree is
+        # four fifths of the page, so it is held from below as well: a byte of slack there is
+        # 3,217 bytes the ceiling keeps for nothing, and `NODE_BYTES` now has room to hide one.
+        assert widest_row == budget if measured else widest_row <= budget, (name, widest_row)
     # A preview is priced by whether the page marked it up, which is the whole of the
     # difference between the two budgets: a span a token against an escape a character.
     previews = [row for _, rows in split for row in rows["detail"]]

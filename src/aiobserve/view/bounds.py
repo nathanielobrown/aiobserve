@@ -121,6 +121,8 @@ HIGHLIGHT_CHARS = 256_000
 # Measured through the app rather than budgeted, at every label full of `&` and the longest
 # query string a link can carry (`tests/view/test_bounds.py`). Pinned at exactly what it
 # measures, with no slack, for the same reason: a byte of slack here is 3,217 bytes of page.
+# That leaf holds it from below as well as from above, so slack cannot hide in the room the
+# node page's ceiling keeps for this row's next addition.
 # Nearly all of the row is its URL written twice — the href a reader sees and the `hx-get`
 # htmx fetches — because the swap the two of them perform is written once on `#tree-rows` and
 # inherited. A store whose agent runs carry longer ids than the recorded corpus does is a
