@@ -109,7 +109,7 @@ A run is named for the agent that ran it: `Explore — found the indent bug`. Th
 
 ## A mark says what kind of node a page names
 
-Four surfaces say what kind of node they name with one character: the tree row, the crumb, the pane's heading, and the browser tab. `❖` a session, `❯` a turn, `◎` an agent run, `⇄` an api call, `⚒` a tool call, `⊟` a compaction, and `∅` either bucket — the calls that answer no turn, and the runs nothing placed. Three of them are the mark that heads the children log's column counting that kind, because a column head and a tree row are one reader meeting one thing twice.
+Four surfaces say what kind of node they name with one character: the tree row, the crumb, the pane's heading, and the browser tab. `❖` a session, `❯` a turn, `◎` an agent run, `⇄` an api call, `⚒` a tool call, `⊟` a compaction, and `∅` either bucket — the calls that answer no turn, and the runs nothing placed. Three of them also head a children log's column about that kind, because a column head and a tree row are one reader meeting one thing twice.
 
 The mark is decoration and the markup says so. It stands for a word already there — the row's class, the crumb's field name, the pane's own kind — so a screen reader passes over it and reads the label.
 
