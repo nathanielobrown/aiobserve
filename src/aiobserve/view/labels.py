@@ -88,6 +88,10 @@ LABELS: dict[str, str] = {
     # description and the glyph beside that says who wrote both — so the word is here for the
     # registry to stay closed over what the panes preview rather than for a reader.
     "friction": "Friction",
+    # What Claude Code recorded the session as, which is `title` in the store and not the
+    # `title` below: that one is the viewer's own derivation, and on a described session the
+    # two say different things. The heading shows the derivation, this row the record.
+    "recorded_title": "Title",
     # The two columns a children log prints that no query returns. `title` is what the viewer
     # calls a node in the most readable form the record supports (`docs/viewer.md`), and `body`
     # is the column holding the control that opens one under its row.

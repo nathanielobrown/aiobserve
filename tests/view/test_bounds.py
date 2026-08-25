@@ -22,8 +22,8 @@ from fastapi.testclient import TestClient
 from markupsafe import escape
 
 from aiobserve.analyze import macros, queries
-from aiobserve.enrich.taxonomy import Category, Outcome
 from aiobserve.analyze.queries import QUERIES, VIEW_PREFIX, ParamValue
+from aiobserve.enrich.taxonomy import Category, Outcome
 from aiobserve.view import bounds, nodes
 from aiobserve.view.app import QUERY_URL, build_app, knobs
 from aiobserve.view.format import ELLIPSIS
@@ -261,10 +261,11 @@ DEAR_PANE_DETAILS = 3
 # page is about, which is the whole of what the two of them cost here.
 # What a pass wrote sits here too, and each of its two lines carries the fetch that offers the
 # rest of it — a URL written twice, the way every other value a pane previews offers its own.
-# Re-measured through the app by the leaf at the bottom of this file at 17,963 B. Up to five
+# Re-measured through the app by the leaf at the bottom of this file at 18,530 B. Up to five
 # of its strings are tree titles — the page title, and the two steppers under the pane — so it
-# moves with `queries.NAV_CHARS`.
-MEASURED_NODE_CHROME = 18_400
+# moves with `queries.NAV_CHARS`, and one more is the name a session was recorded under, which
+# moves with `queries.HEADER_CHARS`.
+MEASURED_NODE_CHROME = 19_000
 
 # The parameter every truncated column of a run row is cut to. Counted per query rather than
 # listed, so a fourth column added to a chip shows up in the arithmetic instead of quietly

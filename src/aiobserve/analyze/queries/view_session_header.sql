@@ -20,7 +20,6 @@ WITH skill AS (
 SELECT
     s.id AS session_id,
     substr(s.title, 1, $head_chars + 1) AS title,
-    substr(s.agent_name, 1, $head_chars + 1) AS agent_name,
     substr(s.project_dir, 1, $head_chars + 1) AS project_dir,
     substr(s.git_branch, 1, $head_chars + 1) AS git_branch,
     substr(s.version, 1, $head_chars + 1) AS version,

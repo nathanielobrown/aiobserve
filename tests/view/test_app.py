@@ -674,8 +674,10 @@ def test_the_session_header_holds_what_the_store_says_about_it(
         " JOIN session_rollups r ON r.session_id = s.id WHERE s.id = ?",
         [SPINE],
     )
-    # The title is what the node is called rather than a fact under it, so it heads the pane.
-    assert fields(page, "data-body", "session")["title"] == title
+    # The title heads the pane as what the node is called — a derivation, which on a described
+    # session is the pass's words instead — and sits under it again as the store's own column,
+    # which is the one place a reader learns what the session was recorded as.
+    assert (pane["title"], pane["recorded_title"]) == (title, title)
     assert pane["turns"] == str(turns)
     assert pane["agent_runs"] == str(agent_runs)
     assert pane["cost_usd"] == money(cost)
