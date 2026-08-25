@@ -38,7 +38,7 @@ docs/
   schema.md           What each telemetry field means, and the session that proves it
   store.md            The trace store: why it's the archive, and what to check before deleting one
   enrichment.md       Model-written descriptions beside every run, turn, and session — what makes one stale, and what a pass costs
-  viewer.md           `aiobserve view`: what the pages show, the URLs to cite, and reading while an extract runs
+  viewer.md           `aiobserve view`: what the pages show, how a node is titled, the URLs to cite, and reading while an extract runs
   otlp-export.md      `aiobserve export-otlp`: what leaves the machine, the at-least-once promise, and what re-sends the corpus
   documentation.md    Where each kind of content belongs — read before writing docs
   writing_style_guide.md   House prose style, Zinsser distilled — loaded via the writing skill
