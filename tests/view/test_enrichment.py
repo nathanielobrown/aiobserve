@@ -26,10 +26,18 @@ from aiobserve.view.format import cut, when
 from aiobserve.view.nodes import LEAD_SEPARATOR
 from aiobserve.view.store import Page
 from tests.conftest import SPINE, SPINE_RUN
-from tests.view.conftest import Planter, fields, inside, one, pages, values
+from tests.view.conftest import ROUTES, Planter, fields, inside, one, pages, values
 
 # Every enrichment table, and the statement that empties one — the second absent-safety case.
 EMPTIED = tuple((f"DELETE FROM {spec.table}", ()) for spec in LEVELS.values())
+
+# The fetches behind what a pass wrote, read off the route sweep rather than listed, so a
+# fourth level's pair lands in the absence check with the rest.
+WROTE_URLS = tuple(
+    url
+    for path, url in ROUTES.items()
+    if path.startswith(("/fragment/said/", "/fragment/friction/"))
+)
 
 
 def enrichment_of(
@@ -239,6 +247,13 @@ def test_a_store_no_enrichment_pass_has_touched_renders_every_page(
         page = client.get(url)
         assert page.status_code == 200, url
         assert values(page.text, "data-enrichment") == [], url
+    # And the fetches behind those words answer nothing rather than crashing. No page here
+    # links to one — the section that carries the link is not rendered at all — but the URLs
+    # are ones a reader can paste from a described store's page, and the table they read does
+    # not exist: unguarded, the query raises a catalog error and the route serves a 500.
+    assert WROTE_URLS, "the route sweep no longer names the fetches behind a pass's words"
+    for url in WROTE_URLS:
+        assert client.get(url).status_code == 404, url
     # And the store really is the bare one, so the sweep above proves what it claims.
     tables = {row[0] for row in store.execute("SELECT table_name FROM duckdb_tables()").fetchall()}
     assert not tables & {spec.table for spec in LEVELS.values()}
