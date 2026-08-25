@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 from markupsafe import escape
 
 from aiobserve.analyze import macros, queries
+from aiobserve.enrich.taxonomy import Category, Outcome
 from aiobserve.analyze.queries import QUERIES, VIEW_PREFIX, ParamValue
 from aiobserve.view import bounds, nodes
 from aiobserve.view.app import QUERY_URL, build_app, knobs
@@ -1444,18 +1445,19 @@ def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     # the mark behind them is the escape the plant put past the cut.
     assert row["agent_types"].count(name[:-2]) == queries.LIST_ITEMS
     assert row["agent_types"].count(ELLIPSIS) == queries.LIST_ITEMS
-    # The kinds of work are the one cut column with no mark: the taxonomy is closed and its
-    # longest member is nine characters, so a name there is never stopped. Planted past the
-    # cut all the same, because what the ceiling budgets is the width and not the vocabulary.
+    # The kinds of work are the one cut column with no mark, and the plant cannot show why:
+    # `$kind_chars` has no character to spare (`view_described_sessions.sql`), so a name
+    # arrives at the width whatever was planted behind it and a mark could not fire. What
+    # holds the budget is the vocabulary itself — closed, and every member of both of them
+    # short of the cut — which is the claim the row above prices at no mark at all.
+    assert max(len(member) for member in (*Category, *Outcome)) < queries.TAG_CHARS
     assert row["work"].count(kind[:-2]) == queries.LIST_CATEGORIES
-    assert ELLIPSIS not in row["work"]
     assert row["agent_types"].endswith("more") and row["work"].endswith("more")
     assert len(suggestions(one_row)) == queries.LIST_PROJECTS
     # And the pass's own line reached the head the list cuts it to, with both tags beside it —
     # the whole description is on the session's page, which is a page ceiling of its own.
     assert row["description"] == "&" * queries.LIST_CHARS + ELLIPSIS
     assert len(row["category"]) == len(row["outcome"]) == queries.TAG_CHARS
-    assert ELLIPSIS not in row["category"] + row["outcome"]
     assert "stale" not in row
 
 
