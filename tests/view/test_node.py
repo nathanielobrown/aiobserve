@@ -196,6 +196,9 @@ def test_a_slash_turn_leads_with_the_command_it_ran(
     # The wrapper itself is gone from the pane: everything inside it is already on the page
     # under the two headings above, and this turn's prompt is nothing else.
     assert "prompt" not in values(page, "data-detail")
+    # Gone from the value route under that heading too, and not as an empty page: the column
+    # the fragment reads is NULL for this turn, so the URL a reader kept answers nothing.
+    assert client.get(f"/fragment/prompt/{SPINE}/{MAIN}/{turn_id}").status_code == 404
     # It is still what was sent, though, so the record the pane opens beneath holds it whole.
     (line_no,) = values(page, "data-open-record")
     recorded = client.get(f"/fragment/record/{SPINE}/{MAIN}/{line_no}").text

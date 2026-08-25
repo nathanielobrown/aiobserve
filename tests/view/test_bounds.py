@@ -553,6 +553,11 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     assert QUERIES["view_records"].params["page_records"].default == 100
     assert QUERIES["view_records"].params["preview_chars"].default == 160
     assert QUERIES["view_offload"].params["chunk_chars"].default == 50_000
+    # How many children one open level of the tree shows. Not a manifest default — the tree
+    # composes its window around the query rather than binding it — and every leaf below
+    # recomputes from whatever this says, so a literal is the only thing that reds when the
+    # window silently narrows back to what it was.
+    assert bounds.KIN == bounds.Bound(200, 200)
     # How much of a label a row of the tree shows. Wide enough that a draggable sidebar has
     # something to show when a reader widens it — the cut is what a row can say, and CSS
     # decides how much of it fits. Every level cuts to the same width, whatever kind of child
