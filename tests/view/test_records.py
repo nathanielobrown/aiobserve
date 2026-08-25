@@ -200,14 +200,24 @@ def test_every_number_the_records_browser_prints_carries_its_separators(
     )
     with TestClient(build_app(path)) as planted:
         page = planted.get(f"/session/{ANCESTOR}/thread/{MAIN}/records").text
-    held = recorded + over
-    shown = len(values(page, "data-record"))
-    assert shown == bounds.RECORDS.default
-    # What the thread holds from this cursor on, and what the page left behind it, both
-    # grouped in threes — and the plant pushed each past where that is a claim.
-    assert fields(page, "id", "records")["matched"] == f"{held:,}"
-    (after,) = values(page, "data-more-records")
-    assert fields(page, "data-more-records", after)["count"] == f"+{held - shown:,} more"
+        held = recorded + over
+        on_page = values(page, "data-record")
+        assert len(on_page) == bounds.RECORDS.default
+        # What the thread holds from this cursor on, and what the page left behind it, both
+        # grouped in threes — and the plant pushed each past where that is a claim.
+        assert fields(page, "id", "records")["matched"] == f"{held:,}"
+        (after,) = values(page, "data-more-records")
+        assert fields(page, "data-more-records", after)["count"] == f"+{held - len(on_page):,} more"
+        # And the reader gets there by clicking, so the next page is fetched through the link
+        # the page wrote rather than one this test composed — the only way a change to that
+        # URL's shape fails here rather than in a browser.
+        (link,) = inside(page, "data-more-records", after, "href")
+        following = planted.get(link)
+    assert following.status_code == 200, link
+    # The cursor carried the reader forward: a full page again, and none of it a repeat.
+    next_page = values(following.text, "data-record")
+    assert len(next_page) == bounds.RECORDS.default
+    assert set(next_page).isdisjoint(on_page)
 
 
 def test_a_record_fragment_holds_the_one_record_it_names(
@@ -223,10 +233,14 @@ def test_a_record_fragment_holds_the_one_record_it_names(
         "SELECT raw FROM raw_records WHERE session_id = ? AND source = ? AND line_no = ?",
         [RESUME, MAIN, str(RESUME_LONG_RECORD)],
     )
-    served = client.get(
-        f"/fragment/record/session/{RESUME}/thread/{MAIN}/line/{RESUME_LONG_RECORD}"
-    )
-    assert served.status_code == 200
+    # Through the fetch the row itself carries, opened at that record. Minting the URL here
+    # would leave the template free to write any shape it liked and this test still green.
+    browser = client.get(
+        f"/session/{RESUME}/thread/{MAIN}/records", params={"after": RESUME_LONG_RECORD - 1}
+    ).text
+    (fetch,) = inside(browser, "data-open-record", str(RESUME_LONG_RECORD), "hx-get")
+    served = client.get(fetch)
+    assert served.status_code == 200, fetch
     shown = fields(served.text, "data-record-value", str(RESUME_LONG_RECORD))
     # The whole record arrived — indented and marked up, so it is read back through the
     # markup: every field the store holds, and nothing the page invented.
@@ -305,8 +319,11 @@ def test_every_turn_links_to_the_record_it_was_read_from(
             f"/session/{SPINE}/thread/{MAIN}/records",
             url,
         ], turn_id
-        # ...and the closed block beside it fetches the same record whole.
+        # ...and the closed block beside it fetches the same record whole, again through the
+        # URL the pane wrote: this is the third place a record URL is spelled out by hand.
         assert values(page, "data-open-record") == [str(line_no)], turn_id
+        (fetch,) = inside(page, "data-open-record", str(line_no), "hx-get")
+        assert values(client.get(fetch).text, "data-record-value") == [str(line_no)], fetch
     # And the link lands on the record, which is the whole point of deriving it this way.
     line = next(iter(behind.values()))
     landed = client.get(f"/session/{SPINE}/thread/{MAIN}/records", params={"after": line - 1})
