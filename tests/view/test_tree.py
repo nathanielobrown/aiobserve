@@ -504,7 +504,12 @@ def test_the_tree_is_widened_by_a_handle_and_the_width_outlives_the_page(
     # seeded from it survives into the wide layout as a column twice the one above. Witnessed
     # in Chromium on 2026-08-25: loaded at 800 px and widened to 1600, the tree held 768 px
     # against the stylesheet's 384 and left the pane narrower than the tree.
-    assert "gridTemplateColumns" in served.text
+    # And it reads the *first* track of that grid, which is the tree's: `parseFloat` takes the
+    # leading number of `"384px 8px 1fr"` and stops there. A read that walked to another track
+    # would seed the gap or the pane — and where the walk misses, `apply()` clamps the `NaN` it
+    # yields to `NaN` and the column comes out broken. Pinned as one expression, which is as
+    # far as a server-side test can follow a script this app only serves.
+    assert re.search(r"parseFloat\(getComputedStyle\(\w+\)\.gridTemplateColumns\)", served.text)
     assert "getBoundingClientRect" not in served.text
 
 
