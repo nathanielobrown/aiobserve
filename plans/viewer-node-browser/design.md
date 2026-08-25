@@ -117,7 +117,7 @@ pyproject.toml + pygments
 ## Key contracts
 
 - One body, two mounts: `_node_body.html` macros render header + enrichment + detail per kind; the full view wraps with breadcrumb + children log + prev/next; `/fragment/body/...` serves the body alone, children as a count + link (decision 1).
-- `tree.py`: `ancestry(conn, node) -> list[Node]` (raises when chain + selection exceed `DEPTH`), `kin(conn, node, preset, cap) -> Paged`-shaped children, total over the kind × preset table above; `Node = (kind, source | None, id, label, glyph, cost, meter, tie)`.
+- `tree.py`: `ancestry(conn, node) -> list[Node]` (raises when chain + selection exceed `DEPTH`), `kin(conn, node, preset, cap) -> Paged`-shaped children, total over the kind × preset table above; `Node = (kind, source | None, id, label, glyph, cost, meter, tie)`. **As built,** the field is `title`: `Node` joins a `lead` to the `words` a query composed, and each surface prints the cut that fits it — `tree_title`, `log_title`, `pane_title`. What each kind is titled is in `docs/viewer.md`, under "One title names a node everywhere".
 - `walk.py`: `neighbors(conn, node) -> tuple[Step | None, Step | None]`, `Step = (node, kind_label, description | None)`.
 - Every request value binds as a named parameter; the citation contract (`queries.citation`) is unchanged.
 
