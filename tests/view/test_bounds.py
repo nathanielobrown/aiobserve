@@ -281,6 +281,9 @@ LIST_KIND_HEAD = "$kind_chars"
 # escape is five bytes (`&amp;`, `&#34;`, `&#39;`), and the longest UTF-8 encoding is four, so
 # five bytes a character covers both.
 ESCAPED_CHAR_BYTES = 5
+# And what the mark on a cut value costs, once per cut column: the ellipsis a value carries in
+# place of the rest of itself, which is three bytes of UTF-8 and no escape.
+MARK_BYTES = len(ELLIPSIS.encode())
 # And the most one character of it can weigh where the page marks it up in its own syntax: a
 # `<span class="` of 13, a class of 3, a `">` of 2, a `</span>` of 7, and the character itself
 # escaped to 5. A construction bound like the one above rather than a measurement, for the same
@@ -331,6 +334,11 @@ def worst_session_row_bytes() -> int:
     return (
         MEASURED_SESSION_ROW_MARKUP
         + (strings + names + described + kinds) * ESCAPED_CHAR_BYTES
+        # The pass's own line is the one string here that is marked where it was cut, so it is
+        # the one that pays for a mark — outside the escape, since an ellipsis is three bytes of
+        # UTF-8 and nothing escapes it. A row's other heads are cut at the same width and reach
+        # it rarely enough that marking them is a measurement to redo, not a byte to spend.
+        + heads(said, LIST_HEAD) * MARK_BYTES
         + MEASURED_LIST_ENRICHMENT_MARKUP
         + worst_tag_bytes()
     )
@@ -1415,7 +1423,7 @@ def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     assert len(suggestions(one_row)) == queries.LIST_PROJECTS
     # And the pass's own line reached the head the list cuts it to, with both tags beside it —
     # the whole description is on the session's page, which is a page ceiling of its own.
-    assert len(row["description"]) == queries.LIST_CHARS
+    assert row["description"] == "&" * queries.LIST_CHARS + ELLIPSIS
     assert len(row["category"]) == len(row["outcome"]) == queries.TAG_CHARS
     assert "stale" not in row
 

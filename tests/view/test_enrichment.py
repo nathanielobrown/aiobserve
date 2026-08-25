@@ -70,7 +70,9 @@ def test_a_session_page_shows_what_the_model_said_about_the_session(
 
 
 def test_the_session_list_shows_what_the_model_said_about_each_session(
-    enriched_client: TestClient, enriched_store: duckdb.DuckDBPyConnection
+    enriched_client: TestClient,
+    enriched_store: duckdb.DuckDBPyConnection,
+    enriched_plant: Planter,
 ) -> None:
     """A row of the list carries the head of its session's description and its two tags.
 
@@ -99,6 +101,16 @@ def test_the_session_list_shows_what_the_model_said_about_each_session(
     assert values(listing, "data-enrichment") == described
     # The query behind that is cited like every other query the page ran.
     assert Page.DESCRIBED_SESSIONS.value in fields(listing, "id", "citation")
+    # A row's head is narrower than the pane's, and a pass writes to neither: 435 of the 438
+    # described sessions in the canonical store on 2026-08-25 run past the 100 characters a row
+    # prints, so the cut is the ordinary case here rather than the edge. It is marked like
+    # every other cut value, which is what the row's link then makes good on — the whole line
+    # is on the session's own page, a click from the mark that says there is more of it.
+    sentence = "w" * (queries.LIST_CHARS + 1)
+    path: Path = enriched_plant(("UPDATE session_enrichments SET description = ?", [sentence]))
+    with TestClient(build_app(path)) as planted:
+        row = fields(planted.get("/sessions").text, "data-session-id", described[0])
+    assert row["description"] == cut(sentence, queries.LIST_CHARS)
 
 
 def test_the_work_cell_counts_the_turn_categories_a_pass_described(

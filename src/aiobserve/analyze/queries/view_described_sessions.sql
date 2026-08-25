@@ -22,7 +22,7 @@ WITH work_kinds AS (
 )
 SELECT
     d.session_id,
-    substr(e.description, 1, $head_chars) AS description,
+    substr(e.description, 1, $head_chars + 1) AS description,
     substr(e.category, 1, $tag_chars) AS category,
     substr(e.outcome, 1, $tag_chars) AS outcome,
     list_slice(coalesce(w.kinds, []), 1, $head_kinds) AS work,

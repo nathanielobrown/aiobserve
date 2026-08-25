@@ -81,7 +81,7 @@
            and the session's own page says so a click away. #}
         {% if row.description %}
         <span class="enrichment secondary" data-enrichment="{{ row.session_id }}">
-          <span data-field="description">{{ row.description }}</span>
+          <span data-field="description">{{ row.description | short }}</span>
           {{ parts.tags({'category': row.category, 'outcome': row.outcome, 'stale': false}) }}
         </span>
         {% endif %}

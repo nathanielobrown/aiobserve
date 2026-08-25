@@ -492,6 +492,17 @@ def build_app(db_path: Path) -> FastAPI:
         """
         return fmt.cut(value, queries.ENRICHMENT_CHARS)
 
+    def short(value: str) -> str:
+        """The line a pass wrote, at the narrower width a row of the session list prints it.
+
+        The row's own half of the protocol. A row is multiplied by the page, so it takes a head
+        where the pane takes a paragraph, and the mark is what the link beside it makes good on:
+        the whole line is on the session's page, a click away. The row's other strings are cut
+        at this width too and are not marked yet — their marks would move the list's ceiling,
+        which is a measurement rather than a filter (`tests/view/test_bounds.py`).
+        """
+        return fmt.cut(value, queries.LIST_CHARS)
+
     def member(value: str) -> str:
         """One member of a header's list, marked where the query cut it.
 
@@ -513,6 +524,7 @@ def build_app(db_path: Path) -> FastAPI:
         "head": head,
         "member": member,
         "said": said,
+        "short": short,
         "path": project_path,
         "ago": ago,
         # The three filters that print what a transcript wrote. Each hands back escaped
