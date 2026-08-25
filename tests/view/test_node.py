@@ -156,6 +156,12 @@ def test_every_kind_of_node_serves_a_page_that_says_what_it_is(
     # And a crumb above the selection is marked as what *it* is, not as what the page is
     # about: the chain says the kind of every step down to here.
     assert icons(page.text, "data-crumb", crumbs[0]) == [MARKS["session"]], url
+    # Every one of those marks is decoration and the markup says so. It stands for a word
+    # already on the page — the pane's kind, the crumb's field name, the row's class — so a
+    # screen reader passes over it and reads the label instead of announcing a character it
+    # has no word for (`.claude/rules/viewer-ui.md`).
+    for where, key in (("data-body", kind), ("data-crumb", crumbs[-1]), ("data-tree", selected)):
+        assert inside(page.text, where, key, "aria-hidden") == ["true"], (url, where)
 
 
 @pytest.mark.parametrize("kind", list(KINDS))
@@ -955,7 +961,12 @@ def test_a_kind_is_marked_the_same_in_the_tree_and_in_the_column_that_counts_it(
     """
     headed: dict[str, str] = {}
     for sql, template, _ in LEVELS.values():
-        headed |= headings(client.get(template.format(*one(store, sql))).text)
+        log = client.get(template.format(*one(store, sql))).text
+        headed |= headings(log)
+        # The head is where a log says its kind, and the only place: a mark on every row
+        # under it would be the same character down a column that already means it, at
+        # 49 bytes a row on a page whose tree spends four fifths of the budget.
+        assert not [key for key in values(log, "data-child") if icons(log, "data-child", key)]
     for kind, field in SHARED.items():
         page = client.get(node_url(store, kind)).text
         (selected,) = values(page, "data-selected")
