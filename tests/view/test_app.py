@@ -1056,6 +1056,17 @@ def test_planted_markup_arrives_inert(plant: Planter) -> None:
             # What followed a slash command, which is rendered rather than escaped, like the
             # prompt a plain turn shows in its place.
             client.get(f"/fragment/args/session/{SPINE}/thread/{MAIN}/turn/{SLASH_TURN}").text,
+            # The turn whose calls each made tool calls, where a row names the tools its call
+            # went on to make: the titles are read out of the arguments the plant rewrote.
+            client.get(
+                f"/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/turn/{DENSE_CALL_TURN}"
+            ).text,
+            # And that call's body opened as an expansion, which is the same arguments again,
+            # a row a tool this time and rendered by a fragment rather than by a page.
+            client.get(
+                f"{nodes.BODY_URL}/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}"
+                f"/call/{DENSE_CALL}"
+            ).text,
             # A run pane, whose ask and answer are rendered as the markdown they were
             # written in, and each of their fetches.
             client.get(f"/session/{SPINE}/run/{SPINE_RUN}").text,
