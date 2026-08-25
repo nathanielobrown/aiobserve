@@ -39,7 +39,9 @@
 {%- endmacro %}
 
 {# The child's body, opened in place: one body, two mounts. It arrives on click, one request,
-   and stops there — what is under it is a count and a link to its own page. A button rather
+   and stops one level down: an api call's body lists the tools it called, as rows of this same
+   table with no `View` of their own, and every other kind stands a count and a link to its own
+   page. A button rather
    than a disclosure triangle, because a reader has to be able to see that a row opens; it
    fires once, since a second fetch would stand a second copy of the same body under the row.
    What arrives is a row of this table (`fragments/body.html`), swapped in after this one. #}

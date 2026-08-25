@@ -506,7 +506,7 @@ def test_a_pane_reads_what_a_person_or_a_model_wrote_as_the_markdown_it_was_writ
     """
     call_id = one(
         store,
-        'SELECT id FROM live_api_calls WHERE session_id = ? AND source = ? AND turn_id = ?'
+        "SELECT id FROM live_api_calls WHERE session_id = ? AND source = ? AND turn_id = ?"
         ' ORDER BY "index" LIMIT 1',
         [ANCESTOR, MAIN, DENSE_TURN],
     )[0]

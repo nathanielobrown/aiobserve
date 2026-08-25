@@ -1064,8 +1064,7 @@ def test_planted_markup_arrives_inert(plant: Planter) -> None:
             # And that call's body opened as an expansion, which is the same arguments again,
             # a row a tool this time and rendered by a fragment rather than by a page.
             client.get(
-                f"{nodes.BODY_URL}/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}"
-                f"/call/{DENSE_CALL}"
+                f"{nodes.BODY_URL}/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/call/{DENSE_CALL}"
             ).text,
             # A run pane, whose ask and answer are rendered as the markdown they were
             # written in, and each of their fetches.

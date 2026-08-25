@@ -345,6 +345,9 @@ def detail_of(
 ) -> Detail | None:
     """One fat column as a pane shows it, or None where the store holds nothing under it.
 
+    Nothing is a NULL or an empty string alike: a value with no characters in it has no
+    preview to show and nothing to offer the rest of, whichever of the two the column holds.
+
     `head` arrives one character past `size`, which is how a value with more behind it is told
     from one that ends where the pane does; `chars` is the whole length the link offers.
     `syntax` is what the record says the value is written in, and the default is prose:
