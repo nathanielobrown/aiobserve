@@ -8,7 +8,6 @@
   const grip = document.getElementById("tree-grip");
   if (!grip) return; // every page but a node page
   const browser = document.getElementById("browser");
-  const tree = document.getElementById("tree");
   const KEY = "aiobserve:tree-width";
   // What the column may be, in px: narrower than this cuts every title to nothing, wider
   // leaves a pane too short to read a turn in. The bounds live here rather than in a CSS
@@ -39,9 +38,13 @@
       return null;
     }
   };
-  // The width this browser last kept, or the one the stylesheet just laid out.
+  // The width this browser last kept, or the one the stylesheet lays the column out at, read
+  // off the grid's own first track. Not off the tree's box: under the narrow layout `#browser`
+  // is a block and the tree is the whole page, so a width seeded from it survives the reader
+  // widening their window as a column twice the stylesheet's — 768 px against 384, with the
+  // pane left narrower than the tree.
   const remembered = Number(orNothing(() => localStorage.getItem(KEY)));
-  let width = apply(remembered || tree.getBoundingClientRect().width);
+  let width = apply(remembered || parseFloat(getComputedStyle(browser).gridTemplateColumns));
   const keep = () => orNothing(() => localStorage.setItem(KEY, String(width)));
 
   // A drag moves the width by what the pointer moved, rather than setting it to where the

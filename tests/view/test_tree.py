@@ -498,6 +498,14 @@ def test_the_tree_is_widened_by_a_handle_and_the_width_outlives_the_page(
     served = client.get(src)
     assert served.status_code == 200
     assert "--tree-width" in served.text and "localStorage" in served.text
+    # And where the width starts when this browser remembers none: the column the stylesheet
+    # lays out, read off the grid's own first track. Not the tree's laid-out box — under the
+    # narrow layout below, `#browser` is a block and the tree is the whole page, so a width
+    # seeded from it survives into the wide layout as a column twice the one above. Witnessed
+    # in Chromium on 2026-08-25: loaded at 800 px and widened to 1600, the tree held 768 px
+    # against the stylesheet's 384 and left the pane narrower than the tree.
+    assert "gridTemplateColumns" in served.text
+    assert "getBoundingClientRect" not in served.text
 
 
 def test_a_run_hoists_after_the_call_that_spawned_it(
