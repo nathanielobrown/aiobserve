@@ -324,21 +324,26 @@ def worst_session_row_bytes() -> int:
     it — which is why the description takes a row's head and not the page's larger one.
     """
     said = queries.load(Page.DESCRIBED_SESSIONS)
-    strings = heads(SHOWN, LIST_HEAD) * queries.LIST_CHARS
+    shown = heads(SHOWN, LIST_HEAD)
+    written = heads(said, LIST_HEAD)
+    strings = shown * queries.LIST_CHARS
     # The skill names are cut in the composition and the agent types in the query itself —
     # a type is grouped after its cut, so the cut has to be where the grouping can see it.
     listed = heads(SHOWN, LIST_ITEM_HEAD) + heads(queries.load(Page.SESSIONS), LIST_ITEM_HEAD)
-    names = listed * queries.LIST_ITEMS * queries.LIST_ITEM_CHARS
-    described = heads(said, LIST_HEAD) * queries.LIST_CHARS
+    members = listed * queries.LIST_ITEMS
+    names = members * queries.LIST_ITEM_CHARS
+    described = written * queries.LIST_CHARS
     kinds = heads(said, LIST_KIND_HEAD) * queries.LIST_CATEGORIES * queries.TAG_CHARS
     return (
         MEASURED_SESSION_ROW_MARKUP
         + (strings + names + described + kinds) * ESCAPED_CHAR_BYTES
-        # The pass's own line is the one string here that is marked where it was cut, so it is
-        # the one that pays for a mark — outside the escape, since an ellipsis is three bytes of
-        # UTF-8 and nothing escapes it. A row's other heads are cut at the same width and reach
-        # it rarely enough that marking them is a measurement to redo, not a byte to spend.
-        + heads(said, LIST_HEAD) * MARK_BYTES
+        # Every value a transcript or a pass wrote is marked where it was cut — the two heads a
+        # row shows, each member of its two lists, and the pass's own line — one mark per cut,
+        # outside the escape, since an ellipsis is three bytes of UTF-8 and nothing escapes it.
+        # The kinds of work are the one cut column with no mark: their vocabulary is closed
+        # (`enrich/taxonomy.py`) and its longest member is 9 characters against `TAG_CHARS`, so
+        # that cut is a bound this arithmetic needs rather than one a value reaches.
+        + (shown + members + written) * MARK_BYTES
         + MEASURED_LIST_ENRICHMENT_MARKUP
         + worst_tag_bytes()
     )
@@ -1334,20 +1339,29 @@ def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     described store rather than the bare one, because a row of a store a pass has run over
     carries what the pass said as well, and that is the row the ceiling has to budget.
     """
-    head = "&" * queries.LIST_CHARS
+    # Every string goes in one character past what a row prints, because that character is the
+    # whole of how the page knows a value was stopped rather than ended: at the cap exactly,
+    # nothing is marked and the row costs less than the arithmetic gives it.
+    head = "&" * (queries.LIST_CHARS + 1)
+    # Except a project path, which the filter box offers whole or not at all
+    # (`view_projects.sql`): the paths that fill the box sit exactly at the width, and every
+    # path past those goes one over it, where the row's own mark is. Two digits tell them
+    # apart, so both halves of the page are measured against the same plant.
+    root = "&" * (queries.LIST_CHARS - 2)
     name = "&" * queries.LIST_ITEM_CHARS
     kind = "&" * queries.TAG_CHARS
     over = queries.LIST_ITEMS + 2
     kinds = queries.LIST_CATEGORIES + 2
     path = enriched_plant(
-        # A project path per session, each one the longest the filter box offers, so the box
+        # A project path per session, each one longer than the filter box offers, so the box
         # has more suggestions than it shows. The two digits that tell them apart are the only
         # characters on the page that are not an escape...
         (
             "UPDATE sessions SET title = ?, project_dir = ? || printf('%02d', r.n)"
+            " || CASE WHEN r.n > ? THEN '&' ELSE '' END"
             " FROM (SELECT id, row_number() OVER (ORDER BY id) AS n FROM sessions) r"
             " WHERE r.id = sessions.id",
-            [head, head[:-2]],
+            [head, root, queries.LIST_PROJECTS],
         ),
         # ...and every session runs more skills than a row shows, cloning a live api call rather
         # than inventing one: `live_api_calls` is the population a row's skill list counts.
@@ -1359,12 +1373,14 @@ def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
             [name, over + 1],
         ),
         # ...and every session spawns more kinds of subagent than a row shows. The names have
-        # to differ inside the head the query cuts them to, because it groups the runs after
-        # the cut: two types sharing a head are one name's worth of bytes and not two. Two
-        # digits tell them apart, so 18 of every 20 characters are still escapes.
+        # to differ inside the *shown* width, not merely inside the one the query cuts to:
+        # the query groups the runs after its cut, and the row cuts a character off that again
+        # to make room for the mark. So two digits sit at the end of what a row shows, with one
+        # more escape behind them — which puts every name past the cut and still tells them
+        # apart, at 19 escapes in every 21 characters.
         (
             "INSERT INTO agent_runs (SELECT r.* REPLACE (s.id AS session_id,"
-            " s.id || '-planted-' || i AS id, ? || printf('%02d', i) AS agent_type)"
+            " s.id || '-planted-' || i AS id, ? || printf('%02d', i) || '&' AS agent_type)"
             " FROM (SELECT * FROM live_agent_runs ORDER BY session_id, id LIMIT 1) r,"
             " sessions s, range(1, ?) t(i))",
             [name[:-2], over + 1],
@@ -1410,19 +1426,30 @@ def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     markup = re.findall(r"<tr data-session-id=.*?</tr>", pages[-1], flags=re.S)
     dearest = max(markup, key=lambda one: len(one.encode()))
     row = fields(dearest, "data-session-id", values(dearest, "data-session-id")[0])
-    assert len(row["title"]) == len(row["project_dir"]) == queries.LIST_CHARS
-    assert row["skills"].count(name) == queries.LIST_ITEMS
+    # Each of the row's own strings cut to its head and marked there, which is what says the
+    # cut bit rather than the plant happening to end at the width.
+    assert row["title"] == "&" * queries.LIST_CHARS + ELLIPSIS
+    assert len(row["project_dir"]) == queries.LIST_CHARS + len(ELLIPSIS)
+    assert row["project_dir"].endswith(ELLIPSIS)
+    assert row["skills"].count(name + ELLIPSIS) == queries.LIST_ITEMS
     assert row["skills"].endswith("more")
     # The two counted lists reached their own caps, each name cut to the head it is grouped
-    # under — the last two characters of one are the digits that tell the plants apart.
+    # under — the last two characters of one are the digits that tell the plants apart, and
+    # the mark behind them is the escape the plant put past the cut.
     assert row["agent_types"].count(name[:-2]) == queries.LIST_ITEMS
+    assert row["agent_types"].count(ELLIPSIS) == queries.LIST_ITEMS
+    # The kinds of work are the one cut column with no mark: the taxonomy is closed and its
+    # longest member is nine characters, so a name there is never stopped. Planted past the
+    # cut all the same, because what the ceiling budgets is the width and not the vocabulary.
     assert row["work"].count(kind[:-2]) == queries.LIST_CATEGORIES
+    assert ELLIPSIS not in row["work"]
     assert row["agent_types"].endswith("more") and row["work"].endswith("more")
     assert len(suggestions(one_row)) == queries.LIST_PROJECTS
     # And the pass's own line reached the head the list cuts it to, with both tags beside it —
     # the whole description is on the session's page, which is a page ceiling of its own.
     assert row["description"] == "&" * queries.LIST_CHARS + ELLIPSIS
     assert len(row["category"]) == len(row["outcome"]) == queries.TAG_CHARS
+    assert ELLIPSIS not in row["category"] + row["outcome"]
     assert "stale" not in row
 
 
@@ -1687,7 +1714,11 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # viewer's own composition rather than its query's, because its filters read the whole
     # values — a project path cut to a head would match no session under a longer one.
     row = fields(listing, "data-session-id", SPINE)
-    assert len(row["title"]) == len(row["project_dir"]) == queries.LIST_CHARS
+    # Marked as cut, not merely short enough: a row's strings are the ones a page multiplies,
+    # so a value that ended at the width and one that was stopped there have to read apart.
+    assert row["title"] == row["project_dir"] == "x" * queries.LIST_CHARS + ELLIPSIS
+    # And each member of the lists beside them, at the narrower width a member takes.
+    assert row["agent_types"].startswith("x" * queries.LIST_ITEM_CHARS + ELLIPSIS)
     # A path too long for the filter box to suggest whole is left out of it rather than cut:
     # half a path fills the filter in with a value that matches nothing. Bounded by the box
     # still being full — an absence read off an empty list is no absence at all.

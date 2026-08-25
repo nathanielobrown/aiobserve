@@ -492,16 +492,29 @@ def build_app(db_path: Path) -> FastAPI:
         """
         return fmt.cut(value, queries.ENRICHMENT_CHARS)
 
-    def short(value: str) -> str:
-        """The line a pass wrote, at the narrower width a row of the session list prints it.
+    def short(value: str | None) -> str:
+        """A string at the width a row of the session list prints it, marked where it was cut.
 
-        The row's own half of the protocol. A row is multiplied by the page, so it takes a head
-        where the pane takes a paragraph, and the mark is what the link beside it makes good on:
-        the whole line is on the session's page, a click away. The row's other strings are cut
-        at this width too and are not marked yet — their marks would move the list's ceiling,
-        which is a measurement rather than a filter (`tests/view/test_bounds.py`).
+        The row's own half of the protocol, and the narrowest of the four: a row is multiplied
+        by the page, so it takes a head where the pane takes a paragraph. Every string a
+        transcript or a pass wrote in a row goes through this or `item` — the session's title,
+        its project path, and the line a pass wrote about it — and the mark is what the link
+        beside it makes good on: the whole value is on the session's page, a click away.
+
+        Takes None like the other cuts do: it stands ahead of `path` on the project column,
+        which is where a row's one nullable string is printed.
         """
-        return fmt.cut(value, queries.LIST_CHARS)
+        return fmt.ABSENT if value is None else fmt.cut(value, queries.LIST_CHARS)
+
+    def item(value: str) -> str:
+        """One member of a list on a row of the session list, marked where the query cut it.
+
+        What `member` does for a header's lists, at the width a row shows a skill or an agent
+        type. The kinds of work beside them do not come through here: their vocabulary is
+        closed (`enrich/taxonomy.py`), so `queries.TAG_CHARS` is a bound the page's arithmetic
+        needs rather than one a value reaches, and a mark there could never be true.
+        """
+        return fmt.cut(value, queries.LIST_ITEM_CHARS)
 
     def member(value: str) -> str:
         """One member of a header's list, marked where the query cut it.
@@ -525,6 +538,7 @@ def build_app(db_path: Path) -> FastAPI:
         "member": member,
         "said": said,
         "short": short,
+        "item": item,
         "path": project_path,
         "ago": ago,
         # The three filters that print what a transcript wrote. Each hands back escaped

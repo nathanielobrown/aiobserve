@@ -114,11 +114,14 @@ DEFAULT_DIRECTION = "desc"
 # the list's filters read the whole values — a `project` matched against a cut path would miss
 # every session under a longer one, and a `skill` outside the first few would find nothing —
 # and applied outside the window, so it cuts the rows one page shows and nothing else.
+#
+# Each cut takes one character more than the row prints, which is how the template knows a
+# value was stopped rather than ended and marks it (`view/format.py:cut`).
 SHOWN = """SELECT * EXCLUDE (pr_urls) REPLACE (
-    substr(title, 1, $head_chars) AS title,
-    substr(project_dir, 1, $head_chars) AS project_dir,
+    substr(title, 1, $head_chars + 1) AS title,
+    substr(project_dir, 1, $head_chars + 1) AS project_dir,
     list_transform(list_slice(coalesce(skills, []), 1, $head_items),
-        name -> substr(name, 1, $item_chars)) AS skills,
+        name -> substr(name, 1, $item_chars + 1)) AS skills,
     list_slice(coalesce(agent_types, []), 1, $head_items) AS agent_types
 ), greatest(len(coalesce(skills, [])) - $head_items, 0) AS skills_cut,
    greatest(len(coalesce(agent_types, [])) - $head_items, 0) AS agent_types_cut FROM"""

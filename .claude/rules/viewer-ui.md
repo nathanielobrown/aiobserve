@@ -79,9 +79,11 @@ Both mounts of one value use that macro: the head a pane previews, and the whole
 
 # A cut value goes through the filter that marks it
 
-A string its query cut arrives one character past the width it is printed at, and the filter that prints it cuts it back and marks where the rest was left behind (`view/format.py:cut`): `line` for a children log's row, `head` and `member` for a header, `said` for the line an enrichment pass wrote, `short` for that line on a row of the session list. Print such a value bare and a reader cannot tell a name that ended from one that was stopped. A title arrives marked already, at whichever of the three widths `view/nodes.py` cut it to.
+A string its query cut arrives one character past the width it is printed at, and the filter that prints it cuts it back and marks where the rest was left behind (`view/format.py:cut`): `line` for a children log's row, `head` and `member` for a header, `short` and `item` for a row of the session list, `said` for the line an enrichment pass wrote. Print such a value bare and a reader cannot tell a name that ended from one that was stopped. A title arrives marked already, at whichever of the three widths `view/nodes.py` cut it to.
 
-The session list's other strings are the exception: a row there is multiplied by the size of the page, so its title, path and lists are cut where they stand and only the pass's line pays for a mark. Marking them is a ceiling to re-measure, not a byte to spend (`tests/view/test_bounds.py`).
+A closed vocabulary is the one thing cut without a mark: a taxonomy value is bound at `queries.TAG_CHARS` because a page whose size is arithmetic needs every width named, not because any member reaches it (`enrich/taxonomy.py`). `_parts.html:counted` takes `mark=false` for those, and a mark there would claim a name went on when nothing was left behind.
+
+A mark is three bytes on every row of the page that carries it, so adding one to a column of the session list moves `bounds.SESSIONS` — the ceiling is derived from the dearest row, and the pin in `tests/view/test_bounds.py` holds it from both sides.
 
 # Label every value a test reads
 

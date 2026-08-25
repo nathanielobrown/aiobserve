@@ -46,9 +46,15 @@
 
 {# A counted list of names — the agent types a session spawned, the kinds of work its turns
    were. `key` is what the store called the count, because the two lists count different
-   things. Every integer goes through `count`, like every other one a page prints. #}
-{% macro counted(items, key) %}
-{%- for item in items %}{{ item.name }} ×{{ item[key] | count }}{{ ", " if not loop.last }}
+   things. Every integer goes through `count`, like every other one a page prints, and every
+   name through `item`, which marks the ones the query stopped.
+
+   `mark` is how a caller opts out, for a list whose vocabulary is closed: a taxonomy value is
+   cut at a width its own words cannot reach (`analyze/queries.py:TAG_CHARS`), so a mark on one
+   would say a name went on when nothing was left behind. #}
+{% macro counted(entries, key, mark=true) %}
+{%- for entry in entries %}{{ entry.name | item if mark else entry.name
+  }} ×{{ entry[key] | count }}{{ ", " if not loop.last }}
 {%- endfor %}
 {%- endmacro %}
 

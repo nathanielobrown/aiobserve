@@ -74,7 +74,7 @@
                                         'started_at', row.started_at | when) }}</td>
       <td class="title">
         <a class="primary" data-field="title"
-           href="/session/{{ row.session_id }}">{{ row.title or row.session_id }}</a>
+           href="/session/{{ row.session_id }}">{{ (row.title or row.session_id) | short }}</a>
         {# What the pass said this session was, under the prompt's own title. Absent over a
            store no pass has touched, and over a session it has not reached yet. Never a
            stale tag: the list joins the words and not the versions that would judge them,
@@ -86,7 +86,7 @@
         </span>
         {% endif %}
       </td>
-      <td data-field="project_dir" class="path">{{ row.project_dir | path }}</td>
+      <td data-field="project_dir" class="path">{{ row.project_dir | short | path }}</td>
       <td data-field="turns" class="number">{{ row.turns | count }}</td>
       <td data-field="api_calls" class="number">{{ row.api_calls | count }}</td>
       <td data-field="tool_calls" class="number">{{ row.tool_calls | count }}</td>
@@ -103,13 +103,15 @@
       <td class="number">{{ parts.stacked('wall_ms', row.wall_ms | duration,
                                           'active_ms', row.active_ms | duration, 'active') }}</td>
       {# The three lists that grow with a session, so the query cuts each and says how many it
-         left: a row of the list is multiplied by the size of the page. #}
+         left: a row of the list is multiplied by the size of the page. The two a transcript
+         named have their members marked where the cut bit; the kinds of work do not, because
+         that vocabulary is closed and cannot reach its cut. #}
       <td data-field="agent_types" class="names">{{ parts.counted(row.agent_types or [], 'runs')
         }}{{ parts.more(row.agent_types_cut) }}</td>
-      <td data-field="skills" class="names">{{ (row.skills or []) | join(', ')
+      <td data-field="skills" class="names">{{ (row.skills or []) | map('item') | join(', ')
         }}{{ parts.more(row.skills_cut) }}</td>
       {% if described %}
-      <td data-field="work" class="names">{{ parts.counted(row.work or [], 'turns')
+      <td data-field="work" class="names">{{ parts.counted(row.work or [], 'turns', mark=false)
         }}{{ parts.more(row.work_cut) }}</td>
       {% endif %}
     </tr>
