@@ -8,6 +8,12 @@ answering "what bounds this page?" meant visiting four files under three naming 
 A size a query binds keeps its default in the manifest, where the parameter is declared, and
 is named here beside its ceiling; a size the viewer composes around a query is defined here
 outright. `tests/view/test_bounds.py` does the arithmetic over this module.
+
+Three responses sit outside the page bound on purpose, each priced where it is named: a fetch
+of one whole value, bound by the largest single value in the store rather than by a page of
+them (`view/store.py:Value`); the tail row's fetch, bound by the level it stands in (`KIN`);
+and a query's citation page, which is the size of a file we ship rather than of anything a
+corpus or a reader moves (`tests/view/test_bounds.py`).
 """
 
 from typing import NamedTuple
@@ -35,6 +41,13 @@ class Bound(NamedTuple):
 # the node page has a ceiling of its own (`tests/view/test_bounds.py`) rather than sharing the
 # one every other page is weighed against. The log's is a page: it says which of how many it
 # is and offers the ones either side, so a level of a hundred is read in one go and not nine.
+#
+# The tail's own fetch has no ceiling and is not to be given one: a reader who clicks it is
+# asking for the rest of the level, and paging that would open a second window inside the one
+# they just stepped out of. It costs the level less the window, at `TREE_ROW_BYTES` a row. The
+# widest level in the canonical store on 2026-08-25 is 1,573 api calls under a single turn, so
+# the dearest tail fetch that corpus holds is 1.8 MB — more than three page ceilings, served
+# once to a reader who asked for it, in place of rows already counted against that page.
 #
 # The window was 50, which put a tail row under most turns of a working session and made the
 # tree a thing to expand rather than to read. Widening it spends the node page's ceiling —
