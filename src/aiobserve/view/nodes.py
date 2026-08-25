@@ -30,6 +30,12 @@ DECADES = 3
 UNATTRIBUTED_LABEL = "calls under no turn of this thread"
 UNATTACHED_LABEL = "runs attached to no turn"
 
+# What stands between the two halves of a run's label: the definition it ran, and what it was
+# asked or what a pass said it did. A run is the one node whose name is composed rather than
+# quoted, because neither half alone identifies it — a tree of six `Explore` runs says nothing,
+# and a brief without its agent type buries the one word a reader picks a run by.
+RUN_SEPARATOR = " — "
+
 
 class Shape(StrEnum):
     """What the pane's children log lists, which decides the macro a row renders through.
@@ -421,8 +427,10 @@ def run_node(session_id: str, row: Row, whole: float, described: str | None) -> 
         # A run's id is the source its own rows carry.
         source=row["run_id"],
         node_id=row["run_id"],
-        # What the pass said it did, else the brief it was given, else the definition it ran.
-        words=_words(described or row["description"] or row["agent_type"]),
+        # The definition it ran leads, whatever else the label holds, and after it what the
+        # pass said it did, else the brief it was given, else nothing. `agent_type` is NOT
+        # NULL in the store (`export/duckdb.py`), so the lead is always there to read.
+        words=_run_label(row["agent_type"], described or row["description"]),
         cost_usd=cost,
         unpriced_api_calls=row["unpriced_api_calls"],
         share=_share(cost, whole),
@@ -513,6 +521,15 @@ def unattached_node(session_id: str, rows: list[Row], whole: float) -> Node:
         unpriced_api_calls=sum(row["unpriced_api_calls"] for row in rows),
         share=_share(cost, whole),
     )
+
+
+def _run_label(agent_type: str, said: str | None) -> str:
+    """What to call a run: the agent type, and what it did where anything says so.
+
+    The lead is constant so that a tree of runs reads as a list of agent types; a run nothing
+    described is named by its type alone rather than by a separator with nothing after it.
+    """
+    return f"{agent_type}{RUN_SEPARATOR}{said}" if said else agent_type
 
 
 def _turn_label(row: Row) -> str:

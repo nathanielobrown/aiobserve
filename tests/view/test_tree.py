@@ -34,7 +34,15 @@ from aiobserve.view import bounds, tree
 from aiobserve.view.app import build_app
 from aiobserve.view.enrichment import Descriptions
 from aiobserve.view.format import cut, money
-from aiobserve.view.nodes import BODY_URL, KIN_URL, Kind, Preset, Ref, meter
+from aiobserve.view.nodes import (
+    BODY_URL,
+    KIN_URL,
+    RUN_SEPARATOR,
+    Kind,
+    Preset,
+    Ref,
+    meter,
+)
 from tests.conftest import MAIN, SPINE, SPINE_RUN
 from tests.view.conftest import SPAWNS, Planter, fields, inside, kin, one, rows, values, wired
 
@@ -830,8 +838,11 @@ def labelled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, str
         "SELECT id, description, agent_type FROM live_agent_runs WHERE session_id = ?",
         [session_id],
     ).fetchall():
-        # The brief the run was given, and where none was recorded the definition it ran.
-        said[f"{Kind.RUN}:{run_id}"] = description or agent_type
+        # The definition it ran, always first — which agent this was is what a reader picks a
+        # run out of a tree by — and after it the brief it was given, where one was recorded.
+        said[f"{Kind.RUN}:{run_id}"] = (
+            f"{agent_type}{RUN_SEPARATOR}{description}" if description else agent_type
+        )
     return {key: cut(value, queries.NAV_CHARS).strip() for key, value in said.items()}
 
 

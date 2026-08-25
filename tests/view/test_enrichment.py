@@ -23,6 +23,7 @@ from aiobserve.enrich.taxonomy import TAXONOMY_VERSION
 from aiobserve.view.app import build_app
 from aiobserve.view.enrichment import GLYPH, GLYPH_CLASS
 from aiobserve.view.format import cut, when
+from aiobserve.view.nodes import RUN_SEPARATOR
 from aiobserve.view.store import Page
 from tests.conftest import SPINE, SPINE_RUN
 from tests.view.conftest import Planter, fields, inside, one, pages, values
@@ -323,13 +324,17 @@ def test_a_tree_row_the_model_named_carries_a_bare_glyph(
     )
     undescribed = enriched_client.get(f"/session/{bare_session}").text
     assert GLYPH_CLASS not in inside(undescribed, "data-tree", f"turn:{bare}", "class")
-    # A run reads the same way through a different builder: its row is labelled by the pass
-    # rather than by the brief it was given, and carries the same bare mark.
+    # A run reads the same way through a different builder, with one difference: its label
+    # leads with the definition it ran whatever else names it, so what the pass wrote stands
+    # after the agent type rather than in place of it — and carries the same bare mark.
     ran = enrichment_of(enriched_store, Level.agent_run, SPINE)
     run_id = next(iter(ran))
+    (agent_type,) = one(
+        enriched_store, "SELECT agent_type FROM live_agent_runs WHERE id = ?", [run_id]
+    )
     page = enriched_client.get(f"/session/{SPINE}/run/{run_id}").text
     assert fields(page, "data-tree", f"run:{run_id}")["label"] == cut(
-        ran[run_id][0], queries.NAV_CHARS
+        f"{agent_type}{RUN_SEPARATOR}{ran[run_id][0]}", queries.NAV_CHARS
     )
     assert GLYPH_CLASS in inside(page, "data-tree", f"run:{run_id}", "class")
     assert not inside(page, "data-tree", f"run:{run_id}", "title")
