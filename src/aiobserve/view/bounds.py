@@ -9,6 +9,13 @@ A size a query binds keeps its default in the manifest, where the parameter is d
 is named here beside its ceiling; a size the viewer composes around a query is defined here
 outright. `tests/view/test_bounds.py` does the arithmetic over this module.
 
+Only `SESSIONS` is pinned from below there. Its ceiling is the most rows that fit under the
+page, so a row that grew has to move the number rather than eat the slack silently. The other
+grown-list ceilings are a reader's number that fits rather than a derived one — `PROJECTS` and
+`ERRORS` are ranked lists a reader picks out of, `RECORDS` is a page of previews and `CHUNK` a
+step through a file — and each sits well under what its page affords. Pinning one from below
+would pin a preference to an arithmetic that never chose it.
+
 Three responses sit outside the page bound on purpose, each priced where it is named: a fetch
 of one whole value, bound by the largest single value in the store rather than by a page of
 them (`view/store.py:Value`); the tail row's fetch, bound by the level it stands in (`KIN`);
@@ -44,10 +51,13 @@ class Bound(NamedTuple):
 #
 # The tail's own fetch has no ceiling and is not to be given one: a reader who clicks it is
 # asking for the rest of the level, and paging that would open a second window inside the one
-# they just stepped out of. It costs the level less the window, at `TREE_ROW_BYTES` a row. The
-# widest level in the canonical store on 2026-08-25 is 1,573 api calls under a single turn, so
-# the dearest tail fetch that corpus holds is 1.8 MB — more than three page ceilings, served
-# once to a reader who asked for it, in place of rows already counted against that page.
+# they just stepped out of. It costs the level less the window, at `TREE_ROW_BYTES` a row. It
+# serves whichever preset the URL names, so the widest level is the widest a preset makes: in
+# the canonical store on 2026-08-25 that is 1,587 tool calls under a single turn under `noapi`,
+# where the api calls fold away and their tool calls hoist — 14 more than the 1,573 api calls
+# the same turn shows whole. So the dearest tail fetch that corpus holds is 1.8 MB, more than
+# three page ceilings, served once to a reader who asked for it, in place of rows already
+# counted against that page.
 #
 # The window was 50, which put a tail row under most turns of a working session and made the
 # tree a thing to expand rather than to read. Widening it spends the node page's ceiling —
