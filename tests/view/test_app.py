@@ -934,6 +934,21 @@ def test_both_schemes_print_every_color_of_text_readably(client: TestClient) -> 
                 assert ratio >= READABLE, f"{scheme} --{role} on {where}: {ratio:.2f}:1"
 
 
+def test_the_stylesheet_a_browser_reads_carries_no_prose_outside_a_comment(
+    client: TestClient,
+) -> None:
+    """Nothing in the served stylesheet sits between a comment's end and the rule below it.
+
+    A comment closed twice is the one CSS mistake nothing else here can see: the browser reads
+    the stray prose as the start of a selector, swallows the rule under it, and paints one
+    fewer thing than the file says — silently, because a stylesheet has no syntax error a
+    server or a test suite reports. Every comment this sheet opens is closed once, so a `*/`
+    left over after the comments come out is prose a browser is about to read as a selector.
+    """
+    sheet = client.get("/static/style.css").text
+    assert "*/" not in re.sub(r"/\*.*?\*/", "", sheet, flags=re.S)
+
+
 def test_the_stylesheet_paints_only_fields_a_page_carries(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
