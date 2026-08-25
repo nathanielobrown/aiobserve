@@ -16,6 +16,7 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
+from aiobserve.analyze import queries
 from aiobserve.view import bounds
 from aiobserve.view.app import build_app, numbered
 from aiobserve.view.format import ELLIPSIS
@@ -1181,3 +1182,47 @@ def test_one_tool_call_is_titled_the_same_way_wherever_it_is_named(
     row = fields(parent, "data-child", f"tool:{tool_id}")
     assert row["title"] == "src/aiobserve/view/nodes.py"
     assert row["name"] == "Read"
+
+    # A path long enough that cutting the project directory off it matters. The four surfaces
+    # have three widths between them, so the same call is shown three lengths — and each one
+    # is the head of the *relative* path, marked where it stopped. A derivation that cut the
+    # absolute path first would hand every surface the same short string, unmarked and one
+    # project directory shorter than the width it was asked for.
+    long_path = f"src/aiobserve/{'v' * 380}.sql"
+    reach = plant(
+        ("UPDATE sessions SET project_dir = ? WHERE id = ?", [project, session_id]),
+        (
+            "UPDATE tool_calls SET name = ?, input = ?, is_error = true WHERE id = ?",
+            ["Read", json.dumps({"file_path": f"{project}/{long_path}"}), tool_id],
+        ),
+    )
+    with TestClient(build_app(reach)) as planted:
+        pane = planted.get(f"/session/{session_id}/thread/{source}/tool/{tool_id}").text
+        parent = planted.get(f"/session/{session_id}/thread/{source}/call/{call_id}").text
+        listed = planted.get(f"/session/{session_id}/errors").text
+    whole = f"Read{LEAD_SEPARATOR}{long_path}"
+    assert fields(pane, "data-body", "tool")["title"] == whole[: queries.HEADER_CHARS] + ELLIPSIS
+    for shown, where in ((pane, "data-tree"), (listed, "data-error")):
+        assert (
+            fields(shown, where, f"tool:{tool_id}")["title"]
+            == whole[: queries.NAV_CHARS] + ELLIPSIS
+        )
+    assert (
+        fields(parent, "data-child", f"tool:{tool_id}")["title"]
+        == long_path[: queries.LOG_CHARS] + ELLIPSIS
+    )
+    # And a path that fits every width reaches every surface whole, extension and all: the
+    # pane has the least room of the three and 30 characters of project directory is what
+    # decides whether a reader sees the end of the name or a cut that says nothing.
+    fits = f"src/aiobserve/{'v' * 72}.sql"
+    assert len(f"Read{LEAD_SEPARATOR}{fits}") < queries.HEADER_CHARS
+    snug = plant(
+        ("UPDATE sessions SET project_dir = ? WHERE id = ?", [project, session_id]),
+        (
+            "UPDATE tool_calls SET name = ?, input = ? WHERE id = ?",
+            ["Read", json.dumps({"file_path": f"{project}/{fits}"}), tool_id],
+        ),
+    )
+    with TestClient(build_app(snug)) as planted:
+        pane = planted.get(f"/session/{session_id}/thread/{source}/tool/{tool_id}").text
+    assert fields(pane, "data-body", "tool")["title"] == f"Read{LEAD_SEPARATOR}{fits}"

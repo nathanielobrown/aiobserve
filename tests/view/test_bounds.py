@@ -531,11 +531,55 @@ def test_every_macro_the_scan_trusts_cuts_the_value_it_reads() -> None:
     Without this the trust is a list: a macro that stopped cutting would go on being read as
     bounding, and every query calling it would keep its green while serving whole values.
     The signature comes off first — a parameter named `input` is a name, not a column read.
+
+    This says a cut is *there*, not that it is the right one: a body cutting at ten thousand
+    times the width it was asked for still passes here. The width is the leaf below.
     """
     for name, statement in macros.BOUNDING.items():
         _, cut_at, body = statement.partition(") AS")
         assert cut_at, name
         assert unbounded(body) == set(), name
+
+
+def test_every_macro_the_scan_trusts_answers_one_character_past_the_width() -> None:
+    """Each bounding macro is run at three widths and asked how much it gives back.
+
+    The scan's trust is a bound; this is the protocol on top of it (`view/format.py:cut`
+    marks a value that came back longer than the width, so a macro that saturates *under* the
+    width serves a silently truncated value, and one that saturates over it serves a fat
+    column). Every arm gets a value far past the widest width, so each answer is a saturation
+    rather than a whole value that happened to fit.
+
+    The paths are invented: the shape — inside the project, outside it, no project at all —
+    is the whole point, and no recorded session carries all three at these lengths.
+    """
+    connection = duckdb.connect(":memory:")
+    macros.install(connection)
+    project = "/Users/planted/repos/aiobserve"
+    inside = json.dumps({"file_path": f"{project}/src/{'v' * 400}.py"})
+    outside = json.dumps({"file_path": f"/opt/homebrew/{'v' * 400}.py"})
+    described = json.dumps({"description": "d" * 400, "command": "c" * 400})
+    stored_whole = f"not json at all {'v' * 400}"
+
+    def answer(expression: str, *params: object) -> str:
+        return connection.execute(f"SELECT {expression}", list(params)).fetchall()[0][0]
+
+    for chars in (10, 60, 300):
+        # A field read straight, and the three arms `tool_title` coalesces over.
+        assert len(answer("tool_asked(?, 'file_path', ?)", inside, chars)) == chars + 1
+        assert len(answer("tool_title(?, ?, ?)", inside, project, chars)) == chars + 1
+        assert len(answer("tool_title(?, ?, ?)", described, project, chars)) == chars + 1
+        assert len(answer("tool_title(?, ?, ?)", stored_whole, project, chars)) == chars + 1
+        assert len(answer("tool_ran(?, ?)", described, chars)) == chars + 1
+        # The relativized path is the arm that spends width on a prefix it then throws away:
+        # what comes back is the tail, and it is as long as any other arm's.
+        relative = answer("tool_path(?, ?, ?)", inside, project, chars)
+        assert len(relative) == chars + 1
+        assert relative.startswith("src/")
+        # A path the project does not contain, and a session that has no project directory,
+        # both take the absolute arm — still at the width, still marked.
+        assert len(answer("tool_path(?, ?, ?)", outside, project, chars)) == chars + 1
+        assert len(answer("tool_path(?, ?, ?)", inside, None, chars)) == chars + 1
 
 
 @pytest.mark.parametrize("name", sorted(Page) + sorted(Fragment))

@@ -59,24 +59,36 @@ CASE WHEN json_valid(input)
      END
 """
 
+# A tool call's `file_path`, relative to the session's project directory when it sits inside it.
+# The repository comes off before the cut, not after: an agent reads its own tree far more than
+# anything else, so a column of absolute paths is a column of identical prefixes, and the part
+# that tells them apart is the tail. Cutting first would spend the width on the prefix and then
+# throw the prefix away — every relativized path would saturate short of the width, where
+# nothing downstream can mark it (`view/format.py:cut` marks at the width, not below it).
+# So the inner read asks for the prefix on top of the width, and the strip gives back exactly
+# the one-past-the-width the cut protocol wants. A path outside the project — or a session with
+# no `project_dir` — takes the absolute arm at the plain width.
+_TOOL_PATH = """
+CREATE OR REPLACE TEMP MACRO tool_path(input, project_dir, chars) AS
+CASE WHEN starts_with(tool_asked(input, 'file_path', chars + length(project_dir) + 1),
+                      project_dir || '/')
+     THEN substr(tool_asked(input, 'file_path', chars + length(project_dir) + 1),
+                 length(project_dir) + 2)
+     ELSE tool_asked(input, 'file_path', chars) END
+"""
+
 # What a tool call is called, in the most readable form the record supports — the derivation
 # behind every surface that names one (`docs/viewer.md`). Which part of the input the title
 # comes from is decided by the input and not by a list of tool names, so a tool nobody here
 # has heard of still names itself:
-#   * a `file_path` is the path, cut to the repository when it sits inside the session's own
-#     project directory and absolute when it does not — an agent reads its own tree far more
-#     than anything else, and a column of identical prefixes is a column of nothing
+#   * a `file_path` is the path, relativized by `tool_path` above
 #   * else a `description` — what the caller said the call was for, which is what `Bash` and
 #     `Agent` put there
 #   * else the head of the input as it was stored, which is JSON for every tool we have seen
-# Cutting the repository off a path shortens what a full column shows, which is the point:
-# the path is cut at the width first, so what the reader sees is the tail of a bounded head.
 _TOOL_TITLE = """
 CREATE OR REPLACE TEMP MACRO tool_title(input, project_dir, chars) AS
 coalesce(
-    CASE WHEN starts_with(tool_asked(input, 'file_path', chars), project_dir || '/')
-         THEN substr(tool_asked(input, 'file_path', chars), length(project_dir) + 2)
-         ELSE tool_asked(input, 'file_path', chars) END,
+    tool_path(input, project_dir, chars),
     tool_asked(input, 'description', chars),
     substr(input, 1, chars + 1))
 """
@@ -96,12 +108,17 @@ CASE WHEN tool_asked(input, 'file_path', chars) IS NULL
 # the width its caller passes. Named in public because the viewer's payload bound is held by a
 # scan of query text (`tests/view/test_bounds.py`), and a scan cannot see through a macro call
 # — so it trusts these names, and a leaf there re-scans each body to earn that trust.
-BOUNDING = {"tool_asked": _TOOL_ASKED, "tool_title": _TOOL_TITLE, "tool_ran": _TOOL_RAN}
+BOUNDING = {
+    "tool_asked": _TOOL_ASKED,
+    "tool_path": _TOOL_PATH,
+    "tool_title": _TOOL_TITLE,
+    "tool_ran": _TOOL_RAN,
+}
 
-# Every macro a shipped query may call, in dependency order — `tool_title` and `tool_ran` are
-# written in terms of `tool_asked`. Installed as a set rather than per query: which macros a
-# file needs is the file's business, and a connection that holds some of them is a connection
-# where a query fails on the ones it does not.
+# Every macro a shipped query may call, in dependency order — `tool_path`, `tool_title` and
+# `tool_ran` are written in terms of the ones above them. Installed as a set rather than per
+# query: which macros a file needs is the file's business, and a connection that holds some of
+# them is a connection where a query fails on the ones it does not.
 _MACROS = (_SIGNATURE_LINE, _REBUILT_CONTEXT, *BOUNDING.values())
 
 
