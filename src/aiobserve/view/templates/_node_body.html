@@ -23,7 +23,9 @@
 {% macro session(row) %}
 <dl class="facts">
   {{ parts.fact('session_id', row.session_id) }}
-  {{ parts.fact('project_dir', row.project_dir | path) }}
+  {#- Cut before the home folds, not after: `~` shortens what the query cut, and a mark
+      applied to the folded value would be a mark the folding had already talked out of. #}
+  {{ parts.fact('project_dir', row.project_dir | head | path) }}
   {{ parts.fact('git_branch', row.git_branch) }}
   {{ parts.fact('version', row.version) }}
   {{ parts.fact('entrypoint', row.entrypoint) }}
@@ -45,7 +47,7 @@
      and says how many it left: a pane is the one part of a page no size a reader types
      bounds. #}
   {{ parts.fact('skills', (row.skills | join(', ') ~ parts.more(row.skills_cut))
-                if row.skills else none) }}
+                if row.skills else none, cut=false) }}
 </dl>
 {# The pull requests the session's commands touched, cut the same way. Rendered as links
    rather than as a fact row because a reader follows them off the page. #}
@@ -66,7 +68,7 @@
 {% macro turn(row) %}
 {% if row.command_name is not none %}
 <p class="command" data-command="{{ row.turn_id }}">
-  <span data-field="command_name">{{ row.command_name }}</span></p>
+  <span data-field="command_name">{{ row.command_name | head }}</span></p>
 {% endif %}
 <dl class="facts">
   {{ parts.fact('turn_index', row.turn_index | count) }}

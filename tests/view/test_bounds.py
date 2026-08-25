@@ -1472,10 +1472,21 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
         ' ORDER BY session_id, source, api_call_id, "index"',
         [ANCESTOR],
     )
+    # And one tool call whose own page the sweep below reads, on the session whose tool rows
+    # the plant overflows.
+    named_source, named_id = one(
+        store,
+        'SELECT source, id FROM live_tool_calls WHERE session_id = ? ORDER BY source, "index"',
+        [ANCESTOR],
+    )
     # Each value is planted well past its own cap, onto the real row a fixture recorded...
     long = "x" * (queries.DETAIL_CHARS + 5_000)
     path: Path = plant(
-        ("UPDATE sessions SET title = ?, project_dir = ? WHERE id = ?", [long, long, SPINE]),
+        (
+            "UPDATE sessions SET title = ?, project_dir = ?, git_branch = ?, version = ?,"
+            " entrypoint = ? WHERE id = ?",
+            [long, long, long, long, long, SPINE],
+        ),
         ("UPDATE turns SET prompt = ? WHERE session_id = ? AND id = ?", [long, SPINE, turn_id]),
         (
             "UPDATE turns SET command_name = ?, command_args = ? WHERE session_id = ? AND id = ?",
@@ -1485,7 +1496,10 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
             "UPDATE agent_runs SET description = ?, agent_type = ?, model = ? WHERE session_id = ?",
             [long, long, long, SPINE],
         ),
-        ("UPDATE api_calls SET text = ?, model = ? WHERE session_id = ?", [long, long, ANCESTOR]),
+        (
+            "UPDATE api_calls SET text = ?, model = ?, fallback_from = ? WHERE session_id = ?",
+            [long, long, long, ANCESTOR],
+        ),
         ("UPDATE tool_calls SET input = ?, name = ? WHERE session_id = ?", [long, long, ANCESTOR]),
         (
             "UPDATE tool_calls SET name = ?, input = ? WHERE id = ?",
@@ -1503,6 +1517,7 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
             f"/session/{asked_session}/thread/{asked_source}/call/{asked_call}"
         ).text
         ran = planted.get(f"/session/{asked_session}/thread/{asked_source}/tool/{asked_id}").text
+        named = planted.get(f"/session/{ANCESTOR}/thread/{named_source}/tool/{named_id}").text
     # ...and what each of them shows is its cap, not the value. The list's cuts are the
     # viewer's own composition rather than its query's, because its filters read the whole
     # values — a project path cut to a head would match no session under a longer one.
@@ -1534,14 +1549,32 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # stands on and cut its words to a tree row's width, and a title that took the tree's
     # word for it would head a turn with a third of the prompt it is about.
     #
-    # The session's title comes back cut to the width exactly, so there is nothing left to
-    # mark it with; the four names composed from a column selected a character past the cut
-    # say the value went on.
-    assert fields(session, "data-body", "session")["title"] == "x" * queries.HEADER_CHARS
-    for named, kind in ((turn, "turn"), (call, "call"), (run, "run")):
-        assert fields(named, "data-body", kind)["title"] == "x" * queries.HEADER_CHARS + ELLIPSIS, (
-            kind
-        )
+    # Every string a header prints is cut at that width and says so, whether it heads the pane
+    # or sits in the facts under it — a value that ends at the width with no mark is one a
+    # reader cannot tell from a value that simply ended there.
+    #
+    # Swept over the whole header rather than field by field: which fields a header prints
+    # grows with the store, and a list written out here would go on passing while the field
+    # added beside it truncated in silence.
+    headed = "x" * queries.HEADER_CHARS + ELLIPSIS
+    for shown, kind in (
+        (session, "session"),
+        (turn, "turn"),
+        (slash, "turn"),
+        (call, "call"),
+        (run, "run"),
+        (named, "tool"),
+    ):
+        filled = {
+            field: value
+            for field, value in fields(shown, "data-body", kind).items()
+            if "x" in value
+        }
+        # The plant reached this pane at all, so a sweep finding nothing is a sweep that
+        # proves nothing...
+        assert filled, kind
+        # ...and everything it reached is cut to the header's width and marked there.
+        assert set(filled.values()) == {headed}, (kind, filled)
     # A pane reads one node, so its strings take a header's cut — and the one value the node
     # is about takes the widest of the four, with the rest of it offered as its own fetch.
     assert fields(turn, "data-detail", "prompt")["prompt"] == "x" * queries.DETAIL_CHARS + ELLIPSIS
@@ -1549,15 +1582,12 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # A slash turn shows the same two widths on one page: the command it ran is a word the
     # pane leads with, cut to a header's width, and what followed it is a second value of the
     # turn, cut to a pane's and offering the rest of itself like the prompt does.
-    assert len(fields(slash, "data-command", command_id)["command_name"]) == queries.HEADER_CHARS
+    assert fields(slash, "data-command", command_id)["command_name"] == headed
     arguments = fields(slash, "data-detail", "command_args")
     assert arguments["command_args"] == "x" * queries.DETAIL_CHARS + ELLIPSIS
     assert inside(slash, "data-detail", "command_args", "data-whole") == ["command_args"]
-    header = fields(run, "data-body", "run")
-    assert {len(header[field]) for field in ("agent_type", "model")} == {queries.HEADER_CHARS}
     brief = fields(run, "data-detail", "description")["description"]
     assert brief == "x" * queries.DETAIL_CHARS + ELLIPSIS
-    assert len(fields(call, "data-body", "call")["model"]) == queries.HEADER_CHARS
     assert fields(call, "data-detail", "text")["text"] == "x" * queries.DETAIL_CHARS + ELLIPSIS
     # A detail the page marks up is cut the same way and says so the same way, which no other
     # assertion here reaches: the mark lands inside the highlighted block, where it is one

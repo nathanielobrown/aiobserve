@@ -14,7 +14,7 @@ SELECT
     -- answers no turn of this thread, which puts it in this thread's unattributed bucket.
     t.api_call_id,
     n.id AS turn_id,
-    substr(t.name, 1, $head_chars) AS name,
+    substr(t.name, 1, $head_chars + 1) AS name,
     -- What the pane heads the call with, by the derivation the tree row, the errors list and
     -- the parent's children log all read (`analyze/macros.py`) — so a reader who clicked a
     -- row lands on a page headed the way the row was.
@@ -51,6 +51,9 @@ SELECT
     -- the record of what its result holds (`view/highlight.py:by_suffix` places it). `Read`
     -- alone: an `Edit` names a file too, but what it returns is a confirmation, not the file.
     CASE WHEN t.name = 'Read' AND json_valid(t.input)
+         -- Cut at the width and not one past it, unlike every string this query previews:
+         -- a suffix is a key looked up in a closed set and never printed, so a character
+         -- saying it went on would only be a character the lookup has to miss on.
          THEN substr(
              lower(regexp_extract(json_extract_string(t.input, '$.file_path'), '\.[^./]+$')),
              1, $head_chars)

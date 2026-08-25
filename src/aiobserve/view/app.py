@@ -439,6 +439,20 @@ def build_app(db_path: Path) -> FastAPI:
         """
         return fmt.ABSENT if value is None else fmt.cut(value, queries.LOG_CHARS)
 
+    def head(value: object) -> object:
+        """A header's value as a pane prints it: a string cut and marked, anything else as is.
+
+        The same half of the protocol `line` holds, at the pane's width — every string a
+        header query previews comes back one character past this cut. Applied by
+        `_parts.html:fact` to every value that reaches it rather than at the rows that need
+        it, so a fact added beside them inherits the bound instead of printing a value whole.
+        A header's other facts are flags and already-formatted numbers, and only a string the
+        store holds can be longer than the pane: those go through as `text` leaves them.
+        """
+        if value is None:
+            return fmt.ABSENT
+        return fmt.cut(value, queries.HEADER_CHARS) if isinstance(value, str) else value
+
     templates.env.filters |= {
         "money": fmt.money,
         "count": fmt.count,
@@ -448,6 +462,7 @@ def build_app(db_path: Path) -> FastAPI:
         "duration": fmt.duration,
         "text": fmt.text,
         "line": line,
+        "head": head,
         "path": project_path,
         "ago": ago,
         # The three filters that print what a transcript wrote. Each hands back escaped

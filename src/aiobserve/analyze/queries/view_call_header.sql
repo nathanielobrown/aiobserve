@@ -11,8 +11,8 @@ SELECT
     -- through the join rather than off the column: a fork replays its parent's turn, so its
     -- calls carry a turn id recorded on the parent's thread and belong to neither.
     t.id AS turn_id,
-    substr(c.model, 1, $head_chars) AS model,
-    substr(c.fallback_from, 1, $head_chars) AS fallback_from,
+    substr(c.model, 1, $head_chars + 1) AS model,
+    substr(c.fallback_from, 1, $head_chars + 1) AS fallback_from,
     c.effort,
     c.stop_reason,
     c.attribution_skill,

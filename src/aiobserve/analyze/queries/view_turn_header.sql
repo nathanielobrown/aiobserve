@@ -23,7 +23,7 @@ SELECT
     CASE WHEN t.command_name IS NULL THEN length(t.prompt) END AS prompt_chars,
     -- A slash turn leads with the command it ran instead. The name is a word, so it is
     -- cut to a fact's width...
-    substr(t.command_name, 1, $head_chars) AS command_name,
+    substr(t.command_name, 1, $head_chars + 1) AS command_name,
     -- ...and what followed it is a value of the turn like the prompt is — arguments run to
     -- thousands of characters — so it is cut one past `$detail_chars` with its whole length
     -- beside it, and `view_turn_command_args` has the rest.

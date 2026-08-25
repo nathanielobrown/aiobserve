@@ -8,6 +8,9 @@ SELECT
     -- returned, by the rule `view_tool_header` reads it by, so the whole value is marked up
     -- the way its preview on the pane was.
     CASE WHEN t.name = 'Read' AND json_valid(t.input)
+         -- Cut at the width and not one past it, unlike every string this query previews:
+         -- a suffix is a key looked up in a closed set and never printed, so a character
+         -- saying it went on would only be a character the lookup has to miss on.
          THEN substr(
              lower(regexp_extract(json_extract_string(t.input, '$.file_path'), '\.[^./]+$')),
              1, $head_chars)

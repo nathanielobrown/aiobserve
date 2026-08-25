@@ -3,10 +3,11 @@
 -- `session_overview` states, and the reason a session's numbers here can exceed its row in a
 -- corpus count. `session_overview` answers a report's front matter; this answers the page,
 -- which needs the `sessions` columns a reader identifies the session by.
--- Everything a transcript wrote is cut here: each string to `$head_chars`, each list to
--- `$head_items` members of `$item_chars` with a count of what was left. A header is the part
--- of the page no size a reader types bounds, and `pr_links` grows with every PR the session
--- opened — 32 on the busiest session recorded — so a page's ceiling needs the number bound.
+-- Everything a transcript wrote is cut here: each string one character past `$head_chars` so
+-- the page can mark it (`view/format.py:cut`), and each list to `$head_items` members of
+-- `$item_chars` with a count of what was left. A header is the part of the page no size a
+-- reader types bounds, and `pr_links` grows with every PR the session opened — 32 on the
+-- busiest session recorded — so a page's ceiling needs the number bound.
 WITH skill AS (
     SELECT coalesce(list_sort(list(DISTINCT c.attribution_skill)), []) AS names
     FROM live_api_calls c
@@ -18,12 +19,12 @@ WITH skill AS (
 )
 SELECT
     s.id AS session_id,
-    substr(s.title, 1, $head_chars) AS title,
-    substr(s.agent_name, 1, $head_chars) AS agent_name,
-    substr(s.project_dir, 1, $head_chars) AS project_dir,
-    substr(s.git_branch, 1, $head_chars) AS git_branch,
-    substr(s.version, 1, $head_chars) AS version,
-    substr(s.entrypoint, 1, $head_chars) AS entrypoint,
+    substr(s.title, 1, $head_chars + 1) AS title,
+    substr(s.agent_name, 1, $head_chars + 1) AS agent_name,
+    substr(s.project_dir, 1, $head_chars + 1) AS project_dir,
+    substr(s.git_branch, 1, $head_chars + 1) AS git_branch,
+    substr(s.version, 1, $head_chars + 1) AS version,
+    substr(s.entrypoint, 1, $head_chars + 1) AS entrypoint,
     r.started_at,
     r.ended_at,
     -- Wall time counts the gaps the user spent away; `active_ms` is what Claude Code
