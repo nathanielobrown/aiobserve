@@ -188,6 +188,10 @@ li.more > button:hover { background-color: color-mix(in srgb, var(--mark) 12%, t
    way, one line of it. Both are held off the numbers by a max-width, like the session list's
    own title column. */
 #pane .log td.said, #pane .log td.called { max-width: 26rem; color: var(--dim); }
+/* And a floor under the words, because most api calls say nothing: a column sized by its
+   content collapses to the width of the few rows that filled it, and the two lines it is
+   meant to show arrive one word wide. */
+#pane .log td.said { min-width: 16rem; }
 #pane .log td.said > span { display: -webkit-box; -webkit-box-orient: vertical;
   -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
 #pane .log td.called > span { display: block; overflow: hidden; text-overflow: ellipsis;
