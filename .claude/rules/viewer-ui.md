@@ -3,6 +3,7 @@ description: Viewer UI conventions
 paths:
   - "src/aiobserve/view/templates/**/*.html"
   - "src/aiobserve/view/static/*.css"
+  - "src/aiobserve/view/static/*.js"
 ---
 
 # Viewer UI
