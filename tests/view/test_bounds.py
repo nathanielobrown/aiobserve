@@ -115,7 +115,7 @@ PAGE_BYTES = 500_000
 #
 # Raised again from 4,900,000 for the mark every row now carries saying what kind of node it
 # is, in the pattern the children log's column heads already use.
-# `<span class="icon" aria-hidden="true">❖</span> ` is 48 B of markup around a 3-byte mark,
+# `<span class="icon" aria-hidden="true">❖</span> ` is 45 B of markup around a 3-byte mark,
 # plus the space after it: 49 B a row, and 3,217 rows of it is 157,633 B, with 800 B more on
 # the crumbs and 73 B on the pane's heading and the browser tab. The old ceiling left 34,666 B,
 # 10 B a row, so the raise landed before the markup rather than a template edit becoming an

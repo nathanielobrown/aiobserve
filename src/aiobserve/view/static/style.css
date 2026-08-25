@@ -304,9 +304,8 @@ section.enrichment { border-left: 2px solid var(--line); padding-left: var(--spa
 .friction { font-style: italic; }
 /* The mark saying what a thing is: what kind of node a row, a crumb or a heading names, and
    what a children log's column counts. It says nothing a screen reader needs — the word or the
-   label beside it is the same fact — so it is dim, and the markup hides it. Upright inside a
-   heading, which the table sets in italics. */
-.icon { color: var(--dim); font-style: normal; }
+   label beside it is the same fact — so it is dim, and the markup hides it. */
+.icon { color: var(--dim); }
 /* The mark on a string a model wrote. Not dimmed with the rest — it is the one thing on a
    tree row that says where the label came from, and a dimmed mark reads as decoration. */
 .glyph { color: inherit; cursor: help; }
