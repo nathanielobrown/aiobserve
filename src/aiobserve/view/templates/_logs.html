@@ -49,14 +49,18 @@
    hx-target="closest tr" hx-swap="afterend">View</button></td>
 {%- endmacro %}
 
-{% macro log(shape, rows, total, suffix, pager) %}
+{# `opens` is whether a row here can be opened in place. False inside an expansion, which is
+   already one level opened: the rows carry no button and the table drops the column that holds
+   one, because an expansion inside an expansion is the accordion of accordions the pane is
+   built to avoid (`.claude/rules/viewer-ui.md`). #}
+{% macro log(shape, rows, total, suffix, pager, opens=true) %}
 {% if shape != 'none' %}
 <section class="log" data-log="{{ shape }}">
   <h2><span data-field="children">{{ total | count }}</span> {{ shape }}</h2>
   <table>
     <thead>
       <tr data-columns="{{ shape }}">
-        {%- for column in COLUMNS[shape] %}
+        {%- for column in COLUMNS[shape] if opens or column.field != 'body' %}
         <th scope="col" data-column="{{ column.field }}"{% if column.css %} class="{{ column.css }}"{% endif
           %}>{{ parts.mark(column.icon) }}
           {{ label(column.field) }}</th>
@@ -98,7 +102,9 @@
         {{ cell('cost_usd', item.node.cost_usd | money, 'number') }}
         {%- endif %}
         {{ cell('started_at', item.row.started_at | clock, 'when') }}
+        {%- if opens %}
         {{ opener(item.node, suffix) }}
+        {%- endif %}
       </tr>
       {% endfor %}
     </tbody>

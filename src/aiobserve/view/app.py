@@ -185,13 +185,26 @@ class Seen(NamedTuple):
 Reader = Callable[[duckdb.DuckDBPyConnection, tree.Corpus, Row], Seen]
 
 
+class Listing(NamedTuple):
+    """The level an expansion lists under the body instead of only counting.
+
+    One kind has one: an api call's expansion lists the tools it called, because a tool call
+    opens nothing further — the rows come with no opener on them, so the level a reader opens
+    is still the last one. `size` is what the query calls its page size, and `build` turns one
+    row into the node its row links to.
+    """
+
+    query: Fragment
+    size: str
+    build: Callable[[str, str, Row], nodes.Node]
+
+
 class Body(NamedTuple):
     """How one kind answers an expansion: the header it reads, and what it says is under it.
 
-    An expansion is the node's own body and nothing else, so `children` is the column counting
-    what the full view would have listed — a count and a link stand in for the list, because an
-    accordion of accordions is a page and the node already has one. `shape` names those
-    children the way the full view's log heading does. A kind with neither ends the tree.
+    `children` is the column counting what the full view would have listed, and `shape` names
+    those children the way the full view's log heading does. A kind with neither ends the tree.
+    Where `listed` is None the count and a link stand in for the list.
     """
 
     page: Page
@@ -202,6 +215,7 @@ class Body(NamedTuple):
     children: str | None
     # Whether a pass can have described this kind, and so whether the title may be the model's.
     described: bool
+    listed: Listing | None
 
 
 # Every kind a children log lists, except the run: a run's URL carries its id where the others
@@ -214,6 +228,7 @@ BODIES: dict[str, Body] = {
         Shape.CALLS,
         "api_calls",
         described=True,
+        listed=None,
     ),
     Kind.CALL: Body(
         Page.CALL_HEADER,
@@ -222,6 +237,7 @@ BODIES: dict[str, Body] = {
         Shape.TOOLS,
         "tool_calls",
         described=False,
+        listed=Listing(Fragment.CALL_TOOLS, "page_tools", nodes.tool_node),
     ),
     Kind.TOOL: Body(
         Page.TOOL_HEADER,
@@ -230,6 +246,7 @@ BODIES: dict[str, Body] = {
         Shape.NONE,
         None,
         described=False,
+        listed=None,
     ),
 }
 
@@ -1484,13 +1501,15 @@ def build_app(db_path: Path) -> FastAPI:
         children: int | None,
         marks: str,
         ran: tree.Ran,
+        under: list[LogRow],
     ) -> Response:
         """One node's body alone, the way an expansion in someone else's log mounts it.
 
         The same macro the full view's pane renders through, so the two cannot drift apart;
-        where the page has the crumbs, the log and prev/next, this has how many children the
-        node holds and the way to its own page. `marks` is the knobs the page around the
-        expansion was read under, which every link out of here carries on.
+        where the page has the crumbs and prev/next, this has the way to the node's own page.
+        `under` is the level the expansion lists, empty for every kind that stops at the count.
+        `marks` is the knobs the page around the expansion was read under, which every link out
+        of here carries on.
         """
         return templates.TemplateResponse(
             request,
@@ -1500,6 +1519,7 @@ def build_app(db_path: Path) -> FastAPI:
                 "row": row,
                 "shape": shape,
                 "children": children,
+                "under": under,
                 "suffix": marks,
                 "citations": {named.value: cited(named, bound) for named, bound in ran},
             },
@@ -1536,15 +1556,36 @@ def build_app(db_path: Path) -> FastAPI:
             "detail_chars": queries.HEADER_CHARS,
         }
         keyed: dict[str, ParamValue] = {"session_id": session_id, "source": source}
+        # The level the expansion lists, where its kind lists one: the first page of it, at the
+        # size the reader is reading logs under. Which page is not a question an expansion
+        # asks — the way past the first is the link to the node's own page.
+        level: dict[str, ParamValue] = {
+            **keyed,
+            shaped.keyed: node_id,
+            "skipped": 0,
+            "log_chars": queries.LOG_CHARS,
+        }
+        if shaped.listed is not None:
+            level[shaped.listed.size] = log
         with open_store(resolved) as connection:
             rows = page_rows(connection, shaped.page, **bound)
             if not rows:
                 raise HTTPException(404, "No node with that id is in this thread.")
+            under = (
+                [
+                    LogRow(shaped.listed.build(session_id, source, item), item)
+                    for item in page_rows(connection, shaped.listed.query, **level)
+                ]
+                if shaped.listed is not None
+                else []
+            )
             # The title is the model's words wherever a pass reached the node, exactly as the
             # log row that opened this expansion has it.
             describes = described(connection, session_id, source) if shaped.described else None
         told = describes.turns.get(node_id) if describes else None
         ran: tree.Ran = [(shaped.page, bound)]
+        if shaped.listed is not None:
+            ran.append((shaped.listed.query, level))
         if describes is not None and describes.queried:
             ran.append((Page.ENRICHMENT, keyed))
         return expanded(
@@ -1555,6 +1596,7 @@ def build_app(db_path: Path) -> FastAPI:
             rows[0][shaped.children] if shaped.children else None,
             carried(nav, kin, log, detail),
             ran,
+            under,
         )
 
     @app.get(f"{nodes.BODY_URL}/session/{{session_id}}/{Kind.RUN}/{{run_id}}")
@@ -1593,6 +1635,7 @@ def build_app(db_path: Path) -> FastAPI:
             rows[0]["turns"],
             carried(nav, kin, log, detail),
             ran,
+            [],
         )
 
     def spilled(

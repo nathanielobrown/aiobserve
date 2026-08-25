@@ -301,15 +301,22 @@ def test_a_log_row_expands_to_the_body_its_own_page_wraps(
             assert fields(served.text, "data-body", child) == fields(
                 client.get(own).text, "data-body", child
             ), mount
-            # And it is only the body: everything the full view wraps it in is absent.
-            for wrapper in ("data-crumb", "data-tree", "data-walk", "data-log", "data-detail"):
+            # And it is only the body: everything the full view wraps it in is absent. A
+            # call's expansion is the one that lists a level under it — the tools it called,
+            # which is what the leaf below reads.
+            for wrapper in ("data-crumb", "data-tree", "data-walk", "data-detail"):
                 assert not values(served.text, wrapper), (mount, wrapper)
-            # What is under the child is a count and the way to its own page, and the count is
-            # the one the body itself reports.
+            # A call that called none has nothing to list, so it stands the count like the rest.
+            called = (
+                child == "call" and fields(served.text, "data-body", child)["tool_calls"] != "0"
+            )
+            assert values(served.text, "data-log") == (["tools"] if called else []), mount
+            # What is under the child is the way to its own page, with the count beside it
+            # wherever the expansion listed nothing — and that count is the body's own.
             (link,) = inside(served.text, "data-children", child, "href")
             assert link == own, mount
             counted = fields(served.text, "data-children", child)
-            if child in CHILDREN:
+            if child in CHILDREN and not called:
                 assert (
                     counted["children"] == fields(served.text, "data-body", child)[CHILDREN[child]]
                 ), mount
@@ -319,6 +326,56 @@ def test_a_log_row_expands_to_the_body_its_own_page_wraps(
     # Every kind a log lists was opened: a shape the sweep never reached is a mount nothing
     # proved serves.
     assert opened == {"turn", "call", "tool", "run"}
+
+
+def test_a_call_opened_in_its_turn_lists_the_tools_it_called(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """An api call opened in a turn's log lists its tool calls, the way the call's own page does.
+
+    The expansion used to say `4 tools` and stop, which is a number the row above it already
+    printed — a reader who wanted to know what the call did had to leave the turn. It now
+    mounts the log the call's own page carries, through the same macro rather than a second
+    shape, so a tool reads the same in both places.
+
+    One level and no further. The rows carry no opener and the table drops the column that
+    holds one: an expansion that opened an expansion is the accordion of accordions the rule
+    forbids, and the way past this level is the link to the call's own page under it.
+    """
+    session_id, source, turn_id = one(store, LEVELS["turn"][0])
+    page = client.get(LEVELS["turn"][1].format(session_id, source, turn_id)).text
+    # The first call on the turn that called any tools, so the expansion has rows to list.
+    called = [
+        key
+        for key in values(page, "data-child")
+        if fields(page, "data-child", key)["tool_calls"] != "0"
+    ]
+    assert called, "the turn's calls made no tool calls, so no expansion can list one"
+    key = called[0]
+    (mount,) = [at for at in inside(page, "data-child", key, "hx-get") if at.startswith(BODY_URL)]
+    (own,) = inside(page, "data-child", key, "href")
+    opened = client.get(mount).text
+    listed = client.get(own).text
+    # The same tool calls the call's own page lists, in the same order, printing the same
+    # values — one derivation, one shape, two mounts.
+    rows = values(opened, "data-child")
+    assert rows == values(listed, "data-child")
+    assert rows, mount
+    for row in rows:
+        assert fields(opened, "data-child", row) == fields(listed, "data-child", row), row
+    # Headed like the log on the page, less the column the opener lives in...
+    named = [column.field for column in COLUMNS[Shape.TOOLS] if column.field != "body"]
+    assert inside(opened, "data-columns", "tools", "data-column") == named
+    for row in rows:
+        assert inside(opened, "data-child", row, "data-column") == named, row
+    # ...because no row in an expansion opens another one.
+    assert "data-view" not in opened
+    # And the count of the level stands in the log's own heading, with the link under it left
+    # to say the one thing the heading does not: where the rest of this call is.
+    assert (
+        fields(opened, "data-log", "tools")["children"]
+        == fields(page, "data-child", key)["tool_calls"]
+    )
 
 
 def test_a_tool_call_that_spawned_a_run_leads_with_the_way_to_it(

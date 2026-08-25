@@ -1,18 +1,27 @@
 {# One node's body alone, for an expansion opened in someone else's children log: the same
-   section a node page wraps, with a count and a link where the page has the log itself. The
-   nesting stops here on purpose — an accordion of accordions is a page, and the node already
-   has one.
+   section a node page wraps, with the way to the node's own page where the page has the tree
+   and the crumbs. A call lists the tools it called under its facts, through the log macro the
+   page itself renders; every other kind stands a count and a link in the list's place. Either
+   way the nesting stops here — an expansion that opened an expansion is an accordion of
+   accordions, and the node already has a page.
 
    A row of the log's own table, swapped in after the row that asked for it, spanning every
    column that row fills: the parent's shape is not in the URL, so the span comes from the
    kind of node this is — `nodes.spanned` maps it back to the log that lists it. #}
 {% import "_node_body.html" as body %}
+{% import "_logs.html" as logs %}
 <tr class="expansion" data-expansion="{{ node.kind }}">
   <td colspan="{{ spanned(node.kind) }}">
   {{ body.pane(node, row, suffix) }}
+  {%- if under %}
+  {{ logs.log(shape, under, children, suffix, none, opens=false) }}
+  {%- endif %}
+  {# The link out. It carries the count wherever nothing above it listed the level; where the
+     log did, the log's own heading counts it and the link says the one thing left to say. #}
   <p class="children" data-children="{{ node.kind }}">
     <a href="{{ node.url }}{{ suffix }}">
-      {%- if children is not none %}<span data-field="children">{{ children | count }}</span>
+      {%- if children is not none and not under %}
+      <span data-field="children">{{ children | count }}</span>
       {{ shape }}{% else %}its own page{% endif %}</a>
   </p>
   {# What the fragment ran, beside what it rendered — the same provenance a page's footer

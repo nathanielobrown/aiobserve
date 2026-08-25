@@ -18,7 +18,7 @@ A node's body is one macro in `_node_body.html`, mounted twice:
 
 Render a node's facts in the body macro and nowhere else. A pane and a tree row that disagree tell a reader two stories about one node.
 
-An expansion stops at the body. What is under it is a count and a link to its own page, never another expansion: an accordion of accordions is a page, and the node already has one.
+An expansion stops one level down. An api call's lists the tools it called, through the same log macro the page renders; every other kind stands a count and a link to its own page. No row inside an expansion opens another: an accordion of accordions is a page, and the node already has one.
 
 Every node reachable in the pane has a URL that renders the whole page cold. Nothing may render only as a fragment.
 

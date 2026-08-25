@@ -163,6 +163,12 @@ MEASURED_PROJECTS_CHROME = 2_500
 # failing more calls than the page shows: 620 B a row, of which 240 B is a planted title,
 # leaving 380 B of the link and the two cells after it — and 2,375 B of chrome, which is small
 # for the same reason the landing page's is: no form, no pager and no suggestions.
+# What an expansion carries outside the rows it lists: the node's own body, the link to its
+# page, and the queries it cites. The body's facts are read at `HEADER_CHARS` rather than at
+# the reader's `?detail=` — an expansion previews no fat value — so this is a fraction of the
+# chrome above. Measured through the app by the leaf below at 4,820 B.
+MEASURED_EXPANSION_CHROME = 5_000
+
 MEASURED_ERROR_ROW_MARKUP = 400
 MEASURED_ERRORS_CHROME = 2_500
 
@@ -431,6 +437,17 @@ def worst_node_bytes() -> int:
         + (PANE_DETAILS - DEAR_PANE_DETAILS) * worst_stored_detail_bytes()
         + DEAR_PANE_DETAILS * worst_rendered_detail_bytes()
     )
+
+
+def worst_expansion_bytes() -> int:
+    """What one expansion opened in a children log can weigh.
+
+    A body where the page has its tree and its crumbs, and under it the level the node's own
+    page lists — the same log, at the same `?log=` cap and one column narrower, because no row
+    inside an expansion opens another. So an expansion prices as a page of log rows plus a
+    body, and the cap that bounds the log on a page is what bounds it here.
+    """
+    return MEASURED_EXPANSION_CHROME + bounds.LOG.ceiling * worst_log_row_bytes()
 
 
 def worst_record_bytes() -> int:
@@ -1153,6 +1170,59 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     described = fields(session, "data-enrichment", values(session, "data-enrichment")[0])
     assert len(described["description"]) == len(described["friction"]) == queries.ENRICHMENT_CHARS
     assert described["stale"] == "stale"
+
+
+def test_an_expansion_weighs_a_body_and_the_one_page_of_rows_it_lists(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """An expansion is bounded by the same cap its node's own page is, and by nothing else.
+
+    An api call's expansion lists the tools it called, so a call that called two hundred is
+    where the bound has to hold: the fragment reads one page of the level at the reader's
+    `?log=`, and the way past that page is the link to the call's own page rather than more
+    rows. Planted, because the densest call the corpus recorded made four tool calls — and
+    planted at every cap, with `&` in each string a row prints, so what this weighs is the
+    fragment at its ceiling rather than at the fixture's sizes.
+    """
+    fat = "&" * (queries.LOG_CHARS + 1)
+    session_id, source, api_call_id, recorded = one(
+        store,
+        "SELECT session_id, source, api_call_id, count(*) FROM live_tool_calls"
+        " GROUP BY 1, 2, 3 ORDER BY 4 DESC, 1, 2, 3 LIMIT 1",
+    )
+    clones = bounds.LOG.ceiling * 2
+    path = plant(
+        # One recorded tool call, cloned past the cap: the clone keeps every column the row
+        # reads except the two that have to differ, so the rows are the store's own shape.
+        (
+            "INSERT INTO tool_calls (SELECT t.* REPLACE (t.id || '-planted-' || i AS id,"
+            ' 90000 + i AS "index") FROM (SELECT * FROM tool_calls WHERE session_id = ?'
+            " AND source = ? AND api_call_id = ? LIMIT 1) t, range(1, ?) g(i))",
+            [session_id, source, api_call_id, clones + 1],
+        ),
+        # Then every string a tool row prints, planted past its cut: the name, the title the
+        # input is read for, the command under it, and the failure that marks the row.
+        (
+            "UPDATE tool_calls SET name = ?, input = ?, result = ?, is_error = true",
+            [fat, json.dumps({"description": fat, "command": fat}), fat],
+        ),
+    )
+    mount = f"{nodes.BODY_URL}/session/{session_id}/thread/{source}/call/{api_call_id}"
+    with TestClient(build_app(path)) as planted:
+        served = planted.get(mount, params={**WORST_KNOBS, "log": bounds.LOG.ceiling})
+    assert served.status_code == 200, mount
+    rows = re.findall(PRICED_ROWS["log"], served.text, flags=re.S)
+    # The cap bit: the level holds twice what came back, and what came back is one page of it.
+    assert len(rows) == bounds.LOG.ceiling
+    assert fields(served.text, "data-log", "tools")["children"] == str(recorded + clones)
+    # The fragment weighs its rows and a body, and neither part is over what it is budgeted...
+    assert len(served.content) <= worst_expansion_bytes()
+    chrome = re.sub(PRICED_ROWS["log"], "", served.text, flags=re.S)
+    assert len(chrome.encode()) <= MEASURED_EXPANSION_CHROME, len(chrome.encode())
+    assert max(len(row.encode()) for row in rows) <= worst_log_row_bytes()
+    # ...and an expansion opens no expansion: not one of those rows carries a button that
+    # would fetch another body under it.
+    assert "data-view" not in served.text
 
 
 def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
