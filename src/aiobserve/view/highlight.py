@@ -146,12 +146,6 @@ _FORMATTER = _ShortClasses(nowrap=True)
 # How far JSON is indented before it stops being readable and starts being a scroll.
 _INDENT = 2
 
-# How much indentation a value may gain before it is served as stored instead. Indenting is
-# quadratic in nesting — 10 KB of nothing but `[` indents to 50 MB — while real values gain
-# very little: across the canonical store on 2026-08-07, the worst of a 2,000-record sample
-# gained 3,418 characters and the largest values in it gained 352.
-_MAX_INDENT_CHARS = 20_000
-
 
 class Lit(NamedTuple):
     """One value as a page prints it: the markup, and why it is plain where it is plain."""
@@ -166,7 +160,7 @@ class Lit(NamedTuple):
 
 
 def _indent_fits(parsed: object) -> bool:
-    """Whether indenting a parsed value would add less than `_MAX_INDENT_CHARS`.
+    """Whether indenting a parsed value would add less than `bounds.INDENT_CHARS`.
 
     Counts what `json.dumps(indent=…)` adds — a newline and one level of padding per member,
     plus a line for each closing bracket — and stops at the budget, so measuring a hostile
@@ -186,7 +180,7 @@ def _indent_fits(parsed: object) -> bool:
         if not children:
             continue
         added += len(children) * (1 + (depth + 1) * _INDENT) + 1 + depth * _INDENT
-        if added >= _MAX_INDENT_CHARS:
+        if added >= bounds.INDENT_CHARS:
             return False
         stack.extend((child, depth + 1) for child in children)
     return True
@@ -271,7 +265,7 @@ def _readable(value: str) -> tuple[str, bool]:
 
     A value nested deeply enough that indenting it would explode — or that the parser's own
     stack cannot hold — is shown as stored too, so what a fragment serves stays proportional
-    to what the store holds. `_MAX_INDENT_CHARS` sets the line.
+    to what the store holds. `bounds.INDENT_CHARS` sets the line.
     """
     try:
         parsed = json.loads(value)

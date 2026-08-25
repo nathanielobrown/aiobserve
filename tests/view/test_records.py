@@ -105,6 +105,44 @@ def test_a_citation_tuple_maps_to_a_working_url(
     }
 
 
+def test_a_record_too_wide_to_weigh_waits_for_a_click(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A page opens its first record only where fetching it stays inside a page's budget.
+
+    The open row is a fetch nobody clicked, so what it costs is what the page costs — and a
+    record is the one value the store holds no bound over: the canonical store archives one of
+    7.6 million characters, which renders to nine megabytes. A reader who paged here rather
+    than following a citation never asked for it at all.
+
+    So the row opens itself up to `bounds.OPENED_RECORD_CHARS` and stays a click away past it,
+    which is the same page either way — the record is a fetch in both, and the difference is
+    who triggers it. Planted at the boundary in both directions, because no recorded record
+    sits on it.
+    """
+    widths = ((bounds.OPENED_RECORD_CHARS, True), (bounds.OPENED_RECORD_CHARS + 1, False))
+    for length, opens in widths:
+        path = plant(
+            (
+                "UPDATE raw_records SET raw = ?"
+                " WHERE session_id = ? AND source = ? AND line_no = ?",
+                ["&" * length, RESUME, MAIN, RESUME_LONG_RECORD],
+            )
+        )
+        with TestClient(build_app(path)) as planted:
+            page = planted.get(
+                f"/session/{RESUME}/records/{MAIN}", params={"after": RESUME_LONG_RECORD - 1}
+            ).text
+        # The cited record is the first row of the page whichever side of the line it falls...
+        assert values(page, "data-record")[0] == str(RESUME_LONG_RECORD)
+        assert fields(page, "data-record", str(RESUME_LONG_RECORD))["raw_chars"] == f"{length:,}"
+        # ...and the row carries the fetch either way. What the width decides is whether the
+        # page pulls it as it loads or waits for the reader to open the row.
+        trigger = "load" if opens else "toggle once"
+        assert opened(page) == ([str(RESUME_LONG_RECORD)] if opens else [])
+        assert inside(page, "data-open-record", str(RESUME_LONG_RECORD), "hx-trigger") == [trigger]
+
+
 def test_a_record_row_shows_a_preview_and_the_length_it_was_cut_from(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:

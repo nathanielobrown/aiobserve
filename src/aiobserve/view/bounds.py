@@ -46,6 +46,15 @@ DETAIL = Bound(default=queries.DETAIL_CHARS, ceiling=queries.DETAIL_CHARS)
 
 # The records browser, whose row is a preview and the `hx-get` that fetches the record whole.
 RECORDS = Bound(default=queries.PAGE_RECORDS, ceiling=200)
+# How long the record a page opens by itself may be. The first row arrives open, because a
+# citation's cursor puts the record it names there — and a fetch nobody clicked is priced
+# against the page that triggers it rather than against the value route it goes to. A record
+# is the one value nothing here bounds: the canonical store archives one of 7.6 M characters,
+# which renders to nine megabytes. Derived against the page ceiling at `MARKED_CHAR_BYTES` a
+# character and the indentation below (`tests/view/test_bounds.py`), which leaves 96% of the
+# canonical store's records opening on arrival and the rest one click away — where every other
+# row on the page already is.
+OPENED_RECORD_CHARS = 15_000
 # The offload page, the one ceiling set by escaping alone rather than by a row's markup: the
 # content is a file some tool wrote, and a chunk of nothing but `&` weighs five bytes a
 # character. The only value the viewer serves with no row cost behind it — `offload_files.
@@ -90,6 +99,13 @@ DEPTH = 16
 # row. Bound because a level renders it: a digest answering with more than one raises rather
 # than serving a row nothing counted.
 CURSORLESS_TURNS = 1
+# How much indentation a JSON value may gain before it is served as stored instead
+# (`view/highlight.py`). Indenting is quadratic in nesting — 10 KB of nothing but `[` indents
+# to 50 MB — while real values gain very little: across the canonical store on 2026-08-07, the
+# worst of a 2,000-record sample gained 3,418 characters and the largest values in it gained
+# 352. What it adds is whitespace, which the formatter writes out bare, so a page pays a byte
+# a character for it rather than a span.
+INDENT_CHARS = 20_000
 # How long a value may be and still be marked up in its own syntax (`view/highlight.py`).
 # Characters rather than bytes: what the ceiling guards is the tokenizer's time and the markup
 # a span per token adds — about five bytes of `<span class="…">` for every byte of value — and

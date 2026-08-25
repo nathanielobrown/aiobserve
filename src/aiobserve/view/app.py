@@ -1354,6 +1354,12 @@ def build_app(db_path: Path) -> FastAPI:
         # answer — nothing at this URL. Neither is a page worth rendering empty.
         if not page.rows:
             raise HTTPException(404, "This store holds no records for that thread at that line.")
+        # The one record the page fetches unasked: the first row, which is the one a citation
+        # named — but only where a record that wide stays inside a page's budget
+        # (`bounds.OPENED_RECORD_CHARS`). Past it the row is where every other row is, one
+        # click from its own fetch, because a reader who paged here asked for no such thing.
+        first = page.rows[0]
+        opened = first["line_no"] if first["raw_chars"] <= bounds.OPENED_RECORD_CHARS else None
         return templates.TemplateResponse(
             request,
             "records.html",
@@ -1362,6 +1368,7 @@ def build_app(db_path: Path) -> FastAPI:
                 "source": source,
                 "page": page,
                 "size": size,
+                "opened": opened,
                 "citations": {Page.RECORDS.value: cited(Page.RECORDS, bound)},
             },
         )

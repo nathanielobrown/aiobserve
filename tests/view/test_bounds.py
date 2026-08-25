@@ -43,6 +43,7 @@ from tests.conftest import (
     MAIN,
     OFFLOAD_FILE,
     RESUME,
+    RESUME_LONG_RECORD,
     SLASH_TURN,
     SPINE,
     SPINE_RUN,
@@ -557,7 +558,7 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     # composes its window around the query rather than binding it — and every leaf below
     # recomputes from whatever this says, so a literal is the only thing that reds when the
     # window silently narrows back to what it was.
-    assert bounds.KIN == bounds.Bound(200, 200)
+    assert bounds.Bound(200, 200) == bounds.KIN
     # How much of a label a row of the tree shows. Wide enough that a draggable sidebar has
     # something to show when a reader widens it — the cut is what a row can say, and CSS
     # decides how much of it fits. Every level cuts to the same width, whatever kind of child
@@ -612,6 +613,10 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     # Every ceiling is projected at the largest page a URL can ask for, because a size is
     # something a reader types.
     assert bounds.RECORDS.ceiling * worst_record_bytes() < PAGE_BYTES
+    # And the record that page opens for a reader who did not click it, which is priced as a
+    # page rather than as the per-value fetch it goes to: every character its own token, plus
+    # the indentation a JSON record gains, which is whitespace and written out bare.
+    assert bounds.OPENED_RECORD_CHARS * MARKED_CHAR_BYTES + bounds.INDENT_CHARS < PAGE_BYTES
     assert bounds.CHUNK.ceiling * ESCAPED_CHAR_BYTES < PAGE_BYTES
     # The list is the page a corpus grows, so its ceiling is the widest page a URL can ask for
     # plus the chrome that rides every page — both bound by construction now, not by how long
@@ -657,7 +662,9 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
         "DEPTH",
         "CURSORLESS_TURNS",
         "LOG_CHARS",
+        "INDENT_CHARS",
         "HIGHLIGHT_CHARS",
+        "OPENED_RECORD_CHARS",
         "TREE_ROW_BYTES",
     }
 
@@ -860,6 +867,51 @@ def test_an_offload_of_nothing_but_escapes_still_serves_under_the_ceiling(
     # inside the block rather than over the page, which also carries escaped `&` in its links.
     assert block(page.text, "content").count("&amp;") == bounds.CHUNK.ceiling
     assert len(page.content) < PAGE_BYTES
+
+
+def escaping_json(chars: int) -> str:
+    """Valid JSON of exactly `chars` characters, in the shape a record costs most to mark up.
+
+    A list of one-character strings: every element is its own token, so the formatter writes a
+    span around three characters, and the character inside escapes to five bytes. Indented,
+    each element also lands on a line of its own. Invented for the same reason the offload's
+    content is — no recorded record is adversarial, and a record that parses is the only one
+    the page marks up at all.
+    """
+    elements = ['"&"'] * ((chars - 2) // 4)
+    listed = "[" + ",".join(elements) + "]"
+    # The slack goes inside the last string, which keeps it valid JSON and one more token.
+    return listed[:-2] + "&" * (chars - len(listed)) + listed[-2:]
+
+
+def test_the_record_a_page_opens_unasked_serves_under_the_ceiling(plant: Planter) -> None:
+    """The widest record a page fetches without a click stays under a page's ceiling.
+
+    Every other per-value fetch here is exempt from the page bound: its unit is one value, and
+    a reader who clicks for a value has asked for whatever the store holds. This one is not,
+    because nobody clicked — the row the browser opens on arrival is a fetch the page starts —
+    so `bounds.OPENED_RECORD_CHARS` is what keeps it a page's worth.
+    """
+    raw = escaping_json(bounds.OPENED_RECORD_CHARS)
+    assert len(raw) == bounds.OPENED_RECORD_CHARS
+    path = plant(
+        (
+            "UPDATE raw_records SET raw = ? WHERE session_id = ? AND source = ? AND line_no = ?",
+            [raw, RESUME, MAIN, RESUME_LONG_RECORD],
+        )
+    )
+    with TestClient(build_app(path)) as planted:
+        page = planted.get(
+            f"/session/{RESUME}/records/{MAIN}", params={"after": RESUME_LONG_RECORD - 1}
+        )
+        served = planted.get(f"/fragment/record/{RESUME}/{MAIN}/{RESUME_LONG_RECORD}")
+    # The page opens this one on arrival, so what it weighs is what the page's load costs...
+    assert inside(page.text, "data-open-record", str(RESUME_LONG_RECORD), "hx-trigger") == ["load"]
+    # ...and it is the marked-up path being weighed, not a record served plain because it did
+    # not parse — which is the whole reason a character is priced at a span and not an escape.
+    assert served.status_code == 200
+    assert "<span" in block(served.text, "raw")
+    assert len(served.content) < PAGE_BYTES
 
 
 # What a node page's arithmetic prices row by row, which chrome is the page without: a crumb of
