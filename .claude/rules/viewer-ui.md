@@ -70,6 +70,12 @@ Move `overflow` down onto the rows and every click drops the reader back at the 
 
 Witnessed in a real Chromium on 2026-08-20 at a viewport where the tree overflows. Clicking a row that is scrolled *out* of view does move the tree — the browser scrolls the link into view before focusing it, which is the browser being right. A test script that clicks through a driver's "scroll into view if needed" measures that and not the swap; click a visible row by coordinates.
 
+# A rendered value goes through one macro
+
+Prose a person or a model wrote — a prompt, a run's brief, what a call said — shows as the Markdown it was written in, through `parts.prose`. `view/render.py` owns the escaping, and no template may hand `|safe` to a value that did not come through it.
+
+Both mounts of one value use that macro: the head a pane previews, and the whole of it the fetch swaps into the same block. A value rendered one way in the preview and another in the fetch is a value a reader cannot tell has a head.
+
 # Label every value a test reads
 
 A rendered value goes in `<span data-field="{{ name }}">`, and a repeated thing gets a `data-` key naming it (`data-tree`, `data-child`, `data-crumb`, `data-walk`). Tests read the viewer through those attributes, so prose is free to change and the units and marks stay outside the labelled span — a `data-field` carries a value and nothing around it: the value the store holds, or — where the field is a title — the one derivation that composes it. A kind mark is the exception that proves it: it carries no key, and `tests/view/conftest.py:icons` reads it by class.

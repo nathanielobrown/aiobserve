@@ -182,6 +182,10 @@ Each observed subagent transcript has a neighboring `meta.json`, and each meta h
 | `taskKind`, `teamName`, `color`, `planModeRequired`, `permissionMode` | 71 | Teammate fields; `taskKind` is `in_process_teammate` |
 | `name`, `worktreePath`, `worktreeBranch`, `customAgentType`, `stoppedByUser` | 94, 86, 86, 39, 3 | Recorded but not yet read |
 
+Of the 254 metas without `toolUseId`, 180 belong to workflow agents, 71 to teammates, and three to forks. The team mechanism starts a teammate without a tool call. Preserve that orphaned run with a warning; dropping it would recreate the prior importer's false claim that all agent runs came from direct tool calls.
+
+*Evidence:* `tests/fixtures/spine/`, CC 2.1.221, contains a spawned and nested run; `tests/fixtures/teammate/`, CC 2.1.211, contains an orphaned teammate.
+
 ### Read a run's ask and answer off the call that spawned it
 
 What a run was asked and what it answered are not in the meta. Both are on the spawning call: its `prompt` and its `result`. Read the field rather than the tool name, because the tool is not always `Agent` and a fan-out shares one call among many runs:
@@ -208,9 +212,7 @@ So 180 of the 2,735 runs with a spawning call — 6.6% — have no ask to read, 
 
 Count runs, not calls. `tool_calls.id` is unique within a session, not across the store: the same query keyed on `id` alone counts 2,629 `Agent` rows, 74 of which belong to a session whose runs point at something else.
 
-Of the 254 metas without `toolUseId`, 180 belong to workflow agents, 71 to teammates, and three to forks. The team mechanism starts a teammate without a tool call. Preserve that orphaned run with a warning; dropping it would recreate the prior importer's false claim that all agent runs came from direct tool calls.
-
-*Evidence:* `tests/fixtures/spine/`, CC 2.1.221, contains a spawned and nested run; `tests/fixtures/teammate/`, CC 2.1.211, contains an orphaned teammate.
+*Evidence:* `tests/fixtures/spine/`, CC 2.1.221, contains an `Agent` call carrying a `prompt` and the result it returned; `tests/fixtures/workflow/`, CC 2.1.207, contains the `Workflow` call, whose input is a name and its arguments.
 
 ### Join a workflow agent through its launcher's run id
 
