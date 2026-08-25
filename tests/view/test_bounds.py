@@ -487,11 +487,13 @@ def worst_record_bytes() -> int:
 # describes most of its items and no plant can reach the rest, so the rows go in wholesale —
 # a marginal cost measured between a described row and an undescribed one is not one.
 def _described_at_every_cap() -> tuple[Statement, ...]:
+    # A character past each cap, so the page pays for the mark as well as the width: the words
+    # a pass writes are the one field here that routinely runs past what a pane prints.
     payload: list[str | int] = [
-        "&" * queries.ENRICHMENT_CHARS,
+        "&" * (queries.ENRICHMENT_CHARS + 1),
         "&" * queries.TAG_CHARS,
         "&" * queries.TAG_CHARS,
-        "&" * queries.ENRICHMENT_CHARS,
+        "&" * (queries.ENRICHMENT_CHARS + 1),
     ]
     stamp = "'planted', 0, 0, 'planted', '1970-01-01T00:00:00Z'"
     return (
@@ -1212,7 +1214,8 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     assert any('data-field="is_error"' in row for _, rows in split for row in rows["tree"])
     # The enrichment sits in the chrome, stale tag and all, so it is planted with the rest.
     described = fields(session, "data-enrichment", values(session, "data-enrichment")[0])
-    assert len(described["description"]) == len(described["friction"]) == queries.ENRICHMENT_CHARS
+    marked = "&" * queries.ENRICHMENT_CHARS + ELLIPSIS
+    assert described["description"] == described["friction"] == marked
     assert described["stale"] == "stale"
 
 

@@ -54,7 +54,9 @@ def enrichment_of(
 
 
 def test_a_session_page_shows_what_the_model_said_about_the_session(
-    enriched_client: TestClient, enriched_store: duckdb.DuckDBPyConnection
+    enriched_client: TestClient,
+    enriched_store: duckdb.DuckDBPyConnection,
+    enriched_plant: Planter,
 ) -> None:
     """A described session carries its own description, its category and its outcome."""
     page = enriched_client.get(f"/session/{SPINE}").text
@@ -67,6 +69,18 @@ def test_a_session_page_shows_what_the_model_said_about_the_session(
     )
     # ...and the query behind it is cited like every other query the page ran.
     assert Page.ENRICHMENT.value in fields(page, "id", "citation")
+    # A pass writes as much as it wants to, so the two long fields ride the same cut-and-mark
+    # protocol every other head does: the query answers one character past the width and the
+    # pane marks what it left. Not a rare case — 2,745 of the 2,763 agent-run descriptions in
+    # the canonical store on 2026-08-25 run past this width — and an unmarked cut would read
+    # as the whole of what the model said, mid-sentence and full stop absent.
+    paragraph = "w" * (queries.ENRICHMENT_CHARS + 1)
+    path: Path = enriched_plant(
+        ("UPDATE session_enrichments SET description = ?, friction = ?", [paragraph, paragraph])
+    )
+    with TestClient(build_app(path)) as planted:
+        marked = fields(planted.get(f"/session/{SPINE}").text, "data-enrichment", SPINE)
+    assert marked["description"] == marked["friction"] == cut(paragraph, queries.ENRICHMENT_CHARS)
 
 
 def test_the_session_list_shows_what_the_model_said_about_each_session(

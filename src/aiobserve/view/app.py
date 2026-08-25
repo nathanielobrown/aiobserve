@@ -483,6 +483,15 @@ def build_app(db_path: Path) -> FastAPI:
             return fmt.ABSENT
         return fmt.cut(value, queries.HEADER_CHARS) if isinstance(value, str) else value
 
+    def said(value: str) -> str:
+        """A line an enrichment pass wrote, at the width a pane prints it, marked where cut.
+
+        The same half of the protocol `head` holds, at the width the words a pass wrote are
+        previewed to: a pass answers in paragraphs where a header holds a name, so this is the
+        wider cut and it is reached far more often than the header's is.
+        """
+        return fmt.cut(value, queries.ENRICHMENT_CHARS)
+
     def member(value: str) -> str:
         """One member of a header's list, marked where the query cut it.
 
@@ -503,6 +512,7 @@ def build_app(db_path: Path) -> FastAPI:
         "line": line,
         "head": head,
         "member": member,
+        "said": said,
         "path": project_path,
         "ago": ago,
         # The three filters that print what a transcript wrote. Each hands back escaped

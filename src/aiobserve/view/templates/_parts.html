@@ -73,10 +73,10 @@
 <section class="enrichment" data-enrichment="{{ described.item_id }}">
   <p><span class="{{ GLYPH_CLASS }}" data-field="enriched"
        title="{{ described.provenance }}">{{ GLYPH }}</span>
-    <span data-field="description">{{ described.description }}</span></p>
+    <span data-field="description">{{ described.description | said }}</span></p>
   <p class="tags">{{ tags(described) }}</p>
   {% if described.friction %}
-  <p class="friction" data-field="friction">{{ described.friction }}</p>
+  <p class="friction" data-field="friction">{{ described.friction | said }}</p>
   {% endif %}
 </section>
 {% endmacro %}
