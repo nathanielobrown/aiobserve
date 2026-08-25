@@ -1023,6 +1023,15 @@ def test_planted_markup_arrives_inert(plant: Planter) -> None:
             "UPDATE tool_calls SET input = ?, result = ? WHERE session_id = ?",
             [sentinel] * 2 + [FORK_ORIGIN],
         ),
+        # And the two a run's pane reads off the call that spawned it — the ask inside that
+        # call's arguments, and the answer beside it. The input stays JSON here because that
+        # is where the ask lives: a run whose spawning call carries no readable arguments has
+        # no ask to render, and this leaf is about the one that does.
+        (
+            "UPDATE tool_calls SET input = ?, result = ? WHERE session_id = ? AND id IN"
+            " (SELECT tool_use_id FROM agent_runs WHERE session_id = ?)",
+            [json.dumps({"prompt": sentinel}), sentinel, SPINE, SPINE],
+        ),
         # The transcript itself, which the records browser previews and serves whole. Raw
         # records are the least filtered thing the viewer shows: what Claude Code wrote.
         ("UPDATE raw_records SET raw = ? WHERE session_id = ?", [sentinel, ANCESTOR]),
@@ -1047,6 +1056,11 @@ def test_planted_markup_arrives_inert(plant: Planter) -> None:
             # What followed a slash command, which is rendered rather than escaped, like the
             # prompt a plain turn shows in its place.
             client.get(f"/fragment/args/session/{SPINE}/thread/{MAIN}/turn/{SLASH_TURN}").text,
+            # A run pane, whose ask and answer are rendered as the markdown they were
+            # written in, and each of their fetches.
+            client.get(f"/session/{SPINE}/run/{SPINE_RUN}").text,
+            client.get(f"/fragment/prompt/session/{SPINE}/run/{SPINE_RUN}").text,
+            client.get(f"/fragment/result/session/{SPINE}/run/{SPINE_RUN}").text,
             client.get(f"/session/{ANCESTOR}/thread/{MAIN}/records").text,
             client.get(f"/fragment/record/session/{ANCESTOR}/thread/{MAIN}/line/1").text,
         )
