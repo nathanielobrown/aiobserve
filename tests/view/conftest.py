@@ -365,8 +365,13 @@ def plain(html: str) -> str:
 
 
 def suggestions(page: str) -> list[str]:
-    """The project paths the list's filter box offers, in the order it offers them."""
-    return re.findall(r'<option value="([^"]*)">', page)
+    """The project paths the list's filter box offers, in the order it offers them.
+
+    Any attribute may sit in front of the value's own, the way `printed` reads a children log:
+    a pattern anchored on the tag's first attribute reads a box the browser fills as an empty
+    one, and a leaf asserting that nothing is offered would pass on markup offering everything.
+    """
+    return re.findall(r'<option\s[^>]*\bvalue="([^"]*)"', page)
 
 
 def values(html: str, attribute: str) -> list[str]:
