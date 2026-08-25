@@ -30,10 +30,10 @@ DECADES = 3
 UNATTRIBUTED_LABEL = "calls under no turn of this thread"
 UNATTACHED_LABEL = "runs attached to no turn"
 
-# What stands between the two halves of a run's label: the definition it ran, and what it was
-# asked or what a pass said it did. A run is the one node whose name is composed rather than
-# quoted, because neither half alone identifies it — a tree of six `Explore` runs says nothing,
-# and a brief without its agent type buries the one word a reader picks a run by.
+# What stands between a node's lead and its name (`Node.named`). A run is the one node whose
+# name is composed rather than quoted, because neither half alone identifies it — a tree of six
+# `Explore` runs says nothing, and a brief without its agent type buries the one word a reader
+# picks a run by.
 RUN_SEPARATOR = " — "
 
 
@@ -293,6 +293,11 @@ class Node:
     unpriced_api_calls: int
     # Its share of what the session spent, or None when there is no share to draw.
     share: float | None
+    # A word that goes before the name wherever nothing else says it: the agent type a run
+    # ran under. Empty for every kind whose name stands alone. It leads `label` and `title`
+    # but not `line`, because a children log heads it in a column of its own — a row that
+    # carried both would print the same word twice, the second time under "Description".
+    lead: str = ""
     # Whether the label is the model's words rather than the session's, which is what the
     # glyph beside it marks. Three kinds can be: a session, a turn and a run.
     enriched: bool = False
@@ -306,9 +311,14 @@ class Node:
         return GLYPHS[self.kind]
 
     @property
+    def named(self) -> str:
+        """Lead and name as the one string a surface with no column for the lead reads."""
+        return RUN_SEPARATOR.join(part for part in (self.lead, self.words) if part)
+
+    @property
     def label(self) -> str:
         """The node's name at the width of a tree row, a crumb, or a walk control."""
-        return cut(self.words, queries.NAV_CHARS)
+        return cut(self.named, queries.NAV_CHARS)
 
     @property
     def line(self) -> str:
@@ -316,7 +326,8 @@ class Node:
 
         Wider than a label because the log is a table and the column is the width of the
         pane: a description cut to a tree row's 48 characters is the reason a reader opens
-        a node to find out what it was.
+        a node to find out what it was. The name alone — a log that leads a column with a
+        word heads that column with it too (`lead`).
         """
         return cut(self.words, queries.LOG_CHARS)
 
@@ -331,7 +342,7 @@ class Node:
         tree row it stands on (`view/app.py:TITLED`) — the tree cuts at a row's width, which
         would head a turn with a third of the prompt it is about.
         """
-        return cut(self.words, queries.HEADER_CHARS)
+        return cut(self.named, queries.HEADER_CHARS)
 
     @property
     def ref(self) -> Ref:
@@ -462,10 +473,10 @@ def run_node(session_id: str, row: Row, whole: float, described: str | None) -> 
         # A run's id is the source its own rows carry.
         source=row["run_id"],
         node_id=row["run_id"],
-        # The definition it ran leads, whatever else the label holds, and after it what the
-        # pass said it did, else the brief it was given, else nothing. `agent_type` is NOT
-        # NULL in the store (`export/duckdb.py`), so the lead is always there to read.
-        words=_run_label(row["agent_type"], described or row["description"]),
+        # Which agent ran leads the name wherever no column heads it (`Node.lead`), and after
+        # it what the pass said the run did, else the brief it was given, else nothing.
+        lead=row["agent_type"],
+        words=_words(described or row["description"]),
         cost_usd=cost,
         unpriced_api_calls=row["unpriced_api_calls"],
         share=_share(cost, whole),
@@ -556,15 +567,6 @@ def unattached_node(session_id: str, rows: list[Row], whole: float) -> Node:
         unpriced_api_calls=sum(row["unpriced_api_calls"] for row in rows),
         share=_share(cost, whole),
     )
-
-
-def _run_label(agent_type: str, said: str | None) -> str:
-    """What to call a run: the agent type, and what it did where anything says so.
-
-    The lead is constant so that a tree of runs reads as a list of agent types; a run nothing
-    described is named by its type alone rather than by a separator with nothing after it.
-    """
-    return f"{agent_type}{RUN_SEPARATOR}{said}" if said else agent_type
 
 
 def _turn_label(row: Row) -> str:

@@ -98,6 +98,39 @@ def test_a_run_whose_spawning_call_resolves_to_nothing_is_unattached(
     ]
 
 
+def test_an_agent_type_leads_a_runs_label_except_where_a_column_already_heads_it(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """Which agent ran is the word a reader picks a run out of a list by, so it leads the
+    label — everywhere the surface has no column to align it in.
+
+    The tree, the crumbs, the pane's heading and the tab have no such column: the type is
+    there only if the label carries it, and a tree of six runs named by their briefs alone
+    says nothing about which agent did what. The unattached bucket's children log *does* have
+    one, headed `◎ Agent`, and it reads the way the tools log reads — the name in its own
+    narrow column, what it was asked in the wide one beside it. A row that printed the type in
+    both would be saying one word twice under two headings, the second of them "Description".
+    """
+    (agent_type, brief) = one(
+        store, "SELECT agent_type, description FROM live_agent_runs WHERE id = ?", [BYREF_FORK]
+    )
+    assert agent_type and brief, "this fork lost the two halves this leaf reads"
+    # The log names the agent once, in the column headed for it...
+    log = client.get(f"/session/{NO_PROJECT_SESSION}/unattached").text
+    row = fields(log, "data-child", f"run:{BYREF_FORK}")
+    assert row["agent_type"] == agent_type
+    # ...and the wide column beside it holds what the run was asked, not that word again.
+    assert row["label"] == brief
+    # The run's own page has no column for it, so every place that names the node leads with
+    # the type and then says what it did.
+    page = client.get(f"/session/{NO_PROJECT_SESSION}/run/{BYREF_FORK}").text
+    led = f"{agent_type} — {brief}"
+    assert fields(page, "data-body", "run")["label"] == led
+    assert fields(page, "data-crumb", f"run:{BYREF_FORK}")["run"] == led
+    assert fields(page, "data-tree", f"run:{BYREF_FORK}")["label"] == led
+    assert f"<title>◎ {led} ·" in page
+
+
 def test_a_forks_calls_under_no_turn_are_its_own_bucket(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
