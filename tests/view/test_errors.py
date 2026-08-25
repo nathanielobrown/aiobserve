@@ -85,7 +85,7 @@ def test_the_errors_page_lists_every_failure_of_the_session_in_the_order_they_ha
     # ...and each row saying what the call was and when it ran, so two calls of one tool are
     # told apart without opening either.
     row = fields(page, "data-error", f"tool:{order[0][1]}")
-    assert row["label"] and row["started_at"]
+    assert row["title"] and row["started_at"]
 
 
 def test_a_session_with_no_failure_to_jump_to_has_no_errors_page(client: TestClient) -> None:

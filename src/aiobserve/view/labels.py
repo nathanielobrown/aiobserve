@@ -84,10 +84,10 @@ LABELS: dict[str, str] = {
     "input_head": "Arguments",
     "result": "Result",
     "result_chars": "Result (chars)",
-    # The two columns a children log prints that no query returns. `label` is what the viewer
-    # calls a node — a pass's description, else the words the session itself wrote — and `body`
+    # The two columns a children log prints that no query returns. `title` is what the viewer
+    # calls a node in the most readable form the record supports (`docs/viewer.md`), and `body`
     # is the column holding the control that opens one under its row.
-    "label": "Description",
+    "title": "Title",
     "body": "Body",
 }
 

@@ -675,7 +675,7 @@ def test_the_session_header_holds_what_the_store_says_about_it(
         [SPINE],
     )
     # The title is what the node is called rather than a fact under it, so it heads the pane.
-    assert fields(page, "data-body", "session")["label"] == title
+    assert fields(page, "data-body", "session")["title"] == title
     assert pane["turns"] == str(turns)
     assert pane["agent_runs"] == str(agent_runs)
     assert pane["cost_usd"] == money(cost)

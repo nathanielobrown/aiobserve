@@ -4,7 +4,7 @@
 {% import "_parts.html" as parts %}
 {% import "_tree.html" as treeview %}
 
-{% block title %}{{ selection.icon }} {{ selection.label }} · aiobserve{% endblock %}
+{% block title %}{{ selection.icon }} {{ selection.tree_title }} · aiobserve{% endblock %}
 
 {# One node of a session, whole: the tree it sits in, and the pane that reads it. Both arrive
    in one response, and a click on a tree row re-fetches this same URL — htmx takes `#pane`
@@ -41,7 +41,7 @@
     <nav class="crumbs" data-crumbs="{{ selection.kind }}" aria-label="Where this node sits">
       {% for step in chain %}
       <a data-crumb="{{ step.key }}" href="{{ step.url }}{{ suffix }}"
-        >{{ parts.mark(step.icon) }} {{ parts.glyph(step) }}<span data-field="{{ step.kind }}">{{ step.label }}</span></a>
+        >{{ parts.mark(step.icon) }} {{ parts.glyph(step) }}<span data-field="{{ step.kind }}">{{ step.tree_title }}</span></a>
       {% endfor %}
     </nav>
     {{ body.pane(selection, header, suffix) }}
@@ -80,13 +80,13 @@
       <button type="button" class="button" data-walk="previous" data-node="{{ previous.node.key }}"
         {%- if previous.climbed %} data-climb="previous"{% endif %}
         hx-get="{{ previous.node.url }}{{ suffix }}"
-        >{% if previous.climbed %}↑{% else %}←{% endif %} {{ parts.glyph(previous.node) }}<span data-field="kind">{{ previous.node.kind }}</span> <span data-field="label">{{ previous.node.label }}</span></button>
+        >{% if previous.climbed %}↑{% else %}←{% endif %} {{ parts.glyph(previous.node) }}<span data-field="kind">{{ previous.node.kind }}</span> <span data-field="title">{{ previous.node.tree_title }}</span></button>
       {% endif %}
       {% if following %}
       <button type="button" class="button" data-walk="next" data-node="{{ following.node.key }}"
         {%- if following.climbed %} data-climb="next"{% endif %}
         hx-get="{{ following.node.url }}{{ suffix }}"
-        >{{ parts.glyph(following.node) }}<span data-field="kind">{{ following.node.kind }}</span> <span data-field="label">{{ following.node.label }}</span> {% if following.climbed %}↑{% else %}→{% endif %}</button>
+        >{{ parts.glyph(following.node) }}<span data-field="kind">{{ following.node.kind }}</span> <span data-field="title">{{ following.node.tree_title }}</span> {% if following.climbed %}↑{% else %}→{% endif %}</button>
       {% endif %}
     </nav>
     {# Where this session failed. Written once here rather than per kind of node, because it
@@ -99,14 +99,14 @@
       {%- if step and step.previous %}
       <a data-step="previous" data-node="{{ step.previous.key }}"
          href="{{ step.previous.url }}{{ suffix }}"
-        >← <span data-field="label">{{ step.previous.label }}</span></a>
+        >← <span data-field="title">{{ step.previous.tree_title }}</span></a>
       {%- endif %}
       <a data-step="all" href="/session/{{ selection.session_id }}/errors"
         ><span data-field="tool_errors">{{ session_tool_errors | count }}</span> tool error(s)</a>
       {%- if step and step.following %}
       <a data-step="next" data-node="{{ step.following.key }}"
          href="{{ step.following.url }}{{ suffix }}"
-        ><span data-field="label">{{ step.following.label }}</span> →</a>
+        ><span data-field="title">{{ step.following.tree_title }}</span> →</a>
       {%- endif %}
     </nav>
     {% endif %}

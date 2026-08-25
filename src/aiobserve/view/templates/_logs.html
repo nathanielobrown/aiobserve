@@ -68,7 +68,7 @@
       <tr data-child="{{ item.node.key }}">
         {%- if shape == 'turns' %}
         {{ cell('turn_index', item.row.turn_index | count, 'number') }}
-        {{ what(item.node, suffix, 'label', item.node.line) }}
+        {{ what(item.node, suffix, 'title', item.node.log_title) }}
         {{ cell('api_calls', item.row.api_calls | count, 'number') }}
         {{ cell('tool_calls', item.row.tool_calls | count, 'number') }}
         {{ cell('cost_usd', item.node.cost_usd | money, 'number') }}
@@ -90,7 +90,7 @@
         {{ cell('result_chars', item.row.result_chars | count, 'number') }}
         {%- elif shape == 'runs' %}
         {{ cell('agent_type', item.row.agent_type | line) }}
-        {{ what(item.node, suffix, 'label', item.node.line) }}
+        {{ what(item.node, suffix, 'title', item.node.log_title) }}
         {{ cell('tool_errors', item.row.tool_errors | count, 'number') }}
         {{ cell('cost_usd', item.node.cost_usd | money, 'number') }}
         {%- endif %}

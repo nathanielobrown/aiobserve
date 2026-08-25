@@ -23,7 +23,7 @@ from aiobserve.enrich.taxonomy import TAXONOMY_VERSION
 from aiobserve.view.app import build_app
 from aiobserve.view.enrichment import GLYPH, GLYPH_CLASS
 from aiobserve.view.format import cut, when
-from aiobserve.view.nodes import RUN_SEPARATOR
+from aiobserve.view.nodes import LEAD_SEPARATOR
 from aiobserve.view.store import Page
 from tests.conftest import SPINE, SPINE_RUN
 from tests.view.conftest import Planter, fields, inside, one, pages, values
@@ -300,7 +300,7 @@ def test_a_tree_row_the_model_named_carries_a_bare_glyph(
     turn_id = next(iter(described))
     page = enriched_client.get(f"/session/{SPINE}").text
     # The described row is labelled with what the pass said, cut to the width of the tree...
-    assert fields(page, "data-tree", f"turn:{turn_id}")["label"] == cut(
+    assert fields(page, "data-tree", f"turn:{turn_id}")["title"] == cut(
         described[turn_id][0], queries.NAV_CHARS
     )
     # ...and marked as the model's words, with nothing hanging off the mark.
@@ -309,7 +309,7 @@ def test_a_tree_row_the_model_named_carries_a_bare_glyph(
     # The session's own row is built by a third builder and marked the same way, for the pass
     # that named the whole session rather than one of its turns.
     named = enrichment_of(enriched_store, Level.session, SPINE)
-    assert fields(page, "data-tree", f"session:{SPINE}")["label"] == cut(
+    assert fields(page, "data-tree", f"session:{SPINE}")["title"] == cut(
         named[SPINE][0], queries.NAV_CHARS
     )
     assert GLYPH_CLASS in inside(page, "data-tree", f"session:{SPINE}", "class")
@@ -333,8 +333,8 @@ def test_a_tree_row_the_model_named_carries_a_bare_glyph(
         enriched_store, "SELECT agent_type FROM live_agent_runs WHERE id = ?", [run_id]
     )
     page = enriched_client.get(f"/session/{SPINE}/run/{run_id}").text
-    assert fields(page, "data-tree", f"run:{run_id}")["label"] == cut(
-        f"{agent_type}{RUN_SEPARATOR}{ran[run_id][0]}", queries.NAV_CHARS
+    assert fields(page, "data-tree", f"run:{run_id}")["title"] == cut(
+        f"{agent_type}{LEAD_SEPARATOR}{ran[run_id][0]}", queries.NAV_CHARS
     )
     assert GLYPH_CLASS in inside(page, "data-tree", f"run:{run_id}", "class")
     assert not inside(page, "data-tree", f"run:{run_id}", "title")
@@ -366,7 +366,7 @@ def test_a_model_written_description_is_escaped_like_any_other_transcript_text(
     labelled = [key for key in values(page, "data-tree") if key.startswith("turn:")]
     assert labelled, "the session that carries the fixture turn tree no longer opens one"
     for key in labelled:
-        assert fields(page, "data-tree", key)["label"] == injected[: queries.NAV_CHARS]
+        assert fields(page, "data-tree", key)["title"] == injected[: queries.NAV_CHARS]
 
 
 def test_a_run_pages_turns_carry_no_description_of_their_own(

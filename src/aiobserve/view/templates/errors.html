@@ -14,7 +14,7 @@
   <ol class="errors">
     {% for item in listed %}
     <li data-error="{{ item.node.key }}">
-      <a href="{{ item.node.url }}"><span data-field="label">{{ item.node.label }}</span></a>
+      <a href="{{ item.node.url }}"><span data-field="title">{{ item.node.tree_title }}</span></a>
       {# The thread it ran on, because the list spans all of them: two failures of one tool
          name are told apart by which agent hit them. #}
       <span data-field="source" class="source">{{ item.node.source }}</span>

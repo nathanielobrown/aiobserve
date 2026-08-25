@@ -120,14 +120,14 @@ def test_an_agent_type_leads_a_runs_label_except_where_a_column_already_heads_it
     row = fields(log, "data-child", f"run:{BYREF_FORK}")
     assert row["agent_type"] == agent_type
     # ...and the wide column beside it holds what the run was asked, not that word again.
-    assert row["label"] == brief
+    assert row["title"] == brief
     # The run's own page has no column for it, so every place that names the node leads with
     # the type and then says what it did.
     page = client.get(f"/session/{NO_PROJECT_SESSION}/run/{BYREF_FORK}").text
     led = f"{agent_type} — {brief}"
-    assert fields(page, "data-body", "run")["label"] == led
+    assert fields(page, "data-body", "run")["title"] == led
     assert fields(page, "data-crumb", f"run:{BYREF_FORK}")["run"] == led
-    assert fields(page, "data-tree", f"run:{BYREF_FORK}")["label"] == led
+    assert fields(page, "data-tree", f"run:{BYREF_FORK}")["title"] == led
     assert f"<title>◎ {led} ·" in page
 
 

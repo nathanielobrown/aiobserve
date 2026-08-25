@@ -3,7 +3,7 @@
 Everything a session records is a node — the session, its turns, the runs it spawned, the api
 calls those turns made, the tool calls those calls made, the compactions between them, and the
 two buckets that hold what attaches to nothing. Each has a page of its own, so each needs one
-label, one URL and one share of the spend, minted here and nowhere else: a tree row, a crumb
+title, one URL and one share of the spend, minted here and nowhere else: a tree row, a crumb
 and a pane all read the same node.
 
 `view/tree.py` builds the levels out of these; this module is the vocabulary they are built in.
@@ -26,15 +26,14 @@ STEPS = 10
 DECADES = 3
 
 # What the two buckets are called. Neither is a row of the store: they stand for the rows that
-# attach to nothing, so their labels say what is missing rather than naming a thing.
-UNATTRIBUTED_LABEL = "calls under no turn of this thread"
-UNATTACHED_LABEL = "runs attached to no turn"
+# attach to nothing, so their titles say what is missing rather than naming a thing.
+UNATTRIBUTED_TITLE = "calls under no turn of this thread"
+UNATTACHED_TITLE = "runs attached to no turn"
 
-# What stands between a node's lead and its name (`Node.named`). A run is the one node whose
-# name is composed rather than quoted, because neither half alone identifies it — a tree of six
-# `Explore` runs says nothing, and a brief without its agent type buries the one word a reader
-# picks a run by.
-RUN_SEPARATOR = " — "
+# What stands between a node's lead and its words (`Node.title`). A composed title is one whose
+# halves neither identify alone — a tree of six `Explore` runs says nothing, and a brief without
+# its agent type buries the one word a reader picks a run by.
+LEAD_SEPARATOR = " — "
 
 
 class Shape(StrEnum):
@@ -88,7 +87,7 @@ ERROR_ICON = "⚠"
 COLUMNS: dict[Shape, tuple[Column, ...]] = {
     Shape.TURNS: (
         Column("turn_index", "#", css="number"),
-        Column("label", "☰", css="what"),
+        Column("title", "☰", css="what"),
         Column("api_calls", CALL_ICON, css="number"),
         Column("tool_calls", TOOL_ICON, css="number"),
         Column("cost_usd", "$", css="number"),
@@ -116,7 +115,7 @@ COLUMNS: dict[Shape, tuple[Column, ...]] = {
     ),
     Shape.RUNS: (
         Column("agent_type", RUN_ICON),
-        Column("label", "☰", css="what"),
+        Column("title", "☰", css="what"),
         Column("tool_errors", ERROR_ICON, css="number"),
         Column("cost_usd", "$", css="number"),
         Column("started_at", "◷", css="when"),
@@ -147,7 +146,7 @@ BUCKET_ICON = "∅"
 
 # What each kind is marked with, wherever a page names a node of it — the tree row, the crumb,
 # the pane's own heading, and the browser tab. Eight characters a reader learns once and then
-# reads a tree by without reading a label, which is why the table is here rather than in a
+# reads a tree by without reading a title, which is why the table is here rather than in a
 # template: one of them written into one surface is a node that looks like something else on
 # that surface. Total over `Kind`, so a kind added without a mark is a `KeyError` on the first
 # page that renders it rather than a row saying nothing.
@@ -221,7 +220,7 @@ class Ref:
     """A node named by identity alone: enough to find it, not enough to render it.
 
     What `ancestry()` resolves bottom-up, before any level has been read. The rendered node
-    comes out of its parent's level, so a ref never carries a label or a cost.
+    comes out of its parent's level, so a ref never carries a title or a cost.
     """
 
     kind: Kind
@@ -293,13 +292,13 @@ class Node:
     unpriced_api_calls: int
     # Its share of what the session spent, or None when there is no share to draw.
     share: float | None
-    # A word that goes before the name wherever nothing else says it: the agent type a run
-    # ran under. Empty for every kind whose name stands alone. It leads `label` and `title`
-    # but not `line`, because a children log heads it in a column of its own — a row that
-    # carried both would print the same word twice, the second time under "Description".
+    # A word that goes before the words wherever nothing else says it: the agent type a run
+    # ran under, the tool a call invoked. Empty for every kind whose words stand alone. It
+    # leads `title` but not `log_title`, because a children log heads it in a column of its
+    # own — a row that carried both would print the same word twice.
     lead: str = ""
-    # Whether the label is the model's words rather than the session's, which is what the
-    # glyph beside it marks. Three kinds can be: a session, a turn and a run.
+    # Whether any of the words are the model's rather than the session's, which is what the
+    # glyph beside the title marks. Three kinds can be: a session, a turn and a run.
     enriched: bool = False
     # Whether the tool call came back an error. Only ever True for a `Kind.TOOL` node: it is
     # the column the tree's mark and the errors list (`view/errors.py`) are both read from.
@@ -311,38 +310,44 @@ class Node:
         return GLYPHS[self.kind]
 
     @property
-    def named(self) -> str:
-        """Lead and name as the one string a surface with no column for the lead reads."""
-        return RUN_SEPARATOR.join(part for part in (self.lead, self.words) if part)
+    def title(self) -> str:
+        """What this node is called: the whole of it, before any surface cuts it.
+
+        The concept every surface reads and none of them owns — lead and words joined. The
+        three below are this title at the width of the surface reading it, and they are the
+        only cuts of it: a page that composed its own would be a second answer to "what is
+        this node called" (`docs/viewer.md`).
+        """
+        return LEAD_SEPARATOR.join(part for part in (self.lead, self.words) if part)
 
     @property
-    def label(self) -> str:
-        """The node's name at the width of a tree row, a crumb, or a walk control."""
-        return cut(self.named, queries.NAV_CHARS)
+    def tree_title(self) -> str:
+        """The title at the width of a tree row, a crumb, or a walk control."""
+        return cut(self.title, queries.NAV_CHARS)
 
     @property
-    def line(self) -> str:
-        """The node's name at the width of a children log's own column.
+    def log_title(self) -> str:
+        """The title at the width of a children log's own column.
 
-        Wider than a label because the log is a table and the column is the width of the
-        pane: a description cut to a tree row's 48 characters is the reason a reader opens
-        a node to find out what it was. The name alone — a log that leads a column with a
-        word heads that column with it too (`lead`).
+        Wider than a tree row's because the log is a table and the column is the width of the
+        pane: a description cut to a tree row's width is the reason a reader opens a node to
+        find out what it was. The words alone — a log that leads a column with a word heads
+        that column with it too (`lead`).
         """
         return cut(self.words, queries.LOG_CHARS)
 
     @property
-    def title(self) -> str:
-        """The node's name at the head of its own pane, where nothing repeats it.
+    def pane_title(self) -> str:
+        """The title at the head of the node's own pane, where nothing repeats it.
 
         The widest of the three, because a pane heads one node. A header query returns its
         strings at this width or wider — a tool header's input comes back at a preview's,
-        because the same pane previews it — so a name is cut here and marked where the query
+        because the same pane previews it — so a title is cut here and marked where the query
         left more behind. A pane names its node from the header it read rather than from the
         tree row it stands on (`view/app.py:TITLED`) — the tree cuts at a row's width, which
         would head a turn with a third of the prompt it is about.
         """
-        return cut(self.named, queries.HEADER_CHARS)
+        return cut(self.title, queries.HEADER_CHARS)
 
     @property
     def ref(self) -> Ref:
@@ -456,7 +461,7 @@ def turn_node(session_id: str, source: str, row: Row, whole: float, described: s
         session_id=session_id,
         source=source,
         node_id=row["turn_id"],
-        words=_words(described or _turn_label(row)),
+        words=_words(described or _turn_title(row)),
         cost_usd=cost,
         unpriced_api_calls=row["unpriced_api_calls"],
         share=_share(cost, whole),
@@ -543,7 +548,7 @@ def unattributed_node(session_id: str, source: str, row: Row, whole: float) -> N
         session_id=session_id,
         source=source,
         node_id=source,
-        words=UNATTRIBUTED_LABEL,
+        words=UNATTRIBUTED_TITLE,
         cost_usd=cost,
         unpriced_api_calls=row["unpriced_api_calls"],
         share=_share(cost, whole),
@@ -562,14 +567,14 @@ def unattached_node(session_id: str, rows: list[Row], whole: float) -> Node:
         session_id=session_id,
         source=None,
         node_id=session_id,
-        words=UNATTACHED_LABEL,
+        words=UNATTACHED_TITLE,
         cost_usd=cost,
         unpriced_api_calls=sum(row["unpriced_api_calls"] for row in rows),
         share=_share(cost, whole),
     )
 
 
-def _turn_label(row: Row) -> str:
+def _turn_title(row: Row) -> str:
     """What to call a turn: the command it ran and what followed, else the prompt as typed.
 
     The prompt is last because a slash command's prompt is the `<command-…>` wrapper Claude

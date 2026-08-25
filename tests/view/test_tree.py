@@ -37,7 +37,7 @@ from aiobserve.view.format import cut, money
 from aiobserve.view.nodes import (
     BODY_URL,
     KIN_URL,
-    RUN_SEPARATOR,
+    LEAD_SEPARATOR,
     Kind,
     Preset,
     Ref,
@@ -518,7 +518,7 @@ def test_a_run_hoists_after_the_call_that_spawned_it(
     assert [key for key in values(html, "data-tree") if key in level] == level
     # And the row carries the node's label and its cost, and nothing naming that call: the
     # place is the whole of what says where the run came from.
-    assert set(fields(html, "data-tree", f"run:{run_id}")) == {"label", "cost_usd"}
+    assert set(fields(html, "data-tree", f"run:{run_id}")) == {"title", "cost_usd"}
 
 
 def test_a_bucket_home_is_decided_by_the_spawning_edge(
@@ -684,17 +684,17 @@ def test_a_fetched_row_is_described_by_the_thread_the_reader_stands_on(
     page = f"/session/{SPINE}/run/{SPINE_RUN}"
     # The main thread's turns as this page draws them: the level the run hangs under, whole.
     whole = enriched_client.get(page).text
-    drawn = {key: fields(whole, "data-tree", key)["label"] for at, key in rows(whole) if at == 1}
+    drawn = {key: fields(whole, "data-tree", key)["title"] for at, key in rows(whole) if at == 1}
     # The same level under a window of one, and the rows its tail row stands for.
     tail = dict(wired(enriched_client.get(page, params={"kin": 1}).text, "data-more"))
     served = enriched_client.get(tail[f"session:{SPINE}"]["hx-get"]).text
-    fetched = {key: fields(served, "data-tree", key)["label"] for _, key in rows(served)}
+    fetched = {key: fields(served, "data-tree", key)["title"] for _, key in rows(served)}
     assert fetched, "the window left nothing out: this page no longer proves the case"
     assert fetched == {key: drawn[key] for key in fetched}
     # And the claim has teeth: on its own page the main thread reads by its descriptions, so
     # a fragment that read the level's thread would have served those names instead.
     home = enriched_client.get(f"/session/{SPINE}").text
-    described = {key: fields(home, "data-tree", key)["label"] for at, key in rows(home) if at == 1}
+    described = {key: fields(home, "data-tree", key)["title"] for at, key in rows(home) if at == 1}
     assert any(described[key] != label for key, label in fetched.items())
 
 
@@ -841,7 +841,7 @@ def labelled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, str
         # The definition it ran, always first — which agent this was is what a reader picks a
         # run out of a tree by — and after it the brief it was given, where one was recorded.
         said[f"{Kind.RUN}:{run_id}"] = (
-            f"{agent_type}{RUN_SEPARATOR}{description}" if description else agent_type
+            f"{agent_type}{LEAD_SEPARATOR}{description}" if description else agent_type
         )
     return {key: cut(value, queries.NAV_CHARS).strip() for key, value in said.items()}
 
@@ -874,7 +874,7 @@ def test_every_row_is_named_from_the_column_its_kind_is_named_by(
             assert f"{kind}:{node_id}" in values(page, "data-tree"), node_id
             for key in values(page, "data-tree"):
                 if (at := (session_id, key)) in said:
-                    assert fields(page, "data-tree", key)["label"] == said[at], at
+                    assert fields(page, "data-tree", key)["title"] == said[at], at
                     read.add(at)
     # Every row the store names a label for was reached. A sweep that missed one would pass on
     # a label built from any column at all.

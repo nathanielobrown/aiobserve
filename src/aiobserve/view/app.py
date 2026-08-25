@@ -233,7 +233,7 @@ BODIES: dict[str, Body] = {
 
 # How a pane names the node it is about, per kind, from the header its own route read. The
 # tree built the row the pane stands on and cut its words where a tree row ends, which is a
-# third of what a title has to spend (`nodes.Node.title`) — so a page that took the tree's
+# third of what a title has to spend (`nodes.Node.pane_title`) — so a page that took the tree's
 # word for it would head a turn with the first line of the prompt and stop. The kinds absent
 # are the ones no cut reaches: a session's node is read from its own header already, a
 # compaction is named by its trigger, and a bucket is named by the viewer.
@@ -434,8 +434,8 @@ def build_app(db_path: Path) -> FastAPI:
 
         The template's half of the one-extra-character protocol: every string a log row prints
         comes back from its query one character past this width, so a value that arrives longer
-        than the cut is a value with more behind it. What `nodes.Node.line` does for the words a
-        node is named by, for the columns a row prints straight off the row.
+        than the cut is a value with more behind it. What `nodes.Node.log_title` does for a
+        node's title, for the columns a row prints straight off the row.
         """
         return fmt.ABSENT if value is None else fmt.cut(value, queries.LOG_CHARS)
 
@@ -743,9 +743,9 @@ def build_app(db_path: Path) -> FastAPI:
         # Named from its own header rather than from the tree row it stands on (`TITLED`).
         # The words alone: what the node cost and what share of the session that is are the
         # tree's to work out, against the whole session rather than against one header.
-        if (title := TITLED.get(selection.kind)) is not None:
+        if (titled := TITLED.get(selection.kind)) is not None:
             selection = replace(
-                selection, words=title(session_id, source, seen.header, corpus).words
+                selection, words=titled(session_id, source, seen.header, corpus).words
             )
         ran: tree.Ran = [
             (Page.SESSION_HEADER, bound),

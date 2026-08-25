@@ -1125,7 +1125,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
         found.count("&amp;")
         for _, rows in split
         for row in rows["tree"]
-        for found in re.findall(r'<span data-field="label">(.*?)</span>', row, flags=re.S)
+        for found in re.findall(r'<span data-field="title">(.*?)</span>', row, flags=re.S)
     }
     # No label got past the cut, and one reached it. Not every row's label is planted — a
     # bucket is named by the viewer and a compaction by its trigger — so the widest is what
@@ -1337,7 +1337,7 @@ def test_an_errors_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     shown = values(page, "data-error")
     assert len(shown) == bounds.ERRORS.ceiling
     # ...every one of them a planted failure cut to the width a row reads it at...
-    labels = {len(fields(page, "data-error", key)["label"]) for key in shown}
+    labels = {len(fields(page, "data-error", key)["title"]) for key in shown}
     assert max(labels) == queries.NAV_CHARS + len(ELLIPSIS)
     # ...and what it left out said rather than dropped, against the store's own count.
     with duckdb.connect(str(path), read_only=True) as connection:
@@ -1501,7 +1501,7 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # the same one whatever kind of node the row stands for. Read off the tree half of the
     # page: the same `label` field names the node in three places, each at its own width.
     tree, pane = session.split('<article id="pane">')
-    labels = re.findall(r'<span data-field="label">(.*?)</span>', tree, flags=re.S)
+    labels = re.findall(r'<span data-field="title">(.*?)</span>', tree, flags=re.S)
     # Cut and marked as cut: every column a label is composed from comes back one character
     # past the width, so a row that fills the line says the value went on.
     assert max(labels, key=len) == "x" * queries.NAV_CHARS + ELLIPSIS
@@ -1523,9 +1523,9 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # The session's title comes back cut to the width exactly, so there is nothing left to
     # mark it with; the four names composed from a column selected a character past the cut
     # say the value went on.
-    assert fields(session, "data-body", "session")["label"] == "x" * queries.HEADER_CHARS
+    assert fields(session, "data-body", "session")["title"] == "x" * queries.HEADER_CHARS
     for named, kind in ((turn, "turn"), (call, "call"), (run, "run")):
-        assert fields(named, "data-body", kind)["label"] == "x" * queries.HEADER_CHARS + ELLIPSIS, (
+        assert fields(named, "data-body", kind)["title"] == "x" * queries.HEADER_CHARS + ELLIPSIS, (
             kind
         )
     # A pane reads one node, so its strings take a header's cut — and the one value the node

@@ -234,7 +234,7 @@ def test_a_control_says_what_the_neighbour_is_and_what_it_was(
         kind, _, _ = neighbour.key.partition(":")
         assert fields(step.html, "data-walk", named) == {
             "kind": kind,
-            "label": fields(neighbour.html, "data-selected", neighbour.key)["label"],
+            "title": fields(neighbour.html, "data-selected", neighbour.key)["title"],
         }
 
 
