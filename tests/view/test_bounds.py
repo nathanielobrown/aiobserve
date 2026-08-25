@@ -139,6 +139,17 @@ PAGE_BYTES = 500_000
 # reader gets is a run read whole where the page used to show only the line it was named by.
 # The arithmetic comes to 5,243,767 B, and the slack under the ceiling is the same 26,233 B.
 NODE_BYTES = 5_270_000
+# What one expansion may weigh: a node's body opened in place, inside someone else's children
+# log. It is over `PAGE_BYTES` and declared here rather than derived against it, for the reason
+# `bounds.OPENED_RECORD_CHARS` draws the same line the other way — a reader clicked. An
+# expansion is a row of a hundred asking for the level under it, priced like the per-value
+# fetches a click starts, and what bounds it is the `?log=` cap the reader is already reading
+# under rather than a second cap under that. The arithmetic is `worst_expansion_bytes`: the
+# body's own chrome plus one page of log rows at the widest a row gets, 638,000 B, which leaves
+# 2,000 B over. A `bounds.LOG` ceiling raised past 100 spends it a row at a time — which is the
+# point of naming the number, because a page of rows nobody budgeted is what a click can afford
+# to hide.
+EXPANSION_BYTES = 640_000
 # What the markup around one row of the list costs, with the content the row carries taken off.
 # Re-measured through the app by the leaf at the bottom of this file, every cap full of `&`,
 # at the dearest row the list holds rather than at whichever one sorted second: that row cost
@@ -170,14 +181,17 @@ MEASURED_PROJECTS_CHROME = 2_500
 # failing more calls than the page shows: 620 B a row, of which 240 B is a planted title,
 # leaving 380 B of the link and the two cells after it — and 2,375 B of chrome, which is small
 # for the same reason the landing page's is: no form, no pager and no suggestions.
+MEASURED_ERROR_ROW_MARKUP = 400
+MEASURED_ERRORS_CHROME = 2_500
+
 # What an expansion carries outside the rows it lists: the node's own body, the link to its
 # page, and the queries it cites. The body's facts are read at `HEADER_CHARS` rather than at
 # the reader's `?detail=` — an expansion previews no fat value — so this is a fraction of the
-# chrome above. Measured through the app by the leaf below at 4,820 B.
-MEASURED_EXPANSION_CHROME = 5_000
-
-MEASURED_ERROR_ROW_MARKUP = 400
-MEASURED_ERRORS_CHROME = 2_500
+# chrome a page carries. Measured through the app by the leaf below over all three kinds a log
+# opens a body for, each planted at the caps its body reads: an api call's is the dearest at
+# 6,376 B, against a turn's 3,013 and a tool call's 2,484. A call's body is the one standing
+# above a table, and its title is the head of what the call said.
+MEASURED_EXPANSION_CHROME = 6_500
 
 # What a row of the records browser really costs — the preview plus the row's own markup, most
 # of it the `hx-get` that fetches the record whole. Measured against `data/traces.duckdb` on
@@ -227,12 +241,12 @@ MEASURED_DETAIL_MARKUP = 600
 # below has not priced.
 PANE_DETAILS = 3
 # And how many of those the page marks up rather than printing as the characters the store
-# holds. Two: a turn previews the prompt it was given and what followed its slash command, an
-# api call what it said and what it thought, and all four are markdown someone wrote. The
-# other kind of markup is a syntax the record named — the command a `Bash` call ran, the file
-# a `Read` returned — and no call is both tools, so a tool's pane marks up one of its three.
-# A run's pane is where all three are markdown: the brief it was named by, the prompt it was
-# given, and the answer it sent back, all written by a person or a model.
+# holds. Three, which is a run's pane: the brief it was named by, the prompt it was given and
+# the answer it sent back, all written by a person or a model. No other kind reaches three —
+# a turn previews the prompt and what followed its slash command, an api call what it said and
+# what it thought — and the other kind of markup is a syntax the record named, which is the
+# command a `Bash` call ran or the file a `Read` returned. No call is both tools, so a tool's
+# pane marks up one of its three.
 DEAR_PANE_DETAILS = 3
 # What a node page carries outside its tree rows, its log rows and its previews: the crumbs
 # down to the selection, the node's own facts, and what a pass said about it. The session is
@@ -454,7 +468,8 @@ def worst_expansion_bytes() -> int:
     A body where the page has its tree and its crumbs, and under it the level the node's own
     page lists — the same log, at the same `?log=` cap and one column narrower, because no row
     inside an expansion opens another. So an expansion prices as a page of log rows plus a
-    body, and the cap that bounds the log on a page is what bounds it here.
+    body, and the cap that bounds the log on a page is what bounds it here. `EXPANSION_BYTES`
+    is what this is checked against.
     """
     return MEASURED_EXPANSION_CHROME + bounds.LOG.ceiling * worst_log_row_bytes()
 
@@ -754,6 +769,11 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     # left, and the pane beside it. Its three sizes are each their own ceiling, so this is the
     # widest response any node URL can be asked for.
     assert worst_node_bytes() < NODE_BYTES
+    # And the expansion a row of a log opens in place, which is a click and so has a ceiling of
+    # its own: a body, and one page of the level under it at the size the reader is reading logs
+    # under. Nothing derives this from `PAGE_BYTES` — it is over it — so the number is declared
+    # and the arithmetic checked against it here.
+    assert worst_expansion_bytes() < EXPANSION_BYTES
     # And no default asks for more than its own ceiling allows, which nothing else checks: a
     # default above the ceiling serves a 400 to a reader who typed no size at all. Read off the
     # module rather than listed, so a size added later cannot dodge the check.
@@ -940,7 +960,9 @@ def test_the_record_a_page_opens_unasked_serves_under_the_ceiling(plant: Planter
     Every other per-value fetch here is exempt from the page bound: its unit is one value, and
     a reader who clicks for a value has asked for whatever the store holds. This one is not,
     because nobody clicked — the row the browser opens on arrival is a fetch the page starts —
-    so `bounds.OPENED_RECORD_CHARS` is what keeps it a page's worth.
+    so `bounds.OPENED_RECORD_CHARS` is what keeps it a page's worth. An expansion is on the
+    clicked side of that line and still over a page, which is why it carries a declared ceiling
+    of its own rather than an exemption: see `EXPANSION_BYTES`.
     """
     raw = escaping_json(bounds.OPENED_RECORD_CHARS)
     assert len(raw) == bounds.OPENED_RECORD_CHARS
@@ -1183,7 +1205,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
 
 
 def test_an_expansion_weighs_a_body_and_the_one_page_of_rows_it_lists(
-    plant: Planter, store: duckdb.DuckDBPyConnection
+    enriched_plant: Planter, store: duckdb.DuckDBPyConnection
 ) -> None:
     """An expansion is bounded by the same cap its node's own page is, and by nothing else.
 
@@ -1193,15 +1215,29 @@ def test_an_expansion_weighs_a_body_and_the_one_page_of_rows_it_lists(
     rows. Planted, because the densest call the corpus recorded made four tool calls — and
     planted at every cap, with `&` in each string a row prints, so what this weighs is the
     fragment at its ceiling rather than at the fixture's sizes.
+
+    The body above those rows is weighed over all three kinds a log can open, not just the
+    call's: a turn's is the dearest of them, because a turn's body is the one that carries
+    what an enrichment pass wrote. So the described store, planted at the enrichment's caps
+    as well.
     """
     fat = "&" * (queries.LOG_CHARS + 1)
+    # The body's own strings are cut at the width a title is, not at the reader's `?detail=`.
+    head = "&" * (queries.HEADER_CHARS + 1)
     session_id, source, api_call_id, recorded = one(
         store,
         "SELECT session_id, source, api_call_id, count(*) FROM live_tool_calls"
         " GROUP BY 1, 2, 3 ORDER BY 4 DESC, 1, 2, 3 LIMIT 1",
     )
+    turn_id, tool_id = one(
+        store,
+        "SELECT c.turn_id, t.id FROM live_api_calls c JOIN live_tool_calls t"
+        "  ON t.session_id = c.session_id AND t.source = c.source AND t.api_call_id = c.id"
+        " WHERE c.session_id = ? AND c.source = ? AND c.id = ?",
+        [session_id, source, api_call_id],
+    )
     clones = bounds.LOG.ceiling * 2
-    path = plant(
+    path = enriched_plant(
         # One recorded tool call, cloned past the cap: the clone keeps every column the row
         # reads except the two that have to differ, so the rows are the store's own shape.
         (
@@ -1216,10 +1252,31 @@ def test_an_expansion_weighs_a_body_and_the_one_page_of_rows_it_lists(
             "UPDATE tool_calls SET name = ?, input = ?, result = ?, is_error = true",
             [fat, json.dumps({"description": fat, "command": fat}), fat],
         ),
+        # And the call's own facts, which are the body above those rows: every string the
+        # header cuts, planted past its cut, so the chrome is weighed at the width the body
+        # reads rather than at the fixture's.
+        # And the facts the bodies themselves print, planted past the cut each is read at: a
+        # call's model and what it fell back from, a turn's ask and the command it was typed
+        # as. A body reads them at `HEADER_CHARS`, not at the reader's `?detail=`.
+        # What it said and what it thought go in too: a body previews neither, but the head of
+        # what a call said is what its title falls back to.
+        (
+            "UPDATE api_calls SET model = ?, fallback_from = ?, text = ?, thinking = ?",
+            [head] * 4,
+        ),
+        ("UPDATE turns SET prompt = ?, command_name = ?", [head, head]),
+        *DESCRIBED_AT_EVERY_CAP,
     )
-    mount = f"{nodes.BODY_URL}/session/{session_id}/thread/{source}/call/{api_call_id}"
+    at = f"/session/{session_id}/thread/{source}"
+    mount = f"{nodes.BODY_URL}{at}/call/{api_call_id}"
+    knobs = {**WORST_KNOBS, "log": bounds.LOG.ceiling}
     with TestClient(build_app(path)) as planted:
-        served = planted.get(mount, params={**WORST_KNOBS, "log": bounds.LOG.ceiling})
+        served = planted.get(mount, params=knobs)
+        # Every other kind a log opens a body for, for the widest chrome of the three.
+        others = [
+            planted.get(f"{nodes.BODY_URL}{at}/{kind}/{node_id}", params=knobs)
+            for kind, node_id in (("turn", turn_id), ("tool", tool_id))
+        ]
     assert served.status_code == 200, mount
     rows = re.findall(PRICED_ROWS["log"], served.text, flags=re.S)
     # The cap bit: the level holds twice what came back, and what came back is one page of it.
@@ -1227,9 +1284,18 @@ def test_an_expansion_weighs_a_body_and_the_one_page_of_rows_it_lists(
     assert fields(served.text, "data-log", "tools")["children"] == str(recorded + clones)
     # The fragment weighs its rows and a body, and neither part is over what it is budgeted...
     assert len(served.content) <= worst_expansion_bytes()
-    chrome = re.sub(PRICED_ROWS["log"], "", served.text, flags=re.S)
-    assert len(chrome.encode()) <= MEASURED_EXPANSION_CHROME, len(chrome.encode())
     assert max(len(row.encode()) for row in rows) <= worst_log_row_bytes()
+    bodies = [re.sub(PRICED_ROWS["log"], "", served.text, flags=re.S)]
+    for other in others:
+        assert other.status_code == 200
+        assert not re.findall(PRICED_ROWS["log"], other.text, flags=re.S), "it listed a level"
+        bodies.append(other.text)
+    assert max(len(body.encode()) for body in bodies) <= MEASURED_EXPANSION_CHROME, [
+        len(body.encode()) for body in bodies
+    ]
+    # A turn's body is the one whose title a pass can have written, so the described store is
+    # what makes that title the widest it gets rather than the prompt's own head.
+    assert fields(bodies[-2], "data-body", "turn")["title"].startswith("&" * queries.TAG_CHARS)
     # ...and an expansion opens no expansion: not one of those rows carries a button that
     # would fetch another body under it.
     assert "data-view" not in served.text
