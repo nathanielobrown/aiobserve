@@ -772,7 +772,9 @@ ROUTES: dict[str, str] = {
     # and a file a tool wrote.
     "/session/{session_id}/errors": f"/session/{FORK_ORIGIN}/errors",
     "/session/{session_id}/thread/{source}/records": f"/session/{ANCESTOR}/thread/main/records",
-    "/session/{session_id}/offload/{name:path}": f"/session/{CONFIG_ONLY}/offload/{OFFLOAD_FILE}",
+    "/session/{session_id}/offload/{offload_name:path}": (
+        f"/session/{CONFIG_ONLY}/offload/{OFFLOAD_FILE}"
+    ),
     # And the per-value fetches a pane's previews offer: one per fat column a node can hold.
     "/fragment/text/session/{session_id}/thread/{source}/call/{api_call_id}": (
         f"/fragment/text/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/call/{DENSE_CALL}"
@@ -820,7 +822,7 @@ ROUTES: dict[str, str] = {
         f"/fragment/kin/session/{SPINE}/session/{SPINE}?kin=1&thread=main&depth=1"
     ),
     # And the statement behind a citation, which every page's footer links to.
-    f"{QUERY_URL}/{{name}}": f"{QUERY_URL}/view_sessions",
+    f"{QUERY_URL}/{{query_name}}": f"{QUERY_URL}/view_sessions",
 }
 
 

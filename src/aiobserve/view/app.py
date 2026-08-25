@@ -1316,22 +1316,26 @@ def build_app(db_path: Path) -> FastAPI:
             },
         )
 
-    @app.get(f"{QUERY_URL}/{{name}}")
-    def query_page(request: Request, name: str) -> Response:
+    @app.get(f"{QUERY_URL}/{{query_name}}")
+    def query_page(request: Request, query_name: str) -> Response:
         """One library query's SQL, under the bindings a page cited it with.
 
-        Where every citation in a footer goes. `name` is a key of the query manifest and never
-        a path: a name the manifest does not declare is a 404 before anything is read, which is
-        what makes a request for `../../secret` a miss rather than a file.
+        Where every citation in a footer goes. The name is a key of the query manifest and
+        never a path: a name the manifest does not declare is a 404 before anything is read,
+        which is what makes a request for `../../secret` a miss rather than a file.
         """
-        if name not in queries.QUERIES:
+        if query_name not in queries.QUERIES:
             raise HTTPException(404, "No query by that name ships with this build.")
         return templates.TemplateResponse(
             request,
             "query.html",
             # Whatever the citation carried, printed back rather than bound to anything: this
             # page runs no query, so a binding here is a fact about the page that sent you.
-            {"name": name, "sql": queries.load(name), "bindings": dict(request.query_params)},
+            {
+                "name": query_name,
+                "sql": queries.load(query_name),
+                "bindings": dict(request.query_params),
+            },
         )
 
     @app.get("/session/{session_id}/thread/{source}/records")
@@ -1379,26 +1383,26 @@ def build_app(db_path: Path) -> FastAPI:
             },
         )
 
-    @app.get("/session/{session_id}/offload/{name:path}")
+    @app.get("/session/{session_id}/offload/{offload_name:path}")
     def offload_page(
         request: Request,
         session_id: str,
-        name: str,
+        offload_name: str,
         after: int = 0,
         size: int = bounds.CHUNK.default,
     ) -> Response:
         """One chunk of a tool result Claude Code wrote to a file beside the transcript.
 
-        `name` is the transcript's own file name, so it may hold anything a tool named a file
-        — spaces, percent signs, something shaped like a path. It is a key into the store and
-        never a path the server opens, which is what makes the shape of it uninteresting.
+        The name is the transcript's own file name, so it may hold anything a tool named a
+        file — spaces, percent signs, something shaped like a path. It is a key into the store
+        and never a path the server opens, which is what makes the shape of it uninteresting.
         """
         checked(size, bounds.CHUNK.ceiling)
         if after < 0:
             raise HTTPException(400, "Ask for an offset of 0 or more.")
         bound: dict[str, ParamValue] = {
             "session_id": session_id,
-            "name": name,
+            "name": offload_name,
             "after_chars": after,
             "chunk_chars": size,
         }

@@ -339,6 +339,9 @@ class Node:
         The same node, read without the page around it: an expansion is the body and a count of
         what is under it, so a reader can look inside a child without leaving the parent. The
         node's own path under a prefix, so the two never disagree about where the node sits.
+
+        A kind with no body to serve has no route behind this — the two buckets, and a session
+        — and nothing offers one: a log lists only the kinds `app.BODIES` covers.
         """
         return f"{BODY_URL}{self.url}"
 

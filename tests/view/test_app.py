@@ -10,6 +10,7 @@ themselves live in `test_node.py`; the tree beside them in `test_tree.py`.
 import datetime as dt
 import json
 import re
+from collections import defaultdict
 from html import unescape
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -825,13 +826,20 @@ def test_a_node_page_cites_every_query_it_ran(client: TestClient) -> None:
     }
 
 
-def test_no_url_the_viewer_serves_puts_two_ids_side_by_side(client: TestClient) -> None:
+def test_every_id_a_url_carries_is_named_by_the_word_in_front_of_it(client: TestClient) -> None:
     """Every id in a path has a word in front of it saying what kind of id it is.
 
-    The one rule the URL scheme is built on (`docs/viewer.md`). Read a path that breaks it and
-    the eye pairs the segments the wrong way — a turn and something under it, where the second
-    id is really the thread the turn is on. With a word before each id there is nothing to
-    pair: a session, a thread, and a turn.
+    The one rule the URL scheme is built on (`docs/viewer.md`), and it has two halves. No two
+    ids sit side by side: read a path that breaks that and the eye pairs the segments the wrong
+    way — a turn and something under it, where the second id is really the thread the turn is
+    on. And the word in front *names* the id, which is what the first half alone does not say:
+    `/session/{session_id}/unattributed/{source}` puts no two ids together and still calls a
+    thread by the name of the bucket hanging off it.
+
+    Naming is checked across the table rather than against a list of words, which would be the
+    rule written twice: an id kind that follows two different words is one of the two lying.
+    That catches a word changed at one route and misses a parameter used at exactly one — for
+    those, the closed registry in `test_bounds.py` is what holds the shape.
 
     `{kind}` is the one parameter that counts as a word rather than an id: it carries a member
     of `nodes.Kind`, and every one of those is a bare literal segment.
@@ -839,6 +847,7 @@ def test_no_url_the_viewer_serves_puts_two_ids_side_by_side(client: TestClient) 
     assert all(str(kind).isalpha() for kind in nodes.Kind)
     routes = [route for route in client.app.routes if isinstance(route, APIRoute)]  # pyrefly: ignore
     assert routes, "the app exposes no routes"
+    naming: dict[str, set[str]] = defaultdict(set)
     for path in sorted(route.path for route in routes):
         segments = ["kind" if part == "{kind}" else part for part in path.split("/") if part]
         for at, part in enumerate(segments):
@@ -846,6 +855,11 @@ def test_no_url_the_viewer_serves_puts_two_ids_side_by_side(client: TestClient) 
                 continue
             assert at, f"{path} opens on an id nothing names"
             assert not segments[at - 1].startswith("{"), f"{path} puts two ids side by side"
+            # The parameter's own name, past the converter an offloaded file path carries.
+            naming[part.strip("{}").partition(":")[0]].add(segments[at - 1])
+    assert naming, "no route carries an id"
+    for parameter, words in sorted(naming.items()):
+        assert len(words) == 1, f"{parameter} is called {sorted(words)} at different routes"
 
 
 # The ratio WCAG 2.2 asks of body text against what it is printed on. Both schemes are held
