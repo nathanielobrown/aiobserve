@@ -262,10 +262,12 @@ ul.prs { margin: var(--space-2) 0; padding: 0; list-style: none; overflow-wrap: 
 
 /* Reading in order: back on the left, on to the next on the right, with whatever room is
    between them. Each control carries the neighbour's own title rather than the word "next",
-   so it wraps like the prose it is and is capped near a reading measure. */
+   so it wraps like the prose it is and is capped near a reading measure. A title is not
+   always prose — a path holds no space to wrap at — so it breaks wherever it has to rather
+   than pushing the page sideways. */
 .walk { display: flex; gap: var(--space-3); border-top: 1px solid var(--line);
   margin-top: var(--space-3); padding-top: var(--space-2); }
-.walk .button { max-width: 24rem; }
+.walk .button { max-width: 24rem; overflow-wrap: anywhere; }
 /* Each control holds its own end whether or not the other is there: the last node of a
    session has nothing after it, and its back link still belongs on the left. */
 .walk [data-walk="previous"] { margin-right: auto; }
@@ -279,7 +281,7 @@ ul.prs { margin: var(--space-2) 0; padding: 0; list-style: none; overflow-wrap: 
    control here that is always there, so it holds the middle rather than an end. */
 nav.errors { display: flex; gap: var(--space-3); align-items: baseline;
   margin-top: var(--space-2); }
-nav.errors a { max-width: 20rem; text-decoration: none; }
+nav.errors a { max-width: 20rem; text-decoration: none; overflow-wrap: anywhere; }
 nav.errors [data-step="previous"] { margin-right: auto; }
 nav.errors [data-step="next"] { margin-left: auto; text-align: right; }
 /* The count, which is the one number on the page that says how much there is to jump to. */
