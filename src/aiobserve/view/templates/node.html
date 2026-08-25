@@ -41,7 +41,7 @@
     <nav class="crumbs" data-crumbs="{{ selection.kind }}" aria-label="Where this node sits">
       {% for step in chain %}
       <a data-crumb="{{ step.key }}" href="{{ step.url }}{{ suffix }}"
-        >{{ parts.icon(step) }} {{ parts.glyph(step) }}<span data-field="{{ step.kind }}">{{ step.label }}</span></a>
+        >{{ parts.mark(step.icon) }} {{ parts.glyph(step) }}<span data-field="{{ step.kind }}">{{ step.label }}</span></a>
       {% endfor %}
     </nav>
     {{ body.pane(selection, header, suffix) }}

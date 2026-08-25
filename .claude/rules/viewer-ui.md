@@ -34,7 +34,7 @@ A `title` is worth its bytes where the mark on screen is smaller than what it me
 
 Where a label repeats — a tree row, a crumb, a log row, a walk control — the glyph goes bare. The pane carries the one that says what the mark means: `parts.summary` hangs `Described.provenance` off it as a `title`, naming the model, when it ran, the prompt and taxonomy versions, and whether the row is stale. A `title` on every repeat would be the same sentence 400 times in one page's markup.
 
-The mark saying what *kind* of node a surface names goes through `parts.icon(node)`, which reads `nodes.GLYPHS` — the one table where those characters and the children log's column heads are written, so a mark cannot mean one thing in a table and another in the tree. It is `aria-hidden` and carries no `title`: the word it stands for is already in the markup beside it (`docs/viewer.md`).
+Every mark saying what a thing *is* — the kind of node a surface names, and what a children log's column counts — goes through `parts.mark(character)`, whose character comes from `nodes.GLYPHS` or a `Column` — the one place those characters are written, so a mark cannot mean one thing in a table and another in the tree. It is `aria-hidden` and carries no `title`: the word it stands for is already in the markup beside it (`docs/viewer.md`).
 
 # A tree row is priced, not budgeted
 

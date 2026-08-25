@@ -43,7 +43,7 @@
      back to it from a bookmark. What the click does with the response is written once, on
      `#tree-rows` in `node.html`, and inherited from there. #}
   <a href="{{ row.node.url }}{{ suffix }}" hx-get="{{ row.node.url }}{{ suffix }}">
-    {{ parts.icon(row.node) }} {{ parts.glyph(row.node) }}<span data-field="label">{{ row.node.label }}</span>
+    {{ parts.mark(row.node.icon) }} {{ parts.glyph(row.node) }}<span data-field="label">{{ row.node.label }}</span>
     {%- if row.node.is_error %}
     {# The one thing the tree says about a node beyond what it is and what it cost: this call
        came back an error. Spelled the way the children log spells it, so the stylesheet's one
