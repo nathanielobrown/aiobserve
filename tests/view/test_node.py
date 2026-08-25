@@ -32,6 +32,7 @@ from tests.view.conftest import (
     inside,
     one,
     plain,
+    prose,
     values,
 )
 
@@ -411,6 +412,53 @@ def test_a_pane_previews_a_fat_value_and_offers_the_rest_as_its_own_fetch(
     fits = client.get(TURN).text
     assert "cut" not in fields(fits, "data-detail", "prompt")
     assert not inside(fits, "data-detail", "prompt", "data-whole")
+
+
+# A prompt in the markdown a person or an agent writes one in: a heading, a list, a link and
+# a fenced block. Planted rather than recorded — redaction flattened every fixture prompt to a
+# line of its own — and real in the shape that matters here: it is how the briefs in `plans/`
+# are written.
+MARKDOWN_PROMPT = """# The task
+
+Read `docs/viewer.md`, then:
+
+- price it
+- land it
+
+```py
+budget = 1
+```
+"""
+
+
+def test_a_pane_reads_a_prompt_as_the_markdown_it_was_written_in(
+    plant: Planter,
+) -> None:
+    """A pane renders prose as markdown, the same way the fetch that replaces it already did.
+
+    The preview and the whole value are one value shown twice — the fetch swaps into the block
+    the preview sat in — so a pane that printed the characters and a fetch that rendered them
+    told a reader the head and the rest were written in different things.
+    """
+    path = plant(
+        (
+            "UPDATE turns SET prompt = ? WHERE session_id = ? AND source = ? AND id = ?",
+            [MARKDOWN_PROMPT, ANCESTOR, MAIN, DENSE_TURN],
+        )
+    )
+    with TestClient(build_app(path)) as written:
+        pane = prose(written.get(TURN).text, "prompt")
+        whole = written.get(f"/fragment/prompt/session/{ANCESTOR}/thread/{MAIN}/turn/{DENSE_TURN}")
+    # The heading is a heading, the list is a list, and the fenced block is marked up in the
+    # language a lexer read it as — the same lexers the rest of the viewer reads code with...
+    assert "<h1>The task</h1>" in pane
+    assert pane.count("<li>") == 2
+    assert '<pre class="code python">' in pane
+    # ...so none of the marks a reader wrote are left standing in the text.
+    assert "#" not in plain(pane) and "```" not in plain(pane)
+    # And the value the fetch brings back is rendered the same, because it is the same value:
+    # this prompt fits the pane's width, so the head is the whole of it.
+    assert prose(whole.text, "prompt") == pane
 
 
 # A shell command with something for a lexer to find in it: a builtin, an operator, a quoted

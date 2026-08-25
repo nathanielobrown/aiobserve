@@ -119,9 +119,12 @@ class Detail(NamedTuple):
     cut: int
     url: str
     # What the head is marked up as, where the record says what the value is written in — the
-    # shell a `Bash` call ran, the file a `Read` returned. None is prose, which is most of a
-    # transcript and which the pane prints as it was stored.
+    # shell a `Bash` call ran, the file a `Read` returned.
     syntax: highlight.Syntax | None
+    # And whether what is left is the markdown someone wrote it in. A person and a model write
+    # markdown; a program writes what it writes, so a tool's arguments and its output are
+    # printed as the store holds them. No value is both, and a syntax the record named wins.
+    markdown: bool
 
 
 # Where the SQL behind a page is read. Every citation in a footer links here, so the path is
@@ -320,6 +323,8 @@ def detail_of(
     url: str,
     size: int,
     syntax: highlight.Syntax | None = None,
+    *,
+    markdown: bool,
 ) -> Detail | None:
     """One fat column as a pane shows it, or None where the store holds nothing under it.
 
@@ -327,11 +332,16 @@ def detail_of(
     from one that ends where the pane does; `chars` is the whole length the link offers.
     `syntax` is what the record says the value is written in, and the default is prose:
     everything a session wrote is prose until something in the row says otherwise.
+
+    `markdown` says whether that prose is rendered as the markdown it was written in. It takes
+    no default: whether a value came from a person, a model or a program is a fact about the
+    column, and two callers of one route can read the same column either way — a subagent's
+    answer reaches a run's pane as prose and a tool's pane as the output of a program.
     """
     if not head:
         return None
     cut = (chars or 0) - size if len(head) > size else 0
-    return Detail(name, fmt.cut(head, size), cut, url, syntax)
+    return Detail(name, fmt.cut(head, size), cut, url, syntax, markdown)
 
 
 def sliced(items: Sequence[Row], page: int, size: int) -> Listed:
@@ -960,6 +970,7 @@ def build_app(db_path: Path) -> FastAPI:
                             rows[0]["prompt_chars"],
                             f"/fragment/prompt{at}",
                             detail,
+                            markdown=True,
                         ),
                         detail_of(
                             "command_args",
@@ -967,6 +978,7 @@ def build_app(db_path: Path) -> FastAPI:
                             rows[0]["command_args_chars"],
                             f"/fragment/args{at}",
                             detail,
+                            markdown=True,
                         ),
                     )
                     if item is not None
@@ -1026,6 +1038,7 @@ def build_app(db_path: Path) -> FastAPI:
                             rows[0]["description_chars"],
                             f"/fragment/brief{nodes.run_url(session_id, run_id)}",
                             detail,
+                            markdown=True,
                         ),
                     )
                     if item is not None
@@ -1096,6 +1109,7 @@ def build_app(db_path: Path) -> FastAPI:
                             row["text_chars"],
                             f"/fragment/text{at}",
                             detail,
+                            markdown=True,
                         ),
                         detail_of(
                             "thinking",
@@ -1103,6 +1117,7 @@ def build_app(db_path: Path) -> FastAPI:
                             row["thinking_chars"],
                             f"/fragment/thinking{at}",
                             detail,
+                            markdown=True,
                         ),
                     )
                     if item is not None
@@ -1164,6 +1179,7 @@ def build_app(db_path: Path) -> FastAPI:
                             f"/fragment/command{at}",
                             detail,
                             highlight.Syntax.BASH,
+                            markdown=False,
                         ),
                         detail_of(
                             "input",
@@ -1171,6 +1187,7 @@ def build_app(db_path: Path) -> FastAPI:
                             row["input_chars"],
                             f"/fragment/input{at}",
                             detail,
+                            markdown=False,
                         ),
                         detail_of(
                             "result",
@@ -1179,6 +1196,7 @@ def build_app(db_path: Path) -> FastAPI:
                             f"/fragment/result{at}",
                             detail,
                             highlight.by_suffix(row["result_type"]),
+                            markdown=False,
                         ),
                     )
                     if item is not None

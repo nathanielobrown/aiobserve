@@ -326,6 +326,17 @@ def block(html: str, field: str) -> str:
     return found.group(1)
 
 
+def prose(html: str, field: str) -> str:
+    """The markup inside one `<div class="prose" data-field="…">`, whole.
+
+    The other half of `block`: what a pane renders as the markdown a session wrote, which is
+    nested elements rather than the one run of text a `data-field` reader hands back.
+    """
+    found = re.search(rf'<div class="prose" data-field="{field}"[^>]*>(.*?)</div>', html, re.DOTALL)
+    assert found is not None, f"no {field} prose on the page"
+    return found.group(1)
+
+
 def classed(html: str) -> set[str]:
     """Every class the highlighter wrote into one run of markup.
 

@@ -115,9 +115,17 @@ PAGE_BYTES = 500_000
 # the crumbs and 73 B on the pane's heading and the browser tab. The old ceiling left 34,666 B,
 # 10 B a row, so the raise landed before the markup rather than a template edit becoming an
 # argument about a ceiling. What a reader gets for it is a tree read by shape rather than by
-# title. The arithmetic under it comes to 5,023,767 B, and `TREE_ROW_BYTES` is pinned from
-# below so the 26,233 B left over cannot be spent by a row that quietly grew instead.
-NODE_BYTES = 5_050_000
+# title.
+#
+# Raised again from 5,050,000 for the prompt a pane now reads as the markdown it was written
+# in. A rendered preview is budgeted at `MARKED_CHAR_BYTES` like a highlighted one, so the
+# pane's dear previews went from one to two: 4,000 characters at 25 B more each is 100,000 B,
+# all of it on one preview of one pane. What a reader gets is the turn's ask read as prose —
+# headings, lists and fenced code — where the whole-value fetch already rendered it and the
+# head beside it printed the source. The arithmetic under it comes to 5,123,767 B, and
+# `TREE_ROW_BYTES` is pinned from below so the 26,233 B left over cannot be spent by a row
+# that quietly grew instead.
+NODE_BYTES = 5_150_000
 # What the markup around one row of the list costs, with the content the row carries taken off.
 # Re-measured through the app by the leaf at the bottom of this file, every cap full of `&`,
 # at the dearest row the list holds rather than at whichever one sorted second: that row cost
@@ -196,10 +204,12 @@ MEASURED_DETAIL_MARKUP = 600
 # call what it said and what it thought. A fourth would be a kind whose pane the arithmetic
 # below has not priced.
 PANE_DETAILS = 3
-# And how many of those are shown in a syntax rather than as the prose everything else is. One:
-# the two previews a row can say the language of are the command a `Bash` call ran and the file
-# a `Read` returned, and no call is both tools.
-MARKED_PANE_DETAILS = 1
+# And how many of those the page marks up rather than printing as the characters the store
+# holds. Two: a turn previews the prompt it was given and what followed its slash command, an
+# api call what it said and what it thought, and all four are markdown someone wrote. The
+# other kind of markup is a syntax the record named — the command a `Bash` call ran, the file
+# a `Read` returned — and no call is both tools, so a tool's pane marks up one of its three.
+DEAR_PANE_DETAILS = 2
 # What a node page carries outside its tree rows, its log rows and its previews: the crumbs
 # down to the selection, the node's own facts, and what a pass said about it. The session is
 # the widest of the eight panes — every string in its header is one a transcript wrote, and its
@@ -245,7 +255,10 @@ ESCAPED_CHAR_BYTES = 5
 # test_every_class_the_markup_carries_is_one_of_pygments_short_names` is the pin.
 #
 # The dearest content the viewer marks up today reaches 26 bytes a character (`&;` repeated,
-# read as `.sql` or `.py`) without any lexer being adversarial.
+# read as `.sql` or `.py`) without any lexer being adversarial. A preview rendered as the
+# markdown it was written in is priced at the same number and reaches it the same way: a fenced
+# block goes through these lexers, and every other construct markdown has costs its tags once a
+# line — the deepest of them, a quote inside a quote, is capped at markdown-it's nesting limit.
 MARKED_CHAR_BYTES = 30
 # And the most one character can weigh where a page writes it into a link rather than into
 # text. Percent-encoding spends three bytes on every byte it escapes, and a character is up to
@@ -364,14 +377,20 @@ def worst_crumb_bytes() -> int:
     return MEASURED_CRUMB_MARKUP + queries.NAV_CHARS * ESCAPED_CHAR_BYTES + worst_knob_bytes()
 
 
-def worst_detail_bytes() -> int:
-    """What one previewed value can weigh: its markup, and a preview of nothing but `&`."""
+def worst_stored_detail_bytes() -> int:
+    """What one previewed value printed as stored can weigh: its markup, and a preview of `&`."""
     return MEASURED_DETAIL_MARKUP + bounds.DETAIL.ceiling * ESCAPED_CHAR_BYTES
 
 
-def worst_marked_detail_bytes() -> int:
-    """What one previewed value in its own syntax can weigh: its markup, and a preview whose
-    every character the lexer makes a token of."""
+def worst_rendered_detail_bytes() -> int:
+    """What one previewed value the page marks up can weigh: its markup, and a preview whose
+    every character costs an element.
+
+    One price for the two ways a preview is marked up. A value in the syntax the record named
+    is a span a token; a value rendered as the markdown it was written in reaches the same
+    lexers through a fenced block, and every other construct markdown has — a heading, a list,
+    a quote — costs its tags once a line rather than once a character.
+    """
     return MEASURED_DETAIL_MARKUP + bounds.DETAIL.ceiling * MARKED_CHAR_BYTES
 
 
@@ -400,8 +419,8 @@ def worst_node_bytes() -> int:
         + tree_rows * bounds.TREE_ROW_BYTES
         + bounds.LOG.ceiling * worst_log_row_bytes()
         + MEASURED_PAGER_BYTES
-        + (PANE_DETAILS - MARKED_PANE_DETAILS) * worst_detail_bytes()
-        + MARKED_PANE_DETAILS * worst_marked_detail_bytes()
+        + (PANE_DETAILS - DEAR_PANE_DETAILS) * worst_stored_detail_bytes()
+        + DEAR_PANE_DETAILS * worst_rendered_detail_bytes()
     )
 
 
@@ -1029,6 +1048,14 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
             # what the page reads the result's syntax off — a name, not a length.
             [json.dumps({"file_path": f"/{fat}/planted.sql"}), tokens],
         ),
+        # And one turn asked in the dearest markdown there is: a fenced block, the one
+        # construct markdown hands to a lexer. The pane cuts the head inside the fence, which
+        # commonmark closes at the end of what it was given — so what it renders is `&;` at an
+        # element a token, which is what a preview budgeted at `MARKED_CHAR_BYTES` has to hold.
+        (
+            "UPDATE turns SET prompt = ? WHERE id = (SELECT min(id) FROM turns)",
+            [f"```sql\n{tokens}"],
+        ),
         *DESCRIBED_AT_EVERY_CAP,
     )
     with TestClient(build_app(path)) as planted:
@@ -1068,19 +1095,26 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
         # 3,217 bytes the ceiling keeps for nothing, and `NODE_BYTES` now has room to hide one.
         assert widest_row == budget if measured else widest_row <= budget, (name, widest_row)
     # A preview is priced by whether the page marked it up, which is the whole of the
-    # difference between the two budgets: a span a token against an escape a character.
+    # difference between the two budgets: an element a token against an escape a character.
+    # Marked up two ways — the syntax a record named, and the markdown a session wrote — and
+    # both are read off the markup rather than off the route, because what the ceiling pays
+    # for is what came back.
     previews = [row for _, rows in split for row in rows["detail"]]
-    marked = [row for row in previews if 'class="code ' in row]
-    assert marked and len(marked) < len(previews)
-    assert max(len(row.encode()) for row in marked) <= worst_marked_detail_bytes()
-    plain_previews = [row for row in previews if row not in marked]
-    assert max(len(row.encode()) for row in plain_previews) <= worst_detail_bytes()
-    # And no pane shows more previews than the arithmetic gives it, or more marked ones: a
+    dear = [row for row in previews if 'class="code ' in row or 'class="prose"' in row]
+    assert dear and len(dear) < len(previews)
+    assert max(len(row.encode()) for row in dear) <= worst_rendered_detail_bytes()
+    # And the plant reached a lexer through both of those routes, so that budget is being held
+    # rather than merely not approached: the dearest preview costs more than escaping every
+    # character of it would, which is the whole of the difference between the two.
+    assert max(len(row.encode()) for row in dear) > worst_stored_detail_bytes()
+    stored = [row for row in previews if row not in dear]
+    assert max(len(row.encode()) for row in stored) <= worst_stored_detail_bytes()
+    # And no pane shows more previews than the arithmetic gives it, or more marked-up ones: a
     # kind that grew a third value would otherwise spend the ceiling unpriced.
     counts = [len(rows["detail"]) for _, rows in split]
     assert max(counts) == PANE_DETAILS
-    assert max(sum(row in marked for row in rows["detail"]) for _, rows in split) == (
-        MARKED_PANE_DETAILS
+    assert max(sum(row in dear for row in rows["detail"]) for _, rows in split) == (
+        DEAR_PANE_DETAILS
     )
     # ...and what the page carries whatever it holds fits the allowance the ceiling gives it.
     widest = max((chrome for chrome, _ in split), key=lambda page: len(page.encode()))

@@ -81,6 +81,20 @@
 </section>
 {% endmacro %}
 
+{# One value as the markdown a session wrote it in. Rendered rather than printed because that
+   is what it is: a prompt, a model's answer and the brief a run was given are written in
+   markdown by whoever typed them. `view/render.py` owns the escaping — html passthrough off,
+   an image a placeholder, a link only where a browser should follow it — and no template may
+   add `|safe` to a value that did not come through it.
+
+   Written once for the two mounts that show one value: the head a pane previews, and the whole
+   of it the fetch swaps into that same block. A value shown two ways is a value a reader
+   cannot tell has one head. #}
+{% macro prose(field, value) -%}
+<div class="prose" data-field="{{ field }}">{{ value | markdown }}</div>
+{%- endmacro %}
+
+
 {# One value in the syntax it was written in — a tool's arguments, an archived record, a query
    file. Marked up by class rather than by inline color, because the policy in `app.CSP` allows
    no `style` attribute; `static/pygments.css` paints the classes. A value past the ceiling
@@ -122,6 +136,8 @@
   <h3>{{ label(item.name) }}</h3>
   {%- if item.syntax %}
   {{ code(item.head, item.syntax, item.name) }}
+  {%- elif item.markdown %}
+  {{ prose(item.name, item.head) }}
   {%- else %}
   <pre data-field="{{ item.name }}">{{ item.head }}</pre>
   {%- endif %}
