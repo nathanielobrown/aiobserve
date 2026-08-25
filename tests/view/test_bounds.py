@@ -757,6 +757,17 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     # plus the chrome that rides every page — both bound by construction now, not by how long
     # the titles this corpus happens to hold are.
     assert MEASURED_LIST_CHROME + bounds.SESSIONS.ceiling * worst_session_row_bytes() < PAGE_BYTES
+    # And it is the most rows that fit, not merely some number that does: the ceiling is
+    # derived from the row's cost, so a row that grew has to move it rather than eat the slack
+    # silently. The two together are what make `bounds.SESSIONS` a measurement — an upper bound
+    # alone is satisfied by any smaller page, including one a stale derivation left behind.
+    # Only this list is held from below. The landing page's and the errors list's ceilings are
+    # a reader's number rather than a derived one — each is well under what its page affords —
+    # so pinning them here would pin a preference to an arithmetic that never chose it.
+    assert (
+        MEASURED_LIST_CHROME + (bounds.SESSIONS.ceiling + 1) * worst_session_row_bytes()
+        >= PAGE_BYTES
+    )
     # The landing page grows the same way — a project per repository the corpus records — and
     # its ceiling is not a size a URL carries: a reader picks a project rather than paging.
     assert (
