@@ -34,7 +34,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from aiobserve.analyze import queries
+from aiobserve.analyze import macros, queries
 from aiobserve.analyze.queries import ParamValue
 from aiobserve.export.duckdb import SCHEMA_VERSION
 from aiobserve.model import MAIN_SOURCE
@@ -1349,6 +1349,10 @@ def build_app(db_path: Path) -> FastAPI:
             {
                 "name": query_name,
                 "sql": queries.load(query_name),
+                # What a shell has to run first, where the statement calls a library macro:
+                # both consumers install these, and a reader pasting the statement alone has
+                # no way to find out why the catalog does not know the name.
+                "macros": macros.needed_by(queries.load(query_name)),
                 "bindings": dict(request.query_params),
             },
         )

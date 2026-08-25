@@ -18,7 +18,7 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from aiobserve.analyze import queries
+from aiobserve.analyze import macros, queries
 from aiobserve.view.app import QUERY_URL
 from aiobserve.view.highlight import Syntax, lit
 from tests.conftest import SPINE
@@ -35,6 +35,9 @@ REPO = Path(__file__).resolve().parents[2]
 CITING = sorted(
     url for route, url in ROUTES.items() if not route.startswith(("/fragment/", QUERY_URL))
 )
+
+# The page whose citations name a library macro, off the same map.
+TOOL_PAGE = ROUTES["/session/{session_id}/thread/{source}/tool/{tool_call_id}"]
 
 
 def bound(line: str) -> dict[str, str]:
@@ -121,6 +124,59 @@ def test_the_query_page_serves_the_statement_the_citation_named(client: TestClie
         assert plain(block(shown, "sql")) == queries.load(name)
         # And the bindings are echoed as the page ran them, so the statement reads in context.
         assert echoed(shown) == bound(lines[name])
+
+
+def test_a_query_page_carries_the_definitions_its_statement_runs_under(
+    client: TestClient,
+) -> None:
+    """A statement calling a library macro does not run alone, and the page says so.
+
+    The footer promises a line a shell re-runs, and four viewer queries now call a macro the
+    consumer installs first (`analyze/macros.py`). A reader who pastes one of those into a
+    bare `duckdb` gets a catalog error and no way to find out why, so the page carries the
+    setup above the statement. A query that calls none carries nothing extra.
+    """
+    for name in queries.QUERIES:
+        page = client.get(f"{QUERY_URL}/{name}").text
+        calls = any(f"{macro}(" in queries.load(name) for macro in macros.DEFINITIONS)
+        assert ('data-field="macros"' in page) == calls, name
+        if calls:
+            assert plain(block(page, "macros")) == macros.SETUP, name
+
+
+def test_what_a_query_page_shows_runs_in_a_shell_that_installed_nothing(
+    client: TestClient, corpus_db: Path
+) -> None:
+    """The promise end to end: the page a citation links to, pasted, answers.
+
+    The connection is opened the way a reader's shell opens one — read-only over the store,
+    with no macro on it — and what runs is what the page prints, in the order it prints it,
+    under the bindings the citing page quoted. A cited value comes back as the text of the
+    citation line, which is the one place a reader copies it from.
+    """
+    lines = fields(client.get(TOOL_PAGE).text, "id", "citation")
+    hrefs = inside(client.get(TOOL_PAGE).text, "id", "citation", "href")
+    ran = 0
+    for name, href in zip(lines, hrefs, strict=True):
+        page = client.get(href).text
+        if 'data-field="macros"' not in page:
+            continue
+        shell = duckdb.connect(str(corpus_db), read_only=True)
+        try:
+            shell.execute(plain(block(page, "macros")))
+            shell.execute(
+                plain(block(page, "sql")),
+                {
+                    key: None if text == "NULL" else int(text) if text.isdigit() else text
+                    for key, text in bound(lines[name]).items()
+                },
+            )
+        finally:
+            shell.close()
+        ran += 1
+    # The tool page is on the list because it cites queries that need the setup — if it stops
+    # doing that this leaf proves nothing, and says so rather than passing empty.
+    assert ran, "no citation on the tool page names a macro any more"
 
 
 def test_a_query_asked_for_with_no_bindings_still_serves(client: TestClient) -> None:

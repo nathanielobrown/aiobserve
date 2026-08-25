@@ -18,6 +18,11 @@
   {% else %}
   <p class="plain">Cited with no bindings.</p>
   {% endif %}
+  {% if macros %}
+  <p class="plain">Run these first: the definitions this statement calls, which
+    <code>aiobserve query</code> and the viewer install before they run it.</p>
+  {{ parts.code(macros, SYNTAX.SQL, 'macros') }}
+  {% endif %}
   {{ parts.code(sql, SYNTAX.SQL, 'sql') }}
 </article>
 {% endblock %}

@@ -119,7 +119,25 @@ BOUNDING = {
 # `tool_ran` are written in terms of the ones above them. Installed as a set rather than per
 # query: which macros a file needs is the file's business, and a connection that holds some of
 # them is a connection where a query fails on the ones it does not.
-_MACROS = (_SIGNATURE_LINE, _REBUILT_CONTEXT, *BOUNDING.values())
+DEFINITIONS = {
+    "signature_line": _SIGNATURE_LINE,
+    "rebuilt_context": _REBUILT_CONTEXT,
+    **BOUNDING,
+}
+
+# The same set as one script a reader can paste, which is what the viewer prints above a
+# statement that calls any of them (`view/app.py:query_page`). Semicolons and the install
+# order are the whole difference: what a consumer does on your behalf, written out.
+SETUP = ";\n".join(definition.strip() for definition in DEFINITIONS.values()) + ";"
+
+
+def needed_by(sql: str) -> str:
+    """The setup `sql` must run under, or nothing when it calls no macro at all.
+
+    Named by hand rather than parsed: a statement mentioning one of these names in a comment
+    gets the definitions too, which costs a reader nothing and is the safe way to be wrong.
+    """
+    return SETUP if any(f"{name}(" in sql for name in DEFINITIONS) else ""
 
 
 def install(connection: duckdb.DuckDBPyConnection) -> None:
@@ -128,5 +146,5 @@ def install(connection: duckdb.DuckDBPyConnection) -> None:
     Temp macros, so this works on the read-only connection both consumers open: what it
     creates lives in the session's own catalog rather than in the store.
     """
-    for macro in _MACROS:
+    for macro in DEFINITIONS.values():
         connection.execute(macro)
