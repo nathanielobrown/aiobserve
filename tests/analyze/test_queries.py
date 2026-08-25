@@ -149,6 +149,11 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     # The viewer's own read of the three tables, at the thread a session page renders: the
     # plant describes `spine/` at every level, so all three arms of the union answer.
     "view_enrichment": {"session_id": SPINE, "source": MAIN},
+    # The whole of one line the pass wrote, one query per level — bound at the same session,
+    # which the plant describes at every level, and at a turn and a run under it.
+    "view_turn_said": {"session_id": SPINE, "source": MAIN, "turn_id": SLASH_TURN},
+    "view_run_said": {"session_id": SPINE, "run_id": SPINE_RUN},
+    "view_session_said": {"session_id": SPINE},
 }
 
 # The relations only a store an enrichment pass has written to holds: the pipeline creates

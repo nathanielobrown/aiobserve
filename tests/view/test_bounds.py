@@ -258,10 +258,12 @@ DEAR_PANE_DETAILS = 3
 # on a pane reading a failed tool call, the step to the failure before it and the one after.
 # The pane's own heading and the browser tab each carry the mark saying what kind of node the
 # page is about, which is the whole of what the two of them cost here.
-# Re-measured through the app by the leaf at the bottom of this file at 17,138 B. Up to five
+# What a pass wrote sits here too, and each of its two lines carries the fetch that offers the
+# rest of it — a URL written twice, the way every other value a pane previews offers its own.
+# Re-measured through the app by the leaf at the bottom of this file at 17,963 B. Up to five
 # of its strings are tree titles — the page title, and the two steppers under the pane — so it
 # moves with `queries.NAV_CHARS`.
-MEASURED_NODE_CHROME = 17_500
+MEASURED_NODE_CHROME = 18_400
 
 # The parameter every truncated column of a run row is cut to. Counted per query rather than
 # listed, so a fourth column added to a chip shows up in the arithmetic instead of quietly
@@ -911,14 +913,18 @@ def test_every_route_the_viewer_exposes_is_in_the_payload_sweep(client: TestClie
 
 
 @pytest.mark.parametrize("path", sorted(ROUTES.values()))
-def test_no_route_serves_more_than_the_page_ceiling(path: str, client: TestClient) -> None:
+def test_no_route_serves_more_than_the_page_ceiling(path: str, enriched_client: TestClient) -> None:
     """Every route answers under the ceiling at the sizes its URL carries.
 
     A smoke check rather than the proof: the fixture corpus is far smaller than a page, so
     what makes the bound hold is the fat-column scan and the page-size arithmetic above. What
     this catches is the route that ships a whole column anyway.
+
+    Over the described store, because six of the routes fetch what an enrichment pass wrote
+    and a store no pass has touched holds no such table — and because a described page is the
+    dearer one either way.
     """
-    response = client.get(path)
+    response = enriched_client.get(path)
     assert response.status_code == 200, path
     assert len(response.content) < PAGE_BYTES, path
 

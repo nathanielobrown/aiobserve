@@ -115,6 +115,12 @@ class Value(StrEnum):
     # and what it returned to the agent that made it.
     RUN_PROMPT = "view_run_prompt"
     RUN_RESULT = "view_run_result"
+    # And the two lines an enrichment pass wrote about an item, one query per level: what the
+    # model said the item did, and the friction it saw in it. Fat for the same reason the rest
+    # are — a pass writes as much as it wants to — and previewed on the pane the same way.
+    TURN_SAID = "view_turn_said"
+    RUN_SAID = "view_run_said"
+    SESSION_SAID = "view_session_said"
 
 
 # Any of the three, for the fetch helper they share.

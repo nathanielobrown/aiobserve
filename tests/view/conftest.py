@@ -53,6 +53,15 @@ MISSING = "00000000-0000-0000-0000-000000000000"
 # read it whole — the payload sweep weighs every URL, and the citation leaves read the footer
 # of every page among them — and one leaf reads it as a set against the routes the app
 # declares, so a route added with no entry here fails rather than going unread.
+# One item of each level that `enriched_db` describes *and* wrote a friction line for. A pass
+# writes friction where it saw some, and the fixture's stands in for that by describing every
+# fourth item (`tests/conftest.py:planted_enrichment`) — so the two fetches behind a described
+# pane need an item that has both, or the sweep below reads a 404 as a route that broke. Found
+# by asking the described store for a row whose `friction` is not null.
+SAID_SESSION = ANCESTOR
+SAID_RUN = "af6473ae437c9608d"
+SAID_TURN = "5b848af7-f86e-4950-b474-cd98125fad24"
+
 ROUTES: dict[str, str] = {
     "/": "/",
     "/sessions": "/sessions",
@@ -116,6 +125,23 @@ ROUTES: dict[str, str] = {
     "/fragment/result/session/{session_id}/run/{run_id}": (
         f"/fragment/result/session/{SPINE}/run/{SPINE_RUN}"
     ),
+    # And what an enrichment pass wrote about an item, which the pane previews the same way and
+    # fetches from one route per level. Pointed at an item the described fixture wrote both
+    # lines for, so neither answers the 404 an item with no friction serves.
+    "/fragment/said/session/{session_id}/thread/{source}/turn/{turn_id}": (
+        f"/fragment/said/session/{SPINE}/thread/{MAIN}/turn/{SAID_TURN}"
+    ),
+    "/fragment/friction/session/{session_id}/thread/{source}/turn/{turn_id}": (
+        f"/fragment/friction/session/{SPINE}/thread/{MAIN}/turn/{SAID_TURN}"
+    ),
+    "/fragment/said/session/{session_id}/run/{run_id}": (
+        f"/fragment/said/session/{SPINE}/run/{SAID_RUN}"
+    ),
+    "/fragment/friction/session/{session_id}/run/{run_id}": (
+        f"/fragment/friction/session/{SPINE}/run/{SAID_RUN}"
+    ),
+    "/fragment/said/session/{session_id}": f"/fragment/said/session/{SAID_SESSION}",
+    "/fragment/friction/session/{session_id}": f"/fragment/friction/session/{SAID_SESSION}",
     "/fragment/record/session/{session_id}/thread/{source}/line/{line_no}": (
         f"/fragment/record/session/{ANCESTOR}/thread/main/line/1"
     ),

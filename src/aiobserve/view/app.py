@@ -23,7 +23,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from math import ceil
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, assert_never
 from urllib.parse import urlencode
 
 import duckdb
@@ -36,6 +36,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from aiobserve.analyze import macros, queries
 from aiobserve.analyze.queries import ParamValue
+from aiobserve.enrich.prompts import Level
 from aiobserve.export.duckdb import SCHEMA_VERSION
 from aiobserve.model import MAIN_SOURCE
 from aiobserve.view import bounds, errors, highlight, nodes, render, tree, walk
@@ -125,6 +126,20 @@ class Detail(NamedTuple):
     # markdown; a program writes what it writes, so a tool's arguments and its output are
     # printed as the store holds them. No value is both, and a syntax the record named wins.
     markdown: bool
+
+
+class Wrote(NamedTuple):
+    """The two lines an enrichment pass wrote about a node, as the pane shows them.
+
+    Each is a `Detail` like any other fat value the pane previews: the head the query cut, and
+    the fetch that brings the rest of it back into the block the head stood in. A pass writes
+    as much as it wants to, and nearly every run it describes runs past the width.
+    """
+
+    description: Detail | None
+    # None where the model saw no friction, which is most items, and where it wrote an empty
+    # line — the two are the same nothing to a pane.
+    friction: Detail | None
 
 
 # Where the SQL behind a page is read. Every citation in a footer links here, so the path is
@@ -389,6 +404,44 @@ def described_node(descriptions: Descriptions, node: nodes.Node) -> Described | 
     return None
 
 
+def wrote_of(said: Described | None, session_id: str, source: str) -> Wrote | None:
+    """What a pass wrote about the selection, each line with the way to the rest of it.
+
+    The keys are the level's own: a turn's row is keyed by the thread the page is reading, a
+    run's and a session's by the session. `source` is that thread, which is the same one the
+    descriptions were read for.
+    """
+    if said is None:
+        return None
+    match said.level:
+        case Level.turn:
+            at = f"{nodes.thread_url(session_id, source)}/turn/{said.item_id}"
+        case Level.agent_run:
+            at = nodes.run_url(session_id, said.item_id)
+        case Level.session:
+            at = nodes.session_url(said.item_id)
+        case _:
+            assert_never(said.level)
+    return Wrote(
+        description=detail_of(
+            "description",
+            said.description,
+            said.description_chars,
+            f"/fragment/said{at}",
+            queries.ENRICHMENT_CHARS,
+            markdown=False,
+        ),
+        friction=detail_of(
+            "friction",
+            said.friction,
+            said.friction_chars,
+            f"/fragment/friction{at}",
+            queries.ENRICHMENT_CHARS,
+            markdown=False,
+        ),
+    )
+
+
 def project_link(project_dir: str | None) -> str | None:
     """The session list narrowed to one project, or None when there is no list to open.
 
@@ -483,15 +536,6 @@ def build_app(db_path: Path) -> FastAPI:
             return fmt.ABSENT
         return fmt.cut(value, queries.HEADER_CHARS) if isinstance(value, str) else value
 
-    def said(value: str) -> str:
-        """A line an enrichment pass wrote, at the width a pane prints it, marked where cut.
-
-        The same half of the protocol `head` holds, at the width the words a pass wrote are
-        previewed to: a pass answers in paragraphs where a header holds a name, so this is the
-        wider cut and it is reached far more often than the header's is.
-        """
-        return fmt.cut(value, queries.ENRICHMENT_CHARS)
-
     def short(value: str | None) -> str:
         """A string at the width a row of the session list prints it, marked where it was cut.
 
@@ -536,7 +580,6 @@ def build_app(db_path: Path) -> FastAPI:
         "line": line,
         "head": head,
         "member": member,
-        "said": said,
         "short": short,
         "item": item,
         "path": project_path,
@@ -854,6 +897,7 @@ def build_app(db_path: Path) -> FastAPI:
         if failed is not None:
             ran.extend(failed.ran)
         marks = knobs(preset, kin, log, detail)
+        about = described_node(corpus.described, selection)
         return templates.TemplateResponse(
             request,
             "node.html",
@@ -863,7 +907,8 @@ def build_app(db_path: Path) -> FastAPI:
                 "chain": built.chain,
                 "rows": built.rows,
                 "header": seen.header,
-                "enrichment": described_node(corpus.described, selection),
+                "enrichment": about,
+                "wrote": wrote_of(about, session_id, source),
                 "details": seen.details,
                 # The bytes behind the node: the thread's transcript, and — for a turn — the
                 # one line it was read from.
@@ -1840,7 +1885,9 @@ def build_app(db_path: Path) -> FastAPI:
             rows = page_rows(connection, value, **keyed)
         if not rows or rows[0][column] is None:
             raise HTTPException(404, "Nothing in this store is stored under that id.")
-        row = rows[0]
+        # Under `value`, whatever the query called it: a fragment renders the one column it is
+        # for, so a template that names it would be a second answer to which column that is.
+        row = rows[0] | {"value": rows[0][column]}
         # The keys travel into the context as well: a fragment that links anywhere needs the
         # session and thread it was fetched for, and they are exactly what keyed it.
         return templates.TemplateResponse(
@@ -1854,6 +1901,58 @@ def build_app(db_path: Path) -> FastAPI:
                 "syntax": syntax or highlight.by_suffix(row.get("result_type")),
             },
         )
+
+    def wrote(
+        request: Request, value: Value, keyed: Mapping[str, ParamValue], field: str
+    ) -> Response:
+        """One whole line an enrichment pass wrote, or a 404 where no pass wrote one.
+
+        A pass creates the enrichment tables rather than the exporter, so a store none has
+        touched holds no such line — the same nothing a missing row is, and the same answer
+        (`view/enrichment.py`). Asked per request and not at startup, because a pass can run
+        against the store while the viewer is reading it.
+        """
+        with open_store(resolved) as connection:
+            written = enriched(connection)
+        if not written:
+            raise HTTPException(404, "No enrichment pass has written to this store.")
+        return whole(request, value, "said", keyed, field, field)
+
+    @app.get("/fragment/said/session/{session_id}/thread/{source}/turn/{turn_id}")
+    def turn_said(request: Request, session_id: str, source: str, turn_id: str) -> Response:
+        """The whole of what a pass said one turn did."""
+        keyed = {"session_id": session_id, "source": source, "turn_id": turn_id}
+        return wrote(request, Value.TURN_SAID, keyed, "description")
+
+    @app.get("/fragment/friction/session/{session_id}/thread/{source}/turn/{turn_id}")
+    def turn_friction(request: Request, session_id: str, source: str, turn_id: str) -> Response:
+        """The whole of the friction a pass saw in one turn."""
+        keyed = {"session_id": session_id, "source": source, "turn_id": turn_id}
+        return wrote(request, Value.TURN_SAID, keyed, "friction")
+
+    @app.get("/fragment/said/session/{session_id}/run/{run_id}")
+    def run_said(request: Request, session_id: str, run_id: str) -> Response:
+        """The whole of what a pass said one agent run did."""
+        return wrote(
+            request, Value.RUN_SAID, {"session_id": session_id, "run_id": run_id}, "description"
+        )
+
+    @app.get("/fragment/friction/session/{session_id}/run/{run_id}")
+    def run_friction(request: Request, session_id: str, run_id: str) -> Response:
+        """The whole of the friction a pass saw in one agent run."""
+        return wrote(
+            request, Value.RUN_SAID, {"session_id": session_id, "run_id": run_id}, "friction"
+        )
+
+    @app.get("/fragment/said/session/{session_id}")
+    def session_said(request: Request, session_id: str) -> Response:
+        """The whole of what a pass said one session did."""
+        return wrote(request, Value.SESSION_SAID, {"session_id": session_id}, "description")
+
+    @app.get("/fragment/friction/session/{session_id}")
+    def session_friction(request: Request, session_id: str) -> Response:
+        """The whole of the friction a pass saw in one session."""
+        return wrote(request, Value.SESSION_SAID, {"session_id": session_id}, "friction")
 
     @app.get("/fragment/text/session/{session_id}/thread/{source}/call/{api_call_id}")
     def call_text(request: Request, session_id: str, source: str, api_call_id: str) -> Response:

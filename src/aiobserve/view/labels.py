@@ -83,6 +83,11 @@ LABELS: dict[str, str] = {
     "command": "Command",
     "result": "Result",
     "result_chars": "Result (chars)",
+    # And the friction line an enrichment pass wrote, which the pane previews like any other
+    # value a fetch stands behind. It prints under no heading — the paragraph above it is the
+    # description and the glyph beside that says who wrote both — so the word is here for the
+    # registry to stay closed over what the panes preview rather than for a reader.
+    "friction": "Friction",
     # The two columns a children log prints that no query returns. `title` is what the viewer
     # calls a node in the most readable form the record supports (`docs/viewer.md`), and `body`
     # is the column holding the control that opens one under its row.

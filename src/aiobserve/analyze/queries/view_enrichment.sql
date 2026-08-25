@@ -15,6 +15,9 @@ SELECT
     substr(e.category, 1, $tag_chars) AS category,
     substr(e.outcome, 1, $tag_chars) AS outcome,
     substr(e.friction, 1, $description_chars + 1) AS friction,
+    -- How long each of the two runs whole, which is what the link beside a cut one offers.
+    length(e.description) AS description_chars,
+    length(e.friction) AS friction_chars,
     -- What wrote the line and when, beside the two versions it was written under: the pane
     -- prints all four in one place, so a reader can see whether a re-run would say more.
     -- The model is a name Anthropic chooses, so it is cut like every other foreign string.
@@ -33,6 +36,7 @@ SELECT
     substr(e.category, 1, $tag_chars),
     substr(e.outcome, 1, $tag_chars),
     substr(e.friction, 1, $description_chars + 1),
+    length(e.description), length(e.friction),
     substr(e.model, 1, $head_chars), e.enriched_at,
     e.prompt_version, e.taxonomy_version
 FROM agent_run_enrichments e
@@ -45,6 +49,7 @@ SELECT
     substr(e.category, 1, $tag_chars),
     substr(e.outcome, 1, $tag_chars),
     substr(e.friction, 1, $description_chars + 1),
+    length(e.description), length(e.friction),
     substr(e.model, 1, $head_chars), e.enriched_at,
     e.prompt_version, e.taxonomy_version
 FROM session_enrichments e

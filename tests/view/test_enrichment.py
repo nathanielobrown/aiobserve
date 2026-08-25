@@ -185,8 +185,26 @@ def test_every_described_node_carries_its_own_words_on_its_own_page(
             *((f"/session/{SPINE}/thread/main/turn/{key}", key) for key in turns),
             *((f"/session/{SPINE}/run/{key}", key) for key in runs),
         ):
-            shown = fields(planted.get(url).text, "data-enrichment", item_id)
+            page = planted.get(url).text
+            shown = fields(page, "data-enrichment", item_id)
             assert shown["description"] == shown["friction"] == marked, url
+            # ...and the mark offers what it left, the way every other fat value a pane
+            # previews does. A mark with no fetch behind it says there is more and gives a
+            # reader nowhere to go for it, which is the one thing this page can't say.
+            assert inside(page, "data-enrichment", item_id, "data-whole") == [
+                "description",
+                "friction",
+            ], url
+            for field, fetch in zip(
+                ("description", "friction"),
+                inside(page, "data-enrichment", item_id, "href"),
+                strict=True,
+            ):
+                answered = planted.get(fetch)
+                assert answered.status_code == 200, fetch
+                # And what comes back is the whole line, under the name and in the block the
+                # head stood in: the fetch replaces the preview rather than sitting beside it.
+                assert fields(answered.text, "data-wrote", field) == {field: paragraph}, fetch
 
 
 def test_a_run_page_shows_the_runs_own_enrichment_beside_its_brief(

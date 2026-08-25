@@ -75,17 +75,33 @@
 
 {# What a pass said about the item whose page this is, beside the header counting what it did.
    Model-written from a private transcript, so it is text like any other the viewer renders. #}
-{% macro summary(described) %}
+{% macro summary(described, wrote) %}
 <section class="enrichment" data-enrichment="{{ described.item_id }}">
   <p><span class="{{ GLYPH_CLASS }}" data-field="enriched"
        title="{{ described.provenance }}">{{ GLYPH }}</span>
-    <span data-field="description">{{ described.description | said }}</span></p>
+    {{ line(wrote.description) }}</p>
   <p class="tags">{{ tags(described) }}</p>
-  {% if described.friction %}
-  <p class="friction" data-field="friction">{{ described.friction | said }}</p>
+  {% if wrote.friction %}
+  <p class="friction">{{ line(wrote.friction) }}</p>
   {% endif %}
 </section>
 {% endmacro %}
+
+{# One line a pass wrote as the pane shows it: the head its query cut, and the link that
+   fetches the rest of it into the head's own place. A pass answers in paragraphs, so nearly
+   every line it writes about a run runs past the width — the mark alone would say there is
+   more and offer no way to it.
+
+   The link sits outside the labelled span and inside the block it swaps, which is what makes
+   `closest .wrote` land: the glyph and the provenance hanging off it stay put. #}
+{% macro line(item) %}
+{%- if item %}<span class="wrote" data-wrote="{{ item.name }}"><span
+  data-field="{{ item.name }}">{{ item.head }}</span>
+  {%- if item.cut %} <a class="more" data-whole="{{ item.name }}" href="{{ item.url }}"
+    hx-get="{{ item.url }}" hx-target="closest .wrote" hx-swap="outerHTML"
+    >+<span data-field="cut">{{ item.cut | count }}</span> more character(s)</a>{% endif -%}
+</span>{% endif %}
+{%- endmacro %}
 
 {# One value as the markdown a session wrote it in. Rendered rather than printed because that
    is what it is: a prompt, a model's answer and the brief a run was given are written in

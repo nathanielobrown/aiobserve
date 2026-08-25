@@ -41,11 +41,16 @@ class Described(NamedTuple):
     level: Level
     # The turn, run or session the description is about — what keys the block on the page.
     item_id: str
+    # The head the pane prints, one character past the width — the cut-and-mark protocol every
+    # other fat value rides (`view/format.py:cut`) — beside how long the whole line runs, which
+    # is what the fetch behind the mark offers.
     description: str
+    description_chars: int
     category: str
     outcome: str
     # One line of visible struggle, or None when the model saw none.
     friction: str | None
+    friction_chars: int | None
     # Which model wrote the line and when, and the two versions it was written under.
     model: str
     enriched_at: dt.datetime
@@ -126,9 +131,11 @@ def described(connection: duckdb.DuckDBPyConnection, session_id: str, source: st
             level=level,
             item_id=row["item_id"],
             description=row["description"],
+            description_chars=row["description_chars"],
             category=row["category"],
             outcome=row["outcome"],
             friction=row["friction"],
+            friction_chars=row["friction_chars"],
             model=row["model"],
             enriched_at=row["enriched_at"],
             prompt_version=row["prompt_version"],

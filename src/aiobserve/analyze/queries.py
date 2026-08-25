@@ -492,6 +492,15 @@ QUERIES: dict[str, Query] = {
             "head_chars": Param(type=ParamType.INTEGER, default=HEADER_CHARS),
         },
     ),
+    # The whole of what that pass wrote, one item at a time: the three levels the pane shows,
+    # each keyed the way its own table is. The fetch behind a description or a friction line
+    # the pane had to cut.
+    "view_turn_said": Query(
+        scope=Scope.KEYED,
+        params={"session_id": SESSION_ID, "source": SOURCE, "turn_id": TURN_ID},
+    ),
+    "view_run_said": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID, "run_id": RUN_ID}),
+    "view_session_said": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
     "view_compactions": Query(
         scope=Scope.KEYED,
         params={"session_id": SESSION_ID, "source": SOURCE, "chip_chars": CHIP_CHARS_PARAM},
