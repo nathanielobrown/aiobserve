@@ -453,6 +453,15 @@ def build_app(db_path: Path) -> FastAPI:
             return fmt.ABSENT
         return fmt.cut(value, queries.HEADER_CHARS) if isinstance(value, str) else value
 
+    def member(value: str) -> str:
+        """One member of a header's list, marked where the query cut it.
+
+        The list half of what `head` does for a header's own strings: a list is cut twice —
+        to its first `HEADER_ITEMS` members, which the pane counts out loud, and each member
+        to `HEADER_ITEM_CHARS`, which nothing said until here.
+        """
+        return fmt.cut(value, queries.HEADER_ITEM_CHARS)
+
     templates.env.filters |= {
         "money": fmt.money,
         "count": fmt.count,
@@ -463,6 +472,7 @@ def build_app(db_path: Path) -> FastAPI:
         "text": fmt.text,
         "line": line,
         "head": head,
+        "member": member,
         "path": project_path,
         "ago": ago,
         # The three filters that print what a transcript wrote. Each hands back escaped

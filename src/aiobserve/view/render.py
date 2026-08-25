@@ -27,6 +27,7 @@ from markdown_it.token import Token
 from markupsafe import Markup, escape
 
 from aiobserve.view import highlight
+from aiobserve.view.format import ELLIPSIS
 
 # Explicit `html=False`, because the preset's default is True. Linkify off as well: a bare
 # URL in a transcript is a string someone typed, not an invitation to make it clickable.
@@ -94,9 +95,12 @@ def link(url: str | None) -> Markup:
     does not settle that: an escaped `javascript:` URL is still a `javascript:` URL in an
     attribute the browser acts on. Only `http` and `https` become links; the CSP header in
     `view/app.py` is the second wall behind this one.
+
+    Nor does a value the page cut: half a URL is a URL somewhere else, so a value carrying the
+    mark a cut leaves is text like anything else the browser should not follow.
     """
     if not url:
         return Markup()
-    if not url.lower().startswith(_LINK_SCHEMES):
+    if not url.lower().startswith(_LINK_SCHEMES) or url.endswith(ELLIPSIS):
         return escape(url)
     return Markup(f'<a href="{escape(url)}">{escape(url)}</a>')

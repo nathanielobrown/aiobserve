@@ -46,14 +46,15 @@
   {# The one list among the session's facts. It grows with the session, so the query cuts it
      and says how many it left: a pane is the one part of a page no size a reader types
      bounds. #}
-  {{ parts.fact('skills', (row.skills | join(', ') ~ parts.more(row.skills_cut))
+  {{ parts.fact('skills', (row.skills | map('member') | join(', ') ~ parts.more(row.skills_cut))
                 if row.skills else none, cut=false) }}
 </dl>
 {# The pull requests the session's commands touched, cut the same way. Rendered as links
    rather than as a fact row because a reader follows them off the page. #}
 {% if row.pr_urls %}
 <ul class="prs">
-  {% for url in row.pr_urls %}<li data-pr="{{ url }}">{{ url | link }}</li>{% endfor %}
+  {% for url in row.pr_urls %}{% set shown = url | member %}
+  <li data-pr="{{ shown }}">{{ shown | link }}</li>{% endfor %}
   {% if row.pr_urls_cut %}
   <li data-field="prs_cut">and {{ row.pr_urls_cut | count }} more</li>
   {% endif %}

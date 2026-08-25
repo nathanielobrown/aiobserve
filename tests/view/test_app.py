@@ -1070,6 +1070,39 @@ def test_a_pr_link_is_a_link_only_when_a_browser_should_follow_it(plant: Planter
     assert "javascript:alert(&#39;planted&#39;)" in page
 
 
+def test_a_headers_list_marks_a_member_it_cut_and_links_only_a_whole_url(
+    plant: Planter,
+) -> None:
+    """The pane's two lists cut every member, and a member cut in silence is a value misread.
+
+    A skill name is prose a reader compares; a PR URL is the one transcript value that reaches
+    an `href`, and half a URL in an `href` is a link somewhere else — so a cut one is shown
+    for what it is and followed by nothing. Both values are planted and invented: redaction
+    flattened the recorded PR links, and no recorded skill has a name near the width.
+    """
+    width = queries.HEADER_ITEM_CHARS
+    skill = "planted-skill-" + "s" * width
+    fits = "https://example.test/org/repo/pull/1"
+    over = f"{fits}?planted={'q' * width}"
+    path = plant(
+        ("UPDATE api_calls SET attribution_skill = ? WHERE session_id = ?", [skill, SPINE]),
+        (
+            "INSERT INTO pr_links VALUES"
+            " (?, 900003, 3, ?, 'planted/repo', '2026-01-01T00:00:00Z'),"
+            " (?, 900004, 4, ?, 'planted/repo', '2026-01-01T00:00:00Z')",
+            [SPINE, fits, SPINE, over],
+        ),
+    )
+    with TestClient(build_app(path)) as planted:
+        page = planted.get(f"/session/{SPINE}").text
+    # The skill's name ends at the width with the mark that says it went on...
+    assert fields(page, "data-body", "session")["skills"] == skill[:width] + fmt.ELLIPSIS
+    # ...the URL that fit is a link the reader can follow...
+    assert inside(page, "data-pr", fits, "href") == [fits]
+    # ...and the one that did not is marked the same way and reaches no href at all.
+    assert inside(page, "data-pr", over[:width] + fmt.ELLIPSIS, "href") == []
+
+
 def test_a_per_value_fragment_returns_the_one_value_it_names(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:

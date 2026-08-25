@@ -5,7 +5,7 @@
 -- which needs the `sessions` columns a reader identifies the session by.
 -- Everything a transcript wrote is cut here: each string one character past `$head_chars` so
 -- the page can mark it (`view/format.py:cut`), and each list to `$head_items` members of
--- `$item_chars` with a count of what was left. A header is the part of the page no size a
+-- `$item_chars + 1` with a count of what was left. A header is the part of the page no size a
 -- reader types bounds, and `pr_links` grows with every PR the session opened — 32 on the
 -- busiest session recorded — so a page's ceiling needs the number bound.
 WITH skill AS (
@@ -45,10 +45,10 @@ SELECT
     r.cache_read_tokens,
     r.cache_creation_tokens,
     list_transform(list_slice(skill.names, 1, $head_items),
-        name -> substr(name, 1, $item_chars)) AS skills,
+        name -> substr(name, 1, $item_chars + 1)) AS skills,
     greatest(len(skill.names) - $head_items, 0) AS skills_cut,
     list_transform(list_slice(pr.urls, 1, $head_items),
-        url -> substr(url, 1, $item_chars)) AS pr_urls,
+        url -> substr(url, 1, $item_chars + 1)) AS pr_urls,
     greatest(len(pr.urls) - $head_items, 0) AS pr_urls_cut
 FROM sessions s
 JOIN session_rollups r ON r.session_id = s.id
