@@ -39,15 +39,15 @@ Solid edges lead to pages with their own URLs. Dotted edges fetch a fragment int
 | Projects | `/` |
 | Session list | `/sessions` |
 | A session | `/session/{session_id}` |
-| A turn | `/session/{session_id}/turn/{source}/{turn_id}` |
+| A turn | `/session/{session_id}/thread/{source}/turn/{turn_id}` |
 | An agent run | `/session/{session_id}/run/{run_id}` |
-| An api call | `/session/{session_id}/call/{source}/{api_call_id}` |
-| A tool call | `/session/{session_id}/tool/{source}/{tool_call_id}` |
-| A compaction | `/session/{session_id}/compaction/{source}/{compaction_id}` |
-| A thread's calls under no turn | `/session/{session_id}/unattributed/{source}` |
+| An api call | `/session/{session_id}/thread/{source}/call/{api_call_id}` |
+| A tool call | `/session/{session_id}/thread/{source}/tool/{tool_call_id}` |
+| A compaction | `/session/{session_id}/thread/{source}/compaction/{compaction_id}` |
+| A thread's calls under no turn | `/session/{session_id}/thread/{source}/unattributed` |
 | The runs nothing placed | `/session/{session_id}/unattached` |
 | Where a session failed | `/session/{session_id}/errors` |
-| Raw records | `/session/{session_id}/records/{source}` |
+| Raw records | `/session/{session_id}/thread/{source}/records` |
 | An offloaded result | `/session/{session_id}/offload/{name}` |
 | The SQL behind a page | `/query/{name}` |
 
@@ -115,7 +115,7 @@ A store that has never been enriched has none of the enrichment tables. The view
 
 ## URLs preserve the query behind what you saw
 
-Every page is a plain GET you can paste into a report or message. A node URL names the kind before the id — `/session/{session_id}/turn/{source}/{turn_id}` — and `source` is the thread the node was recorded on, `main` or a run's id. A run is the exception: its id is also the thread its rows carry, so `/session/{session_id}/run/{run_id}` says it once.
+Every page is a plain GET you can paste into a report or message. One rule shapes every path: **a word saying what kind of id comes next stands in front of each id, so no two ids sit side by side**. A turn reads at `/session/{session_id}/thread/{source}/turn/{turn_id}` — a session, then the thread the node was recorded on (`main` or a run's id), then the turn. A run is the exception the rule allows: its id is also the thread its rows carry, so `/session/{session_id}/run/{run_id}` says it once. Fragment URLs obey the rule too, and a node's fragment is its own path under a prefix: `/fragment/body/session/{session_id}/thread/{source}/turn/{turn_id}`. `tests/view/test_app.py` holds every route the app exposes to the rule.
 
 Node pages take four knobs, and every link on a page carries the ones that aren't defaults, so a click serves the URL it displays:
 
@@ -141,7 +141,7 @@ The session list accepts `sort`, `direction`, `page`, `size`, and its filter key
 Reports cite raw records as `(session_id, source, line_no)`. The records URL derives from that natural key, so a later port or route change does not invalidate the saved tuple. This form opens the records browser on the cited line:
 
 ```text
-/session/{session_id}/records/{source}?after={line_no - 1}#L{line_no}
+/session/{session_id}/thread/{source}/records?after={line_no - 1}#L{line_no}
 ```
 
 ## Large values open only when you ask
@@ -180,7 +180,7 @@ Full-value requests are the declared exception. Each returns one transcript line
 | Offload | 50,000 characters by default, at most 60,000 |
 | Syntax highlighting | 256,000 characters, above which the value prints as stored |
 
-The worst node page comes to 4,820,296 bytes of the 4,900,000 a node page is allowed — its own budget rather than the 500,000 every other page is weighed against, because the tree is a window a reader widens in place and not a page. The tree is what multiplies: an open path is `1 + 16 × (200 + 1)` = 3,217 rows, and a row is pinned at 1,248 bytes, which is 4,014,816 of the page, four fifths of it. The rest is 16 crumbs at 880 bytes, 100 log rows at 6,115, a pager at 600, three previewed values — two of prose at 20,600 and one marked up in its own syntax at 120,600 — and 17,500 of chrome, leaving 79,704 spare. A marked-up preview is priced at 30 bytes a character against a prose preview's five: a span and a class around every token the lexer finds. A log row is the dearest thing on the page after the tree: it prints up to three of the store's own strings at 300 characters each, which is what a reader gets for reading a level without opening it. `TREE_ROW_BYTES` is measured through the app rather than budgeted, at a label of nothing but `&` and the longest query string a link can carry, and pinned with no slack: a byte of slack there is 3,217 bytes of page. Nearly all of a row is its URL written twice, the `href` a reader follows and the `hx-get` htmx fetches — what the fetch then does with the response is written once on `#tree-rows` — so a store whose agent runs carry longer ids than the recorded corpus does is a re-measure.
+The worst node page comes to 4,865,334 bytes of the 4,900,000 a node page is allowed — its own budget rather than the 500,000 every other page is weighed against, because the tree is a window a reader widens in place and not a page. The tree is what multiplies: an open path is `1 + 16 × (200 + 1)` = 3,217 rows, and a row is pinned at 1,262 bytes, which is 4,059,854 of the page, four fifths of it. The rest is 16 crumbs at 880 bytes, 100 log rows at 6,115, a pager at 600, three previewed values — two of prose at 20,600 and one marked up in its own syntax at 120,600 — and 17,500 of chrome, leaving 34,666 spare. A marked-up preview is priced at 30 bytes a character against a prose preview's five: a span and a class around every token the lexer finds. A log row is the dearest thing on the page after the tree: it prints up to three of the store's own strings at 300 characters each, which is what a reader gets for reading a level without opening it. `TREE_ROW_BYTES` is measured through the app rather than budgeted, at a label of nothing but `&` and the longest query string a link can carry, and pinned with no slack: a byte of slack there is 3,217 bytes of page. Nearly all of a row is its URL written twice, the `href` a reader follows and the `hx-get` htmx fetches — what the fetch then does with the response is written once on `#tree-rows` — so a store whose agent runs carry longer ids than the recorded corpus does is a re-measure.
 
 A session's errors list grows the way the corpus pages do — nothing about a session caps how often its tools fail — so it is bounded the same way and projects to 98 KB: 2.5 KB of chrome plus 100 rows at 950 bytes, of which 550 is a label of nothing but `&`.
 
