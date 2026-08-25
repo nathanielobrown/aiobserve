@@ -934,6 +934,32 @@ def test_both_schemes_print_every_color_of_text_readably(client: TestClient) -> 
                 assert ratio >= READABLE, f"{scheme} --{role} on {where}: {ratio:.2f}:1"
 
 
+def test_the_stylesheet_paints_only_fields_a_page_carries(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """Every `data-field` the stylesheet selects is a field a page writes, read off both.
+
+    A `data-field` is what a test reads a page through, and the stylesheet reads pages through
+    the same names — but nothing renders CSS, so a field renamed in a template leaves the rule
+    behind, valid and matching nothing. One page carries all of them: a failed tool call's,
+    whose tree names each node and marks the failure, whose walk names the kind either side,
+    and which counts the session's failures under the pane.
+
+    The `data-field` rules only. The depth ladder beside them runs to the tree's hard limit of
+    16 levels and the deepest chain the corpus records is 14, so no page can show that the top
+    of that ladder is live.
+    """
+    # The one failure this session recorded, which is the node whose page carries all four.
+    source, tool_id = store.execute(
+        "SELECT source, id FROM live_tool_calls WHERE session_id = ? AND is_error",
+        [FORK_ORIGIN],
+    ).fetchall()[0]
+    page = client.get(f"/session/{FORK_ORIGIN}/thread/{source}/tool/{tool_id}").text
+    painted = set(re.findall(r'data-field="([a-z_]+)"', client.get("/static/style.css").text))
+    assert painted, "the stylesheet no longer paints any field by name"
+    assert painted <= set(re.findall(r'data-field="([a-z_]+)"', page))
+
+
 @pytest.mark.parametrize(
     "path",
     [

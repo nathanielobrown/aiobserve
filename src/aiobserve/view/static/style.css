@@ -143,13 +143,13 @@ li.row[data-depth="13"] > :is(a, button) { padding-left: calc(13 * var(--tree-st
 li.row[data-depth="14"] > :is(a, button) { padding-left: calc(14 * var(--tree-step)); }
 li.row[data-depth="15"] > :is(a, button) { padding-left: calc(15 * var(--tree-step)); }
 li.row[data-depth="16"] > :is(a, button) { padding-left: calc(16 * var(--tree-step)); }
-/* A row is one line: what the node is on the left, what it cost on the right, and a label too
+/* A row is one line: what the node is on the left, what it cost on the right, and a title too
    long for the column cut rather than wrapped. */
 li.node > a {
   display: flex; justify-content: space-between; gap: var(--space-2);
   padding: 0 var(--space-1); color: inherit; text-decoration: none;
 }
-li.node [data-field="label"] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+li.node [data-field="title"] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #tree .secondary { color: var(--dim); white-space: nowrap; }
 li.node > a:hover { background-color: color-mix(in srgb, var(--mark) 12%, transparent); }
 /* The row the pane is about, held at full strength while everything around it recedes. The
