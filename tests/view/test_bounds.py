@@ -111,7 +111,7 @@ PAGE_BYTES = 500_000
 # the tree was already four fifths of the page. That is the whole of the increase, and what a
 # reader gets for it is a level of two hundred read where a level of fifty was — the fetch a
 # tail row offers is the same rows over a second request, so the bytes were already reachable;
-# what moved is how many clicks reach them. The arithmetic under it comes to 4,820,296 B.
+# what moved is how many clicks reach them. The arithmetic under it comes to 4,865,334 B.
 NODE_BYTES = 4_900_000
 # What the markup around one row of the list costs, with the content the row carries taken off.
 # Re-measured through the app by the leaf at the bottom of this file, every cap full of `&`,
@@ -740,61 +740,73 @@ ROUTES: dict[str, str] = {
     # The eight node kinds, each at a session that records the shape: a compaction at the
     # session with two of them, a bucket at each of the two sessions that has one.
     "/session/{session_id}": f"/session/{SPINE}",
-    "/session/{session_id}/turn/{source}/{turn_id}": f"/session/{ANCESTOR}/turn/main/{DENSE_TURN}",
+    "/session/{session_id}/thread/{source}/turn/{turn_id}": (
+        f"/session/{ANCESTOR}/thread/main/turn/{DENSE_TURN}"
+    ),
     "/session/{session_id}/run/{run_id}": f"/session/{SPINE}/run/{SPINE_RUN}",
-    "/session/{session_id}/call/{source}/{api_call_id}": (
-        f"/session/{FORK_ORIGIN}/call/{FORK_ORIGIN_RUN}/{DENSE_CALL}"
+    "/session/{session_id}/thread/{source}/call/{api_call_id}": (
+        f"/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/call/{DENSE_CALL}"
     ),
-    "/session/{session_id}/tool/{source}/{tool_call_id}": (
-        f"/session/{FORK_ORIGIN}/tool/{FORK_ORIGIN_RUN}/{DENSE_TOOL}"
+    "/session/{session_id}/thread/{source}/tool/{tool_call_id}": (
+        f"/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}"
     ),
-    "/session/{session_id}/compaction/{source}/{compaction_id}": (
-        f"/session/{COMPACTED}/compaction/main/{COMPACTED_BOUNDARY}"
+    "/session/{session_id}/thread/{source}/compaction/{compaction_id}": (
+        f"/session/{COMPACTED}/thread/main/compaction/{COMPACTED_BOUNDARY}"
     ),
-    "/session/{session_id}/unattributed/{source}": f"/session/{RESUME}/unattributed/main",
+    "/session/{session_id}/thread/{source}/unattributed": (
+        f"/session/{RESUME}/thread/main/unattributed"
+    ),
     "/session/{session_id}/unattached": f"/session/{FORK_ORIGIN}/unattached",
     # The three pages that are not nodes: where a session failed, a thread's raw transcript,
     # and a file a tool wrote.
     "/session/{session_id}/errors": f"/session/{FORK_ORIGIN}/errors",
-    "/session/{session_id}/records/{source}": f"/session/{ANCESTOR}/records/main",
+    "/session/{session_id}/thread/{source}/records": f"/session/{ANCESTOR}/thread/main/records",
     "/session/{session_id}/offload/{name:path}": f"/session/{CONFIG_ONLY}/offload/{OFFLOAD_FILE}",
     # And the per-value fetches a pane's previews offer: one per fat column a node can hold.
-    "/fragment/text/{session_id}/{source}/{api_call_id}": (
-        f"/fragment/text/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}"
+    "/fragment/text/session/{session_id}/thread/{source}/call/{api_call_id}": (
+        f"/fragment/text/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/call/{DENSE_CALL}"
     ),
-    "/fragment/thinking/{session_id}/{source}/{api_call_id}": (
-        f"/fragment/thinking/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}"
+    "/fragment/thinking/session/{session_id}/thread/{source}/call/{api_call_id}": (
+        f"/fragment/thinking/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/call/{DENSE_CALL}"
     ),
-    "/fragment/input/{session_id}/{source}/{tool_call_id}": (
-        f"/fragment/input/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}"
+    "/fragment/input/session/{session_id}/thread/{source}/tool/{tool_call_id}": (
+        f"/fragment/input/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}"
     ),
-    "/fragment/result/{session_id}/{source}/{tool_call_id}": (
-        f"/fragment/result/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}"
+    "/fragment/result/session/{session_id}/thread/{source}/tool/{tool_call_id}": (
+        f"/fragment/result/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}"
     ),
-    "/fragment/command/{session_id}/{source}/{tool_call_id}": (
-        f"/fragment/command/{SPINE}/{MAIN}/{BASH_TOOL}"
+    "/fragment/command/session/{session_id}/thread/{source}/tool/{tool_call_id}": (
+        f"/fragment/command/session/{SPINE}/thread/{MAIN}/tool/{BASH_TOOL}"
     ),
-    "/fragment/prompt/{session_id}/{source}/{turn_id}": (
-        f"/fragment/prompt/{ANCESTOR}/main/{DENSE_TURN}"
+    "/fragment/prompt/session/{session_id}/thread/{source}/turn/{turn_id}": (
+        f"/fragment/prompt/session/{ANCESTOR}/thread/main/turn/{DENSE_TURN}"
     ),
-    "/fragment/args/{session_id}/{source}/{turn_id}": f"/fragment/args/{SPINE}/main/{SLASH_TURN}",
-    "/fragment/brief/{session_id}/{run_id}": f"/fragment/brief/{SPINE}/{SPINE_RUN}",
-    "/fragment/record/{session_id}/{source}/{line_no}": f"/fragment/record/{ANCESTOR}/main/1",
+    "/fragment/args/session/{session_id}/thread/{source}/turn/{turn_id}": (
+        f"/fragment/args/session/{SPINE}/thread/main/turn/{SLASH_TURN}"
+    ),
+    "/fragment/brief/session/{session_id}/run/{run_id}": (
+        f"/fragment/brief/session/{SPINE}/run/{SPINE_RUN}"
+    ),
+    "/fragment/record/session/{session_id}/thread/{source}/line/{line_no}": (
+        f"/fragment/record/session/{ANCESTOR}/thread/main/line/1"
+    ),
     # And a node's body alone, the way a log row expands its child. Two shapes: a run's URL
     # carries its id where every other kind carries a thread.
-    "/fragment/body/{kind}/{session_id}/{source}/{node_id}": (
-        f"/fragment/body/turn/{ANCESTOR}/main/{DENSE_TURN}"
+    "/fragment/body/session/{session_id}/thread/{source}/{kind}/{node_id}": (
+        f"/fragment/body/session/{ANCESTOR}/thread/main/turn/{DENSE_TURN}"
     ),
-    "/fragment/body/run/{session_id}/{run_id}": f"/fragment/body/run/{SPINE}/{SPINE_RUN}",
+    "/fragment/body/session/{session_id}/run/{run_id}": (
+        f"/fragment/body/session/{SPINE}/run/{SPINE_RUN}"
+    ),
     # And the rest of a level, the way a `+N more` row opens one. Two shapes again, plus the
     # thread the reader is on and the depth the rows are going to, neither of which the level
     # itself can say. The window is turned down because what these serve is whatever a window
     # left out — at the default, over this corpus, nothing at all.
-    "/fragment/kin/{kind}/{session_id}/{source}/{node_id}": (
-        f"/fragment/kin/turn/{ANCESTOR}/main/{DENSE_TURN}?kin=1&thread=main&depth=2"
+    "/fragment/kin/session/{session_id}/thread/{source}/{kind}/{node_id}": (
+        f"/fragment/kin/session/{ANCESTOR}/thread/main/turn/{DENSE_TURN}?kin=1&thread=main&depth=2"
     ),
-    "/fragment/kin/{kind}/{session_id}/{node_id}": (
-        f"/fragment/kin/session/{SPINE}/{SPINE}?kin=1&thread=main&depth=1"
+    "/fragment/kin/session/{session_id}/{kind}/{node_id}": (
+        f"/fragment/kin/session/{SPINE}/session/{SPINE}?kin=1&thread=main&depth=1"
     ),
     # And the statement behind a citation, which every page's footer links to.
     f"{QUERY_URL}/{{name}}": f"{QUERY_URL}/view_sessions",
@@ -902,9 +914,11 @@ def test_the_record_a_page_opens_unasked_serves_under_the_ceiling(plant: Planter
     )
     with TestClient(build_app(path)) as planted:
         page = planted.get(
-            f"/session/{RESUME}/records/{MAIN}", params={"after": RESUME_LONG_RECORD - 1}
+            f"/session/{RESUME}/thread/{MAIN}/records", params={"after": RESUME_LONG_RECORD - 1}
         )
-        served = planted.get(f"/fragment/record/{RESUME}/{MAIN}/{RESUME_LONG_RECORD}")
+        served = planted.get(
+            f"/fragment/record/session/{RESUME}/thread/{MAIN}/line/{RESUME_LONG_RECORD}"
+        )
     # The page opens this one on arrival, so what it weighs is what the page's load costs...
     assert inside(page.text, "data-open-record", str(RESUME_LONG_RECORD), "hx-trigger") == ["load"]
     # ...and it is the marked-up path being weighed, not a record served plain because it did
@@ -1362,11 +1376,14 @@ def test_a_deeply_nested_value_is_served_at_the_size_it_was_stored(plant: Plante
         ("UPDATE raw_records SET raw = ? WHERE session_id = ?", [overflows_the_parser, ANCESTOR]),
     )
     with TestClient(build_app(path)) as planted:
-        tool = f"/fragment/{{}}/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}"
+        tool = f"/fragment/{{}}/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}"
         fetched = [
             (planted.get(tool.format("input")), len(indents_huge)),
             (planted.get(tool.format("result")), len(indents_huge)),
-            (planted.get(f"/fragment/record/{ANCESTOR}/main/1"), len(overflows_the_parser)),
+            (
+                planted.get(f"/fragment/record/session/{ANCESTOR}/thread/main/line/1"),
+                len(overflows_the_parser),
+            ),
         ]
     # Each fragment answers, and weighs the value it names plus a page of chrome at most.
     for response, stored in fetched:
@@ -1445,12 +1462,14 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     with TestClient(build_app(path)) as planted:
         listing = planted.get("/sessions").text
         session = planted.get(f"/session/{SPINE}").text
-        turn = planted.get(f"/session/{SPINE}/turn/main/{turn_id}").text
-        slash = planted.get(f"/session/{SPINE}/turn/main/{command_id}").text
+        turn = planted.get(f"/session/{SPINE}/thread/main/turn/{turn_id}").text
+        slash = planted.get(f"/session/{SPINE}/thread/main/turn/{command_id}").text
         run = planted.get(f"/session/{SPINE}/run/{SPINE_RUN}").text
-        call = planted.get(f"/session/{ANCESTOR}/call/main/{DENSE_TURN_CALL}").text
-        asked = planted.get(f"/session/{asked_session}/call/{asked_source}/{asked_call}").text
-        ran = planted.get(f"/session/{asked_session}/tool/{asked_source}/{asked_id}").text
+        call = planted.get(f"/session/{ANCESTOR}/thread/main/call/{DENSE_TURN_CALL}").text
+        asked = planted.get(
+            f"/session/{asked_session}/thread/{asked_source}/call/{asked_call}"
+        ).text
+        ran = planted.get(f"/session/{asked_session}/thread/{asked_source}/tool/{asked_id}").text
     # ...and what each of them shows is its cap, not the value. The list's cuts are the
     # viewer's own composition rather than its query's, because its filters read the whole
     # values — a project path cut to a head would match no session under a longer one.

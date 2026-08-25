@@ -34,7 +34,7 @@ CITING = [
     "/sessions",
     f"/session/{SPINE}",
     f"/session/{SPINE}/run/{SPINE_RUN}",
-    f"/session/{ANCESTOR}/records/{MAIN}",
+    f"/session/{ANCESTOR}/thread/{MAIN}/records",
     f"/session/{CONFIG_ONLY}/offload/{OFFLOAD_FILE}",
 ]
 

@@ -51,9 +51,14 @@ def pages(store: duckdb.DuckDBPyConnection) -> list[str]:
     }
     for kind, sql in kinds.items():
         for session_id, source, node_id in store.execute(sql).fetchall():
-            # A run's own id is the thread it ran on, so its URL says it once.
-            tail = f"{node_id}" if source is None else f"{source}/{node_id}"
-            urls.append(f"/session/{session_id}/{kind}/{tail}")
+            # A run's own id is the thread it ran on, so its URL says it once; everything
+            # else hangs off the thread it was recorded on.
+            head = f"/session/{session_id}"
+            urls.append(
+                f"{head}/{kind}/{node_id}"
+                if source is None
+                else f"{head}/thread/{source}/{kind}/{node_id}"
+            )
     # A thread's unattributed bucket exists where one of its calls answers no turn *of that
     # thread* — a fork replays calls whose `turn_id` names a turn of the thread it forked from.
     for session_id, source in store.execute(
@@ -62,7 +67,7 @@ def pages(store: duckdb.DuckDBPyConnection) -> list[str]:
         "   AND t.id = c.turn_id"
         " WHERE t.id IS NULL"
     ).fetchall():
-        urls.append(f"/session/{session_id}/unattributed/{source}")
+        urls.append(f"/session/{session_id}/thread/{source}/unattributed")
     # And the session's unattached bucket exists where a run's spawning call resolves to
     # nothing at all, which is the join `view_runs` makes, failing.
     for (session_id,) in store.execute(

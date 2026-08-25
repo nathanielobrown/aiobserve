@@ -26,7 +26,7 @@ from tests.view.conftest import MISSING, Planter, block, fields, inside, one, pl
 
 # The corpus's densest main-thread turn — 4 api calls under it — so the pane's children log
 # has more than one row and the tree has a level under the selection worth rendering.
-TURN = f"/session/{ANCESTOR}/turn/{MAIN}/{DENSE_TURN}"
+TURN = f"/session/{ANCESTOR}/thread/{MAIN}/turn/{DENSE_TURN}"
 
 # What htmx puts on the request a tree click makes. The node URL is the same either way,
 # which is the point of the leaf that sends them.
@@ -44,7 +44,7 @@ KINDS: dict[str, tuple[str, str]] = {
     "turn": (
         'SELECT session_id, source, id FROM live_turns ORDER BY session_id, source, "index"'
         " LIMIT 1",
-        "/session/{0}/turn/{1}/{2}",
+        "/session/{0}/thread/{1}/turn/{2}",
     ),
     "run": (
         "SELECT session_id, id FROM live_agent_runs ORDER BY session_id, id LIMIT 1",
@@ -53,17 +53,17 @@ KINDS: dict[str, tuple[str, str]] = {
     "call": (
         'SELECT session_id, source, id FROM live_api_calls ORDER BY session_id, source, "index"'
         " LIMIT 1",
-        "/session/{0}/call/{1}/{2}",
+        "/session/{0}/thread/{1}/call/{2}",
     ),
     "tool": (
         "SELECT session_id, source, id FROM live_tool_calls ORDER BY session_id, source, id"
         " LIMIT 1",
-        "/session/{0}/tool/{1}/{2}",
+        "/session/{0}/thread/{1}/tool/{2}",
     ),
     "compaction": (
         "SELECT session_id, source, id FROM live_compactions ORDER BY session_id, source, id"
         " LIMIT 1",
-        "/session/{0}/compaction/{1}/{2}",
+        "/session/{0}/thread/{1}/compaction/{2}",
     ),
     # The two buckets, each found by what puts a row in it: a call answering no turn of its own
     # thread, and a run whose spawning call resolves to nothing at all.
@@ -72,7 +72,7 @@ KINDS: dict[str, tuple[str, str]] = {
         " LEFT JOIN live_turns t ON t.session_id = c.session_id AND t.source = c.source"
         "  AND t.id = c.turn_id"
         " WHERE t.id IS NULL ORDER BY c.session_id, c.source LIMIT 1",
-        "/session/{0}/unattributed/{1}",
+        "/session/{0}/thread/{1}/unattributed",
     ),
     "unattached": (
         "SELECT a.session_id FROM live_agent_runs a"
@@ -180,7 +180,7 @@ def test_a_slash_turn_leads_with_the_command_it_ran(
         ' AND length(command_args) > 0 ORDER BY "index" LIMIT 1',
         [SPINE, MAIN],
     )
-    page = client.get(f"/session/{SPINE}/turn/{MAIN}/{turn_id}").text
+    page = client.get(f"/session/{SPINE}/thread/{MAIN}/turn/{turn_id}").text
     # The command, off the store's own column and on the command line the pane leads with
     # rather than among the counts the header rows.
     assert fields(page, "data-command", turn_id)["command_name"] == name
@@ -190,7 +190,7 @@ def test_a_slash_turn_leads_with_the_command_it_ran(
     # The rest of it comes off a route of its own, rendered as the prose a person typed —
     # like the prompt beside it, and unlike a tool's arguments, which are JSON and are marked
     # up as JSON. A fetch that read the arguments as code would print them in a `<pre>`.
-    served = client.get(f"/fragment/args/{SPINE}/{MAIN}/{turn_id}").text
+    served = client.get(f"/fragment/args/session/{SPINE}/thread/{MAIN}/turn/{turn_id}").text
     assert "<p>" in served
     assert "<pre" not in served
     # The wrapper itself is gone from the pane: everything inside it is already on the page
@@ -198,10 +198,13 @@ def test_a_slash_turn_leads_with_the_command_it_ran(
     assert "prompt" not in values(page, "data-detail")
     # Gone from the value route under that heading too, and not as an empty page: the column
     # the fragment reads is NULL for this turn, so the URL a reader kept answers nothing.
-    assert client.get(f"/fragment/prompt/{SPINE}/{MAIN}/{turn_id}").status_code == 404
+    assert (
+        client.get(f"/fragment/prompt/session/{SPINE}/thread/{MAIN}/turn/{turn_id}").status_code
+        == 404
+    )
     # It is still what was sent, though, so the record the pane opens beneath holds it whole.
     (line_no,) = values(page, "data-open-record")
-    recorded = client.get(f"/fragment/record/{SPINE}/{MAIN}/{line_no}").text
+    recorded = client.get(f"/fragment/record/session/{SPINE}/thread/{MAIN}/line/{line_no}").text
     assert "&lt;command-name&gt;" in recorded
     # A turn nobody typed a command at has no command line at all: the pane leads with the
     # prompt, and there is no empty heading over a column the store left NULL.
@@ -287,7 +290,7 @@ def test_a_tool_call_that_spawned_a_run_leads_with_the_way_to_it(
         "  AND tc.source <> a.id"
         " ORDER BY tc.session_id, tc.id LIMIT 1",
     )
-    page = client.get(f"/session/{session_id}/tool/{source}/{tool_id}").text
+    page = client.get(f"/session/{session_id}/thread/{source}/tool/{tool_id}").text
     (href,) = inside(page, "data-spawned", run_id, "href")
     assert href == f"/session/{session_id}/run/{run_id}"
     assert client.get(href).status_code == 200
@@ -302,7 +305,9 @@ def test_a_tool_call_that_spawned_a_run_leads_with_the_way_to_it(
         " WHERE a.id IS NULL ORDER BY tc.session_id, tc.id LIMIT 1",
     )
     quiet, thread, call = plain
-    assert not values(client.get(f"/session/{quiet}/tool/{thread}/{call}").text, "data-spawned")
+    assert not values(
+        client.get(f"/session/{quiet}/thread/{thread}/tool/{call}").text, "data-spawned"
+    )
 
 
 def test_the_same_node_url_serves_the_same_bytes_cold_and_warm(client: TestClient) -> None:
@@ -427,7 +432,7 @@ def test_a_bash_call_reads_the_command_it_ran_as_a_shell_reads_it(
         ),
     )
     with TestClient(build_app(path)) as ran:
-        page = ran.get(f"/session/{session_id}/tool/{source}/{tool_id}").text
+        page = ran.get(f"/session/{session_id}/thread/{source}/tool/{tool_id}").text
         marked = block(page, "command")
         # Every character the store holds is still there to read back...
         assert plain(marked) == COMMAND
@@ -439,7 +444,7 @@ def test_a_bash_call_reads_the_command_it_ran_as_a_shell_reads_it(
         # The whole of it has a route of its own, marked up the same way — the syntax is
         # spelled once for the preview and once for the fetch, so the fetch is read for the
         # mark too. A route that fell back to JSON would serve the command as a JSON string.
-        served = ran.get(f"/fragment/command/{session_id}/{source}/{tool_id}")
+        served = ran.get(f"/fragment/command/session/{session_id}/thread/{source}/tool/{tool_id}")
         assert served.status_code == 200
         assert plain(block(served.text, "value")) == COMMAND
         assert '<span class="nb">cd</span>' in block(served.text, "value")
@@ -449,7 +454,7 @@ def test_a_bash_call_reads_the_command_it_ran_as_a_shell_reads_it(
         # A call to a tool that runs no command has none to show, though its arguments carry
         # the word: the arm is the tool's name. A page that marked that argument up as shell
         # would be saying a `Read` ran it.
-        read = ran.get(f"/session/{read_session}/tool/{read_source}/{read_id}")
+        read = ran.get(f"/session/{read_session}/thread/{read_source}/tool/{read_id}")
         assert read.status_code == 200
         assert "command" not in values(read.text, "data-detail")
         # The argument is still on the page inside the input it was passed in — as the record,
@@ -458,7 +463,9 @@ def test_a_bash_call_reads_the_command_it_ran_as_a_shell_reads_it(
         # nothing but the absence of one. A 200 would make the pane's missing link a bug
         # rather than the only honest thing the page can do.
         assert NOT_RUN in plain(block(read.text, "input"))
-        missing = ran.get(f"/fragment/command/{read_session}/{read_source}/{read_id}")
+        missing = ran.get(
+            f"/fragment/command/session/{read_session}/thread/{read_source}/tool/{read_id}"
+        )
         assert missing.status_code == 404
 
 
@@ -480,7 +487,7 @@ def test_a_read_of_a_markdown_file_shows_the_source_marked_up_and_not_rendered(
         )
     )
     with TestClient(build_app(path)) as read:
-        page = read.get(f"/session/{session_id}/tool/{source}/{tool_id}").text
+        page = read.get(f"/session/{session_id}/thread/{source}/tool/{tool_id}").text
         marked = block(page, "result")
         # The source, whole, with the heading marked as a heading rather than made one...
         assert plain(marked) == READ
@@ -490,7 +497,7 @@ def test_a_read_of_a_markdown_file_shows_the_source_marked_up_and_not_rendered(
         # way, because a gutter is not part of the file.
         assert '<span class="lineno">1\t</span>' in marked
         # The whole fetch reads the same way, off the same file name.
-        served = read.get(f"/fragment/result/{session_id}/{source}/{tool_id}")
+        served = read.get(f"/fragment/result/session/{session_id}/thread/{source}/tool/{tool_id}")
         assert '<span class="gh"># Title</span>' in block(served.text, "value")
     # A file this viewer has no lexer for is shown as stored, which is the arm every result
     # took before: nothing claims to know what a `.bin` holds.
@@ -502,7 +509,7 @@ def test_a_read_of_a_markdown_file_shows_the_source_marked_up_and_not_rendered(
         )
     )
     with TestClient(build_app(other)) as binary:
-        page = binary.get(f"/session/{session_id}/tool/{source}/{tool_id}").text
+        page = binary.get(f"/session/{session_id}/thread/{source}/tool/{tool_id}").text
         assert plain(block(page, "result")) == READ
         assert "<span" not in block(page, "result")
     # And a tool that names a file without returning one is shown as stored too. `Edit` and
@@ -517,12 +524,12 @@ def test_a_read_of_a_markdown_file_shows_the_source_marked_up_and_not_rendered(
         )
     )
     with TestClient(build_app(edited)) as edit:
-        page = edit.get(f"/session/{session_id}/tool/{source}/{tool_id}").text
+        page = edit.get(f"/session/{session_id}/thread/{source}/tool/{tool_id}").text
         assert plain(block(page, "result")) == EDITED
         assert "<span" not in block(page, "result")
         # The rule is spelled once for the preview and once for the whole fetch, so both are
         # read here: the second query answers off the same file name as the first.
-        served = edit.get(f"/fragment/result/{session_id}/{source}/{tool_id}")
+        served = edit.get(f"/fragment/result/session/{session_id}/thread/{source}/tool/{tool_id}")
         assert "<span" not in block(served.text, "value")
 
 
@@ -539,15 +546,15 @@ def test_every_value_a_pane_previews_is_fetchable_whole_from_its_own_url(
     columns = {
         # The node URL that previews it, the value route, and where the store keeps it.
         "command_args": (
-            f"/session/{SPINE}/turn/{MAIN}/{{0}}",
-            f"/fragment/args/{SPINE}/{MAIN}/{{0}}",
+            f"/session/{SPINE}/thread/{MAIN}/turn/{{0}}",
+            f"/fragment/args/session/{SPINE}/thread/{MAIN}/turn/{{0}}",
             "SELECT id, length(command_args) FROM live_turns WHERE session_id = ? AND source = ?"
             " AND command_name IS NOT NULL AND length(command_args) > 0"
             " ORDER BY length(command_args) DESC LIMIT 1",
         ),
         "prompt": (
-            f"/session/{SPINE}/turn/{MAIN}/{{0}}",
-            f"/fragment/prompt/{SPINE}/{MAIN}/{{0}}",
+            f"/session/{SPINE}/thread/{MAIN}/turn/{{0}}",
+            f"/fragment/prompt/session/{SPINE}/thread/{MAIN}/turn/{{0}}",
             # Of a turn that was typed rather than run: a slash turn's prompt is the
             # `<command-…>` wrapper, which the pane shows as the two values inside it instead.
             "SELECT id, length(prompt) FROM live_turns WHERE session_id = ? AND source = ?"
@@ -555,20 +562,20 @@ def test_every_value_a_pane_previews_is_fetchable_whole_from_its_own_url(
             " ORDER BY length(prompt) DESC LIMIT 1",
         ),
         "input": (
-            f"/session/{SPINE}/tool/{MAIN}/{{0}}",
-            f"/fragment/input/{SPINE}/{MAIN}/{{0}}",
+            f"/session/{SPINE}/thread/{MAIN}/tool/{{0}}",
+            f"/fragment/input/session/{SPINE}/thread/{MAIN}/tool/{{0}}",
             "SELECT id, length(input) FROM live_tool_calls WHERE session_id = ? AND source = ?"
             " AND length(input) > 0 ORDER BY length(input) DESC LIMIT 1",
         ),
         "result": (
-            f"/session/{SPINE}/tool/{MAIN}/{{0}}",
-            f"/fragment/result/{SPINE}/{MAIN}/{{0}}",
+            f"/session/{SPINE}/thread/{MAIN}/tool/{{0}}",
+            f"/fragment/result/session/{SPINE}/thread/{MAIN}/tool/{{0}}",
             "SELECT id, length(result) FROM live_tool_calls WHERE session_id = ? AND source = ?"
             " AND length(result) > 0 ORDER BY length(result) DESC LIMIT 1",
         ),
         "text": (
-            f"/session/{SPINE}/call/{MAIN}/{{0}}",
-            f"/fragment/text/{SPINE}/{MAIN}/{{0}}",
+            f"/session/{SPINE}/thread/{MAIN}/call/{{0}}",
+            f"/fragment/text/session/{SPINE}/thread/{MAIN}/call/{{0}}",
             "SELECT id, length(text) FROM live_api_calls WHERE session_id = ? AND source = ?"
             " AND length(text) > 0 ORDER BY length(text) DESC LIMIT 1",
         ),
@@ -597,7 +604,7 @@ def test_every_value_a_pane_previews_is_fetchable_whole_from_its_own_url(
     )
     page = client.get(f"/session/{session_id}/run/{run_id}").text
     assert fields(page, "data-detail", "description")["description"]
-    served = client.get(f"/fragment/brief/{session_id}/{run_id}")
+    served = client.get(f"/fragment/brief/session/{session_id}/run/{run_id}")
     assert values(served.text, "data-value") == [str(held)]
     assert values(served.text, "data-detail") == ["description"]
     # The brief is what a run was asked to do, so it is labelled as a brief and not as a
@@ -627,13 +634,13 @@ LEVELS: dict[str, tuple[str, str, str]] = {
     "turn": (
         "SELECT session_id, source, turn_id FROM live_api_calls WHERE turn_id IS NOT NULL"
         " GROUP BY 1, 2, 3 ORDER BY count(*) DESC, 1, 2, 3 LIMIT 1",
-        "/session/{0}/turn/{1}/{2}",
+        "/session/{0}/thread/{1}/turn/{2}",
         "calls",
     ),
     "call": (
         "SELECT session_id, source, api_call_id FROM live_tool_calls"
         " GROUP BY 1, 2, 3 ORDER BY count(*) DESC, 1, 2, 3 LIMIT 1",
-        "/session/{0}/call/{1}/{2}",
+        "/session/{0}/thread/{1}/call/{2}",
         "tools",
     ),
     # The two buckets, which page the same way: one out of a query, one out of a list the page
@@ -643,7 +650,7 @@ LEVELS: dict[str, tuple[str, str, str]] = {
         " LEFT JOIN live_turns t ON t.session_id = c.session_id AND t.source = c.source"
         "  AND t.id = c.turn_id"
         " WHERE t.id IS NULL GROUP BY 1, 2 ORDER BY count(*) DESC, 1, 2 LIMIT 1",
-        "/session/{0}/unattributed/{1}",
+        "/session/{0}/thread/{1}/unattributed",
         "calls",
     ),
     "unattached": (
@@ -775,7 +782,7 @@ def test_a_level_divides_into_the_pages_it_has_and_no_empty_one(
     ).fetchone()
     assert empty, "the corpus has to hold an api call that called no tool"
     session_id, source, call_id = empty
-    childless = client.get(f"/session/{session_id}/call/{source}/{call_id}").text
+    childless = client.get(f"/session/{session_id}/thread/{source}/call/{call_id}").text
     assert fields(childless, "data-log", "tools")["children"] == "0"
     assert "data-pager" not in childless
 
@@ -966,7 +973,7 @@ def test_a_tool_row_says_what_the_tool_was_asked(
         ),
     )
     with TestClient(build_app(path)) as planted:
-        page = planted.get(f"/session/{session_id}/call/{source}/{call_id}").text
+        page = planted.get(f"/session/{session_id}/thread/{source}/call/{call_id}").text
     rows = {tool_id: fields(page, "data-child", f"tool:{tool_id}") for tool_id in tools}
     # The project's own file reads from the project root, and the one outside it in full.
     assert rows[tools[0]]["input_head"] == "src/aiobserve/view/app.py"
@@ -1014,7 +1021,7 @@ def test_a_tool_row_says_what_the_tool_was_asked(
         ),
     )
     with TestClient(build_app(guarded)) as planted:
-        edges = planted.get(f"/session/{session_id}/call/{source}/{call_id}").text
+        edges = planted.get(f"/session/{session_id}/thread/{source}/call/{call_id}").text
     beside = {tool_id: fields(edges, "data-child", f"tool:{tool_id}") for tool_id in tools}
     assert beside[tools[0]]["input_head"] == sibling
     assert beside[tools[1]]["input_head"] == "notes.md"
@@ -1031,7 +1038,7 @@ def test_a_tool_row_says_what_the_tool_was_asked(
         ),
     )
     with TestClient(build_app(homeless)) as planted:
-        loose = planted.get(f"/session/{session_id}/call/{source}/{call_id}").text
+        loose = planted.get(f"/session/{session_id}/thread/{source}/call/{call_id}").text
     assert fields(loose, "data-child", f"tool:{tools[0]}")["input_head"] == (
         f"{project}/src/aiobserve/view/app.py"
     )

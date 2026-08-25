@@ -51,7 +51,7 @@ def test_the_browser_pages_by_line_number_without_repeating_or_skipping(
     after = queries.FIRST_PAGE
     for _ in range(4):
         page = client.get(
-            f"/session/{ANCESTOR}/records/{MAIN}", params={"after": after, "size": 20}
+            f"/session/{ANCESTOR}/thread/{MAIN}/records", params={"after": after, "size": 20}
         )
         shown = values(page.text, "data-record")
         assert len(shown) <= 20
@@ -82,7 +82,9 @@ def test_a_citation_tuple_maps_to_a_working_url(
         " WHERE session_id = ? AND source = ? AND line_no = ?",
         [RESUME, MAIN, str(RESUME_LONG_RECORD)],
     )
-    response = client.get(f"/session/{session_id}/records/{source}", params={"after": line_no - 1})
+    response = client.get(
+        f"/session/{session_id}/thread/{source}/records", params={"after": line_no - 1}
+    )
     assert response.status_code == 200
     # The cited record is the first row of the page, under the anchor the URL fragment names...
     assert values(response.text, "data-record")[0] == str(line_no)
@@ -131,7 +133,7 @@ def test_a_record_too_wide_to_weigh_waits_for_a_click(
         )
         with TestClient(build_app(path)) as planted:
             page = planted.get(
-                f"/session/{RESUME}/records/{MAIN}", params={"after": RESUME_LONG_RECORD - 1}
+                f"/session/{RESUME}/thread/{MAIN}/records", params={"after": RESUME_LONG_RECORD - 1}
             ).text
         # The cited record is the first row of the page whichever side of the line it falls...
         assert values(page, "data-record")[0] == str(RESUME_LONG_RECORD)
@@ -160,7 +162,7 @@ def test_a_record_row_shows_a_preview_and_the_length_it_was_cut_from(
     assert len(stored) > queries.RECORD_PREVIEW * 10
     row = fields(
         client.get(
-            f"/session/{RESUME}/records/{MAIN}", params={"after": RESUME_LONG_RECORD - 1}
+            f"/session/{RESUME}/thread/{MAIN}/records", params={"after": RESUME_LONG_RECORD - 1}
         ).text,
         "data-record",
         str(RESUME_LONG_RECORD),
@@ -197,7 +199,7 @@ def test_every_number_the_records_browser_prints_carries_its_separators(
         ),
     )
     with TestClient(build_app(path)) as planted:
-        page = planted.get(f"/session/{ANCESTOR}/records/{MAIN}").text
+        page = planted.get(f"/session/{ANCESTOR}/thread/{MAIN}/records").text
     held = recorded + over
     shown = len(values(page, "data-record"))
     assert shown == bounds.RECORDS.default
@@ -221,7 +223,9 @@ def test_a_record_fragment_holds_the_one_record_it_names(
         "SELECT raw FROM raw_records WHERE session_id = ? AND source = ? AND line_no = ?",
         [RESUME, MAIN, str(RESUME_LONG_RECORD)],
     )
-    served = client.get(f"/fragment/record/{RESUME}/{MAIN}/{RESUME_LONG_RECORD}")
+    served = client.get(
+        f"/fragment/record/session/{RESUME}/thread/{MAIN}/line/{RESUME_LONG_RECORD}"
+    )
     assert served.status_code == 200
     shown = fields(served.text, "data-record-value", str(RESUME_LONG_RECORD))
     # The whole record arrived — indented and marked up, so it is read back through the
@@ -249,7 +253,9 @@ def test_a_record_shows_its_uuid_only_when_it_has_one(
         )
         assert (uuid is not None) is held, "the corpus lost one of the two shapes"
         shown = fields(
-            client.get(f"/fragment/record/{session_id}/{source}/{line_no}").text,
+            client.get(
+                f"/fragment/record/session/{session_id}/thread/{source}/line/{line_no}"
+            ).text,
             "data-record-value",
             str(line_no),
         )
@@ -264,7 +270,7 @@ def test_a_thread_page_links_to_the_transcript_behind_it(client: TestClient) -> 
         (f"/session/{SPINE}/run/{SPINE_RUN}", SPINE_RUN),
     ):
         link = inside(client.get(page).text, "data-field", "records", "href")
-        assert link == [f"/session/{SPINE}/records/{source}"], page
+        assert link == [f"/session/{SPINE}/thread/{source}/records"], page
         assert client.get(link[0]).status_code == 200
 
 
@@ -292,27 +298,27 @@ def test_every_turn_links_to_the_record_it_was_read_from(
     # Every turn of this thread was read from a record, so no turn page goes unlinked.
     assert len(behind) == turns > 0, "the fixture session lost its turn-to-record join"
     for turn_id, line_no in behind.items():
-        page = client.get(f"/session/{SPINE}/turn/{MAIN}/{turn_id}").text
+        page = client.get(f"/session/{SPINE}/thread/{MAIN}/turn/{turn_id}").text
         # The link opens the browser at that turn's own line and no other's...
-        url = f"/session/{SPINE}/records/{MAIN}?after={line_no - 1}#L{line_no}"
+        url = f"/session/{SPINE}/thread/{MAIN}/records?after={line_no - 1}#L{line_no}"
         assert inside(page, "class", "raw", "href") == [
-            f"/session/{SPINE}/records/{MAIN}",
+            f"/session/{SPINE}/thread/{MAIN}/records",
             url,
         ], turn_id
         # ...and the closed block beside it fetches the same record whole.
         assert values(page, "data-open-record") == [str(line_no)], turn_id
     # And the link lands on the record, which is the whole point of deriving it this way.
     line = next(iter(behind.values()))
-    landed = client.get(f"/session/{SPINE}/records/{MAIN}", params={"after": line - 1})
+    landed = client.get(f"/session/{SPINE}/thread/{MAIN}/records", params={"after": line - 1})
     assert values(landed.text, "data-record")[0] == str(line)
 
 
 def test_a_record_the_store_does_not_hold_is_a_404(client: TestClient) -> None:
     """A thread or a line the store does not hold is a 404, not an empty browser."""
     for path in (
-        f"/session/{ANCESTOR}/records/{MISSING}",
-        f"/session/{MISSING}/records/{MAIN}",
-        f"/fragment/record/{ANCESTOR}/{MAIN}/999999",
+        f"/session/{ANCESTOR}/thread/{MISSING}/records",
+        f"/session/{MISSING}/thread/{MAIN}/records",
+        f"/fragment/record/session/{ANCESTOR}/thread/{MAIN}/line/999999",
     ):
         response = client.get(path)
         assert response.status_code == 404, path
@@ -321,5 +327,5 @@ def test_a_record_the_store_does_not_hold_is_a_404(client: TestClient) -> None:
 def test_a_records_page_size_outside_its_bounds_is_refused(client: TestClient) -> None:
     """A hand-typed page size past the ceiling is a 400, not a page nothing bounds."""
     for size in (0, bounds.RECORDS.ceiling + 1):
-        response = client.get(f"/session/{ANCESTOR}/records/{MAIN}", params={"size": size})
+        response = client.get(f"/session/{ANCESTOR}/thread/{MAIN}/records", params={"size": size})
         assert response.status_code == 400, size

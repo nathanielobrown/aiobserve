@@ -142,7 +142,7 @@ def test_a_tool_call_links_to_the_file_its_result_went_to(
     only link a tool's facts carry.
     """
     (source,) = one(store, "SELECT source FROM tool_calls WHERE id = ?", [OFFLOAD_TOOL])
-    pane = client.get(f"/session/{CONFIG_ONLY}/tool/{source}/{OFFLOAD_TOOL}").text
+    pane = client.get(f"/session/{CONFIG_ONLY}/thread/{source}/tool/{OFFLOAD_TOOL}").text
     link = inside(pane, "data-body", "tool", "href")
     assert link == [f"/session/{CONFIG_ONLY}/offload/{quote(OFFLOAD_FILE)}"]
     assert client.get(link[0]).status_code == 200
@@ -167,7 +167,7 @@ def test_a_name_needing_escaping_survives_the_round_trip(
         # The link the tool pane renders is the one the test follows — built by the app,
         # not by the test, so a template that forgot to quote fails here.
         (source,) = one(store, "SELECT source FROM tool_calls WHERE id = ?", [OFFLOAD_TOOL])
-        pane = planted.get(f"/session/{CONFIG_ONLY}/tool/{source}/{OFFLOAD_TOOL}").text
+        pane = planted.get(f"/session/{CONFIG_ONLY}/thread/{source}/tool/{OFFLOAD_TOOL}").text
         (link,) = inside(pane, "data-body", "tool", "href")
         page = planted.get(link)
     assert page.status_code == 200

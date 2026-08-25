@@ -200,6 +200,24 @@ class Ref:
         return f"{self.kind}:{self.node_id}"
 
 
+# Every path the viewer serves is built from the three below, and they obey one rule: an id is
+# never written next to another id — a word saying what kind of id it is always comes first
+# (`docs/viewer.md`). `tests/view/test_app.py` holds every route to it.
+def session_url(session_id: str) -> str:
+    """Where a session reads, and the head of every path about something inside it."""
+    return f"/session/{session_id}"
+
+
+def thread_url(session_id: str, source: str) -> str:
+    """Where one thread of a session begins: `main`, or the id of a run that ran on its own.
+
+    Nothing reads at this path itself — a thread is a place things were recorded rather than a
+    node — so what it mints is the segment a turn, a call, a tool call, a compaction, a bucket
+    and a raw transcript all hang off.
+    """
+    return f"{session_url(session_id)}/thread/{source}"
+
+
 def run_url(session_id: str, run_id: str) -> str:
     """Where an agent run reads.
 
@@ -207,11 +225,12 @@ def run_url(session_id: str, run_id: str) -> str:
     the run it spawned, and at that point the run is a column of the call's header rather than
     a node of its own.
     """
-    return f"/session/{session_id}/run/{run_id}"
+    return f"{session_url(session_id)}/run/{run_id}"
 
 
 # Where a node's body alone is served from, written once: the routes in `view/app.py` answer
-# what `Node.expansion` mints.
+# what `Node.expansion` mints. A fragment path is its node's path under a prefix, so the two
+# say the same thing about where a node sits.
 BODY_URL = "/fragment/body"
 # And where the children one level's window left out are served from, which is what a tail
 # row fetches (`Node.rest`).
@@ -284,42 +303,57 @@ class Node:
         return f"{self.kind}:{self.node_id}"
 
     @property
+    def thread(self) -> str:
+        """Where this node's thread begins, for the paths that hang off it.
+
+        Only a node recorded on one has this. The session and the unattached bucket span every
+        thread and say so by carrying none; every builder of any other kind reads the column,
+        so a node here without one is a query that dropped it rather than a node with nowhere
+        to sit.
+        """
+        if self.source is None:
+            raise ValueError(f"a {self.kind} node was built with no thread: {self.node_id}")
+        return thread_url(self.session_id, self.source)
+
+    @property
     def url(self) -> str:
         """Where the node reads: the link a row carries, and the URL a click fetches."""
         if self.kind is Kind.SESSION:
-            return f"/session/{self.session_id}"
+            return session_url(self.session_id)
+        # The unattached bucket hangs off the session, and both buckets are named by what
+        # they hold rather than by an id of their own — so their paths end on the word.
         if self.kind is Kind.UNATTACHED:
-            return f"/session/{self.session_id}/unattached"
+            return f"{session_url(self.session_id)}/unattached"
         if self.kind is Kind.UNATTRIBUTED:
-            return f"/session/{self.session_id}/unattributed/{self.source}"
+            return f"{self.thread}/unattributed"
         # A run's id is also the thread its own rows carry, so one key answers both questions
         # and the URL says it once.
         if self.kind is Kind.RUN:
             return run_url(self.session_id, self.node_id)
-        return f"/session/{self.session_id}/{self.kind}/{self.source}/{self.node_id}"
+        return f"{self.thread}/{self.kind}/{self.node_id}"
 
     @property
     def expansion(self) -> str:
         """Where the node's body alone is fetched — the mount a log row opens it through.
 
         The same node, read without the page around it: an expansion is the body and a count of
-        what is under it, so a reader can look inside a child without leaving the parent.
+        what is under it, so a reader can look inside a child without leaving the parent. The
+        node's own path under a prefix, so the two never disagree about where the node sits.
         """
-        if self.kind is Kind.RUN:
-            return f"{BODY_URL}/{Kind.RUN}/{self.session_id}/{self.node_id}"
-        return f"{BODY_URL}/{self.kind}/{self.session_id}/{self.source}/{self.node_id}"
+        return f"{BODY_URL}{self.url}"
 
     @property
     def rest(self) -> str:
         """Where the children this node's window left out are fetched, for a tail row to open.
 
         The same level the tree drew, past the window it drew — rows ready to stand where the
-        tail row stands. Two shapes like `expansion`, because a node not recorded on a thread
-        carries no thread segment: the session, an agent run, and the unattached bucket.
+        tail row stands. Not the node's own path under a prefix like `expansion` is: what the
+        route resolves is a level rather than a node, so a kind whose page needs no id — a
+        session, either bucket — still names itself and its id here.
         """
         if self.source is None:
-            return f"{KIN_URL}/{self.kind}/{self.session_id}/{self.node_id}"
-        return f"{KIN_URL}/{self.kind}/{self.session_id}/{self.source}/{self.node_id}"
+            return f"{KIN_URL}{session_url(self.session_id)}/{self.kind}/{self.node_id}"
+        return f"{KIN_URL}{self.thread}/{self.kind}/{self.node_id}"
 
     @property
     def meter(self) -> str:

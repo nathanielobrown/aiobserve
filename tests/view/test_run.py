@@ -116,7 +116,7 @@ def test_a_forks_calls_under_no_turn_are_its_own_bucket(
         ).fetchall()
     ]
     assert len(calls) == 2, "this fork's unattributed calls moved: re-pick the fixture"
-    bucket = client.get(f"/session/{NO_PROJECT_SESSION}/unattributed/{BYREF_FORK}")
+    bucket = client.get(f"/session/{NO_PROJECT_SESSION}/thread/{BYREF_FORK}/unattributed")
     assert bucket.status_code == 200
     assert values(bucket.text, "data-body") == ["unattributed"]
     assert values(bucket.text, "data-child") == [f"call:{call_id}" for call_id in calls]

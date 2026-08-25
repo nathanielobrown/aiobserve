@@ -183,7 +183,7 @@ def test_the_two_controls_walk_one_level_and_mark_the_way_out_of_it(
     next sibling, and the row before the first is the turn.
     """
     turn = deep_turn(store)
-    at = f"/session/{SPINE}/turn/{MAIN}/{turn}"
+    at = f"/session/{SPINE}/thread/{MAIN}/turn/{turn}"
     level = kin(client.get(at).text)
     assert len(level) > 1, "a level with more than one row to walk"
     forward = follow(client, first_child(client, at), "next")
@@ -246,7 +246,7 @@ def test_the_walk_is_the_same_however_the_tree_is_capped(
     The cap is dropped to one child a level, which is the smallest the knob goes, so the tree
     beside the pane loses everything but the open path — and the controls do not move.
     """
-    for page in follow(client, f"/session/{SPINE}/turn/{MAIN}/{deep_turn(store)}", "next"):
+    for page in follow(client, f"/session/{SPINE}/thread/{MAIN}/turn/{deep_turn(store)}", "next"):
         capped = client.get(f"{page.url}?kin=1")
         assert capped.status_code == 200, page.url
         for named in ("previous", "next"):

@@ -41,7 +41,7 @@ from tests.view.conftest import SPAWNS, Planter, fields, inside, kin, one, rows,
 
 def url(turn_id: str) -> str:
     """The node URL of one turn of `SPINE`'s main thread."""
-    return f"/session/{SPINE}/turn/{MAIN}/{turn_id}"
+    return f"/session/{SPINE}/thread/{MAIN}/turn/{turn_id}"
 
 
 def spawned(store: duckdb.DuckDBPyConnection, session_id: str) -> list[tuple[str | None, ...]]:
@@ -258,7 +258,7 @@ def test_a_compaction_hangs_off_the_turn_whose_span_covers_it(
             )
         )
         with TestClient(build_app(path)) as moved:
-            placed = rows(moved.get(f"/session/{session_id}/turn/{source}/{turn_id}").text)
+            placed = rows(moved.get(f"/session/{session_id}/thread/{source}/turn/{turn_id}").text)
         keys = [key for _, key in placed]
         at, turn_at = keys.index(f"compaction:{compaction_id}"), keys.index(f"turn:{turn_id}")
         # A child of the turn is one level deeper than it; a sibling shares its depth, and its
@@ -313,7 +313,7 @@ def test_a_turn_holds_its_own_compactions_and_an_overlapped_instant_goes_to_the_
     )
     with TestClient(build_app(path)) as served:
         pages = {
-            turn_id: served.get(f"/session/{SPINE}/turn/{MAIN}/{turn_id}").text
+            turn_id: served.get(f"/session/{SPINE}/thread/{MAIN}/turn/{turn_id}").text
             for turn_id in (outer, inner)
         }
     for turn_id, expected in ((outer, alone), (inner, shared)):
@@ -410,7 +410,7 @@ def test_every_level_a_tree_opens_is_indented_one_step_further_than_the_one_abov
         " LIMIT 1",
         [SPINE, MAIN],
     )
-    page = client.get(f"/session/{SPINE}/turn/{source}/{turn_id}").text
+    page = client.get(f"/session/{SPINE}/thread/{source}/turn/{turn_id}").text
     rendered = {depth for depth, _ in rows(page)}
     assert max(rendered) > 3, "the recorded subagent no longer nests past three levels"
     # ...and the stylesheet indents each of them by its own depth, in one step a level.
@@ -536,7 +536,7 @@ def test_a_bucket_home_is_decided_by_the_spawning_edge(
         # The run is gone from the turn it used to hang under...
         assert f"run:{run_id}" not in values(moved.get(url(str(turn_id))).text, "data-tree")
         # ...and is in the thread's unattributed bucket, still after its spawning call.
-        bucket_url = f"/session/{SPINE}/unattributed/{source}"
+        bucket_url = f"/session/{SPINE}/thread/{source}/unattributed"
         bucket = moved.get(bucket_url)
         assert bucket.status_code == 200
         keys = values(bucket.text, "data-tree")
@@ -625,7 +625,7 @@ def test_a_tail_row_stands_the_rest_of_its_level_where_it_stands(
     # The whole of what the row does, inheritance and all...
     assert fetch == {
         "hx-get": (
-            f"{KIN_URL}/session/{SPINE}/{SPINE}?kin=1&thread={MAIN}&depth=1&opened=turn:{selection}"
+            f"{KIN_URL}/session/{SPINE}/session/{SPINE}?kin=1&thread={MAIN}&depth=1&opened=turn:{selection}"
         ),
         "hx-target": "closest li",
         "hx-swap": "outerHTML",
@@ -646,7 +646,8 @@ def test_a_tail_row_stands_the_rest_of_its_level_where_it_stands(
     # The level under the selection has no open path through it, so its tail row holds nothing
     # back and asks for everything past the window.
     assert (
-        below["hx-get"] == f"{KIN_URL}/turn/{SPINE}/{MAIN}/{selection}?kin=1&thread={MAIN}&depth=2"
+        below["hx-get"]
+        == f"{KIN_URL}/session/{SPINE}/thread/{MAIN}/turn/{selection}?kin=1&thread={MAIN}&depth=2"
     )
     assert rows(client.get(below["hx-get"]).text) == [(2, key) for key in under[1:]]
     # The depth is the one thing a level cannot say for itself, and the tree's arithmetic
@@ -654,7 +655,7 @@ def test_a_tail_row_stands_the_rest_of_its_level_where_it_stands(
     # no page ever asked for.
     for depth, answer in ((0, 400), (1, 200), (bounds.DEPTH, 200), (bounds.DEPTH + 1, 400)):
         asked = client.get(
-            f"{KIN_URL}/turn/{SPINE}/{MAIN}/{selection}",
+            f"{KIN_URL}/session/{SPINE}/thread/{MAIN}/turn/{selection}",
             params={"kin": 1, "thread": MAIN, "depth": depth},
         )
         assert asked.status_code == answer, depth
@@ -1305,9 +1306,9 @@ def node_url(kind: Kind, session_id: str, source: str, node_id: str) -> str:
         case Kind.UNATTACHED:
             return f"/session/{session_id}/unattached"
         case Kind.UNATTRIBUTED:
-            return f"/session/{session_id}/unattributed/{source}"
+            return f"/session/{session_id}/thread/{source}/unattributed"
         case _:
-            return f"/session/{session_id}/{kind}/{source}/{node_id}"
+            return f"/session/{session_id}/thread/{source}/{kind}/{node_id}"
 
 
 def sited(session_id: str, chain: Sequence[str]) -> list[tuple[Kind, str, str, str]]:
@@ -1370,7 +1371,17 @@ def mounting(store: duckdb.DuckDBPyConnection) -> list[str]:
 def node_link(href: str) -> bool:
     """Whether a link goes to a node page — the records browser and an offload file do not."""
     path = href.partition("?")[0].strip("/").split("/")
-    return path[0] == "session" and (len(path) < 3 or path[2] in set(Kind))
+    if path[0] != "session":
+        return False
+    # Past the session, and past the thread where the node was recorded on one, a node's path
+    # says its kind. Everything else the session holds is named by something that is not one.
+    rest = path[4:] if path[2:3] == ["thread"] else path[2:]
+    return not rest or rest[0] in set(Kind)
+
+
+def mounted_kind(mount: str) -> str:
+    """The kind of node a body mount opens, which its URL says just before the id."""
+    return mount.partition("?")[0].rsplit("/", 2)[1]
 
 
 # The cells no recorded session fills, which is not the same claim as an empty cell. A tool
@@ -1489,7 +1500,7 @@ def test_a_preset_hides_a_kind_without_hiding_the_path_down_to_one(
     )
     hidden = {
         "agents": (url(turn), f"turn:{turn}"),
-        "noapi": (f"/session/{SPINE}/call/{MAIN}/{call_id}", f"call:{call_id}"),
+        "noapi": (f"/session/{SPINE}/thread/{MAIN}/call/{call_id}", f"call:{call_id}"),
     }
     for preset, (at, key) in hidden.items():
         served = client.get(at, params={"nav": preset})
@@ -1550,7 +1561,7 @@ def test_a_preset_rides_every_node_link_the_page_mints(
             assert onward, f"the fragment offers the way to its own node: {mount}"
             for href in onward:
                 assert parse_qs(unescape(href).partition("?")[2]).get("nav") == ["agents"], href
-            opened.add(mount[len(BODY_URL) + 1 :].partition("/")[0])
+            opened.add(mounted_kind(mount))
             led += len(values(served.text, "data-spawned"))
     # And the rows a tail row fetches are minted by the fragment and not by the page, so the
     # fold rides the fetch out and comes back on every row it answers with.

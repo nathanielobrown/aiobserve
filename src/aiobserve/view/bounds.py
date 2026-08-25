@@ -125,4 +125,4 @@ HIGHLIGHT_CHARS = 256_000
 # htmx fetches — because the swap the two of them perform is written once on `#tree-rows` and
 # inherited. A store whose agent runs carry longer ids than the recorded corpus does is a
 # re-measure.
-TREE_ROW_BYTES = 1248
+TREE_ROW_BYTES = 1262

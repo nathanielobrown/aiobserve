@@ -135,7 +135,7 @@ def test_every_described_node_carries_its_own_words_on_its_own_page(
     keyed differently — a turn by its thread, a run by the session.
     """
     for turn_id, said in enrichment_of(enriched_store, Level.turn, SPINE).items():
-        page = enriched_client.get(f"/session/{SPINE}/turn/main/{turn_id}").text
+        page = enriched_client.get(f"/session/{SPINE}/thread/main/turn/{turn_id}").text
         shown = fields(page, "data-enrichment", turn_id)
         assert (shown["description"], shown["category"], shown["outcome"]) == said, turn_id
         # And it is the only enrichment on the page: the tree rows beside it are labels.
@@ -223,7 +223,7 @@ def test_a_partly_described_store_shows_the_items_it_reached_and_nothing_for_the
         "   ON e.session_id = t.session_id AND e.source = t.source AND e.turn_id = t.id"
         " WHERE t.source = 'main' AND e.turn_id IS NULL",
     )
-    shown = served[f"/session/{session_id}/turn/main/{turn_id}"].text
+    shown = served[f"/session/{session_id}/thread/main/turn/{turn_id}"].text
     assert values(shown, "data-selected") == [f"turn:{turn_id}"]
     assert values(shown, "data-enrichment") == []
 
@@ -270,10 +270,10 @@ def test_an_item_described_under_an_older_prompt_is_marked_stale(
         [PROMPT_VERSION[Level.turn]],
     )
     # The turn described under the older prompt version is tagged...
-    stale_page = enriched_client.get(f"/session/{session_id}/turn/main/{turn_id}").text
+    stale_page = enriched_client.get(f"/session/{session_id}/thread/main/turn/{turn_id}").text
     assert fields(stale_page, "data-enrichment", turn_id).get("stale") == "stale"
     # ...and one described under the current one is not, so the tag is telling them apart.
-    fresh_page = enriched_client.get(f"/session/{fresh[0]}/turn/main/{fresh[1]}").text
+    fresh_page = enriched_client.get(f"/session/{fresh[0]}/thread/main/turn/{fresh[1]}").text
     assert "stale" not in fields(fresh_page, "data-enrichment", fresh[1])
     # Both carry the same glyph, and its tooltip is where the two rows differ in full: the
     # model, the hour, the two versions, and which side of them this build is on.

@@ -473,6 +473,9 @@ def build_app(db_path: Path) -> FastAPI:
     # And where an agent run reads, for the one link a template mints from a column rather than
     # from a node: the `Task` call that started the run.
     templates.env.globals["run_url"] = nodes.run_url  # pyrefly: ignore
+    # And the thread a page is reading, which heads every path a template writes that no node
+    # stands behind: the raw transcript, and the fetch of one archived record.
+    templates.env.globals["thread_url"] = nodes.thread_url  # pyrefly: ignore
     # The columns each children log heads and fills, so the head and the rows cannot drift
     # apart, and how many of them an expansion opened under a row has to span.
     templates.env.globals["COLUMNS"] = nodes.COLUMNS  # pyrefly: ignore
@@ -882,7 +885,7 @@ def build_app(db_path: Path) -> FastAPI:
 
         return browse(request, session_id, MAIN_SOURCE, nav, kin, log, detail, page, read)
 
-    @app.get("/session/{session_id}/turn/{source}/{turn_id}")
+    @app.get("/session/{session_id}/thread/{source}/turn/{turn_id}")
     def turn_page(
         request: Request,
         session_id: str,
@@ -904,6 +907,7 @@ def build_app(db_path: Path) -> FastAPI:
                 "head_chars": queries.HEADER_CHARS,
                 "detail_chars": detail,
             }
+            at = f"{nodes.thread_url(session_id, source)}/turn/{turn_id}"
             rows = page_rows(connection, Page.TURN_HEADER, **bound)
             if not rows:
                 raise HTTPException(404, "No turn with that id is in this thread.")
@@ -929,14 +933,14 @@ def build_app(db_path: Path) -> FastAPI:
                             "prompt",
                             rows[0]["prompt"],
                             rows[0]["prompt_chars"],
-                            f"/fragment/prompt/{session_id}/{source}/{turn_id}",
+                            f"/fragment/prompt{at}",
                             detail,
                         ),
                         detail_of(
                             "command_args",
                             rows[0]["command_args"],
                             rows[0]["command_args_chars"],
-                            f"/fragment/args/{session_id}/{source}/{turn_id}",
+                            f"/fragment/args{at}",
                             detail,
                         ),
                     )
@@ -995,7 +999,7 @@ def build_app(db_path: Path) -> FastAPI:
                             "description",
                             rows[0]["description"],
                             rows[0]["description_chars"],
-                            f"/fragment/brief/{session_id}/{run_id}",
+                            f"/fragment/brief{nodes.run_url(session_id, run_id)}",
                             detail,
                         ),
                     )
@@ -1010,7 +1014,7 @@ def build_app(db_path: Path) -> FastAPI:
 
         return browse(request, session_id, run_id, nav, kin, log, detail, page, read)
 
-    @app.get("/session/{session_id}/call/{source}/{api_call_id}")
+    @app.get("/session/{session_id}/thread/{source}/call/{api_call_id}")
     def call_page(
         request: Request,
         session_id: str,
@@ -1032,6 +1036,7 @@ def build_app(db_path: Path) -> FastAPI:
                 "head_chars": queries.HEADER_CHARS,
                 "detail_chars": detail,
             }
+            at = f"{nodes.thread_url(session_id, source)}/call/{api_call_id}"
             rows = page_rows(connection, Page.CALL_HEADER, **bound)
             if not rows:
                 raise HTTPException(404, "No api call with that id is in this thread.")
@@ -1064,14 +1069,14 @@ def build_app(db_path: Path) -> FastAPI:
                             "text",
                             row["text_head"],
                             row["text_chars"],
-                            f"/fragment/text/{session_id}/{source}/{api_call_id}",
+                            f"/fragment/text{at}",
                             detail,
                         ),
                         detail_of(
                             "thinking",
                             row["thinking_head"],
                             row["thinking_chars"],
-                            f"/fragment/thinking/{session_id}/{source}/{api_call_id}",
+                            f"/fragment/thinking{at}",
                             detail,
                         ),
                     )
@@ -1083,7 +1088,7 @@ def build_app(db_path: Path) -> FastAPI:
 
         return browse(request, session_id, source, nav, kin, log, detail, page, read)
 
-    @app.get("/session/{session_id}/tool/{source}/{tool_call_id}")
+    @app.get("/session/{session_id}/thread/{source}/tool/{tool_call_id}")
     def tool_page(
         request: Request,
         session_id: str,
@@ -1105,6 +1110,7 @@ def build_app(db_path: Path) -> FastAPI:
                 "head_chars": queries.HEADER_CHARS,
                 "detail_chars": detail,
             }
+            at = f"{nodes.thread_url(session_id, source)}/tool/{tool_call_id}"
             rows = page_rows(connection, Page.TOOL_HEADER, **bound)
             if not rows:
                 raise HTTPException(404, "No tool call with that id is in this thread.")
@@ -1130,7 +1136,7 @@ def build_app(db_path: Path) -> FastAPI:
                             "command",
                             row["command"],
                             row["command_chars"],
-                            f"/fragment/command/{session_id}/{source}/{tool_call_id}",
+                            f"/fragment/command{at}",
                             detail,
                             highlight.Syntax.BASH,
                         ),
@@ -1138,14 +1144,14 @@ def build_app(db_path: Path) -> FastAPI:
                             "input",
                             row["input_head"],
                             row["input_chars"],
-                            f"/fragment/input/{session_id}/{source}/{tool_call_id}",
+                            f"/fragment/input{at}",
                             detail,
                         ),
                         detail_of(
                             "result",
                             row["result_head"],
                             row["result_chars"],
-                            f"/fragment/result/{session_id}/{source}/{tool_call_id}",
+                            f"/fragment/result{at}",
                             detail,
                             highlight.by_suffix(row["result_type"]),
                         ),
@@ -1158,7 +1164,7 @@ def build_app(db_path: Path) -> FastAPI:
 
         return browse(request, session_id, source, nav, kin, log, detail, page, read)
 
-    @app.get("/session/{session_id}/compaction/{source}/{compaction_id}")
+    @app.get("/session/{session_id}/thread/{source}/compaction/{compaction_id}")
     def compaction_page(
         request: Request,
         session_id: str,
@@ -1209,7 +1215,7 @@ def build_app(db_path: Path) -> FastAPI:
 
         return browse(request, session_id, source, nav, kin, log, detail, page, read)
 
-    @app.get("/session/{session_id}/unattributed/{source}")
+    @app.get("/session/{session_id}/thread/{source}/unattributed")
     def unattributed_page(
         request: Request,
         session_id: str,
@@ -1328,7 +1334,7 @@ def build_app(db_path: Path) -> FastAPI:
             {"name": name, "sql": queries.load(name), "bindings": dict(request.query_params)},
         )
 
-    @app.get("/session/{session_id}/records/{source}")
+    @app.get("/session/{session_id}/thread/{source}/records")
     def records_page(
         request: Request,
         session_id: str,
@@ -1444,7 +1450,7 @@ def build_app(db_path: Path) -> FastAPI:
             },
         )
 
-    @app.get(f"{nodes.BODY_URL}/{{kind}}/{{session_id}}/{{source}}/{{node_id}}")
+    @app.get(f"{nodes.BODY_URL}/session/{{session_id}}/thread/{{source}}/{{kind}}/{{node_id}}")
     def node_body(
         request: Request,
         kind: str,
@@ -1496,7 +1502,7 @@ def build_app(db_path: Path) -> FastAPI:
             ran,
         )
 
-    @app.get(f"{nodes.BODY_URL}/{Kind.RUN}/{{session_id}}/{{run_id}}")
+    @app.get(f"{nodes.BODY_URL}/session/{{session_id}}/{Kind.RUN}/{{run_id}}")
     def run_body(
         request: Request,
         session_id: str,
@@ -1600,7 +1606,7 @@ def build_app(db_path: Path) -> FastAPI:
             },
         )
 
-    @app.get(f"{nodes.KIN_URL}/{{kind}}/{{session_id}}/{{source}}/{{node_id}}")
+    @app.get(f"{nodes.KIN_URL}/session/{{session_id}}/thread/{{source}}/{{kind}}/{{node_id}}")
     def node_kin(
         request: Request,
         kind: str,
@@ -1626,7 +1632,7 @@ def build_app(db_path: Path) -> FastAPI:
         at = Ref(kind=Kind(kind), source=source, node_id=node_id)
         return spilled(request, session_id, at, thread, depth, opened, nav, kin, log, detail)
 
-    @app.get(f"{nodes.KIN_URL}/{{kind}}/{{session_id}}/{{node_id}}")
+    @app.get(f"{nodes.KIN_URL}/session/{{session_id}}/{{kind}}/{{node_id}}")
     def loose_kin(
         request: Request,
         kind: str,
@@ -1694,7 +1700,7 @@ def build_app(db_path: Path) -> FastAPI:
             },
         )
 
-    @app.get("/fragment/text/{session_id}/{source}/{api_call_id}")
+    @app.get("/fragment/text/session/{session_id}/thread/{source}/call/{api_call_id}")
     def call_text(request: Request, session_id: str, source: str, api_call_id: str) -> Response:
         """What one api call said, whole."""
         return whole(
@@ -1706,7 +1712,7 @@ def build_app(db_path: Path) -> FastAPI:
             "text",
         )
 
-    @app.get("/fragment/thinking/{session_id}/{source}/{api_call_id}")
+    @app.get("/fragment/thinking/session/{session_id}/thread/{source}/call/{api_call_id}")
     def call_thinking(request: Request, session_id: str, source: str, api_call_id: str) -> Response:
         """What one api call thought, whole."""
         return whole(
@@ -1718,7 +1724,7 @@ def build_app(db_path: Path) -> FastAPI:
             "thinking",
         )
 
-    @app.get("/fragment/record/{session_id}/{source}/{line_no}")
+    @app.get("/fragment/record/session/{session_id}/thread/{source}/line/{line_no}")
     def record_value(request: Request, session_id: str, source: str, line_no: int) -> Response:
         """One raw transcript record whole, as the browser's preview was cut from."""
         return whole(
@@ -1733,7 +1739,7 @@ def build_app(db_path: Path) -> FastAPI:
             None,
         )
 
-    @app.get("/fragment/input/{session_id}/{source}/{tool_call_id}")
+    @app.get("/fragment/input/session/{session_id}/thread/{source}/tool/{tool_call_id}")
     def tool_input(request: Request, session_id: str, source: str, tool_call_id: str) -> Response:
         """What one tool call was passed, whole."""
         return whole(
@@ -1745,7 +1751,7 @@ def build_app(db_path: Path) -> FastAPI:
             "input",
         )
 
-    @app.get("/fragment/result/{session_id}/{source}/{tool_call_id}")
+    @app.get("/fragment/result/session/{session_id}/thread/{source}/tool/{tool_call_id}")
     def tool_result(request: Request, session_id: str, source: str, tool_call_id: str) -> Response:
         """What one tool call returned, whole — the largest single fetch the viewer makes."""
         return whole(
@@ -1764,7 +1770,7 @@ def build_app(db_path: Path) -> FastAPI:
             "result",
         )
 
-    @app.get("/fragment/command/{session_id}/{source}/{tool_call_id}")
+    @app.get("/fragment/command/session/{session_id}/thread/{source}/tool/{tool_call_id}")
     def tool_command(request: Request, session_id: str, source: str, tool_call_id: str) -> Response:
         """What one `Bash` call ran, whole — read as the shell reads it."""
         return whole(
@@ -1777,7 +1783,7 @@ def build_app(db_path: Path) -> FastAPI:
             highlight.Syntax.BASH,
         )
 
-    @app.get("/fragment/prompt/{session_id}/{source}/{turn_id}")
+    @app.get("/fragment/prompt/session/{session_id}/thread/{source}/turn/{turn_id}")
     def turn_prompt(request: Request, session_id: str, source: str, turn_id: str) -> Response:
         """What one turn was asked, whole."""
         return whole(
@@ -1789,7 +1795,7 @@ def build_app(db_path: Path) -> FastAPI:
             "prompt",
         )
 
-    @app.get("/fragment/args/{session_id}/{source}/{turn_id}")
+    @app.get("/fragment/args/session/{session_id}/thread/{source}/turn/{turn_id}")
     def turn_command_args(request: Request, session_id: str, source: str, turn_id: str) -> Response:
         """What followed the slash command one turn ran, whole."""
         return whole(
@@ -1801,7 +1807,7 @@ def build_app(db_path: Path) -> FastAPI:
             "command_args",
         )
 
-    @app.get("/fragment/brief/{session_id}/{run_id}")
+    @app.get("/fragment/brief/session/{session_id}/run/{run_id}")
     def run_brief(request: Request, session_id: str, run_id: str) -> Response:
         """The whole brief one agent run was given."""
         return whole(

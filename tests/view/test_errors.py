@@ -52,7 +52,7 @@ def test_a_tree_row_for_a_tool_call_that_failed_says_so(
     # If a session recorded a failed tool call, on a thread of its own...
     source, tool_id = failed(store, FORK_ORIGIN)[0]
     # ...then the tree beside that call carries the mark on its row...
-    page = client.get(f"/session/{FORK_ORIGIN}/tool/{source}/{tool_id}").text
+    page = client.get(f"/session/{FORK_ORIGIN}/thread/{source}/tool/{tool_id}").text
     assert fields(page, "data-tree", f"tool:{tool_id}")["is_error"] == "error"
     # ...and on no other row of the session, whatever kind of node it stands for.
     marked = {key for _, key in rows(page) if "is_error" in fields(page, "data-tree", key)}
@@ -80,7 +80,7 @@ def test_the_errors_page_lists_every_failure_of_the_session_in_the_order_they_ha
     assert len({source for source, _ in order}) > 1
     # ...each row leading to the tool call's own page, on the thread it ran on...
     assert [inside(page, "data-error", f"tool:{tool_id}", "href")[0] for _, tool_id in order] == [
-        f"/session/{FORK_ORIGIN}/tool/{source}/{tool_id}" for source, tool_id in order
+        f"/session/{FORK_ORIGIN}/thread/{source}/tool/{tool_id}" for source, tool_id in order
     ]
     # ...and each row saying what the call was and when it ran, so two calls of one tool are
     # told apart without opening either.
@@ -116,7 +116,7 @@ def test_the_stepper_steps_between_failures_and_only_where_the_pane_stands_on_on
     with duckdb.connect(str(path), read_only=True) as connection:
         order = failed(connection, FORK_ORIGIN)
     with TestClient(build_app(path)) as planted:
-        served = [planted.get(f"/session/{FORK_ORIGIN}/tool/{s}/{t}").text for s, t in order]
+        served = [planted.get(f"/session/{FORK_ORIGIN}/thread/{s}/tool/{t}").text for s, t in order]
     for place, page in enumerate(served):
         # Every failure offers the way to the whole list...
         offered = set(values(page, "data-step"))
@@ -134,10 +134,12 @@ def test_the_stepper_steps_between_failures_and_only_where_the_pane_stands_on_on
         assert offered == expected, place
     # A step lands on the neighbour's own page, thread and all — the list is not one thread's.
     second = inside(served[0], "data-step", "next", "href")[0]
-    assert second.startswith(f"/session/{FORK_ORIGIN}/tool/{order[1][0]}/{order[1][1]}")
+    assert second.startswith(f"/session/{FORK_ORIGIN}/thread/{order[1][0]}/tool/{order[1][1]}")
     # And a pane reading a tool call that succeeded offers only the way to the list, because
     # there is no step between failures to take from a node that is not one.
-    succeeded = client.get(f"/session/{FORK_ORIGIN}/tool/{FORK_ORIGIN_RUN}/{DENSE_TOOL}").text
+    succeeded = client.get(
+        f"/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}"
+    ).text
     assert values(succeeded, "data-step") == ["all"]
 
 
@@ -156,7 +158,7 @@ def test_every_node_page_of_a_failing_session_offers_the_way_to_its_failures(
     for url in (
         f"/session/{FORK_ORIGIN}",
         f"/session/{FORK_ORIGIN}/run/{FORK_ORIGIN_RUN}",
-        f"/session/{FORK_ORIGIN}/tool/{source}/{tool_id}",
+        f"/session/{FORK_ORIGIN}/thread/{source}/tool/{tool_id}",
     ):
         page = client.get(url).text
         assert fields(page, "data-step", "all")["tool_errors"] == str(failures), url
@@ -183,9 +185,9 @@ def test_the_errors_page_and_the_stepper_cite_the_one_query_behind_them(
     }
     # ...a node page standing on a failure cites it beside the reads every node page makes...
     source, tool_id = failed(store, FORK_ORIGIN)[0]
-    standing = client.get(f"/session/{FORK_ORIGIN}/tool/{source}/{tool_id}").text
+    standing = client.get(f"/session/{FORK_ORIGIN}/thread/{source}/tool/{tool_id}").text
     assert fields(standing, "id", "citation")["view_session_errors"] == line
     # ...and a node page of the same session standing on a call that succeeded does not, which
     # is the whole reason the read is conditional.
-    beside = client.get(f"/session/{FORK_ORIGIN}/tool/{FORK_ORIGIN_RUN}/{DENSE_TOOL}").text
+    beside = client.get(f"/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}").text
     assert "view_session_errors" not in fields(beside, "id", "citation")

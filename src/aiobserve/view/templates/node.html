@@ -53,16 +53,16 @@
        request: a raw line is the least filtered thing the viewer shows and the widest, so a
        pane that carried it unasked would be a pane priced for a transcript. #}
     <p class="raw">
-      <a data-field="records" href="/session/{{ selection.session_id }}/records/{{ source }}"
+      <a data-field="records" href="{{ thread_url(selection.session_id, source) }}/records"
         >this thread's transcript</a>
       {%- if record %}
-      <a data-field="record" href="/session/{{ selection.session_id }}/records/{{ source }}?after={{ record - 1 }}#L{{ record }}"
+      <a data-field="record" href="{{ thread_url(selection.session_id, source) }}/records?after={{ record - 1 }}#L{{ record }}"
         >line {{ record | count }}</a>
       {%- endif %}
     </p>
     {% if record %}
     <details class="raw" data-open-record="{{ record }}"
-             hx-get="/fragment/record/{{ selection.session_id }}/{{ source }}/{{ record }}"
+             hx-get="/fragment/record{{ thread_url(selection.session_id, source) }}/line/{{ record }}"
              hx-trigger="toggle once" hx-target="find .value">
       <summary>archived record</summary>
       <div class="value"></div>

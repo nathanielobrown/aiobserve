@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import duckdb
 import pytest
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from aiobserve.analyze import queries
@@ -824,6 +825,29 @@ def test_a_node_page_cites_every_query_it_ran(client: TestClient) -> None:
     }
 
 
+def test_no_url_the_viewer_serves_puts_two_ids_side_by_side(client: TestClient) -> None:
+    """Every id in a path has a word in front of it saying what kind of id it is.
+
+    The one rule the URL scheme is built on (`docs/viewer.md`). Read a path that breaks it and
+    the eye pairs the segments the wrong way — a turn and something under it, where the second
+    id is really the thread the turn is on. With a word before each id there is nothing to
+    pair: a session, a thread, and a turn.
+
+    `{kind}` is the one parameter that counts as a word rather than an id: it carries a member
+    of `nodes.Kind`, and every one of those is a bare literal segment.
+    """
+    assert all(str(kind).isalpha() for kind in nodes.Kind)
+    routes = [route for route in client.app.routes if isinstance(route, APIRoute)]  # pyrefly: ignore
+    assert routes, "the app exposes no routes"
+    for path in sorted(route.path for route in routes):
+        segments = ["kind" if part == "{kind}" else part for part in path.split("/") if part]
+        for at, part in enumerate(segments):
+            if not part.startswith("{"):
+                continue
+            assert at, f"{path} opens on an id nothing names"
+            assert not segments[at - 1].startswith("{"), f"{path} puts two ids side by side"
+
+
 # The ratio WCAG 2.2 asks of body text against what it is printed on. Both schemes are held
 # to it: a dark page is a page someone reads, not a courtesy.
 READABLE = 4.5
@@ -898,10 +922,10 @@ def test_both_schemes_print_every_color_of_text_readably(client: TestClient) -> 
         "/sessions?sort=bogus",
         f"/session/{SPINE}",
         f"/session/{MISSING}",
-        f"/session/{ANCESTOR}/turn/{MAIN}/{DENSE_TURN}",
-        f"/session/{FORK_ORIGIN}/tool/{FORK_ORIGIN_RUN}/{DENSE_TOOL}",
-        f"/fragment/result/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}",
-        f"/fragment/result/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{MISSING}",
+        f"/session/{ANCESTOR}/thread/{MAIN}/turn/{DENSE_TURN}",
+        f"/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}",
+        f"/fragment/result/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}",
+        f"/fragment/result/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{MISSING}",
         "/static/style.css",
     ],
 )
@@ -949,15 +973,21 @@ def test_planted_markup_arrives_inert(plant: Planter) -> None:
             # descriptions the plant rewrote.
             client.get(f"/session/{SPINE}").text,
             # A turn pane, whose children log previews the calls' text.
-            client.get(f"/session/{ANCESTOR}/turn/{MAIN}/{DENSE_TURN}").text,
-            client.get(f"/fragment/text/{ANCESTOR}/{MAIN}/{DENSE_TURN_CALL}").text,
-            client.get(f"/fragment/input/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}").text,
-            client.get(f"/fragment/result/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}").text,
+            client.get(f"/session/{ANCESTOR}/thread/{MAIN}/turn/{DENSE_TURN}").text,
+            client.get(
+                f"/fragment/text/session/{ANCESTOR}/thread/{MAIN}/call/{DENSE_TURN_CALL}"
+            ).text,
+            client.get(
+                f"/fragment/input/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}"
+            ).text,
+            client.get(
+                f"/fragment/result/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}"
+            ).text,
             # What followed a slash command, which is rendered rather than escaped, like the
             # prompt a plain turn shows in its place.
-            client.get(f"/fragment/args/{SPINE}/{MAIN}/{SLASH_TURN}").text,
-            client.get(f"/session/{ANCESTOR}/records/{MAIN}").text,
-            client.get(f"/fragment/record/{ANCESTOR}/{MAIN}/1").text,
+            client.get(f"/fragment/args/session/{SPINE}/thread/{MAIN}/turn/{SLASH_TURN}").text,
+            client.get(f"/session/{ANCESTOR}/thread/{MAIN}/records").text,
+            client.get(f"/fragment/record/session/{ANCESTOR}/thread/{MAIN}/line/1").text,
         )
         for page in served:
             # The sentinel survives to the page as text — angle brackets escaped, the one form
@@ -1012,7 +1042,9 @@ def test_a_per_value_fragment_returns_the_one_value_it_names(
         ).fetchall()
     ]
     assert DENSE_TOOL in siblings and len(siblings) > 1
-    served = client.get(f"/fragment/result/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}").text
+    served = client.get(
+        f"/fragment/result/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}"
+    ).text
     # The value it was asked for arrives, and it is not empty...
     whole = one(
         store,
@@ -1036,49 +1068,49 @@ def test_a_fragment_cites_the_query_that_fetched_it(client: TestClient) -> None:
     keyed = f"session_id={FORK_ORIGIN} source={FORK_ORIGIN_RUN}"
     for url, expected in (
         (
-            f"/fragment/text/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}",
+            f"/fragment/text/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/call/{DENSE_CALL}",
             f"-- queries/view_call_text.sql {keyed} api_call_id={DENSE_CALL}",
         ),
         (
-            f"/fragment/thinking/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL}",
+            f"/fragment/thinking/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/call/{DENSE_CALL}",
             f"-- queries/view_call_thinking.sql {keyed} api_call_id={DENSE_CALL}",
         ),
         (
-            f"/fragment/input/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}",
+            f"/fragment/input/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}",
             f"-- queries/view_tool_input.sql {keyed} tool_call_id={DENSE_TOOL}",
         ),
         (
-            f"/fragment/result/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_TOOL}",
+            f"/fragment/result/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}",
             f"-- queries/view_tool_result.sql {keyed} tool_call_id={DENSE_TOOL}"
             f" head_chars={queries.HEADER_CHARS}",
         ),
         # The command a `Bash` call ran, which only a `Bash` call has — so this one is keyed
         # off the thread that holds one rather than off the dense call above.
         (
-            f"/fragment/command/{SPINE}/{MAIN}/{BASH_TOOL}",
+            f"/fragment/command/session/{SPINE}/thread/{MAIN}/tool/{BASH_TOOL}",
             f"-- queries/view_tool_command.sql session_id={SPINE} source={MAIN}"
             f" tool_call_id={BASH_TOOL}",
         ),
         (
-            f"/fragment/prompt/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{DENSE_CALL_TURN}",
+            f"/fragment/prompt/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/turn/{DENSE_CALL_TURN}",
             f"-- queries/view_turn_prompt.sql {keyed} turn_id={DENSE_CALL_TURN}",
         ),
         # The arguments of a slash turn, which only the one recorded slash turn has.
         (
-            f"/fragment/args/{SPINE}/{MAIN}/{SLASH_TURN}",
+            f"/fragment/args/session/{SPINE}/thread/{MAIN}/turn/{SLASH_TURN}",
             f"-- queries/view_turn_command_args.sql session_id={SPINE} source={MAIN}"
             f" turn_id={SLASH_TURN}",
         ),
         # A run is keyed by the session and its own id: a run has one home, so no thread
         # names it.
         (
-            f"/fragment/brief/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}",
+            f"/fragment/brief/session/{FORK_ORIGIN}/run/{FORK_ORIGIN_RUN}",
             f"-- queries/view_run_brief.sql session_id={FORK_ORIGIN} run_id={FORK_ORIGIN_RUN}",
         ),
         # The record route keys on a line number rather than an id. Fetched off a subagent
         # thread at a line past the first, so neither key can be a constant the fixture hides.
         (
-            f"/fragment/record/{SPINE}/{SPINE_RUN}/2",
+            f"/fragment/record/session/{SPINE}/thread/{SPINE_RUN}/line/2",
             f"-- queries/view_record.sql session_id={SPINE} source={SPINE_RUN} line_no=2",
         ),
     ):
@@ -1087,7 +1119,9 @@ def test_a_fragment_cites_the_query_that_fetched_it(client: TestClient) -> None:
 
 def test_a_fragment_naming_nothing_is_a_404(client: TestClient) -> None:
     """A per-value fragment for an id the store lacks is a 404, not an empty box."""
-    response = client.get(f"/fragment/result/{FORK_ORIGIN}/{FORK_ORIGIN_RUN}/{MISSING}")
+    response = client.get(
+        f"/fragment/result/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{MISSING}"
+    )
     assert response.status_code == 404
     assert MISSING not in response.text
 

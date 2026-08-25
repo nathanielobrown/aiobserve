@@ -24,7 +24,7 @@
          itself as the page loads. Still a fetch and not inlined: the page stays bounded, and
          what is unbounded stays one record at a time. #}
       <details class="whole"{% if row.line_no == opened %} open{% endif %} data-open-record="{{ row.line_no }}"
-               hx-get="/fragment/record/{{ session_id }}/{{ source }}/{{ row.line_no }}"
+               hx-get="/fragment/record{{ thread_url(session_id, source) }}/line/{{ row.line_no }}"
                hx-trigger="{{ 'load' if row.line_no == opened else 'toggle once' }}" hx-target="find .value">
         <summary>whole record</summary>
         <div class="value"></div>
@@ -34,7 +34,7 @@
   </ol>
   {% if page.after is not none %}
   <p class="more" data-more-records="{{ page.after }}">
-    <a href="/session/{{ session_id }}/records/{{ source }}?after={{ page.after }}&size={{ size }}"
+    <a href="{{ thread_url(session_id, source) }}/records?after={{ page.after }}&size={{ size }}"
        ><span data-field="count">+{{ page.more | count }} more</span></a>
   </p>
   {% endif %}
