@@ -11,6 +11,7 @@ The described store is `enriched_db`, whose four model-written fields are invent
 (`tests/conftest.py`): no fixture records a model's answer about a private transcript.
 """
 
+import re
 from pathlib import Path
 
 import duckdb
@@ -179,14 +180,20 @@ def test_every_described_node_carries_its_own_words_on_its_own_page(
         enrichment_of(enriched_store, Level.agent_run, SPINE),
     )
     assert turns and runs, "the described corpus no longer describes this session's turns or runs"
-    paragraph = "w" * (queries.ENRICHMENT_CHARS + 1)
-    said_long = [paragraph, paragraph]
+    # Each planted past the width by its own amount, so the number a mark offers is that
+    # field's own: the two ride separate `length()` columns in each of the three arms, and one
+    # plant length could tell neither a swapped pair nor a drifted cut apart. The description
+    # runs past a thousand, which is the ordinary size of one — the canonical store's longest
+    # is 1,731 characters — and puts the separator a reader sees into the assertion.
+    rest = {"description": 1_234, "friction": 57}
+    words = {name: "w" * (queries.ENRICHMENT_CHARS + over) for name, over in rest.items()}
+    said_long = [words["description"], words["friction"]]
     path: Path = enriched_plant(
         ("UPDATE session_enrichments SET description = ?, friction = ?", said_long),
         ("UPDATE turn_enrichments SET description = ?, friction = ?", said_long),
         ("UPDATE agent_run_enrichments SET description = ?, friction = ?", said_long),
     )
-    marked = cut(paragraph, queries.ENRICHMENT_CHARS)
+    marked = cut(words["description"], queries.ENRICHMENT_CHARS)
     with TestClient(build_app(path)) as planted:
         for url, item_id in (
             (f"/session/{SPINE}", SPINE),
@@ -203,6 +210,15 @@ def test_every_described_node_carries_its_own_words_on_its_own_page(
                 "description",
                 "friction",
             ], url
+            # ...saying how much it left, which is the whole length the query returned less
+            # the width it printed. Read off the block in document order, because the two
+            # fields carry the same key and the pair is what tells the arms apart.
+            block = re.search(r'<section class="enrichment"[^>]*>.*?</section>', page, re.S)
+            assert block, url
+            assert re.findall(r'data-field="cut">([^<]+)<', block.group()) == [
+                f"{rest['description']:,}",
+                f"{rest['friction']:,}",
+            ], url
             for field, fetch in zip(
                 ("description", "friction"),
                 inside(page, "data-enrichment", item_id, "href"),
@@ -212,7 +228,7 @@ def test_every_described_node_carries_its_own_words_on_its_own_page(
                 assert answered.status_code == 200, fetch
                 # And what comes back is the whole line, under the name and in the block the
                 # head stood in: the fetch replaces the preview rather than sitting beside it.
-                assert fields(answered.text, "data-wrote", field) == {field: paragraph}, fetch
+                assert fields(answered.text, "data-wrote", field) == {field: words[field]}, fetch
 
 
 def test_a_run_page_shows_the_runs_own_enrichment_beside_its_brief(
