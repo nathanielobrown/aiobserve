@@ -14,7 +14,7 @@ from typing import Any
 
 import duckdb
 
-from aiobserve.analyze import queries
+from aiobserve.analyze import macros, queries
 from aiobserve.analyze.queries import NoDefault, ParamType, ParamValue, Scope
 from aiobserve.export.duckdb import (
     SCHEMA_MISMATCH_REMEDY,
@@ -54,40 +54,6 @@ SELECT session_id, 'trailing_window' AS period FROM project_sessions WHERE in_wi
 # What the runner puts in scope for a corpus query. A query that reads neither is not scoped
 # to `--project` at all, whatever its manifest says.
 CORPUS_RELATIONS = ("project_sessions", "session_period")
-
-# The line a failure is grouped by: its first, whitespace collapsed, with every absolute path
-# standing as `<path>`. Written once and shared, because two queries group on it and a group
-# key that drifted between them would count the same failure two ways.
-# The paths are what makes it a macro rather than a `substr`. A message that carries its path
-# in the *middle* of the sentence — Claude Code's worktree-isolation guardrail, and its
-# "current working directory is …" note — splits into a group per worktree, and no length cut
-# can merge them back. The guardrail alone held 36 failures in 28 groups over mycelia's
-# 2026-08-13 window; collapsing paths took that window from 240 signatures to 185. Dropping
-# the path is also what lets a signature be published: the value is ours, not the tool's.
-# Trailing punctuation is left behind, so the sentence still reads as one.
-_SIGNATURE_MACRO = r"""
-CREATE OR REPLACE TEMP MACRO signature_line(text) AS
-regexp_replace(
-    regexp_replace(trim(split_part(text, chr(10), 1)), '\s+', ' ', 'g'),
-    '(^|\s)/[^\s]*[^\s.,;:]',
-    '\1<path>',
-    'g'
-)
-"""
-
-# Whether one api call rebuilt the context it already had: it wrote at least `min_tokens` to
-# the cache, and wrote at least `min_pct` of everything it cached. Shared for the same reason
-# as the line above — `context_reloads.sql` counts these calls and `idle_gaps.sql` says which
-# silences they followed, so a detector that drifted between them would let one query deny
-# what the other reported. Neither number is a fact about Claude Code; `context_reloads.sql`
-# holds the corpus measurements that placed them, and both stay bound parameters.
-# The caller still owns the rest of the definition: a thread's first call writes everything
-# and rebuilds nothing, and only the query knows where its thread starts.
-_REBUILT_MACRO = """
-CREATE OR REPLACE TEMP MACRO rebuilt_context(creation_tokens, read_tokens, min_tokens, min_pct)
-AS creation_tokens >= min_tokens
-   AND creation_tokens * 100 >= min_pct * (creation_tokens + read_tokens)
-"""
 
 # Sessions no project predicate can place. They are excluded from every corpus count, so the
 # runner reports how many there were rather than leaving the gap silent.
@@ -150,8 +116,7 @@ def run(
         # move the corpus by a few hours depending on where the reader sits.
         connection.execute("SET TimeZone='UTC'")
         _check_schema(db, connection)
-        connection.execute(_SIGNATURE_MACRO)
-        connection.execute(_REBUILT_MACRO)
+        macros.install(connection)
         cited: dict[str, ParamValue] = {}
         unplaceable = None
         if corpus:
