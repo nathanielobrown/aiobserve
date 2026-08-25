@@ -13,10 +13,11 @@ SELECT
     c."index" AS call_index,
     t."index" AS tool_index,
     t.id AS tool_call_id,
-    -- What the tool was called and the head of what it was asked, which is what tells two
-    -- calls of the same tool apart in the width of a tree.
+    -- What the tool was called, and its title — which is what tells two calls of the same
+    -- tool apart in the width of a tree. Titled by the derivation every other surface that
+    -- names a tool call reads (`analyze/macros.py`).
     substr(t.name, 1, $nav_chars + 1) AS name,
-    substr(t.input, 1, $nav_chars + 1) AS input_head,
+    tool_title(t.input, s.project_dir, $nav_chars) AS title,
     -- When it ran, which is what the compactions of the same turn interleave against where
     -- the api calls are folded away and the tool calls stand under the turn.
     t.started_at,
@@ -24,6 +25,9 @@ SELECT
 FROM live_tool_calls t
 JOIN live_api_calls c
     ON c.session_id = t.session_id AND c.source = t.source AND c.id = t.api_call_id
+-- What a path in the title is read against. LEFT joined, so a tool call whose session row is
+-- missing is a row titled with an absolute path rather than a row the tree drops.
+LEFT JOIN sessions s ON s.id = t.session_id
 LEFT JOIN live_turns tn
     ON tn.session_id = c.session_id AND tn.source = c.source AND tn.id = c.turn_id
 WHERE t.session_id = $session_id

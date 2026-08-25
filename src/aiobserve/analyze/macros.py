@@ -5,10 +5,10 @@ live in either of them: the copies drift, and then one query denies what the oth
 What lives here is the shared half — a definition several queries call by name — as a DuckDB
 temp macro, created on whatever connection is about to run a query.
 
-`analyze/runner.py` installs them before it runs the query it was asked for, and anything
-else that runs a query file has to do the same. That is the trade a shared definition costs:
-a query file naming one of these runs under a consumer that installed them, and under a bare
-`duckdb` shell it does not.
+Both consumers install the same set: `analyze/runner.py` before the query `aiobserve query`
+was asked for, and `view/store.py` on the connection a page reads through. That is the trade a
+shared definition costs: a query file naming one of these runs under a consumer that installed
+them, and under a bare `duckdb` shell it does not.
 """
 
 import duckdb
@@ -47,10 +47,62 @@ AS creation_tokens >= min_tokens
    AND creation_tokens * 100 >= min_pct * (creation_tokens + read_tokens)
 """
 
-# Every macro a shipped query may call. Installed as a set rather than per query: which macros
-# a file needs is the file's business, and a connection that holds some of them is a connection
+# One field of a tool call's input, cut to the width of the column that will print it. Every
+# read of `input` is guarded, because the column holds whatever the transcript did and
+# `json_extract_string` raises on a value that is not JSON: a malformed input is a row to
+# render, not a 500. The cut is one character past the width, which is the protocol every
+# preview in the viewer rides (`view/format.py:cut`).
+_TOOL_ASKED = """
+CREATE OR REPLACE TEMP MACRO tool_asked(input, field, chars) AS
+CASE WHEN json_valid(input)
+     THEN substr(json_extract_string(input, '$.' || field), 1, chars + 1)
+     END
+"""
+
+# What a tool call is called, in the most readable form the record supports — the derivation
+# behind every surface that names one (`docs/viewer.md`). Which part of the input the title
+# comes from is decided by the input and not by a list of tool names, so a tool nobody here
+# has heard of still names itself:
+#   * a `file_path` is the path, cut to the repository when it sits inside the session's own
+#     project directory and absolute when it does not — an agent reads its own tree far more
+#     than anything else, and a column of identical prefixes is a column of nothing
+#   * else a `description` — what the caller said the call was for, which is what `Bash` and
+#     `Agent` put there
+#   * else the head of the input as it was stored, which is JSON for every tool we have seen
+# Cutting the repository off a path shortens what a full column shows, which is the point:
+# the path is cut at the width first, so what the reader sees is the tail of a bounded head.
+_TOOL_TITLE = """
+CREATE OR REPLACE TEMP MACRO tool_title(input, project_dir, chars) AS
+coalesce(
+    CASE WHEN starts_with(tool_asked(input, 'file_path', chars), project_dir || '/')
+         THEN substr(tool_asked(input, 'file_path', chars), length(project_dir) + 2)
+         ELSE tool_asked(input, 'file_path', chars) END,
+    tool_asked(input, 'description', chars),
+    substr(input, 1, chars + 1))
+"""
+
+# The line under a tool call's title, where the title was a description and the input also
+# carried the command it describes. NULL everywhere else, including on the calls whose title
+# is already the command's own JSON — a row does not print one value twice.
+_TOOL_RAN = """
+CREATE OR REPLACE TEMP MACRO tool_ran(input, chars) AS
+CASE WHEN tool_asked(input, 'file_path', chars) IS NULL
+      AND tool_asked(input, 'description', chars) IS NOT NULL
+     THEN tool_asked(input, 'command', chars)
+     END
+"""
+
+# The macros a query may wrap a fat column in and still be bounded: each cuts what it reads to
+# the width its caller passes. Named in public because the viewer's payload bound is held by a
+# scan of query text (`tests/view/test_bounds.py`), and a scan cannot see through a macro call
+# — so it trusts these names, and a leaf there re-scans each body to earn that trust.
+BOUNDING = {"tool_asked": _TOOL_ASKED, "tool_title": _TOOL_TITLE, "tool_ran": _TOOL_RAN}
+
+# Every macro a shipped query may call, in dependency order — `tool_title` and `tool_ran` are
+# written in terms of `tool_asked`. Installed as a set rather than per query: which macros a
+# file needs is the file's business, and a connection that holds some of them is a connection
 # where a query fails on the ones it does not.
-_MACROS = (_SIGNATURE_LINE, _REBUILT_CONTEXT)
+_MACROS = (_SIGNATURE_LINE, _REBUILT_CONTEXT, *BOUNDING.values())
 
 
 def install(connection: duckdb.DuckDBPyConnection) -> None:

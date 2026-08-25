@@ -21,7 +21,7 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from markupsafe import escape
 
-from aiobserve.analyze import queries
+from aiobserve.analyze import macros, queries
 from aiobserve.analyze.queries import QUERIES, VIEW_PREFIX, ParamValue
 from aiobserve.view import bounds, nodes
 from aiobserve.view.app import QUERY_URL, build_app, knobs
@@ -453,10 +453,11 @@ def _described_at_every_cap() -> tuple[Statement, ...]:
 DESCRIBED_AT_EVERY_CAP = _described_at_every_cap()
 
 # What a query may wrap a fat column in and still be bounded: a fixed-width prefix of it, a
-# count of what it holds, or the check that it parses. Anything else puts the whole value on
-# the page. Read at any depth — `substr(coalesce(json_extract_string(input, …), …), 1, $n)`
-# is a cut of whatever it wraps, so what a bounding call opens is exempt to its close.
-BOUNDING = ("substr", "length", "json_valid")
+# count of what it holds, the check that it parses, or one of the library's own cutting macros.
+# Anything else puts the whole value on the page. Read at any depth —
+# `substr(coalesce(json_extract_string(input, …), …), 1, $n)` is a cut of whatever it wraps, so
+# what a bounding call opens is exempt to its close.
+BOUNDING = ("substr", "length", "json_valid", *macros.BOUNDING)
 
 
 def _named(sql: str) -> Iterator[str]:
@@ -522,6 +523,19 @@ def test_the_fat_column_scan_catches_one() -> None:
     assert unbounded("SELECT coalesce(substr(t.input, 1, 9), t.result) AS head FROM tools t") == {
         "result"
     }
+
+
+def test_every_macro_the_scan_trusts_cuts_the_value_it_reads() -> None:
+    """The scan cannot see through a macro call, so what it trusts by name is checked by body.
+
+    Without this the trust is a list: a macro that stopped cutting would go on being read as
+    bounding, and every query calling it would keep its green while serving whole values.
+    The signature comes off first — a parameter named `input` is a name, not a column read.
+    """
+    for name, statement in macros.BOUNDING.items():
+        _, cut_at, body = statement.partition(") AS")
+        assert cut_at, name
+        assert unbounded(body) == set(), name
 
 
 @pytest.mark.parametrize("name", sorted(Page) + sorted(Fragment))

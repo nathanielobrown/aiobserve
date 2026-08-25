@@ -17,6 +17,7 @@ table edit has to be an edit here before it can pass.
 """
 
 import datetime as dt
+import json
 import re
 from collections import Counter
 from collections.abc import Callable, Sequence
@@ -804,6 +805,37 @@ def test_a_spend_bar_steps_by_decade_so_three_orders_of_magnitude_fill_it(
             assert step in classes, (cost, classes)
 
 
+def _titled(given: str | None, project: str | None, chars: int) -> str:
+    """What a tool call is called, restated in Python from the input the store holds.
+
+    The point of restating it is that this oracle must not read the derivation it checks
+    (`analyze/macros.py:tool_title`): a shared implementation would agree with itself whatever
+    it said. Each field is cut before it is chosen, the way the SQL cuts it, so a path longer
+    than the column loses its repository prefix off an already-bounded head.
+
+    Every input the corpus holds is a JSON object of strings; a fixture holding anything else
+    reads as no title here and goes red rather than passing quietly.
+    """
+    try:
+        asked = json.loads(given) if given is not None else None
+    except json.JSONDecodeError:
+        asked = None
+    fields = asked if isinstance(asked, dict) else {}
+
+    def head(key: str) -> str | None:
+        value = fields.get(key)
+        return value[: chars + 1] if isinstance(value, str) else None
+
+    path = head("file_path")
+    if path is not None:
+        if project and path.startswith(f"{project}/"):
+            path = path[len(project) + 1 :]
+        return path
+    if (described := head("description")) is not None:
+        return described
+    return (given or "")[: chars + 1]
+
+
 def labelled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, str]:
     """Every row of one session whose label the store composes, keyed the way a row is.
 
@@ -812,11 +844,15 @@ def labelled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, str
     is a row pointing at a node the reader did not ask for.
     """
     said: dict[str, str] = {}
-    for tool_id, name, given in store.execute(
-        "SELECT id, name, input FROM live_tool_calls WHERE session_id = ?", [session_id]
+    for tool_id, name, given, project in store.execute(
+        "SELECT t.id, t.name, t.input, s.project_dir FROM live_tool_calls t"
+        " LEFT JOIN sessions s ON s.id = t.session_id WHERE t.session_id = ?",
+        [session_id],
     ).fetchall():
-        # The tool and the head of what it was asked, which is what tells two Bash calls apart.
-        said[f"{Kind.TOOL}:{tool_id}"] = f"{name} {given or ''}".strip()
+        # The tool it called, always first — which tool this was is what a reader picks a call
+        # out of a tree by — and after it the title, which tells two `Read` rows apart.
+        titled = _titled(given, project, queries.NAV_CHARS)
+        said[f"{Kind.TOOL}:{tool_id}"] = f"{name}{LEAD_SEPARATOR}{titled}" if titled else name
     for call_id, spoken, model in store.execute(
         "SELECT id, text, model FROM live_api_calls WHERE session_id = ?", [session_id]
     ).fetchall():

@@ -13,10 +13,11 @@
 SELECT
     t.source,
     t.id AS tool_call_id,
-    -- What the tool was called and the head of what it was asked, which is what tells two
-    -- failures of one tool apart in the width of a row.
+    -- What the tool was called, and its title — which is what tells two failures of one tool
+    -- apart in the width of a row. Titled by the derivation every other surface that names a
+    -- tool call reads (`analyze/macros.py`).
     substr(t.name, 1, $nav_chars + 1) AS name,
-    substr(t.input, 1, $nav_chars + 1) AS input_head,
+    tool_title(t.input, s.project_dir, $nav_chars) AS title,
     -- Constant true under this filter, and selected anyway: a tool node carries the flag
     -- wherever it is built from, so every query behind one answers the same columns.
     t.is_error,
@@ -25,6 +26,9 @@ SELECT
     -- showed the first `$errors` can say how many it left rather than reading as the whole.
     count(*) OVER () AS matched_errors
 FROM live_tool_calls t
+-- What a path in the title is read against. LEFT joined, so a tool call whose session row is
+-- missing is a row titled with an absolute path rather than a failure the list drops.
+LEFT JOIN sessions s ON s.id = t.session_id
 WHERE t.session_id = $session_id
   AND t.is_error
 ORDER BY t.started_at, t.source, t."index", t.id

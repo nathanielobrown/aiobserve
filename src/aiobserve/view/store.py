@@ -18,7 +18,7 @@ from typing import Any, NamedTuple
 
 import duckdb
 
-from aiobserve.analyze import queries
+from aiobserve.analyze import macros, queries
 from aiobserve.analyze.queries import ParamValue
 from aiobserve.export.duckdb import SCHEMA_VERSION, held_schema_version
 
@@ -143,6 +143,8 @@ def open_store(db_path: Path) -> Iterator[duckdb.DuckDBPyConnection]:
         # Timestamps went in as UTC; a page rendered in the machine's local zone would print
         # times that no citation of the same rows reproduces.
         connection.execute("SET TimeZone='UTC'")
+        # The library's shared SQL functions, which several of the queries below call by name.
+        macros.install(connection)
         held = held_schema_version(connection)
         if held != SCHEMA_VERSION:
             raise SchemaMoved(f"{held or 'nothing'}")

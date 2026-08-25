@@ -1142,7 +1142,7 @@ def build_app(db_path: Path) -> FastAPI:
                         ),
                         detail_of(
                             "input",
-                            row["input_head"],
+                            row["input"],
                             row["input_chars"],
                             f"/fragment/input{at}",
                             detail,

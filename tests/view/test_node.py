@@ -20,7 +20,7 @@ from aiobserve.view import bounds
 from aiobserve.view.app import build_app, numbered
 from aiobserve.view.format import ELLIPSIS
 from aiobserve.view.labels import LABELS, label
-from aiobserve.view.nodes import BODY_URL, COLUMNS, Shape
+from aiobserve.view.nodes import BODY_URL, COLUMNS, LEAD_SEPARATOR, Shape
 from tests.conftest import ANCESTOR, DENSE_TURN, MAIN, SPINE
 from tests.view.conftest import (
     MISSING,
@@ -1010,14 +1010,17 @@ def test_a_log_row_opens_the_body_from_a_button_that_says_so(
 def test_a_tool_row_says_what_the_tool_was_asked(
     plant: Planter, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """A tool row leads with the input that identifies the call, not with its size.
+    """A tool call is titled by the input that identifies it, not by its size.
 
-    What identifies one differs by tool, so the row reads the field rather than the name: a
+    What identifies one differs by tool, so the title reads the field rather than the name: a
     file tool is its path, and a path inside the session's own project reads relative to it —
     the repository is the frame the reader is holding, and an absolute path spends the width
     of the column saying where the machine keeps it. A command is its description, with the
     command itself under it, because a reader scanning a call's tools wants what was intended
     before what was typed. Anything else is the head of the input as stored.
+
+    Derived once and read by every surface that names the call — that is the leaf below the
+    edge cases here, and it is what the title convention is for.
 
     Planted: the fixture corpus is redacted, so no recorded tool call carries a path, a
     description or a command — only the shape around them survives redaction.
@@ -1057,13 +1060,13 @@ def test_a_tool_row_says_what_the_tool_was_asked(
         page = planted.get(f"/session/{session_id}/thread/{source}/call/{call_id}").text
     rows = {tool_id: fields(page, "data-child", f"tool:{tool_id}") for tool_id in tools}
     # The project's own file reads from the project root, and the one outside it in full.
-    assert rows[tools[0]]["input_head"] == "src/aiobserve/view/app.py"
-    assert rows[tools[1]]["input_head"] == "/etc/hosts"
+    assert rows[tools[0]]["title"] == "src/aiobserve/view/app.py"
+    assert rows[tools[1]]["title"] == "/etc/hosts"
     # The command reads as what it was for, with what it ran under it.
-    assert rows[tools[2]]["input_head"] == "Read the tree"
+    assert rows[tools[2]]["title"] == "Read the tree"
     assert rows[tools[2]]["command"] == "git status --short"
     # And the tool with no field the rule knows shows the input as stored.
-    assert rows[tools[3]]["input_head"] == '{"todos": [{"content": "write the test"}]}'
+    assert rows[tools[3]]["title"] == '{"todos": [{"content": "write the test"}]}'
     assert "command" not in rows[tools[3]]
     # A directory whose name merely starts with the project's reads absolute: `aiobserve2` is
     # not inside `aiobserve`, and without the separator the guard carries it would relativise
@@ -1104,10 +1107,10 @@ def test_a_tool_row_says_what_the_tool_was_asked(
     with TestClient(build_app(guarded)) as planted:
         edges = planted.get(f"/session/{session_id}/thread/{source}/call/{call_id}").text
     beside = {tool_id: fields(edges, "data-child", f"tool:{tool_id}") for tool_id in tools}
-    assert beside[tools[0]]["input_head"] == sibling
-    assert beside[tools[1]]["input_head"] == "notes.md"
+    assert beside[tools[0]]["title"] == sibling
+    assert beside[tools[1]]["title"] == "notes.md"
     assert "command" not in beside[tools[1]]
-    assert beside[tools[2]]["input_head"] == '{"command": "ls"}'
+    assert beside[tools[2]]["title"] == '{"command": "ls"}'
     assert "command" not in beside[tools[2]]
     # A session whose project the store never recorded has no frame to read a path against,
     # so the path reads absolute rather than against nothing.
@@ -1120,6 +1123,61 @@ def test_a_tool_row_says_what_the_tool_was_asked(
     )
     with TestClient(build_app(homeless)) as planted:
         loose = planted.get(f"/session/{session_id}/thread/{source}/call/{call_id}").text
-    assert fields(loose, "data-child", f"tool:{tools[0]}")["input_head"] == (
+    assert fields(loose, "data-child", f"tool:{tools[0]}")["title"] == (
         f"{project}/src/aiobserve/view/app.py"
     )
+
+
+def test_one_tool_call_is_titled_the_same_way_wherever_it_is_named(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The four surfaces that name a tool call agree, because one derivation names it.
+
+    The pane's own heading, the tree row beside it, the row in its parent's children log, and
+    the session's errors list. They read four different queries at three different widths, so
+    the agreement is a fact about the derivation rather than about the page: before it was
+    shared, three of these showed the input JSON as stored and the fourth showed the path.
+
+    The lead is where they differ, and deliberately: a children log heads the tool's name in a
+    column of its own, so its row prints the words alone rather than printing `Read` twice.
+
+    Planted for the reason the leaf above is: redaction left no recorded input with a path in
+    it, and no failure whose input says what it was asked.
+    """
+    session_id, source, call_id = one(
+        store,
+        "SELECT session_id, source, api_call_id FROM live_tool_calls"
+        " GROUP BY 1, 2, 3 ORDER BY count(*) DESC, 1, 2, 3 LIMIT 1",
+    )
+    tool_id = one(
+        store,
+        "SELECT id FROM live_tool_calls WHERE session_id = ? AND source = ? AND api_call_id = ?"
+        ' ORDER BY "index" LIMIT 1',
+        [session_id, source, call_id],
+    )[0]
+    project = "/Users/planted/repos/aiobserve"
+    # A failed read of a file inside the session's own project: one row every one of the four
+    # surfaces has a reason to name — the errors list only lists what failed.
+    path = plant(
+        ("UPDATE sessions SET project_dir = ? WHERE id = ?", [project, session_id]),
+        (
+            "UPDATE tool_calls SET name = ?, input = ?, is_error = true WHERE id = ?",
+            ["Read", f'{{"file_path": "{project}/src/aiobserve/view/nodes.py"}}', tool_id],
+        ),
+    )
+    with TestClient(build_app(path)) as planted:
+        pane = planted.get(f"/session/{session_id}/thread/{source}/tool/{tool_id}").text
+        parent = planted.get(f"/session/{session_id}/thread/{source}/call/{call_id}").text
+        listed = planted.get(f"/session/{session_id}/errors").text
+    # The title the derivation composes: what the tool was, then what it was asked.
+    titled = f"Read{LEAD_SEPARATOR}src/aiobserve/view/nodes.py"
+    # Its own pane heads it, the tree row it stands on carries it, and the errors list — which
+    # reads a query of its own, over every thread of the session — carries the same string.
+    assert fields(pane, "data-body", "tool")["title"] == titled
+    assert fields(pane, "data-tree", f"tool:{tool_id}")["title"] == titled
+    assert fields(listed, "data-error", f"tool:{tool_id}")["title"] == titled
+    # And the children log under the parent call prints the words under its own `Title` column,
+    # with the lead standing in the `Tool` column beside it rather than twice in one row.
+    row = fields(parent, "data-child", f"tool:{tool_id}")
+    assert row["title"] == "src/aiobserve/view/nodes.py"
+    assert row["name"] == "Read"

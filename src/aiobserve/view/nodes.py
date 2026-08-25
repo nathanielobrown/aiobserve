@@ -107,7 +107,7 @@ COLUMNS: dict[Shape, tuple[Column, ...]] = {
     Shape.TOOLS: (
         Column("tool_index", "#", css="number"),
         Column("name", TOOL_ICON),
-        Column("input_head", "⌨", css="what"),
+        Column("title", "⌨", css="what"),
         Column("is_error", ERROR_ICON),
         Column("result_chars", "¶", css="number"),
         Column("started_at", "◷", css="when"),
@@ -513,9 +513,11 @@ def tool_node(session_id: str, source: str, row: Row) -> Node:
         session_id=session_id,
         source=source,
         node_id=row["tool_call_id"],
-        # The name and the head of what it was asked, which is what tells two calls of one
-        # tool apart in the width of a tree.
-        words=_words(f"{row['name']} {row.get('input_head') or ''}".strip()),
+        # The tool's name leads, and its title says which call of that tool this is — a page
+        # of twenty `Read` rows otherwise says twenty times that a file was read. The title is
+        # the query's (`analyze/macros.py`), so the four surfaces that name a tool call agree.
+        lead=row["name"],
+        words=_words(row.get("title")),
         cost_usd=None,
         unpriced_api_calls=0,
         share=None,

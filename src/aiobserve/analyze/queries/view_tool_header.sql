@@ -15,6 +15,10 @@ SELECT
     t.api_call_id,
     n.id AS turn_id,
     substr(t.name, 1, $head_chars) AS name,
+    -- What the pane heads the call with, by the derivation the tree row, the errors list and
+    -- the parent's children log all read (`analyze/macros.py`) — so a reader who clicked a
+    -- row lands on a page headed the way the row was.
+    tool_title(t.input, s.project_dir, $head_chars) AS title,
     t.server_side,
     t.is_error,
     t.incomplete,
@@ -27,7 +31,7 @@ SELECT
     t.started_at,
     t.ended_at,
     date_diff('millisecond', t.started_at, t.ended_at) AS wall_ms,
-    substr(t.input, 1, $detail_chars + 1) AS input_head,
+    substr(t.input, 1, $detail_chars + 1) AS input,
     length(t.input) AS input_chars,
     -- NULL where the tool returned nothing at all, which is not the same as returning "".
     substr(t.result, 1, $detail_chars + 1) AS result_head,
@@ -58,4 +62,7 @@ LEFT JOIN live_turns n
     ON n.session_id = c.session_id AND n.source = c.source AND n.id = c.turn_id
 LEFT JOIN live_agent_runs a
     ON a.session_id = t.session_id AND a.tool_use_id = t.id AND t.source <> a.id
+-- What a path in the title is read against, LEFT joined for the reason the other three
+-- queries that title a tool call state.
+LEFT JOIN sessions s ON s.id = t.session_id
 WHERE t.session_id = $session_id AND t.source = $source AND t.id = $tool_call_id;

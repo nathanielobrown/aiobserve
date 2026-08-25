@@ -6,9 +6,9 @@
    row fills all of them, so a cell is always under its own heading. The words above them are
    the registry's, the same one a pane's facts read.
 
-   A row is still a line that gets a reader to the child's own page rather than a preview of
-   it, with one exception: what a tool was asked is what tells two calls of one tool apart, so
-   a tool row carries the head of its input in the column it is identified by.
+   A row is a line that gets a reader to the child's own page rather than a preview of it: what
+   it prints in the wide column is the child's title, the same words the tree row and the pane
+   heading use (`docs/viewer.md`).
 
    The heading counts the level and not the page. A reader who lands on page 2 of a turn's
    calls is reading a turn of however many calls it made, not a turn of a hundred. #}
@@ -81,10 +81,11 @@
         {%- elif shape == 'tools' %}
         {{ cell('tool_index', item.row.tool_index | count, 'number') }}
         {{ cell('name', item.row.name | line) }}
-        {#- The command reads through the same cut as the head above it, and is left out
-            rather than dashed where the tool ran none: a dash under a description is a line
-            of nothing where the second line means "and this is what it ran". #}
-        {{ what(item.node, suffix, 'input_head', item.row.input_head | line,
+        {#- The title alone, with the name already in its own column beside it. The command
+            reads through the same cut, and is left out rather than dashed where the tool ran
+            none: a dash under a description is a line of nothing where the second line means
+            "and this is what it ran". #}
+        {{ what(item.node, suffix, 'title', item.node.log_title,
                 item.row.command | line if item.row.command else '') }}
         {{ cell('is_error', ('error' if item.row.is_error else none) | text) }}
         {{ cell('result_chars', item.row.result_chars | count, 'number') }}
