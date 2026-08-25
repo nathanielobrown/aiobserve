@@ -182,7 +182,31 @@ Each observed subagent transcript has a neighboring `meta.json`, and each meta h
 | `taskKind`, `teamName`, `color`, `planModeRequired`, `permissionMode` | 71 | Teammate fields; `taskKind` is `in_process_teammate` |
 | `name`, `worktreePath`, `worktreeBranch`, `customAgentType`, `stoppedByUser` | 94, 86, 86, 39, 3 | Recorded but not yet read |
 
-What a run was asked and what it answered are not in the meta. Both are on the spawning call: its `prompt` and its `result`. Read the field rather than the tool name — every one of the 2,629 `Agent` calls that spawned a run carries a `prompt`, and the six `Workflow` calls that spawned one carry `name` and `args` instead. One spawning call of the 2,635 has no `result`, which is a run whose parent received nothing (scanned 2026-08-25).
+### Read a run's ask and answer off the call that spawned it
+
+What a run was asked and what it answered are not in the meta. Both are on the spawning call: its `prompt` and its `result`. Read the field rather than the tool name, because the tool is not always `Agent` and a fan-out shares one call among many runs:
+
+```sql
+-- data/traces.duckdb, every agent run, no time window. Scanned 2026-08-25.
+SELECT tc.name,
+       count(*) AS runs,
+       count(DISTINCT (tc.session_id, tc.id)) AS spawning_calls,
+       count(json_extract_string(tc.input, '$.prompt')) AS with_prompt,
+       count(tc.result) AS with_result
+FROM agent_runs a
+JOIN tool_calls tc ON tc.session_id = a.session_id
+                  AND tc.id = a.tool_use_id AND tc.source <> a.id
+GROUP BY ALL;
+```
+
+| `name` | Runs | Spawning calls | With `prompt` | With `result` |
+| --- | ---: | ---: | ---: | ---: |
+| `Agent` | 2,555 | 2,555 | 2,555 | 2,554 |
+| `Workflow` | 180 | 6 | 0 | 180 |
+
+So 180 of the 2,735 runs with a spawning call — 6.6% — have no ask to read, because a fan-out is launched once and the launcher is asked in other words. The one `Agent` run without a result is a run whose parent received nothing. No result in the store is JSON, so what comes back is prose.
+
+Count runs, not calls. `tool_calls.id` is unique within a session, not across the store: the same query keyed on `id` alone counts 2,629 `Agent` rows, 74 of which belong to a session whose runs point at something else.
 
 Of the 254 metas without `toolUseId`, 180 belong to workflow agents, 71 to teammates, and three to forks. The team mechanism starts a teammate without a tool call. Preserve that orphaned run with a warning; dropping it would recreate the prior importer's false claim that all agent runs came from direct tool calls.
 
