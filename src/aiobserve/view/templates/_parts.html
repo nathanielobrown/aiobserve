@@ -24,6 +24,17 @@
 {%- endmacro %}
 
 
+{# The mark saying what kind of node this is, in the character the children log's column heads
+   already use for the same thing. `aria-hidden` and no `title`: the mark stands for a word the
+   markup around it already carries — the tree row's class, the crumb's field name, the pane's
+   `data-body` — so a reader who cannot see it loses nothing, and a `title` here would be the
+   same word 3,217 times in one page. Written with no space of its own: every caller puts one
+   after it, and a byte here is 3,217 bytes of page (`view/bounds.py`). #}
+{% macro icon(node) -%}
+<span class="icon" aria-hidden="true">{{ node.icon }}</span>
+{%- endmacro %}
+
+
 {# The mark on a label a model wrote rather than a session. Bare wherever a label repeats —
    a tree row, a crumb, a log line, a walk control — because what a reader wants beside a mark
    is on the pane, once, hanging off the paragraph the pass wrote. #}

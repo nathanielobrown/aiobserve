@@ -111,18 +111,17 @@ PAGE_BYTES = 500_000
 # the tree was already four fifths of the page. That is the whole of the increase, and what a
 # reader gets for it is a level of two hundred read where a level of fifty was — the fetch a
 # tail row offers is the same rows over a second request, so the bytes were already reachable;
-# what moved is how many clicks reach them. The arithmetic under it comes to 4,865,334 B.
+# what moved is how many clicks reach them.
 #
-# Raised again from 4,900,000, this time for a page that has not grown yet. The tree is about
-# to carry a glyph saying what kind each row is, in the pattern the children log's column
-# headers already use: `<span class="icon" aria-hidden="true">❖</span>` is 38 B of markup
-# around a 3-byte mark, 48 B a row, and 3,217 rows of it is 154,416 B. The old ceiling left
-# 34,666 B, which is 10 B a row — so the glyph could not land without this line moving, and
-# moving it there rather than here would make a template edit an argument about a ceiling.
-# The headroom is therefore held deliberately and priced: 4,865,334 B today, 154,416 B for the
-# glyph, and 30,250 B of the rounding every ceiling here carries. Until the glyph lands a
-# reader gets nothing for this raise, and `TREE_ROW_BYTES` is pinned from below so the room
-# cannot be spent by a row that quietly grew instead.
+# Raised again from 4,900,000 for the mark every row now carries saying what kind of node it
+# is, in the pattern the children log's column heads already use.
+# `<span class="icon" aria-hidden="true">❖</span> ` is 48 B of markup around a 3-byte mark,
+# plus the space after it: 49 B a row, and 3,217 rows of it is 157,633 B, with 800 B more on
+# the crumbs and 73 B on the pane's heading and the browser tab. The old ceiling left 34,666 B,
+# 10 B a row, so the raise landed before the markup rather than a template edit becoming an
+# argument about a ceiling. What a reader gets for it is a tree read by shape rather than by
+# label. The arithmetic under it comes to 5,023,767 B, and `TREE_ROW_BYTES` is pinned from
+# below so the 26,233 B left over cannot be spent by a row that quietly grew instead.
 NODE_BYTES = 5_050_000
 # What the markup around one row of the list costs, with the content the row carries taken off.
 # Re-measured through the app by the leaf at the bottom of this file, every cap full of `&`,
@@ -191,9 +190,9 @@ LOG_ROW_STRINGS = 3
 # wider than what was measured, inside the 67 B this leaves over it.
 MEASURED_PAGER_BYTES = 600
 # And what the markup around one crumb of the chain down to the selection costs: the link, the
-# node's key, and the glyph that says who named it. Measured the same way: 537 B less 240 B of
-# label and 38 B of knobs, leaving 259 B.
-MEASURED_CRUMB_MARKUP = 280
+# node's key, the mark saying what kind of node the step is, and the glyph saying who named it.
+# Measured the same way — 915 B less 550 B of label and 50 B of knobs, leaving 315 B.
+MEASURED_CRUMB_MARKUP = 330
 # And what the markup around one previewed value costs — the heading, the `<pre>` and the line
 # offering the rest of it — with the preview itself taken off.
 MEASURED_DETAIL_MARKUP = 600
@@ -213,7 +212,9 @@ MARKED_PANE_DETAILS = 1
 # The preset switcher rides here too, three links carrying the node's own URL, the children
 # log's own table head — a word and an icon for each column of the shape the log lists — and,
 # on a pane reading a failed tool call, the step to the failure before it and the one after.
-# Re-measured through the app by the leaf at the bottom of this file at 17,065 B. Up to five
+# The pane's own heading and the browser tab each carry the mark saying what kind of node the
+# page is about, which is the whole of what the two of them cost here.
+# Re-measured through the app by the leaf at the bottom of this file at 17,138 B. Up to five
 # of its strings are tree labels — the page title, and the two steppers under the pane — so it
 # moves with `queries.NAV_CHARS`.
 MEASURED_NODE_CHROME = 17_500

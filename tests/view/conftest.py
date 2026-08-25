@@ -284,6 +284,8 @@ class _Element(HTMLParser):
         self.depth = 0
         self.field: str | None = None
         self.fields: dict[str, str] = {}
+        self.marking = False
+        self.marks: list[str] = []
         self.attributes: list[dict[str, str | None]] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -298,13 +300,18 @@ class _Element(HTMLParser):
         if (name := found.get("data-field")) is not None:
             self.field = name
             self.fields.setdefault(name, "")
+        elif "icon" in (found.get("class") or "").split():
+            self.marking = True
 
     def handle_data(self, data: str) -> None:
         if self.field is not None:
             self.fields[self.field] += data
+        elif self.marking:
+            self.marks.append(data)
 
     def handle_endtag(self, tag: str) -> None:
         self.field = None
+        self.marking = False
         if self.depth:
             self.depth -= 1
 
@@ -318,6 +325,16 @@ def _element(html: str, attribute: str, value: str) -> _Element:
 def fields(html: str, attribute: str, value: str) -> dict[str, str]:
     """One element's labelled fields, keyed by `data-field` and stripped of whitespace."""
     return {name: text.strip() for name, text in _element(html, attribute, value).fields.items()}
+
+
+def icons(html: str, attribute: str, value: str) -> list[str]:
+    """The bare marks inside the element carrying `attribute="value"`, in document order.
+
+    Read by class rather than by a `data-` key: a mark is not a value the store holds, so it
+    carries no `data-field` (`.claude/rules/viewer-ui.md`) — and a key naming it would be
+    twenty bytes on every one of a node page's 3,217 tree rows.
+    """
+    return _element(html, attribute, value).marks
 
 
 def inside(html: str, attribute: str, value: str, inner: str) -> list[str]:

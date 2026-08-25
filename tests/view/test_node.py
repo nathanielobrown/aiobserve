@@ -22,7 +22,17 @@ from aiobserve.view.format import ELLIPSIS
 from aiobserve.view.labels import LABELS, label
 from aiobserve.view.nodes import BODY_URL, COLUMNS, Shape
 from tests.conftest import ANCESTOR, DENSE_TURN, MAIN, SPINE
-from tests.view.conftest import MISSING, Planter, block, fields, inside, one, plain, values
+from tests.view.conftest import (
+    MISSING,
+    Planter,
+    block,
+    fields,
+    icons,
+    inside,
+    one,
+    plain,
+    values,
+)
 
 # The corpus's densest main-thread turn — 4 api calls under it — so the pane's children log
 # has more than one row and the tree has a level under the selection worth rendering.
@@ -86,6 +96,24 @@ KINDS: dict[str, tuple[str, str]] = {
 }
 
 
+# The mark each kind carries wherever a page names one of its nodes. Written out here rather
+# than read from `nodes.GLYPHS`: these are the viewer's whole visual vocabulary, and a test
+# that imported the table would agree with any edit to it. Three of them are shared with the
+# heading of the column that counts the kind, which the leaf below the log sweep holds.
+MARKS = {
+    "session": "❖",
+    "turn": "❯",
+    "run": "◎",
+    "call": "⇄",
+    "tool": "⚒",
+    "compaction": "⊟",
+    # One mark for both buckets: each holds what the transcript could not attach, and a reader
+    # meets them as one kind of hole rather than two.
+    "unattributed": "∅",
+    "unattached": "∅",
+}
+
+
 def node_url(store: duckdb.DuckDBPyConnection, kind: str) -> str:
     """The URL of one recorded node of `kind`, whichever the store answers with."""
     sql, shape = KINDS[kind]
@@ -115,6 +143,19 @@ def test_every_kind_of_node_serves_a_page_that_says_what_it_is(
     assert crumbs[-1] == selected
     # And the selection's own row links to the URL that was asked for.
     assert inside(page.text, "data-tree", selected, "href")[0] == url
+    # Four places on this page name the node, and every one of them says what kind it is with
+    # the same character: the pane's heading, the browser tab, the last crumb, and the row the
+    # tree marks. A reader learns eight marks once and then reads a tree without reading a
+    # label — which is the whole of what the mark buys, so a surface missing it is a surface
+    # where the same node looks like something else.
+    mark = MARKS[kind]
+    assert icons(page.text, "data-body", kind) == [mark], url
+    assert page.text.count(f"<title>{mark} ") == 1, url
+    assert icons(page.text, "data-crumb", crumbs[-1]) == [mark], url
+    assert icons(page.text, "data-tree", selected) == [mark], url
+    # And a crumb above the selection is marked as what *it* is, not as what the page is
+    # about: the chain says the kind of every step down to here.
+    assert icons(page.text, "data-crumb", crumbs[0]) == [MARKS["session"]], url
 
 
 @pytest.mark.parametrize("kind", list(KINDS))
@@ -492,7 +533,10 @@ def test_a_read_of_a_markdown_file_shows_the_source_marked_up_and_not_rendered(
         # The source, whole, with the heading marked as a heading rather than made one...
         assert plain(marked) == READ
         assert '<span class="gh"># Title</span>' in marked
-        assert "<h1>" not in page
+        # ...nowhere in the preview, and nowhere else on the page either: the pane heads itself
+        # with an `<h1>` and this file's `#` must not have made a second one.
+        assert "<h1>" not in marked
+        assert page.count("<h1>") == 1
         # ...and the line numbers Claude Code prefixes each line with kept out of the lexer's
         # way, because a gutter is not part of the file.
         assert '<span class="lineno">1\t</span>' in marked
@@ -893,6 +937,32 @@ def test_every_children_log_heads_the_columns_its_rows_fill(
     body = client.get(mount)
     assert body.status_code == 200, mount
     assert values(body.text, "colspan") == [str(len(named))], mount
+
+
+# The three kinds a parent's children log counts in a column of its own, beside that column.
+SHARED = {"call": "api_calls", "tool": "tool_calls", "run": "agent_type"}
+
+
+def test_a_kind_is_marked_the_same_in_the_tree_and_in_the_column_that_counts_it(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A column head and a tree row are one reader meeting one thing twice, so they agree.
+
+    `⇄` over a turn's api-call count and `⇄` on an api call's own row are the same fact said in
+    two places, and a reader who learned the mark in a table head has to find it again in the
+    tree. Both sides are read off served pages rather than off the table behind them, so a
+    mapping that let the two drift would show up here as two characters.
+    """
+    headed: dict[str, str] = {}
+    for sql, template, _ in LEVELS.values():
+        headed |= headings(client.get(template.format(*one(store, sql))).text)
+    for kind, field in SHARED.items():
+        page = client.get(node_url(store, kind)).text
+        (selected,) = values(page, "data-selected")
+        (mark,) = icons(page, "data-tree", selected)
+        # The heading is the mark and then the word for the column, which is what `headings`
+        # reads back with its whitespace collapsed.
+        assert headed[field].startswith(f"{mark} "), (kind, field, headed[field])
 
 
 def test_a_log_row_opens_the_body_from_a_button_that_says_so(

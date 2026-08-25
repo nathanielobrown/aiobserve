@@ -68,6 +68,15 @@ class Column(NamedTuple):
     css: str = ""
 
 
+# The marks a column head and a node's own kind both carry. Written once, so the `⇄` over a
+# turn's api-call count and the `⇄` on an api call's row in the tree cannot drift apart: they
+# are one reader meeting one thing twice. The rest of each vocabulary is its own — a column
+# counts things a kind is not, and two kinds no column counts are marked below.
+CALL_ICON = "⇄"
+TOOL_ICON = "⚒"
+RUN_ICON = "◎"
+ERROR_ICON = "⚠"
+
 # What each shape of children log shows, column by column, in the order it shows them. Per
 # shape because the columns are the shape's own: what tells two turns apart is not what tells
 # two tool calls apart. Every row fills every column of its shape — a log that skipped a cell
@@ -80,8 +89,8 @@ COLUMNS: dict[Shape, tuple[Column, ...]] = {
     Shape.TURNS: (
         Column("turn_index", "#", css="number"),
         Column("label", "☰", css="what"),
-        Column("api_calls", "⇄", css="number"),
-        Column("tool_calls", "⚒", css="number"),
+        Column("api_calls", CALL_ICON, css="number"),
+        Column("tool_calls", TOOL_ICON, css="number"),
         Column("cost_usd", "$", css="number"),
         Column("started_at", "◷", css="when"),
         Column("body", "⌄"),
@@ -90,7 +99,7 @@ COLUMNS: dict[Shape, tuple[Column, ...]] = {
         Column("call_index", "#", css="number"),
         # A call's own words are on its page: the row is named by the model that answered.
         Column("model", "◈", css="what"),
-        Column("tool_calls", "⚒", css="number"),
+        Column("tool_calls", TOOL_ICON, css="number"),
         Column("text_chars", "¶", css="number"),
         Column("cost_usd", "$", css="number"),
         Column("started_at", "◷", css="when"),
@@ -98,17 +107,17 @@ COLUMNS: dict[Shape, tuple[Column, ...]] = {
     ),
     Shape.TOOLS: (
         Column("tool_index", "#", css="number"),
-        Column("name", "⚒"),
+        Column("name", TOOL_ICON),
         Column("input_head", "⌨", css="what"),
-        Column("is_error", "⚠"),
+        Column("is_error", ERROR_ICON),
         Column("result_chars", "¶", css="number"),
         Column("started_at", "◷", css="when"),
         Column("body", "⌄"),
     ),
     Shape.RUNS: (
-        Column("agent_type", "◎"),
+        Column("agent_type", RUN_ICON),
         Column("label", "☰", css="what"),
-        Column("tool_errors", "⚠", css="number"),
+        Column("tool_errors", ERROR_ICON, css="number"),
         Column("cost_usd", "$", css="number"),
         Column("started_at", "◷", css="when"),
         Column("body", "⌄"),
@@ -131,6 +140,27 @@ class Kind(StrEnum):
     UNATTRIBUTED = "unattributed"
     UNATTACHED = "unattached"
 
+
+# The mark the two buckets share: each holds what the transcript could not attach, and a
+# reader meets them as one kind of hole rather than two.
+BUCKET_ICON = "∅"
+
+# What each kind is marked with, wherever a page names a node of it — the tree row, the crumb,
+# the pane's own heading, and the browser tab. Eight characters a reader learns once and then
+# reads a tree by without reading a label, which is why the table is here rather than in a
+# template: one of them written into one surface is a node that looks like something else on
+# that surface. Total over `Kind`, so a kind added without a mark is a `KeyError` on the first
+# page that renders it rather than a row saying nothing.
+GLYPHS: dict[Kind, str] = {
+    Kind.SESSION: "❖",
+    Kind.TURN: "❯",
+    Kind.RUN: RUN_ICON,
+    Kind.CALL: CALL_ICON,
+    Kind.TOOL: TOOL_ICON,
+    Kind.COMPACTION: "⊟",
+    Kind.UNATTRIBUTED: BUCKET_ICON,
+    Kind.UNATTACHED: BUCKET_ICON,
+}
 
 # Which shape of log lists a kind. For the one reader that knows a child and needs its
 # parent's table: an expansion arrives as a row of the log it opens under, and that row spans
@@ -269,6 +299,11 @@ class Node:
     # Whether the tool call came back an error. Only ever True for a `Kind.TOOL` node: it is
     # the column the tree's mark and the errors list (`view/errors.py`) are both read from.
     is_error: bool = False
+
+    @property
+    def icon(self) -> str:
+        """The mark saying what kind of node this is, for every surface that names it."""
+        return GLYPHS[self.kind]
 
     @property
     def label(self) -> str:

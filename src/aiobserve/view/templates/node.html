@@ -4,7 +4,7 @@
 {% import "_parts.html" as parts %}
 {% import "_tree.html" as treeview %}
 
-{% block title %}{{ selection.label }} · aiobserve{% endblock %}
+{% block title %}{{ selection.icon }} {{ selection.label }} · aiobserve{% endblock %}
 
 {# One node of a session, whole: the tree it sits in, and the pane that reads it. Both arrive
    in one response, and a click on a tree row re-fetches this same URL — htmx takes `#pane`
@@ -22,8 +22,8 @@
     {# What every row of the tree does on a click, written once: fetch the row's own URL, take
        `#pane` out of the response and put it where the pane is, and swap these rows in out of
        band. htmx reads each of these off the closest ancestor carrying it, so the rows below
-       carry only the URL that differs between them — 817 rows is about half a node page's budget
-       (`.claude/rules/viewer-ui.md`). `outerHTML` because `hx-select` hands back the `#pane`
+       carry only the URL that differs between them — 3,217 rows is four fifths of a node page's
+       budget (`.claude/rules/viewer-ui.md`). `outerHTML` because `hx-select` hands back the `#pane`
        element itself; without `hx-target` htmx would swap it into the clicked link. #}
     <div id="tree-rows" hx-target="#pane" hx-swap="outerHTML"
          hx-select="#pane" hx-select-oob="#tree-rows" hx-push-url="true">
@@ -41,7 +41,7 @@
     <nav class="crumbs" data-crumbs="{{ selection.kind }}" aria-label="Where this node sits">
       {% for step in chain %}
       <a data-crumb="{{ step.key }}" href="{{ step.url }}{{ suffix }}"
-        >{{ parts.glyph(step) }}<span data-field="{{ step.kind }}">{{ step.label }}</span></a>
+        >{{ parts.icon(step) }} {{ parts.glyph(step) }}<span data-field="{{ step.kind }}">{{ step.label }}</span></a>
       {% endfor %}
     </nav>
     {{ body.pane(selection, header, suffix) }}

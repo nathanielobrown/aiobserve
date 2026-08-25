@@ -125,6 +125,7 @@ HIGHLIGHT_CHARS = 256_000
 # node page's ceiling keeps for this row's next addition.
 # Nearly all of the row is its URL written twice — the href a reader sees and the `hx-get`
 # htmx fetches — because the swap the two of them perform is written once on `#tree-rows` and
-# inherited. A store whose agent runs carry longer ids than the recorded corpus does is a
-# re-measure.
-TREE_ROW_BYTES = 1262
+# inherited. The rest is the label, the mark saying what kind of node the row is, and the
+# spend beside it. A store whose agent runs carry longer ids than the recorded corpus does is
+# a re-measure.
+TREE_ROW_BYTES = 1311

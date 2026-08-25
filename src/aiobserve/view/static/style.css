@@ -180,9 +180,6 @@ li.more > button:hover { background-color: color-mix(in srgb, var(--mark) 12%, t
    a table gives it the remainder; `min-width: 0` is what lets it then be cut rather than
    pushing the numbers off the right. */
 #pane .log th { color: var(--dim); font-size: var(--type-label); font-weight: 600; }
-/* The mark before a heading's word. It says nothing a screen reader needs — the word beside
-   it is the same fact — so it is dim and small, and the markup hides it from the reader. */
-#pane .log th .icon { color: var(--dim); font-style: normal; }
 #pane .log td.what { width: 100%; min-width: 0; }
 #pane .log td.what .primary { overflow-wrap: anywhere; }
 /* The line under it is the command a description described: one long line of shell, held to
@@ -305,6 +302,11 @@ ol.errors .source { color: var(--dim); }
 .enrichment { color: var(--dim); margin: var(--space-1) 0; }
 section.enrichment { border-left: 2px solid var(--line); padding-left: var(--space-2); }
 .friction { font-style: italic; }
+/* The mark saying what a thing is: what kind of node a row, a crumb or a heading names, and
+   what a children log's column counts. It says nothing a screen reader needs — the word or the
+   label beside it is the same fact — so it is dim, and the markup hides it. Upright inside a
+   heading, which the table sets in italics. */
+.icon { color: var(--dim); font-style: normal; }
 /* The mark on a string a model wrote. Not dimmed with the rest — it is the one thing on a
    tree row that says where the label came from, and a dimmed mark reads as decoration. */
 .glyph { color: inherit; cursor: help; }
