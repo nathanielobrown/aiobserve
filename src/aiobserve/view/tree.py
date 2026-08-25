@@ -218,9 +218,13 @@ def _thread_level(
     compactions that happened between two turns are here; one that happened *during* a turn is
     a child of that turn (`_marks`).
     """
+    # One mapping per query, because the two take different widths — and the mapping a query
+    # runs under is the mapping it is cited by, so a reader re-running the line gets this page.
     keyed: dict[str, ParamValue] = {"session_id": corpus.session_id, "source": source}
-    turns = page_rows(connection, Page.TREE_TURNS, **keyed, nav_chars=queries.NAV_CHARS)
-    marks = page_rows(connection, Page.COMPACTIONS, **keyed, chip_chars=queries.NAV_CHARS)
+    listed = keyed | {"nav_chars": queries.NAV_CHARS}
+    chipped = keyed | {"chip_chars": queries.NAV_CHARS}
+    turns = page_rows(connection, Page.TREE_TURNS, **listed)
+    marks = page_rows(connection, Page.COMPACTIONS, **chipped)
     # The thread's calls that answer no turn, as one group — the bucket's own row, read the
     # same way the bucket's own page reads it.
     standing = unattributed(connection, corpus, source)
@@ -251,7 +255,7 @@ def _thread_level(
         loose_runs = [run for run in corpus.runs if run["spawn_source"] is None]
         if loose_runs:
             placed.append(unattached_node(corpus.session_id, loose_runs, corpus.whole))
-    return Level(placed, [(Page.TREE_TURNS, keyed), (Page.COMPACTIONS, keyed), (digest, bound)])
+    return Level(placed, [(Page.TREE_TURNS, listed), (Page.COMPACTIONS, chipped), (digest, bound)])
 
 
 def _interleave[T](
@@ -287,8 +291,12 @@ def _marks(
     """
     if turn_id is None:
         return [], []
-    keyed: dict[str, ParamValue] = {"session_id": corpus.session_id, "source": source}
-    rows = page_rows(connection, Page.COMPACTIONS, **keyed, chip_chars=queries.NAV_CHARS)
+    keyed: dict[str, ParamValue] = {
+        "session_id": corpus.session_id,
+        "source": source,
+        "chip_chars": queries.NAV_CHARS,
+    }
+    rows = page_rows(connection, Page.COMPACTIONS, **keyed)
     return [
         (
             (row["compaction_id"], compaction_node(corpus.session_id, source, row)),
@@ -349,8 +357,8 @@ def _calls_level(
     runs those calls spawned. One function for both because the two differ by that binding.
     """
     keyed: dict[str, ParamValue] = {"session_id": corpus.session_id, "source": source}
-    bound = keyed | {"turn_id": turn_id}
-    calls = page_rows(connection, Page.TREE_CALLS, **bound, nav_chars=queries.NAV_CHARS)
+    bound = keyed | {"turn_id": turn_id, "nav_chars": queries.NAV_CHARS}
+    calls = page_rows(connection, Page.TREE_CALLS, **bound)
     marks, mark_ran = _marks(connection, corpus, source, turn_id)
     # Each row keyed by its own id, which is what `_hoisted` reads to place a run after the
     # call that spawned it. A compaction's id answers no spawning edge, so it just passes.
@@ -387,8 +395,9 @@ def _tools_level(
         "source": source,
         "api_call_id": api_call_id,
         "turn_id": turn_id,
+        "nav_chars": queries.NAV_CHARS,
     }
-    rows = page_rows(connection, Page.TREE_TOOLS, **bound, nav_chars=queries.NAV_CHARS)
+    rows = page_rows(connection, Page.TREE_TOOLS, **bound)
     under = None if api_call_id is not None else turn_id
     marks, mark_ran = _marks(connection, corpus, source, under)
     placed = _interleave(

@@ -104,6 +104,7 @@ def test_a_citation_tuple_maps_to_a_working_url(
     assert fields(response.text, "id", "citation") == {
         "view_records": f"-- queries/view_records.sql session_id={session_id} source={source}"
         f" after={line_no - 1} page_records={bounds.RECORDS.default}"
+        f" preview_chars={queries.RECORD_PREVIEW}"
     }
 
 

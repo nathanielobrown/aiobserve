@@ -333,6 +333,7 @@ def test_a_turn_holds_its_own_compactions_and_an_overlapped_instant_goes_to_the_
     cited = fields(pages[inner], "id", "citation")
     assert cited["view_compactions"] == (
         f"-- queries/view_compactions.sql session_id={SPINE} source={MAIN}"
+        f" chip_chars={queries.NAV_CHARS}"
     )
 
 

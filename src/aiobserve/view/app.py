@@ -1368,10 +1368,14 @@ def build_app(db_path: Path) -> FastAPI:
         """
         checked(size, bounds.RECORDS.ceiling)
         keyed: dict[str, ParamValue] = {"session_id": session_id, "source": source}
-        bound = keyed | {"after": after, "page_records": size}
+        bound = keyed | {
+            "after": after,
+            "page_records": size,
+            "preview_chars": queries.RECORD_PREVIEW,
+        }
         with open_store(resolved) as connection:
             page = paged(
-                page_rows(connection, Page.RECORDS, **bound, preview_chars=queries.RECORD_PREVIEW),
+                page_rows(connection, Page.RECORDS, **bound),
                 "matched_records",
                 "line_no",
             )

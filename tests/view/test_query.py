@@ -88,6 +88,25 @@ def test_every_citation_a_page_carries_links_to_the_query_it_names(
         assert client.get(href).status_code == 200, href
 
 
+@pytest.mark.parametrize("path", CITING)
+def test_a_citation_quotes_every_binding_its_query_takes(path: str, client: TestClient) -> None:
+    """A page cites what it ran — all of it, not the bindings that happen to vary by page.
+
+    A width has a production default, so a citation leaving it out reads as a run at that
+    default. That is true until the day a page picks its own width, and it is already two
+    spellings of one habit: a reader comparing the line under one page with the line under the
+    next cannot tell a query bound differently from a query cited differently.
+
+    Every parameter the manifest declares and not exactly them: a page may bind more than the
+    file takes — the sessions list composes its own sort, page and widths around a query that
+    declares one (`view/listing.py`) — and what it composed is part of what it ran.
+    """
+    lines = fields(client.get(path).text, "id", "citation")
+    assert lines, path
+    for name, line in lines.items():
+        assert set(queries.QUERIES[name].params) <= set(bound(line)), name
+
+
 def test_the_query_page_serves_the_statement_the_citation_named(client: TestClient) -> None:
     """Following a citation lands on that query's file, whole, under the bindings cited.
 

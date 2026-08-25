@@ -814,11 +814,17 @@ def test_a_node_page_cites_every_query_it_ran(client: TestClient) -> None:
             f"-- queries/view_session_header.sql session_id={SPINE}"
             " head_chars=100 item_chars=60 head_items=5"
         ),
-        "view_tree_turns": f"-- queries/view_tree_turns.sql session_id={SPINE} source={MAIN}",
+        "view_tree_turns": (
+            f"-- queries/view_tree_turns.sql session_id={SPINE} source={MAIN}"
+            f" nav_chars={queries.NAV_CHARS}"
+        ),
         # A run is printed twice on this page — as a tree row and as a children log row — so
         # the citation says which of the two widths this request read them at: the wider.
         "view_runs": f"-- queries/view_runs.sql session_id={SPINE} chip_chars={queries.LOG_CHARS}",
-        "view_compactions": f"-- queries/view_compactions.sql session_id={SPINE} source={MAIN}",
+        "view_compactions": (
+            f"-- queries/view_compactions.sql session_id={SPINE} source={MAIN}"
+            f" chip_chars={queries.NAV_CHARS}"
+        ),
         # The whole thread in outline, which is what places the runs: no window, so no paging.
         "session_digest": (
             f"-- queries/session_digest.sql session_id={SPINE} log_chars={queries.LOG_CHARS}"
