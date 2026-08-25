@@ -96,8 +96,8 @@ PAGE_BYTES = 500_000
 # rows in its own place, without a page boundary anywhere. Widening the window is a reader
 # reaching further per click, and pinning it here rather than against `PAGE_BYTES` keeps that
 # choice off the list pages, whose ceilings are derived against the number above. The
-# arithmetic under it — `worst_node_bytes`, at every ceiling at once — comes to 1,542,966 B
-# today, and the leaf at the bottom of this file is what keeps that true. Raised from 1,050,000
+# arithmetic under it — `worst_node_bytes`, at every ceiling at once — is kept true by the
+# leaf at the bottom of this file, and the total is in the last line below. Raised from 1,050,000
 # when the children log's rows began saying what each child was asked: a row went from 1,654 B
 # to 6,079 B, and 100 of them is 442,500 B more page. That is what a reader gets for it — a
 # level of a hundred read without opening one, where before it was a hundred bare numbers.
