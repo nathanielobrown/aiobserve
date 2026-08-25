@@ -52,6 +52,7 @@ from tests.view.conftest import (
     one,
     pages,
     plain,
+    suggestions,
     values,
 )
 
@@ -1397,8 +1398,7 @@ def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     assert row["agent_types"].count(name[:-2]) == queries.LIST_ITEMS
     assert row["work"].count(kind[:-2]) == queries.LIST_CATEGORIES
     assert row["agent_types"].endswith("more") and row["work"].endswith("more")
-    options = re.findall(r'<option value="([^"]*)"', one_row)
-    assert len(options) == queries.LIST_PROJECTS
+    assert len(suggestions(one_row)) == queries.LIST_PROJECTS
     # And the pass's own line reached the head the list cuts it to, with both tags beside it —
     # the whole description is on the session's page, which is a page ceiling of its own.
     assert len(row["description"]) == queries.LIST_CHARS
@@ -1669,8 +1669,10 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     row = fields(listing, "data-session-id", SPINE)
     assert len(row["title"]) == len(row["project_dir"]) == queries.LIST_CHARS
     # A path too long for the filter box to suggest whole is left out of it rather than cut:
-    # half a path fills the filter in with a value that matches nothing.
-    assert not [path for path in re.findall(r'<option value="([^"]*)"', listing) if "x" in path]
+    # half a path fills the filter in with a value that matches nothing. Bounded by the box
+    # still being full — an absence read off an empty list is no absence at all.
+    offered = suggestions(listing)
+    assert offered and not [path for path in offered if "x" in path]
     # A tree row is a line in a sidebar, so its title takes the narrowest cut of the four —
     # the same one whatever kind of node the row stands for. Read off the tree half of the
     # page: the same `title` field names the node in three places, each at its own width.
