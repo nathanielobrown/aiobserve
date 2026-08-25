@@ -22,7 +22,7 @@ from aiobserve.view.app import build_app, numbered
 from aiobserve.view.format import ELLIPSIS
 from aiobserve.view.labels import LABELS, label
 from aiobserve.view.nodes import BODY_URL, COLUMNS, LEAD_SEPARATOR, Shape
-from tests.conftest import ANCESTOR, DENSE_TURN, MAIN, SPINE
+from tests.conftest import ANCESTOR, DENSE_TURN, MAIN, SLASH_TURN, SPINE
 from tests.view.conftest import (
     MISSING,
     Planter,
@@ -488,34 +488,65 @@ budget = 1
 """
 
 
-def test_a_pane_reads_a_prompt_as_the_markdown_it_was_written_in(
-    plant: Planter,
+def test_a_pane_reads_what_a_person_or_a_model_wrote_as_the_markdown_it_was_written_in(
+    plant: Planter, store: duckdb.DuckDBPyConnection
 ) -> None:
     """A pane renders prose as markdown, the same way the fetch that replaces it already did.
 
     The preview and the whole value are one value shown twice — the fetch swaps into the block
     the preview sat in — so a pane that printed the characters and a fetch that rendered them
     told a reader the head and the rest were written in different things.
+
+    Every value a pane previews that prose was written into is swept, because the choice is a
+    flag per value: what a turn was asked and what followed its slash command, and what an api
+    call said and what it thought. A run's two are swept where the run's own leaf plants them.
+    The rest of what a pane previews is not prose — a tool call's arguments, its result and the
+    command it ran are marked up in the syntax the record names, and `test_a_read_of_a_markdown
+    _file_shows_the_source_marked_up_and_not_rendered` is what keeps them there.
     """
+    call_id = one(
+        store,
+        'SELECT id FROM live_api_calls WHERE session_id = ? AND source = ? AND turn_id = ?'
+        ' ORDER BY "index" LIMIT 1',
+        [ANCESTOR, MAIN, DENSE_TURN],
+    )[0]
+    call = f"/session/{ANCESTOR}/thread/{MAIN}/call/{call_id}"
+    slash = f"/session/{SPINE}/thread/{MAIN}/turn/{SLASH_TURN}"
     path = plant(
         (
             "UPDATE turns SET prompt = ? WHERE session_id = ? AND source = ? AND id = ?",
             [MARKDOWN_PROMPT, ANCESTOR, MAIN, DENSE_TURN],
-        )
+        ),
+        (
+            "UPDATE turns SET command_args = ? WHERE session_id = ? AND source = ? AND id = ?",
+            [MARKDOWN_PROMPT, SPINE, MAIN, SLASH_TURN],
+        ),
+        (
+            "UPDATE api_calls SET text = ?, thinking = ? WHERE session_id = ? AND source = ?"
+            " AND id = ?",
+            [MARKDOWN_PROMPT, MARKDOWN_PROMPT, ANCESTOR, MAIN, call_id],
+        ),
     )
+    # Each value beside the page that previews it and the fetch that opens it whole.
+    previewed = {
+        "prompt": (TURN, f"/fragment/prompt/session/{ANCESTOR}/thread/{MAIN}/turn/{DENSE_TURN}"),
+        "command_args": (slash, f"/fragment/args/session/{SPINE}/thread/{MAIN}/turn/{SLASH_TURN}"),
+        "text": (call, f"/fragment/text/session/{ANCESTOR}/thread/{MAIN}/call/{call_id}"),
+        "thinking": (call, f"/fragment/thinking/session/{ANCESTOR}/thread/{MAIN}/call/{call_id}"),
+    }
     with TestClient(build_app(path)) as written:
-        pane = prose(written.get(TURN).text, "prompt")
-        whole = written.get(f"/fragment/prompt/session/{ANCESTOR}/thread/{MAIN}/turn/{DENSE_TURN}")
-    # The heading is a heading, the list is a list, and the fenced block is marked up in the
-    # language a lexer read it as — the same lexers the rest of the viewer reads code with...
-    assert "<h1>The task</h1>" in pane
-    assert pane.count("<li>") == 2
-    assert '<pre class="code python">' in pane
-    # ...so none of the marks a reader wrote are left standing in the text.
-    assert "#" not in plain(pane) and "```" not in plain(pane)
-    # And the value the fetch brings back is rendered the same, because it is the same value:
-    # this prompt fits the pane's width, so the head is the whole of it.
-    assert prose(whole.text, "prompt") == pane
+        for field, (page, fetch) in previewed.items():
+            pane = prose(written.get(page).text, field)
+            # The heading is a heading, the list is a list, and the fenced block is marked up in
+            # the language a lexer read it as — the same lexers the viewer reads code with...
+            assert "<h1>The task</h1>" in pane, field
+            assert pane.count("<li>") == 2, field
+            assert '<pre class="code python">' in pane, field
+            # ...so none of the marks a reader wrote are left standing in the text.
+            assert "#" not in plain(pane) and "```" not in plain(pane), field
+            # And the value the fetch brings back is rendered the same, because it is the same
+            # value: this prompt fits the pane's width, so the head is the whole of it.
+            assert prose(written.get(fetch).text, field) == pane, field
 
 
 # What a subagent sends back to the agent that spawned it: prose, written in markdown, with a
