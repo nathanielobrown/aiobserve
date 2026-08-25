@@ -48,8 +48,8 @@ Solid edges lead to pages with their own URLs. Dotted edges fetch a fragment int
 | The runs nothing placed | `/session/{session_id}/unattached` |
 | Where a session failed | `/session/{session_id}/errors` |
 | Raw records | `/session/{session_id}/thread/{source}/records` |
-| An offloaded result | `/session/{session_id}/offload/{name}` |
-| The SQL behind a page | `/query/{name}` |
+| An offloaded result | `/session/{session_id}/offload/{offload_name}` |
+| The SQL behind a page | `/query/{query_name}` |
 
 `src/aiobserve/view/app.py` declares every route, fragments included. Nothing renders in the pane that a cold GET of its own URL doesn't render whole, tree and all.
 
@@ -101,7 +101,7 @@ The pane leads with the crumb chain down to the node, then the node's label and 
 - Prev and next, two buttons that read the level the node is on: the row beside it, and at the end of the level whatever follows the branch. Neither descends — going down is what the tree is for — and a step that leaves the level shows `↑` instead of an arrow along it. Each names the neighbour's kind and its label. The buckets and the compactions are stops like any other, and the controls ignore what the tree was capped to: a reading order that shortened with the sidebar would skip nodes silently
 - [Where the session failed](#jump-straight-to-where-a-session-failed): how many tool calls it failed, the way to the list of them, and — on a failed call — the step to the failure before it and the one after
 
-A value is marked up in the syntax the record says it is written in: the JSON a tool was passed, the SQL behind a page, the shell a `Bash` call ran, and the file a `Read` returned — read off the name the call asked for, so a `.md`, `.py`, `.sql` or `.sh` result is shown as its source rather than rendered. A tool result is evidence, and a heading made out of a `#` is a character the agent saw and the page does not. What a model wrote is prose: the pane previews it as plain text, and the fetch that opens it whole renders it as Markdown, with a fenced block inside marked up in the language the fence names. Anything the viewer cannot place prints as it was stored, and so does a value past 256,000 characters, with a line saying why. Every page's footer cites the queries behind it, and each citation links to `/query/{name}`, which shows that query's SQL under the bindings the page used.
+A value is marked up in the syntax the record says it is written in: the JSON a tool was passed, the SQL behind a page, the shell a `Bash` call ran, and the file a `Read` returned — read off the name the call asked for, so a `.md`, `.py`, `.sql` or `.sh` result is shown as its source rather than rendered. A tool result is evidence, and a heading made out of a `#` is a character the agent saw and the page does not. What a model wrote is prose: the pane previews it as plain text, and the fetch that opens it whole renders it as Markdown, with a fenced block inside marked up in the language the fence names. Anything the viewer cannot place prints as it was stored, and so does a value past 256,000 characters, with a line saying why. Every page's footer cites the queries behind it, and each citation links to `/query/{query_name}`, which shows that query's SQL under the bindings the page used.
 
 `agent_runs.description` shows as **task brief**: it is the brief Claude Code recorded for the run, not a description of what the run did. On this screen "description" always means enrichment.
 
@@ -148,7 +148,7 @@ Reports cite raw records as `(session_id, source, line_no)`. The records URL der
 
 The records page shows each archived line's number, type, length, and head; opening a row fetches the full line. The record the page opens on — the first row, which is the one a citation names — arrives open with its line already fetched, as long as it is under 15,000 characters. A record wider than that waits for a click like every other row: nothing bounds how long an archived line is, the store holds one of 7.6 million characters, and a page that pulls one unasked is a page nobody budgeted. Every turn links both to its thread's transcript and to the one line it was read from, so you can move between the modeled turn and the archived record in one click.
 
-When Claude Code writes a tool result to a file instead of the transcript, the result links to `/session/{session_id}/offload/{name}`. Some offloads are tens of megabytes, so the page serves them in chunks and returns the next offset. The route treats `name` as a key into `offload_files`; it never opens a path from the URL.
+When Claude Code writes a tool result to a file instead of the transcript, the result links to `/session/{session_id}/offload/{offload_name}`. Some offloads are tens of megabytes, so the page serves them in chunks and returns the next offset. The route treats the name as a key into `offload_files`; it never opens a path from the URL.
 
 ## Extracts and page loads can contend for the store
 

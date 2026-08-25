@@ -27,6 +27,8 @@ Kind-first segment; `source` appears exactly where the store's PK carries it (`a
 | unattributed-calls bucket | `/session/{sid}/unattributed/{source}` |
 | unattached-runs bucket | `/session/{sid}/unattached` |
 
+**As built,** the paths that shipped put a word in front of every id, so no two ids sit side by side: a turn reads at `/session/{sid}/thread/{source}/turn/{turn_id}`, a bucket at `/session/{sid}/thread/{source}/unattributed`, and the run path stays as the table has it. `docs/viewer.md` holds the table the app serves.
+
 Rejected: uniform `/{kind}/{source}/{id}` with a placeholder source for runs — a fake segment for a table that has none. Query params every node URL carries: `nav=` (filter preset: absent=full, `noapi`, `agents`), `kin=`, `log=`, `detail=` (size knobs, down-only), `after=` (log cursor). **As built,** the three presets are also three links above the tree rows — the same node under each fold — because a knob nothing on the page names is a knob only its author turns. Both of decision 5's buckets are real nodes with URLs and both renders — the unattributed one per source (children: `view_turn_calls` with `$turn_id` NULL; a run's node gets one too, replacing the run page's continuation section), the unattached one session-scoped (children: the runs `view_runs` resolves to no spawning call — `spawn_source` NULL; a run whose call resolves but has no turn belongs to the unattributed bucket, see below).
 
 ### Tree construction (`tree.py`, replacing `threads.py`)
