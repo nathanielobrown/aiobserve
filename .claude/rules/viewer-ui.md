@@ -30,7 +30,7 @@ A `title` is worth its bytes where the mark on screen is smaller than what it me
 
 # The glyph is bare in the tree, spelled out in the pane
 
-`✨` marks every string a model wrote rather than a session — a description standing in for a label. Write it through `parts.glyph(node)`, which reads the `GLYPH` and `GLYPH_CLASS` globals from `view/enrichment.py`; don't type the character into a template.
+`✨` marks every string a model wrote rather than a session, wherever a description stands in for a label or part of one (`docs/viewer.md`). Write it through `parts.glyph(node)`, which reads the `GLYPH` and `GLYPH_CLASS` globals from `view/enrichment.py`; don't type the character into a template.
 
 Where a label repeats — a tree row, a crumb, a log row, a walk control — the glyph goes bare. The pane carries the one that says what the mark means: `parts.summary` hangs `Described.provenance` off it as a `title`, naming the model, when it ran, the prompt and taxonomy versions, and whether the row is stale. A `title` on every repeat would be the same sentence 400 times in one page's markup.
 
