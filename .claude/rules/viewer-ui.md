@@ -7,7 +7,7 @@ paths:
 
 # Viewer UI
 
-The viewer is server-rendered Jinja with htmx as its only script. These are the conventions a template has to hold to; what each page shows is in `docs/viewer.md`.
+The viewer is server-rendered Jinja with two scripts: vendored htmx, and `view/static/tree-width.js` for the one thing a reader sets that no URL carries. These are the conventions a template has to hold to; what each page shows is in `docs/viewer.md`.
 
 # One body, two mounts
 
@@ -75,6 +75,12 @@ Witnessed in a real Chromium on 2026-08-20 at a viewport where the tree overflow
 Prose a person or a model wrote — a prompt, a run's brief, what a call said — shows as the Markdown it was written in, through `parts.prose`. `view/render.py` owns the escaping, and no template may hand `|safe` to a value that did not come through it.
 
 Both mounts of one value use that macro: the head a pane previews, and the whole of it the fetch swaps into the same block. A value rendered one way in the preview and another in the fetch is a value a reader cannot tell has a head.
+
+# A cut value goes through the filter that marks it
+
+A string its query cut arrives one character past the width it is printed at, and the filter that prints it cuts it back and marks where the rest was left behind (`view/format.py:cut`): `line` for a children log's row, `head` and `member` for a header, `said` for the line an enrichment pass wrote, `short` for that line on a row of the session list. Print such a value bare and a reader cannot tell a name that ended from one that was stopped. A title arrives marked already, at whichever of the three widths `view/nodes.py` cut it to.
+
+The session list's other strings are the exception: a row there is multiplied by the size of the page, so its title, path and lists are cut where they stand and only the pass's line pays for a mark. Marking them is a ceiling to re-measure, not a byte to spend (`tests/view/test_bounds.py`).
 
 # Label every value a test reads
 
