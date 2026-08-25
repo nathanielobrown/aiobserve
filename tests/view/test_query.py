@@ -21,22 +21,20 @@ from fastapi.testclient import TestClient
 from aiobserve.analyze import queries
 from aiobserve.view.app import QUERY_URL
 from aiobserve.view.highlight import Syntax, lit
-from tests.conftest import ANCESTOR, CONFIG_ONLY, MAIN, OFFLOAD_FILE, SPINE, SPINE_RUN
-from tests.view.conftest import block, classed, fields, inside, plain, values
+from tests.conftest import SPINE
+from tests.view.conftest import ROUTES, block, classed, fields, inside, plain, values
 
 # This checkout, for the files the stylesheet gate reads: tests/view/test_query.py → the root.
 REPO = Path(__file__).resolve().parents[2]
 
-# One page of each shape that cites anything: the two lists, a node, and the two pages that
-# are not nodes. Between them they cover every citation the app composes.
-CITING = [
-    "/",
-    "/sessions",
-    f"/session/{SPINE}",
-    f"/session/{SPINE}/run/{SPINE_RUN}",
-    f"/session/{ANCESTOR}/thread/{MAIN}/records",
-    f"/session/{CONFIG_ONLY}/offload/{OFFLOAD_FILE}",
-]
+# Every page the viewer serves, one URL each, off the route map the route sweep keeps total
+# (`tests/view/conftest.py:ROUTES`). Listing them by hand read as coverage and was not: a
+# session page opens the turns level, so no page in the list ever ran a query the tools level
+# cites. What is left out cites nothing — a fragment carries no footer, and the query page is
+# where a citation goes rather than a page that makes one.
+CITING = sorted(
+    url for route, url in ROUTES.items() if not route.startswith(("/fragment/", QUERY_URL))
+)
 
 
 def bound(line: str) -> dict[str, str]:

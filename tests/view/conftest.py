@@ -21,8 +21,25 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from aiobserve.view.app import build_app
-from tests.conftest import MAIN, SPINE
+from aiobserve.view.app import QUERY_URL, build_app
+from tests.conftest import (
+    ANCESTOR,
+    BASH_TOOL,
+    COMPACTED,
+    COMPACTED_BOUNDARY,
+    CONFIG_ONLY,
+    DENSE_CALL,
+    DENSE_TOOL,
+    DENSE_TURN,
+    FORK_ORIGIN,
+    FORK_ORIGIN_RUN,
+    MAIN,
+    OFFLOAD_FILE,
+    RESUME,
+    SLASH_TURN,
+    SPINE,
+    SPINE_RUN,
+)
 
 Statement = tuple[str, Sequence[str | int]]
 Planter = Callable[..., Path]
@@ -30,6 +47,91 @@ Planter = Callable[..., Path]
 # An id that matches nothing, in the shape a session id has. Every "the store does not hold
 # it" leaf asks for this one, whatever kind of id the route takes.
 MISSING = "00000000-0000-0000-0000-000000000000"
+
+
+# One real URL per route the app exposes, keyed by the route's own path template. Two tiers
+# read it whole — the payload sweep weighs every URL, and the citation leaves read the footer
+# of every page among them — and one leaf reads it as a set against the routes the app
+# declares, so a route added with no entry here fails rather than going unread.
+ROUTES: dict[str, str] = {
+    "/": "/",
+    "/sessions": "/sessions",
+    # The eight node kinds, each at a session that records the shape: a compaction at the
+    # session with two of them, a bucket at each of the two sessions that has one.
+    "/session/{session_id}": f"/session/{SPINE}",
+    "/session/{session_id}/thread/{source}/turn/{turn_id}": (
+        f"/session/{ANCESTOR}/thread/main/turn/{DENSE_TURN}"
+    ),
+    "/session/{session_id}/run/{run_id}": f"/session/{SPINE}/run/{SPINE_RUN}",
+    "/session/{session_id}/thread/{source}/call/{api_call_id}": (
+        f"/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/call/{DENSE_CALL}"
+    ),
+    "/session/{session_id}/thread/{source}/tool/{tool_call_id}": (
+        f"/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}"
+    ),
+    "/session/{session_id}/thread/{source}/compaction/{compaction_id}": (
+        f"/session/{COMPACTED}/thread/main/compaction/{COMPACTED_BOUNDARY}"
+    ),
+    "/session/{session_id}/thread/{source}/unattributed": (
+        f"/session/{RESUME}/thread/main/unattributed"
+    ),
+    "/session/{session_id}/unattached": f"/session/{FORK_ORIGIN}/unattached",
+    # The three pages that are not nodes: where a session failed, a thread's raw transcript,
+    # and a file a tool wrote.
+    "/session/{session_id}/errors": f"/session/{FORK_ORIGIN}/errors",
+    "/session/{session_id}/thread/{source}/records": f"/session/{ANCESTOR}/thread/main/records",
+    "/session/{session_id}/offload/{offload_name:path}": (
+        f"/session/{CONFIG_ONLY}/offload/{OFFLOAD_FILE}"
+    ),
+    # And the per-value fetches a pane's previews offer: one per fat column a node can hold.
+    "/fragment/text/session/{session_id}/thread/{source}/call/{api_call_id}": (
+        f"/fragment/text/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/call/{DENSE_CALL}"
+    ),
+    "/fragment/thinking/session/{session_id}/thread/{source}/call/{api_call_id}": (
+        f"/fragment/thinking/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/call/{DENSE_CALL}"
+    ),
+    "/fragment/input/session/{session_id}/thread/{source}/tool/{tool_call_id}": (
+        f"/fragment/input/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}"
+    ),
+    "/fragment/result/session/{session_id}/thread/{source}/tool/{tool_call_id}": (
+        f"/fragment/result/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}"
+    ),
+    "/fragment/command/session/{session_id}/thread/{source}/tool/{tool_call_id}": (
+        f"/fragment/command/session/{SPINE}/thread/{MAIN}/tool/{BASH_TOOL}"
+    ),
+    "/fragment/prompt/session/{session_id}/thread/{source}/turn/{turn_id}": (
+        f"/fragment/prompt/session/{ANCESTOR}/thread/main/turn/{DENSE_TURN}"
+    ),
+    "/fragment/args/session/{session_id}/thread/{source}/turn/{turn_id}": (
+        f"/fragment/args/session/{SPINE}/thread/main/turn/{SLASH_TURN}"
+    ),
+    "/fragment/brief/session/{session_id}/run/{run_id}": (
+        f"/fragment/brief/session/{SPINE}/run/{SPINE_RUN}"
+    ),
+    "/fragment/record/session/{session_id}/thread/{source}/line/{line_no}": (
+        f"/fragment/record/session/{ANCESTOR}/thread/main/line/1"
+    ),
+    # And a node's body alone, the way a log row expands its child. Two shapes: a run's URL
+    # carries its id where every other kind carries a thread.
+    "/fragment/body/session/{session_id}/thread/{source}/{kind}/{node_id}": (
+        f"/fragment/body/session/{ANCESTOR}/thread/main/turn/{DENSE_TURN}"
+    ),
+    "/fragment/body/session/{session_id}/run/{run_id}": (
+        f"/fragment/body/session/{SPINE}/run/{SPINE_RUN}"
+    ),
+    # And the rest of a level, the way a `+N more` row opens one. Two shapes again, plus the
+    # thread the reader is on and the depth the rows are going to, neither of which the level
+    # itself can say. The window is turned down because what these serve is whatever a window
+    # left out — at the default, over this corpus, nothing at all.
+    "/fragment/kin/session/{session_id}/thread/{source}/{kind}/{node_id}": (
+        f"/fragment/kin/session/{ANCESTOR}/thread/main/turn/{DENSE_TURN}?kin=1&thread=main&depth=2"
+    ),
+    "/fragment/kin/session/{session_id}/{kind}/{node_id}": (
+        f"/fragment/kin/session/{SPINE}/session/{SPINE}?kin=1&thread=main&depth=1"
+    ),
+    # And the statement behind a citation, which every page's footer links to.
+    f"{QUERY_URL}/{{query_name}}": f"{QUERY_URL}/view_sessions",
+}
 
 
 def pages(store: duckdb.DuckDBPyConnection) -> list[str]:
