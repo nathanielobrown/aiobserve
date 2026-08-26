@@ -65,13 +65,9 @@ Witnessed in a real Chromium on 2026-08-26, against `mise run gallery --port 906
 
 # A control beside the tree lives inside the swapped element
 
-A tree row swaps `#tree-rows` out of band and takes `#pane` out of the response, so those two
-elements are the whole of what a click refreshes. Anything that names the selected node — the
-preset switcher does, three links to the node under each fold — has to render inside one of
-them or it goes stale the moment a reader clicks a row, pointing back at the node they left.
+A tree row swaps `#tree-rows` out of band and takes `#pane` out of the response, so those two elements are the whole of what a click refreshes. Anything that names the selected node — the preset switcher does, three links to the node under each fold — has to render inside one of them or it goes stale the moment a reader clicks a row, pointing back at the node they left.
 
-Put it inside `#tree-rows` rather than adding a second out-of-band target: a target costs bytes
-on every tree row, and the row is the one thing on the page multiplied 3,217 times.
+Put it inside `#tree-rows` rather than adding a second out-of-band target: a target costs bytes on every tree row, and the row is the one thing on the page multiplied 3,217 times.
 
 # The scroller stays outside the swapped element
 
