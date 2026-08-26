@@ -673,6 +673,7 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
 
     @app.get("/")
     def projects_page(request: Request) -> Response:
+        """Every project the store holds sessions for, most recently active first."""
         # The clock both trailing windows are measured back from, read here and bound like
         # any other parameter. The query reads no clock of its own: a page counting "the last
         # 7 days" from SQL's `now()` would cite a line that answers something else tomorrow,
@@ -711,6 +712,7 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
         page: int = 1,
         size: int = bounds.SESSIONS.default,
     ) -> Response:
+        """One page of sessions, under the filter, sort and size the URL carries."""
         if sort not in SORTS or direction not in DIRECTIONS:
             raise HTTPException(
                 400,
