@@ -27,7 +27,8 @@ from aiobserve.view.format import cut, when
 from aiobserve.view.nodes import LEAD_SEPARATOR
 from aiobserve.view.store import Page
 from tests.conftest import SPINE, SPINE_RUN
-from tests.view.conftest import ROUTES, Planter, fields, inside, one, pages, values
+from tests.view.conftest import Planter, fields, inside, one, pages, values
+from tests.view.scenarios import ROUTES
 
 # Every enrichment table, and the statement that empties one — the second absent-safety case.
 EMPTIED = tuple((f"DELETE FROM {spec.table}", ()) for spec in LEVELS.values())

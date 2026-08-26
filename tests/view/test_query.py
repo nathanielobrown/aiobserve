@@ -22,13 +22,14 @@ from aiobserve.analyze import macros, queries
 from aiobserve.view.app import QUERY_URL
 from aiobserve.view.highlight import Syntax, lit
 from tests.conftest import SPINE
-from tests.view.conftest import ROUTES, block, classed, fields, inside, plain, values
+from tests.view.conftest import block, classed, fields, inside, plain, values
+from tests.view.scenarios import ROUTES
 
 # This checkout, for the files the stylesheet gate reads: tests/view/test_query.py → the root.
 REPO = Path(__file__).resolve().parents[2]
 
 # Every page the viewer serves, one URL each, off the route map the route sweep keeps total
-# (`tests/view/conftest.py:ROUTES`). Listing them by hand read as coverage and was not: a
+# (`tests/view/scenarios.py:ROUTES`). Listing them by hand read as coverage and was not: a
 # session page opens the turns level, so no page in the list ever ran a query the tools level
 # cites. What is left out cites nothing — a fragment carries no footer, and the query page is
 # where a citation goes rather than a page that makes one.

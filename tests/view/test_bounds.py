@@ -44,7 +44,6 @@ from tests.conftest import (
     SPINE_RUN,
 )
 from tests.view.conftest import (
-    ROUTES,
     Planter,
     Statement,
     block,
@@ -56,6 +55,7 @@ from tests.view.conftest import (
     suggestions,
     values,
 )
+from tests.view.scenarios import ROUTES
 
 # The columns that hold whatever the agent read or wrote: one of them can be megabytes, and
 # none of them belongs on a page whole. `raw` is a transcript line, `result` a tool's output,
