@@ -157,6 +157,10 @@ testpaths = ["tests"]
 timeout = 120
 addopts = "--strict-markers --durations=10"
 filterwarnings = [
+  # A warning is a finding: something we call is on its way out, or a value is the wrong
+  # shape. Raising them keeps a deprecation from riding along unread until the release that
+  # removes it. Each exemption below names what it excuses and when it can go.
+  "error",
   # Starlette 1.4's test client prefers `httpx2` and warns at import when only `httpx` is
   # installed (starlette/testclient.py:48). Nothing we call is deprecated — the viewer and the
   # OTLP exporter ship httpx in production — so this says only that the test client would like

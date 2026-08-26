@@ -294,6 +294,10 @@ def test_an_open_stream_does_not_hold_the_server_open_when_it_is_interrupted(
         if server.poll() is None:
             server.kill()
         server.wait(timeout=10)
+        # Nothing reads the server's output, so its pipe would be closed by the collector
+        # instead — as a `ResourceWarning` the suite raises.
+        if server.stdout is not None:
+            server.stdout.close()
 
 
 def test_a_port_the_server_could_bind_is_not_refused_by_the_probe_that_guards_it() -> None:
