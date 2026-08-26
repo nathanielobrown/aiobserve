@@ -46,7 +46,7 @@ tests/                    The suite, mirroring the package layout; fixtures are 
 tools/                    The repo's own generators: the tables the docs cite, written from the code that owns them
 docs/
   analysis.md             Follow this process to turn the trace store into evidence-backed findings about how an AI coding agent behaved on a project
-  schema.md               This document defines the Claude Code telemetry fields that aiobserve reads
+  schema.md               Every Claude Code telemetry field aiobserve reads, what it means, and the recording that proves it
   store.md                `aiobserve extract` writes session traces to a DuckDB file
   enrichment.md           Enrichment describes every agent run, main turn, and session in the trace store
   viewer.md               `aiobserve view` opens the trace store in a local browser

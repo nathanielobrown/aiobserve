@@ -314,7 +314,8 @@ class AssistantMessage(Message):
             description=(
                 "The model that answered. `<synthetic>` marks Claude Code's placeholder for an "
                 "interrupt or a cancelled request: of about 290,000 corpus assistant records, "
-                "205 are synthetic, all reporting zero tokens (scanned 2026-08-07)"
+                "205 are synthetic, all reporting zero tokens and omitting `usage.inference_geo` "
+                "(scanned 2026-08-07)"
             ),
         ),
         Cited(SPINE, "2.1.201", note="holds a `<synthetic>` reply"),
