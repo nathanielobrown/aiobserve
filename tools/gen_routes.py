@@ -1,9 +1,11 @@
 """The route table in `docs/viewer.md`: every page the viewer serves, from the app's own routes.
 
 Run by a cog block in that document — `uv run python -m tools.gen_routes` — so a page added to
-`view/app.py` reaches the table without anyone remembering it. Each row's description is the
-handler's docstring cut to its first sentence, which makes the docstring the one place a page
-is described: a handler that carries none crashes this rather than printing a blank cell.
+`view/app.py` reaches the table without anyone remembering it. A row names the page, gives its
+URL, and describes it in the handler's own docstring cut to its first sentence, which makes the
+docstring the one place a page is described: a handler that carries none crashes this rather
+than printing a blank cell. The name is the other half — vocabulary rather than prose, so it
+comes from `PAGE_NAMES` below and not from whatever a docstring happens to open with.
 
 Fragment routes are left out by rule rather than by a list, because they serve pieces of a page
 a reader never types a URL for (`nodes.BODY_URL`, `nodes.KIN_URL`).
@@ -40,7 +42,28 @@ FRAGMENT_ROOT = _fragment_root()
 # docs UI off (`build_app` passes `docs_url=None`), and the table is about pages.
 EXCLUDED = ("/openapi.json",)
 
-HEADERS = ("Page", "Route")
+# What a reader calls each page, keyed by the route that serves it. These are terms, not
+# summaries: `CONTEXT.md` fixes the ones it defines, and the node pages are named for the kind
+# of node they open. A route with no name here crashes `generate` — naming a new page is the
+# same act as coining the word for it, and the description column is where the sentence goes.
+PAGE_NAMES = {
+    "/": "Projects page",
+    "/sessions": "Session list",
+    "/session/{session_id}": "A session",
+    "/session/{session_id}/thread/{source}/turn/{turn_id}": "A turn",
+    "/session/{session_id}/run/{run_id}": "An agent run",
+    "/session/{session_id}/thread/{source}/call/{api_call_id}": "An api call",
+    "/session/{session_id}/thread/{source}/tool/{tool_call_id}": "A tool call",
+    "/session/{session_id}/thread/{source}/compaction/{compaction_id}": "A compaction",
+    "/session/{session_id}/thread/{source}/unattributed": "Unattributed calls",
+    "/session/{session_id}/unattached": "Unattached runs",
+    "/session/{session_id}/errors": "Errors page",
+    "/session/{session_id}/thread/{source}/records": "Records page",
+    "/session/{session_id}/offload/{offload_name:path}": "An offload file",
+    "/query/{query_name}": "Query page",
+}
+
+HEADERS = ("Page", "Route", "Description")
 
 
 def built_app() -> FastAPI:
@@ -72,6 +95,13 @@ def pages(app: FastAPI) -> list[Route]:
     ]
 
 
+def named(route: Route) -> str:
+    """What the page is called, in the words the rest of the documentation uses."""
+    if route.path not in PAGE_NAMES:
+        raise ValueError(f"`{route.path}` has no page name — name it in `PAGE_NAMES`")
+    return PAGE_NAMES[route.path]
+
+
 def described(route: Route) -> str:
     """What the page is, in the handler's own words."""
     docstring = route.endpoint.__doc__
@@ -84,7 +114,10 @@ def described(route: Route) -> str:
 
 def table(app: FastAPI) -> str:
     """The route table for one app."""
-    return text.table(HEADERS, ((described(route), f"`{route.path}`") for route in pages(app)))
+    return text.table(
+        HEADERS,
+        ((named(route), f"`{route.path}`", described(route)) for route in pages(app)),
+    )
 
 
 def generate() -> str:
