@@ -41,6 +41,9 @@ HOME = "/Users/nob"
 CLEAN_INVENTED = ("invented-no-cache-creation", "invented-truncated-tail")
 # `/invented/project` and `/repo` respectively — outside the corpus whatever `--project` says.
 INVENTED_PROJECT_SESSION = "invented-no-cache-creation"
+# That fixture's one api call: the corpus's only reply whose usage carries no cache-creation
+# TTL split, so both split columns are NULL and the whole write prices at the 5-minute rate.
+NO_TTL_SPLIT_CALL = "msg_invented000000000002"
 OTHER_PROJECT_SESSION = "invented-truncated-tail"
 # `fork_byref`'s fork: NULL `project_dir` and NULL `started_at`, the recorded twin of the
 # store's zero-cost bookkeeping stubs. The corpus predicate cannot judge it either way.

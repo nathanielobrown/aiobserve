@@ -28,12 +28,14 @@ from tests.conftest import (
     DENSE_TOOL,
     FORK_ORIGIN,
     FORK_ORIGIN_RUN,
+    INVENTED_PROJECT_SESSION,
     MAIN,
+    NO_TTL_SPLIT_CALL,
     SPINE,
     SPINE_LEAF,
     SPINE_RUN,
 )
-from tests.view.conftest import Planter, fields, inside, one, wired
+from tests.view.conftest import Planter, bar, fields, inside, one, step, wired
 
 # Where a node left the model's window: the last call it made that went to one. Ordered by
 # `"index"`, which is unique and ascending inside a thread.
@@ -206,6 +208,36 @@ def test_a_call_says_the_cache_it_read_apart_from_the_context_it_sent(
     assert printed["cost_usd"] == f"${stored:.2f}"
 
 
+def test_a_cache_write_with_no_ttl_on_it_is_charged_at_the_short_rate(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A reply that reported no TTL split still pays for the cache it wrote.
+
+    The columns say "no split reported" with NULLs rather than zeroes, so a group summing them
+    would charge that write at nothing (`tests/fixtures/invented/README.md`). The popover
+    prices a node one model-group at a time, and the group has to fall back to the whole write
+    at the 5-minute rate — the same fallback `extract/pricing.py` applies to a single call.
+    """
+    where = f"AND id = '{NO_TTL_SPLIT_CALL}'"
+    creation, five, hour = one(
+        store,
+        "SELECT cache_creation_tokens, cache_5m_tokens, cache_1h_tokens FROM live_api_calls"
+        f" WHERE session_id = ? {where}",
+        [INVENTED_PROJECT_SESSION],
+    )
+    assert creation and five is None and hour is None, "the corpus's one untimed cache write"
+    printed = popover(
+        client,
+        f"/session/{INVENTED_PROJECT_SESSION}/thread/{MAIN}/call/{NO_TTL_SPLIT_CALL}",
+        f"{Kind.CALL}:{NO_TTL_SPLIT_CALL}",
+    )
+    split, _ = charged(store, INVENTED_PROJECT_SESSION, extra=where)
+    assert printed | legend(split) == printed
+    # And the write is a charge a reader can see rather than one that rounded away, which is
+    # what makes the line above a reading of the fallback.
+    assert printed["cost_cache_write"] != "$0.0000"
+
+
 def test_a_tool_call_says_what_it_gave_back_and_what_was_asked_beside_it(
     client: TestClient, corpus_db: Path
 ) -> None:
@@ -279,9 +311,78 @@ def test_a_turn_that_compacted_says_the_window_it_gave_back(plant: Planter) -> N
         after = popover(
             client, f"/session/{SPINE}/thread/{MAIN}/turn/{second}", f"{Kind.TURN}:{second}"
         )
+        page = client.get(f"/session/{SPINE}").text
     assert tokens(after, "fill") < tokens(before, "fill"), "the plant is meant to drop the window"
     assert after["added"] == f"{tokens(after, 'fill') - tokens(before, 'fill'):+,}"
     assert after["added"].startswith("-")
+    # And the row the popover opened from draws that same turn with no tip on it. This is the
+    # one place the two seams are meant to disagree: the tree holds the tip at the bottom of
+    # the ladder, where a tree that carried the number through would draw a step below it.
+    assert bar(page, f"{Kind.TURN}:{second}") == (step(tokens(after, "fill"), after["model"]), 0)
+
+
+def test_a_turn_is_measured_against_the_last_turn_that_answered(
+    store: duckdb.DuckDBPyConnection, plant: Planter
+) -> None:
+    """A turn a model never answered is stepped over, not counted as an empty window.
+
+    What a turn added is the window it left less the window the turn before it left — and a
+    turn Claude Code answered with a placeholder left none at all (`docs/schema.md`). Neither
+    seam may read that nothing as a floor: a turn measured against it would read as having
+    built the whole window from scratch, and the thread would look like it started over every
+    time the reader interrupted it.
+
+    INVENTED arrangement of recorded rows: the corpus's one silent turn sits at the end of its
+    thread, so the spine's last two turns trade calls — the model's answers move to the last
+    turn, and the interrupt to the turn before it.
+    """
+    turns = [
+        turn
+        for (turn,) in store.execute(
+            'SELECT id FROM live_turns WHERE session_id = ? AND source = ? ORDER BY "index"',
+            [SPINE, MAIN],
+        ).fetchall()
+    ]
+    stood_at, quiet, last = turns[-3:]
+    assert reached(store, SPINE, MAIN, stood_at), "the turn the delta reaches back to answered"
+    assert not reached(store, SPINE, MAIN, last), "the spine's last turn holds the interrupt"
+    # Where the two turns stood before the swap: the answers land on `last`, and the window
+    # they left is measured against the turn two places behind it.
+    stood = tokens(held(store, SPINE, MAIN, extra=f"AND turn_id = '{stood_at}'"), "fill")
+    moved = held(store, SPINE, MAIN, extra=f"AND turn_id = '{quiet}'")
+    keys = [SPINE, MAIN]
+    planted = plant(
+        (
+            "UPDATE api_calls SET turn_id = ? WHERE session_id = ? AND source = ?"
+            " AND turn_id = ? AND NOT synthetic",
+            [last, *keys, quiet],
+        ),
+        (
+            "UPDATE api_calls SET turn_id = ? WHERE session_id = ? AND source = ? AND synthetic",
+            [quiet, *keys],
+        ),
+    )
+    with TestClient(build_app(planted)) as swapped:
+        printed = popover(
+            swapped, f"/session/{SPINE}/thread/{MAIN}/turn/{last}", f"{Kind.TURN}:{last}"
+        )
+        silent = popover(
+            swapped, f"/session/{SPINE}/thread/{MAIN}/turn/{quiet}", f"{Kind.TURN}:{quiet}"
+        )
+        page = swapped.get(f"/session/{SPINE}").text
+    # The turn holds the window its own calls left...
+    assert printed | moved == printed
+    # ...and what it added is measured over the interrupted turn, back to the last answer.
+    assert printed["added"] == f"{tokens(printed, 'fill') - stood:+,}"
+    assert bar(page, f"{Kind.TURN}:{last}") == (
+        step(tokens(printed, "fill"), moved["model"]),
+        step(tokens(printed, "fill") - stood, moved["model"]),
+    )
+    # The interrupted turn itself says neither number at either seam, which is what makes the
+    # delta above a step over something rather than a step from it.
+    assert silent["fill"] == ABSENT
+    assert silent["added"] == ABSENT
+    assert bar(page, f"{Kind.TURN}:{quiet}") == (None, None)
 
 
 def test_a_model_we_hold_no_window_for_says_so_rather_than_scaling_to_a_guess(

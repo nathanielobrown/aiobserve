@@ -21,7 +21,9 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
+from aiobserve.extract.pricing import CONTEXT_WINDOWS
 from aiobserve.view.app import build_app
+from aiobserve.view.nodes import BAR_STEPS
 from tests.conftest import MAIN, SPINE
 
 Statement = tuple[str, Sequence[str | int]]
@@ -267,6 +269,31 @@ def suggestions(page: str) -> list[str]:
 def values(html: str, attribute: str) -> list[str]:
     """Every value of one data attribute in the document, in document order."""
     return re.findall(rf'{attribute}="([^"]*)"', html)
+
+
+def bar(page: str, key: str) -> tuple[int | None, int | None]:
+    """The two steps a row's context bar is drawn at: how full it is, and how much it added.
+
+    Shared, because the bar is where the tree's numbers and the popover's have to disagree:
+    a turn that gave the window back draws no tip and prints a negative delta, and a leaf
+    that read one seam alone could not say so.
+    """
+    classes = inside(page, "data-tree", key, "class")[0].split()
+    steps = {name[0]: int(name[1:]) for name in classes if re.fullmatch(r"[ft]\d+", name)}
+    return steps.get("f"), steps.get("t")
+
+
+def step(tokens: int | None, model: str) -> int | None:
+    """Which step of the bar a token count lands on, in the model's own window.
+
+    The ladder restated rather than imported: `nodes` owns how a share becomes a class, and an
+    oracle reading that would agree with it whatever it said. A fill past the window is held at
+    the top — the window a request asked for is not a `message.model` our table can key on, so
+    a call above it is drawn full rather than given a scale of its own.
+    """
+    if tokens is None:
+        return None
+    return min(round(tokens / CONTEXT_WINDOWS[model] * BAR_STEPS), BAR_STEPS)
 
 
 # One tree row that stands for a node, depth beside key. Read as a pair rather than as two

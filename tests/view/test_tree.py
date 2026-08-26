@@ -30,7 +30,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from aiobserve.analyze import queries
-from aiobserve.extract.pricing import CONTEXT_WINDOWS
+from aiobserve.extract.pricing import CONTEXT_WINDOWS, SYNTHETIC_MODEL
 from aiobserve.model import MAIN_SOURCE
 from aiobserve.view import bounds, tree
 from aiobserve.view.app import build_app
@@ -48,7 +48,19 @@ from aiobserve.view.nodes import (
     meter,
 )
 from tests.conftest import MAIN, SPINE, SPINE_LEAF, SPINE_RUN
-from tests.view.conftest import SPAWNS, Planter, fields, inside, kin, one, rows, values, wired
+from tests.view.conftest import (
+    SPAWNS,
+    Planter,
+    bar,
+    fields,
+    inside,
+    kin,
+    one,
+    rows,
+    step,
+    values,
+    wired,
+)
 
 
 def url(turn_id: str) -> str:
@@ -917,26 +929,6 @@ def calls(store: duckdb.DuckDBPyConnection, session_id: str) -> list[Call]:
     ]
 
 
-def bar(page: str, key: str) -> tuple[int | None, int | None]:
-    """The two steps a row's context bar is drawn at: how full it is, and how much it added."""
-    classes = inside(page, "data-tree", key, "class")[0].split()
-    steps = {name[0]: int(name[1:]) for name in classes if re.fullmatch(r"[ft]\d+", name)}
-    return steps.get("f"), steps.get("t")
-
-
-def step(tokens: int | None, model: str) -> int | None:
-    """Which step of the bar a token count lands on, in the model's own window.
-
-    The ladder restated rather than imported: `nodes` owns how a share becomes a class, and an
-    oracle reading that would agree with it whatever it said. A fill past the window is held at
-    the top — the window a request asked for is not a `message.model` our table can key on, so
-    a call above it is drawn full rather than given a scale of its own.
-    """
-    if tokens is None:
-        return None
-    return min(round(tokens / CONTEXT_WINDOWS[model] * BAR_STEPS), BAR_STEPS)
-
-
 def test_a_row_bars_the_context_it_left_against_the_window_its_model_answers_in(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
@@ -1004,6 +996,77 @@ def test_a_row_bars_the_context_it_left_against_the_window_its_model_answers_in(
         for key in values(row, "data-tree"):
             if key.startswith((f"{Kind.TOOL}:", f"{Kind.COMPACTION}:")):
                 assert bar(row, key) == (None, None), key
+
+
+def test_an_interrupt_and_another_threads_calls_move_no_bar_a_row_draws(
+    client: TestClient, store: duckdb.DuckDBPyConnection, plant: Planter
+) -> None:
+    """A row's window is read off its own thread's answers, and off nothing else.
+
+    Three rules meet here, one per level: a turn and a run read the last call under them that
+    went to a model, and a session reads the last call of its *main* thread. No recorded
+    session can tell any of the three from the rule that dropped its filter — no turn in the
+    corpus mixes a model's answers with an interrupt, no run thread ends on one, and the main
+    thread holds the highest call index in every session recorded. So the three shapes are
+    planted and the page is read against itself: every bar it draws over them is the bar it
+    drew without them.
+
+    INVENTED arrangement of recorded rows: the interrupt Claude Code wrote into the spine is
+    moved into the turn a model had already answered, a second one is cloned onto a run's own
+    thread, and the other run's calls are renumbered past the main thread's last. Every token
+    count, model and cost under them is the transcript's.
+    """
+    answered = one(
+        store,
+        "SELECT turn_id FROM live_api_calls WHERE session_id = ? AND source = ?"
+        ' AND NOT synthetic ORDER BY "index" DESC LIMIT 1',
+        [SPINE, MAIN],
+    )[0]
+    planted = plant(
+        # The reader interrupted a turn a model had already answered twice, so the turn holds
+        # both — and the interrupt is the last call in it.
+        (
+            "UPDATE api_calls SET turn_id = ? WHERE session_id = ? AND source = ? AND synthetic",
+            [answered, SPINE, MAIN],
+        ),
+        # A run's thread ends the same way. Cloned from its own last call rather than invented,
+        # so every column but the ones an interrupt reports differently is the store's shape:
+        # a placeholder went to no model, so it names none and reports no tokens at all.
+        (
+            "INSERT INTO api_calls (SELECT c.* REPLACE (c.id || '-interrupt' AS id,"
+            ' ? AS model, true AS synthetic, 1000000 AS "index", 0 AS input_tokens,'
+            " 0 AS output_tokens, 0 AS cache_read_tokens, 0 AS cache_creation_tokens,"
+            " 0 AS cache_5m_tokens, 0 AS cache_1h_tokens, 0.0 AS cost_usd)"
+            " FROM (SELECT * FROM api_calls WHERE session_id = ? AND source = ?"
+            ' ORDER BY "index" DESC LIMIT 1) c)',
+            [SYNTHETIC_MODEL, SPINE, SPINE_RUN],
+        ),
+        # And the other run outlasts the main thread: an index counts a thread's own calls, so
+        # a run that answered longer than the session's own thread carries the higher ones.
+        (
+            'UPDATE api_calls SET "index" = 1000000 + "index" WHERE session_id = ? AND source = ?',
+            [SPINE, SPINE_LEAF],
+        ),
+    )
+    paths = [
+        f"/session/{SPINE}",
+        f"/session/{SPINE}/run/{SPINE_RUN}",
+        f"/session/{SPINE}/run/{SPINE_LEAF}",
+    ]
+    drawn: dict[str, dict[str, tuple[int | None, int | None]]] = {}
+    with TestClient(build_app(planted)) as interrupted:
+        for path in paths:
+            page = client.get(path).text
+            drawn[path] = {key: bar(page, key) for key in values(page, "data-tree")}
+            after = interrupted.get(path).text
+            assert {key: bar(after, key) for key in drawn[path]} == drawn[path], path
+    # And the rows the plant reached draw a bar at all: a sweep over rows that draw nothing
+    # would agree with itself whatever a filter did.
+    session = drawn[paths[0]]
+    assert session[f"{Kind.SESSION}:{SPINE}"][0] is not None
+    assert session[f"{Kind.TURN}:{answered}"] > (0, 0)
+    for path, run_id in zip(paths[1:], (SPINE_RUN, SPINE_LEAF), strict=True):
+        assert drawn[path][f"{Kind.RUN}:{run_id}"] > (0, 0), run_id
 
 
 def test_a_model_we_hold_no_window_for_is_a_bar_the_tree_does_not_draw(
@@ -1838,11 +1901,11 @@ def test_every_open_level_is_its_own_cell_or_the_full_one_that_holds_the_path(
             html = client.get(node_url(kind, *at), params={"nav": preset}).text
             chain, drawn = values(html, "data-crumb"), rows(html)
             assert drawn[0] == (0, chain[0]), at
-            for depth, (step, *arguments) in enumerate(sited(at[0], chain)):
+            for depth, (crumb_kind, *arguments) in enumerate(sited(at[0], chain)):
                 below = [key for at_depth, key in drawn if at_depth == depth + 1]
-                expected = cell(store, preset, step, *arguments)
+                expected = cell(store, preset, crumb_kind, *arguments)
                 if depth + 1 < len(chain) and chain[depth + 1] not in expected:
-                    expected = cell(store, Preset.FULL, step, *arguments)
+                    expected = cell(store, Preset.FULL, crumb_kind, *arguments)
                 assert below == expected, f"{at}: under {chain[depth]}"
 
 
