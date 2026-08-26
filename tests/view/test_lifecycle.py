@@ -83,6 +83,6 @@ def test_a_taken_port_names_itself_and_the_way_out(copy: Path) -> None:
         held.bind(("127.0.0.1", 0))
         port = held.getsockname()[1]
         with pytest.raises(SystemExit) as refused:
-            serve(copy, port, open_browser=False)
+            serve(copy, port, open_browser=False, dev=False)
     assert str(port) in str(refused.value)
     assert "--port" in str(refused.value)

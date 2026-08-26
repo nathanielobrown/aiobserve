@@ -102,7 +102,7 @@ def _extract_arguments(subcommand: argparse.ArgumentParser) -> None:
 
 def _view(args: argparse.Namespace) -> None:
     """Serve the store in a local browser until interrupted."""
-    serve(args.db, args.port, open_browser=not args.no_browser)
+    serve(args.db, args.port, open_browser=not args.no_browser, dev=args.dev)
 
 
 def _view_arguments(subcommand: argparse.ArgumentParser) -> None:
@@ -112,6 +112,11 @@ def _view_arguments(subcommand: argparse.ArgumentParser) -> None:
     )
     subcommand.add_argument(
         "--no-browser", action="store_true", help="Do not open a browser on startup"
+    )
+    subcommand.add_argument(
+        "--dev",
+        action="store_true",
+        help="Reload the open page when a template or a stylesheet is saved",
     )
 
 
