@@ -193,8 +193,8 @@ def test_the_shipped_viewer_declares_no_route_under_dev(
     The two halves together are what keeps `ROUTES` meaning "everything the shipped viewer
     serves" — the completeness leaf in `test_bounds.py` never has to list a dev route.
     """
-    assert _declared(client) == set(ROUTES)
-    assert _declared(dev_client) == set(ROUTES) | {RELOAD_URL}
+    assert declared(client) == set(ROUTES)
+    assert declared(dev_client) == set(ROUTES) | {RELOAD_URL}
     assert client.get(RELOAD_URL).status_code == 404
 
 
@@ -384,7 +384,7 @@ async def _stream(
     )
 
 
-def _declared(client: TestClient) -> set[str]:
+def declared(client: TestClient) -> set[str]:
     """Every path an app declares, its included routers' included.
 
     `test_bounds.py:908` reads the top level alone, which is the whole of the shipped viewer;
