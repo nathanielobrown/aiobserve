@@ -87,6 +87,12 @@ TURN_ID = Param(type=ParamType.TEXT, default=REQUIRED)
 RUN_ID = Param(type=ParamType.TEXT, default=REQUIRED)
 API_CALL_ID = Param(type=ParamType.TEXT, default=REQUIRED)
 TOOL_CALL_ID = Param(type=ParamType.TEXT, default=REQUIRED)
+# And the pair a query serving every kind of node takes instead: whichever id the node carries,
+# and the word saying what kind of id it is. `view_numbers` is the one query written that way —
+# what a node's numbers are made of differs by kind, and four files answering one question are
+# four chances for them to disagree.
+NODE_ID = Param(type=ParamType.TEXT, default=REQUIRED)
+NODE_KIND = Param(type=ParamType.TEXT, default=REQUIRED)
 
 # How much of one raw record `records_slice` returns. A cap, not a limit: a reader can raise
 # it, and the design says so — the mechanism here is that the number is stated and cited.
@@ -144,6 +150,11 @@ CHUNK_CHARS = 50_000
 # a page whose size is arithmetic needs the number bound, not noticed.
 CHIP_CHARS = 60
 CHIP_CHARS_PARAM = Param(type=ParamType.INTEGER, default=CHIP_CHARS)
+
+# How much of a model name the popover prints, and the width its per-model token groups are
+# keyed at. Wide enough that nothing our price table names is cut — the longest key is 24
+# characters — because a group keyed on a cut name is a group nothing can price.
+MODEL_CHARS = 60
 
 # What a header shows of each string it carries, of each member of the two lists a session's
 # carries, and how many members of a list it shows before it says how many it left. A header
@@ -522,6 +533,29 @@ QUERIES: dict[str, Query] = {
     ),
     "view_run_result": Query(
         scope=Scope.KEYED, params={"session_id": SESSION_ID, "run_id": RUN_ID}
+    ),
+    # The numbers behind one node's row, which the tree draws as a bar and a badge. One query
+    # for every kind that is made of api calls, keyed by the kind as well as the id; the tool
+    # call, which is made of none, has its own.
+    "view_numbers": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            "source": SOURCE,
+            "node_id": NODE_ID,
+            "kind": NODE_KIND,
+            "model_chars": Param(type=ParamType.INTEGER, default=MODEL_CHARS),
+        },
+    ),
+    "view_numbers_tool": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            "source": SOURCE,
+            "tool_call_id": TOOL_CALL_ID,
+            "item_chars": Param(type=ParamType.INTEGER, default=HEADER_ITEM_CHARS),
+            "head_items": Param(type=ParamType.INTEGER, default=HEADER_ITEMS),
+        },
     ),
     "view_offload": Query(
         scope=Scope.KEYED,

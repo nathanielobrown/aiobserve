@@ -103,6 +103,21 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
         "source": FORK_ORIGIN_RUN,
         "api_call_id": DENSE_CALL,
     },
+    # The numbers behind one tree row. Bound at a turn rather than at a session, because the
+    # turn is the one kind whose delta is measured against a sibling — the arm with a window
+    # function under it — and at the thread the tree tests open, where that turn has one before
+    # it to be measured against.
+    "view_numbers": {
+        "session_id": SPINE,
+        "source": MAIN,
+        "node_id": SLASH_TURN,
+        "kind": "turn",
+    },
+    "view_numbers_tool": {
+        "session_id": FORK_ORIGIN,
+        "source": FORK_ORIGIN_RUN,
+        "tool_call_id": DENSE_TOOL,
+    },
     # The records browser, at the corpus's densest recorded thread — 47 archived records, so
     # the default page of 100 answers with more than one row and the turn join with several.
     "view_records": {"session_id": ANCESTOR, "source": MAIN},
