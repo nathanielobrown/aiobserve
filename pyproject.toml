@@ -68,6 +68,8 @@ extend-exclude = ["*.md"]
 # Curated groups, not `ALL`: each one here has to earn the fixes it demands, and the groups
 # left out are named under `ignore` with the reason. `ruff rule <code>` explains any of them.
 select = [
+  # E501 included: the formatter breaks what it can, and what is left over — a long string,
+  # a URL in a comment — is where the 100-column reading width actually needs defending.
   "E",     # pycodestyle errors
   "W",     # pycodestyle warnings
   "F",     # pyflakes
@@ -82,8 +84,12 @@ select = [
   "C4",    # comprehensions
   "DTZ",   # naive datetimes — every timestamp we read carries a zone, so ours must
   "ERA",   # commented-out code
+  "EXE",   # shebang and +x agreement — the hooks and `tools/` scripts are run both ways
+  "FLY",   # `"".join` over literals, which an f-string says in one piece
   "FURB",  # refurb — modernizations pyupgrade doesn't cover
   "G",     # logging call shape
+  "ICN",   # import aliases — the conventional short name, or the full one
+  "INP",   # a package directory has an `__init__.py`; every one here does
   "LOG",   # logging misuse
   "N",     # pep8 naming
   "PERF",  # loops that build what a comprehension would
@@ -99,17 +105,22 @@ select = [
   "RUF",   # ruff's own, including stale `noqa` directives
   "S",     # bandit — this repo shells out, renders HTML, and holds private session data
   "SLF",   # private member access across objects
+  "T10",   # a `breakpoint()` that rode along in a commit
   "T20",   # stray print
   "TRY",   # exception antipatterns
+  "YTT",   # version checks that read `sys.version[2]` and break on 3.10
 ]
 # Each entry is a rule we looked at and rejected, with the reason. Whole groups left out of
 # `select` for the same kind of reason: PLR (its ceilings on arguments, returns and magic
 # values fire ~240 times, nearly all in tests, where a literal is the assertion), D and ANN
 # (docstrings and annotations by mandate — house style writes both where they help, and
-# pyrefly checks the types that exist), EM and TRY003 (a variable per raise site buys a
-# tidier traceback and costs the message its place), ARG (FastAPI handlers, markdown-it
-# render rules and pytest fixtures all keep parameters they never read), ISC (ISC001 fights
-# the formatter, and ISC004 would parenthesize every multi-line SQL string), TC (moving an
+# pyrefly checks the types that exist; even with D's D1 presence rules dropped, the shape
+# rules ask for 409 rewrites, 324 of them D401's imperative mood), EM and TRY003 (a variable
+# per raise site buys a tidier traceback and costs the message its place), ARG (FastAPI
+# handlers, markdown-it render rules and pytest fixtures all keep parameters they never
+# read), ISC (ISC001 fights the formatter, and ISC004 — the missing-comma catch — fires on
+# 63 deliberate multi-line strings inside list literals, wrapping each in parentheses and an
+# extra indent for a bug the suite has never seen), TC (moving an
 # import into `if TYPE_CHECKING` breaks FastAPI and Pydantic, which read annotations at
 # runtime — and we don't import `annotations` from `__future__`), and COM/Q (the formatter
 # owns commas and quotes).
@@ -149,6 +160,12 @@ unfixable = ["F401"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
+
+[tool.ruff.format]
+# Format the code inside docstrings too. A usage example that has drifted out of the house
+# style reads as if it were quoted from somewhere else; this keeps it looking like the module
+# around it. Markdown is excluded above, so this reaches docstrings only.
+docstring-code-format = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
