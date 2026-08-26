@@ -55,6 +55,14 @@ htmx reads all but `hx-get` off the closest ancestor carrying one, so the tree w
 
 A fetch that is not a pane swap rides an element of its own beside the link. The popover a tree row fetches overrides every attribute `#tree-rows` writes, and htmx walks up from whatever fetched: written on the `<li>`, those overrides would reach the link inside it and the click would stop swapping the pane. `hx-disinherit` is not the way out, because it stops the walk rather than skipping a level of it. So the trigger is a span of its own next to the link, and `hx-trigger`'s `from:closest li` keeps the row as the thing a reader points at (`_tree.html`).
 
+Witnessed in a real Chromium on 2026-08-26, against `mise run gallery --port 9061` — never 8477, which is a live viewer — in both colour schemes. A served-HTML test reads the attributes; only a browser reads what they do:
+
+- Pointing at a row fetched its popover after the delay and drew it on screen at the reading pane's left edge. Pointing at the same row again fetched nothing, so `once` holds
+- The pointer moving into the popover left it open: `:hover` follows the DOM and not the layout, so it stays true inside a `position: fixed` descendant of the row
+- Clicking inside the popover held it open after the pointer left, and did not navigate. `tabindex="-1"` makes the click focus it and `li.node:focus-within` keeps it up while a reader drags across a number, which is the affordance a pin would have added a second state for
+- `Tab` onto a row's link fetched the popover the same way, so the keyboard reaches what the pointer reaches
+- The row's link still swapped the pane, and the console stayed empty
+
 # A control beside the tree lives inside the swapped element
 
 A tree row swaps `#tree-rows` out of band and takes `#pane` out of the response, so those two
