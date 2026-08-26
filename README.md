@@ -29,8 +29,6 @@ flowchart LR
     export_otlp --> backend[("OTLP backend")]
 ```
 
-
-
 Read the guide for each stage: [the store](docs/store.md), [enrichment](docs/enrichment.md), [analysis](docs/analysis.md), [the viewer](docs/viewer.md), and [OTLP export](docs/otlp-export.md). Working on the viewer's own pages has [a guide of its own](docs/ui-development.md).
 
 ## Set up the project
