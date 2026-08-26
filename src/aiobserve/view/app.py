@@ -2120,6 +2120,22 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
     return app
 
 
+def claim(port: int, remedy: str) -> None:
+    """Refuse `port` before anything binds it, naming the port and `remedy` — how to get one.
+
+    A second server on a fixed port is the one startup failure a reader hits by accident, and
+    the way out differs by server: the viewer takes `--port` and the gallery takes nothing.
+    """
+    with socket.socket() as probe:
+        try:
+            probe.bind((HOST, port))
+        except OSError as error:
+            raise SystemExit(
+                f"port {port} is in use — something may already be serving at "
+                f"http://{HOST}:{port}/. {remedy}"
+            ) from error
+
+
 def serve(db_path: Path, port: int, *, open_browser: bool, dev: bool) -> None:
     """Run the viewer until interrupted, refusing a port something else already holds.
 
@@ -2127,14 +2143,7 @@ def serve(db_path: Path, port: int, *, open_browser: bool, dev: bool) -> None:
     because the two viewers are different things and the caller knows which it wants.
     """
     app = build_app(db_path, dev=dev)
-    with socket.socket() as probe:
-        try:
-            probe.bind((HOST, port))
-        except OSError as error:
-            raise SystemExit(
-                f"port {port} is in use — a viewer may already be running at "
-                f"http://{HOST}:{port}/. Pass --port to use another."
-            ) from error
+    claim(port, "Pass --port to use another.")
     url = f"http://{HOST}:{port}/"
     print(f"aiobserve view: {db_path} at {url}")
     if open_browser:
