@@ -213,6 +213,16 @@ also_copy = ["mise.toml", "docs", ".claude/hooks", "tools", "aigarden.toml"]
 # annotation, which is what a type checker is here to notice. `pyrefly check --preset default`
 # shows what it costs to run without them.
 preset = "strict"
+# A display threshold, not a gate: a warn never reaches the exit code. The default value
+# hides warns outright, so a kind pyrefly adds in a future release would arrive invisible.
+# Showing them is what keeps the rule below true — every kind is either promoted to an error
+# or turned off with a reason, and none sits in a middle tier nobody reads.
+min-severity = "warn"
+# Pyrefly honors `.gitignore`, and `.claude/worktrees/` is in ours: a bare `pyrefly check`
+# from inside an agent worktree would match no file and pass having read nothing. With both
+# of these off, `project-includes` is the only thing deciding what gets checked.
+use-ignore-files = false
+disable-project-excludes-heuristics = true
 project-includes = ["src", "tests"]
 # The repo root as well as `src`: test modules import shared scaffolding from
 # `tests.conftest`, which pyrefly cannot see from the inferred `src` root alone.
@@ -220,9 +230,31 @@ search-path = ["src", "."]
 
 [tool.pyrefly.errors]
 # Promoted from warn: `check` is the only place these are read, and a finding that prints
-# without failing is a finding nobody acts on.
+# without failing is a finding nobody acts on. Everything warn-level is here, so the list
+# grows when a pyrefly release adds a kind — which is the point of `min-severity` above.
 deprecated = "error"
+division-by-zero = "error"
+implicit-import = "error"
+invalid-decorator = "error"
+name-mismatch = "error"
+non-exhaustive-match = "error"
+redundant-cast = "error"
+redundant-condition = "error"
+unnecessary-comparison = "error"
 unnecessary-type-conversion = "error"
+unreachable = "error"
+unresolvable-dunder-all = "error"
+variance-mismatch = "error"
+# Off in the strict preset, on here. A return type is the half of a signature a caller reads
+# first; inference checks the body either way, so this only asks that the contract be stated.
+# Relaxed for tests below, where every `def test_*` returns None by construction.
+unannotated-return = true
+# A class holding an unimplemented abstract member says so, rather than failing at the one
+# call site that instantiates it.
+implicit-abstract-class = true
+# Attributes are declared in the class body or `__init__`, not grown by whichever method
+# happens to run first — which is also the only way a reader can find the full shape.
+implicitly-defined-attribute = true
 # Left off. pygments ships no stubs, so this fires six times on one import block and says
 # only that a dependency is untyped — which we knew when we chose it.
 untyped-import = false
@@ -240,3 +272,7 @@ matches = "tests/**"
 implicit-any-empty-container = false
 implicit-any-type-argument = false
 implicit-any-parameter = false
+# A `def test_*` returns None by construction, so `-> None` on all 91 of them is ceremony.
+# This lifts the rule off the whole tree, fixtures included — but a fixture's return type is
+# what the tests taking it read, and every fixture here annotates one already.
+unannotated-return = false
