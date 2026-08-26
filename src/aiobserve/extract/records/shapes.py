@@ -366,7 +366,13 @@ class ModelConsentFallbackRecord(SystemRecord):
 
     originalModel: Annotated[
         str | None,
-        Field(default=None, description="The model the session asked for"),
+        Field(
+            default=None,
+            description=(
+                "The model the session asked for and did not get: it needed credits the "
+                "account lacked"
+            ),
+        ),
         Cited(REGISTRY_ZOO, "2.1.221"),
     ]
     fallbackModel: Annotated[
