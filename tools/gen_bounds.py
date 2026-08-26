@@ -5,9 +5,10 @@ Run by two cog blocks in that document — `uv run python -m tools.gen_bounds kn
 `view/bounds.py` or the query manifest it composes; the words around them live here, since a
 size beside a ceiling is not prose anything else already writes.
 
-Each row names the constants it prints (`Row.cites`), which is what lets the tests check a
-number against the symbol rather than against a literal, and what makes `UNCITED` the only
-place a bound can be left out of both tables.
+Each row names the constants it prints, in the order it prints them and one per number
+(`Row.cites`), which is what lets the tests check each number against the symbol standing in
+that position rather than against a literal, and what makes `UNCITED` the only place a bound
+can be left out of both tables.
 """
 
 import sys
@@ -33,7 +34,12 @@ class Table(StrEnum):
 
 
 class Row(NamedTuple):
-    """One row: what it is about, what it says, and the constants whose values it prints."""
+    """One row: what it is about, what it says, and what each number in it stands for.
+
+    `cites` runs parallel to the numbers `says` spells — one name per number, in that order,
+    so a swapped pair reads as a mismatch rather than as two cited numbers. A bound is cited
+    by the end it prints: `bounds.RECORDS.default`, never bare `bounds.RECORDS`.
+    """
 
     subject: str
     says: str
@@ -81,11 +87,18 @@ def declared() -> set[str]:
     }
 
 
-def valued(name: str) -> set[int]:
-    """The numbers a cited constant stands for — both of them, where it is a bound."""
-    module, _, symbol = name.partition(".")
+def valued(name: str) -> int:
+    """The one number a cited name stands for, a bound named by the end it prints."""
+    module, _, rest = name.partition(".")
+    symbol, _, end = rest.partition(".")
     value = getattr(MODULES[module], symbol)
-    return set(value) if isinstance(value, bounds.Bound) else {value}
+    if isinstance(value, bounds.Bound):
+        if end not in ("default", "ceiling"):
+            raise ValueError(f"`{name}` is a bound: cite its `.default` or its `.ceiling`")
+        return getattr(value, end)
+    if end:
+        raise ValueError(f"`{name}` is a plain number, so `.{end}` names nothing")
+    return value
 
 
 def cited() -> set[str]:
@@ -95,7 +108,9 @@ def cited() -> set[str]:
 
 def cited_bounds() -> set[str]:
     """Those of them that are `bounds.py`'s own, as it names them."""
-    return {name.removeprefix("bounds.") for name in cited() if name.startswith("bounds.")}
+    return {
+        name.removeprefix("bounds.").split(".")[0] for name in cited() if name.startswith("bounds.")
+    }
 
 
 def described_preset(preset: nodes.Preset) -> str:
@@ -127,7 +142,7 @@ def knob_rows() -> list[Row]:
             Row(
                 f"?{knob}=",
                 f"{SIZE_WORDS[knob]}, at most {text.count(bound.ceiling)}",
-                (f"bounds.{knob.upper()}",),
+                (f"bounds.{knob.upper()}.ceiling",),
             )
         )
     return listed
@@ -143,7 +158,7 @@ def bound_rows() -> list[Row]:
             f"{queries.LIST_ITEMS} {queries.LIST_ITEM_CHARS}-character names, and work to "
             f"{queries.LIST_CATEGORIES}",
             (
-                "bounds.SESSIONS",
+                "bounds.SESSIONS.default",
                 "queries.LIST_CHARS",
                 "queries.LIST_ITEMS",
                 "queries.LIST_ITEM_CHARS",
@@ -154,43 +169,43 @@ def bound_rows() -> list[Row]:
             "Projects",
             f"{text.count(bounds.PROJECTS.default)} projects; the path is cut to "
             f"{text.count(queries.LIST_CHARS)} characters",
-            ("bounds.PROJECTS", "queries.LIST_CHARS"),
+            ("bounds.PROJECTS.default", "queries.LIST_CHARS"),
         ),
         Row(
             "A session's errors",
             f"{text.count(bounds.ERRORS.default)} failed tool calls; each title is cut to "
             f"{text.count(queries.NAV_CHARS)} characters",
-            ("bounds.ERRORS", "queries.NAV_CHARS"),
+            ("bounds.ERRORS.default", "queries.NAV_CHARS"),
         ),
         Row(
             "Tree",
             f"{text.count(bounds.KIN.default)} children per open level, "
             f"{text.count(bounds.DEPTH)} levels deep, each title cut to "
             f"{text.count(queries.NAV_CHARS)} characters",
-            ("bounds.KIN", "bounds.DEPTH", "queries.NAV_CHARS"),
+            ("bounds.KIN.default", "bounds.DEPTH", "queries.NAV_CHARS"),
         ),
         Row(
             "Children log",
             f"{text.count(bounds.LOG.default)} rows a page, each string cut to "
             f"{text.count(bounds.LOG_CHARS)} characters",
-            ("bounds.LOG", "bounds.LOG_CHARS"),
+            ("bounds.LOG.default", "bounds.LOG_CHARS"),
         ),
         Row(
             "Previewed value",
             f"{text.count(bounds.DETAIL.default)} characters, with the rest a fetch away",
-            ("bounds.DETAIL",),
+            ("bounds.DETAIL.default",),
         ),
         Row(
             "Raw records",
             f"{text.count(bounds.RECORDS.default)} rows by default, at most "
             f"{text.count(bounds.RECORDS.ceiling)}",
-            ("bounds.RECORDS",),
+            ("bounds.RECORDS.default", "bounds.RECORDS.ceiling"),
         ),
         Row(
             "Offload",
             f"{text.count(bounds.CHUNK.default)} characters by default, at most "
             f"{text.count(bounds.CHUNK.ceiling)}",
-            ("bounds.CHUNK",),
+            ("bounds.CHUNK.default", "bounds.CHUNK.ceiling"),
         ),
         Row(
             "Syntax highlighting",
