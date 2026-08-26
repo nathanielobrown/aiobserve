@@ -172,7 +172,7 @@ no_proxy='*' uv run mutmut run --max-children 1 "$@"
 """
 
 [tasks.check-fast]
-description = "Format, lint, and type-check — the loop to run while iterating"
+description = "Format and lint the code and the docs, and type-check — the loop to run while iterating"
 depends = ["format", "lint", "lint-docs", "typecheck"]
 
 [tasks.check]
