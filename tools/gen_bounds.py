@@ -1,0 +1,230 @@
+"""The two bounds tables in `docs/viewer.md`: what a URL can ask for, and what a page holds.
+
+Run by two cog blocks in that document — `uv run python -m tools.gen_bounds knobs` and
+`… bounds` — because the tables sit in different sections. Every number comes from
+`view/bounds.py` or the query manifest it composes; the words around them live here, since a
+size beside a ceiling is not prose anything else already writes.
+
+Each row names the constants it prints (`Row.cites`), which is what lets the tests check a
+number against the symbol rather than against a literal, and what makes `UNCITED` the only
+place a bound can be left out of both tables.
+"""
+
+import sys
+from enum import StrEnum
+from typing import NamedTuple
+
+from aiobserve.analyze import queries
+from aiobserve.view import bounds, nodes
+from aiobserve.view.app import KNOB_DEFAULTS
+from tools import text
+
+# Where a cited name is looked up. `bounds.py` names every page size beside its ceiling and
+# re-exports the widths the queries declare; a width it does not re-export is read here from
+# the manifest that does declare it, so no number is copied to be printed.
+MODULES = {"bounds": bounds, "queries": queries}
+
+
+class Table(StrEnum):
+    """The two tables, named as the cog block's argument spells them."""
+
+    KNOBS = "knobs"
+    BOUNDS = "bounds"
+
+
+class Row(NamedTuple):
+    """One row: what it is about, what it says, and the constants whose values it prints."""
+
+    subject: str
+    says: str
+    cites: tuple[str, ...]
+
+
+# What each fold of the tree shows, for the reader of a URL rather than of the switcher —
+# `Preset` carries its own label for the control, which says which fold rather than what it
+# does. A preset missing from here crashes `generate`.
+PRESET_WORDS = {
+    nodes.Preset.FULL: "The whole tree",
+    nodes.Preset.NO_API: (
+        "The api calls folded away, each turn's tool calls standing directly under it"
+    ),
+    nodes.Preset.AGENTS: (
+        "The runs alone, each under the run that spawned it — the session's org chart"
+    ),
+}
+
+# What each size knob narrows. The ceiling beside it is not written here: a knob is capped by
+# the bound of the same name, which is where `SIZE_KNOBS` reads it.
+SIZE_WORDS = {
+    "kin": "Children per open level",
+    "log": "Rows in one page of the pane's children log",
+    "detail": "Characters of each value the pane previews",
+}
+
+# Bounds no table prints, each with the reason it is only prose. The tables cover what a
+# reader can ask for and what a page holds; these three are arithmetic behind those numbers,
+# and the fourth is a fetch a page triggers rather than a size anyone types.
+UNCITED = {
+    "OPENED_RECORD_CHARS": "how long a record the records browser opens by itself may be",
+    "CURSORLESS_TURNS": "how many turn rows a level renders that no cursor reaches",
+    "INDENT_CHARS": "when a JSON value is re-indented rather than served as stored",
+    "TREE_ROW_BYTES": "what one tree row weighs — the page arithmetic's multiplicand",
+}
+
+
+def declared() -> set[str]:
+    """Every page size `bounds.py` declares: a number, or a default beside its ceiling."""
+    return {
+        name
+        for name, value in vars(bounds).items()
+        if not name.startswith("_") and isinstance(value, bounds.Bound | int)
+    }
+
+
+def valued(name: str) -> set[int]:
+    """The numbers a cited constant stands for — both of them, where it is a bound."""
+    module, _, symbol = name.partition(".")
+    value = getattr(MODULES[module], symbol)
+    return set(value) if isinstance(value, bounds.Bound) else {value}
+
+
+def cited() -> set[str]:
+    """Every constant either table prints."""
+    return {name for table in Table for row in rows(table) for name in row.cites}
+
+
+def cited_bounds() -> set[str]:
+    """Those of them that are `bounds.py`'s own, as it names them."""
+    return {name.removeprefix("bounds.") for name in cited() if name.startswith("bounds.")}
+
+
+def described_preset(preset: nodes.Preset) -> str:
+    """What `?nav=` set to this preset does, with the default marked as one."""
+    if preset not in PRESET_WORDS:
+        raise ValueError(f"preset `{preset.value}` has no words in the knob table")
+    words = PRESET_WORDS[preset]
+    return f"{words}. The default" if KNOB_DEFAULTS["nav"] == preset else words
+
+
+def knob_rows() -> list[Row]:
+    """One row per knob a node URL takes, in the order the app declares them.
+
+    `?nav=` is a row per fold rather than one row, because the value is what a reader types.
+    A size knob's ceiling is the bound of the same name — the tie that keeps a knob a reader
+    can type from outrunning what the page was measured at.
+    """
+    listed = []
+    for knob in KNOB_DEFAULTS:
+        if knob == "nav":
+            listed += [
+                Row(f"?nav={preset.value}", described_preset(preset), ()) for preset in nodes.Preset
+            ]
+            continue
+        bound = getattr(bounds, knob.upper())
+        if not isinstance(bound, bounds.Bound):
+            raise ValueError(f"knob `?{knob}=` has no bound named `{knob.upper()}` to cap it")
+        listed.append(
+            Row(
+                f"?{knob}=",
+                f"{SIZE_WORDS[knob]}, at most {text.count(bound.ceiling)}",
+                (f"bounds.{knob.upper()}",),
+            )
+        )
+    return listed
+
+
+def bound_rows() -> list[Row]:
+    """One row per surface a bound caps: what a reader who types nothing gets, and the most."""
+    return [
+        Row(
+            "Session list",
+            f"{text.count(bounds.SESSIONS.default)} sessions; each long string is cut to "
+            f"{text.count(queries.LIST_CHARS)} characters, skills and agent types to "
+            f"{queries.LIST_ITEMS} {queries.LIST_ITEM_CHARS}-character names, and work to "
+            f"{queries.LIST_CATEGORIES}",
+            (
+                "bounds.SESSIONS",
+                "queries.LIST_CHARS",
+                "queries.LIST_ITEMS",
+                "queries.LIST_ITEM_CHARS",
+                "queries.LIST_CATEGORIES",
+            ),
+        ),
+        Row(
+            "Projects",
+            f"{text.count(bounds.PROJECTS.default)} projects; the path is cut to "
+            f"{text.count(queries.LIST_CHARS)} characters",
+            ("bounds.PROJECTS", "queries.LIST_CHARS"),
+        ),
+        Row(
+            "A session's errors",
+            f"{text.count(bounds.ERRORS.default)} failed tool calls; each title is cut to "
+            f"{text.count(queries.NAV_CHARS)} characters",
+            ("bounds.ERRORS", "queries.NAV_CHARS"),
+        ),
+        Row(
+            "Tree",
+            f"{text.count(bounds.KIN.default)} children per open level, "
+            f"{text.count(bounds.DEPTH)} levels deep, each title cut to "
+            f"{text.count(queries.NAV_CHARS)} characters",
+            ("bounds.KIN", "bounds.DEPTH", "queries.NAV_CHARS"),
+        ),
+        Row(
+            "Children log",
+            f"{text.count(bounds.LOG.default)} rows a page, each string cut to "
+            f"{text.count(bounds.LOG_CHARS)} characters",
+            ("bounds.LOG", "bounds.LOG_CHARS"),
+        ),
+        Row(
+            "Previewed value",
+            f"{text.count(bounds.DETAIL.default)} characters, with the rest a fetch away",
+            ("bounds.DETAIL",),
+        ),
+        Row(
+            "Raw records",
+            f"{text.count(bounds.RECORDS.default)} rows by default, at most "
+            f"{text.count(bounds.RECORDS.ceiling)}",
+            ("bounds.RECORDS",),
+        ),
+        Row(
+            "Offload",
+            f"{text.count(bounds.CHUNK.default)} characters by default, at most "
+            f"{text.count(bounds.CHUNK.ceiling)}",
+            ("bounds.CHUNK",),
+        ),
+        Row(
+            "Syntax highlighting",
+            f"{text.count(bounds.HIGHLIGHT_CHARS)} characters, above which the value prints "
+            "as stored",
+            ("bounds.HIGHLIGHT_CHARS",),
+        ),
+    ]
+
+
+HEADERS = {
+    Table.KNOBS: ("Knob", "What it does"),
+    Table.BOUNDS: ("Surface", "Default and limit"),
+}
+
+
+def rows(table: Table) -> list[Row]:
+    """The rows of one table."""
+    return knob_rows() if table == Table.KNOBS else bound_rows()
+
+
+def generate(table: Table) -> str:
+    """One table as the cog block that names it splices it."""
+    listed = rows(table)
+    subject = "`{}`".format if table == Table.KNOBS else str
+    return text.table(HEADERS[table], ((subject(row.subject), row.says) for row in listed))
+
+
+def main() -> None:
+    """Print the table named by the one argument — `knobs` or `bounds`."""
+    if len(sys.argv) != 2:
+        raise SystemExit(f"name one table: {' | '.join(table.value for table in Table)}")
+    print(generate(Table(sys.argv[1])))
+
+
+if __name__ == "__main__":
+    main()
