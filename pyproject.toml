@@ -43,7 +43,9 @@ dev = [
   "pytest>=8.4",
   "pytest-timeout>=2.4", # backs the `timeout` setting below
   "pyrefly>=0.24",
-  "ruff>=0.12",
+  # Exact, not a floor: a ruff release adds rules to the groups selected below, so an upgrade
+  # is a change to what the gate demands. It lands when someone bumps this line.
+  "ruff==0.16.1",
   # Mutation testing — `mise run mutate`. Answers what a green suite cannot: whether a leaf
   # would notice the code being wrong. Outside `check`, because it costs a test run per mutant.
   "mutmut>=3.7",
@@ -61,18 +63,87 @@ target-version = "py313"
 extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
+# Curated groups, not `ALL`: each one here has to earn the fixes it demands, and the groups
+# left out are named under `ignore` with the reason. `ruff rule <code>` explains any of them.
 select = [
-  "E",   # pycodestyle
-  "F",   # pyflakes
-  "I",   # isort — one import order, enforced rather than argued about
-  "UP",  # pyupgrade — keep syntax current with the pinned interpreter
-  "B",   # bugbear
-  "SIM", # simplify
-  "TID", # tidy-imports — bans relative imports (see flake8-tidy-imports below)
+  "E",     # pycodestyle errors
+  "W",     # pycodestyle warnings
+  "F",     # pyflakes
+  "I",     # isort — one import order, enforced rather than argued about
+  "UP",    # pyupgrade — keep syntax current with the pinned interpreter
+  "B",     # bugbear
+  "SIM",   # simplify
+  "TID",   # tidy-imports — bans relative imports (see flake8-tidy-imports below)
+  "A",     # builtins — a local named `input` shadows the function used beside it
+  "ASYNC", # blocking calls inside the viewer's async routes
+  "BLE",   # blind except — the fail-fast rule, enforced
+  "C4",    # comprehensions
+  "DTZ",   # naive datetimes — every timestamp we read carries a zone, so ours must
+  "ERA",   # commented-out code
+  "FURB",  # refurb — modernizations pyupgrade doesn't cover
+  "G",     # logging call shape
+  "LOG",   # logging misuse
+  "N",     # pep8 naming
+  "PERF",  # loops that build what a comprehension would
+  "PGH",   # blanket `noqa` and bare `type: ignore` — a suppression names its rule
+  "PIE",   # small dead-weight constructs
+  "PLC",   # pylint conventions
+  "PLE",   # pylint errors
+  "PLW",   # pylint warnings
+  "PT",    # pytest style — the suite is most of the repo
+  "PTH",   # pathlib over os.path
+  "RET",   # return paths
+  "RSE",   # raise
+  "RUF",   # ruff's own, including stale `noqa` directives
+  "S",     # bandit — this repo shells out, renders HTML, and holds private session data
+  "SLF",   # private member access across objects
+  "T20",   # stray print
+  "TRY",   # exception antipatterns
+]
+# Each entry is a rule we looked at and rejected, with the reason. Whole groups left out of
+# `select` for the same kind of reason: PLR (its ceilings on arguments, returns and magic
+# values fire ~240 times, nearly all in tests, where a literal is the assertion), D and ANN
+# (docstrings and annotations by mandate — house style writes both where they help, and
+# pyrefly checks the types that exist), EM and TRY003 (a variable per raise site buys a
+# tidier traceback and costs the message its place), ARG (FastAPI handlers, markdown-it
+# render rules and pytest fixtures all keep parameters they never read), ISC (ISC001 fights
+# the formatter, and ISC004 would parenthesize every multi-line SQL string), TC (moving an
+# import into `if TYPE_CHECKING` breaks FastAPI and Pydantic, which read annotations at
+# runtime — and we don't import `annotations` from `__future__`), and COM/Q (the formatter
+# owns commas and quotes).
+ignore = [
+  # Our SQL is assembled from module constants and closed sets — `view/listing.py` documents
+  # the membership check that guards the one request-shaped composition, and every value a
+  # request supplies is bound as a parameter. The rule sees only the f-string.
+  "S608",
+  # Exception names read as the condition they report (`StoreLocked`, `SchemaMoved`). The
+  # `Error` suffix would add a syllable and no information.
+  "N818",
+  # A raise says what went wrong at the place it went wrong. Hoisting the message into a
+  # variable first buys a tidier traceback and costs the reader the sentence.
+  "TRY003",
+  # One assertion is often one claim — "this page lists projects and no sessions". Splitting
+  # it in two restates the claim rather than sharpening the failure.
+  "PT018",
+  # `–`, `×` and `❯` are the viewer's own typography, and the tests assert on what it prints.
+  "RUF001",
+  "RUF002",
+  "RUF003",
 ]
 # Unused imports are never auto-removed: the ruff-fix hook runs `--fix` on every
 # Claude edit, and silently deleting an import mid-refactor hides the mistake.
 unfixable = ["F401"]
+
+[tool.ruff.lint.per-file-ignores]
+# The CLI's output is its interface, and the generators print the block `aigarden cog` splices.
+"src/aiobserve/cli.py" = ["T201"]
+"tools/*" = ["T201"]
+# The record models spell Claude Code's field names exactly, camelCase and all, because that
+# is what a transcript holds (`src/aiobserve/extract/records/`).
+"src/aiobserve/extract/records/*" = ["N815"]
+# Tests are not an attack surface: `assert` is the point, a subprocess is the fixture, and a
+# `/tmp` path is a value a test invents. Everything else bandit checks stays on in `src/`.
+"tests/**" = ["S"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
