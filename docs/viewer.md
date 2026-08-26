@@ -35,22 +35,24 @@ flowchart LR
 
 Solid edges lead to pages with their own URLs. Dotted edges fetch a fragment into the open page.
 
-| Page | Route |
-| --- | --- |
-| Projects | `/` |
-| Session list | `/sessions` |
-| A session | `/session/{session_id}` |
-| A turn | `/session/{session_id}/thread/{source}/turn/{turn_id}` |
-| An agent run | `/session/{session_id}/run/{run_id}` |
-| An api call | `/session/{session_id}/thread/{source}/call/{api_call_id}` |
-| A tool call | `/session/{session_id}/thread/{source}/tool/{tool_call_id}` |
-| A compaction | `/session/{session_id}/thread/{source}/compaction/{compaction_id}` |
-| A thread's calls under no turn | `/session/{session_id}/thread/{source}/unattributed` |
-| The runs nothing placed | `/session/{session_id}/unattached` |
-| Where a session failed | `/session/{session_id}/errors` |
-| Raw records | `/session/{session_id}/thread/{source}/records` |
-| An offloaded result | `/session/{session_id}/offload/{offload_name}` |
-| The SQL behind a page | `/query/{query_name}` |
+<!-- aigarden:cog sh "uv run python -m tools.gen_routes" -->
+| Page | Route | Description |
+| --- | --- | --- |
+| Projects page | `/` | Every project the store holds sessions for, most recently active first |
+| Session list | `/sessions` | One page of sessions, under the filter, sort and size the URL carries |
+| A session | `/session/{session_id}` | A session's own node: what it was, and its main thread as the tree's first level |
+| A turn | `/session/{session_id}/thread/{source}/turn/{turn_id}` | One turn: what it was asked, and the api calls that answered it |
+| An agent run | `/session/{session_id}/run/{run_id}` | One agent run: the brief it was given, and its own thread of turns |
+| An api call | `/session/{session_id}/thread/{source}/call/{api_call_id}` | One api call: what it answered, what it thought, and the tools it called |
+| A tool call | `/session/{session_id}/thread/{source}/tool/{tool_call_id}` | One tool call: what it was passed, and what it returned |
+| A compaction | `/session/{session_id}/thread/{source}/compaction/{compaction_id}` | One compaction: where a thread's context was rewritten, and what that cost it |
+| Unattributed calls | `/session/{session_id}/thread/{source}/unattributed` | One thread's api calls that answer no turn — a resume's calls answer turns that live in the session it resumed, and this is where they are read |
+| Unattached runs | `/session/{session_id}/unattached` | The session's agent runs no spawning call resolved |
+| Errors page | `/session/{session_id}/errors` | Every failed tool call of one session, in the order they happened |
+| Query page | `/query/{query_name}` | One library query's SQL, under the bindings a page cited it with |
+| Records page | `/session/{session_id}/thread/{source}/records` | One page of a thread's raw transcript — where a report's citation lands |
+| An offload file | `/session/{session_id}/offload/{offload_name:path}` | One chunk of a tool result Claude Code wrote to a file beside the transcript |
+<!-- aigarden:end -->
 
 `src/aiobserve/view/app.py` declares every route, fragments included. Nothing renders in the pane that a cold GET of its own URL doesn't render whole, tree and all.
 
@@ -155,6 +157,7 @@ Every page is a plain GET you can paste into a report or message. One rule shape
 
 Node pages take four knobs, and every link on a page carries the ones that aren't defaults, so a click serves the URL it displays:
 
+<!-- aigarden:cog sh "uv run python -m tools.gen_bounds knobs" -->
 | Knob | What it does |
 | --- | --- |
 | `?nav=full` | The whole tree. The default |
@@ -163,6 +166,7 @@ Node pages take four knobs, and every link on a page carries the ones that aren'
 | `?kin=` | Children per open level, at most 200 |
 | `?log=` | Rows in one page of the pane's children log, at most 100 |
 | `?detail=` | Characters of each value the pane previews, at most 4,000 |
+<!-- aigarden:end -->
 
 The three sizes only go down. Each default is also its ceiling, because the page's byte bound is arithmetic over the defaults and there is no headroom to spend. A size outside its range or a `nav` the viewer doesn't have returns 400 rather than a guess.
 
@@ -204,9 +208,10 @@ Full-value requests are the declared exception. Each returns one whole value —
 
 `src/aiobserve/view/bounds.py` defines each page size beside its ceiling. A typed size above its ceiling returns 400. The payload checks charge each transcript character at five bytes, the longest HTML escape, and add measured markup costs from the canonical store.
 
+<!-- aigarden:cog sh "uv run python -m tools.gen_bounds bounds" -->
 | Surface | Default and limit |
 | --- | --- |
-| Session list | 103 sessions; each long string is cut to 100 characters, skills and agent types to four 20-character names, and work to three |
+| Session list | 103 sessions; each long string is cut to 100 characters, skills and agent types to 4 20-character names, and work to 3 |
 | Projects | 100 projects; the path is cut to 100 characters |
 | A session's errors | 100 failed tool calls; each title is cut to 110 characters |
 | Tree | 200 children per open level, 16 levels deep, each title cut to 110 characters |
@@ -215,6 +220,7 @@ Full-value requests are the declared exception. Each returns one whole value —
 | Raw records | 100 rows by default, at most 200 |
 | Offload | 50,000 characters by default, at most 60,000 |
 | Syntax highlighting | 256,000 characters, above which the value prints as stored |
+<!-- aigarden:end -->
 
 The worst node page comes to 6,435,557 bytes of the 6,465,000 a node page is allowed — its own budget rather than the 500,000 every other page is weighed against, because the tree is a window a reader widens in place and not a page. The tree is what multiplies: an open path is `1 + 16 × (200 + 1)` = 3,217 rows, and a row is pinned at 1,681 bytes, which is 5,407,777 of the page, five sixths of it. The rest is 16 crumbs at 930 bytes, 100 log rows at 6,315, a pager at 600, three previewed values at 120,600 each, and 19,000 of chrome. The 29,443 spare is the rounding every ceiling here carries. The kind mark on a row is 49 bytes of it — 45 of markup around a 3-byte character, and the space after it — which over 3,217 rows is 157,633, the context bar's two classes are 8 bytes at their widest, 25,736 over the tree, and the popover trigger is 362, which is 1,164,554; `NODE_BYTES` in `tests/view/test_bounds.py` records what each raise of the ceiling bought. A preview the page marks up is priced at 30 bytes a character against the five an escaped one costs — an element around every token — and that price holds whether the markup is the syntax the record named or the Markdown a session wrote. A run's is the first pane whose three previews are all rendered, which is why the arithmetic charges three. A log row is the dearest thing on the page after the tree: it prints up to three of the store's own strings at 300 characters each, which is what a reader gets for reading a level without opening it. An api call's is the widest row there is — the model that answered, the head of what it said, and the tools it went on to call. `TREE_ROW_BYTES` is measured through the app rather than budgeted, at a title of nothing but `&` and the longest query string a link can carry, and pinned with no slack in either direction: a byte of slack there is 3,217 bytes of page, and the room above is spoken for. Nearly all of a row is its URL, written three times: the `href` a reader follows, the `hx-get` htmx fetches, and the popover's own path under a prefix. What the click does with its response is written once on `#tree-rows` and inherited; what the popover does with its own cannot be, because htmx walks up from the element that fetched, and a swap written on the row would be taken by the link inside it — so its five attributes are spelled out on every row, and a store whose agent runs carry longer ids than the recorded corpus does is a re-measure.
 
