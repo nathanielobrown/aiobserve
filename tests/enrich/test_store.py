@@ -77,6 +77,10 @@ def test_the_second_carrier_and_the_empty_body_both_arrive(fixture_db: Path) -> 
     # one of the 21 recorded `/clear` bodies is empty — then the empty body arrives as the
     # empty string, which is not the same value as no record.
     assert items["/clear"].command_result == ""
+    # The line above narrows the value to `""`, so pyrefly reads the next one as always true.
+    # It is — that is the claim being made. Spelling it out keeps the two states two states
+    # for the next reader, which is the whole point of the test.
+    # pyrefly: ignore[unnecessary-comparison]
     assert items["/clear"].command_result is not None
 
 
