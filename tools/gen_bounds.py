@@ -138,6 +138,8 @@ def knob_rows() -> list[Row]:
         bound = getattr(bounds, knob.upper())
         if not isinstance(bound, bounds.Bound):
             raise ValueError(f"knob `?{knob}=` has no bound named `{knob.upper()}` to cap it")
+        if knob not in SIZE_WORDS:
+            raise ValueError(f"knob `?{knob}=` has no words in the knob table")
         listed.append(
             Row(
                 f"?{knob}=",
