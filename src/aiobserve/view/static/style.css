@@ -100,13 +100,16 @@ td.title .secondary { display: -webkit-box; -webkit-box-orient: vertical;
    place in the hierarchy is drawn from `data-depth` rather than from nesting. */
 #browser { display: grid;
   grid-template-columns: var(--tree-width, 24rem) auto minmax(0, 1fr);
-  column-gap: var(--space-3); align-items: start; }
+  column-gap: var(--space-3); align-items: start;
+  /* The grip's width, named here because the popover measures the pane's left edge from it. */
+  --grip-width: 5px; }
 /* The handle between the two columns. It carries the width the reader dragged to and nothing
    else does: `static/tree-width.js` writes `--tree-width` above, and the bounds it may take
    are that file's, so a drag has one stop rather than a clamp here and a limit there. Held
    beside the tree's own scroller, the full height of it, so there is something to grab
    wherever the reader's eye already is. */
-#tree-grip { position: sticky; top: var(--space-2); height: calc(100vh - 4rem); width: 5px;
+#tree-grip { position: sticky; top: var(--space-2); height: calc(100vh - 4rem);
+  width: var(--grip-width);
   border-radius: 3px; background: var(--line); cursor: col-resize; }
 #tree-grip:hover, #tree-grip:focus-visible { background: var(--mark); }
 /* The tree scrolls on its own, so a deep session scrolls its rows without losing the pane
@@ -166,6 +169,34 @@ li.node > a:hover { background-color: color-mix(in srgb, var(--mark) 12%, transp
 li.row[data-selected] > a { font-weight: 600; color: var(--ink);
   background-color: color-mix(in srgb, var(--mark) 12%, transparent);
   box-shadow: inset 3px 0 var(--mark); }
+/* The numbers behind a row, shown while the reader is pointing at it or has tabbed into it.
+   `position: fixed` rather than absolute: the tree scrolls under `overflow: auto`, which clips
+   anything positioned inside it, and the popover is wider than the tree column. Fixed beside
+   the tree rather than under the pointer — no stylesheet can find a pointer — so a reader
+   knows where the numbers will be before they arrive. It stands where the reading pane does:
+   `--tree-width` is the width the reader dragged to, set on `#browser` and inherited down to
+   here, and the grip and the two gutters beside it are what separate the two columns.
+   The popover is a descendant of its row, so `:hover` on the row holds while the pointer is
+   inside the popover itself, and `:focus-within` holds once a click lands on it — which is
+   what makes the numbers selectable without a pin to hold them open. */
+.popover { display: none; position: fixed; bottom: var(--space-3); z-index: 2;
+  left: calc(var(--tree-width, 24rem) + var(--grip-width) + var(--space-3) * 2);
+  max-width: 32rem;
+  padding: var(--space-2); background: var(--paper); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 4px;
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--ink) 20%, transparent);
+  font-size: var(--type-label); }
+li.node:hover .popover, li.node:focus-within .popover { display: block; }
+.popover dl { display: grid; grid-template-columns: auto auto; gap: 0 var(--space-2);
+  margin: 0 0 var(--space-1); }
+.popover dl > div { display: contents; }
+.popover dt { color: var(--dim); }
+.popover dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.popover .total, .popover .beside { margin: 0; color: var(--dim); }
+.popover .total [data-field="cost_usd"] { color: var(--ink); font-weight: 600; }
+/* The trigger itself draws nothing: it is a mount for the popover and a listener on the row. */
+.peek { display: contents; }
+
 /* The tail of a level, which fetches the rest of it and stands the rows in its own place. A
    button, because there is no page at the other end — and dressed as the row it sits in
    rather than as a control, so the tree stays one column of one kind of line. Held to the

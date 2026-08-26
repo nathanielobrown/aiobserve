@@ -699,8 +699,11 @@ def test_a_tail_row_stands_the_rest_of_its_level_where_it_stands(
     assert served.status_code == 200
     assert rows(served.text) == [(1, key) for key in level if key != f"turn:{selection}"]
     # Each of them reads on under the sizes the reader typed, like any row the page drew, and
-    # by one URL whether it is clicked or pasted.
-    for key, wiring in wired(served.text, "data-tree"):
+    # by one URL whether it is clicked or pasted. The link, not the popover trigger beside it:
+    # a row fetches twice, and only one of the two is somewhere a reader can go.
+    links = [(key, at) for key, at in wired(served.text, "data-tree") if "href" in at]
+    assert len(links) == len(level) - 1
+    for key, wiring in links:
         assert wiring["href"] == wiring["hx-get"], key
         assert parse_qs(urlsplit(wiring["hx-get"]).query) == {"kin": ["1"]}, key
     # The level under the selection has no open path through it, so its tail row holds nothing

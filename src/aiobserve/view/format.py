@@ -47,6 +47,25 @@ def count(value: int | None) -> str:
     return ABSENT if value is None else f"{value:,}"
 
 
+def signed(value: int | None) -> str:
+    """A change, with its sign kept: `+30,442`, `-80,900`.
+
+    What a count prints as where the number is a difference. A delta printed bare reads as a
+    total, and the negative one — a turn that compacted, and gave the window back — is the
+    reading the bar beside it cannot draw (`docs/viewer.md`).
+    """
+    return ABSENT if value is None else f"{value:+,}"
+
+
+def charge(value: float | None) -> str:
+    """One category of a cost, at the precision a category is worth: `$0.0431`.
+
+    Four digits rather than the two `money` prints, because the parts of a cost are routinely
+    under a cent apiece — a legend in cents would be three zeroes and an answer.
+    """
+    return ABSENT if value is None else f"${value:.4f}"
+
+
 def cut(value: str, size: int) -> str:
     """A string at the width a page reads it, marked where the rest was left behind.
 

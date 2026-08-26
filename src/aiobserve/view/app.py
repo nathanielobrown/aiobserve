@@ -39,7 +39,7 @@ from aiobserve.analyze.queries import ParamValue
 from aiobserve.enrich.prompts import Level
 from aiobserve.export.duckdb import SCHEMA_VERSION
 from aiobserve.model import MAIN_SOURCE
-from aiobserve.view import bounds, errors, highlight, nodes, render, tree, walk
+from aiobserve.view import bounds, errors, highlight, nodes, numbers, render, tree, walk
 from aiobserve.view import format as fmt
 from aiobserve.view.enrichment import (
     GLYPH,
@@ -589,6 +589,8 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
     templates.env.filters |= {
         "money": fmt.money,
         "count": fmt.count,
+        "signed": fmt.signed,
+        "charge": fmt.charge,
         "share": fmt.share,
         "when": fmt.when,
         "clock": fmt.clock,
@@ -1876,6 +1878,79 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
             raise HTTPException(404, "No level is served for that kind of node.")
         at = Ref(kind=Kind(kind), source=None, node_id=node_id)
         return spilled(request, session_id, at, thread, depth, opened, nav, kin, log, detail)
+
+    def counted(
+        request: Request, kind: Kind, session_id: str, source: str, node_id: str
+    ) -> Response:
+        """One node's numbers, for the popover its tree row fetches.
+
+        `source` is the thread the window is read on, which is not always the thread the node
+        sits on: a session's reader is reading `main`, and its spend is every thread's. What
+        differs between the kinds is inside the query; what differs here is only the tool call,
+        which has no api calls to be measured out of.
+        """
+        if kind is Kind.TOOL:
+            keyed: dict[str, ParamValue] = {
+                "session_id": session_id,
+                "source": source,
+                "tool_call_id": node_id,
+                "item_chars": queries.HEADER_ITEM_CHARS,
+                "head_items": queries.HEADER_ITEMS,
+            }
+            with open_store(resolved) as connection:
+                rows = page_rows(connection, Fragment.TOOL_NUMBERS, **keyed)
+            if not rows:
+                raise HTTPException(404, "No tool call with that id is in this thread.")
+            return templates.TemplateResponse(
+                request,
+                "fragments/numbers_tool.html",
+                {
+                    "key": Ref(kind, source, node_id).key,
+                    "row": rows[0],
+                    "citation": queries.citation(Fragment.TOOL_NUMBERS, keyed),
+                },
+            )
+        bound: dict[str, ParamValue] = {
+            "session_id": session_id,
+            "source": source,
+            "node_id": node_id,
+            "kind": kind,
+            "model_chars": queries.MODEL_CHARS,
+        }
+        with open_store(resolved) as connection:
+            rows = page_rows(connection, Fragment.NUMBERS, **bound)
+        # The query aggregates, so it answers a row for a node that is not there as readily as
+        # for one that is — a node with no api calls under it is a real reading, and the
+        # popover prints it as the dashes it is.
+        return templates.TemplateResponse(
+            request,
+            "fragments/numbers.html",
+            {
+                "key": Ref(kind, source, node_id).key,
+                "row": rows[0],
+                "spend": numbers.spend(rows[0]["spent"]),
+                "citation": queries.citation(Fragment.NUMBERS, bound),
+            },
+        )
+
+    @app.get(f"{nodes.NUMBERS_URL}/session/{{session_id}}/thread/{{source}}/{{kind}}/{{node_id}}")
+    def node_numbers(
+        request: Request, kind: str, session_id: str, source: str, node_id: str
+    ) -> Response:
+        """The numbers behind a turn, an api call, or a tool call recorded on a thread."""
+        if kind not in nodes.NUMBERED:
+            raise HTTPException(404, "No numbers are served for that kind of node.")
+        return counted(request, Kind(kind), session_id, source, node_id)
+
+    @app.get(f"{nodes.NUMBERS_URL}/session/{{session_id}}/{Kind.RUN}/{{run_id}}")
+    def run_numbers(request: Request, session_id: str, run_id: str) -> Response:
+        """One agent run's numbers, read on the thread the run's id also names."""
+        return counted(request, Kind.RUN, session_id, run_id, run_id)
+
+    @app.get(f"{nodes.NUMBERS_URL}/session/{{session_id}}")
+    def session_numbers(request: Request, session_id: str) -> Response:
+        """A whole session's numbers: the main thread's window, and every thread's spend."""
+        return counted(request, Kind.SESSION, session_id, MAIN_SOURCE, session_id)
 
     def whole(
         request: Request,

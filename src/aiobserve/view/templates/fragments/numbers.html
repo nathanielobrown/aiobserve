@@ -1,0 +1,36 @@
+{# The numbers behind one tree row, fetched when a reader points at it or tabs into it: what
+   the bar and the badge on that row stand for (`docs/viewer.md`).
+
+   `tabindex="-1"` is the copy affordance. The popover is a descendant of the row, so the row
+   stays hovered while the pointer is inside it — and a click that lands here focuses it, which
+   is what holds it open under `:focus-within` while a reader drags across the numbers. #}
+<div class="popover" data-popover="{{ key }}" data-query="{{ citation }}" tabindex="-1">
+  <dl class="context">
+    <div><dt>cache read</dt><dd data-field="cached">{{ row.cached_tokens | count }}</dd></div>
+    <div><dt>new input</dt><dd data-field="new_input">{{ row.new_input_tokens | count }}</dd></div>
+    <div><dt>output</dt><dd data-field="output">{{ row.output_tokens | count }}</dd></div>
+    <div><dt>in window</dt><dd data-field="fill">{{ row.fill | count }}</dd></div>
+    {# The scale the bar was drawn against, named rather than assumed: a session that asked for
+       a larger window still reports its base model, so a window we hold no number for is said
+       out loud instead of scaling these counts to a guess (`extract/pricing.py`). #}
+    <div><dt>window</dt><dd data-field="window">
+      {%- if row.window_tokens %}{{ row.window_tokens | count }}{% else %}unknown{% endif %}</dd></div>
+    <div><dt>added</dt><dd data-field="added">{{ row.added | signed }}</dd></div>
+    <div><dt>model</dt><dd data-field="model">{{ row.model | text }}</dd></div>
+  </dl>
+  {% if spend %}
+  {# Where the dollars went. The four are the stored total taken apart, never a second reading
+     of it: `view/numbers.py` prices the node's own tokens through the same table the exporter
+     charged each call at. #}
+  <dl class="legend">
+    <div><dt>input</dt><dd data-field="cost_input">{{ spend.input | charge }}</dd></div>
+    <div><dt>cache read</dt><dd data-field="cost_cache_read">{{ spend.cache_read | charge }}</dd></div>
+    <div><dt>cache write</dt><dd data-field="cost_cache_write">{{ spend.cache_write | charge }}</dd></div>
+    <div><dt>output</dt><dd data-field="cost_output">{{ spend.output | charge }}</dd></div>
+  </dl>
+  {% endif %}
+  <p class="total"><span data-field="cost_usd">{{ row.cost_usd | money }}</span>
+    over <span data-field="api_calls">{{ row.api_calls | count }}</span> api call(s)
+    {%- if row.unpriced_api_calls %}, <span data-field="unpriced_api_calls">{{
+      row.unpriced_api_calls | count }}</span> at a model our price table lacks{% endif %}</p>
+</div>

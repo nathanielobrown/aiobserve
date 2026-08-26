@@ -148,7 +148,16 @@ PAGE_BYTES = 500_000
 # how full the model's window was at every node of the walk, read down the tree rather than a
 # node at a time. The arithmetic comes to 5,271,003 B, and the 28,997 B over it is what the
 # next thing a row grows by is measured against.
-NODE_BYTES = 5_300_000
+#
+# Raised again from 5,300,000 for the popover every row of the tree now fetches: the trigger is
+# 362 B a row — its own URL, the trigger's two events, and the five attributes of the swap it
+# cannot inherit — which over 3,217 rows is 1,164,554 B, forty times the slack the ceiling had.
+# It is the dearest thing the tree has ever grown, and the row it is measured on is the one
+# where the URL is longest. What a reader gets is the numbers behind the bar and the badge on
+# every row without leaving the node they are reading: what a phase held in the window, what it
+# added, and where its dollars went. The arithmetic comes to 6,435,557 B, and the 29,443 B over
+# it is what the next thing a row grows by is measured against.
+NODE_BYTES = 6_465_000
 # What one expansion may weigh: a node's body opened in place, inside someone else's children
 # log. It is over `PAGE_BYTES` and declared here rather than derived against it, for the reason
 # `bounds.OPENED_RECORD_CHARS` draws the same line the other way — a reader clicked. An

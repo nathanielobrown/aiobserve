@@ -301,6 +301,14 @@ BODY_URL = "/fragment/body"
 # And where the children one level's window left out are served from, which is what a tail
 # row fetches (`Node.rest`).
 KIN_URL = "/fragment/kin"
+# And where a row's numbers are served from, for the popover a reader opens by pointing at one
+# (`Node.numbers`). Its own path under a prefix, like `expansion`: a popover is about one node.
+NUMBERS_URL = "/fragment/numbers"
+
+# The kinds that have numbers to show. Everything made of api calls, plus the tool call, which
+# is made of none and prints what it gave back instead. A compaction and the two buckets are
+# absent: a bucket is a place rather than a node, and a compaction's own record is its page.
+NUMBERED = frozenset({Kind.SESSION, Kind.TURN, Kind.RUN, Kind.CALL, Kind.TOOL})
 
 
 @dataclass(frozen=True)
@@ -450,6 +458,16 @@ class Node:
         — and nothing offers one: a log lists only the kinds `app.BODIES` covers.
         """
         return f"{BODY_URL}{self.url}"
+
+    @property
+    def numbers(self) -> str:
+        """Where the numbers behind this row are fetched, or nothing when it has none.
+
+        What the row's bar and its badge stand for, written out (`docs/viewer.md`). The node's
+        own path under a prefix, like `expansion` — a popover reads one node — and empty for a
+        kind `NUMBERED` leaves out, which is how the template knows not to wire a fetch.
+        """
+        return f"{NUMBERS_URL}{self.url}" if self.kind in NUMBERED else ""
 
     @property
     def rest(self) -> str:

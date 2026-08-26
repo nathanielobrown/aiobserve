@@ -140,6 +140,16 @@ ROUTES: dict[str, str] = {
     "/fragment/kin/session/{session_id}/{kind}/{node_id}": (
         f"/fragment/kin/session/{SPINE}/session/{SPINE}?kin=1&thread=main&depth=1"
     ),
+    # And the numbers behind a tree row, which every row of the tree fetches when a reader
+    # points at it. Three shapes: the session and the run carry their ids where a thread goes,
+    # and everything recorded on a thread shares the third.
+    "/fragment/numbers/session/{session_id}/thread/{source}/{kind}/{node_id}": (
+        f"/fragment/numbers/session/{ANCESTOR}/thread/main/turn/{DENSE_TURN}"
+    ),
+    "/fragment/numbers/session/{session_id}/run/{run_id}": (
+        f"/fragment/numbers/session/{SPINE}/run/{SPINE_RUN}"
+    ),
+    "/fragment/numbers/session/{session_id}": f"/fragment/numbers/session/{SPINE}",
     # And the statement behind a citation, which every page's footer links to.
     f"{QUERY_URL}/{{query_name}}": f"{QUERY_URL}/view_sessions",
 }

@@ -85,6 +85,11 @@ class Fragment(StrEnum):
     # One page of the api calls under a turn, and one page of the tool calls under a call.
     TURN_CALLS = "view_turn_calls"
     CALL_TOOLS = "view_call_tools"
+    # The numbers behind one tree row, fetched when a reader points at it: what the row draws
+    # as a bar and a badge, written out. One query for every kind made of api calls, and one
+    # for the tool call, which is made of none.
+    NUMBERS = "view_numbers"
+    TOOL_NUMBERS = "view_numbers_tool"
 
 
 class Value(StrEnum):

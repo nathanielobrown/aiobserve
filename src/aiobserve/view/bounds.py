@@ -147,10 +147,12 @@ HIGHLIGHT_CHARS = 256_000
 # measures, with no slack, for the same reason: a byte of slack here is 3,217 bytes of page.
 # That leaf holds it from below as well as from above, so slack cannot hide in the room the
 # node page's ceiling keeps for this row's next addition.
-# Nearly all of the row is its URL written twice — the href a reader sees and the `hx-get`
-# htmx fetches — because the swap the two of them perform is written once on `#tree-rows` and
-# inherited. The rest is the title, the mark saying what kind of node the row is, the spend
-# beside it, and the two classes the context bar is drawn from — a fill and a tip, eight bytes
-# at their widest. A store whose agent runs carry longer ids than the recorded corpus does is
-# a re-measure.
-TREE_ROW_BYTES = 1319
+# Most of the row is its URL, written three times: the href a reader sees, the `hx-get` htmx
+# fetches, and the popover's own path under a prefix. The click's swap is written once on
+# `#tree-rows` and inherited; the popover's cannot be, because a swap written on the row would
+# be inherited by the link inside it — so its five attributes are spelled out on every row.
+# The rest is the title, the mark saying what kind of node the row is, the spend beside it, and
+# the two classes the context bar is drawn from — a fill and a tip, eight bytes at their
+# widest. A store whose agent runs carry longer ids than the recorded corpus does is a
+# re-measure.
+TREE_ROW_BYTES = 1681

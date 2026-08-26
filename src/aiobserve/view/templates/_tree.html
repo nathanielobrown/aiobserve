@@ -42,6 +42,18 @@
   {# A row links where it fetches: one URL, whether the reader clicks it, pastes it, or comes
      back to it from a bookmark. What the click does with the response is written once, on
      `#tree-rows` in `node.html`, and inherited from there. #}
+  {%- if row.node.numbers %}
+  {# What the bar and the badge on this row stand for, fetched when a reader points at the row
+     or tabs into it. A sibling of the link rather than the row itself, because htmx attributes
+     are inherited: the overrides a popover needs written on the `<li>` would be inherited by
+     the link inside it, and the click would swap a pane's worth of markup into the row.
+     The trigger listens on the row all the same — `from:` is what separates where an event is
+     heard from what answers it — and on `focusin`, which bubbles where `focus` does not, so a
+     reader tabbing to the link reaches what the pointer reaches. Once apiece: the popover is
+     markup that stays. Every part of the swap `#tree-rows` writes is overridden here, because
+     what comes back is a popover and not a pane. -#}
+  <span class="peek" hx-get="{{ row.node.numbers }}" hx-trigger="mouseenter from:closest li once delay:200ms, focusin from:closest li once" hx-target="this" hx-swap="beforeend" hx-select="unset" hx-select-oob="unset" hx-push-url="false"></span>
+  {%- endif %}
   <a href="{{ row.node.url }}{{ suffix }}" hx-get="{{ row.node.url }}{{ suffix }}">
     {{ parts.mark(row.node.icon) }} {{ parts.glyph(row.node) }}<span data-field="title">{{ row.node.tree_title }}</span>
     {%- if row.node.is_error %}
