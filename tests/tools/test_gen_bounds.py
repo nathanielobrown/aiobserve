@@ -76,6 +76,22 @@ def test_a_size_knob_carries_the_ceiling_that_caps_it() -> None:
         assert numbers(said[f"?{knob}="]) == [bound.ceiling]
 
 
+def test_the_word_maps_describe_exactly_what_the_app_still_offers() -> None:
+    # Both label maps are hand-written, so both rot in both directions: a knob or a fold with
+    # no words would print a blank cell, and words for one the app dropped would describe a
+    # URL nobody can type. Neither is visible in a green table, so it is pinned here.
+    assert set(gen_bounds.SIZE_WORDS) == set(KNOB_DEFAULTS) - {"nav"}
+    assert set(gen_bounds.PRESET_WORDS) == set(nodes.Preset)
+
+
+def test_a_size_knob_with_no_words_crashes_the_generator(monkeypatch: pytest.MonkeyPatch) -> None:
+    # And the crash the map's absence has to cause: a table is not spliced with a knob left
+    # undescribed. Deleting the words is how a knob renamed in `app.py` reaches the generator.
+    monkeypatch.delitem(gen_bounds.SIZE_WORDS, "kin")
+    with pytest.raises(ValueError, match="kin"):
+        gen_bounds.generate(gen_bounds.Table.KNOBS)
+
+
 def test_a_preset_with_no_words_crashes_the_generator(monkeypatch: pytest.MonkeyPatch) -> None:
     # A new fold must be described before it can be listed: a blank cell would say the viewer
     # has a view nobody can explain.
