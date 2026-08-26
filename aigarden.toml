@@ -21,14 +21,16 @@ reflow = "never-wrap"
 # every enrichment stamp derived from it (`docs/enrichment.md`).
 "src/aiobserve/analyze/templates/**" = ["markdown-style"]
 
-# The file-length ratchet. Every file over the 700-line budget today is held where it is,
-# rather than the budget being raised for everyone: a new file meets the rule, and an entry
-# here comes out when the file it names is split. `docs/documentation.md` has the reasons the
-# budget exists at all.
+# The file-length ratchet. Every file over its budget today is held where it is, rather than
+# the budget being raised for everyone: a new file meets the rule, and an entry here comes out
+# when the file it names is split. `docs/documentation.md` has the reasons the budget exists at
+# all. Code is measured in lines, prose in the context tokens it costs a reader that loads it.
+"docs/viewer.md" = ["file-length"]
 "src/aiobserve/analyze/queries.py" = ["file-length"]
 "src/aiobserve/export/otlp.py" = ["file-length"]
 "src/aiobserve/extract/claude_code.py" = ["file-length"]
 "src/aiobserve/view/app.py" = ["file-length"]
+"src/aiobserve/view/nodes.py" = ["file-length"]
 "tests/enrich/test_client.py" = ["file-length"]
 "tests/enrich/test_enricher.py" = ["file-length"]
 "tests/enrich/test_prompts.py" = ["file-length"]
