@@ -39,6 +39,7 @@ from aiobserve.view.nodes import (
     BODY_URL,
     KIN_URL,
     LEAD_SEPARATOR,
+    STEPS,
     Kind,
     Preset,
     Ref,
@@ -783,13 +784,13 @@ def test_a_chain_is_resolved_to_the_depth_the_page_prices_and_no_deeper(
         tree.ancestry(corpus, [Ref(Kind.RUN, deepest, deepest)])
 
 
-def test_a_row_draws_a_spend_bar_only_where_it_has_a_share_to_draw(
+def test_a_row_badges_its_cost_only_where_it_has_a_share_to_draw(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """The bar is a class on the row, stepped by the row's share of what the session spent.
+    """The badge is a class on the row, stepped by the row's share of what the session spent.
 
-    Rows that cost nothing of their own — a tool call, a compaction — carry no bar rather than
-    an empty one, because a bar drawn at zero reads as a measurement.
+    Rows that cost nothing of their own — a tool call, a compaction — carry no badge rather
+    than an empty one, because a wash drawn at zero reads as a measurement.
     """
     sessions = [str(row[0]) for row in store.execute("SELECT id FROM sessions").fetchall()]
     (whole,) = one(
@@ -797,37 +798,37 @@ def test_a_row_draws_a_spend_bar_only_where_it_has_a_share_to_draw(
         "SELECT sum(cost_usd) FROM live_api_calls WHERE session_id = ?",
         [SPINE],
     )
-    # The session is the basis, so a session that spent anything is its own full bar.
+    # The session is the basis, so a session that spent anything wears the deepest badge.
     spine = client.get(f"/session/{SPINE}").text
     assert "s10" in inside(spine, "data-tree", f"session:{SPINE}", "class")[0].split()
     # Swept over every session under every fold rather than over the deepest session alone.
     # The rows that take their own share — the buckets, which are not rows of the store — are
     # gathered by a different builder under each fold, and are not all on one session's page.
     for session_id in sessions:
-        bars: dict[str, tuple[str | None, frozenset[str]]] = {}
+        badges: dict[str, tuple[str | None, frozenset[str]]] = {}
         for preset in Preset:
             html = client.get(f"/session/{session_id}", params={"nav": preset}).text
             for key in values(html, "data-tree"):
                 classes = inside(html, "data-tree", key, "class")[0].split()
                 steps = frozenset(n for n in classes if n.startswith("s") and n[1:].isdigit())
                 cost = fields(html, "data-tree", key).get("cost_usd")
-                # Every row either shows what it cost with a bar beside it, or shows neither.
+                # Every row either shows what it cost with a badge behind it, or shows neither.
                 assert bool(steps) == (cost is not None), key
                 # And a fold decides which rows are drawn, never what one of them spent or how
-                # much of the session that was: a bar that moved between folds is a share taken
-                # against something other than the session.
-                assert bars.setdefault(key, (cost, steps)) == (cost, steps), (key, preset)
+                # much of the session that was: a badge that moved between folds is a share
+                # taken against something other than the session.
+                assert badges.setdefault(key, (cost, steps)) == (cost, steps), (key, preset)
     assert whole, "the session this reads has a spend to take shares of"
 
 
-def test_a_spend_bar_steps_by_decade_so_three_orders_of_magnitude_fill_it(
+def test_a_cost_badge_steps_by_decade_so_three_orders_of_magnitude_deepen_it(
     store: duckdb.DuckDBPyConnection, plant: Planter
 ) -> None:
     """Which step a share is drawn at, read at the top of the scale, the bottom, and between.
 
     A recorded session's rows do not span the scale, so the ladder itself — ten steps over
-    three decades of share — is a rule no fixture exercises: every bar could be drawn a step
-    too wide and the corpus would agree. The shares are planted instead, on the calls of one
+    three decades of share — is a rule no fixture exercises: every badge could be drawn a step
+    too deep and the corpus would agree. The shares are planted instead, on the calls of one
     session, whose spend is the whole every share on its pages is taken against.
     """
     calls = store.execute(
@@ -851,6 +852,35 @@ def test_a_spend_bar_steps_by_decade_so_three_orders_of_magnitude_fill_it(
             page = scaled.get(node_url(Kind.CALL, SPINE, str(source), str(call_id))).text
             classes = inside(page, "data-tree", f"{Kind.CALL}:{call_id}", "class")[0].split()
             assert step in classes, (cost, classes)
+
+
+def test_a_cost_badge_deepens_at_every_step_and_washes_nothing_but_the_cost(
+    client: TestClient,
+) -> None:
+    """What a step is drawn as: a warm wash behind the dollar value, deeper the dearer the node.
+
+    The ladder itself is unchanged — the same ten classes `nodes.meter` has always put on a row
+    — so what this reads is only what a step paints. Off the served stylesheet, because that is
+    the one place it is decided: the markup carries the class whatever the wash does, and
+    nothing in this tier can see a painted box.
+    """
+    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.S)
+    washes = {
+        int(step): int(part)
+        for step, part in re.findall(
+            r'li\.node\.s(\d+) \[data-field="cost_usd"\] \{[^}]*--cost-wash: (\d+)%', style
+        )
+    }
+    # One rule spends them, so the warm token is named once and every step is a share of it.
+    assert re.findall(r"color-mix\(in srgb, var\(--hot\) var\(--cost-wash[^)]*\)", style)
+    # Every step the ladder can hand a row is drawn, and `s0` — a row that spent nothing at all
+    # — is not: a wash at the bottom of the scale would read as a measurement of nothing.
+    assert sorted(washes) == list(range(1, STEPS + 1)), sorted(washes)
+    # Deeper at every step, and never twice the same depth: two steps drawn alike are one step.
+    assert list(washes.values()) == sorted(set(washes.values())), washes
+    # And the wash lands on the cost alone. The row's own edge is left unpainted, which is what
+    # the step used to take — a badge behind a number says the same thing without the width.
+    assert not re.findall(r"li\.node\.s\d+ > a[ ,{]", style)
 
 
 def _titled(given: str | None, project: str | None, chars: int) -> str:

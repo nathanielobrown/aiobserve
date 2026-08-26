@@ -7,7 +7,7 @@
 -- Thin like `view_tree_turns` and `view_tree_calls`, and unlimited for the same reason — the
 -- cap lives in the composition (`view/tree.py`), where it has to keep the row the open path
 -- goes through. A tool call costs nothing of its own: what an api call spent is the api
--- call's, so a tool row carries no cost column and draws no spend bar.
+-- call's, so a tool row carries no cost column and wears no cost badge.
 SELECT
     -- Where the call that made it sits in the thread, which is what orders a hoisted level.
     c."index" AS call_index,

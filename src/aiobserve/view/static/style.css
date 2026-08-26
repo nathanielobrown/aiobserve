@@ -9,7 +9,8 @@
   --dim: #676772;    /* labels and second lines; holds 4.5:1 over the `:target` wash too */
   --line: #d8d8de;   /* rules and borders */
   --paper: #fbfbfd;  /* the page */
-  --mark: #2b5fd9;   /* links, the spend meter, the one accent */
+  --mark: #2b5fd9;   /* links, the selection rail, the one accent */
+  --hot: #e08a1e;    /* the ground under a cost, deepening with what the node spent */
   --bad: #b3261e;    /* a tool call that failed, and the status on an error page */
   --type-label: 0.75rem;
   --type-body: 0.875rem;
@@ -24,10 +25,12 @@
   --tree-step: var(--space-3);
 }
 /* Dark holds the same roles at the same contrast: ink and dim stay legible on paper, and the
-   accent lightens so a meter and a link read against a dark row rather than sinking into it. */
+   accent lightens so a bar and a link read against a dark row rather than sinking into it.
+   `--hot` goes the other way and deepens, because it is a surface rather than text: a light
+   amber under a dark page's ink would be the one thing on the page that glares. */
 @media (prefers-color-scheme: dark) {
   :root { --ink: #e6e6ea; --dim: #9a9aa5; --line: #33333c; --paper: #17171c; --mark: #7aa2f7;
-    --bad: #ff8f85; }
+    --bad: #ff8f85; --hot: #8a5a12; }
 }
 body {
   margin: 0;
@@ -158,8 +161,8 @@ li.node [data-field="title"] { flex: 1;
 li.node > a:hover { background-color: color-mix(in srgb, var(--mark) 12%, transparent); }
 /* The row the pane is about, held at full strength while everything around it recedes. The
    wash alone is what a hover already does, so the selection is also railed in the accent —
-   3px, the meter's own weight — which no other row can wear. Inset rather than a border, so
-   the rail costs the row no width and the titles stay in one column. */
+   3px of it, down the row's left edge — which no other row can wear. Inset rather than a
+   border, so the rail costs the row no width and the titles stay in one column. */
 li.row[data-selected] > a { font-weight: 600; color: var(--ink);
   background-color: color-mix(in srgb, var(--mark) 12%, transparent);
   box-shadow: inset 3px 0 var(--mark); }
@@ -218,33 +221,32 @@ li.more > button:hover { background-color: color-mix(in srgb, var(--mark) 12%, t
   #tree { position: static; max-height: 50vh; margin-bottom: var(--space-3); }
 }
 
-/* The spend meter: a bar along the bottom of each row over a track the row's full width, its
-   length the node's step of what the session spent. The track is what keeps a lone mark under
-   a line of text from reading as the link underline these anchors do not have, and what makes
-   a short bar a proportion rather than a stray. A class per step and not an inline width,
-   because the policy blocks a `style` attribute. The steps are logarithmic (`view/nodes.py`),
-   so each rule below is a tenth of the bar and not a tenth of a session. */
-li.node > a {
-  background-image: linear-gradient(var(--mark), var(--mark)),
-                    linear-gradient(var(--line), var(--line));
-  background-repeat: no-repeat;
-  background-position: left bottom;
-  background-size: 0 3px, 100% 3px;
-  /* Depth is padding on the row's link, so a track over the padding box would start left of
-     the title it prices and a nested row would read as wider than its parent's. Over the
-     content box every track starts under its own title. */
-  background-origin: content-box;
+/* The cost badge: a node's spend on a warm ground that deepens with it. What deepens is the
+   share of `--hot` the ground carries, held in a custom property a class per step sets — a
+   class and not an inline width, because the policy blocks a `style` attribute, and one
+   property rather than ten backgrounds so the token is named once. The steps are logarithmic
+   (`view/nodes.py`), so each is a tenth of the scale and not a tenth of a session. A badged
+   value prints in ink: the ground takes back some of the contrast a dim second line spends,
+   and this is the number the reader came for. `s0` — a row that spent nothing — is left with
+   no ground and its dim, because a wash at the bottom of the scale reads as a measurement. */
+li.node [data-field="cost_usd"] {
+  padding: 0 var(--space-1);
+  border-radius: 3px;
+  background-color: color-mix(in srgb, var(--hot) var(--cost-wash, 0%), transparent);
 }
-li.node.s1 > a { background-size: 10% 3px, 100% 3px; }
-li.node.s2 > a { background-size: 20% 3px, 100% 3px; }
-li.node.s3 > a { background-size: 30% 3px, 100% 3px; }
-li.node.s4 > a { background-size: 40% 3px, 100% 3px; }
-li.node.s5 > a { background-size: 50% 3px, 100% 3px; }
-li.node.s6 > a { background-size: 60% 3px, 100% 3px; }
-li.node.s7 > a { background-size: 70% 3px, 100% 3px; }
-li.node.s8 > a { background-size: 80% 3px, 100% 3px; }
-li.node.s9 > a { background-size: 90% 3px, 100% 3px; }
-li.node.s10 > a { background-size: 100% 3px, 100% 3px; }
+li.node:is(.s1, .s2, .s3, .s4, .s5, .s6, .s7, .s8, .s9, .s10) [data-field="cost_usd"] {
+  color: var(--ink);
+}
+li.node.s1 [data-field="cost_usd"] { --cost-wash: 6%; }
+li.node.s2 [data-field="cost_usd"] { --cost-wash: 12%; }
+li.node.s3 [data-field="cost_usd"] { --cost-wash: 18%; }
+li.node.s4 [data-field="cost_usd"] { --cost-wash: 24%; }
+li.node.s5 [data-field="cost_usd"] { --cost-wash: 30%; }
+li.node.s6 [data-field="cost_usd"] { --cost-wash: 36%; }
+li.node.s7 [data-field="cost_usd"] { --cost-wash: 42%; }
+li.node.s8 [data-field="cost_usd"] { --cost-wash: 48%; }
+li.node.s9 [data-field="cost_usd"] { --cost-wash: 54%; }
+li.node.s10 [data-field="cost_usd"] { --cost-wash: 60%; }
 
 /* The pane. A node's facts flow rather than stacking — a pane is one node, not four clusters
    of them — and a fact reads the same on every kind's page: a dim label over the value it

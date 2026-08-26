@@ -876,6 +876,10 @@ READABLE = 4.5
 # How much of the accent the one wash a page composes carries — `:target` on a record, and a
 # hovered node — over whatever surface it lands on.
 WASH = 0.12
+# The deepest step of the cost badge, which is the most of `--hot` a row's wash ever carries.
+# A shallower step sits between it and the page it is painted on, so holding the deepest one
+# readable holds every step above it: each is a step back toward the paper.
+BADGE = 0.60
 
 
 def _channel(value: int) -> float:
@@ -914,6 +918,9 @@ def test_both_schemes_print_every_color_of_text_readably(client: TestClient) -> 
     sheet composes rather than names — 12% of the accent, which a targeted record and a
     hovered node are both painted with, and which is where `--dim` comes closest to failing.
     A chip's outline is its own text color (`currentColor`), so it clears whatever this does.
+
+    The cost badge is read apart from the rest: it is a surface only the dollar value is
+    printed on, so it is held to `--ink` alone rather than to every role.
     """
     sheet = client.get("/static/style.css").text
     # Tokens are declared in exactly two places, and dark restates only what it changes.
@@ -924,7 +931,7 @@ def test_both_schemes_print_every_color_of_text_readably(client: TestClient) -> 
 
     light = read(head)
     schemes = {"light": light, "dark": light | read(tail)}
-    assert set(light) == {"ink", "dim", "line", "paper", "mark", "bad"}
+    assert set(light) == {"ink", "dim", "line", "paper", "mark", "bad", "hot"}
     for scheme, tokens in schemes.items():
         surfaces = {
             "the page": tokens["paper"],
@@ -934,6 +941,10 @@ def test_both_schemes_print_every_color_of_text_readably(client: TestClient) -> 
             for where, surface in surfaces.items():
                 ratio = _contrast(tokens[role], surface)
                 assert ratio >= READABLE, f"{scheme} --{role} on {where}: {ratio:.2f}:1"
+        # The badge composes over both of them, because the row under it may be the hovered one.
+        for where, under in surfaces.items():
+            ratio = _contrast(tokens["ink"], _over(tokens["hot"], under, BADGE))
+            assert ratio >= READABLE, f"{scheme} --ink on the badge over {where}: {ratio:.2f}:1"
 
 
 def test_the_stylesheet_a_browser_reads_carries_no_prose_outside_a_comment(
@@ -1258,8 +1269,8 @@ def test_every_asset_a_page_asks_for_is_one_the_viewer_ships(client: TestClient)
         markup = template.read_text()
         # Every `src` and `href` a template writes is a path on this server...
         assert re.findall(r'(?:src|href)="(\w+:)?//[^"]*"', markup) == [], template.name
-        # ...and nothing carries a style attribute. This is the trap the spend meter's decile
-        # classes exist to dodge: a width written inline is a meter no reader ever sees.
+        # ...and nothing carries a style attribute. This is the trap the cost badge's decile
+        # classes exist to dodge: a wash written inline is a badge no reader ever sees.
         assert ' style="' not in markup, template.name
         # ...and nothing wears the class htmx paints, which the config below stops it painting.
         assert "htmx-indicator" not in markup, template.name

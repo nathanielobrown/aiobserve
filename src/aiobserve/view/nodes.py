@@ -20,9 +20,9 @@ from aiobserve.view.enrichment import Descriptions
 from aiobserve.view.format import ELLIPSIS, cut
 from aiobserve.view.store import Row
 
-# How a spend bar is drawn: the steps it has, and how many decades of share they cover. A
+# How a cost badge is drawn: the steps it has, and how many decades of share they cover. A
 # session's cheapest turn and its dearest are three orders of magnitude apart, so the scale is
-# logarithmic — a linear one draws every row but the largest as the same empty bar.
+# logarithmic — a linear one would paint every row but the dearest alike.
 STEPS = 10
 DECADES = 3
 
@@ -219,7 +219,7 @@ _PRESET_LABELS = {
 
 
 def meter(share: float | None) -> str:
-    """The step class a share's spend bar is drawn with, or `s0` for nothing to draw."""
+    """The step class a share's cost badge is drawn with, or `s0` for nothing to draw."""
     if not share:
         return "s0"
     step = math.ceil(STEPS * (1 + math.log10(share) / DECADES))
@@ -442,7 +442,7 @@ class Node:
 
     @property
     def meter(self) -> str:
-        """The step class this node's spend bar is drawn with, or nothing to draw."""
+        """The step class this node's cost badge is drawn with, or nothing to draw."""
         return meter(self.share) if self.cost_usd is not None else ""
 
 
