@@ -221,6 +221,73 @@ li.more > button:hover { background-color: color-mix(in srgb, var(--mark) 12%, t
   #tree { position: static; max-height: 50vh; margin-bottom: var(--space-3); }
 }
 
+/* The context bar: how full the model's context window was when the node ended, over a track
+   the row's full width, with what the node itself put there left bright at the tip. Linear, so
+   half a bar is half a window (`view/nodes.py`). Two class families carry the two numbers as
+   custom properties — a class and not an inline width, because the policy blocks a `style`
+   attribute, and two families of 21 rather than one rule for every pair of them. One rule
+   spends them: the fill drawn whole in the accent, then the part of it that was already there
+   drawn over in dim, so what stays bright is what this node added. A row that ends on no
+   window draws no track either — an empty track under a tool call would read as a window that
+   emptied, and what a tool call took is its api call's.
+   Painted bottom left over the content box, because depth is padding on the row's link: a
+   track over the padding box would start left of the title it measures. */
+li.node:is(.f0, .f1, .f2, .f3, .f4, .f5, .f6,
+           .f7, .f8, .f9, .f10, .f11, .f12, .f13,
+           .f14, .f15, .f16, .f17, .f18, .f19, .f20) > a {
+  background-image: linear-gradient(var(--dim), var(--dim)),
+                    linear-gradient(var(--mark), var(--mark)),
+                    linear-gradient(var(--line), var(--line));
+  background-repeat: no-repeat;
+  background-position: left bottom;
+  background-size: calc(var(--ctx-fill) - var(--ctx-added, 0%)) 3px,
+                   var(--ctx-fill) 3px,
+                   100% 3px;
+  background-origin: content-box;
+}
+li.node.f0 { --ctx-fill: 0%; }
+li.node.t0 { --ctx-added: 0%; }
+li.node.f1 { --ctx-fill: 5%; }
+li.node.t1 { --ctx-added: 5%; }
+li.node.f2 { --ctx-fill: 10%; }
+li.node.t2 { --ctx-added: 10%; }
+li.node.f3 { --ctx-fill: 15%; }
+li.node.t3 { --ctx-added: 15%; }
+li.node.f4 { --ctx-fill: 20%; }
+li.node.t4 { --ctx-added: 20%; }
+li.node.f5 { --ctx-fill: 25%; }
+li.node.t5 { --ctx-added: 25%; }
+li.node.f6 { --ctx-fill: 30%; }
+li.node.t6 { --ctx-added: 30%; }
+li.node.f7 { --ctx-fill: 35%; }
+li.node.t7 { --ctx-added: 35%; }
+li.node.f8 { --ctx-fill: 40%; }
+li.node.t8 { --ctx-added: 40%; }
+li.node.f9 { --ctx-fill: 45%; }
+li.node.t9 { --ctx-added: 45%; }
+li.node.f10 { --ctx-fill: 50%; }
+li.node.t10 { --ctx-added: 50%; }
+li.node.f11 { --ctx-fill: 55%; }
+li.node.t11 { --ctx-added: 55%; }
+li.node.f12 { --ctx-fill: 60%; }
+li.node.t12 { --ctx-added: 60%; }
+li.node.f13 { --ctx-fill: 65%; }
+li.node.t13 { --ctx-added: 65%; }
+li.node.f14 { --ctx-fill: 70%; }
+li.node.t14 { --ctx-added: 70%; }
+li.node.f15 { --ctx-fill: 75%; }
+li.node.t15 { --ctx-added: 75%; }
+li.node.f16 { --ctx-fill: 80%; }
+li.node.t16 { --ctx-added: 80%; }
+li.node.f17 { --ctx-fill: 85%; }
+li.node.t17 { --ctx-added: 85%; }
+li.node.f18 { --ctx-fill: 90%; }
+li.node.t18 { --ctx-added: 90%; }
+li.node.f19 { --ctx-fill: 95%; }
+li.node.t19 { --ctx-added: 95%; }
+li.node.f20 { --ctx-fill: 100%; }
+li.node.t20 { --ctx-added: 100%; }
+
 /* The cost badge: a node's spend on a warm ground that deepens with it. What deepens is the
    share of `--hot` the ground carries, held in a custom property a class per step sets — a
    class and not an inline width, because the policy blocks a `style` attribute, and one

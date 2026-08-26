@@ -26,6 +26,13 @@ from aiobserve.view.store import Row
 STEPS = 10
 DECADES = 3
 
+# The context bar's ladder: how many steps a fill or a tip is drawn in, across the whole of the
+# model's window. Linear, because what the bar says is fullness against a limit and a log scale
+# draws a half-full window as a nearly full one. Twenty steps is five percent apiece — the
+# finest a class per step can be without a rule per percent — so a node that added less than
+# that draws no tip, and the tokens are the popover's to print.
+BAR_STEPS = 20
+
 # What the two buckets are called. Neither is a row of the store: they stand for the rows that
 # attach to nothing, so their titles say what is missing rather than naming a thing.
 UNATTRIBUTED_TITLE = "calls under no turn of this thread"
@@ -226,6 +233,19 @@ def meter(share: float | None) -> str:
     return f"s{min(max(step, 1), STEPS)}"
 
 
+class Context(NamedTuple):
+    """Where a node left the model's context window, in tokens (`analyze/macros.py`)."""
+
+    # Everything the node's last answering call was billed for: the cache it read, the cache
+    # it wrote, what it sent, and what it said back.
+    fill: int
+    # How much of that fill the node itself put there. None where the question does not
+    # arise — a session, which has nothing before it to have added to.
+    added: int | None
+    # The window that call's model answers in (`extract/pricing.py:CONTEXT_WINDOWS`).
+    window: int
+
+
 @dataclass(frozen=True)
 class Ref:
     """A node named by identity alone: enough to find it, not enough to render it.
@@ -320,6 +340,10 @@ class Node:
     # `+2(Ba…` would say the call did something else without saying what. Empty for every
     # other kind, whose title is all one piece.
     tail: str = ""
+    # Where the node left the model's context window, or None for a node that ends on no
+    # window at all: a tool call, a compaction, a bucket, and any node whose model our table
+    # holds no window for.
+    context: Context | None = None
 
     @property
     def icon(self) -> str:
@@ -445,6 +469,44 @@ class Node:
         """The step class this node's cost badge is drawn with, or nothing to draw."""
         return meter(self.share) if self.cost_usd is not None else ""
 
+    @property
+    def bar(self) -> str:
+        """The classes this node's context bar is drawn with, or nothing where it has none.
+
+        Two of them: how full the window was when the node ended, and how much of that the node
+        itself put there. A session draws the fill alone — nothing ran before it for the tip to
+        measure against.
+        """
+        if self.context is None:
+            return ""
+        drawn = f"f{_bar_step(self.context.fill, self.context.window)}"
+        if self.context.added is None:
+            return drawn
+        return f"{drawn} t{_bar_step(self.context.added, self.context.window)}"
+
+
+def _bar_step(tokens: int, window: int) -> int:
+    """Which step of the bar a token count lands on, held at the top where it runs past one.
+
+    A request can ask for a larger window than the model's own, and the reply names the model
+    either way (`extract/pricing.py:CONTEXT_WINDOWS`) — so a fill above the window is drawn
+    full rather than given a scale the table cannot see.
+    """
+    return min(round(tokens / window * BAR_STEPS), BAR_STEPS)
+
+
+def _context(row: Row) -> Context | None:
+    """Where the row says its node left the window, or None where it says nothing.
+
+    A level of nodes that end on no window leaves the column out, and a node whose model our
+    table has no window for answers NULL inside it: both are a bar the tree does not draw,
+    the way a model we cannot price is a cost it does not print.
+    """
+    held = row.get("context")
+    if held is None or held["fill"] is None or held["window"] is None:
+        return None
+    return Context(fill=held["fill"], added=held["added"], window=held["window"])
+
 
 def _share(cost: float | None, whole: float) -> float | None:
     """A node's share of the session's spend, or None when there is no share to speak of."""
@@ -475,6 +537,7 @@ def session_node(header: Row, described: Descriptions) -> Node:
         unpriced_api_calls=header["unpriced_api_calls"],
         share=1.0 if cost else None,
         enriched=described.session is not None,
+        context=_context(header),
     )
 
 
@@ -491,6 +554,7 @@ def turn_node(session_id: str, source: str, row: Row, whole: float, described: s
         unpriced_api_calls=row["unpriced_api_calls"],
         share=_share(cost, whole),
         enriched=described is not None,
+        context=_context(row),
     )
 
 
@@ -511,6 +575,7 @@ def run_node(session_id: str, row: Row, whole: float, described: str | None) -> 
         unpriced_api_calls=row["unpriced_api_calls"],
         share=_share(cost, whole),
         enriched=described is not None,
+        context=_context(row),
     )
 
 
@@ -556,6 +621,7 @@ def call_node(session_id: str, source: str, row: Row, whole: float) -> Node:
         cost_usd=cost,
         unpriced_api_calls=row["unpriced_api_calls"],
         share=_share(cost, whole),
+        context=_context(row),
     )
 
 

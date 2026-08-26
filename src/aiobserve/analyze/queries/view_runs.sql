@@ -31,6 +31,15 @@ SELECT
         WHERE t.session_id = a.session_id AND t.source = a.id) AS tool_errors,
     (SELECT count(*) FROM live_compactions k
         WHERE k.session_id = a.session_id AND k.source = a.id) AS compactions,
+    -- Where the run left the context window of its own thread, and the window it answered in.
+    -- What a run added is the whole of what it holds: a run starts on an empty window and
+    -- fills it while it runs, so the fill and the tip are one number said twice.
+    (SELECT {
+        'fill': max_by(context_fill(c), c."index"),
+        'added': max_by(context_fill(c), c."index"),
+        'window': max_by(context_window(c.model), c."index")
+     } FROM live_api_calls c
+        WHERE c.session_id = a.session_id AND c.source = a.id AND NOT c.synthetic) AS context,
     -- The thread the spawning call was made from, and the turn inside it. A run spawned from
     -- another run resolves to a turn of that run's timeline, not of `main`.
     c.source AS spawn_source,

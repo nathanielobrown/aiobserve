@@ -24,6 +24,7 @@ from markupsafe import escape
 from aiobserve.analyze import macros, queries
 from aiobserve.analyze.queries import QUERIES, VIEW_PREFIX, ParamValue
 from aiobserve.enrich.taxonomy import Category, Outcome
+from aiobserve.extract.pricing import CONTEXT_WINDOWS
 from aiobserve.view import bounds, nodes
 from aiobserve.view.app import QUERY_URL, build_app, knobs
 from aiobserve.view.format import ELLIPSIS
@@ -140,7 +141,14 @@ PAGE_BYTES = 500_000
 # three, which is 4,000 characters at 25 B more, 100,000 B, on one preview of one pane. What a
 # reader gets is a run read whole where the page used to show only the line it was named by.
 # The arithmetic comes to 5,243,767 B, and the slack under the ceiling is the same 26,233 B.
-NODE_BYTES = 5_270_000
+#
+# Raised again from 5,270,000 for the context bar every row of the tree now draws: a fill class
+# and a tip class, eight bytes a row at their widest spelling, which over 3,217 rows is
+# 25,736 B — the whole of what the ceiling had spare and a thousand more. What a reader gets is
+# how full the model's window was at every node of the walk, read down the tree rather than a
+# node at a time. The arithmetic comes to 5,271,003 B, and the 28,997 B over it is what the
+# next thing a row grows by is measured against.
+NODE_BYTES = 5_300_000
 # What one expansion may weigh: a node's body opened in place, inside someone else's children
 # log. It is over `PAGE_BYTES` and declared here rather than derived against it, for the reason
 # `bounds.OPENED_RECORD_CHARS` draws the same line the other way — a reader clicked. An
@@ -537,11 +545,12 @@ def _described_at_every_cap() -> tuple[Statement, ...]:
 DESCRIBED_AT_EVERY_CAP = _described_at_every_cap()
 
 # What a query may wrap a fat column in and still be bounded: a fixed-width prefix of it, a
-# count of what it holds, the check that it parses, or one of the library's own cutting macros.
+# count of what it holds, the check that it parses, the window the model it names answers in,
+# or one of the library's own cutting macros.
 # Anything else puts the whole value on the page. Read at any depth —
 # `substr(coalesce(json_extract_string(input, …), …), 1, $n)` is a cut of whatever it wraps, so
 # what a bounding call opens is exempt to its close.
-BOUNDING = ("substr", "length", "json_valid", *macros.BOUNDING)
+BOUNDING = ("substr", "length", "json_valid", "context_window", *macros.BOUNDING)
 
 
 def _named(sql: str) -> Iterator[str]:
@@ -597,6 +606,9 @@ def test_the_fat_column_scan_catches_one() -> None:
     )
     # ...and the check that a value parses hands back a flag rather than the value.
     assert unbounded("SELECT json_valid(t.input) AS ok FROM tools t") == set()
+    # The window lookup is the same kind of read: a model goes in and a number comes back.
+    assert unbounded("SELECT context_window(c.model) AS window FROM api_calls c") == set()
+    assert unbounded("SELECT c.model AS model FROM api_calls c") == {"model"}
     # A key inside a JSON path is a string, not the column that happens to share its name...
     assert (
         unbounded("SELECT substr(json_extract_string(t.input, '$.description'), 1, 9) AS a FROM t")
@@ -1123,6 +1135,27 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
             "UPDATE tool_calls SET name = ?, input = ?, result = ?, is_error = true",
             [fat, json.dumps({"description": fat, "command": fat, "prompt": fat}), fat],
         ),
+        # One call a turn answered in a model the window table prices, at tokens a window over
+        # the turn before it, so every row that draws a context bar draws one at its widest
+        # spelling: a fill and a tip of two digits each. Cloned rather than flipped, because the
+        # model column above is what makes an api call's the widest row of the children log, and
+        # a thread that answered in a real model would print a real model there. Which model is
+        # arbitrary — the bar reads the window off the table, and every window in it is spent
+        # past here — but the tokens climb with the call's index, because a turn's tip is what
+        # it added over the turn before: a thread of turns all left at the same fill draws a
+        # full bar with no tip in it. It answers last in its turn — a thread's calls are
+        # ordered by index and a turn's fill is its last call's — so the index is planted
+        # past every recorded one rather than tied with the call it was cloned from.
+        (
+            "INSERT INTO api_calls (SELECT * EXCLUDE (rank)"
+            " REPLACE (id || '-filled' AS id, ? AS model, false AS synthetic,"
+            ' 1000000 + "index" AS "index",'
+            " 300000 * rank AS input_tokens, 0 AS output_tokens, 0 AS cache_read_tokens,"
+            " 0 AS cache_creation_tokens)"
+            " FROM (SELECT DISTINCT ON (l.session_id, l.source, l.turn_id) l.*,"
+            ' l."index" + 1 AS rank FROM live_api_calls l))',
+            [next(iter(CONTEXT_WINDOWS))],
+        ),
         # And the two calls whose panes show a value in its own syntax, planted after the rest
         # so they keep the widths above and take the tool names that reach the lexers. `&;` is
         # the pair the shipped lexers make the most tokens of, which is what a preview budgeted
@@ -1185,6 +1218,14 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
         # four fifths of the page, so it is held from below as well: a byte of slack there is
         # 3,217 bytes the ceiling keeps for nothing, and `NODE_BYTES` now has room to hide one.
         assert widest_row == budget if measured else widest_row <= budget, (name, widest_row)
+        if measured:
+            # And the row it priced drew a context bar at its widest spelling: two classes of
+            # two digits. A corpus that answered in models the window table holds none of would
+            # price a row that draws no bar, and every barred row would be eight bytes over it.
+            widest = max(found, key=lambda row: len(row.encode()))
+            assert re.search(rf'class="[^"]* f{nodes.BAR_STEPS} t{nodes.BAR_STEPS}"', widest), (
+                widest[:200]
+            )
     # A preview is priced by whether the page marked it up, which is the whole of the
     # difference between the two budgets: an element a token against an escape a character.
     # Marked up two ways — the syntax a record named, and the markdown a session wrote — and

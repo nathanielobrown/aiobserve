@@ -8,7 +8,13 @@ asserting a constant against itself proves nothing. `pricing.py` records the che
 
 import pytest
 
-from aiobserve.extract.pricing import SYNTHETIC_MODEL, TokenUsage, compute_cost
+from aiobserve.extract.pricing import (
+    CONTEXT_WINDOWS,
+    PRICES,
+    SYNTHETIC_MODEL,
+    TokenUsage,
+    compute_cost,
+)
 
 # Lifted verbatim from `tests/fixtures/spine/`, CC 2.1.221 — the usage of
 # `msg_011CdmMjFXDofyYSMxYtXa5n`, a `claude-fable-5` reply that put its whole cache write
@@ -83,3 +89,15 @@ def test_a_synthetic_reply_costs_zero():
     than an unpriced null.
     """
     assert compute_cost(SYNTHETIC_MODEL, SPINE_SPLIT) == 0.0
+
+
+def test_every_model_we_price_declares_the_window_it_answers_in():
+    """The two tables answer one census, so a model we can cost is a model we can size.
+
+    The placeholder is the exception and the only one: a `<synthetic>` record is Claude Code
+    writing in its own voice, so it has a price — nothing — and no context window at all. Any
+    other model in one table and not the other is a bar the viewer silently stops drawing, or
+    a window nothing ever looks up.
+    """
+    assert set(CONTEXT_WINDOWS) == set(PRICES) - {SYNTHETIC_MODEL}
+    assert all(window > 0 for window in CONTEXT_WINDOWS.values())

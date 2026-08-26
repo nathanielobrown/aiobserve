@@ -66,6 +66,7 @@ What each page shows and cites: `docs/viewer.md`; the routes: `src/aiobserve/vie
 - **Tree** — the left column: the one open path through the session (never "sidebar")
 - **Presets** — the tree's depth choices and the control above it that picks one: full, no api calls, agents only (`?nav=`)
 - **Cost badge** — the warm ground behind a tree row's dollar value, deepening with the row's share of what the session spent
+- **Context bar** — the line under a tree row: how full the model's context window was when the node ended, with what the node added left bright at the tip
 - **Pane** — any major region of a page; the node page splits into two: the tree and the reading pane
 - **Reading pane** — the right column, reading one node whole
 - **Body** — one node's rendered content: title, facts, enrichment, details; the reading pane holds one, an expansion another

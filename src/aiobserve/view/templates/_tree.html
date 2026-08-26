@@ -36,7 +36,7 @@
     >+<span data-field="cut">{{ row.cut | count }}</span> more</button>
 </li>
 {% else %}
-<li class="row node {{ row.node.kind }} {{ row.node.meter }}" data-depth="{{ row.depth }}"
+<li class="row node {{ row.node.kind }} {{ row.node.meter }} {{ row.node.bar }}" data-depth="{{ row.depth }}"
     data-tree="{{ row.node.key }}"
     {%- if row.selected %} data-selected="{{ row.node.key }}" aria-current="true"{% endif %}>
   {# A row links where it fetches: one URL, whether the reader clicks it, pastes it, or comes

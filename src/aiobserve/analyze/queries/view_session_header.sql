@@ -12,6 +12,16 @@ WITH skill AS (
     SELECT coalesce(list_sort(list(DISTINCT c.attribution_skill)), []) AS names
     FROM live_api_calls c
     WHERE c.session_id = $session_id AND c.attribution_skill IS NOT NULL
+), held AS (
+    -- Where the session's main thread left the context window: the fill of its last call that
+    -- went to a model, in the window that model answers in. The main thread alone, because
+    -- that is the window a reader of the session is in — a run holds its own, and says so on
+    -- its own row. Synthetic replies are out for the reason `view_tree_turns` states.
+    SELECT
+        max_by(context_fill(c), c."index") AS fill,
+        max_by(context_window(c.model), c."index") AS window_tokens
+    FROM live_api_calls c
+    WHERE c.session_id = $session_id AND c.source = 'main' AND NOT c.synthetic
 ), pr AS (
     SELECT coalesce(list_sort(list(DISTINCT p.pr_url)), []) AS urls
     FROM pr_links p
@@ -48,9 +58,13 @@ SELECT
     greatest(len(skill.names) - $head_items, 0) AS skills_cut,
     list_transform(list_slice(pr.urls, 1, $head_items),
         url -> substr(url, 1, $item_chars + 1)) AS pr_urls,
-    greatest(len(pr.urls) - $head_items, 0) AS pr_urls_cut
+    greatest(len(pr.urls) - $head_items, 0) AS pr_urls_cut,
+    -- The session's bar reads fullness alone: there is no turn before the session for it to
+    -- have added anything to, so the tip is left unsaid.
+    {'fill': held.fill, 'added': NULL::BIGINT, 'window': held.window_tokens} AS context
 FROM sessions s
 JOIN session_rollups r ON r.session_id = s.id
 CROSS JOIN skill
+CROSS JOIN held
 CROSS JOIN pr
 WHERE s.id = $session_id;

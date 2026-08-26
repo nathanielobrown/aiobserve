@@ -69,6 +69,30 @@ PRICES: dict[str, ModelPrice] = {
     "claude-haiku-4-5-20251001": ModelPrice(input=1.0, output=5.0),
 }
 
+# How many tokens of context each model answers in — the scale the viewer's context bar is
+# drawn against (`docs/viewer.md`). Keyed like `PRICES`, by the exact `message.model` string,
+# and every model that table prices but the placeholder: a `<synthetic>` record never went to
+# a model, so it has a stated price of nothing and no window at all. A model absent here draws
+# no bar, the way a model absent from `PRICES` shows no cost.
+#
+# 200,000 is the published window, and the corpus holds it up as the one in force: auto
+# compaction fires at a median prompt of 167,385 tokens (`compactions.pre_tokens` where
+# `trigger = 'auto'`, 1,225 of them in the canonical store on 2026-08-26), which is where a
+# 200,000-token limit puts it, and 98.9% of the 159,907 non-synthetic calls recorded sit under
+# it. The 1.06% that do not are 17 sessions out of 596: a larger window can be asked for, and
+# the reply still names the base model — `claude-opus-5[1m]` is the alias a request carries,
+# not a `message.model` this table could key on. So a call past its window reads full rather
+# than getting a scale of its own, and the numbers are the popover's to print.
+CONTEXT_WINDOWS: dict[str, int] = {
+    "claude-fable-5": 200_000,
+    "claude-opus-5": 200_000,
+    "claude-opus-4-8": 200_000,
+    "claude-opus-4-1-20250805": 200_000,
+    "claude-sonnet-5": 200_000,
+    "claude-sonnet-4-6": 200_000,
+    "claude-haiku-4-5-20251001": 200_000,
+}
+
 
 def compute_cost(model: str, tokens: TokenUsage) -> float | None:
     """What one reply cost in USD, or None when the table does not price its model."""

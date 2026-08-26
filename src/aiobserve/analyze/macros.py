@@ -13,6 +13,8 @@ them, and under a bare `duckdb` shell it does not.
 
 import duckdb
 
+from aiobserve.extract.pricing import CONTEXT_WINDOWS
+
 # The line a failure is grouped by: its first, whitespace collapsed, with every absolute path
 # standing as `<path>`. Two queries group on it and a group key that drifted between them
 # would count the same failure two ways.
@@ -45,6 +47,23 @@ _REBUILT_CONTEXT = """
 CREATE OR REPLACE TEMP MACRO rebuilt_context(creation_tokens, read_tokens, min_tokens, min_pct)
 AS creation_tokens >= min_tokens
    AND creation_tokens * 100 >= min_pct * (creation_tokens + read_tokens)
+"""
+
+# Where one api call left the model's context window, and how much of that the call itself put
+# there. The fill is everything the reply was billed for: the cache it read is context it was
+# working in, and its own output is context the next call inherits. What it added is that less
+# the read — the part of the window this call put in front of the model.
+# Macros because every level of the tree derives them and the popover prints them, and a level
+# that counted the window its own way would draw a bar denying the row above it. Neither reads
+# a fat column: what they take is a row of `live_api_calls`, and what they answer is a count.
+_CONTEXT_FILL = """
+CREATE OR REPLACE TEMP MACRO context_fill(call) AS
+call.cache_read_tokens + call.cache_creation_tokens + call.input_tokens + call.output_tokens
+"""
+
+_CONTEXT_ADDED = """
+CREATE OR REPLACE TEMP MACRO context_added(call) AS
+call.cache_creation_tokens + call.input_tokens + call.output_tokens
 """
 
 # One field of a tool call's input, cut to the width of the column that will print it. Every
@@ -104,6 +123,17 @@ CASE WHEN tool_asked(input, 'file_path', chars) IS NULL
      END
 """
 
+# The window each model answers in, written out of the table `extract/pricing.py` keeps beside
+# its prices. Generated rather than bound as a parameter so a query names a model and gets a
+# number, with the constant still defined in one place — and so `SETUP` hands a reader the
+# whole rule rather than a macro they have to supply the numbers for. A model the table lacks
+# answers NULL, which is a bar the viewer does not draw rather than a scale it invents.
+_CONTEXT_WINDOW = (
+    "\nCREATE OR REPLACE TEMP MACRO context_window(model) AS CASE model\n"
+    + "".join(f"    WHEN '{model}' THEN {window}\n" for model, window in CONTEXT_WINDOWS.items())
+    + "END\n"
+)
+
 # The macros a query may wrap a fat column in and still be bounded: each cuts what it reads to
 # the width its caller passes. Named in public because the viewer's payload bound is held by a
 # scan of query text (`tests/view/test_bounds.py`), and a scan cannot see through a macro call
@@ -122,6 +152,9 @@ BOUNDING = {
 DEFINITIONS = {
     "signature_line": _SIGNATURE_LINE,
     "rebuilt_context": _REBUILT_CONTEXT,
+    "context_fill": _CONTEXT_FILL,
+    "context_added": _CONTEXT_ADDED,
+    "context_window": _CONTEXT_WINDOW,
     **BOUNDING,
 }
 
