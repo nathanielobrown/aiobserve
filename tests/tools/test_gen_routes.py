@@ -1,7 +1,8 @@
-"""What the route table has to hold: every page the app serves, described by its own docstring.
+"""What the route table has to hold: every page the app serves, named and described.
 
 The world is the live app rather than a fixture — the whole point of generating the table is
-that a page cannot ship undocumented, and only the app itself can say which pages exist.
+that a page cannot ship undocumented, and only the app itself can say which pages exist. The
+name is the vocabulary `CONTEXT.md` fixes; the description is the handler's own first sentence.
 """
 
 import pytest
@@ -68,24 +69,55 @@ def test_fragment_routes_are_excluded_by_rule(table: str) -> None:
         assert not [route for route in listed(table) if route.startswith(prefix)]
 
 
-def test_a_page_with_no_docstring_crashes_the_generator() -> None:
-    # A blank description is worse than no table: the generator names the handler and stops.
+def stub_app() -> FastAPI:
+    """An app serving one undocumented, unnamed page, for the two crash leaves below."""
     stub = FastAPI(docs_url=None, redoc_url=None)
 
     @stub.get("/undocumented")
     def undocumented() -> PlainTextResponse:
+        """A page nobody named."""
         return PlainTextResponse("")
 
-    undocumented.__doc__ = None
-    with pytest.raises(ValueError, match="undocumented"):
+    return stub
+
+
+def test_a_page_with_no_docstring_crashes_the_generator(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A blank description is worse than no table: the generator names the handler and stops.
+    stub = stub_app()
+    page = next(route for route in gets(stub) if route.path == "/undocumented")
+    page.endpoint.__doc__ = None
+    monkeypatch.setitem(gen_routes.PAGE_NAMES, "/undocumented", "Undocumented")
+    with pytest.raises(ValueError, match="no docstring"):
         gen_routes.table(stub)
+
+
+def test_a_page_with_no_name_crashes_the_generator() -> None:
+    # And the other column: a page the vocabulary has no name for stops the run rather than
+    # printing a sentence where the reader expects the term they know the page by.
+    with pytest.raises(ValueError, match="no page name"):
+        gen_routes.table(stub_app())
+
+
+def test_every_page_name_still_names_a_route_the_app_serves(app: FastAPI) -> None:
+    # The map is curated, so it rots the moment a URL changes. A name for a route nobody
+    # serves is a name nobody can check against the page it claims to describe.
+    stale = set(gen_routes.PAGE_NAMES) - served(app)
+    assert not stale, f"page names for routes the app no longer serves: {sorted(stale)}"
+
+
+def test_a_page_name_is_the_short_term_the_glossary_fixes(table: str) -> None:
+    # The Page column is vocabulary, not prose: `CONTEXT.md` names these two pages, and the
+    # table has to print those names rather than whatever the handler's docstring opens with.
+    named = {row[1].strip("`"): row[0] for row in cells(table)}
+    assert named["/"] == "Projects page"
+    assert named["/sessions"] == "Session list"
 
 
 def test_a_description_is_the_handlers_own_first_sentence(app: FastAPI, table: str) -> None:
     # The docstring is the single source for the description column, so a row's words are
-    # the handler's own — read here through the session page, which every reader lands on.
+    # the handler's own — read here through the session list, which every reader lands on.
     handler = next(route for route in gets(app) if route.path == "/sessions")
-    described = {row[1].strip("`"): row[0] for row in cells(table)}
+    described = {row[1].strip("`"): row[2] for row in cells(table)}
     assert (handler.endpoint.__doc__ or "").startswith(described["/sessions"])
 
 
