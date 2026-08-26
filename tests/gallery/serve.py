@@ -5,10 +5,12 @@
 a template or a stylesheet reloads whatever is open, so the loop is: pick a scenario, save,
 watch.
 
-Test tooling, not a package feature — it imports `tests/` freely. Privacy is structural: `main`
-takes no arguments, so the process can serve nothing but the corpus it builds itself.
+Test tooling, not a package feature — it imports `tests/` freely. Privacy is structural: a port
+is the only thing that reaches it from outside, so the process can serve nothing but the corpus
+it builds itself.
 """
 
+import argparse
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -24,7 +26,8 @@ from tests.view.scenarios import ROUTES
 INDEX = "/gallery"
 
 # One past the viewer's own port, so a gallery and a viewer over your own store can be open
-# side by side. Fixed, so a link into the gallery still opens tomorrow.
+# side by side. The default rather than the port: a link into the gallery still opens tomorrow,
+# and a second gallery beside it — one per branch you are comparing — takes `--port`.
 PORT = 8478
 
 _GALLERY = Path(__file__).parent
@@ -46,23 +49,33 @@ def gallery(store: Path) -> FastAPI:
     return app
 
 
-def main() -> None:
-    """Build the fixture store, serve it, and hold until interrupted.
+def parser() -> argparse.ArgumentParser:
+    """The command line: a port, and deliberately nothing else.
 
-    No arguments, and none to add: a store path here would be a way to serve private data out
-    of a tool whose whole safety is that it cannot.
+    Where the gallery listens is the one thing a reader can want to change — two branches
+    compared side by side, or a port already taken. A store path is what must never be
+    addable, so the flags are read off this one place and `tests/gallery/test_serve.py` reads
+    it back.
     """
+    parse = argparse.ArgumentParser(prog="mise run gallery", description=__doc__)
+    parse.add_argument("--port", type=int, default=PORT, help=f"listen here instead of {PORT}")
+    return parse
+
+
+def main() -> None:
+    """Build the fixture store, serve it, and hold until interrupted."""
+    port = parser().parse_args().port
     with TemporaryDirectory() as scratch:
         store = Path(scratch) / "traces.duckdb"
         build_enriched_store(store, corpus=None)
-        claim(PORT, "Stop the gallery already serving — this one takes no port.")
-        print(f"aiobserve gallery: http://{HOST}:{PORT}{INDEX}")
+        claim(port, "Pass --port to use another.")
+        print(f"aiobserve gallery: http://{HOST}:{port}{INDEX}")
         # The same shutdown cap `--dev` takes: the reload stream has no last chunk, so a
         # graceful exit that waited for it would never return (`view/app.py`).
         uvicorn.run(
             gallery(store),
             host=HOST,
-            port=PORT,
+            port=port,
             log_level="warning",
             timeout_graceful_shutdown=DEV_SHUTDOWN_SECONDS,
         )

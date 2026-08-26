@@ -55,17 +55,22 @@ def test_the_index_offers_one_link_per_scenario_and_nothing_else(gallery: TestCl
 
 
 def test_the_gallery_cannot_be_pointed_at_a_store() -> None:
-    """The entry point takes nothing, so no store path can reach it.
+    """The one thing that reaches the gallery from outside is a port number.
 
     Session data is private, and the gallery's whole claim to serving a store in a browser is
-    that it can only serve the one it builds from the redacted fixtures. A parameter, an
-    argparse option, a read of `sys.argv` or a read of the environment would each undo that, so
-    the shape is what is asserted rather than the behaviour.
+    that it can only serve the one it builds from the redacted fixtures. So every door is
+    named here: the entry point takes no parameter, the command line parses to a port and
+    nothing else — `vars` is the whole namespace, so a second option would fail here whatever
+    it was called — and the environment is not read at all.
     """
     assert inspect.signature(serve.main).parameters == {}
+    assert vars(serve.parser().parse_args([])) == {"port": serve.PORT}
+    assert serve.parser().parse_args(["--port", "9001"]).port == 9001
+    # A store path has no way in, however it is spelled: argparse exits on an option it does
+    # not declare, and the gallery declares one.
+    with pytest.raises(SystemExit):
+        serve.parser().parse_args(["--store", "/tmp/traces.duckdb"])
     source = Path(inspect.getfile(serve)).read_text()
-    assert "argparse" not in source
-    assert "argv" not in source
     # An env var is the quiet way back in: it takes no signature and no flag, so a read of one
     # would look like configuration rather than a door onto the canonical store.
     assert "environ" not in source
@@ -112,6 +117,11 @@ def test_the_gallery_has_a_task_and_a_port_the_viewer_does_not(gallery: TestClie
     """`mise run gallery` is how it is started, on a port a running viewer cannot be on."""
     assert serve.PORT != PORT
     task = tomllib.loads((REPO / "mise.toml").read_text())["tasks"]["gallery"]
-    # The port is a constant, not a task argument: the task says how to start the process and
-    # the process says where it listens.
+    # The default port is the process's, not the task's: the task says how to start it and the
+    # process says where it listens when nobody says otherwise.
     assert str(serve.PORT) not in task["run"]
+    # `--port` reaches the process only if the task both declares it and passes it on. mise
+    # mangles a flag its spec does not declare, and a declared flag the body never
+    # interpolates is dropped silently — so both halves are read here.
+    assert '"--port <port>"' in task["usage"]
+    assert "usage_port" in task["run"]

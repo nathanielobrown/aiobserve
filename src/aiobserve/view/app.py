@@ -2123,8 +2123,8 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
 def claim(port: int, remedy: str) -> None:
     """Refuse `port` before anything binds it, naming the port and `remedy` — how to get one.
 
-    A second server on a fixed port is the one startup failure a reader hits by accident, and
-    the way out differs by server: the viewer takes `--port` and the gallery takes nothing.
+    A second server on a fixed port is the one startup failure a reader hits by accident, so
+    the refusal names the port it wanted and leaves the way out to the caller that knows it.
     """
     with socket.socket() as probe:
         # The option asyncio sets for uvicorn, so the probe asks the server's question rather
