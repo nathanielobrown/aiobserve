@@ -558,7 +558,7 @@ def test_an_interrupt_ends_the_round_without_forfeiting_it(
     # ...held there by the two items, which return only once the collecting thread has given
     # up and started draining. That is the one wake-up in this test: an item finishing first
     # would wake the collector on its own, and the interrupt would land somewhere else.
-    real_drain = client._drain
+    real_drain = client._drain  # noqa: SLF001 — the seam this test times the interrupt on
 
     def release_the_pool_then_drain(*args: Any) -> None:
         collecting_gave_up.set()

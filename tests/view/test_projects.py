@@ -317,8 +317,8 @@ def test_a_column_is_headed_the_way_its_cells_are_set(client: TestClient) -> Non
     its index.
     """
     page = client.get("/").text
-    head = re.search(r"<thead>(.*?)</thead>", page, re.S)
-    body = re.search(r"<tbody>\s*<tr[^>]*>(.*?)</tr>", page, re.S)
+    head = re.search(r"<thead>(.*?)</thead>", page, re.DOTALL)
+    body = re.search(r"<tbody>\s*<tr[^>]*>(.*?)</tr>", page, re.DOTALL)
     assert head is not None and body is not None
 
     def aligned(section: str, tag: str) -> list[bool]:

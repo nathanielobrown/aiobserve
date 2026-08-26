@@ -205,7 +205,8 @@ def _root_span(
     in the attributes.
     """
     session = trace.session
-    assert session.started_at is not None and session.ended_at is not None
+    # Narrowing for the type checker: an extracted session carries both ends.
+    assert session.started_at is not None and session.ended_at is not None  # noqa: S101
     ended_at = max(
         [session.ended_at, *(_from_nanos(child.end_time_unix_nano) for child in children)]
     )

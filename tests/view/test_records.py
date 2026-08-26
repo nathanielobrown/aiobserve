@@ -298,15 +298,14 @@ def test_every_turn_links_to_the_record_it_was_read_from(
     join, not a guess about line numbers — which is what makes the link derivable at all. The
     line also arrives whole on open, from the same route the records browser uses.
     """
-    behind = {
-        turn_id: line_no
-        for turn_id, line_no in store.execute(
+    behind = dict(
+        store.execute(
             "SELECT t.id, r.line_no FROM live_turns t JOIN raw_records r"
             " ON r.session_id = t.session_id AND r.source = t.source AND r.uuid = t.id"
             " WHERE t.session_id = ? AND t.source = ?",
             [SPINE, MAIN],
         ).fetchall()
-    }
+    )
     (turns,) = one(
         store, "SELECT count(*) FROM live_turns WHERE session_id = ? AND source = ?", [SPINE, MAIN]
     )

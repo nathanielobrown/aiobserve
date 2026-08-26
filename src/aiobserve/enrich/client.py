@@ -148,12 +148,13 @@ def preflight() -> None:
     org name.
     """
     try:
-        done = subprocess.run(
+        done = subprocess.run(  # noqa: S603 — our own argv, no shell
             [CLAUDE, "auth", "status"],
             env=build_env(),
             capture_output=True,
             text=True,
             timeout=AUTH_TIMEOUT,
+            check=False,
         )
     except FileNotFoundError as error:
         raise SystemExit(
@@ -314,7 +315,7 @@ class CliClient:
     def _attempt(self, request: EnrichRequest, cwd: str, *, canary: bool) -> Result:
         """One `claude -p` call: the render over stdin, the answer or a failure back."""
         try:
-            done = subprocess.run(
+            done = subprocess.run(  # noqa: S603 — our own argv, no shell
                 self._argv(request),
                 input=request.content,
                 env=build_env(),
@@ -322,6 +323,7 @@ class CliClient:
                 capture_output=True,
                 text=True,
                 timeout=ITEM_TIMEOUT,
+                check=False,
             )
         except subprocess.TimeoutExpired:
             return Failed(key=request.key, kind=FailureKind.timeout)

@@ -242,7 +242,10 @@ def lock_is_free(path: Path) -> bool:
     succeeds whatever the file lock says, so an in-process check answers nothing.
     """
     taker = subprocess.run(
-        [sys.executable, "-c", _TAKER, str(path)], capture_output=True, timeout=LOCK_TIMEOUT
+        [sys.executable, "-c", _TAKER, str(path)],
+        capture_output=True,
+        timeout=LOCK_TIMEOUT,
+        check=False,
     )
     return taker.returncode == 0
 

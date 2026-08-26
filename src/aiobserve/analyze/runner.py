@@ -120,7 +120,8 @@ def run(
         cited: dict[str, ParamValue] = {}
         unplaceable = None
         if corpus:
-            assert project is not None  # `corpus and project is None` raised above
+            # Narrowing for the type checker; `corpus and project is None` raised above.
+            assert project is not None  # noqa: S101
             cited = _build_project_sessions(connection, project, since, as_of)
             unplaceable = connection.execute(_UNPLACEABLE).fetchone()[0]  # type: ignore[index]
         cursor = connection.execute(queries.load(name), dict(bindings))

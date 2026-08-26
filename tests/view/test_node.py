@@ -1120,7 +1120,7 @@ def headings(html: str) -> dict[str, str]:
     return {
         column: " ".join(plain(inner).split())
         for column, inner in re.findall(
-            r'<th [^>]*data-column="([^"]*)"[^>]*>(.*?)</th>', html, flags=re.S
+            r'<th [^>]*data-column="([^"]*)"[^>]*>(.*?)</th>', html, flags=re.DOTALL
         )
     }
 
@@ -1227,7 +1227,7 @@ def test_a_log_row_opens_the_body_from_a_button_that_says_so(
     # And the disclosure the button replaced is gone from the log. Scoped to the log because
     # the page footer keeps one for the queries it ran, which no reader has to find to read
     # a row.
-    (log,) = re.findall(r'<section class="log".*?</section>', page, flags=re.S)
+    (log,) = re.findall(r'<section class="log".*?</section>', page, flags=re.DOTALL)
     assert "<details" not in log
 
 
@@ -1276,8 +1276,8 @@ def test_a_tool_row_says_what_the_tool_was_asked(
     path = plant(
         ("UPDATE sessions SET project_dir = ? WHERE id = ?", [project, session_id]),
         *(
-            ("UPDATE tool_calls SET name = ?, input = ? WHERE id = ?", [name, input, tool_id])
-            for tool_id, (name, input) in asked.items()
+            ("UPDATE tool_calls SET name = ?, input = ? WHERE id = ?", [name, sent, tool_id])
+            for tool_id, (name, sent) in asked.items()
         ),
     )
     with TestClient(build_app(path)) as planted:
@@ -1490,7 +1490,7 @@ def test_the_two_prose_columns_of_a_calls_log_are_bounded_by_the_stylesheet(
     # class the cell carries.
     page = client.get(TURN).text
     assert 'class="said"' in page and 'class="called"' in page
-    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.S)
+    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
     rules = [
         (selector.strip(), body)
         for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", style)
