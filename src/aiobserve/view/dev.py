@@ -6,9 +6,9 @@ dependency, so an installed viewer never imports it and `--dev` in a checkout wi
 group fails at startup rather than serving a loop that never fires.
 
 Server-sent events rather than a WebSocket because `CSP` allows a same-origin GET already, and
-because `EventSource` retries a dropped connection on its own, so a restarted viewer is not a
-dead page. The restart alone refreshes nothing — a reconnect carries no message, only a save
-does (`.claude/rules/viewer-ui.md`).
+because `EventSource` retries a dropped connection on its own. The reconnect carries no
+message, so the client reloads on the reconnect itself: an open page follows a restarted
+server instead of showing what the old one rendered (`.claude/rules/viewer-ui.md`).
 """
 
 from collections.abc import AsyncIterator, Sequence
