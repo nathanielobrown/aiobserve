@@ -90,6 +90,29 @@ def test_a_change_set_with_nothing_in_it_is_a_broken_assumption_rather_than_an_e
         event_for(set())
 
 
+@pytest.mark.parametrize(
+    ("path", "watched"),
+    [
+        # What the viewer renders from, which is what a save should reach the browser through...
+        ("/w/style.css", True),
+        ("/w/node.html", True),
+        ("/w/dev-reload.js", True),
+        # ...the directory macOS reports beside a saved file, which has no suffix and would
+        # read as a page event if it got through...
+        ("/w", False),
+        # ...a file under a watched directory the viewer does not render...
+        ("/w/README.md", False),
+        # ...and what watchfiles' own filter drops, which this one still defers to.
+        ("/w/__pycache__/node.html", False),
+    ],
+)
+def test_the_watcher_is_told_to_report_only_what_the_viewer_renders_from(
+    path: str, watched: bool
+) -> None:
+    """The filter the stream watches under, read directly: suffix, and watchfiles' own noise."""
+    assert Rendered()(Change.modified, path) is watched
+
+
 # Drives the real watcher over a real directory: a debounce window of wall clock, and the only
 # leaf standing between a green classifier and change sets it never sees in this shape.
 @pytest.mark.slow
