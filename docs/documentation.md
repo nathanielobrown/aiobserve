@@ -35,7 +35,7 @@ Telemetry schemas need stronger evidence because the harness owns them and may c
 
 ## Generate a table from the code that owns it
 
-A table a reader needs spelled out — the viewer's routes, the fields a record carries — comes from a generator in `tools/` and is spliced into the document by `aigarden cog`. The document holds the markers and the generator holds the text:
+A table a reader needs spelled out — the viewer's routes, the fields a record carries — comes from a generator in `tools/` and is spliced into the document by `mise run cogs`. The document holds the markers and the generator holds the text:
 
 ```markdown
 <!-- aigarden:cog sh "uv run python -m tools.gen_routes" -->
@@ -44,7 +44,7 @@ A table a reader needs spelled out — the viewer's routes, the fields a record 
 <!-- aigarden:end -->
 ```
 
-The command runs from the repository root, and everything between the markers is replaced by what it prints. Run `aigarden cog --write` after changing a generator or the code it reads; `aigarden cog --check` reads the same command and fails when what the document holds is not what it prints, so a generated table cannot be stale and green at once. Never edit between the markers by hand — the next write erases it, and until then the check is red.
+The command runs from the repository root, and everything between the markers is replaced by what it prints. Run `mise run cogs` after changing a generator or the code it reads; `mise run check` runs the same command and fails when what the document holds is not what it prints, so a generated table cannot be stale and green at once. Never edit between the markers by hand — the next write erases it, and until then the check is red.
 
 A generator exposes `generate()`, which returns the block's body with no trailing newline, and a `main()` that prints it. Everything the block needs to say goes in the generator, including any heading or fence.
 
@@ -55,11 +55,13 @@ Write references as backticked paths or Markdown links:
 - In `CLAUDE.md` and `.claude/rules/`, use short backticked paths. Use a Markdown link for an anchor, an external URL, or a name without a path
 - In other prose documents, link to prose by name, as in `[the PR guide](pull-requests.md)`. Use backticked paths for source artifacts such as code and diagrams
 
-Markdown links resolve from the file that contains them. Backticked paths resolve from the repository root. Paths in code comments, docstrings, TOML, and YAML also resolve from the repository root and must match the target's case.
+Markdown links resolve from the file that contains them. Backticked paths resolve from the repository root. Paths in code comments, docstrings, TOML, and YAML also resolve from the repository root and must match the target's case. `mise run check` holds the whole repository to this, so a reference that no longer resolves is a red gate rather than something the next reader discovers.
+
+To move a document, run `mise run mv-doc <src> <dst>`: it moves the file and rewrites every reference to it, in either form, then re-checks that the repository's links still resolve.
 
 ## Keep each source paragraph on one line
 
-Write each paragraph and list item on one physical line, and let the editor wrap it: a reworded sentence is then a one-line diff, and an AI author writing beside our prose mirrors the convention it reads. Fenced code blocks and tables keep their own line breaks. `aigarden check` holds prose to this, and `aigarden check --fix` rejoins a paragraph someone wrapped.
+Write each paragraph and list item on one physical line, and let the editor wrap it: a reworded sentence is then a one-line diff, and an AI author writing beside our prose mirrors the convention it reads. Fenced code blocks and tables keep their own line breaks. `mise run check` holds prose to this, and `mise run check-fast` rejoins a paragraph someone wrapped.
 
 ## Keep shared agent guidance in one place
 

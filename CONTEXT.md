@@ -85,7 +85,7 @@ What each page shows and cites: `docs/viewer.md`; the routes: `src/aiobserve/vie
 
 The generators: `tools/`; how to write one and where a generated fact belongs: `docs/documentation.md`.
 
-- **Cog** — the splice `aigarden cog` performs: it runs the command a document names and pastes the output back into it
+- **Cog** — the splice `mise run cogs` performs: it runs the command a document names and pastes the output back into it
 - **Cog block** — one splice in one document: the two markers and the generated text between them
 
 ## Qualify these words
