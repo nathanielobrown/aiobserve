@@ -16,8 +16,8 @@ from aiobserve.extract.records.shapes import RECORD_MODELS, Record
 class Documentation(NamedTuple):
     """One row of a `docs/schema.md` field table, derived from the models."""
 
-    # What the table prints in its Field column: the last container and the field, as
-    # `usage.cache_creation` — the way the document has always spelled it.
+    # What the table prints in its Field column: the field under its container, as
+    # `usage.cache_creation`. `_name` says which containers a row carries.
     path: str
     meaning: str
     evidence: tuple[Cited, ...]
@@ -93,14 +93,18 @@ def _describe(
 
 
 def _name(locate: tuple[Step, ...]) -> str:
-    """The Field column's spelling: the last container and the field, as `usage.cache_creation`."""
+    """The Field column's spelling: the field under its container, as `usage.cache_creation`.
+
+    A field inside a block is spelled from the block — `advisor_tool_result.content.type` — because
+    a block is identified by name rather than by position, and more than one holds a `content`.
+    Outside a block the container is a record's own field, unique across the document.
+    """
     last = locate[-1]
     if isinstance(last, Among):
         return last.kind.value
-    if len(locate) == 1:
-        return last
-    parent = locate[-2]
-    return f"{parent.kind.value if isinstance(parent, Among) else parent}.{last}"
+    blocks = [at for at, step in enumerate(locate) if isinstance(step, Among)]
+    start = blocks[-1] if blocks else max(len(locate) - 2, 0)
+    return ".".join(step.kind.value if isinstance(step, Among) else step for step in locate[start:])
 
 
 def documentation(models: tuple[type[Record], ...] = RECORD_MODELS) -> tuple[Documentation, ...]:
