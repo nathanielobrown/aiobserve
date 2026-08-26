@@ -15,6 +15,10 @@ Plain `git` owns branches and commits; `gh` owns PRs. Sessions are non-interacti
 5. Sync the docs before writing the PR description. Dispatch the `doc-writer` subagent in `.claude/agents/doc-writer.md` to run doc-sync over the finished branch, then fold its edits into the branch. The docs belong in the same PR as the code; see [the documentation rule](documentation.md#keep-docs-in-step-with-the-change).
 6. Push once, after the branch is ready, then open the PR with `gh pr create --title <title> --body-file <file>`. Use a draft only when asking for review before the work is ready to land.
 
+## Start the title with the change type
+
+Start the title with emoji from the table in @commits.md, then a plain statement of the change. Multiple emoji are allowed when multiple would apply, but focus on what's important to convey. For example, documentation with a feature does not need the documentation emoji.
+
 ## Write the description for a human
 
 The diff shows what changed. The description explains why, relates the code to its design, and directs the reviewer to decisions that need human judgment. Machines can verify much of a diff; don't make a reviewer hunt for the parts they can't.
@@ -86,6 +90,7 @@ Before landing, fold the fixups with `git rebase --autosquash origin/main`. For 
 
 Before opening the PR, check:
 
+- [ ] The title starts with emoji from commits.md
 - [ ] `mise run check` is green, or the description names every failure
 - [ ] The branch is linear on `origin/main`, fixups are folded, and each commit is reviewable
 - [ ] The owning docs are in the branch

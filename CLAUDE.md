@@ -11,7 +11,7 @@ We make claims about other people's behavior from data we didn't design, so each
 - **A claim carries its query.** Include the dataset, filter, time window, and count. A number without its query is a hypothesis
 - **An absence is bounded or it isn't a finding.** "No session did X" means nothing until you show that the data could have contained X
 - **State the corpus.** One person's sessions on one codebase support claims about that codebase's guidance. Scope the recommendation to match
-- **Correlation isn't the mechanism.** A guidance change and a metric shift in the same week are two facts. Name what else changed
+- **Correlation doesn't prove causation.** A guidance change and a metric shift in the same week are two facts, but need to considered with other changes
 
 
 # Tooling
@@ -66,6 +66,8 @@ Extra context can confuse an AI and weaken its instruction-following. Minimize w
 
 - While working, sample large files instead of reading them whole, pass paths instead of contents, and keep subagent briefs and reports bounded
 - While analyzing sessions, treat unnecessary loaded context as a finding: an unneeded doc read, bloated tool output, or a fixture pasted where a path would do
+
+This is also a heuristic for getting a coding agent to work better: context that doesn't contribute to the solution degrades output quality and drives up cost.
 
 
 
