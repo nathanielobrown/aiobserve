@@ -221,7 +221,7 @@ def test_every_described_node_carries_its_own_words_on_its_own_page(
             # ...saying how much it left, which is the whole length the query returned less
             # the width it printed. Read off the block in document order, because the two
             # fields carry the same key and the pair is what tells the arms apart.
-            block = re.search(r'<section class="enrichment"[^>]*>.*?</section>', page, re.S)
+            block = re.search(r'<section class="enrichment"[^>]*>.*?</section>', page, re.DOTALL)
             assert block, url
             assert re.findall(r'data-field="cut">([^<]+)<', block.group()) == [
                 f"{rest['description']:,}",

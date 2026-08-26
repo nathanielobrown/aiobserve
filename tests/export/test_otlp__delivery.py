@@ -509,7 +509,7 @@ def test_a_request_that_leaves_this_machine_is_refused() -> None:
     """No leaf in this tier can reach a real backend by accident."""
     # The guard is autouse and lifts only for a leaf marked `live`, so a run that forgets the
     # receiver's URL fails here rather than billing a backend and handing it a transcript.
-    with pytest.raises(OffMachineRequestError, match="example.com"):
+    with pytest.raises(OffMachineRequestError, match=r"example\.com"):
         httpx.Client(timeout=TIMEOUT).post("https://example.com/v1/traces", content=b"")
 
 

@@ -29,7 +29,7 @@ class FailureKind(StrEnum):
     # The model answered, but not in the shape the output schema requires.
     invalid_output = "invalid_output"
     # The answer carried something shaped like a credential.
-    secret_shape = "secret_shape"
+    secret_shape = "secret_shape"  # noqa: S105 — the name of a failure, not a credential
 
 
 # Shapes that mean a credential leaked from a transcript into a description. A heuristic,

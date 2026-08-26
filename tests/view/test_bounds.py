@@ -1073,8 +1073,8 @@ def priced(html: str) -> tuple[str, dict[str, list[str]]]:
     """A node page split into the rows the arithmetic prices and the chrome it does not."""
     rows: dict[str, list[str]] = {}
     for name, pattern in PRICED_ROWS.items():
-        rows[name] = re.findall(pattern, html, flags=re.S)
-        html = re.sub(pattern, "", html, flags=re.S)
+        rows[name] = re.findall(pattern, html, flags=re.DOTALL)
+        html = re.sub(pattern, "", html, flags=re.DOTALL)
     # The split is the instrument, so it is checked both ways: a row left in is a cost counted
     # twice, and a wrapper taken out hides part of the page this measures.
     assert not values(html, "data-crumb") and not values(html, "data-tree")
@@ -1270,7 +1270,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
         found.count("&amp;")
         for _, rows in split
         for row in rows["tree"]
-        for found in re.findall(r'<span data-field="title">(.*?)</span>', row, flags=re.S)
+        for found in re.findall(r'<span data-field="title">(.*?)</span>', row, flags=re.DOTALL)
     }
     # No title got past the cut, and one reached it. Not every row's title is planted — a
     # bucket is named by the viewer and a compaction by its trigger — so the widest is what
@@ -1362,17 +1362,17 @@ def test_an_expansion_weighs_a_body_and_the_one_page_of_rows_it_lists(
             for kind, node_id in (("turn", turn_id), ("tool", tool_id))
         ]
     assert served.status_code == 200, mount
-    rows = re.findall(PRICED_ROWS["log"], served.text, flags=re.S)
+    rows = re.findall(PRICED_ROWS["log"], served.text, flags=re.DOTALL)
     # The cap bit: the level holds twice what came back, and what came back is one page of it.
     assert len(rows) == bounds.LOG.ceiling
     assert fields(served.text, "data-log", "tools")["children"] == str(recorded + clones)
     # The fragment weighs its rows and a body, and neither part is over what it is budgeted...
     assert len(served.content) <= worst_expansion_bytes()
     assert max(len(row.encode()) for row in rows) <= worst_log_row_bytes()
-    bodies = [re.sub(PRICED_ROWS["log"], "", served.text, flags=re.S)]
+    bodies = [re.sub(PRICED_ROWS["log"], "", served.text, flags=re.DOTALL)]
     for other in others:
         assert other.status_code == 200
-        assert not re.findall(PRICED_ROWS["log"], other.text, flags=re.S), "it listed a level"
+        assert not re.findall(PRICED_ROWS["log"], other.text, flags=re.DOTALL), "it listed a level"
         bodies.append(other.text)
     assert max(len(body.encode()) for body in bodies) <= MEASURED_EXPANSION_CHROME, [
         len(body.encode()) for body in bodies
@@ -1474,14 +1474,14 @@ def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     assert max(b - a for a, b in pairwise(weights)) <= worst_session_row_bytes()
     # ...and what the page carries whatever its size fits the allowance the ceiling gives it,
     # with the row the arithmetic counts separately stripped out.
-    chrome = re.sub(r"<tr data-session-id=.*?</tr>", "", one_row, flags=re.S)
+    chrome = re.sub(r"<tr data-session-id=.*?</tr>", "", one_row, flags=re.DOTALL)
     assert not values(chrome, "data-session-id") and 'id="sessions"' in chrome
     assert len(chrome.encode()) <= MEASURED_LIST_CHROME
     # The plant reached every cap, which is what makes those two numbers a worst case: each
     # string cut to its head, the skills cut to their first names and saying how many were
     # left, and the filter box offering as many projects as it has room for. Read off the row
     # the budget above is priced at — the dearest one — rather than off whichever sorted first.
-    markup = re.findall(r"<tr data-session-id=.*?</tr>", pages[-1], flags=re.S)
+    markup = re.findall(r"<tr data-session-id=.*?</tr>", pages[-1], flags=re.DOTALL)
     dearest = max(markup, key=lambda one: len(one.encode()))
     row = fields(dearest, "data-session-id", values(dearest, "data-session-id")[0])
     # Each of the row's own strings cut to its head and marked there, which is what says the
@@ -1561,7 +1561,7 @@ def test_a_projects_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     assert values(page, "data-more-projects") == [str(projects - bounds.PROJECTS.ceiling)]
     # What the page carries whatever it holds fits the allowance the ceiling gives it, with the
     # rows the arithmetic counts separately stripped out...
-    chrome = re.sub(r"<tr data-project=.*?</tr>", "", page, flags=re.S)
+    chrome = re.sub(r"<tr data-project=.*?</tr>", "", page, flags=re.DOTALL)
     assert not values(chrome, "data-project") and 'id="projects"' in chrome
     assert len(chrome.encode()) <= MEASURED_PROJECTS_CHROME
     # ...and one row costs no more than its markup and the two copies of its path.
@@ -1614,7 +1614,7 @@ def test_an_errors_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     assert values(page, "data-more-errors") == [str(failures - bounds.ERRORS.ceiling)]
     # What the page carries whatever it holds fits the allowance the ceiling gives it, with the
     # rows the arithmetic counts separately stripped out...
-    chrome = re.sub(r"<li data-error=.*?</li>", "", page, flags=re.S)
+    chrome = re.sub(r"<li data-error=.*?</li>", "", page, flags=re.DOTALL)
     assert not values(chrome, "data-error") and 'id="errors"' in chrome
     assert len(chrome.encode()) <= MEASURED_ERRORS_CHROME
     # ...and one row costs no more than its markup and the title it carries.
@@ -1683,8 +1683,8 @@ def printed(html: str) -> list[str]:
     """
     return [
         value
-        for row in re.findall(r"<tr data-child=.*?</tr>", html, flags=re.S)
-        for value in re.findall(r'<span [^>]*data-field="[^"]*">(.*?)</span>', row, flags=re.S)
+        for row in re.findall(r"<tr data-child=.*?</tr>", html, flags=re.DOTALL)
+        for value in re.findall(r'<span [^>]*data-field="[^"]*">(.*?)</span>', row, flags=re.DOTALL)
     ]
 
 
@@ -1787,7 +1787,7 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # the same one whatever kind of node the row stands for. Read off the tree half of the
     # page: the same `title` field names the node in three places, each at its own width.
     tree, pane = session.split('<article id="pane">')
-    titles = re.findall(r'<span data-field="title">(.*?)</span>', tree, flags=re.S)
+    titles = re.findall(r'<span data-field="title">(.*?)</span>', tree, flags=re.DOTALL)
     # Cut and marked as cut: every column a title is composed from comes back one character
     # past the width, so a row that fills the line says the value went on.
     assert max(titles, key=len) == "x" * queries.NAV_CHARS + ELLIPSIS

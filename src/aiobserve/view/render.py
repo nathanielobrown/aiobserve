@@ -85,7 +85,8 @@ _MARKDOWN.add_render_rule("fence", _fence)
 
 def markdown(text: str | None) -> Markup:
     """One value's markdown as HTML, with its markup rendered inert."""
-    return Markup(_MARKDOWN.render(text)) if text else Markup()
+    # The reader is configured above to render a transcript's own markup inert.
+    return Markup(_MARKDOWN.render(text)) if text else Markup()  # noqa: S704
 
 
 def link(url: str | None) -> Markup:
@@ -103,4 +104,4 @@ def link(url: str | None) -> Markup:
         return Markup()
     if not url.lower().startswith(_LINK_SCHEMES) or url.endswith(ELLIPSIS):
         return escape(url)
-    return Markup(f'<a href="{escape(url)}">{escape(url)}</a>')
+    return Markup(f'<a href="{escape(url)}">{escape(url)}</a>')  # noqa: S704 — escaped above

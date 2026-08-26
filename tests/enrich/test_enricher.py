@@ -92,7 +92,7 @@ class FakeClient:
     @property
     def keys(self) -> list[str]:
         """Every key the client was asked about, in the order it was asked."""
-        return [request.key for round in self.rounds for request in round]
+        return [request.key for sent in self.rounds for request in sent]
 
 
 def answer(key: str, **overrides: object) -> dict[str, Any]:
@@ -677,7 +677,7 @@ def test_rounds_send_children_before_parents(forest: EnrichmentStore) -> None:
     client = FakeClient()
     enrich(forest, client)
     # ...then the rounds are the levels of the forest, deepest first: every leaf run...
-    assert [set(request.key for request in round) for round in client.rounds] == [
+    assert [{request.key for request in sent} for sent in client.rounds] == [
         {key_of(forest, SPINE_LEAF), key_of(forest, ORIGIN_RUN), key_of(forest, TEAM_RUN)},
         # ...then the runs that spawned them...
         {key_of(forest, SPINE_RUN), key_of(forest, AUDITOR_RUN)},

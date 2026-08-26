@@ -49,16 +49,26 @@ class _PinnedDate(dt.date):
         return cls(FAR_FUTURE.year, FAR_FUTURE.month, FAR_FUTURE.day)
 
 
+class _PinnedDateTime(dt.datetime):
+    """`datetime`, with now at midnight on `FAR_FUTURE` in whatever zone the caller asks for."""
+
+    @classmethod
+    def now(cls, tz: dt.tzinfo | None = None) -> Self:
+        return cls(FAR_FUTURE.year, FAR_FUTURE.month, FAR_FUTURE.day, tzinfo=tz)
+
+
 @pytest.fixture(autouse=True)
 def far_future(monkeypatch: pytest.MonkeyPatch) -> None:
     """Run every analysis test long after the corpus was recorded.
 
     Patched on `datetime` itself rather than on the one caller (`cli`'s `--as-of` default),
-    so a clock read added anywhere under a test here is pinned too. The stores are built by
-    session-scoped fixtures, which pytest sets up before this one — a recording keeps the
+    so a clock read added anywhere under a test here is pinned too — both spellings of it,
+    because the CLI reads the zone-aware one and a leaf may read either. The stores are built
+    by session-scoped fixtures, which pytest sets up before this one — a recording keeps the
     dates it was recorded with, and only the reading of it moves.
     """
     monkeypatch.setattr(dt, "date", _PinnedDate)
+    monkeypatch.setattr(dt, "datetime", _PinnedDateTime)
 
 
 # Mycelia sessions `corpus_rollups` credits with no turns and no agent runs, so no stratum

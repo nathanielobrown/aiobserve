@@ -109,7 +109,8 @@ def test_the_citation_names_the_query_file_and_every_resolved_binding(
 def test_as_of_defaults_to_today(run_query: QueryRunner) -> None:
     """A bare run cites the date its window was measured back from."""
     result = run_query("sessions", "--project", MYCELIA)
-    assert f"as_of={dt.date.today().isoformat()}" in result.stdout.splitlines()[0]
+    today = dt.datetime.now(tz=dt.UTC).date()
+    assert f"as_of={today.isoformat()}" in result.stdout.splitlines()[0]
 
 
 def test_since_filters_and_omitting_it_means_the_whole_corpus(run_query: QueryRunner) -> None:
@@ -175,7 +176,7 @@ def test_a_store_from_another_schema_is_refused_and_sends_the_reader_to_the_guid
     # ...then the query refuses rather than reading tables it may not understand, and points
     # at the store guide — a reader told to delete the store instead can destroy the only
     # copy of a session Claude Code has since pruned from disk.
-    with pytest.raises(SystemExit, match="docs/store.md"):
+    with pytest.raises(SystemExit, match=r"docs/store\.md"):
         query(path, capsys, "sessions", "--project", MYCELIA)
 
 

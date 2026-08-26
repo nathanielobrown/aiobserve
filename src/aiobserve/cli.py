@@ -167,7 +167,7 @@ def _query_arguments(subcommand: argparse.ArgumentParser) -> None:
     subcommand.add_argument(
         "--as-of",
         type=dt.date.fromisoformat,
-        default=dt.date.today(),
+        default=dt.datetime.now(tz=dt.UTC).date(),
         help="The date the trailing window is measured back from (default: today)",
     )
     subcommand.add_argument(

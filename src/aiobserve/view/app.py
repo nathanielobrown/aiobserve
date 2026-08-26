@@ -507,7 +507,7 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
         # dev-group dependency an installed viewer does not have. A hoist to the top of this
         # file would make the shipped viewer depend on it, and `tests/view/test_dev.py` fails
         # the moment one happens.
-        from aiobserve.view import dev as dev_loop
+        from aiobserve.view import dev as dev_loop  # noqa: PLC0415
 
         app.include_router(dev_loop.reload_router())
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -668,7 +668,8 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
 
     @app.exception_handler(StarletteHTTPException)
     def _http(request: Request, exception: Exception) -> Response:
-        assert isinstance(exception, StarletteHTTPException)
+        # Narrowing for the type checker: Starlette dispatches this handler by that class.
+        assert isinstance(exception, StarletteHTTPException)  # noqa: S101
         return error(request, exception.status_code, str(exception.detail))
 
     @app.get("/")
@@ -2225,7 +2226,7 @@ def serve(db_path: Path, port: int, *, open_browser: bool, dev: bool) -> None:
     app = build_app(db_path, dev=dev)
     claim(port, "Pass --port to use another.")
     url = f"http://{HOST}:{port}/"
-    print(f"aiobserve view: {db_path} at {url}")
+    print(f"aiobserve view: {db_path} at {url}")  # noqa: T201 — the URL the person needs
     if open_browser:
         webbrowser.open(url)
     # uvicorn's graceful exit waits for every in-flight response, and a reload stream has no

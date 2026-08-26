@@ -48,7 +48,7 @@ def raised_budgets(config: dict) -> dict[str, dict[str, int]]:
 
 def matches(pattern: str) -> list[str]:
     """Every file in the repo the pattern matches, directories dropped."""
-    found = glob.glob(pattern, root_dir=ROOT, recursive=True)
+    found = glob.glob(pattern, root_dir=ROOT, recursive=True)  # noqa: PTH207
     return [path for path in found if (ROOT / path).is_file()]
 
 

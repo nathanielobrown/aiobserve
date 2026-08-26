@@ -362,7 +362,7 @@ def test_machine_records_are_archived_but_never_turns(fixture_source: SourceFact
         for tag in machine:
             if tag in record.raw:
                 machine[tag] += 1
-    assert machine == {t: 1 for t in machine}
+    assert machine == dict.fromkeys(machine, 1)
     # ...then each is archived, and none of them opened a turn.
     assert not [turn for turn in trace.turns if turn.prompt.startswith("<task")]
     assert len([turn for turn in trace.turns if turn.source == MAIN_SOURCE]) == 4

@@ -70,7 +70,7 @@ def test_a_gloss_is_the_packages_own_first_sentence() -> None:
 
 def test_a_package_with_no_docstring_crashes_the_generator() -> None:
     # A silent blank in the tree would read as a package nobody could describe.
-    with pytest.raises(ValueError, match="tests.tools.undescribed"):
+    with pytest.raises(ValueError, match=r"tests\.tools\.undescribed"):
         gen_layout.glossed(gen_layout.Module("tests.tools.undescribed"))
 
 

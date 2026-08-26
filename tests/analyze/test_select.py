@@ -368,7 +368,7 @@ def config_only_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) ->
         # The tool calls go with them: a tool call with no api call behind it is a shape no
         # transcript holds.
         for table in ("tool_calls", "api_calls"):
-            connection.execute(f"DELETE FROM {table} WHERE session_id = ?", [CONFIG_ONLY])  # noqa: S608
+            connection.execute(f"DELETE FROM {table} WHERE session_id = ?", [CONFIG_ONLY])
     finally:
         connection.close()
     return path

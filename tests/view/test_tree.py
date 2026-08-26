@@ -228,7 +228,7 @@ def test_every_sessions_own_page_opens_the_level_its_thread_holds(
     seen: set[str] = set()
     for session_id in sessions:
         html = client.get(f"/session/{session_id}").text
-        expected = [f"session:{session_id}"] + thread_level(store, session_id, MAIN)
+        expected = [f"session:{session_id}", *thread_level(store, session_id, MAIN)]
         assert values(html, "data-tree") == expected, session_id
         seen |= {key.split(":")[0] for key in expected}
     # And the sweep really did reach every rule above, so a corpus that lost its compactions
@@ -439,7 +439,7 @@ def test_every_level_a_tree_opens_is_indented_one_step_further_than_the_one_abov
     rendered = {depth for depth, _ in rows(page)}
     assert max(rendered) > 3, "the recorded subagent no longer nests past three levels"
     # ...and the stylesheet indents each of them by its own depth, in one step a level.
-    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.S)
+    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
     ladder = {
         int(depth): int(steps)
         for depth, steps in re.findall(
@@ -472,10 +472,10 @@ def test_a_row_reads_from_the_left_and_only_its_cost_sits_at_the_right(
     parts = r'class="icon".*data-field="title".*class="secondary"'
     assert [
         row
-        for row in re.findall(r'<li class="row node.*?</li>', page, flags=re.S)
-        if re.search(parts, row, flags=re.S)
+        for row in re.findall(r'<li class="row node.*?</li>', page, flags=re.DOTALL)
+        if re.search(parts, row, flags=re.DOTALL)
     ]
-    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.S)
+    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
     row_rules = re.findall(r"li\.node > a \{([^}]*)\}", style)
     assert any("display: flex" in rule for rule in row_rules)
     # Nothing distributes the spare width between the parts — that is the centring itself.
@@ -502,7 +502,7 @@ def test_the_tree_keeps_its_place_because_the_scroller_is_not_what_swaps(
     page = client.get(url(open_turn(store))).text
     # The element the swap replaces sits inside the one the tree is scrolled by.
     assert "tree-rows" in inside(page, "id", "tree", "id")
-    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.S)
+    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
     scrolls = {
         selector.strip()
         for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", style)
@@ -538,7 +538,7 @@ def test_the_tree_is_widened_by_a_handle_and_the_width_outlives_the_page(
     assert len(grip) == 1 and 'role="separator"' in grip[0] and 'tabindex="0"' in grip[0]
     # The tree's column is one custom property, which is the whole of what the script writes:
     # a width the stylesheet fixed some other way is a handle that drags nothing.
-    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.S)
+    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
     (columns,) = re.findall(r"#browser\s*\{[^}]*grid-template-columns:([^;]*);", style)
     assert "var(--tree-width" in columns
     # And the script that writes it is a file this app serves, keeping the width where a page
@@ -881,7 +881,7 @@ def test_a_cost_badge_deepens_at_every_step_and_washes_nothing_but_the_cost(
     the one place it is decided: the markup carries the class whatever the wash does, and
     nothing in this tier can see a painted box.
     """
-    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.S)
+    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
     washes = {
         int(step): int(part)
         for step, part in re.findall(
@@ -1140,7 +1140,7 @@ def test_a_context_bar_is_drawn_by_two_families_of_class_one_rule_spends(
     this tier can read: every step the markup can carry has to be a width here, or a row lands
     on a class that draws nothing and the bar quietly reads as empty.
     """
-    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.S)
+    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
     steps = list(range(BAR_STEPS + 1))
     for family, prop in (("f", "--ctx-fill"), ("t", "--ctx-added")):
         widths = {
@@ -1159,7 +1159,7 @@ def test_a_context_bar_is_drawn_by_two_families_of_class_one_rule_spends(
     ((selector, body),) = re.findall(r"(li\.node:is\([^)]*\)) > a \{([^}]*)\}", style)
     assert "calc(var(--ctx-fill) - var(--ctx-added, 0%)) 3px" in body, body
     assert re.search(r"var\(--ctx-fill\) 3px,\s*100% 3px", body), body
-    assert [token for token in re.findall(r"var\(--(dim|mark|line)\)", body)] == [
+    assert re.findall(r"var\(--(dim|mark|line)\)", body) == [
         "dim",
         "dim",
         "mark",

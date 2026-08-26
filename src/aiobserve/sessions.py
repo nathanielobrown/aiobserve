@@ -67,11 +67,12 @@ def _actual_case(path: Path) -> Path:
     corrected = Path(path.anchor)
     for part in path.relative_to(path.anchor).parts:
         # Nothing on disk to correct against past this point — keep the rest as typed.
+        spelled = part
         with contextlib.suppress(StopIteration, FileNotFoundError, NotADirectoryError):
-            part = next(
+            spelled = next(
                 entry.name for entry in corrected.iterdir() if entry.name.lower() == part.lower()
             )
-        corrected /= part
+        corrected /= spelled
     return corrected
 
 

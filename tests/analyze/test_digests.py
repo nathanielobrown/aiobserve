@@ -117,7 +117,7 @@ def test_a_run_digest_holds_one_run_and_no_other(corpus_db: Path, run_query: Que
     for column, table in (("api_calls", "live_api_calls"), ("tool_calls", "live_tool_calls")):
         expected = scalar(
             corpus_db,
-            f"SELECT count(*) FROM {table} WHERE session_id = ? AND source = ?",  # noqa: S608
+            f"SELECT count(*) FROM {table} WHERE session_id = ? AND source = ?",
             SPINE,
             SPINE_RUN,
         )

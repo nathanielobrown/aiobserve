@@ -249,10 +249,12 @@ def _marked(text: str, lexer: Lexer) -> str:
     pieces = []
     for line in lines:
         gutter = _GUTTER.match(line)
+        # What is left once the gutter is its own span: the whole line when there is none.
+        rest = line
         if gutter:
             pieces.append(f'<span class="lineno">{gutter.group()}</span>')
-            line = line[gutter.end() :]
-        pieces.append(_run(line, lexer))
+            rest = line[gutter.end() :]
+        pieces.append(_run(rest, lexer))
     return "".join(pieces)
 
 
@@ -291,4 +293,5 @@ def lit(value: str | None, syntax: Syntax) -> Lit:
         return Lit(escape(text), None, 0)
     if len(text) > bounds.HIGHLIGHT_CHARS:
         return Lit(escape(text), None, len(text))
-    return Lit(Markup(_marked(text, _LEXERS[syntax])), syntax, 0)
+    # `_marked` escapes every token it wraps — the spans around them are this module's.
+    return Lit(Markup(_marked(text, _LEXERS[syntax])), syntax, 0)  # noqa: S704

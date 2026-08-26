@@ -959,7 +959,7 @@ def test_the_stylesheet_a_browser_reads_carries_no_prose_outside_a_comment(
     left over after the comments come out is prose a browser is about to read as a selector.
     """
     sheet = client.get("/static/style.css").text
-    assert "*/" not in re.sub(r"/\*.*?\*/", "", sheet, flags=re.S)
+    assert "*/" not in re.sub(r"/\*.*?\*/", "", sheet, flags=re.DOTALL)
 
 
 def test_the_stylesheet_paints_only_fields_a_page_carries(

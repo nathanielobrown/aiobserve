@@ -190,7 +190,8 @@ def nanos(value: dt.datetime) -> int:
 class _Handler(BaseHTTPRequestHandler):
     """Answers one POST the way an OTLP collector does, per the receiver's current `reply`."""
 
-    def do_POST(self) -> None:  # noqa: N802 — the name `http.server` dispatches on
+    # `do_POST` is the name `http.server` dispatches on.
+    def do_POST(self) -> None:
         receiver: Receiver = self.server.receiver  # pyrefly: ignore[missing-attribute]
         arrived = self.rfile.read(int(self.headers["Content-Length"]))
         receiver.raw_bodies.append(arrived)
@@ -211,7 +212,8 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def log_message(self, format: str, *args: Any) -> None:
+    # `format` shadows the builtin, and is the name `http.server` calls this by.
+    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
         """Silence the per-request line `http.server` prints to stderr."""
 
 
