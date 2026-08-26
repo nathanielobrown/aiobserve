@@ -33,29 +33,38 @@ Change the tooling or add tools when they make the work easier or enforce projec
 
 # Layout
 
+<!-- aigarden:cog sh "uv run python -m tools.gen_layout" -->
 ```
-src/aiobserve/        The package — `extract/` reads an agent's sessions, `export/` writes a sink, `enrich/` describes what it found, `analyze/` asks the questions, `view/` serves them in a browser, `pipeline.py` is the seam
-tests/                Mirrors the package layout; fixtures are recorded sessions, and `gallery/` serves them as pages (`docs/ui-development.md`)
+src/aiobserve/            Analyze AI coding agents from their telemetry
+  extract/                Extractors: recorded agent sessions in, `SessionTrace` out
+  export/                 Exporters: `SessionTrace` in, rows in a sink out
+  enrich/                 The enrichment layer: what a model wrote about each run, turn and session in the store
+  analyze/                The analysis layer: a versioned SQL library and the runner that binds and cites it
+  view/                   The trace viewer: a local web app for reading the store (`plans/trace-viewer/design.md`)
+  pipeline.py             The seams: what an extractor and an exporter owe each other, and the loop that drives them
+tests/                    The suite, mirroring the package layout; fixtures are recorded sessions, and `gallery/` serves them as pages (`docs/ui-development.md`)
+tools/                    The repo's own generators: the tables the docs cite, written from the code that owns them
 docs/
-  analysis.md         How an analysis iteration runs: selection, reading protocol, evidence ladder, quoting contract
-  schema.md           What each telemetry field means, and the session that proves it
-  store.md            The trace store: why it's the archive, and what to check before deleting one
-  enrichment.md       Model-written descriptions beside every run, turn, and session — what makes one stale, and what a pass costs
-  viewer.md           `aiobserve view`: what the pages show, how a node is titled, the URLs to cite, and reading while an extract runs
-  ui-development.md   `mise run gallery` and `aiobserve view --dev`: the edit-save-watch loop for the viewer's own pages
-  otlp-export.md      `aiobserve export-otlp`: what leaves the machine, the at-least-once promise, and what re-sends the corpus
-  documentation.md    Where each kind of content belongs — read before writing docs
-  writing_style_guide.md   House prose style, Zinsser distilled — loaded via the writing skill
-  mermaid-guide.md    Read before authoring Mermaid diagrams
-  pull-requests.md    The read-before-any-PR guide — loaded via the pr skill
-  commits.md          Commit messages: format, emoji, hygiene — loaded via the commit skill
-  doc-sync.md         Bringing docs into agreement with a change — loaded via the doc-sync skill
-  handoffs.md         Per-run agent scratch: naming, transfer, and lifetime
-plans/                Designs and testing plans, one directory per change — committed on the implementing branch, not left untracked on main (`docs/documentation.md`)
-reports/              Analysis findings, one per run (see README.md)
-handoffs/             Gitignored: scratch one agent run leaves for the next (`docs/handoffs.md`)
-data/                 Gitignored: the canonical trace store `traces.duckdb` (`docs/store.md`) and analysis scratch
+  analysis.md             Follow this process to turn the trace store into evidence-backed findings about how an AI coding agent behaved on a project
+  schema.md               This document defines the Claude Code telemetry fields that aiobserve reads
+  store.md                `aiobserve extract` writes session traces to a DuckDB file
+  enrichment.md           Enrichment describes every agent run, main turn, and session in the trace store
+  viewer.md               `aiobserve view` opens the trace store in a local browser
+  ui-development.md       Edit a viewer template or stylesheet and see it in the browser without touching the browser
+  otlp-export.md          `aiobserve export-otlp` sends sessions from the trace store to an OTLP/HTTP backend as spans
+  documentation.md        Use this guide to decide where project documentation belongs and how to keep it current
+  writing_style_guide.md  How to write effectively; based on William Zinsser's *On Writing Well*
+  mermaid-guide.md        Use this guide to write Mermaid diagrams that stay small, render on GitHub, and share one visual language
+  pull-requests.md        Use this guide to open a PR that a reviewer can understand before reading the diff
+  commits.md              Each commit is a review unit
+  doc-sync.md             Use this process after the code is done and before writing the PR description
+  handoffs.md             Use a handoff to pass scratch from one agent to another during a run
+plans/                    Designs and testing plans, one directory per change — committed on the implementing branch, not left untracked on main (`docs/documentation.md`)
+reports/                  One analysis run, written down
+handoffs/                 Gitignored: scratch one agent run leaves for the next (`docs/handoffs.md`)
+data/                     Gitignored: the canonical trace store `traces.duckdb` (`docs/store.md`) and analysis scratch
 ```
+<!-- aigarden:end -->
 
 # Instructions
 
