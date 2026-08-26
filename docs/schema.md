@@ -233,6 +233,6 @@ A copied record then appears in two files. The corpus contains 51 overlapping tr
 
 Order transcripts by `(spawnDepth, first timestamp, agentId)`, with the main transcript first. Depth must lead because a copied-history fork begins with its parent's timestamp. Of 51 overlapping pairs, 46 tie on the first timestamp; breaking those ties by agent id would wrongly assign 335 records from six original transcripts to their forks. A fork is spawned by the transcript it copies and is therefore deeper.
 
-The one meta without `spawnDepth` sorts last. Its transcript, `-Users-nob-repos-mac-settings/c31ecec9-…/subagents/agent-a20276f6d8a4e5309.jsonl` from CC 2.1.186, shares no uuid with a sibling, so its position does not affect attribution.
+The one meta without `spawnDepth` sorts last. Its transcript, the subagent file `agent-a20276f6d8a4e5309.jsonl` under the `mac_settings` project, from CC 2.1.186, shares no uuid with a sibling, so its position does not affect attribution.
 
 *Evidence:* `tests/fixtures/fork_origin/`, CC 2.1.215, contains a copied-history fork and the auditor it copied; `tests/fixtures/fork_byref/`, CC 2.1.202, begins with `fork-context-ref`.
