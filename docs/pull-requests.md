@@ -12,7 +12,7 @@ Plain `git` owns branches and commits; `gh` owns PRs. Sessions are non-interacti
 2. Shape the work into atomic commits. Each commit should be one reviewable change with a message that follows [the commit guide](commits.md). The commit is the review unit; the PR is the branch's cover letter.
 3. Keep history linear. If `main` moves, rebase onto `origin/main`; never merge `main` into the branch.
 4. Run `mise run check`.
-5. Sync the docs before writing the PR description. Dispatch the `doc-writer` subagent in `.claude/agents/doc-writer.md` to run doc-sync over the finished branch, then fold its edits into the branch. The docs belong in the same PR as the code; see [the documentation rule](documentation.md#keep-docs-in-step-with-the-change).
+5. Sync the docs before writing the PR description. Dispatch the `doc-writer` subagent in `.claude/agents/doc-writer.md` to run doc-sync over the finished branch, then fold its edits into the branch. The docs belong in the same PR as the code; see [the documentation rule](documentation.md#update-documentation-with-the-code).
 6. Push once, after the branch is ready, then open the PR with `gh pr create --title <title> --body-file <file>`. Use a draft only when asking for review before the work is ready to land.
 
 ## Start the title with the change type
