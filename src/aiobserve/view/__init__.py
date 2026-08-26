@@ -1,1 +1,5 @@
-"""The trace viewer: a local web app for reading the store (`plans/trace-viewer/design.md`)."""
+"""The trace viewer: a local web app serving every node of a session as its own page.
+
+What each page shows, and the URL to cite it by, is `docs/viewer.md`; editing a template is
+governed by `.claude/rules/viewer-ui.md`.
+"""
