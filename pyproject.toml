@@ -183,7 +183,9 @@ pytest_add_cli_args = ["-x", "-p", "no:cacheprovider"]
 # reaches by glob, which goes quietly empty — it passes today either way, but only over the
 # commands that are left. mutmut skips a path that does not exist just as quietly, so check
 # `mutants/` holds what this list promises rather than trusting a green run.
-also_copy = ["mise.toml", "docs", ".claude/hooks"]
+# `tools/` is here because five test modules import it, and `aigarden.toml` because the
+# config test reads it.
+also_copy = ["mise.toml", "docs", ".claude/hooks", "tools", "aigarden.toml"]
 
 [tool.pyrefly]
 # Strict is the base: it adds the checks that catch an implicit `Any` slipping through an
