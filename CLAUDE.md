@@ -93,7 +93,7 @@ Claude Code controls the transcript and span schemas and can change them without
 
 - Open a real recorded session before writing a parser, query, or documentation about a field
 - Follow `.claude/rules/python.md` when a parser encounters an unexpected shape
-- `docs/schema.md` records each confirmed fact with the session and Claude Code version that proved it. Anything absent from that document isn't established
+- A confirmed fact is declared on its record model in `src/aiobserve/extract/records/`, with the session and Claude Code version that proved it; `docs/schema.md` prints what the models carry. Anything absent from that document isn't established
 
 ## Write comments for future readers
 
