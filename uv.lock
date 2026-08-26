@@ -54,7 +54,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "mutmut", specifier = ">=3.7" },
-    { name = "pyrefly", specifier = ">=0.24" },
+    { name = "pyrefly", specifier = ">=1.0" },
     { name = "pytest", specifier = ">=8.4" },
     { name = "pytest-timeout", specifier = ">=2.4" },
     { name = "ruff", specifier = "==0.16.1" },

@@ -15,7 +15,7 @@ from collections.abc import Callable, Iterator, Sequence
 from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, override
 
 import duckdb
 import pytest
@@ -331,6 +331,7 @@ class _Element(HTMLParser):
         self.marks: list[str] = []
         self.attributes: list[dict[str, str | None]] = []
 
+    @override
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         found = dict(attrs)
         if self.depth:
@@ -346,12 +347,14 @@ class _Element(HTMLParser):
         elif "icon" in (found.get("class") or "").split():
             self.marking = True
 
+    @override
     def handle_data(self, data: str) -> None:
         if self.field is not None:
             self.fields[self.field] += data
         elif self.marking:
             self.marks.append(data)
 
+    @override
     def handle_endtag(self, tag: str) -> None:
         self.field = None
         self.marking = False
@@ -404,10 +407,12 @@ class _Wiring(HTMLParser):
         self.stack: list[dict[str, str | None]] = []
         self.wiring: list[tuple[str, dict[str, str]]] = []
 
+    @override
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         self.handle_starttag(tag, attrs)
         self.stack.pop()
 
+    @override
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         found = dict(attrs)
         self.stack.append(found)
@@ -430,6 +435,7 @@ class _Wiring(HTMLParser):
         if tag in VOID:
             self.stack.pop()
 
+    @override
     def handle_endtag(self, tag: str) -> None:
         if self.stack:
             self.stack.pop()

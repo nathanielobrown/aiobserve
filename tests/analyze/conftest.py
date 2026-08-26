@@ -12,7 +12,7 @@ import io
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Self, override
 
 import duckdb
 import pytest
@@ -45,6 +45,7 @@ class _PinnedDate(dt.date):
     """`date`, with today at `FAR_FUTURE` — everything else is the real thing."""
 
     @classmethod
+    @override
     def today(cls) -> Self:
         return cls(FAR_FUTURE.year, FAR_FUTURE.month, FAR_FUTURE.day)
 
@@ -53,6 +54,7 @@ class _PinnedDateTime(dt.datetime):
     """`datetime`, with now at midnight on `FAR_FUTURE` in whatever zone the caller asks for."""
 
     @classmethod
+    @override
     def now(cls, tz: dt.tzinfo | None = None) -> Self:
         return cls(FAR_FUTURE.year, FAR_FUTURE.month, FAR_FUTURE.day, tzinfo=tz)
 

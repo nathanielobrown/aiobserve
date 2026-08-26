@@ -11,6 +11,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import override
 
 from aiobserve.enrich.taxonomy import (
     CATEGORY_DEFINITIONS,
@@ -240,10 +241,12 @@ class TurnItem(Item):
     api_calls: tuple[ApiCallRow, ...]
 
     @property
+    @override
     def level(self) -> Level:
         return Level.turn
 
     @property
+    @override
     def key_values(self) -> tuple[str, ...]:
         return (self.session_id, self.source, self.turn_id)
 
@@ -304,10 +307,12 @@ class AgentRunItem(Item):
     sections: tuple[RunSection, ...]
 
     @property
+    @override
     def level(self) -> Level:
         return Level.agent_run
 
     @property
+    @override
     def key_values(self) -> tuple[str, ...]:
         return (self.session_id, self.agent_run_id)
 
@@ -382,10 +387,12 @@ class SessionItem(Item):
     children: tuple[SessionChild, ...]
 
     @property
+    @override
     def level(self) -> Level:
         return Level.session
 
     @property
+    @override
     def key_values(self) -> tuple[str, ...]:
         return (self.session_id,)
 
