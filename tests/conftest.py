@@ -306,9 +306,9 @@ def exportable_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return path
 
 
-@pytest.fixture(scope="session")
-def enriched_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """The fixture corpus with an enrichment row on every item but the last of each level.
+def build_enriched_store(path: Path, corpus: Path | None) -> None:
+    """Build the fixture corpus at `path` with an enrichment row on all but the last item of
+    each level.
 
     The pipeline writes no enrichment row, so anything that reads one — the enrichment
     queries, the viewer's pages — has nothing to read until a pass has run. Rows go in
@@ -317,13 +317,30 @@ def enriched_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Pa
     have to be — no fixture records a model answer. The last item of each level is left
     undescribed, which is both the gap coverage reports and the partly-enriched store the
     viewer has to render.
+
+    Pass `corpus` when a corpus store already exists and copying it beats an extraction per
+    transcript, which is what the session fixture below does; `None` builds one into `path`.
+    No default: a caller that has a corpus and does not say so pays for a second build.
     """
-    path = tmp_path_factory.mktemp("enriched") / "traces.duckdb"
-    path.write_bytes(corpus_db.read_bytes())
+    if corpus is None:
+        build_store(path, corpus_transcripts())
+    else:
+        path.write_bytes(corpus.read_bytes())
     with EnrichmentStore(path) as store:
         for level in Level:
             for index, item in enumerate(store.items(level)[:-1]):
                 store.upsert(item, planted_enrichment(index), planted_stamp(level, index))
+
+
+@pytest.fixture(scope="session")
+def enriched_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The fixture corpus, enriched — the store every tier that reads a description queries.
+
+    Read-only: copy the file before planting a row. `tests/gallery/serve.py` builds the same
+    store for the browser, through the same function.
+    """
+    path = tmp_path_factory.mktemp("enriched") / "traces.duckdb"
+    build_enriched_store(path, corpus=corpus_db)
     return path
 
 
