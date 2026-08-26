@@ -7,6 +7,7 @@ Use this guide to decide where project documentation belongs and how to keep it 
 | Content | Home |
 | --- | --- |
 | Repository-wide context and conventions that every session needs | `CLAUDE.md` |
+| The canonical name and one-line meaning of a domain or viewer concept | `CONTEXT.md`, imported into every session by `CLAUDE.md` |
 | Conventions for a set of files, such as tests | `.claude/rules/` |
 | A guide to one project topic | `docs/`, linked from the `CLAUDE.md` Layout tree |
 | This guide | `docs/documentation.md` |
@@ -14,7 +15,7 @@ Use this guide to decide where project documentation belongs and how to keep it 
 | A picture of how parts connect or data moves | A ` ```mermaid ` block in the document that owns the topic; see [the Mermaid guide](mermaid-guide.md) |
 | A finding about an AI coding agent and its evidence | `reports/`; see [the report guide](../reports/README.md) |
 | A bug, feature, or design question that needs action | A GitHub issue |
-| A design or test plan that should remain after the change lands | `plans/<change>/`, committed |
+| A design or test plan that should remain after the change lands | `plans/<change>/`, committed on the implementing branch |
 | Scratch passed between agent runs | `handoffs/`; see [the handoff guide](handoffs.md) |
 
 Keep details about a module, function, or configuration beside the code in comments or docstrings.

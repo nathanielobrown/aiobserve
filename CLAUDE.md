@@ -4,6 +4,10 @@ aiobserve turns AI coding-agent telemetry — mostly traces — into queryable d
 
 The project is early. Don't optimize for feature speed or backward compatibility yet. Prefer clean breaking changes to compatibility shims and deprecation paths.
 
+# Glossary
+
+@CONTEXT.md is the project glossary: the canonical name and one-line meaning of every domain and viewer concept. When a change coins or bends a term, update the glossary in the same change.
+
 # Every finding needs evidence
 
 We make claims about other people's behavior from data we didn't design, so each finding stands or falls on its evidence:
@@ -48,7 +52,7 @@ docs/
   commits.md          Commit messages: format, emoji, hygiene — loaded via the commit skill
   doc-sync.md         Bringing docs into agreement with a change — loaded via the doc-sync skill
   handoffs.md         Per-run agent scratch: naming, transfer, and lifetime
-plans/                Designs and testing plans, one directory per change
+plans/                Designs and testing plans, one directory per change — committed on the implementing branch, not left untracked on main (`docs/documentation.md`)
 reports/              Analysis findings, one per run (see README.md)
 handoffs/             Gitignored: scratch one agent run leaves for the next (`docs/handoffs.md`)
 data/                 Gitignored: the canonical trace store `traces.duckdb` (`docs/store.md`) and analysis scratch
@@ -127,6 +131,7 @@ Read `docs/documentation.md` before editing or creating documentation. It define
 ## Keep branches and commits focused
 
 - Plain `git` owns branches and commits; `gh` owns PRs. Work on one branch per task, make atomic commits, keep history linear, and land branches on `main` by fast-forward only
+- A plan (or any file) the branch will add must not remain untracked on `main` after it is committed on the branch — leftover copies block the fast-forward
 - Before committing, invoke the `commit` skill for the message format and hygiene rules in `docs/commits.md`
 - Before opening a PR, invoke the `pr` skill. It enforces the flow in `docs/pull-requests.md` and runs `doc-sync` so the docs land in the same PR
 
