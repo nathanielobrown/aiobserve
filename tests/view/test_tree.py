@@ -436,6 +436,40 @@ def test_every_level_a_tree_opens_is_indented_one_step_further_than_the_one_abov
     assert rendered <= set(ladder) | {0}
 
 
+def test_a_row_reads_from_the_left_and_only_its_cost_sits_at_the_right(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The parts of a row are pushed together at the left, and the spare width goes to the title.
+
+    A row is a flex line of four parts — the kind mark, the enrichment glyph, the title and the
+    cost — and free space in a flex line goes wherever the line says to put it. Spread between
+    the parts, a short title floats out in the middle of the column with the glyph adrift ahead
+    of it, and a column of them reads as centred text; the indent that says how deep a row sits
+    then measures from a mark nothing follows. So the free width belongs to the title: it is
+    the one part that can use it, and giving it there is what keeps every other part where the
+    reader's eye already is.
+
+    Read off the stylesheet because that is where it is decided — the served markup is the same
+    either way, and nothing else in the tier can see a laid-out box.
+    """
+    page = client.get(url(open_turn(store))).text
+    # The row is the flex line the rule below is about, with its parts in reading order.
+    parts = r'class="icon".*data-field="title".*class="secondary"'
+    assert [
+        row
+        for row in re.findall(r'<li class="row node.*?</li>', page, flags=re.S)
+        if re.search(parts, row, flags=re.S)
+    ]
+    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.S)
+    row_rules = re.findall(r"li\.node > a \{([^}]*)\}", style)
+    assert any("display: flex" in rule for rule in row_rules)
+    # Nothing distributes the spare width between the parts — that is the centring itself.
+    assert not [rule for rule in row_rules if "justify-content" in rule]
+    # The title takes it instead, so the cost is what ends up against the right edge.
+    (title,) = re.findall(r'li\.node \[data-field="title"\] \{([^}]*)\}', style)
+    assert "flex: 1" in title
+
+
 def test_the_tree_keeps_its_place_because_the_scroller_is_not_what_swaps(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
