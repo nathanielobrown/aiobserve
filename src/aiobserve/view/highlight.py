@@ -20,7 +20,7 @@ import json
 import re
 from collections.abc import Iterable, Iterator
 from enum import StrEnum
-from typing import NamedTuple
+from typing import NamedTuple, override
 
 from markupsafe import Markup, escape
 from pygments import highlight
@@ -42,6 +42,7 @@ class _PlainWhitespace(Filter):
     whitespace as text is what drops the span without dropping a character.
     """
 
+    @override
     def filter(
         self, lexer: Lexer | None, stream: Iterable[tuple[_TokenType, str]]
     ) -> Iterator[tuple[_TokenType, str]]:
@@ -114,7 +115,7 @@ _GUTTER = re.compile(r"^\s*\d+\t")
 _REWRITTEN = re.compile("([\r\ufeff])")
 
 
-class _ShortClasses(HtmlFormatter):
+class _ShortClasses(HtmlFormatter[str]):
     """Pygments' own short class for a token, and never the chain of names above it.
 
     A lexer may hand back token types Pygments has no name for — the markdown lexer delegates a

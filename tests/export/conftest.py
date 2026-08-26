@@ -15,7 +15,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, override
 
 import duckdb
 import httpx
@@ -98,6 +98,7 @@ class RefusingClock(Clock):
     """A clock that crashes instead of waiting. A waiter reaching `time.sleep` directly
     misses it entirely — and sleeps for real in CI."""
 
+    @override
     def sleep(self, seconds: float) -> None:
         raise RefusedWait(f"the exporter asked to wait {seconds}s")
 
@@ -212,8 +213,10 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    # `format` shadows the builtin, and is the name `http.server` calls this by.
-    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+    # `format` shadows the builtin, and is the name `http.server` calls this by; ruff excuses
+    # the shadowing on an `@override`, where the name is the base class's to choose.
+    @override
+    def log_message(self, format: str, *args: Any) -> None:
         """Silence the per-request line `http.server` prints to stderr."""
 
 

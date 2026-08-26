@@ -10,7 +10,7 @@ declared exception. Naming a query in one of them is what puts it in reach of th
 scans (`tests/view/test_bounds.py`), so the union is also the checklist.
 """
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Generator, Mapping
 from contextlib import contextmanager
 from enum import StrEnum
 from pathlib import Path
@@ -141,7 +141,7 @@ class SchemaMoved(Exception):
 
 
 @contextmanager
-def open_store(db_path: Path) -> Iterator[duckdb.DuckDBPyConnection]:
+def open_store(db_path: Path) -> Generator[duckdb.DuckDBPyConnection]:
     """A read-only connection for one request, checked and closed.
 
     Raises `StoreLocked` when a writer holds the file and `SchemaMoved` when the store was

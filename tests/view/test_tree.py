@@ -794,7 +794,7 @@ def test_a_chain_is_resolved_to_the_depth_the_page_prices_and_no_deeper(
     shallow = tree.Corpus(SPINE, 0.0, ladder[:2], Descriptions(), MAIN)
     assert len(tree.ancestry(shallow, [Ref(Kind.RUN, "a1", "a1")])) == 5
     # Exactly `DEPTH` is served...
-    spawning, deepest = str(ladder[-2]["run_id"]), str(ladder[-1]["run_id"])
+    spawning, deepest = ladder[-2]["run_id"], ladder[-1]["run_id"]
     assert len(tree.ancestry(corpus, [Ref(Kind.TURN, spawning, "t")])) == bounds.DEPTH
     # ...and the run that turn spawned, one level deeper, is refused.
     with pytest.raises(ValueError, match=str(bounds.DEPTH)):

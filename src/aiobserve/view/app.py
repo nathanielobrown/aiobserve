@@ -586,7 +586,8 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
         """
         return fmt.cut(value, queries.HEADER_ITEM_CHARS)
 
-    templates.env.filters |= {
+    # Jinja types `env.filters` by the ones it seeds itself with, so ours widen the value.
+    templates.env.filters |= {  # pyrefly: ignore[bad-assignment]
         "money": fmt.money,
         "count": fmt.count,
         "signed": fmt.signed,
@@ -670,7 +671,7 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
     def _http(request: Request, exception: Exception) -> Response:
         # Narrowing for the type checker: Starlette dispatches this handler by that class.
         assert isinstance(exception, StarletteHTTPException)  # noqa: S101
-        return error(request, exception.status_code, str(exception.detail))
+        return error(request, exception.status_code, exception.detail)
 
     @app.get("/")
     def projects_page(request: Request) -> Response:

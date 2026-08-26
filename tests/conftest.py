@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Generator, Iterable
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -251,7 +251,7 @@ def lock_is_free(path: Path) -> bool:
 
 
 @contextmanager
-def locked(path: Path) -> Iterator[None]:
+def locked(path: Path) -> Generator[None]:
     """Hold a store's write lock from another process for the length of the block.
 
     A subprocess, not a second connection here: DuckDB answers the same process's second

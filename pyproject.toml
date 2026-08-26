@@ -42,7 +42,9 @@ build-backend = "hatchling.build"
 dev = [
   "pytest>=8.4",
   "pytest-timeout>=2.4", # backs the `timeout` setting below
-  "pyrefly>=0.24",
+  # Floor at 1.0: the config below uses the 1.x spellings — `preset`, a severity map under
+  # `[tool.pyrefly.errors]`, and `sub-config` — which 0.x neither reads nor rejects.
+  "pyrefly>=1.0",
   # Exact, not a floor: a ruff release adds rules to the groups selected below, so an upgrade
   # is a change to what the gate demands. It lands when someone bumps this line.
   "ruff==0.16.1",
@@ -184,7 +186,34 @@ pytest_add_cli_args = ["-x", "-p", "no:cacheprovider"]
 also_copy = ["mise.toml", "docs", ".claude/hooks"]
 
 [tool.pyrefly]
+# Strict is the base: it adds the checks that catch an implicit `Any` slipping through an
+# annotation, which is what a type checker is here to notice. `pyrefly check --preset default`
+# shows what it costs to run without them.
+preset = "strict"
 project-includes = ["src", "tests"]
 # The repo root as well as `src`: test modules import shared scaffolding from
 # `tests.conftest`, which pyrefly cannot see from the inferred `src` root alone.
 search-path = ["src", "."]
+
+[tool.pyrefly.errors]
+# Promoted from warn: `check` is the only place these are read, and a finding that prints
+# without failing is a finding nobody acts on.
+deprecated = "error"
+unnecessary-type-conversion = "error"
+# Left off. pygments ships no stubs, so this fires six times on one import block and says
+# only that a dependency is untyped — which we knew when we chose it.
+untyped-import = false
+# Left off. A lambda cannot carry annotations, so the only way to satisfy this is to rewrite
+# each one as a `def` — a change to how the code reads, decided by a rule about inference.
+# The containers these lambdas sit in are annotated, which is where the shape is stated.
+implicit-any-lambda = false
+
+# Tests, where an empty literal is usually a case rather than a container that outlives the
+# line: `({}, {"thread": MAIN})` says "no arguments, then these" and annotating it says less.
+[[tool.pyrefly.sub-config]]
+matches = "tests/**"
+
+[tool.pyrefly.sub-config.errors]
+implicit-any-empty-container = false
+implicit-any-type-argument = false
+implicit-any-parameter = false
