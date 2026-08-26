@@ -22,9 +22,9 @@ We make claims about other people's behavior from data we didn't design, so each
 Use `mise` to run project tasks. `uv` owns the Python environment.
 
 - After a fresh clone or dependency change, run `mise run sync`
-- While iterating, run `mise run check-fast` for formatting, linting, and type checks
-- Before you finish a task or open a PR, run `mise run check`. It also runs the tests and hook linter; GitHub runs it on every push and PR (`.github/workflows/check.yml`)
-- Run any individual task listed in `mise.toml` with `mise run <task>`. Ruff formats and lints; Pyrefly checks types
+- While iterating, run `mise run check-fast` for formatting, linting, and type checks. It formats prose too, and reports a link or path that doesn't resolve
+- Before you finish a task or open a PR, run `mise run check`. It also runs the tests, the hook linter, and the freshness check on every generated block; GitHub runs it on every push and PR (`.github/workflows/check.yml`)
+- Run any individual task listed in `mise.toml` with `mise run <task>`. Ruff formats and lints; Pyrefly checks types; aigarden holds the docs to `aigarden.toml` and splices their generated blocks (`docs/documentation.md`)
 - Run `mise run diagram-check <file>` to validate Mermaid and `mise run mutate` to score the suite against mutants (`.claude/rules/testing.md`)
 
 Put `mise` flags before the task name. `mise run check --force` passes `--force` to the task, where it does nothing.

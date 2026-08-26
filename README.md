@@ -35,7 +35,7 @@ Read the guide for each stage: [the store](docs/store.md), [enrichment](docs/enr
 
 ```bash
 mise run sync     # install the environment from uv.lock
-mise run check    # format, lint, type-check, and test
+mise run check    # format, lint, type-check, lint the docs, and test
 ```
 
 Every project task lives in `mise.toml`. Use `mise run check-fast` while you work.
