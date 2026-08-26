@@ -45,10 +45,10 @@ run = "uv run ruff check ."
 
 [tasks.typecheck]
 description = "Type-check with pyrefly"
-# Explicit paths, not a bare `check`: pyrefly matches ignore patterns against the absolute
-# path and appends its own excludes, so in a checkout under `.claude/worktrees/` a bare run
-# matches no file and exits 1. Naming the paths drops both filters — output is identical.
-run = "uv run pyrefly check src tests"
+# What gets checked is `project-includes` in `pyproject.toml`, which is also what makes a bare
+# run safe inside a gitignored agent worktree: the config turns pyrefly's ignore-file and
+# exclude heuristics off, so naming paths here would only be a second place to keep in step.
+run = "uv run pyrefly check"
 
 [tasks.lint-docs]
 description = "Lint the docs with aigarden — links, size budgets, prose style — applying fixes"

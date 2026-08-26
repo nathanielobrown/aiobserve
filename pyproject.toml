@@ -230,7 +230,9 @@ min-severity = "warn"
 # of these off, `project-includes` is the only thing deciding what gets checked.
 use-ignore-files = false
 disable-project-excludes-heuristics = true
-project-includes = ["src", "tests"]
+# `tools/` is in: a cog generator prints a table into a document, so a shape error there
+# ships a wrong table instead of raising.
+project-includes = ["src", "tests", "tools"]
 # The repo root as well as `src`: test modules import shared scaffolding from
 # `tests.conftest`, which pyrefly cannot see from the inferred `src` root alone.
 search-path = ["src", "."]
