@@ -18,6 +18,7 @@ that shape against what the invented ones assume.
 
 import asyncio
 import signal
+import socket
 import subprocess
 import sys
 from collections.abc import Callable, Iterator, MutableMapping
@@ -32,7 +33,7 @@ from fastapi.testclient import TestClient
 from watchfiles import Change, awatch
 
 import aiobserve.view
-from aiobserve.view.app import CSP, STATIC, build_app
+from aiobserve.view.app import CSP, HOST, STATIC, build_app, claim
 from aiobserve.view.dev import RELOAD_URL, Event, Rendered, event_for, reload_router
 from tests.view.scenarios import ROUTES
 
@@ -295,6 +296,34 @@ def test_an_open_stream_does_not_hold_the_server_open_when_it_is_interrupted(
         server.wait(timeout=10)
 
 
+def test_a_port_the_server_could_bind_is_not_refused_by_the_probe_that_guards_it() -> None:
+    """Stopping a dev viewer and starting it again is the loop's own move, so `claim` may only
+    refuse a port the server would have failed on.
+
+    A connection the server side closed holds its address in `TIME_WAIT` for a minute or so. A
+    plain bind is refused there, while the socket asyncio hands uvicorn takes it anyway — so a
+    probe without `SO_REUSEADDR` refuses the restart the viewer would have served.
+    """
+    with socket.socket() as listener:
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind((HOST, 0))
+        port = int(listener.getsockname()[1])
+        listener.listen()
+        with socket.socket() as reader:
+            reader.connect((HOST, port))
+            # The server side closing first is what leaves the address in `TIME_WAIT`.
+            listener.accept()[0].close()
+    claim(port, "Unreachable: the port is free.")
+
+    # And the case it is there for still refuses, naming the port and the way out.
+    with socket.socket() as held:
+        held.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        held.bind((HOST, port))
+        held.listen()
+        with pytest.raises(SystemExit, match=f"port {port} is in use.*Stop the other one"):
+            claim(port, "Stop the other one.")
+
+
 # --- Scaffolding -------------------------------------------------------------------------
 
 # A dev viewer in a child process, for the interrupt leaf above.
@@ -406,8 +435,6 @@ def declared(client: TestClient) -> set[str]:
 
 def _free_port() -> int:
     """A port nothing holds — never the viewer's default, which a reader may be using."""
-    import socket
-
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         return int(probe.getsockname()[1])
