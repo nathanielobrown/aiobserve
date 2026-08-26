@@ -1,4 +1,8 @@
 {
+  "env": {
+    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "200000",
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0"
+  },
   "permissions": {
     "allow": [
       "Edit(/handoffs/**)",
@@ -78,7 +82,8 @@
     "codebase-design": "name-only",
     "claude-in-chrome": "name-only",
     "diagnosing-bugs": "user-invocable-only",
-    "fewer-permission-prompts": "user-invocable-only"
+    "fewer-permission-prompts": "user-invocable-only",
+    "youtube-summarize": "off"
   },
   "hooks": {
     "PostToolUse": [
