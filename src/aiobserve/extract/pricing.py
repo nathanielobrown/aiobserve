@@ -94,8 +94,31 @@ CONTEXT_WINDOWS: dict[str, int] = {
 }
 
 
-def compute_cost(model: str, tokens: TokenUsage) -> float | None:
-    """What one reply cost in USD, or None when the table does not price its model."""
+class CostSplit(NamedTuple):
+    """What one model's tokens cost in USD, category by category.
+
+    The four rates a reply is billed at, kept apart rather than summed: the viewer's popover
+    prints them as a legend saying where a phase's dollars went (`docs/viewer.md`), and the
+    total below is the only number the store keeps.
+    """
+
+    input: float
+    output: float
+    cache_read: float
+    cache_write: float
+
+    @property
+    def total(self) -> float:
+        """What the four come to, which is `compute_cost` to within a float's last digit."""
+        return self.input + self.output + self.cache_read + self.cache_write
+
+
+def _charges(model: str, tokens: TokenUsage) -> CostSplit | None:
+    """The four charges in USD per million tokens, or None for a model the table lacks.
+
+    The one place the rates are applied. Both callers below divide it down to dollars; what
+    they differ in is whether they hand back the four or their sum.
+    """
     price = PRICES.get(model)
     if price is None:
         return None
@@ -103,9 +126,25 @@ def compute_cost(model: str, tokens: TokenUsage) -> float | None:
         write = tokens.cache_creation * _CACHE_WRITE_5M
     else:
         write = tokens.cache_5m * _CACHE_WRITE_5M + tokens.cache_1h * _CACHE_WRITE_1H
-    return (
-        tokens.input * price.input
-        + tokens.output * price.output
-        + tokens.cache_read * price.input * _CACHE_READ
-        + write * price.input
-    ) / _PER_MILLION
+    return CostSplit(
+        input=tokens.input * price.input,
+        output=tokens.output * price.output,
+        cache_read=tokens.cache_read * price.input * _CACHE_READ,
+        cache_write=write * price.input,
+    )
+
+
+def split_cost(model: str, tokens: TokenUsage) -> CostSplit | None:
+    """What one reply cost by category, or None when the table does not price its model."""
+    charges = _charges(model, tokens)
+    return None if charges is None else CostSplit(*(charge / _PER_MILLION for charge in charges))
+
+
+def compute_cost(model: str, tokens: TokenUsage) -> float | None:
+    """What one reply cost in USD, or None when the table does not price its model.
+
+    Summed before the division rather than after, which is what keeps every stored cost the
+    number it was: four divisions rounded and then added is not always the same float.
+    """
+    charges = _charges(model, tokens)
+    return None if charges is None else sum(charges) / _PER_MILLION

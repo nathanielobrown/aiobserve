@@ -14,6 +14,7 @@ from aiobserve.extract.pricing import (
     SYNTHETIC_MODEL,
     TokenUsage,
     compute_cost,
+    split_cost,
 )
 
 # Lifted verbatim from `tests/fixtures/spine/`, CC 2.1.221 — the usage of
@@ -25,20 +26,31 @@ SPINE_SPLIT = TokenUsage(
 
 
 def test_a_reply_is_priced_by_its_model_and_its_four_token_kinds():
-    """Input, output, cache read and cache write each price at their own rate."""
+    """Input, output, cache read and cache write each price at their own rate.
+
+    The four are also readable one at a time: the viewer's popover prints a legend saying
+    where a phase's dollars went, and a legend derived from anything but this arithmetic
+    would be a second answer to what a call cost (`docs/viewer.md`).
+    """
     # If a Fable 5 reply reports the four token kinds — $10/MTok in, $50/MTok out, cache
     # reads at 0.1x input and a 1-hour cache write at 2x input...
     cost = compute_cost("claude-fable-5", SPINE_SPLIT)
+    split = split_cost("claude-fable-5", SPINE_SPLIT)
 
     # ...then each is charged at its own rate and the four are summed.
-    expected = (
-        2 * 10.0  # input
-        + 415 * 50.0  # output
-        + 9768 * 10.0 * 0.1  # cache read
-        + 20257 * 10.0 * 2.0  # 1-hour cache write
-    ) / 1_000_000
-    assert cost == pytest.approx(expected)
+    kinds = (
+        2 * 10.0,  # input
+        415 * 50.0,  # output
+        9768 * 10.0 * 0.1,  # cache read
+        20257 * 10.0 * 2.0,  # 1-hour cache write
+    )
+    assert cost == pytest.approx(sum(kinds) / 1_000_000)
     assert cost == pytest.approx(0.435678)
+    # ...and the split hands back the same four separately, in the same USD the total is in.
+    assert split is not None
+    assert split == pytest.approx(tuple(kind / 1_000_000 for kind in kinds))
+    # The total is the split summed, so the legend can never disagree with the badge above it.
+    assert split.total == pytest.approx(cost)
 
 
 def test_the_cache_write_splits_by_ttl():
@@ -79,6 +91,9 @@ def test_a_model_the_table_lacks_costs_nothing_rather_than_zero():
     session — the prior importer's bug.
     """
     assert compute_cost("claude-mythos-9", SPINE_SPLIT) is None
+    # And the split says the same nothing, so a legend cannot print four zeroes where the
+    # badge beside it printed no number at all.
+    assert split_cost("claude-mythos-9", SPINE_SPLIT) is None
 
 
 def test_a_synthetic_reply_costs_zero():
