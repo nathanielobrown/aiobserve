@@ -13,8 +13,8 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from aiobserve.extract import records
 from aiobserve.extract.claude_code import ContentBlock
+from aiobserve.extract.records import blocks, evidence, schema, shapes
 from tests.conftest import FIXTURES
 
 # The repository root, because a field's evidence cites a fixture the way a reader would type
@@ -46,7 +46,7 @@ def zoo_records() -> list[dict[str, Any]]:
     return list(fixture_records(ZOO))
 
 
-def carries(record: dict[str, Any], model: type[records.Record]) -> bool:
+def carries(record: dict[str, Any], model: type[shapes.Record]) -> bool:
     """Whether one record is of the kind `model` describes, subtype included."""
     if record["type"] != model.RECORD_TYPE:
         return False
@@ -54,7 +54,7 @@ def carries(record: dict[str, Any], model: type[records.Record]) -> bool:
     return subtype is None or record.get("subtype") == subtype
 
 
-def resolve(value: Any, steps: tuple[records.Step, ...]) -> Iterator[Any]:
+def resolve(value: Any, steps: tuple[evidence.Step, ...]) -> Iterator[Any]:
     """Every value a documented field's locator reaches inside one record.
 
     Yields nothing when the record does not carry the field, which is what "the fixture does
@@ -64,7 +64,7 @@ def resolve(value: Any, steps: tuple[records.Step, ...]) -> Iterator[Any]:
         yield value
         return
     step, rest = steps[0], steps[1:]
-    if isinstance(step, records.Among):
+    if isinstance(step, evidence.Among):
         for item in value if isinstance(value, list) else []:
             if isinstance(item, dict) and item.get("type") == step.kind:
                 yield from resolve(item, rest)
@@ -80,10 +80,10 @@ def test_every_registered_record_type_validates_against_a_recorded_one(
     # support that claim. The zoo holds one record of every registered type, so every type is
     # either modelled — and its model accepts the real thing, field types and all — or named as
     # one no model describes.
-    model = records.model_for(record)
+    model = shapes.model_for(record)
     if model is None:
         kind = record.get("subtype") if record["type"] == "system" else record["type"]
-        assert kind in records.UNMODELLED, f"{kind} has neither a model nor a stated reason"
+        assert kind in shapes.UNMODELLED, f"{kind} has neither a model nor a stated reason"
         return
     parsed = model.model_validate(record)
     assert parsed.type == record["type"]
@@ -94,7 +94,7 @@ def test_a_field_claude_code_adds_later_rides_along() -> None:
     # record *types* are closed-world. An unknown key validates and is kept, rather than raising.
     recorded = next(r for r in fixture_records(SPINE) if r["type"] == "assistant")
 
-    parsed = records.AssistantRecord.model_validate(recorded | {"whateverIsNext": 7})
+    parsed = shapes.AssistantRecord.model_validate(recorded | {"whateverIsNext": 7})
 
     assert parsed.model_extra is not None
     assert parsed.model_extra["whateverIsNext"] == 7
@@ -103,27 +103,27 @@ def test_a_field_claude_code_adds_later_rides_along() -> None:
 def test_a_shared_field_is_declared_on_one_mixin() -> None:
     # Shared fields live once, on the mixin that says which records carry them: `uuid` belongs to
     # every conversation record, so no record model may redeclare it...
-    assert "uuid" in records.Identified.__annotations__
-    for model in (records.UserRecord, records.AssistantRecord, records.SystemRecord):
+    assert "uuid" in shapes.Identified.__annotations__
+    for model in (shapes.UserRecord, shapes.AssistantRecord, shapes.SystemRecord):
         assert "uuid" not in model.__annotations__
         assert "uuid" in model.model_fields
     # ...and the row the generator derives from that inheritance names every record that has one.
-    uuid_row = next(doc for doc in records.documentation() if doc.path == "uuid")
-    assert records.spell(uuid_row.carriers) == ("user", "assistant", "system")
+    uuid_row = next(doc for doc in schema.documentation() if doc.path == "uuid")
+    assert schema.spell(uuid_row.carriers) == ("user", "assistant", "system")
 
 
 def test_a_record_type_with_no_uuid_does_not_inherit_one() -> None:
     # The other side of the same claim, and the reason `timestamp` and `uuid` are separate
     # mixins: a pr-link record is timestamped and has no uuid at all.
-    assert "timestamp" in records.PrLinkRecord.model_fields
-    assert "uuid" not in records.PrLinkRecord.model_fields
-    assert "timestamp" not in records.ForkContextRefRecord.model_fields
+    assert "timestamp" in shapes.PrLinkRecord.model_fields
+    assert "uuid" not in shapes.PrLinkRecord.model_fields
+    assert "timestamp" not in shapes.ForkContextRefRecord.model_fields
 
 
 def test_every_documented_field_carries_its_meaning_and_its_evidence() -> None:
     # The rule `docs/schema.md` states in prose — every claim names a recording — as a property
     # of the models themselves, so the generator has nothing to fill a blank cell with.
-    for doc in records.documentation():
+    for doc in schema.documentation():
         assert doc.meaning, f"{doc.path} says nothing"
         assert doc.evidence, f"{doc.path} cites nothing"
 
@@ -131,7 +131,7 @@ def test_every_documented_field_carries_its_meaning_and_its_evidence() -> None:
 def test_every_cited_fixture_exists() -> None:
     # A citation to a fixture that was deleted or renamed is worse than no citation: it reads as
     # verified and is not.
-    for doc in records.documentation():
+    for doc in schema.documentation():
         for cite in doc.evidence:
             if cite.fixture:
                 assert (REPO / cite.fixture).is_dir(), (
@@ -139,8 +139,8 @@ def test_every_cited_fixture_exists() -> None:
                 )
 
 
-@pytest.mark.parametrize("doc", records.documentation(), ids=lambda doc: doc.path)
-def test_every_citation_shows_the_field_in_the_fixture_it_names(doc: records.Documentation) -> None:
+@pytest.mark.parametrize("doc", schema.documentation(), ids=lambda doc: doc.path)
+def test_every_citation_shows_the_field_in_the_fixture_it_names(doc: schema.Documentation) -> None:
     # The migration's own check, kept: each meaning moved out of `docs/schema.md` with the
     # fixture the document cited for it, and this is what says the citation was right. A field
     # cited as present appears in a record of a kind that carries it; a field cited as absent —
@@ -163,8 +163,8 @@ def test_every_citation_shows_the_field_in_the_fixture_it_names(doc: records.Doc
             assert cite.version in written, f"{doc.path} cites CC {cite.version}, unwritten there"
 
 
-@pytest.mark.parametrize("block", records.BLOCK_MODELS, ids=lambda b: b.BLOCK.value)
-def test_every_block_model_validates_a_recorded_block(block: type[records.Block]) -> None:
+@pytest.mark.parametrize("block", blocks.BLOCK_MODELS, ids=lambda b: b.BLOCK.value)
+def test_every_block_model_validates_a_recorded_block(block: type[blocks.Block]) -> None:
     # Blocks are not records, so the registry test above cannot reach them: they are validated
     # here, against every block of their kind in every fixture. A block model whose kind no
     # fixture holds cannot be here at all — it would have no evidence to cite.
@@ -198,15 +198,15 @@ def test_the_content_blocks_a_message_can_hold_are_the_ones_it_lists() -> None:
     # carry a block, so a block recorded under a message that does not list it would document
     # the wrong records. Checked against every block in every fixture.
     listed: dict[type[BaseModel], set[ContentBlock]] = {
-        records.UserRecord: {b.BLOCK for b in records.UserMessage.BLOCKS},
-        records.AssistantRecord: {b.BLOCK for b in records.AssistantMessage.BLOCKS},
+        shapes.UserRecord: {b.BLOCK for b in blocks.UserMessage.BLOCKS},
+        shapes.AssistantRecord: {b.BLOCK for b in blocks.AssistantMessage.BLOCKS},
     }
     for record in every_record():
-        model = records.model_for(record)
+        model = shapes.model_for(record)
         if model not in listed:
             continue
         for item in content_of(record):
             kind = item["type"]
-            assert kind in listed[model] or kind in records.UNMODELLED, (
+            assert kind in listed[model] or kind in shapes.UNMODELLED, (
                 f"a `{kind}` block in a {record['type']} record that lists none"
             )

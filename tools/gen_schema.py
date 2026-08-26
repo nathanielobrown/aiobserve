@@ -1,4 +1,4 @@
-"""The four field tables in `docs/schema.md`, written from `extract/records.py`.
+"""The four field tables in `docs/schema.md`, written from `extract/records/`.
 
 Run by one cog block per table — `uv run python -m tools.gen_schema identity`, and so on for the
 other three — because each sits under its own heading. Every meaning and every citation comes
@@ -13,8 +13,8 @@ no model documents, each stop the run.
 import sys
 from enum import StrEnum
 
-from aiobserve.extract import records
-from aiobserve.extract.records import Cited, Documentation
+from aiobserve.extract.records.evidence import Cited
+from aiobserve.extract.records.schema import EVERY_RECORD, Documentation, documentation, spell
 from tools import text
 
 
@@ -116,7 +116,7 @@ HEADERS = ("Field", "Records", "Meaning", "Evidence")
 
 def documented() -> dict[str, Documentation]:
     """Every row the models write, by the name the Field column prints."""
-    return {doc.path: doc for doc in records.documentation()}
+    return {doc.path: doc for doc in documentation()}
 
 
 def placed() -> dict[str, Section]:
@@ -136,10 +136,8 @@ def carried(doc: Documentation) -> str:
     `every record` is prose about the set rather than a record type, so it stays bare.
     """
     return ", ".join(
-        name
-        if name == records.EVERY_RECORD
-        else " / ".join(f"`{part}`" for part in name.split(" / "))
-        for name in records.spell(doc.carriers)
+        name if name == EVERY_RECORD else " / ".join(f"`{part}`" for part in name.split(" / "))
+        for name in spell(doc.carriers)
     )
 
 

@@ -15,8 +15,8 @@ from typing import Annotated, Any, ClassVar
 import pytest
 from pydantic import Field
 
-from aiobserve.extract import records
 from aiobserve.extract.claude_code import RecordType
+from aiobserve.extract.records import schema, shapes
 from tests.tools.conftest import cells
 from tools import gen_schema
 
@@ -76,7 +76,7 @@ def test_every_row_still_names_the_records_the_document_named(row: dict[str, Any
         assert f"`{record}`" in said, f"`{record}` carried {row['fields']} and no longer does"
 
 
-class Undescribed(records.Record):
+class Undescribed(shapes.Record):
     """A record with a field nobody described. Registered nowhere: this test is its only caller."""
 
     RECORD_TYPE: ClassVar[RecordType] = RecordType.USER
@@ -84,7 +84,7 @@ class Undescribed(records.Record):
     mystery: str | None = None
 
 
-class Uncited(records.Record):
+class Uncited(shapes.Record):
     """A record whose field says what it means and names no recording that shows it."""
 
     RECORD_TYPE: ClassVar[RecordType] = RecordType.USER
@@ -92,8 +92,8 @@ class Uncited(records.Record):
     hearsay: Annotated[str | None, Field(description="Something someone remembers")] = None
 
 
-def documented(model: type[records.Record], path: str) -> records.Documentation:
-    return next(doc for doc in records.documentation((model,)) if doc.path == path)
+def documented(model: type[shapes.Record], path: str) -> schema.Documentation:
+    return next(doc for doc in schema.documentation((model,)) if doc.path == path)
 
 
 def test_a_field_with_no_meaning_stops_the_generator() -> None:
