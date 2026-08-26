@@ -73,7 +73,7 @@ SURFACES: dict[str, tuple[tuple[str, ...], dict[str, Any]]] = {
             "csv": False,
         },
     ),
-    "view": ((), {"db": DEFAULT_DB, "port": PORT, "no_browser": False}),
+    "view": ((), {"db": DEFAULT_DB, "port": PORT, "no_browser": False, "dev": False}),
 }
 
 
@@ -151,12 +151,19 @@ def test_the_viewer_opens_a_browser_unless_the_run_says_not_to(
     The one flag on the command line whose value is inverted between the argument and the
     call, and the only subcommand whose handler nothing else drives.
     """
-    served: list[tuple[Path, int, bool]] = []
+    served: list[tuple[Path, int, bool, bool]] = []
     monkeypatch.setattr(
         cli,
         "serve",
-        lambda path, port, *, open_browser: served.append((path, port, open_browser)),
+        lambda path, port, *, open_browser, dev: served.append((path, port, open_browser, dev)),
     )
     cli.main("view", "--db", "traces.duckdb", "--port", "9000")
     cli.main("view", "--no-browser")
-    assert served == [(Path("traces.duckdb"), 9000, True), (DEFAULT_DB, PORT, False)]
+    # ...and `--dev` is the second inverted-looking one: off unless it is typed, and the only
+    # flag that changes what the pages carry rather than how the process starts.
+    cli.main("view", "--dev")
+    assert served == [
+        (Path("traces.duckdb"), 9000, True, False),
+        (DEFAULT_DB, PORT, False, False),
+        (DEFAULT_DB, PORT, True, True),
+    ]

@@ -43,6 +43,10 @@ dev = [
   # Mutation testing — `mise run mutate`. Answers what a green suite cannot: whether a leaf
   # would notice the code being wrong. Outside `check`, because it costs a test run per mutant.
   "mutmut>=3.7",
+  # Watches the templates and the stylesheets behind `aiobserve view --dev` (`view/dev.py`).
+  # A dev-group dependency deliberately: the shipped viewer never imports it, so `--dev` in a
+  # checkout without these deps fails at startup rather than serving a loop that never fires.
+  "watchfiles>=1.0",
 ]
 
 [tool.ruff]

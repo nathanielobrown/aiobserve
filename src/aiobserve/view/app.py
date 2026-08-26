@@ -86,6 +86,10 @@ from aiobserve.view.store import (
 HOST = "127.0.0.1"
 PORT = 8477
 
+# How long `--dev` waits for open reload streams to close before it stops waiting. One second
+# because there is nothing to wait for: the stream never ends on its own (`view/dev.py`).
+DEV_SHUTDOWN_SECONDS = 1
+
 _PACKAGE = Path(__file__).parent
 TEMPLATES = _PACKAGE / "templates"
 STATIC = _PACKAGE / "static"
@@ -484,8 +488,13 @@ def carried(nav: str, kin: int, log: int, detail: int) -> str:
     )
 
 
-def build_app(db_path: Path) -> FastAPI:
-    """The viewer over the store at `db_path`, which must exist and hold this schema."""
+def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
+    """The viewer over the store at `db_path`, which must exist and hold this schema.
+
+    Under `dev` the app also serves the reload stream and puts its client on every page, so a
+    saved template refreshes the browser (`view/dev.py`). Nothing else differs: a prod page is
+    a dev page minus that one script tag.
+    """
     resolved = db_path.resolve()
     # Fail at startup rather than on the first page: a typo in `--db` should not open a
     # browser onto an error page.
@@ -493,6 +502,14 @@ def build_app(db_path: Path) -> FastAPI:
         pass
 
     app = FastAPI(title="aiobserve", docs_url=None, redoc_url=None)
+    if dev:
+        # Imported here and nowhere else, because `view/dev.py` imports watchfiles — a
+        # dev-group dependency an installed viewer does not have. A hoist to the top of this
+        # file would make the shipped viewer depend on it, and `tests/view/test_dev.py` fails
+        # the moment one happens.
+        from aiobserve.view import dev as dev_loop
+
+        app.include_router(dev_loop.reload_router())
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
     templates = Jinja2Templates(directory=TEMPLATES)
 
@@ -614,6 +631,9 @@ def build_app(db_path: Path) -> FastAPI:
     # apart, and how many of them an expansion opened under a row has to span.
     templates.env.globals["COLUMNS"] = nodes.COLUMNS  # pyrefly: ignore
     templates.env.globals["spanned"] = nodes.spanned  # pyrefly: ignore
+    # And whether this viewer was started for editing it, which `base.html` reads to decide
+    # one script tag — the only difference between a dev page and a shipped one.
+    templates.env.globals["DEV"] = dev  # pyrefly: ignore
 
     def error(request: Request, status: int, message: str) -> Response:
         return templates.TemplateResponse(
@@ -2100,9 +2120,13 @@ def build_app(db_path: Path) -> FastAPI:
     return app
 
 
-def serve(db_path: Path, port: int, *, open_browser: bool) -> None:
-    """Run the viewer until interrupted, refusing a port something else already holds."""
-    app = build_app(db_path)
+def serve(db_path: Path, port: int, *, open_browser: bool, dev: bool) -> None:
+    """Run the viewer until interrupted, refusing a port something else already holds.
+
+    `dev` adds the reload loop (`view/dev.py`) and caps the exit below; it has no default
+    because the two viewers are different things and the caller knows which it wants.
+    """
+    app = build_app(db_path, dev=dev)
     with socket.socket() as probe:
         try:
             probe.bind((HOST, port))
@@ -2115,4 +2139,13 @@ def serve(db_path: Path, port: int, *, open_browser: bool) -> None:
     print(f"aiobserve view: {db_path} at {url}")
     if open_browser:
         webbrowser.open(url)
-    uvicorn.run(app, host=HOST, port=port, log_level="warning")
+    # uvicorn's graceful exit waits for every in-flight response, and a reload stream has no
+    # last chunk — so Ctrl-C on a dev viewer with a browser listening would never return.
+    # Capped only under `--dev`: the shipped viewer keeps uvicorn's own default of waiting.
+    uvicorn.run(
+        app,
+        host=HOST,
+        port=port,
+        log_level="warning",
+        timeout_graceful_shutdown=DEV_SHUTDOWN_SECONDS if dev else None,
+    )
