@@ -82,7 +82,8 @@ description = "Serve the test fixtures' scenario pages in a browser, with live r
 # The UI development loop: every scenario `tests/view/scenarios.py` pins, as a page you can
 # edit a template against and watch reload on save (`tests/gallery/serve.py`). Run as a module
 # so `tests.conftest` imports the way it does under pytest. It builds its own store from the
-# redacted fixtures and takes no arguments — pointing it at private data is not possible.
+# redacted fixtures, takes no arguments and reads no environment — pointing it at private
+# data is not possible.
 run = "uv run python -m tests.gallery.serve"
 
 [tasks.mutate]
