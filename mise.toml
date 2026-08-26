@@ -10,10 +10,18 @@
 
 [tools]
 python = "3.13"
-uv = "latest"
+# Exact, not `latest`: mise freezes a `latest` resolve permanently, so the version a machine
+# runs depends on when it first installed. A bump is this line changing.
+uv = "0.10.11"
+# The doc gates — links, size budgets, prose style, and the cog splice (`aigarden.toml`).
+# Exact for the same reason, and doubly so pre-1.0: an unknown config key is a load error, so
+# an unplanned version change fails the run rather than quietly checking something else.
+"github:nathanielobrown/aigarden" = "0.1.4"
 
 [settings]
 python.uv_venv_auto = true
+# aigarden is ours, so a release we just cut is the one we want — no soak period to wait out.
+minimum_release_age_excludes = ["github:nathanielobrown/aigarden"]
 
 [tasks.sync]
 description = "Install/refresh the virtualenv from uv.lock"
@@ -41,6 +49,36 @@ description = "Type-check with pyrefly"
 # path and appends its own excludes, so in a checkout under `.claude/worktrees/` a bare run
 # matches no file and exits 1. Naming the paths drops both filters — output is identical.
 run = "uv run pyrefly check src tests"
+
+[tasks.lint-docs]
+description = "Lint the docs with aigarden — links, size budgets, prose style — applying fixes"
+# The prose formatter as well as the linter: `--fix` rejoins a paragraph someone hard-wrapped,
+# which is the never-wrap convention `aigarden.toml` configures. What each rule holds the repo
+# to is in that file; `aigarden rules` lists them.
+run = "aigarden check --fix"
+
+[tasks.lint-docs-check]
+description = "Lint the docs, no fixes (the CI shape)"
+run = "aigarden check"
+
+[tasks.cogs]
+description = "Regenerate every generated block in the docs from its generator"
+# The blocks and the generators behind them: `docs/documentation.md`. Writing and checking are
+# separate commands in aigarden by design, so this one never runs in `check`.
+run = "aigarden cog --write"
+
+[tasks.cogs-check]
+description = "Fail when a generated block no longer matches what its generator prints"
+run = "aigarden cog --check"
+
+[tasks.mv-doc]
+description = "Move a doc and rewrite every reference to it across the repo"
+# `git mv` plus the rewrite, then a re-check that the repo's links still resolve. Files only.
+usage = '''
+arg "<src>" help="file to move"
+arg "<dst>" help="destination path, or a directory (trailing /) to move into"
+'''
+run = 'aigarden mv "$usage_src" "$usage_dst"'
 
 [tasks.lint-shell]
 description = "Lint the Claude Code hook scripts with shellcheck"
@@ -135,8 +173,8 @@ no_proxy='*' uv run mutmut run --max-children 1 "$@"
 
 [tasks.check-fast]
 description = "Format, lint, and type-check — the loop to run while iterating"
-depends = ["format", "lint", "typecheck"]
+depends = ["format", "lint", "lint-docs", "typecheck"]
 
 [tasks.check]
 description = "Every gate. Run before opening a PR."
-depends = ["format-check", "lint-check", "typecheck", "lint-shell", "test"]
+depends = ["format-check", "lint-check", "lint-docs-check", "cogs-check", "typecheck", "lint-shell", "test"]
