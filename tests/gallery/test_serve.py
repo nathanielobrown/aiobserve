@@ -59,13 +59,17 @@ def test_the_gallery_cannot_be_pointed_at_a_store() -> None:
 
     Session data is private, and the gallery's whole claim to serving a store in a browser is
     that it can only serve the one it builds from the redacted fixtures. A parameter, an
-    argparse option or a read of `sys.argv` would each undo that, so the shape is what is
-    asserted rather than the behaviour.
+    argparse option, a read of `sys.argv` or a read of the environment would each undo that, so
+    the shape is what is asserted rather than the behaviour.
     """
     assert inspect.signature(serve.main).parameters == {}
     source = Path(inspect.getfile(serve)).read_text()
     assert "argparse" not in source
     assert "argv" not in source
+    # An env var is the quiet way back in: it takes no signature and no flag, so a read of one
+    # would look like configuration rather than a door onto the canonical store.
+    assert "environ" not in source
+    assert "getenv" not in source
 
 
 def test_the_gallery_is_a_dev_viewer(gallery: TestClient) -> None:
