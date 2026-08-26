@@ -1,6 +1,6 @@
 # The trace store
 
-`aiobserve extract` writes session traces to a DuckDB file. The canonical store is `data/traces.duckdb`. It is gitignored with the rest of `data/`. Treat this file as an archive: read this guide before deleting it, moving it, or changing a version constant.
+The trace store is one DuckDB file, `data/traces.duckdb`: the archive `aiobserve extract` writes to and every query reads. It is gitignored with the rest of `data/`. Treat it as an archive — read this guide before deleting it, moving it, or changing a version constant.
 
 ## The store holds traces and derived data
 

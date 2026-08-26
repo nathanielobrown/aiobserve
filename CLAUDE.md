@@ -40,14 +40,14 @@ src/aiobserve/            Analyze AI coding agents from their telemetry
   export/                 Exporters: `SessionTrace` in, rows in a sink out
   enrich/                 The enrichment layer: what a model wrote about each run, turn and session in the store
   analyze/                The analysis layer: a versioned SQL library and the runner that binds and cites it
-  view/                   The trace viewer: a local web app for reading the store (`plans/trace-viewer/design.md`)
+  view/                   The trace viewer: a local web app serving every node of a session as its own page
   pipeline.py             The seams: what an extractor and an exporter owe each other, and the loop that drives them
 tests/                    The suite, mirroring the package layout; fixtures are recorded sessions, and `gallery/` serves them as pages (`docs/ui-development.md`)
 tools/                    The repo's own generators: the tables the docs cite, written from the code that owns them
 docs/
   analysis.md             Follow this process to turn the trace store into evidence-backed findings about how an AI coding agent behaved on a project
   schema.md               Every Claude Code telemetry field aiobserve reads, what it means, and the recording that proves it
-  store.md                `aiobserve extract` writes session traces to a DuckDB file
+  store.md                The trace store is one DuckDB file, `data/traces.duckdb`: the archive `aiobserve extract` writes to and every query reads
   enrichment.md           Enrichment describes every agent run, main turn, and session in the trace store
   viewer.md               `aiobserve view` opens the trace store in a local browser
   ui-development.md       Edit a viewer template or stylesheet and see it in the browser without touching the browser
