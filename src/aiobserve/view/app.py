@@ -2127,6 +2127,9 @@ def claim(port: int, remedy: str) -> None:
     the way out differs by server: the viewer takes `--port` and the gallery takes nothing.
     """
     with socket.socket() as probe:
+        # The option asyncio sets for uvicorn, so the probe asks the server's question rather
+        # than a stricter one: a port a stopped server left in `TIME_WAIT` is still bindable.
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             probe.bind((HOST, port))
         except OSError as error:
