@@ -10,6 +10,8 @@ For each field, cite a recorded session and the Claude Code version that wrote i
 
 Prefer a checked-in fixture. The fixture directory's README names its source session and version, so readers can verify the claim. If no fixture can preserve the evidence, name the corpus scan and its date. Mark an inferred mechanism as an inference.
 
+The field tables below are generated. A field's meaning and its citation are declared on the record model that carries it, in `src/aiobserve/extract/records/`; document a new field there and run `mise run cogs`. A field declared without a citation fails the generator instead of printing an empty cell.
+
 ## Transcript records are typed JSON objects
 
 A transcript stores one JSON object per line. Each object has a `type`. `aiobserve.extract.claude_code` registers every type it has seen and crashes on unknown types. Treat that registry—not the tables below—as the current census.

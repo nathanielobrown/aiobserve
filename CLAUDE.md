@@ -117,7 +117,7 @@ Read `docs/documentation.md` before editing or creating documentation. It define
 
 - Make facts easy to find through small, focused documents linked by indexes
 - Define each fact in one place and link to it everywhere else
-- Treat `CLAUDE.md` as an index. Give each entry in its Layout tree a one-line gloss and link to the document that holds the details
+- Treat `CLAUDE.md` as an index. Its Layout tree is generated: an entry's gloss is the package's own docstring or the document's opening sentence, so write the gloss there and run `mise run cogs`
 - Keep documents short without losing the reasons behind decisions
 - Cut ideas instead of compressing sentences
 - Prefer forms that resist rot: describe how to discover a fact or point to its source instead of copying a list that will change

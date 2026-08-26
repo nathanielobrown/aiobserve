@@ -11,7 +11,8 @@ Use this guide to decide where project documentation belongs and how to keep it 
 | Conventions for a set of files, such as tests | `.claude/rules/` |
 | A guide to one project topic | `docs/`, linked from the `CLAUDE.md` Layout tree |
 | This guide | `docs/documentation.md` |
-| The meaning and source of a telemetry field | `docs/schema.md` |
+| The meaning and source of a telemetry field | Its field on a record model in `src/aiobserve/extract/records/`, which `docs/schema.md` prints |
+| A table restating something the code already holds | A generator in `tools/`, spliced into the document; see [Generate a table from the code that owns it](#generate-a-table-from-the-code-that-owns-it) |
 | A picture of how parts connect or data moves | A ` ```mermaid ` block in the document that owns the topic; see [the Mermaid guide](mermaid-guide.md) |
 | A finding about an AI coding agent and its evidence | `reports/`; see [the report guide](../reports/README.md) |
 | A bug, feature, or design question that needs action | A GitHub issue |
@@ -58,6 +59,12 @@ Write references as backticked paths or Markdown links:
 Markdown links resolve from the file that contains them. Backticked paths resolve from the repository root. Paths in code comments, docstrings, TOML, and YAML also resolve from the repository root and must match the target's case. `mise run check` holds the whole repository to this, so a reference that no longer resolves is a red gate rather than something the next reader discovers.
 
 To move a document, run `mise run mv-doc <src> <dst>`: it moves the file and rewrites every reference to it, in either form, then re-checks that the repository's links still resolve.
+
+## Keep a document short enough to load
+
+Every file carries a size budget: code in readable lines, prose in the context tokens it costs a reader who loads it. `mise run check` reports a file over its budget, and `aigarden explain file-length` prints the budgets. A document past its budget is one a reader skims and an agent loads whole to reach the paragraph it needed.
+
+`aigarden.toml` names every file over budget today, each held where it is rather than the budget being raised for everyone, so a new document meets the rule. An entry comes out when the file it names is split. Get under by cutting ideas or moving a topic to its own document, not by compressing sentences.
 
 ## Keep each source paragraph on one line
 
