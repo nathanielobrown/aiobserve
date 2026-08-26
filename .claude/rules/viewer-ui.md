@@ -88,3 +88,11 @@ A mark is three bytes on every row of the page that carries it, so adding one to
 # Label every value a test reads
 
 A rendered value goes in `<span data-field="{{ name }}">`, and a repeated thing gets a `data-` key naming it (`data-tree`, `data-child`, `data-crumb`, `data-walk`). Tests read the viewer through those attributes, so prose is free to change and the units and marks stay outside the labelled span — a `data-field` carries a value and nothing around it: the value the store holds, or — where the field is a title — the one derivation that composes it. A kind mark is the exception that proves it: it carries no key, and `tests/view/conftest.py:icons` reads it by class.
+
+# A save is the only thing that reloads a dev page
+
+`aiobserve view --dev` puts `static/dev-reload.js` on every page and serves `/dev/reload`, which sends one message per debounced save under the templates and the static files (`view/dev.py`). Nothing on the page asks for a reload and nothing else triggers one.
+
+Witnessed in a real Chromium on 2026-08-25, over a store built from the `resume_pair` and `spine` fixtures and served on port 8491 — never 8477, which is a live viewer. Saving `base.html` under an open node page reloaded it inside 0.2s with the new markup on it, reverting the file reloaded it back, and the console carried no error: the stream runs under the same `default-src 'self'` as the page it reloads. Restarting the viewer under an open page reloaded nothing — `EventSource` reconnects without a message — and the exit logged `Cancel 1 running task(s)`, which is `DEV_SHUTDOWN_SECONDS` hanging up on the open stream rather than waiting on it forever.
+
+A browser check of any page here cannot use Playwright's `wait_for_function`: it evaluates a string as script, and the CSP refuses that. Wait on a selector instead.
