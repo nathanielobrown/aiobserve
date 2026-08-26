@@ -884,14 +884,33 @@ def _titled(given: str | None, project: str | None, chars: int) -> str:
     return (given or "")[: chars + 1]
 
 
-def titled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, str]:
+def _tallied(names: Sequence[str]) -> str:
+    """The count of each tool after the first, restated from the tool names the store holds.
+
+    In the order each tool first appears among them, which is the order the calls were made.
+    No cut: no recorded call invokes enough distinct tools to reach `nodes.TALLY_CHARS`, and
+    a corpus that grew one would go red here rather than pass on a shortened count.
+    """
+    counted: dict[str, int] = {}
+    for name in names:
+        counted[name] = counted.get(name, 0) + 1
+    return "".join(f" +{made}({name})" for name, made in counted.items())
+
+
+def titled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, tuple[str, str]]:
     """Every row of one session whose title the store composes, keyed the way a row is.
 
     Read off the columns the design names a node from, not off the page: a tool call named by
     its input alone, or a run named by the definition it ran where its own brief was recorded,
     is a row pointing at a node the reader did not ask for.
+
+    Each title comes back in two halves: what a surface cuts, and the part that survives the
+    cut — an api call's tool count, which the width is budgeted around rather than spent on.
     """
     said: dict[str, str] = {}
+    # What must still be there after the cut, per row, empty for every title that is all one
+    # piece. Only an api call named by its tool calls carries one.
+    kept: dict[str, str] = {}
     for tool_id, name, given, project in store.execute(
         "SELECT t.id, t.name, t.input, s.project_dir FROM live_tool_calls t"
         " LEFT JOIN sessions s ON s.id = t.session_id WHERE t.session_id = ?",
@@ -901,11 +920,32 @@ def titled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, str]:
         # out of a tree by — and after it the title, which tells two `Read` rows apart.
         titled = _titled(given, project, queries.NAV_CHARS)
         said[f"{Kind.TOOL}:{tool_id}"] = f"{name}{LEAD_SEPARATOR}{titled}" if titled else name
-    for call_id, spoken, model in store.execute(
-        "SELECT id, text, model FROM live_api_calls WHERE session_id = ?", [session_id]
+    for call_id, spoken, model, tools, given, project in store.execute(
+        # The tool calls a call went on to make, in the order it made them: their names, and
+        # the input of the first, which is the only one whose own title is shown.
+        "SELECT c.id, c.text, c.model,"
+        ' list(t.name ORDER BY t."index") FILTER (t.id IS NOT NULL),'
+        ' min_by(t.input, t."index"), any_value(s.project_dir)'
+        " FROM live_api_calls c"
+        " LEFT JOIN live_tool_calls t ON t.session_id = c.session_id AND t.source = c.source"
+        "  AND t.api_call_id = c.id"
+        " LEFT JOIN sessions s ON s.id = c.session_id"
+        " WHERE c.session_id = ? GROUP BY c.id, c.text, c.model",
+        [session_id],
     ).fetchall():
-        # What the call said, and where it said nothing the model that was asked.
-        said[f"{Kind.CALL}:{call_id}"] = spoken or model
+        # What the call said. Where it said nothing, what it did instead: the tool it called
+        # first and that call's own title, then how many of each tool followed. A call that
+        # neither spoke nor called a tool is named by the model that was asked.
+        if spoken:
+            said[f"{Kind.CALL}:{call_id}"] = spoken
+        elif tools:
+            asked = _titled(given, project, queries.NAV_CHARS)
+            said[f"{Kind.CALL}:{call_id}"] = (
+                f"{tools[0]}{LEAD_SEPARATOR}{asked}" if asked else tools[0]
+            )
+            kept[f"{Kind.CALL}:{call_id}"] = _tallied(tools[1:])
+        else:
+            said[f"{Kind.CALL}:{call_id}"] = model
     for compaction_id, trigger in store.execute(
         "SELECT id, trigger FROM live_compactions WHERE session_id = ?", [session_id]
     ).fetchall():
@@ -927,7 +967,7 @@ def titled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, str]:
         said[f"{Kind.RUN}:{run_id}"] = (
             f"{agent_type}{LEAD_SEPARATOR}{description}" if description else agent_type
         )
-    return {key: cut(value, queries.NAV_CHARS).strip() for key, value in said.items()}
+    return {key: (value, kept.get(key, "")) for key, value in said.items()}
 
 
 def test_every_row_is_named_from_the_column_its_kind_is_named_by(
@@ -943,10 +983,12 @@ def test_every_row_is_named_from_the_column_its_kind_is_named_by(
     """
     # Keyed by session as well as by row: two sessions of the corpus record an api call under
     # the same id, and a row carries the id alone.
+    # Composed at a tree row's width the way the surfaces compose it: the count of an api
+    # call's tool calls is taken out of the width first, so the row is cut around it.
     said = {
-        (str(at), key): value
+        (str(at), key): (cut(head, queries.NAV_CHARS - len(kept)) + kept).strip()
         for (at,) in store.execute("SELECT id FROM sessions").fetchall()
-        for key, value in titled(store, str(at)).items()
+        for key, (head, kept) in titled(store, str(at)).items()
     }
     read: set[tuple[str, str]] = set()
     for kind in (Kind.TOOL, Kind.CALL, Kind.COMPACTION, Kind.RUN, Kind.TURN):

@@ -10,13 +10,14 @@ and a pane all read the same node.
 """
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import NamedTuple
 
 from aiobserve.analyze import queries
 from aiobserve.view.enrichment import Descriptions
-from aiobserve.view.format import cut
+from aiobserve.view.format import ELLIPSIS, cut
 from aiobserve.view.store import Row
 
 # How a spend bar is drawn: the steps it has, and how many decades of share they cover. A
@@ -34,6 +35,12 @@ UNATTACHED_TITLE = "runs attached to no turn"
 # halves neither identify alone — a tree of six `Explore` runs says nothing, and a brief without
 # its agent type buries the one word a reader picks a run by.
 LEAD_SEPARATOR = " — "
+
+# The most of an api call's title the count of its tool calls may take (`call_node`). Half the
+# narrowest width any surface cuts a title to, so the tool the reader picks the row out by
+# keeps the other half: the canonical store's worst call names its tools in 93 characters, and
+# the whole of a pane's heading is 100.
+TALLY_CHARS = queries.HEADER_CHARS // 2
 
 
 class Shape(StrEnum):
@@ -307,6 +314,12 @@ class Node:
     # Whether the tool call came back an error. Only ever True for a `Kind.TOOL` node: it is
     # the column the tree's mark and the errors list (`view/errors.py`) are both read from.
     is_error: bool = False
+    # What every cut of the title keeps, printed after the words: how many of each tool an api
+    # call went on to invoke after the first (`call_node`). A surface cuts the words to its
+    # width less this rather than cutting the title and losing the count — a title ending in
+    # `+2(Ba…` would say the call did something else without saying what. Empty for every
+    # other kind, whose title is all one piece.
+    tail: str = ""
 
     @property
     def icon(self) -> str:
@@ -317,17 +330,25 @@ class Node:
     def title(self) -> str:
         """What this node is called: the whole of it, before any surface cuts it.
 
-        The concept every surface reads and none of them owns — lead and words joined. The
-        three below are this title at the width of the surface reading it, and they are the
-        only cuts of it: a page that composed its own would be a second answer to "what is
+        The concept every surface reads and none of them owns — lead, words and tail joined.
+        The three below are this title at the width of the surface reading it, and they are
+        the only cuts of it: a page that composed its own would be a second answer to "what is
         this node called" (`docs/viewer.md`).
         """
-        return LEAD_SEPARATOR.join(part for part in (self.lead, self.words) if part)
+        return self._joined(self.lead, self.words) + self.tail
+
+    def _joined(self, *parts: str) -> str:
+        """The parts of a title a width is spent on, in reading order."""
+        return LEAD_SEPARATOR.join(part for part in parts if part)
+
+    def _at(self, chars: int, *parts: str) -> str:
+        """`parts` at `chars`, with the tail taken out of the width rather than cut off it."""
+        return cut(self._joined(*parts), chars - len(self.tail)) + self.tail
 
     @property
     def tree_title(self) -> str:
         """The title at the width of a tree row, a crumb, or a walk control."""
-        return cut(self.title, queries.NAV_CHARS)
+        return self._at(queries.NAV_CHARS, self.lead, self.words)
 
     @property
     def log_title(self) -> str:
@@ -338,7 +359,7 @@ class Node:
         find out what it was. The words alone — a log that leads a column with a word heads
         that column with it too (`lead`).
         """
-        return cut(self.words, queries.LOG_CHARS)
+        return self._at(queries.LOG_CHARS, self.words)
 
     @property
     def pane_title(self) -> str:
@@ -351,7 +372,7 @@ class Node:
         tree row it stands on (`view/app.py:TITLED`) — the tree cuts at a row's width, which
         would head a turn with a third of the prompt it is about.
         """
-        return cut(self.title, queries.HEADER_CHARS)
+        return self._at(queries.HEADER_CHARS, self.lead, self.words)
 
     @property
     def ref(self) -> Ref:
@@ -493,17 +514,45 @@ def run_node(session_id: str, row: Row, whole: float, described: str | None) -> 
     )
 
 
+def _tally(names: Sequence[str], chars: int) -> str:
+    """How many of each tool an api call invoked, in the order each tool first appears.
+
+    The half of an api call's title that survives every cut (`Node.tail`), so it is bounded
+    here rather than by the surface: a group that will not fit is dropped whole and the drop
+    marked, because `+2(Ba…` counts calls of a tool the reader cannot name.
+    """
+    counted: dict[str, int] = {}
+    for name in names:
+        counted[name] = counted.get(name, 0) + 1
+    tallied = ""
+    for name, made in counted.items():
+        group = f" +{made}({name})"
+        if len(tallied) + len(group) > chars:
+            return tallied + ELLIPSIS
+        tallied += group
+    return tallied
+
+
 def call_node(session_id: str, source: str, row: Row, whole: float) -> Node:
-    """One api call as a node: what it said, else the model that said it."""
+    """One api call as a node: what it said, else the tools it called, else the model."""
     cost = row["cost_usd"] or 0
+    # What the call went on to do, where the query that read it fetched that: the tool names
+    # in the order they were called, and the first call's own title. A children log's query
+    # fetches neither — its rows are named by the model, and its node is only ever a link.
+    tools = row.get("tools") or {}
+    names: Sequence[str] = tools.get("names") or ()
+    # A call that answered with tool calls and no text has nothing to quote, so it is named
+    # by what it did: the tool it called first, that call's title, and a count of the rest.
+    # One that neither spoke nor called a tool is named by the model that answered.
+    silent = not row.get("text_head") and bool(names)
     return Node(
         kind=Kind.CALL,
         session_id=session_id,
         source=source,
         node_id=row["api_call_id"],
-        # A call that answered with tool calls and no text has nothing to quote, so the
-        # model names the row rather than leaving it blank.
-        words=_words(row.get("text_head") or row["model"]),
+        lead=names[0] if silent else "",
+        words=_words(tools.get("head") if silent else row.get("text_head") or row["model"]),
+        tail=_tally(names[1:], TALLY_CHARS) if silent else "",
         cost_usd=cost,
         unpriced_api_calls=row["unpriced_api_calls"],
         share=_share(cost, whole),

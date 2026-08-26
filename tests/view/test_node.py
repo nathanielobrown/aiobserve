@@ -17,7 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from aiobserve.analyze import queries
-from aiobserve.view import bounds
+from aiobserve.view import bounds, nodes
 from aiobserve.view.app import build_app, numbered
 from aiobserve.view.format import ELLIPSIS
 from aiobserve.view.labels import LABELS, label
@@ -1619,3 +1619,128 @@ def test_one_tool_call_is_titled_the_same_way_wherever_it_is_named(
     with TestClient(build_app(snug)) as planted:
         pane = planted.get(f"/session/{session_id}/thread/{source}/tool/{tool_id}").text
     assert fields(pane, "data-body", "tool")["title"] == f"Read{LEAD_SEPARATOR}{fits}"
+
+
+def test_an_api_call_that_answered_with_tool_calls_is_named_by_what_it_called(
+    client: TestClient, plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A call that said nothing is named by what it did instead, wherever the viewer names it.
+
+    Its text is what a call is normally called, and a call that answered with tool calls and
+    no words has none — so the row read as the model that answered, and a turn of them read as
+    a column of one repeated string. The tools it called are the record's own answer to which
+    call this was: the first one's title, and how many of each tool followed it.
+
+    Read off the store rather than pinned, like every other selection here. What is pinned is
+    the agreement: the pane's heading, the tree row beside it and the browser tab print one
+    string, because one derivation composes it from two queries at two widths.
+    """
+    session_id, source, call_id, turn_id, model = one(
+        store,
+        "SELECT c.session_id, c.source, c.id, c.turn_id, c.model FROM live_api_calls c"
+        " JOIN live_tool_calls t ON t.session_id = c.session_id AND t.source = c.source"
+        "  AND t.api_call_id = c.id"
+        " WHERE (c.text IS NULL OR c.text = '') AND c.turn_id IS NOT NULL"
+        " GROUP BY 1, 2, 3, 4, 5 ORDER BY count(*) DESC, c.id LIMIT 1",
+    )
+    (names,) = one(
+        store,
+        'SELECT list(t.name ORDER BY t."index") FROM live_tool_calls t'
+        " WHERE t.session_id = ? AND t.source = ? AND t.api_call_id = ?",
+        [session_id, source, call_id],
+    )
+    page = client.get(f"/session/{session_id}/thread/{source}/call/{call_id}").text
+    titled = fields(page, "data-body", "call")["title"]
+    # The tool it called first leads, the way a run's agent type leads: which tool this was is
+    # what a reader picks the call out of a tree by. After it, that call's own title.
+    assert titled.startswith(f"{names[0]}{LEAD_SEPARATOR}"), titled
+    # And after that, the tools it went on to call, counted once per tool.
+    assert titled.endswith("".join(f" +1({name})" for name in dict.fromkeys(names[1:]))), titled
+    # The three surfaces that name the node agree, at three widths and off two queries.
+    assert fields(page, "data-tree", f"call:{call_id}")["title"] == titled
+    assert f"<title>⇄ {titled} ·" in page
+    # The one documented exception stands: the children log under the turn names its api-call
+    # rows by the model that answered, with what each said in a column of its own beside it.
+    log = client.get(f"/session/{session_id}/thread/{source}/turn/{turn_id}").text
+    assert fields(log, "data-child", f"call:{call_id}")["model"] == model
+
+
+def test_the_count_of_a_calls_tools_survives_every_width_the_title_is_cut_to(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The count is budgeted out of the width first, so a long first title cannot push it off.
+
+    Cut the other way round — title first, count into whatever is left — and the rows that
+    most need the count are the rows that lose it: a call whose first tool call has plenty to
+    say is a call that made several. What a reader would see is a title that stops, with no
+    sign the call did anything after it.
+
+    Planted on a recorded call that called `Bash` once and `Read` twice, by emptying the one
+    column that decides which name the derivation falls through to — the store forbids a NULL
+    there, and a call that answered with tools alone is recorded with an empty string.
+    Redaction left the corpus no call that both said nothing and called one tool twice.
+    """
+    session_id, source, call_id, tool_id = one(
+        store,
+        'SELECT c.session_id, c.source, c.id, min_by(t.id, t."index") FROM live_api_calls c'
+        " JOIN live_tool_calls t ON t.session_id = c.session_id AND t.source = c.source"
+        "  AND t.api_call_id = c.id"
+        " GROUP BY 1, 2, 3 HAVING count(*) > count(DISTINCT t.name) AND count(DISTINCT t.name) > 1"
+        " ORDER BY count(*) DESC, c.id LIMIT 1",
+    )
+    url = f"/session/{session_id}/thread/{source}/call/{call_id}"
+    silent = ("UPDATE api_calls SET text = '' WHERE id = ?", [call_id])
+    with TestClient(build_app(plant(silent))) as planted:
+        page = planted.get(url).text
+    # Two `Read` calls after the `Bash` that leads, counted as one group rather than listed.
+    assert fields(page, "data-body", "call")["title"].endswith(" +2(Read)")
+
+    # The same call with a first tool call that fills a title on its own. Every width the
+    # viewer cuts a title to is spent on the description less the count, so both ends survive:
+    # what the call did first, marked where it was stopped, and how many followed.
+    asked = "w" * (queries.NAV_CHARS * 2)
+    described = (
+        "UPDATE tool_calls SET name = ?, input = ? WHERE id = ?",
+        ["Bash", json.dumps({"description": asked, "command": "true"}), tool_id],
+    )
+    with TestClient(build_app(plant(silent, described))) as planted:
+        page = planted.get(url).text
+    tally = " +2(Read)"
+    for where, chars in (("data-body", queries.HEADER_CHARS), ("data-tree", queries.NAV_CHARS)):
+        key = "call" if where == "data-body" else f"call:{call_id}"
+        shown = fields(page, where, key)["title"]
+        assert shown == f"Bash{LEAD_SEPARATOR}{asked}"[: chars - len(tally)] + ELLIPSIS + tally
+
+    # The cap is a fit, not a ceiling to stay under: a tally that lands exactly on it keeps
+    # every group. Two tools named at half the cap each is the boundary the drop is decided
+    # at, and one character either side of it decides differently.
+    wide = nodes.TALLY_CHARS // 2 - len(" +1()")
+    stem = "mcp__fits_the_cap_".ljust(wide - 1, "_")[: wide - 1]
+    fitted = (
+        'UPDATE tool_calls SET name = ? || "index" WHERE session_id = ? AND api_call_id = ?',
+        [stem, session_id, call_id],
+    )
+    with TestClient(build_app(plant(silent, fitted))) as planted:
+        page = planted.get(url).text
+    exactly = "".join(f" +1({stem}{index})" for index in (1, 2))
+    assert len(exactly) == nodes.TALLY_CHARS, "the plant does not land on the cap"
+    assert fields(page, "data-body", "call")["title"].endswith(exactly)
+
+    # The count is bounded in its turn, because it is the half no width cuts. A call that
+    # invoked a handful of tools with names as long as an MCP tool's would otherwise spend a
+    # whole tree row on counts. Whole groups go rather than half a name: `+1(mcp__…` counts
+    # calls of a tool the reader cannot identify.
+    named = (
+        "UPDATE tool_calls SET name = 'mcp__a_long_server_name__tool_' || \"index\""
+        " WHERE session_id = ? AND api_call_id = ?",
+        [session_id, call_id],
+    )
+    with TestClient(build_app(plant(silent, named))) as planted:
+        page = planted.get(url).text
+    counted = fields(page, "data-body", "call")["title"]
+    # The `Bash` that leads is now the first of three long names, and one of the two after it
+    # fits under the cap. The other is gone, and the mark says a count was left behind.
+    kept, dropped = "mcp__a_long_server_name__tool_1", "mcp__a_long_server_name__tool_2"
+    assert counted.startswith("mcp__a_long_server_name__tool_0" + LEAD_SEPARATOR)
+    assert counted.endswith(f" +1({kept}){ELLIPSIS}") and dropped not in counted
+    assert len(f" +1({kept}) +1({dropped})") > nodes.TALLY_CHARS, "the plant did not overflow"

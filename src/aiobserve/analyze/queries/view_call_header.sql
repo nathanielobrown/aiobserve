@@ -31,8 +31,23 @@ SELECT
     (
         SELECT count(*) FROM live_tool_calls t
         WHERE t.session_id = c.session_id AND t.source = c.source AND t.api_call_id = c.id
-    ) AS tool_calls
+    ) AS tool_calls,
+    -- What the call went on to do, for the title of a call that answered with tool calls and
+    -- no words (`view/nodes.py:call_node`): the first call's own title, through the macro
+    -- every surface that names a tool call reads, and every call's tool name in the order it
+    -- was made. The count that follows the title is composed at the width of the surface
+    -- printing it, so what comes back here is the parts rather than the sentence.
+    (
+        SELECT {
+            'head': min_by(tool_title(t.input, s.project_dir, $head_chars), t."index"),
+            'names': list(t.name ORDER BY t."index")
+        }
+        FROM live_tool_calls t
+        WHERE t.session_id = c.session_id AND t.source = c.source AND t.api_call_id = c.id
+    ) AS tools
 FROM live_api_calls c
+-- For the project a tool call's path reads against, which is the session's, not the turn's.
+LEFT JOIN sessions s ON s.id = c.session_id
 LEFT JOIN live_turns t
     ON t.session_id = c.session_id AND t.source = c.source AND t.id = c.turn_id
 WHERE c.session_id = $session_id AND c.source = $source AND c.id = $api_call_id;
