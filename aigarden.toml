@@ -1,0 +1,38 @@
+# What `aigarden check` holds this repo to: link integrity, size budgets, and prose style.
+# `aigarden rules` lists every rule and `aigarden explain <rule>` gives its config keys. An
+# unknown key here is a load error rather than a setting that quietly does nothing, so a typo
+# fails the run instead of turning a rule off.
+
+[markdown-style]
+# One physical line per paragraph. A reworded sentence is then a one-line diff, and an AI
+# author writing beside our prose mirrors the convention it reads. Fences and tables keep
+# their line breaks, so a diagram or a table is never rewrapped.
+reflow = "never-wrap"
+
+[per-file-ignores]
+# Historical documents: a plan describes the repo as it was, so a path it cites is allowed to
+# have moved, and reflowing one would churn history nobody reads again. Most of the repo's
+# hard-wrapped prose lives here.
+"plans/**" = ["bare-path", "file-length", "markdown-style"]
+# A report cites the corpus and the repo at the time of the analysis, for the same reason.
+# Style stays on: reports are still read.
+"reports/**" = ["bare-path"]
+# Prompt templates: their bytes are model input. A reflow would change the prompt and stale
+# every enrichment stamp derived from it (`docs/enrichment.md`).
+"src/aiobserve/analyze/templates/**" = ["markdown-style"]
+
+# The file-length ratchet. Every file over the 700-line budget today is held where it is,
+# rather than the budget being raised for everyone: a new file meets the rule, and an entry
+# here comes out when the file it names is split. `docs/documentation.md` has the reasons the
+# budget exists at all.
+"src/aiobserve/analyze/queries.py" = ["file-length"]
+"src/aiobserve/export/otlp.py" = ["file-length"]
+"src/aiobserve/extract/claude_code.py" = ["file-length"]
+"src/aiobserve/view/app.py" = ["file-length"]
+"tests/enrich/test_client.py" = ["file-length"]
+"tests/enrich/test_enricher.py" = ["file-length"]
+"tests/enrich/test_prompts.py" = ["file-length"]
+"tests/view/test_app.py" = ["file-length"]
+"tests/view/test_bounds.py" = ["file-length"]
+"tests/view/test_node.py" = ["file-length"]
+"tests/view/test_tree.py" = ["file-length"]
