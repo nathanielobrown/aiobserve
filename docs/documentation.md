@@ -24,13 +24,29 @@ Keep details about a module, function, or configuration beside the code in comme
 
 Choose the first form that fits:
 
-1. **Explain how to find the fact.** Write "every task in `mise.toml`" instead of copying the task list.
-2. **Link to the source of truth.** Point to the code for behavior and to `mise.toml` for commands.
-3. **State the fact in prose.** Do this only when the other forms would hide it or make it harder to understand.
+1. **Generate the fact from the code that owns it.** A table restating code is written by a generator and spliced in, so the code and the document cannot disagree. See [Generate a table from the code that owns it](#generate-a-table-from-the-code-that-owns-it).
+2. **Explain how to find the fact.** Write "every task in `mise.toml`" instead of copying the task list.
+3. **Link to the source of truth.** Point to the code for behavior and to `mise.toml` for commands.
+4. **State the fact in prose.** Do this only when the other forms would hide it or make it harder to understand.
 
 A plan may list callers, files, or commands to make a design concrete. Treat those lists as claims to check during implementation, not as lasting records.
 
 Telemetry schemas need stronger evidence because the harness owns them and may change them without notice. Never list transcript fields from memory. Cite a recorded session and the Claude Code version that produced it.
+
+## Generate a table from the code that owns it
+
+A table a reader needs spelled out — the viewer's routes, the fields a record carries — comes from a generator in `tools/` and is spliced into the document by `aigarden cog`. The document holds the markers and the generator holds the text:
+
+```markdown
+<!-- aigarden:cog sh "uv run python -m tools.gen_routes" -->
+| Page | Route | Description |
+| --- | --- | --- |
+<!-- aigarden:end -->
+```
+
+The command runs from the repository root, and everything between the markers is replaced by what it prints. Run `aigarden cog --write` after changing a generator or the code it reads; `aigarden cog --check` reads the same command and fails when what the document holds is not what it prints, so a generated table cannot be stale and green at once. Never edit between the markers by hand — the next write erases it, and until then the check is red.
+
+A generator exposes `generate()`, which returns the block's body with no trailing newline, and a `main()` that prints it. Everything the block needs to say goes in the generator, including any heading or fence.
 
 ## Make references work where readers find them
 
@@ -43,7 +59,7 @@ Markdown links resolve from the file that contains them. Backticked paths resolv
 
 ## Keep each source paragraph on one line
 
-Write each paragraph and list item on one physical line. Let the editor wrap it. Fenced code blocks are exempt.
+Write each paragraph and list item on one physical line, and let the editor wrap it: a reworded sentence is then a one-line diff, and an AI author writing beside our prose mirrors the convention it reads. Fenced code blocks and tables keep their own line breaks. `aigarden check` holds prose to this, and `aigarden check --fix` rejoins a paragraph someone wrapped.
 
 ## Keep shared agent guidance in one place
 

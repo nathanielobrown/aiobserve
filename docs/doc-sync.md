@@ -17,7 +17,7 @@ Read [the documentation guide](documentation.md) before you start. It defines wh
 1. **Scope the change.** Read `git diff origin/main...HEAD` and inspect the changed files. Look for added, renamed, or deleted files; public interface changes; new terms; changed behavior; and decisions the code now embodies.
 
 2. **Find the docs that own those facts.** Use [Give each fact one home](documentation.md#give-each-fact-one-home), then open each likely owner and check whether the diff has made it stale. These changes often require a doc update:
-   - A new top-level module or package may need a gloss in the `CLAUDE.md` Layout tree
+   - A new top-level module or package needs a docstring whose first sentence reads as its gloss: the `CLAUDE.md` Layout tree is generated from those, so run `aigarden cog --write` rather than editing the tree
    - A changed telemetry attribute, span name, or transcript field belongs in [the schema reference](schema.md), backed by the recorded session and Claude Code version that prove it
    - A changed extraction or analysis command may affect the README usage section and its task description in `mise.toml`
    - A changed component relationship or flow may require a Mermaid diagram in the doc that owns the topic; follow [the Mermaid guide](mermaid-guide.md), and update diagrams the change has made stale

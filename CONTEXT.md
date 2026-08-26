@@ -81,6 +81,13 @@ What each page shows and cites: `docs/viewer.md`; the routes: `src/aiobserve/vie
 - **Error stepper** — the previous / all / next failure controls under the walk
 - **Title** — the one derived name every surface prints for a node; a session's own is its *recorded title*
 
+## Repo tooling
+
+The generators: `tools/`; how to write one and where a generated fact belongs: `docs/documentation.md`.
+
+- **Cog** — the splice `aigarden cog` performs: it runs the command a document names and pastes the output back into it
+- **Cog block** — one splice in one document: the two markers and the generated text between them
+
 ## Qualify these words
 
 Each means several things until qualified.
