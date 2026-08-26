@@ -32,13 +32,14 @@ Change the tooling or add tools when they make the work easier or enforce projec
 
 ```
 src/aiobserve/        The package — `extract/` reads an agent's sessions, `export/` writes a sink, `enrich/` describes what it found, `analyze/` asks the questions, `view/` serves them in a browser, `pipeline.py` is the seam
-tests/                Mirrors the package layout; fixtures are recorded sessions
+tests/                Mirrors the package layout; fixtures are recorded sessions, and `gallery/` serves them as pages (`docs/ui-development.md`)
 docs/
   analysis.md         How an analysis iteration runs: selection, reading protocol, evidence ladder, quoting contract
   schema.md           What each telemetry field means, and the session that proves it
   store.md            The trace store: why it's the archive, and what to check before deleting one
   enrichment.md       Model-written descriptions beside every run, turn, and session — what makes one stale, and what a pass costs
   viewer.md           `aiobserve view`: what the pages show, how a node is titled, the URLs to cite, and reading while an extract runs
+  ui-development.md   `mise run gallery` and `aiobserve view --dev`: the edit-save-watch loop for the viewer's own pages
   otlp-export.md      `aiobserve export-otlp`: what leaves the machine, the at-least-once promise, and what re-sends the corpus
   documentation.md    Where each kind of content belongs — read before writing docs
   writing_style_guide.md   House prose style, Zinsser distilled — loaded via the writing skill
