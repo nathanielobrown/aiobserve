@@ -21,20 +21,27 @@ def knob_rows() -> dict[str, str]:
 
 
 @pytest.mark.parametrize("table", TABLES)
-def test_every_number_a_row_prints_is_a_constant_it_cites(table: gen_bounds.Table) -> None:
-    # The headline: no number in either table is written by hand. Each row declares the
-    # constants it prints, and nothing else may appear in it as a number.
+def test_every_number_a_row_prints_is_the_constant_it_cites_in_that_position(
+    table: gen_bounds.Table,
+) -> None:
+    # The headline: no number in either table is written by hand, and each stands for the one
+    # constant the row cites for that position. Pooling a row's citations into a set would let
+    # two of its numbers trade places — a ceiling printed where the default belongs, a list's
+    # item count where its category count belongs — and still read as cited. What this pins is
+    # the pairing: same numbers, same order, same count. Two names that hold the same value are
+    # indistinguishable here by construction, which is the limit of reading printed numbers.
     for row in gen_bounds.rows(table):
-        allowed = {value for name in row.cites for value in gen_bounds.valued(name)}
-        printed = set(numbers(row.says))
-        assert printed <= allowed, f"`{row.subject}` prints {sorted(printed - allowed)}"
+        cited = [gen_bounds.valued(name) for name in row.cites]
+        assert numbers(row.says) == cited, (
+            f"`{row.subject}` prints {numbers(row.says)}, but cites {list(row.cites)} = {cited}"
+        )
 
 
 @pytest.mark.parametrize("table", TABLES)
 def test_the_generated_table_prints_no_number_of_its_own(table: gen_bounds.Table) -> None:
-    # And the same property end to end, over the spliced text rather than the rows behind it,
+    # And the weaker property end to end, over the spliced text rather than the rows behind it,
     # so a subject or a header that grew a number is caught as well.
-    every = {value for name in gen_bounds.cited() for value in gen_bounds.valued(name)}
+    every = {gen_bounds.valued(name) for name in gen_bounds.cited()}
     assert set(numbers(gen_bounds.generate(table))) <= every
 
 
