@@ -6,6 +6,7 @@ and an exemption still listed after the thing it excused is gone.
 """
 
 import glob
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -16,6 +17,10 @@ ROOT = Path(__file__).resolve().parents[2]
 # aigarden's built-in budget for a source file. Mirrored here so a ratchet entry that no longer
 # excuses anything reads as red; if aigarden moves the budget, this moves with it.
 SOURCE_FILE_BUDGET = 700
+
+# The repository's share of aigarden's source-file budget glob — the languages we actually
+# write. A file of some other kind is measured by whatever budget aigarden gives its extension.
+SOURCE_GLOBS = ("*.py", "*.sh", "*.js")
 
 
 @pytest.fixture(scope="module")
@@ -72,3 +77,37 @@ def test_every_file_length_exemption_names_a_file_still_over_budget(
         if (lines := len((ROOT / pattern).read_text().splitlines())) <= SOURCE_FILE_BUDGET
     }
     assert not under, f"file-length exemptions no longer excusing anything: {under}"
+
+
+def test_no_source_file_grows_past_the_budget_unexcused(
+    per_file_ignores: dict[str, list[str]],
+) -> None:
+    # The other half of the ratchet: it only holds the line if every file over the budget is
+    # named. A new one that grows past it and is not listed would be a finding the linter
+    # reports and nothing else does — the linter is not wired into `check` from here, so this
+    # is where a file written past the budget goes red.
+    excused = {
+        path
+        for pattern, rules in per_file_ignores.items()
+        if "file-length" in rules
+        for path in matches(pattern)
+    }
+    # Everything the linter would walk: tracked files plus any new one not gitignored, since a
+    # file written this session is exactly the one that could be over the budget.
+    walked = subprocess.run(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", *SOURCE_GLOBS],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split("\0")
+    over = {
+        path: lines
+        for path in walked
+        if path
+        and path not in excused
+        # aigarden excludes recorded fixtures, and so must this: their size is the recording's.
+        and "fixtures/" not in path
+        and (lines := len((ROOT / path).read_text().splitlines())) > SOURCE_FILE_BUDGET
+    }
+    assert not over, f"over the {SOURCE_FILE_BUDGET}-line budget and not in the ratchet: {over}"
