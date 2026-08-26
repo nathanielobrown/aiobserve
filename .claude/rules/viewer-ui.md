@@ -89,11 +89,16 @@ A mark is three bytes on every row of the page that carries it, so adding one to
 
 A rendered value goes in `<span data-field="{{ name }}">`, and a repeated thing gets a `data-` key naming it (`data-tree`, `data-child`, `data-crumb`, `data-walk`). Tests read the viewer through those attributes, so prose is free to change and the units and marks stay outside the labelled span — a `data-field` carries a value and nothing around it: the value the store holds, or — where the field is a title — the one derivation that composes it. A kind mark is the exception that proves it: it carries no key, and `tests/view/conftest.py:icons` reads it by class.
 
-# A save is the only thing that reloads a dev page
+# What a dev page does when the files change under it
 
-`aiobserve view --dev` puts `static/dev-reload.js` on every page and serves `/dev/reload`, which sends one message per debounced save under the templates and the static files (`view/dev.py`). Nothing on the page asks for a reload and nothing else triggers one.
+`aiobserve view --dev` puts `static/dev-reload.js` on every page and serves `/dev/reload`, which sends one message per debounced save under the templates and the static files (`view/dev.py`). A stylesheet-only save swaps the sheets in place; anything else reloads the page; and the client reloads on a reconnect too, so a restarted server is what the open page is reading. Nothing else on the page triggers either.
 
-Witnessed in a real Chromium on 2026-08-25, over a store built from the `resume_pair` and `spine` fixtures and served on port 8491 — never 8477, which is a live viewer. Saving `base.html` under an open node page reloaded it inside 0.2s with the new markup on it, reverting the file reloaded it back, and the console carried no error: the stream runs under the same `default-src 'self'` as the page it reloads. Restarting the viewer under an open page reloaded nothing — `EventSource` reconnects without a message — and the exit logged `Cancel 1 running task(s)`, which is `DEV_SHUTDOWN_SECONDS` hanging up on the open stream rather than waiting on it forever.
+Witnessed in a real Chromium on 2026-08-25, over a store built from the `resume_pair` and `spine` fixtures on port 8491, and again on 2026-08-26 against `mise run gallery` on 8478 — never 8477, which is a live viewer. In the second run, on an open node page scrolled down the pane:
+
+- Saving `style.css` re-fetched both stylesheets at a fresh URL inside 0.2s, with no document request: the colour changed and the scroll position held
+- Saving `base.html` reloaded the page whole inside 0.2s with the new markup on it, and reverting the file reloaded it back
+- Stopping the gallery and starting it again reloaded the page once, 3.1s after the new server answered, at the URL it was on. The exit logged `Cancel 1 running task(s)`, which is `DEV_SHUTDOWN_SECONDS` hanging up on the open stream rather than waiting on it forever
+- The console carried nothing but the dropped stream the restart caused: the loop runs under the same `default-src 'self'` as the pages it reloads
 
 # The gallery is the scenario list, opened
 
@@ -102,3 +107,5 @@ Witnessed in a real Chromium on 2026-08-25, over a store built from the `resume_
 Witnessed in a real Chromium on 2026-08-25 on the gallery's own port 8478 — never 8477, which is a live viewer. The index came up with 35 rows, one per `ROUTES` entry; clicking the turn-node link landed on that node's page with its tree (17 rows) and its pane rendered, the reload script on it, and no console error.
 
 A browser check of any page here cannot use Playwright's `wait_for_function`: it evaluates a string as script, and the CSP refuses that. Wait on a selector instead.
+
+Two more traps in that harness. Playwright's sync API delivers page events only while the main thread is inside a Playwright call, so a wait loop built out of `time.sleep` sees nothing and reads as "the page never reloaded" — poll `page.title()` in the loop. And never `git checkout` a file you are editing to strip debug lines from it: the checkout took a whole uncommitted client rewrite with it, and the next hour measured the old file.
