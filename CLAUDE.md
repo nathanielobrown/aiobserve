@@ -17,7 +17,6 @@ We make claims about other people's behavior from data we didn't design, so each
 - **State the corpus.** One person's sessions on one codebase support claims about that codebase's guidance. Scope the recommendation to match
 - **Correlation doesn't prove causation.** A guidance change and a metric shift in the same week are two facts, but need to considered with other changes
 
-
 # Tooling
 
 Use `mise` to run project tasks. `uv` owns the Python environment.
@@ -58,11 +57,7 @@ handoffs/             Gitignored: scratch one agent run leaves for the next (`do
 data/                 Gitignored: the canonical trace store `traces.duckdb` (`docs/store.md`) and analysis scratch
 ```
 
-
-
 # Instructions
-
-
 
 ## Load only the context the task needs
 
@@ -72,8 +67,6 @@ Extra context can confuse an AI and weaken its instruction-following. Minimize w
 - While analyzing sessions, treat unnecessary loaded context as a finding: an unneeded doc read, bloated tool output, or a fixture pasted where a path would do
 
 This is also a heuristic for getting a coding agent to work better: context that doesn't contribute to the solution degrades output quality and drives up cost.
-
-
 
 ## Keep session data private
 
@@ -85,8 +78,6 @@ Transcripts can contain anything an agent read, including source, credentials, a
 - Don't paste transcript text into a PR, report, or chat message until you've read it
 - Keep ingest keys in gitignored `.env`. Validate them at startup, refuse to run when they're missing or empty, and never print them
 
-
-
 ## Verify schemas against recordings
 
 Claude Code controls the transcript and span schemas and can change them without notice. Never rely on memory:
@@ -94,8 +85,6 @@ Claude Code controls the transcript and span schemas and can change them without
 - Open a real recorded session before writing a parser, query, or documentation about a field
 - Follow `.claude/rules/python.md` when a parser encounters an unexpected shape
 - `docs/schema.md` records each confirmed fact with the session and Claude Code version that proved it. Anything absent from that document isn't established
-
-
 
 ## Write comments for future readers
 
@@ -113,8 +102,6 @@ Ousterhout's *A Philosophy of Software Design* is the house style. When the docs
 - **Medium:** Build your preferred option, then name the choice and alternatives in your wrap-up. The working version helps Nathaniel assess the decision and makes it easy to reverse
 - **Foundation-shaping:** Present the options and your recommendation before building. Do the same for changes to a public interface or stored schema, choices that would waste effort if built first, and explicit design phases
 
-
-
 ## Define each fact in one document
 
 Read `docs/documentation.md` before editing or creating documentation. It defines where each kind of content belongs. Follow these principles in every session:
@@ -126,12 +113,9 @@ Read `docs/documentation.md` before editing or creating documentation. It define
 - Cut ideas instead of compressing sentences
 - Prefer forms that resist rot: describe how to discover a fact or point to its source instead of copying a list that will change
 
-
-
 ## Keep branches and commits focused
 
 - Plain `git` owns branches and commits; `gh` owns PRs. Work on one branch per task, make atomic commits, keep history linear, and land branches on `main` by fast-forward only
 - A plan (or any file) the branch will add must not remain untracked on `main` after it is committed on the branch — leftover copies block the fast-forward
 - Before committing, invoke the `commit` skill for the message format and hygiene rules in `docs/commits.md`
 - Before opening a PR, invoke the `pr` skill. It enforces the flow in `docs/pull-requests.md` and runs `doc-sync` so the docs land in the same PR
-
