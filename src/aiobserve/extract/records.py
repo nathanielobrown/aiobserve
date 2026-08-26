@@ -984,8 +984,6 @@ OBSERVED_UNREAD: dict[str, str] = {
     "parentSessionId": "a by-reference fork's parent is not followed",
     "contextLength": "nothing measures what a fork carried over",
     "encrypted_content": "unreadable by construction",
-    "output_tokens": "read through `TokenUsage`, which spells it `output`",
-    "input_tokens": "read through `TokenUsage`, which spells it `input`",
 }
 
 # What `model_for` dispatches on: the record type, and the subtype for the `system` records
