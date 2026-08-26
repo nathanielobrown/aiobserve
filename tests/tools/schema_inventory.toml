@@ -1,0 +1,160 @@
+# The field inventory of `docs/schema.md`, frozen before the tables became generated.
+#
+# One entry per table row as the document had it, with the fields the row named and the
+# Records cell it printed. It is evidence, not a source: `tools/gen_schema.py` writes the
+# tables from the models now, and `test_gen_schema.py` holds the generated tables to this
+# list so no field could be dropped in the move. Nothing regenerates this file.
+#
+# Taken from docs/schema.md at 7bea796.
+
+[[row]]
+section = "identity"
+fields = ["type"]
+records = "every record"
+
+[[row]]
+section = "identity"
+fields = ["subtype"]
+records = "`system`"
+
+[[row]]
+section = "identity"
+fields = ["uuid"]
+records = "most records"
+
+[[row]]
+section = "identity"
+fields = ["timestamp"]
+records = "most records"
+
+[[row]]
+section = "identity"
+fields = ["cwd", "gitBranch", "version", "entrypoint"]
+records = "records that carry session context"
+
+[[row]]
+section = "identity"
+fields = ["isMeta"]
+records = "`user`"
+
+[[row]]
+section = "identity"
+fields = ["isCompactSummary"]
+records = "`user`"
+
+[[row]]
+section = "identity"
+fields = ["isSidechain"]
+records = "`user`, `assistant`"
+
+[[row]]
+section = "content"
+fields = ["message.content"]
+records = "`user`"
+
+[[row]]
+section = "content"
+fields = ["tool_use"]
+records = "`assistant`"
+
+# The row read "`tool_use.input` on `Skill`": one field, and the tool whose input shape it
+# described. Only the field is listed.
+[[row]]
+section = "content"
+fields = ["tool_use.input"]
+records = "`assistant`"
+
+[[row]]
+section = "content"
+fields = ["tool_result"]
+records = "`user`"
+
+[[row]]
+section = "content"
+fields = ["server_tool_use"]
+records = "`assistant`"
+
+[[row]]
+section = "content"
+fields = ["advisor_tool_result"]
+records = "`assistant`"
+
+[[row]]
+section = "content"
+fields = ["fallback"]
+records = "`assistant`"
+
+[[row]]
+section = "content"
+fields = ["toolUseResult"]
+records = "`user` records answering a tool"
+
+[[row]]
+section = "content"
+fields = ["toolUseResult.persistedOutputPath"]
+records = "`user` records answering a tool"
+
+[[row]]
+section = "api"
+fields = ["message.id"]
+records = "`assistant`"
+
+[[row]]
+section = "api"
+fields = ["message.usage"]
+records = "`assistant`"
+
+[[row]]
+section = "api"
+fields = ["usage.cache_creation"]
+records = "`assistant`"
+
+[[row]]
+section = "api"
+fields = ["message.model"]
+records = "`assistant`"
+
+[[row]]
+section = "api"
+fields = ["attributionSkill"]
+records = "`assistant`"
+
+[[row]]
+section = "api"
+fields = ["effort"]
+records = "`assistant`"
+
+[[row]]
+section = "api"
+fields = ["requestId", "stop_reason"]
+records = "`assistant`"
+
+[[row]]
+section = "events"
+fields = ["durationMs"]
+records = "`system` / `turn_duration`"
+
+[[row]]
+section = "events"
+fields = ["originalModel", "fallbackModel", "choice", "persistedAsDefault"]
+records = "`system` / `model_consent_fallback`"
+
+[[row]]
+section = "events"
+fields = ["compactMetadata"]
+records = "`system` / `compact_boundary`"
+
+[[row]]
+section = "events"
+fields = ["customTitle", "aiTitle"]
+records = "`custom-title`, `ai-title`"
+
+[[row]]
+section = "events"
+fields = ["agentName"]
+records = "`agent-name`"
+
+[[row]]
+section = "events"
+fields = ["prNumber", "prUrl", "prRepository"]
+records = "`pr-link`"

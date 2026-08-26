@@ -254,29 +254,17 @@ class Block(Described):
 
 
 class TextBlock(Block):
-    """Prose: the model's answer, or the text of a prompt written in block form."""
+    """Prose, under `text`: the model's answer, or a prompt written in block form."""
 
     BLOCK = ContentBlock.TEXT
     EVIDENCE = (Cited(SPINE, "2.1.221"),)
 
-    text: Annotated[
-        str | None,
-        Field(default=None, description="The prose itself"),
-        Cited(SPINE, "2.1.221"),
-    ]
-
 
 class ThinkingBlock(Block):
-    """The model's reasoning, beside a `signature` that Claude Code uses to replay it."""
+    """The model's reasoning, under `thinking`, beside the `signature` that lets it be replayed."""
 
     BLOCK = ContentBlock.THINKING
     EVIDENCE = (Cited(SPINE, "2.1.221"),)
-
-    thinking: Annotated[
-        str | None,
-        Field(default=None, description="The reasoning text"),
-        Cited(SPINE, "2.1.221"),
-    ]
 
 
 class ToolUseBlock(Block):
@@ -1006,6 +994,10 @@ def model_for(record: dict[str, Any]) -> type[Record] | None:
     return _TYPE_MODELS.get(kind)
 
 
+# What the Records column says instead of naming all twelve.
+EVERY_RECORD = "every record"
+
+
 def spell(carriers: tuple[type[Record], ...]) -> tuple[str, ...]:
     """How the Records column names one field's carriers.
 
@@ -1013,7 +1005,7 @@ def spell(carriers: tuple[type[Record], ...]) -> tuple[str, ...]:
     field, and name themselves when only some do.
     """
     if set(carriers) == set(RECORD_MODELS):
-        return ("every record",)
+        return (EVERY_RECORD,)
     system = {m for m in RECORD_MODELS if m.RECORD_TYPE is RecordType.SYSTEM}
     whole_system = system <= set(carriers)
     said: list[str] = []
@@ -1041,8 +1033,13 @@ def _nested(annotation: Any) -> Iterator[type[Described]]:
 
 
 def _prose(text: str | None) -> str:
-    """A docstring as one table cell: paragraphs joined, indentation dropped."""
-    return " ".join(line.strip() for line in (text or "").split("\n") if line.strip())
+    """One table cell: lines joined, indentation dropped, and no closing period.
+
+    A block's meaning is its docstring, which ends in a period the way a docstring should; a
+    field's is a `description`, which does not. The cells read the same either way.
+    """
+    joined = " ".join(line.strip() for line in (text or "").split("\n") if line.strip())
+    return joined.removesuffix(".")
 
 
 def _describe(
@@ -1073,15 +1070,18 @@ def _name(locate: tuple[Step, ...]) -> str:
     return f"{parent.kind.value if isinstance(parent, Among) else parent}.{last}"
 
 
-def documentation() -> tuple[Documentation, ...]:
+def documentation(models: tuple[type[Record], ...] = RECORD_MODELS) -> tuple[Documentation, ...]:
     """Every field the models document, in walk order, each with the records that carry it.
+
+    `models` defaults to the registry, which is the only answer a document wants; naming other
+    models is how a test asks what a model that is not registered would print.
 
     One field reached from several records is one row: the meaning and the evidence must be the
     same object of thought, so a second declaration that says something different crashes here
     rather than printing two rows with one name.
     """
     rows: dict[str, Documentation] = {}
-    for model in RECORD_MODELS:
+    for model in models:
         for locate, meaning, evidence in _describe(model, ()):
             path = _name(locate)
             row = rows.get(path)
