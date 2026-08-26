@@ -25,7 +25,7 @@ dependencies = [
   # Highlights the JSON a tool wrote and the SQL behind a page (`view/highlight.py`). Class
   # names only, never inline styles: the viewer's CSP allows no `style` attribute.
   "pygments>=2.19",
-  # Describes Claude Code's raw record shapes in `extract/records.py` — field descriptions and
+  # Describes Claude Code's raw record shapes in `extract/records/` — field descriptions and
   # the evidence behind them, which `tools/gen_schema.py` renders as `docs/schema.md`'s tables.
   # Describing only: the extractor still reads records as dicts.
   "pydantic>=2.13.4",

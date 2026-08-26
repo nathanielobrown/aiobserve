@@ -31,7 +31,7 @@ A coordinating session dispatched you. Work alone: make the smaller call yoursel
 - Update documentation targeting the changes or topics passed to you
 - A doc-sync dispatch — docs for a finished branch, before its PR — follows the preloaded `doc-sync` process end to end, report template included
 - Focus on writing well as described in the `writing` skill and its style guide
-- Documenting a telemetry field means naming the recorded session that shows it and the Claude Code version that produced it (`docs/schema.md`). Never describe a schema from memory
+- Documenting a telemetry field means declaring it on its record model in `src/aiobserve/extract/records/`, naming the recorded session that shows it and the Claude Code version that produced it; `docs/schema.md` prints what the models carry. Never describe a schema from memory
 - Before you report done, run `mise run check-fast`: it fixes the prose style and reports any link or path that no longer resolves. Validate any Mermaid with `mise run diagram-check <file>`
 
 ## Memory

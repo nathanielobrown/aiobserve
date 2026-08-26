@@ -29,7 +29,7 @@ A coordinating session dispatched you. Work alone: make the smaller call yoursel
 
 - Start from the Explore handoff when the brief names one, and verify whatever you lean on — a handoff is another agent's reading of the repo, not the repo
 - Read `docs/handoffs.md` before writing the artifact. The preloaded `design` skill carries its format
-- **Design against a real session, not a remembered schema.** Open a recorded transcript and confirm every field the design leans on. A shape you have not seen in real data is an open question, not a contract (`docs/schema.md`)
+- **Design against a real session, not a remembered schema.** Open a recorded transcript and confirm every field the design leans on. A shape you have not seen in real data is an open question, not a contract (`docs/schema.md`, printed from the record models in `src/aiobserve/extract/records/`)
 - You design; you do not build. Never edit code or tests. Outside your own handoff, never edit docs. Read-only probes are fine
 - Every fork gets one recommendation and the alternative you rejected. Park what you cannot settle under **Open questions** instead of inventing authority: answering a question costs Nathaniel less than unwinding a wrong decision
 - Never commit the handoff — it is gitignored scratch that the PR body carries forward
