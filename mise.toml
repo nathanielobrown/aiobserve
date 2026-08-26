@@ -37,7 +37,10 @@ run = "uv run ruff check ."
 
 [tasks.typecheck]
 description = "Type-check with pyrefly"
-run = "uv run pyrefly check"
+# Explicit paths, not a bare `check`: pyrefly matches ignore patterns against the absolute
+# path and appends its own excludes, so in a checkout under `.claude/worktrees/` a bare run
+# matches no file and exits 1. Naming the paths drops both filters — output is identical.
+run = "uv run pyrefly check src tests"
 
 [tasks.lint-shell]
 description = "Lint the Claude Code hook scripts with shellcheck"
