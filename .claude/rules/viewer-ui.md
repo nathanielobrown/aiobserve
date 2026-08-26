@@ -95,4 +95,10 @@ A rendered value goes in `<span data-field="{{ name }}">`, and a repeated thing 
 
 Witnessed in a real Chromium on 2026-08-25, over a store built from the `resume_pair` and `spine` fixtures and served on port 8491 — never 8477, which is a live viewer. Saving `base.html` under an open node page reloaded it inside 0.2s with the new markup on it, reverting the file reloaded it back, and the console carried no error: the stream runs under the same `default-src 'self'` as the page it reloads. Restarting the viewer under an open page reloaded nothing — `EventSource` reconnects without a message — and the exit logged `Cancel 1 running task(s)`, which is `DEV_SHUTDOWN_SECONDS` hanging up on the open stream rather than waiting on it forever.
 
+# The gallery is the scenario list, opened
+
+`mise run gallery` (`tests/gallery/serve.py`) builds a store from the redacted fixtures, serves it under `--dev`, and lists `tests/view/scenarios.py:ROUTES` at `/gallery`. One link per entry and no others, so the page a person walks is the list the tier sweeps.
+
+Witnessed in a real Chromium on 2026-08-25 on the gallery's own port 8478 — never 8477, which is a live viewer. The index came up with 35 rows, one per `ROUTES` entry; clicking the turn-node link landed on that node's page with its tree (17 rows) and its pane rendered, the reload script on it, and no console error.
+
 A browser check of any page here cannot use Playwright's `wait_for_function`: it evaluates a string as script, and the CSP refuses that. Wait on a selector instead.
