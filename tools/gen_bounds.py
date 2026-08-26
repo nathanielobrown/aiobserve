@@ -128,7 +128,7 @@ def knob_rows() -> list[Row]:
     A size knob's ceiling is the bound of the same name — the tie that keeps a knob a reader
     can type from outrunning what the page was measured at.
     """
-    listed = []
+    listed: list[Row] = []
     for knob in KNOB_DEFAULTS:
         if knob == "nav":
             listed += [
@@ -231,9 +231,13 @@ def rows(table: Table) -> list[Row]:
 
 def generate(table: Table) -> str:
     """One table as the cog block that names it splices it."""
-    listed = rows(table)
-    subject = "`{}`".format if table == Table.KNOBS else str
-    return text.table(HEADERS[table], ((subject(row.subject), row.says) for row in listed))
+    # A knob is what a reader types into a URL, so that column prints as code; a bound's
+    # subject is the name of a surface, and prints as prose.
+    typed = table == Table.KNOBS
+    return text.table(
+        HEADERS[table],
+        ((f"`{row.subject}`" if typed else row.subject, row.says) for row in rows(table)),
+    )
 
 
 def main() -> None:
