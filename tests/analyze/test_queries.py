@@ -13,7 +13,8 @@ import re
 import pytest
 
 from aiobserve.analyze import queries
-from aiobserve.analyze.queries import QUERIES, Scope
+from aiobserve.analyze.manifest import QUERIES
+from aiobserve.analyze.queries import Scope
 from aiobserve.analyze.runner import CORPUS_RELATIONS
 from aiobserve.enrich.store import LEVELS
 from aiobserve.export.duckdb import TABLES

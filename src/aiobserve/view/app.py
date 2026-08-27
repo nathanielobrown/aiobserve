@@ -34,7 +34,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from aiobserve.analyze import macros, queries
+from aiobserve.analyze import macros, manifest, queries
 from aiobserve.analyze.queries import ParamValue
 from aiobserve.enrich.prompts import Level
 from aiobserve.export.duckdb import SCHEMA_VERSION
@@ -1528,7 +1528,7 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
         never a path: a name the manifest does not declare is a 404 before anything is read,
         which is what makes a request for `../../secret` a miss rather than a file.
         """
-        if query_name not in queries.QUERIES:
+        if query_name not in manifest.QUERIES:
             raise HTTPException(404, "No query by that name ships with this build.")
         return templates.TemplateResponse(
             request,

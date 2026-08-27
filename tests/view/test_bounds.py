@@ -22,7 +22,8 @@ from fastapi.testclient import TestClient
 from markupsafe import escape
 
 from aiobserve.analyze import macros, queries
-from aiobserve.analyze.queries import QUERIES, VIEW_PREFIX, ParamValue
+from aiobserve.analyze.manifest import QUERIES
+from aiobserve.analyze.queries import VIEW_PREFIX, ParamValue
 from aiobserve.enrich.taxonomy import Category, Outcome
 from aiobserve.extract.pricing import CONTEXT_WINDOWS
 from aiobserve.view import bounds, nodes

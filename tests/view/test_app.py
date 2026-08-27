@@ -20,7 +20,7 @@ import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
-from aiobserve.analyze import queries
+from aiobserve.analyze import manifest, queries
 from aiobserve.view import app as view_app
 from aiobserve.view import bounds, nodes
 from aiobserve.view import columns as view_columns
@@ -344,7 +344,7 @@ def test_every_sort_key_names_a_column_the_query_returns(
     # At the query's own defaults, read off the manifest rather than listed: what a sort key
     # names is a column, and no binding the file takes changes which columns it returns.
     defaults = {
-        name: spec.default for name, spec in queries.QUERIES["view_sessions"].params.items()
+        name: spec.default for name, spec in manifest.QUERIES["view_sessions"].params.items()
     }
     returned = {row[0] for row in store.execute(f"DESCRIBE ({listing})", defaults).fetchall()}
     assert set(SORTS) <= returned
@@ -365,7 +365,7 @@ def test_a_sort_and_its_reverse_are_exact_opposites(
     # than of a table beside it: two of the eleven keys are the query's own arithmetic.
     listing = queries.load("view_sessions").strip().rstrip(";")
     defaults = {
-        name: spec.default for name, spec in queries.QUERIES["view_sessions"].params.items()
+        name: spec.default for name, spec in manifest.QUERIES["view_sessions"].params.items()
     }
     empty = {
         row[0]
