@@ -17,7 +17,7 @@
       {{ logs.log(shape, under, children, suffix, none, opens=false) }}
     {%- endif %}
     {# The link out. It carries the count wherever nothing above it listed the level; where the
-     log did, the log's own heading counts it and the link says the one thing left to say. #}
+       log did, the log's own heading counts it and the link says the one thing left to say. #}
     <p class="children" data-children="{{ node.kind }}">
       <a href="{{ node.url }}{{ suffix }}">
         {%- if children is not none and not under %}
@@ -25,7 +25,7 @@
         {{ shape }}{% else %}its own page{% endif %}</a>
     </p>
     {# What the fragment ran, beside what it rendered — the same provenance a page's footer
-     carries, on the element that was swapped in. #}
+       carries, on the element that was swapped in. #}
     <ul class="citations" data-citations="{{ citations | length }}">
       {% for name, ran in citations.items() %}
         <li><a data-field="{{ name }}" href="{{ ran.url }}"><code>{{ ran.line }}</code></a></li>

@@ -24,8 +24,8 @@
 {% block main %}
   <h1>Sessions</h1>
   {# One input per filter the list offers, generated from `FILTERS` rather than listed here, so
-   a filter added in `view/app.py` appears without a template edit. Submitting keeps the sort
-   and drops the page: page 4 of a narrower list is a different page. #}
+     a filter added in `view/app.py` appears without a template edit. Submitting keeps the sort
+     and drops the page: page 4 of a narrower list is a different page. #}
   <form id="filters" method="get" action="/sessions">
     <input type="hidden" name="sort" value="{{ sort }}">
     <input type="hidden" name="direction" value="{{ direction }}">
@@ -42,7 +42,7 @@
     <a href="/sessions">clear</a>
   </form>
   {# Suggestions, not a closed set: a project the store has no sessions for is an empty list
-   rather than an error, and typing a path the datalist lacks still runs. #}
+     rather than an error, and typing a path the datalist lacks still runs. #}
   <datalist id="project-names">
     {% for project in projects %}<option value="{{ project }}">{% endfor %}
   </datalist>
@@ -63,7 +63,7 @@
         {{ heading("agent_runs") }}
         <th scope="col">Skills</th>
         {# Only over a store a pass has described: an empty column would be a claim about what
-         these sessions did that the store cannot support. #}
+           these sessions did that the store cannot support. #}
         {% if described %}<th scope="col">Work</th>{% endif %}
       </tr>
     </thead>
@@ -80,9 +80,9 @@
                data-field="title"
                href="/session/{{ row.session_id }}">{{ (row.title or row.session_id) | short }}</a>
             {# What the pass said this session was, under the prompt's own title. Absent over a
-           store no pass has touched, and over a session it has not reached yet. Never a
-           stale tag: the list joins the words and not the versions that would judge them,
-           and the session's own page says so a click away. #}
+               store no pass has touched, and over a session it has not reached yet. Never a
+               stale tag: the list joins the words and not the versions that would judge them,
+               and the session's own page says so a click away. #}
             {% if row.description %}
               <span class="enrichment secondary" data-enrichment="{{ row.session_id }}">
                 <span data-field="description">{{ row.description | short }}</span>
@@ -96,13 +96,13 @@
           <td data-field="tool_calls" class="number">{{ row.tool_calls | count }}</td>
           <td data-field="compactions" class="number">{{ row.compactions | count }}</td>
           {# The rate says whether a session was going wrong; the count is what ranks it, which is
-         why the heading over it sorts by the line underneath. #}
+             why the heading over it sorts by the line underneath. #}
           <td class="number">
             {{ parts.stacked('error_rate', row.tool_errors | share(row.tool_calls),
               'tool_errors', row.tool_errors | count, 'errors') }}
           </td>
           {# The unpriced count rides beside the cost: a total with calls our price table
-         missed is not the session's cost, and the page has to say so. #}
+             missed is not the session's cost, and the page has to say so. #}
           <td class="number">
             {% call parts.stacked('cost_usd', row.cost_usd | money,
               'output_tokens', row.output_tokens | count, 'out')
@@ -111,9 +111,9 @@
             'active_ms', row.active_ms | duration, 'active') }}
               </td>
               {# The three lists that grow with a session, so the query cuts each and says how many it
-         left: a row of the list is multiplied by the size of the page. The two a transcript
-         named have their members marked where the cut bit; the kinds of work do not, because
-         that vocabulary is closed and cannot reach its cut. #}
+                 left: a row of the list is multiplied by the size of the page. The two a transcript
+                 named have their members marked where the cut bit; the kinds of work do not, because
+                 that vocabulary is closed and cannot reach its cut. #}
               <td data-field="agent_types" class="names">{{ parts.counted(row.agent_types or [], 'runs')
               }}{{ parts.more(row.agent_types_cut) }}</td>
               <td data-field="skills" class="names">{{ (row.skills or []) | map("item") | join(', ')

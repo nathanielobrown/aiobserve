@@ -22,10 +22,10 @@
   <dl class="facts">
     {{ parts.fact('session_id', row.session_id) }}
     {#- The name the record carries, which the heading above shows only until a pass describes
-      the session and its words take that place. #}
+       the session and its words take that place. #}
     {{ parts.fact('recorded_title', row.title | head) }}
     {#- Cut before the home folds, not after: `~` shortens what the query cut, and a mark
-      applied to the folded value would be a mark the folding had already talked out of. #}
+       applied to the folded value would be a mark the folding had already talked out of. #}
     {{ parts.fact('project_dir', row.project_dir | head | path) }}
     {{ parts.fact('git_branch', row.git_branch) }}
     {{ parts.fact('version', row.version) }}
@@ -41,17 +41,17 @@
     {{ parts.fact('compactions', row.compactions | count) }}
     {{ parts.fact('cost_usd', row.cost_usd | money) }}
     {# Beside the cost rather than folded into it: a total missing calls our price table could
-     not price is not what the node cost. #}
+       not price is not what the node cost. #}
     {{ parts.fact('unpriced_api_calls', row.unpriced_api_calls | count) }}
     {{ parts.fact('output_tokens', row.output_tokens | count) }}
     {# The one list among the session's facts. It grows with the session, so the query cuts it
-     and says how many it left: a pane is the one part of a page no size a reader types
-     bounds. #}
+       and says how many it left: a pane is the one part of a page no size a reader types
+       bounds. #}
     {{ parts.fact('skills', (row.skills | map('member') | join(', ') ~ parts.more(row.skills_cut))
       if row.skills else none, cut=false) }}
   </dl>
   {# The pull requests the session's commands touched, cut the same way. Rendered as links
-   rather than as a fact row because a reader follows them off the page. #}
+     rather than as a fact row because a reader follows them off the page. #}
   {% if row.pr_urls %}
     <ul class="prs">
       {% for url in row.pr_urls %}
@@ -126,7 +126,7 @@
 {# One tool call. No cost of its own: what it took is the api call's. #}
 {% macro tool(row, suffix) %}
   {# A `Task` call is where an agent run begins, so the run leads the body: it is what a reader
-   came to the call to reach, and everything else about the call is what it took to start it. #}
+     came to the call to reach, and everything else about the call is what it took to start it. #}
   {% if row.run_id %}
     <p class="spawned" data-spawned="{{ row.run_id }}">
       <a href="{{ run_url(row.session_id, row.run_id) }}{{ suffix }}">the run it started</a>
@@ -142,7 +142,7 @@
     {{ parts.fact('wall_ms', row.wall_ms | duration) }}
   </dl>
   {# A result too large for the transcript was written to a file beside it, and that file has a
-   page of its own — so the pane says where it went rather than showing an empty result. #}
+     page of its own — so the pane says where it went rather than showing an empty result. #}
   {% if row.offload_file %}
     <p class="offload">
       result offloaded to

@@ -1,6 +1,6 @@
 {% import "_tree.html" as treeview %}
 {#- The children one level's window left out, as the rows they would have been. They replace
-    the tail row that fetched them, so they arrive with no wrapper of their own: inside the
-    list that row was in, each inherits the tree's swap from `#tree-rows` like every other
-    row. -#}
+   the tail row that fetched them, so they arrive with no wrapper of their own: inside the
+   list that row was in, each inherits the tree's swap from `#tree-rows` like every other
+   row. -#}
 {{ treeview.lines(rows, suffix, thread) }}
