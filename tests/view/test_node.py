@@ -419,8 +419,9 @@ def test_a_tool_call_that_spawned_a_run_leads_with_the_way_to_it(
 def test_the_same_node_url_serves_the_same_bytes_cold_and_warm(client: TestClient) -> None:
     """A tree click and a pasted link produce one response, byte for byte.
 
-    The click is an `hx-get` of the node's own URL, cut down to `#pane` by the browser rather
-    than by the server, so the response cannot depend on the htmx headers that came with it.
+    The click is an `hx-get` of the node's own URL, cut down to `#reading-pane` by the
+    browser rather than by the server, so the response cannot depend on the htmx headers that
+    came with it.
     That is what lets one entry in the payload sweep price both ways of arriving.
     """
     cold = client.get(TURN)

@@ -4,9 +4,9 @@
    tell a reader two stories about one node. #}
 {% import "_parts.html" as parts %}
 
-{# The pane's one dispatch. Total over the kinds a URL can name — a kind with no arm would
+{# The body's one dispatch. Total over the kinds a URL can name — a kind with no arm would
    render a heading and nothing under it, which reads as a node with no facts. #}
-{% macro pane(node, row, suffix) %}
+{% macro body(node, row, suffix) %}
 <section class="body" data-body="{{ node.kind }}">
   <h1>{{ parts.mark(node.icon) }} <span data-field="title">{{ node.pane_title }}</span></h1>
   {% if node.kind == 'session' %}{{ session(row) }}

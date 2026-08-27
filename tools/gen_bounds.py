@@ -63,8 +63,8 @@ PRESET_WORDS = {
 # the bound of the same name, which is where `SIZE_KNOBS` reads it.
 SIZE_WORDS = {
     "kin": "Children per open level",
-    "log": "Rows in one page of the pane's children log",
-    "detail": "Characters of each value the pane previews",
+    "log": "Rows in one page of the reading pane's children log",
+    "detail": "Characters of each value the reading pane previews",
 }
 
 # Bounds no table prints, each with the reason it is only prose. The tables cover what a

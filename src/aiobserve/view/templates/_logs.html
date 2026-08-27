@@ -31,8 +31,8 @@
 {% macro what(node, suffix, field, words, second='') -%}
 <td data-column="{{ field }}" class="what">
   <a class="primary" href="{{ node.url }}{{ suffix }}" hx-get="{{ node.url }}{{ suffix }}"
-     hx-target="#pane" hx-swap="outerHTML"
-     hx-select="#pane" hx-select-oob="#tree-rows" hx-push-url="true"
+     hx-target="#reading-pane" hx-swap="outerHTML"
+     hx-select="#reading-pane" hx-select-oob="#tree-rows" hx-push-url="true"
     >{{ parts.glyph(node) }}<span data-field="{{ field }}">{{ words }}</span></a>
   {%- if second %}<span class="secondary" data-field="command">{{ second }}</span>{% endif %}
 </td>

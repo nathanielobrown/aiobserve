@@ -382,20 +382,20 @@ def test_every_link_that_swaps_the_pane_lands_the_pane_in_the_pane(
     """The whole of what a click does, on both the mounts that mount a node link.
 
     A tree row, a children-log row and the two walk controls are how a reader moves without
-    leaving the page, and all of them do the same thing: fetch the node's URL, take `#pane`
+    leaving the page, and all of them do the same thing: fetch the node's URL, take `#reading-pane`
     out of the response, put it where the pane already is, and swap the rows out of band.
     Read as htmx composes it, inheritance and all, because that is what the browser acts on.
 
     `hx-target` is the half that has no default worth having: htmx aims at the clicked
     element, so a page missing it swaps the whole pane inside the `<a>` the reader clicked
     and leaves the pane itself showing the node they came from. `hx-swap` is `outerHTML`
-    because `hx-select` hands back the `#pane` element itself, not its contents.
+    because `hx-select` hands back the `#reading-pane` element itself, not its contents.
     """
     html = client.get(url(open_turn(store))).text
     swap = {
-        "hx-target": "#pane",
+        "hx-target": "#reading-pane",
         "hx-swap": "outerHTML",
-        "hx-select": "#pane",
+        "hx-select": "#reading-pane",
         "hx-select-oob": "#tree-rows",
         "hx-push-url": "true",
     }
@@ -411,7 +411,7 @@ def test_every_link_that_swaps_the_pane_lands_the_pane_in_the_pane(
             assert wiring.get("href", wiring["hx-get"]) == wiring["hx-get"], (mount, key)
             assert {name: wiring.get(name) for name in swap} == swap, (mount, key)
     # The two ids the swap aims at, each written exactly once.
-    assert html.count('id="pane"') == 1
+    assert html.count('id="reading-pane"') == 1
     assert html.count('id="tree-rows"') == 1
 
 
@@ -529,10 +529,10 @@ def test_the_tree_is_widened_by_a_handle_and_the_width_outlives_the_page(
     page = client.get(url(open_turn(store))).text
     # The handle sits between the two columns it divides, and says what it is to a reader who
     # cannot see it.
-    assert [at for at in values(page, "id") if at in {"tree", "tree-grip", "pane"}] == [
+    assert [at for at in values(page, "id") if at in {"tree", "tree-grip", "reading-pane"}] == [
         "tree",
         "tree-grip",
-        "pane",
+        "reading-pane",
     ]
     grip = re.findall(r"<div id=\"tree-grip\"[^>]*>", page)
     assert len(grip) == 1 and 'role="separator"' in grip[0] and 'tabindex="0"' in grip[0]

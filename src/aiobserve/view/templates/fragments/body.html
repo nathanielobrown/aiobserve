@@ -12,7 +12,7 @@
 {% import "_logs.html" as logs %}
 <tr class="expansion" data-expansion="{{ node.kind }}">
   <td colspan="{{ spanned(node.kind) }}">
-  {{ body.pane(node, row, suffix) }}
+  {{ body.body(node, row, suffix) }}
   {%- if under %}
   {{ logs.log(shape, under, children, suffix, none, opens=false) }}
   {%- endif %}
