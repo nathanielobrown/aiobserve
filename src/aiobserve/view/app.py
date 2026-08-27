@@ -44,8 +44,8 @@ from aiobserve.view import format as fmt
 from aiobserve.view.enrichment import (
     GLYPH,
     GLYPH_CLASS,
-    Described,
     Descriptions,
+    Enrichment,
     described,
     enriched,
 )
@@ -132,7 +132,7 @@ class Detail(NamedTuple):
     markdown: bool
 
 
-class Wrote(NamedTuple):
+class EnrichmentLines(NamedTuple):
     """The two lines an enrichment pass wrote about a node, as the pane shows them.
 
     Each is a `Detail` like any other fat value the pane previews: the head the query cut, and
@@ -396,7 +396,7 @@ def sliced(items: Sequence[Row], page: int, size: int) -> Listed:
     return Listed(list(items[start : start + size]), len(items))
 
 
-def described_node(descriptions: Descriptions, node: nodes.Node) -> Described | None:
+def described_node(descriptions: Descriptions, node: nodes.Node) -> Enrichment | None:
     """What an enrichment pass said about the node a pane is about, when it said anything.
 
     Three of the eight kinds are describable, and the pass keys turns by thread — which is the
@@ -411,37 +411,39 @@ def described_node(descriptions: Descriptions, node: nodes.Node) -> Described | 
     return None
 
 
-def wrote_of(said: Described | None, session_id: str, source: str) -> Wrote | None:
+def enrichment_lines(
+    about: Enrichment | None, session_id: str, source: str
+) -> EnrichmentLines | None:
     """What a pass wrote about the selection, each line with the way to the rest of it.
 
     The keys are the level's own: a turn's row is keyed by the thread the page is reading, a
     run's and a session's by the session. `source` is that thread, which is the same one the
     descriptions were read for.
     """
-    if said is None:
+    if about is None:
         return None
-    match said.level:
+    match about.level:
         case Level.turn:
-            at = f"{nodes.thread_url(session_id, source)}/turn/{said.item_id}"
+            at = f"{nodes.thread_url(session_id, source)}/turn/{about.item_id}"
         case Level.agent_run:
-            at = nodes.run_url(session_id, said.item_id)
+            at = nodes.run_url(session_id, about.item_id)
         case Level.session:
-            at = nodes.session_url(said.item_id)
+            at = nodes.session_url(about.item_id)
         case _:
-            assert_never(said.level)
-    return Wrote(
+            assert_never(about.level)
+    return EnrichmentLines(
         description=detail_of(
             "description",
-            said.description,
-            said.description_chars,
-            f"/fragment/said{at}",
+            about.description,
+            about.description_chars,
+            f"/fragment/description{at}",
             queries.ENRICHMENT_CHARS,
             markdown=False,
         ),
         friction=detail_of(
             "friction",
-            said.friction,
-            said.friction_chars,
+            about.friction,
+            about.friction_chars,
             f"/fragment/friction{at}",
             queries.ENRICHMENT_CHARS,
             markdown=False,
@@ -937,7 +939,7 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
                 "rows": built.rows,
                 "header": seen.header,
                 "enrichment": about,
-                "wrote": wrote_of(about, session_id, source),
+                "lines": enrichment_lines(about, session_id, source),
                 "details": seen.details,
                 # The bytes behind the node: the thread's transcript, and — for a turn — the
                 # one line it was read from.
@@ -2004,7 +2006,7 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
             },
         )
 
-    def wrote(
+    def enrichment_line(
         request: Request, value: Value, keyed: Mapping[str, ParamValue], field: str
     ) -> Response:
         """One whole line an enrichment pass wrote, or a 404 where no pass wrote one.
@@ -2018,43 +2020,45 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
             written = enriched(connection)
         if not written:
             raise HTTPException(404, "No enrichment pass has written to this store.")
-        return whole(request, value, "said", keyed, field, field)
+        return whole(request, value, "enrichment_line", keyed, field, field)
 
-    @app.get("/fragment/said/session/{session_id}/thread/{source}/turn/{turn_id}")
-    def turn_said(request: Request, session_id: str, source: str, turn_id: str) -> Response:
+    @app.get("/fragment/description/session/{session_id}/thread/{source}/turn/{turn_id}")
+    def turn_description(request: Request, session_id: str, source: str, turn_id: str) -> Response:
         """The whole of what a pass said one turn did."""
         keyed = {"session_id": session_id, "source": source, "turn_id": turn_id}
-        return wrote(request, Value.TURN_SAID, keyed, "description")
+        return enrichment_line(request, Value.TURN_SAID, keyed, "description")
 
     @app.get("/fragment/friction/session/{session_id}/thread/{source}/turn/{turn_id}")
     def turn_friction(request: Request, session_id: str, source: str, turn_id: str) -> Response:
         """The whole of the friction a pass saw in one turn."""
         keyed = {"session_id": session_id, "source": source, "turn_id": turn_id}
-        return wrote(request, Value.TURN_SAID, keyed, "friction")
+        return enrichment_line(request, Value.TURN_SAID, keyed, "friction")
 
-    @app.get("/fragment/said/session/{session_id}/run/{run_id}")
-    def run_said(request: Request, session_id: str, run_id: str) -> Response:
+    @app.get("/fragment/description/session/{session_id}/run/{run_id}")
+    def run_description(request: Request, session_id: str, run_id: str) -> Response:
         """The whole of what a pass said one agent run did."""
-        return wrote(
+        return enrichment_line(
             request, Value.RUN_SAID, {"session_id": session_id, "run_id": run_id}, "description"
         )
 
     @app.get("/fragment/friction/session/{session_id}/run/{run_id}")
     def run_friction(request: Request, session_id: str, run_id: str) -> Response:
         """The whole of the friction a pass saw in one agent run."""
-        return wrote(
+        return enrichment_line(
             request, Value.RUN_SAID, {"session_id": session_id, "run_id": run_id}, "friction"
         )
 
-    @app.get("/fragment/said/session/{session_id}")
-    def session_said(request: Request, session_id: str) -> Response:
+    @app.get("/fragment/description/session/{session_id}")
+    def session_description(request: Request, session_id: str) -> Response:
         """The whole of what a pass said one session did."""
-        return wrote(request, Value.SESSION_SAID, {"session_id": session_id}, "description")
+        return enrichment_line(
+            request, Value.SESSION_SAID, {"session_id": session_id}, "description"
+        )
 
     @app.get("/fragment/friction/session/{session_id}")
     def session_friction(request: Request, session_id: str) -> Response:
         """The whole of the friction a pass saw in one session."""
-        return wrote(request, Value.SESSION_SAID, {"session_id": session_id}, "friction")
+        return enrichment_line(request, Value.SESSION_SAID, {"session_id": session_id}, "friction")
 
     @app.get("/fragment/text/session/{session_id}/thread/{source}/call/{api_call_id}")
     def call_text(request: Request, session_id: str, source: str, api_call_id: str) -> Response:

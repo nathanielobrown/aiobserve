@@ -1,5 +1,5 @@
 {# The whole of one line an enrichment pass wrote — what it said an item did, or the friction
    it saw in it. It replaces the block the pane previewed the line in, so it arrives as that
    block: same class, same key, and no link, because there is no rest left to offer. #}
-<span class="wrote" data-wrote="{{ detail }}" data-value="{{ (row.value or '') | length }}"
+<span class="enrichment-line" data-enrichment-line="{{ detail }}" data-value="{{ (row.value or '') | length }}"
   data-query="{{ citation }}"><span data-field="{{ detail }}">{{ row.value }}</span></span>

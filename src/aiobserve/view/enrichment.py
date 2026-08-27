@@ -34,7 +34,7 @@ GLYPH = "✨"
 GLYPH_CLASS = "glyph"
 
 
-class Described(NamedTuple):
+class Enrichment(NamedTuple):
     """One item's enrichment, as a page shows it."""
 
     # Which level's pass wrote it, which is what its versions are current against.
@@ -91,9 +91,9 @@ class Descriptions:
     # Whether the store held the tables to ask at all. What a page cites is what it ran, and
     # a store with the tables and no rows in them ran the query — an empty answer is one.
     queried: bool = False
-    session: Described | None = None
-    turns: Mapping[str, Described] = field(default_factory=dict)
-    runs: Mapping[str, Described] = field(default_factory=dict)
+    session: Enrichment | None = None
+    turns: Mapping[str, Enrichment] = field(default_factory=dict)
+    runs: Mapping[str, Enrichment] = field(default_factory=dict)
 
 
 def enriched(connection: duckdb.DuckDBPyConnection) -> bool:
@@ -124,10 +124,10 @@ def described(connection: duckdb.DuckDBPyConnection, session_id: str, source: st
         "tag_chars": queries.TAG_CHARS,
         "head_chars": queries.HEADER_CHARS,
     }
-    by_level: dict[Level, dict[str, Described]] = {level: {} for level in Level}
+    by_level: dict[Level, dict[str, Enrichment]] = {level: {} for level in Level}
     for row in page_rows(connection, Page.ENRICHMENT, **bindings):
         level = Level(row["level"])
-        by_level[level][row["item_id"]] = Described(
+        by_level[level][row["item_id"]] = Enrichment(
             level=level,
             item_id=row["item_id"],
             description=row["description"],
