@@ -300,18 +300,21 @@ def knobs(nav: nodes.Preset, kin: int, log: int, detail: int) -> str:
     return f"?{urlencode(given)}" if given else ""
 
 
-class Switch(NamedTuple):
-    """One fold as the control above the tree offers it: where it goes, and whether we are in it."""
+class PresetChoice(NamedTuple):
+    """One preset as the control above the tree offers it: where it goes, and whether we are
+    in it."""
 
     preset: nodes.Preset
     url: str
     current: bool
 
 
-def switcher(node: nodes.Node, nav: nodes.Preset, kin: int, log: int, detail: int) -> list[Switch]:
-    """The node the reader is on under each fold, so switching never costs them their place."""
+def preset_choices(
+    node: nodes.Node, nav: nodes.Preset, kin: int, log: int, detail: int
+) -> list[PresetChoice]:
+    """The node the reader is on under each preset, so switching never costs them their place."""
     return [
-        Switch(choice, f"{node.url}{knobs(choice, kin, log, detail)}", choice is nav)
+        PresetChoice(choice, f"{node.url}{knobs(choice, kin, log, detail)}", choice is nav)
         for choice in nodes.Preset
     ]
 
@@ -929,7 +932,7 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
             "node.html",
             {
                 "selection": selection,
-                "presets": switcher(selection, preset, kin, log, detail),
+                "preset_choices": preset_choices(selection, preset, kin, log, detail),
                 "chain": built.chain,
                 "rows": built.rows,
                 "header": seen.header,
@@ -1669,7 +1672,7 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
 
         The knobs come along for the links this serves, not for what it reads: the mount
         carries the page's own query string so a reader who opens an expansion and clicks
-        through it keeps the fold and the sizes they were reading under.
+        through it keeps the preset and the sizes they were reading under.
         """
         shaped = BODIES.get(kind)
         if shaped is None:

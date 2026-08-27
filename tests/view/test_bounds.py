@@ -271,7 +271,7 @@ DEAR_PANE_DETAILS = 3
 # down to the selection, the node's own facts, and what a pass said about it. The session is
 # the widest of the eight panes — every string in its header is one a transcript wrote, and its
 # two lists grow with the session — so the allowance is a session header's, cut in SQL.
-# The preset switcher rides here too, three links carrying the node's own URL, the children
+# The preset control rides here too, three links carrying the node's own URL, the children
 # log's own table head — a word and an icon for each column of the shape the log lists — and,
 # on a pane reading a failed tool call, the step to the failure before it and the one after.
 # The pane's own heading and the browser tab each carry the mark saying what kind of node the

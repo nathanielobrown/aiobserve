@@ -46,9 +46,9 @@ class Row(NamedTuple):
     cites: tuple[str, ...]
 
 
-# What each fold of the tree shows, for the reader of a URL rather than of the switcher —
-# `Preset` carries its own label for the control, which says which fold rather than what it
-# does. A preset missing from here crashes `generate`.
+# What each preset of the tree shows, for the reader of a URL rather than of the control —
+# `Preset` carries its own label there, which says which preset rather than what it does.
+# A preset missing from here crashes `generate`.
 PRESET_WORDS = {
     nodes.Preset.FULL: "The whole tree",
     nodes.Preset.NO_API: (
@@ -124,7 +124,7 @@ def described_preset(preset: nodes.Preset) -> str:
 def knob_rows() -> list[Row]:
     """One row per knob a node URL takes, in the order the app declares them.
 
-    `?nav=` is a row per fold rather than one row, because the value is what a reader types.
+    `?nav=` is a row per preset rather than one row, because the value is what a reader types.
     A size knob's ceiling is the bound of the same name — the tie that keeps a knob a reader
     can type from outrunning what the page was measured at.
     """

@@ -27,7 +27,7 @@
        element itself; without `hx-target` htmx would swap it into the clicked link. #}
     <div id="tree-rows" hx-target="#reading-pane" hx-swap="outerHTML"
          hx-select="#reading-pane" hx-select-oob="#tree-rows" hx-push-url="true">
-      {{ treeview.switcher(presets) }}
+      {{ treeview.presets(preset_choices) }}
       <ul class="rows">{{ treeview.lines(rows, suffix, source) }}</ul>
     </div>
   </nav>

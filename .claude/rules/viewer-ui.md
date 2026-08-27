@@ -45,7 +45,7 @@ Every mark saying what a thing *is* — the kind of node a surface names, and th
 
 `bounds.TREE_ROW_BYTES` is measured through the app, pinned with no slack, and spent 3,217 times on the worst page. An attribute added to `_tree.html` is that many bytes of page, so re-measure with `tests/view/test_bounds.py` rather than guessing — the pin fails first, which is the point.
 
-Link where you fetch: a row's `href` and its `hx-get` are the same URL, and both carry the page's knob suffix, so a click, a paste, and a bookmark serve the same bytes. The mount an expansion opens through carries it too, so the fragment's own links come back under the fold the reader was in.
+Link where you fetch: a row's `href` and its `hx-get` are the same URL, and both carry the page's knob suffix, so a click, a paste, and a bookmark serve the same bytes. The mount an expansion opens through carries it too, so the fragment's own links come back under the preset the reader was in.
 
 # A pane swap says where it lands
 
@@ -65,7 +65,7 @@ Witnessed in a real Chromium on 2026-08-26, against `mise run gallery --port 906
 
 # A control beside the tree lives inside the swapped element
 
-A tree row swaps `#tree-rows` out of band and takes `#reading-pane` out of the response, so those two elements are the whole of what a click refreshes. Anything that names the selected node — the preset switcher does, three links to the node under each fold — has to render inside one of them or it goes stale the moment a reader clicks a row, pointing back at the node they left.
+A tree row swaps `#tree-rows` out of band and takes `#reading-pane` out of the response, so those two elements are the whole of what a click refreshes. Anything that names the selected node — the preset control does, three links to the node under each preset — has to render inside one of them or it goes stale the moment a reader clicks a row, pointing back at the node they left.
 
 Put it inside `#tree-rows` rather than adding a second out-of-band target: a target costs bytes on every tree row, and the row is the one thing on the page multiplied 3,217 times.
 
