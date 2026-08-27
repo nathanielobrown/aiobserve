@@ -38,7 +38,9 @@ run = "uv run ruff format --check ."
 [tasks.format-html]
 description = "Format the viewer's templates with djLint"
 # The paths are named rather than a bare `.`: djLint would otherwise walk the docs and the
-# gitignored `data/`. `[tool.djlint]` in `pyproject.toml` decides how, and VS Code formats
+# gitignored `data/`. Both tasks carry the same list, and both are read back against the tree
+# by `tests/tools/test_mise_tasks.py`, so a template added outside them reds rather than going
+# quietly unformatted. `[tool.djlint]` in `pyproject.toml` decides how, and VS Code formats
 # on save through this same binary and that same block, so an editor's output is this output.
 # `--quiet` drops the per-file diff — `git diff` says it better. The trailing test swallows
 # djLint's exit 1, which is what it returns when it rewrote a file: a formatter doing its job,
