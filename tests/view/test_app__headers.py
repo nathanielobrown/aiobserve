@@ -12,13 +12,13 @@ from pathlib import Path
 import duckdb
 from fastapi.testclient import TestClient
 
-from aiobserve.analyze import queries
-from aiobserve.view import app as view_app
-from aiobserve.view import columns as view_columns
-from aiobserve.view import format as fmt
-from aiobserve.view.app import build_app
-from aiobserve.view.labels import LABELS
-from aiobserve.view.templating import TEMPLATES
+from hyphae.analyze import queries
+from hyphae.view import app as view_app
+from hyphae.view import columns as view_columns
+from hyphae.view import format as fmt
+from hyphae.view.app import build_app
+from hyphae.view.labels import LABELS
+from hyphae.view.templating import TEMPLATES
 from tests.conftest import (
     MAIN,
     SPINE,

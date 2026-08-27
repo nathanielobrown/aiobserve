@@ -6,18 +6,18 @@ picker asserts it named exactly one item: a fixture that stops carrying the shap
 rather than rendering something else. A plain module, read by both prompt test files.
 """
 
-from aiobserve.enrich.prompts import (
+from hyphae.enrich.prompts import (
     AgentRunItem,
     Item,
     SessionItem,
     TurnItem,
 )
-from aiobserve.enrich.store import EnrichmentStore, Stamp
-from aiobserve.enrich.taxonomy import (
+from hyphae.enrich.store import EnrichmentStore, Stamp
+from hyphae.enrich.taxonomy import (
     Category,
     Outcome,
 )
-from aiobserve.enrich.validation import Enrichment
+from hyphae.enrich.validation import Enrichment
 
 
 def turn(store: EnrichmentStore, session_id: str, prefix: str) -> TurnItem:

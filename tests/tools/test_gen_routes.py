@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 from starlette.routing import Route
 
-from aiobserve.view import nodes
+from hyphae.view import nodes
 from tests.tools.conftest import cells
 from tools import gen_routes
 

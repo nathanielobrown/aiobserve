@@ -5,21 +5,21 @@ Enrichment describes every agent run, main turn, and session in the trace store.
 Start with a dry run:
 
 ```bash
-uv run aiobserve enrich --project ~/repos/mycelia --dry-run   # what it would send, and what that costs
-uv run aiobserve enrich --project ~/repos/mycelia             # describe everything stale
+uv run hp enrich --project ~/repos/mycelia --dry-run   # what it would send, and what that costs
+uv run hp enrich --project ~/repos/mycelia             # describe everything stale
 ```
 
 Enrichment spends the Claude Code subscription by running `claude -p` once per item. It needs no API key and creates no separate bill. Log in with `claude` first. Before a paid run renders anything, enrichment runs `claude auth status`; it refuses to continue if `claude` is absent, logged out, or logged in without a subscription. A dry run skips this check because quoting costs nothing and the person pricing a pass may not own the active login.
 
-`src/aiobserve/cli.py` defines every flag. Use `--limit` for a cheap development pass. `--concurrency` controls how many `claude` processes run at once within a round; it defaults to four.
+`src/hyphae/cli.py` defines every flag. Use `--limit` for a cheap development pass. `--concurrency` controls how many `claude` processes run at once within a round; it defaults to four.
 
 ## Each item gets one enrichment row
 
-`turn_enrichments`, `agent_run_enrichments`, and `session_enrichments` hold one row per described item. Each row has four model-written fields: `description`, `category`, `outcome`, and a nullable `friction` note. `src/aiobserve/enrich/taxonomy.py` defines the closed vocabularies. The enricher rejects answers outside them.
+`turn_enrichments`, `agent_run_enrichments`, and `session_enrichments` hold one row per described item. Each row has four model-written fields: `description`, `category`, `outcome`, and a nullable `friction` note. `src/hyphae/enrich/taxonomy.py` defines the closed vocabularies. The enricher rejects answers outside them.
 
 Query these rows through `enriched_turns`, `enriched_agent_runs`, and `enriched_sessions`. Each view left-joins enrichments onto the live base rows, so a `NULL` description means "not described yet." Count those rows when reporting coverage. To keep `description` consistent across the views, `enriched_agent_runs` calls the run's own recorded model `agent_model`; the run's recorded task is `brief` and needs no rename.
 
-The query library provides three report-ready questions, which `aiobserve query` can run:
+The query library provides three report-ready questions, which `hp query` can run:
 
 - `enrichment_coverage` reports coverage at each level by category, outcome, model, and prompt version; the row with no category is the gap
 - `enrichment_digest` returns one session's descriptions under keys that align with `session_timeline`, `run_timeline`, and `view_runs`
@@ -113,7 +113,7 @@ A missing contract field is drift. On the canary, it raises `EnvelopeDrift` afte
 
 ## A dry run quotes money, not elapsed time
 
-`src/aiobserve/enrich/cost.py` owns the rates and arithmetic. It estimates tokens from rendered characters, then adds each level's instructions and a flat transport cost per item. Each fresh subprocess pays that cost for the CLI framing and `--json-schema` payload.
+`src/hyphae/enrich/cost.py` owns the rates and arithmetic. It estimates tokens from rendered characters, then adds each level's instructions and a flat transport cost per item. Each fresh subprocess pays that cost for the CLI framing and `--json-schema` payload.
 
 The quote uses list price. The API batch discount no longer applies, and prompt caching is priced at zero, so the estimate runs high. A full Haiku pass over the mycelia corpus costs single-digit dollars.
 
@@ -125,7 +125,7 @@ Prices and models change. Asking for an unpriced model crashes instead of return
 
 Both changes deliberately make stored rows stale:
 
-- After changing a level's instructions, bump `PROMPT_VERSION[level]` in `src/aiobserve/enrich/prompts.py`. The content hash cannot see the instructions
+- After changing a level's instructions, bump `PROMPT_VERSION[level]` in `src/hyphae/enrich/prompts.py`. The content hash cannot see the instructions
 - After adding, renaming, or redefining a taxonomy member, bump `TAXONOMY_VERSION`. The model classifies from these definitions, so the change re-describes every level
 
 A run-level prompt bump cascades through later rounds. Price it with `--dry-run` before starting the pass.

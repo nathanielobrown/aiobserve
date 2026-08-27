@@ -21,9 +21,9 @@ from typing import NamedTuple
 
 import duckdb
 
-from aiobserve.model import MAIN_SOURCE
-from aiobserve.view.format import money
-from aiobserve.view.nodes import (
+from hyphae.model import MAIN_SOURCE
+from hyphae.view.format import money
+from hyphae.view.nodes import (
     BODY_URL,
     KIN_URL,
     Kind,

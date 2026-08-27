@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from aiobserve.enrich.prompts import (
+from hyphae.enrich.prompts import (
     RUN_BUDGETS,
     SESSION_BUDGETS,
     TURN_BUDGETS,
@@ -24,7 +24,7 @@ from aiobserve.enrich.prompts import (
     render_session,
     render_turn,
 )
-from aiobserve.enrich.store import EnrichmentStore
+from hyphae.enrich.store import EnrichmentStore
 from tests.enrich.conftest import (
     SERVER_TOOLS,
     SPINE,
@@ -259,11 +259,11 @@ def test_an_over_budget_session_drops_the_middle_of_its_work(mutable_db: Path) -
 
 # Names a real trace store for the opt-in budget check below. Off by default: the store
 # holds private session data.
-LIVE_STORE = "AIOBSERVE_LIVE_STORE"
+LIVE_STORE = "HYPHAE_LIVE_STORE"
 
 
 def live_store_copy(tmp_path: Path) -> Path:
-    """A private copy of the real archive `AIOBSERVE_LIVE_STORE` names.
+    """A private copy of the real archive `HYPHAE_LIVE_STORE` names.
 
     Never the store itself: it is the archive (`docs/store.md`) and opening one runs the
     enrichment DDL against it. The write-ahead log comes along, or the copy would be the

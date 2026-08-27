@@ -21,10 +21,10 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from aiobserve.analyze import queries
-from aiobserve.extract.pricing import CONTEXT_WINDOWS
-from aiobserve.view.app import build_app
-from aiobserve.view.nodes import BAR_STEPS
+from hyphae.analyze import queries
+from hyphae.extract.pricing import CONTEXT_WINDOWS
+from hyphae.view.app import build_app
+from hyphae.view.nodes import BAR_STEPS
 from tests.conftest import MAIN, SPINE
 
 Statement = tuple[str, Sequence[str | int]]

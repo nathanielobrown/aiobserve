@@ -13,8 +13,8 @@ no model documents, each stop the run.
 import sys
 from enum import StrEnum
 
-from aiobserve.extract.records.evidence import Cited
-from aiobserve.extract.records.schema import EVERY_RECORD, Documentation, documentation, spell
+from hyphae.extract.records.evidence import Cited
+from hyphae.extract.records.schema import EVERY_RECORD, Documentation, documentation, spell
 from tools import text
 
 

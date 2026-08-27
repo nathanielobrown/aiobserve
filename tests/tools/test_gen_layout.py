@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-import aiobserve.extract
+import hyphae.extract
 from tools import gen_layout
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -58,7 +58,7 @@ def test_a_gloss_is_the_packages_own_first_sentence() -> None:
     # The docstring beside the code is the single source, so the tree cannot drift from it
     # without the package drifting first.
     glossed = dict(gen_layout.lines())
-    docstring = aiobserve.extract.__doc__ or ""
+    docstring = hyphae.extract.__doc__ or ""
     lifted = glossed["  extract/"]
     assert lifted and docstring.strip().startswith(lifted)
     # And it is the *first sentence* of it, not the whole paragraph: what follows the gloss in

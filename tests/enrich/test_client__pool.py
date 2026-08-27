@@ -3,7 +3,7 @@
 Driven over the same faked seam as `test_client.py` (`fake_cli.py`), but every leaf here is
 about the round rather than the answer — what a pool spends before it stops, what each child
 process is handed, and what a run refuses at the door. The two leaves at the bottom are the
-only ones that reach the real API, and only under `AIOBSERVE_LIVE_CLI`.
+only ones that reach the real API, and only under `HYPHAE_LIVE_CLI`.
 """
 
 import json
@@ -16,19 +16,19 @@ from typing import Any, cast
 
 import pytest
 
-from aiobserve import cli
-from aiobserve.enrich import client
-from aiobserve.enrich.client import (
+from hyphae import cli
+from hyphae.enrich import client
+from hyphae.enrich.client import (
     CLAUDE,
     DEFAULT_MODEL,
     CliClient,
     build_env,
     preflight,
 )
-from aiobserve.enrich.prompts import OUTPUT_SCHEMA
-from aiobserve.enrich.store import EnrichmentStore
-from aiobserve.enrich.taxonomy import Category, Outcome
-from aiobserve.enrich.validation import Enrichment, FailureKind, validate
+from hyphae.enrich.prompts import OUTPUT_SCHEMA
+from hyphae.enrich.store import EnrichmentStore
+from hyphae.enrich.taxonomy import Category, Outcome
+from hyphae.enrich.validation import Enrichment, FailureKind, validate
 from tests.enrich.conftest import LIVE_CLI
 from tests.enrich.fake_cli import (
     AUTH_CALL,

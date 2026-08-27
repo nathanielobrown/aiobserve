@@ -94,7 +94,7 @@ used:
 - **A childless NULL-`project_dir` session** — `fork_byref/`'s main transcript built *without*
   its subagent file. A trim of recorded data, not an invention. As built, "childless" means
   free of *work* rows: every recorded transcript leaves `raw_records`, and the trimmed main
-  transcript leaves 3, so `ARCHIVE_TABLES` in `src/aiobserve/extract/store.py` carves the
+  transcript leaves 3, so `ARCHIVE_TABLES` in `src/hyphae/extract/store.py` carves the
   archive tables out and only a work-table row trips the crash
 
 ---
@@ -163,7 +163,7 @@ used:
   including resource attributes and both id fields. Bolded: every decoded-capture leaf in this
   plan rests on this one, and a receiver that silently drops a field makes the rest vacuous.
 - Resource attributes carry `service.name` = the project directory name, the exporter version,
-  and `aiobserve.telemetry.source = "store-export"`; `--service-name` overrides the first.
+  and `hyphae.telemetry.source = "store-export"`; `--service-name` overrides the first.
   *Evidence:* `spine/` under `/Users/nob/repos/mycelia` gives `service.name == "mycelia"`; a
   second run with the flag gives the override.
 - A confirmed session writes exactly one `otlp_delivery` row carrying the shipped fingerprint,
@@ -276,12 +276,12 @@ used:
   assert the span id is byte-identical and equals the agent_run key's digest, and that no
   `tool_use_id` value enters the hash. Bolded: the alternative key re-ids the span on every flip
   and forces every subagent child through a join to find its parent.
-- An orphan run is an `invoke_agent` span under the root with `aiobserve.orphan = true`.
+- An orphan run is an `invoke_agent` span under the root with `hyphae.orphan = true`.
   *Evidence:* `teammate/`'s `aarchitect-5144001ac50718bc`, a recorded orphan.
 - A plain tool call is `execute_tool {name}` under its chat span. *Evidence:* `spine/`; assert
   the name and parent on a recorded non-Agent call.
 - Nullable and flagged tool times: `ended_at IS NULL` ends at start with
-  `aiobserve.incomplete = true`; `duration_synthetic` and `server_side` ship as attributes over
+  `hyphae.incomplete = true`; `duration_synthetic` and `server_side` ship as attributes over
   real times, never as invented ones. *Evidence:* the corpus's 7 incomplete, 17 synthetic and 3
   server-side tool calls, `server_tools/` for the last.
 - Zero and negative durations floor to 1 ms. *Evidence:* read the fixture store for a row whose
@@ -294,7 +294,7 @@ used:
 - A timeless session reaching the mapper crashes as schema drift. *Evidence:* planted (labeled)
   — the source filter excludes every real one, which is exactly why the mapper's own rule needs
   a test.
-- A `<synthetic>` call ships as `chat <synthetic>` with `aiobserve.synthetic = true`.
+- A `<synthetic>` call ships as `chat <synthetic>` with `hyphae.synthetic = true`.
   *Evidence:* `spine/`'s `03b918cc…`.
 - A compaction is a `duration_ms`-long span under the root, or under its source run's span.
   *Evidence:* `compaction/`'s two recorded main compactions for the root arm; the run arm plants

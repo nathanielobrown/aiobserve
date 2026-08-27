@@ -8,7 +8,7 @@ This is the full stratified re-selection iteration 2 deferred. One premise corre
 
 - Store stamp: 571 query-visible sessions, corpus cost $16,108.17 (identical to the cent to 2026-08-09), `max(sessions.started_at)` 2026-08-07 11:47 UTC (`data/analysis/2026_08_13/stamp.txt`)
 - Analysis window: trailing 28 days at `as_of=2026-08-13` — 201 sessions, $9,982.80 (`session_counts.sql`). Down from 256 / $11,109.87 at 2026-08-09 purely because the window rolled forward over nothing; no count delta below is a trend
-- Every count comes from `src/aiobserve/analyze/queries/<name>.sql` with `project=/Users/nob/repos/mycelia, since=NULL, as_of=2026-08-13, window_days=28`; non-default `--param` bindings stated inline with each count
+- Every count comes from `src/hyphae/analyze/queries/<name>.sql` with `project=/Users/nob/repos/mycelia, since=NULL, as_of=2026-08-13, window_days=28`; non-default `--param` bindings stated inline with each count
 - Read sample: 30 sessions from `select_sessions` (realized composition: cost 7, tool-errors 5, compactions 4, skill 6, discovery 8 — `cb76d8e4`, rank 2 by cost, was excluded as deep-read in iteration 2 and unchanged since) plus 26 `select_runs` picks spanning 6 run-only sessions, read by 11 readers. Reports in gitignored `data/analysis/2026_08_13/{sessions,runs}/`; selection and headlines in `roster.md`
 
 **Scope.** This corpus is one person's Claude Code sessions on one codebase. Every finding is evidence about mycelia's guidance and configuration, not about Claude Code or coding agents in general. Citations are `(session_id, source, first_line–last_line)`.
@@ -131,7 +131,7 @@ Per the checklist in `docs/analysis.md`.
 **For iteration 4.**
 
 1. Give `select_sessions`' discovery stratum a min-substance floor (e.g. minimum tool calls or cost) so degenerate turns stop consuming read slots
-2. Fix the session-level enrichment fabrication at the pipeline (aiobserve-side, not mycelia): skip or special-case sessions and turns with 0 api_calls so the enrichment model is never asked to describe a model action that never happened — that one gate covers all three verified fabrications. Session enrichment stays unusable until it lands and a fresh QC pass clears it
+2. Fix the session-level enrichment fabrication at the pipeline (hyphae-side, not mycelia): skip or special-case sessions and turns with 0 api_calls so the enrichment model is never asked to describe a model action that never happened — that one gate covers all three verified fabrications. Session enrichment stays unusable until it lands and a fresh QC pass clears it
 3. Land the F1 guidance edit and the C6 spawn-prompt fix, then re-check both window counts once post-fix sessions exist — the regression tests are already defined
 4. If F6's rule is adopted, verify the teammate-dispatch mechanism against raw transcript slices first
 5. A `context_reloads` companion that prices a keep-warm heartbeat would settle F3's option (b)

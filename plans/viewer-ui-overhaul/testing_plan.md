@@ -47,7 +47,7 @@ boundary and no recorded row sits on one. Constructed values are the established
   than a negative unit. *Evidence:* `[S1]` `ago(now + 1h, now)` compared whole; the value is
   constructed and labelled as such — no recorded session carries one
 
-Mutation: this file is the plan's main lean on `mise run mutate 'aiobserve.view.format.*'`. The
+Mutation: this file is the plan's main lean on `mise run mutate 'hyphae.view.format.*'`. The
 boundary comparisons and the rounding in `share` are exactly the expressions a mutant flips, and the
 file's own docstring records that a table of substring assertions once survived a run untouched.
 
@@ -199,7 +199,7 @@ served store rather than a literal.
 - **The spend meter's decile class is arithmetic over the node's share, and any nonzero share rounds
   up to `s1`.** *Evidence:* class read with `inside(html, "data-nav", id, "class")` and compared
   against the decile computed from the store's costs; a `plant` giving one turn a share under 10%
-  supplies the round-up case. This is the leaf `mise run mutate 'aiobserve.view.threads.*'` should
+  supplies the round-up case. This is the leaf `mise run mutate 'hyphae.view.threads.*'` should
   find no survivor under — a `//` or a boundary flip here silently blanks the meter.
   **As built,** the ten classes survive but the scale is logarithmic over three orders of magnitude
   rather than a decile — design.md carries the same clause, and a linear decile drew 525 of the
@@ -303,7 +303,7 @@ planted leaves at the bottom of the file.
   the CI shape (`.github/workflows/check.yml`), run before the PR opens
 - The branch's changed modules score under `mise run mutate`, cold and serial, with survivors read
   and either killed by an assertion or reported as a finding about the code. *Evidence:* runs scoped
-  to `aiobserve.view.format.*`, `aiobserve.view.threads.*` and `aiobserve.view.listing.*` — the three
+  to `hyphae.view.format.*`, `hyphae.view.threads.*` and `hyphae.view.listing.*` — the three
   modules whose new logic is arithmetic (share, decile, fold predicate, window) rather than markup
 
 ## Not covered, and why

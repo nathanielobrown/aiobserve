@@ -13,8 +13,8 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from aiobserve.extract.record_types import ContentBlock
-from aiobserve.extract.records import blocks, evidence, schema, shapes
+from hyphae.extract.record_types import ContentBlock
+from hyphae.extract.records import blocks, evidence, schema, shapes
 from tests.conftest import FIXTURES
 
 # The repository root, because a field's evidence cites a fixture the way a reader would type

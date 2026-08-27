@@ -18,12 +18,12 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from aiobserve.analyze import queries
-from aiobserve.model import MAIN_SOURCE
-from aiobserve.view import bounds, tree
-from aiobserve.view.app import build_app
-from aiobserve.view.enrichment import Descriptions
-from aiobserve.view.nodes import (
+from hyphae.analyze import queries
+from hyphae.model import MAIN_SOURCE
+from hyphae.view import bounds, tree
+from hyphae.view.app import build_app
+from hyphae.view.enrichment import Descriptions
+from hyphae.view.nodes import (
     KIN_URL,
     Kind,
     Preset,

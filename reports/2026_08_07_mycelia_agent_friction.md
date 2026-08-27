@@ -6,8 +6,8 @@ First full analysis iteration over the mycelia corpus. The question: **where do 
 
 - Store stamp: 575 sessions, `max(started_at)` 2026-08-07 07:47:41-04:00, schema_version 7, extractor_version 7 (`data/analysis/2026_08_07/stamp.txt`)
 - Analysis window: trailing 28 days — 264 sessions, 2,754 turns, 123,291 tool calls, 1,780 agent runs, 890 compactions, $11,865.27
-- Every count below comes from `src/aiobserve/analyze/queries/<name>.sql` run with `project=/Users/nob/repos/mycelia, since=NULL, as_of=2026-08-07, window_days=28`; CSVs and full citation lines are in `data/analysis/2026_08_07/counts/`
-- Read sample: 31 sessions drawn by `select_sessions` (cost_quota=8, error_quota=5, compaction_quota=4, discovery_quota=8, skill_threshold=5, seed=aiobserve) plus 18 runs via `select_runs` (runs_per_stratum=1, min_runs=5) and reader flags. Reader reports live in gitignored `data/analysis/2026_08_07/{sessions,runs}/`
+- Every count below comes from `src/hyphae/analyze/queries/<name>.sql` run with `project=/Users/nob/repos/mycelia, since=NULL, as_of=2026-08-07, window_days=28`; CSVs and full citation lines are in `data/analysis/2026_08_07/counts/`
+- Read sample: 31 sessions drawn by `select_sessions` (cost_quota=8, error_quota=5, compaction_quota=4, discovery_quota=8, skill_threshold=5, seed=hyphae) plus 18 runs via `select_runs` (runs_per_stratum=1, min_runs=5) and reader flags. Reader reports live in gitignored `data/analysis/2026_08_07/{sessions,runs}/`
 
 **Scope.** This corpus is one person's Claude Code sessions on one codebase. Every finding is evidence about mycelia's guidance and configuration, not about Claude Code or coding agents in general, and every recommendation targets mycelia.
 
@@ -154,7 +154,7 @@ Per the checklist in `docs/analysis.md`.
 
 **Template fields.** "Context waste" was often "not assessed". Run-only readers invented ~15 off-vocabulary tags (`false-positive-error`, `write-before-read`, `mcp-auth`, `worktree-isolation`, …) because the vocabulary lives only in session.md and run.md says "do not restate it here". `other`/invented tags clustered on false-positive errors — a real missing category.
 
-**Failed corroboration.** Dropped: `ec00d20d`'s self-referential transcript search (not a mycelia-guidance issue); `ab2c08564`'s malformed JSON tool args (one-off platform glitch) and rung 3–4 scope expansion (cause untraced); `4c0c9e8e`'s "compactions discard context the manager must re-derive" (no evidence found). Demoted to "could not tell": compaction→defect, idle-interrupt prevalence. Moved here from findings: `d835351c`'s "87% of session cost invisible to the main-thread digest" — that is an aiobserve tooling gap, not a mycelia one.
+**Failed corroboration.** Dropped: `ec00d20d`'s self-referential transcript search (not a mycelia-guidance issue); `ab2c08564`'s malformed JSON tool args (one-off platform glitch) and rung 3–4 scope expansion (cause untraced); `4c0c9e8e`'s "compactions discard context the manager must re-derive" (no evidence found). Demoted to "could not tell": compaction→defect, idle-interrupt prevalence. Moved here from findings: `d835351c`'s "87% of session cost invisible to the main-thread digest" — that is a hyphae tooling gap, not a mycelia one.
 
 **Reader context.** Error-hunting dominated reader spend: several readers scanned 1,000+ records at 2,000-char caps to locate `is_error` results, and some never found them (`a296e39745f86e891` 5 errors, `ac549ca3bfec11e8c` 14, `afff07e2437c2e264` 43 — all untraced). Readers self-reported context spend inconsistently; the templates now ask for it.
 

@@ -1,6 +1,6 @@
 # Telemetry schema
 
-Every Claude Code telemetry field aiobserve reads, what it means, and the recording that proves it. Read this before writing a query or an analysis: misreading a field turns a bad premise into a confident finding.
+Every Claude Code telemetry field hyphae reads, what it means, and the recording that proves it. Read this before writing a query or an analysis: misreading a field turns a bad premise into a confident finding.
 
 The span schema will arrive with the span importer. Its source shapes come from `mac_settings/claude-otel/`, which we have not documented here. Until that importer exists, don't describe span fields from memory.
 
@@ -10,11 +10,11 @@ For each field, cite a recorded session and the Claude Code version that wrote i
 
 Prefer a checked-in fixture. The fixture directory's README names its source session and version, so readers can verify the claim. If no fixture can preserve the evidence, name the corpus scan and its date. Mark an inferred mechanism as an inference.
 
-The transcript-field tables under the next heading are generated. A field's meaning and its citation are declared on the record model that carries it, in `src/aiobserve/extract/records/`; document a new field there and run `mise run cogs`. A field declared without a citation fails the generator instead of printing an empty cell.
+The transcript-field tables under the next heading are generated. A field's meaning and its citation are declared on the record model that carries it, in `src/hyphae/extract/records/`; document a new field there and run `mise run cogs`. A field declared without a citation fails the generator instead of printing an empty cell.
 
 ## Transcript records are typed JSON objects
 
-A transcript stores one JSON object per line. Each object has a `type`. `aiobserve.extract.record_types` registers every type it has seen and the readers crash on unknown types. Treat that registry—not the tables below—as the current census.
+A transcript stores one JSON object per line. Each object has a `type`. `hyphae.extract.record_types` registers every type it has seen and the readers crash on unknown types. Treat that registry—not the tables below—as the current census.
 
 ### Record identity and session context
 
@@ -27,7 +27,7 @@ A transcript stores one JSON object per line. Each object has a `type`. `aiobser
 | `uuid` | `user`, `assistant`, `system` | The record id within its file. It is not unique: rewinding can write new records under existing uuids, and the extractor keeps the last | `tests/fixtures/dup_uuid/`, CC 2.1.211 — five uuids twice each |
 | `parentUuid` | `user`, `assistant`, `system` | The record this one answers, or null at the start of a thread. A `<local-command-stdout>` record points at the command turn whose output it is | `tests/fixtures/spine/`, CC 2.1.221 |
 | `timestamp` | `user`, `assistant`, `system`, `pr-link` | A UTC ISO-8601 timestamp with a `Z` suffix. File order is not timestamp order; adjacent records can move backward by one millisecond | `tests/fixtures/spine/`, CC 2.1.221 |
-| `cwd` | `user`, `assistant`, `system` | The project directory, absolute and symlink-free. Resolve a command-line path before matching it — `aiobserve.sessions.resolve_project` does. Early bookkeeping records omit it, so reading only the first record yields nulls | `tests/fixtures/spine/`, CC 2.1.221 — the first three records have none |
+| `cwd` | `user`, `assistant`, `system` | The project directory, absolute and symlink-free. Resolve a command-line path before matching it — `hyphae.sessions.resolve_project` does. Early bookkeeping records omit it, so reading only the first record yields nulls | `tests/fixtures/spine/`, CC 2.1.221 — the first three records have none |
 | `gitBranch` | `user`, `assistant`, `system` | The branch checked out when the record was written | `tests/fixtures/spine/`, CC 2.1.221 |
 | `version` | `user`, `assistant`, `system` | The Claude Code version that wrote the record, and the version every schema claim here is dated by | `tests/fixtures/spine/`, CC 2.1.221 |
 | `entrypoint` | `user`, `assistant`, `system` | How the session was launched, such as `cli` | `tests/fixtures/spine/`, CC 2.1.221; absent from `tests/fixtures/legacy_entrypoint/`, CC 1.0.128 — the oldest corpus transcripts |
@@ -193,7 +193,7 @@ String values can contain raw U+2028 and U+2029 separators. Python's `splitlines
 ## Session data comes from three places
 
 - `~/.claude/projects/<encoded-cwd>/<session-id>.jsonl` stores one session transcript as one JSON object per line
-- `~/.claude/projects/<encoded-cwd>/<session-id>/` stores the session directory described below; `aiobserve.sessions` walks this tree
+- `~/.claude/projects/<encoded-cwd>/<session-id>/` stores the session directory described below; `hyphae.sessions` walks this tree
 - Claude Code's OpenTelemetry export provides a thinner live schema and is enabled per machine, not per repository
 
 Claude Code forms `<encoded-cwd>` by replacing each `/` in the working directory with `-`: `~/repos/mycelia` becomes `-Users-nob-repos-mycelia`. This tree is shared across Claude accounts because `~/.claude-black/projects` is a symlink to `~/.claude/projects`. A transcript path therefore does not identify the account that wrote it.

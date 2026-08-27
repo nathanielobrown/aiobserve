@@ -1,5 +1,5 @@
 [project]
-name = "aiobserve"
+name = "hyphae"
 version = "0.1.0"
 description = "Analyze AI coding agents from their telemetry to find ways to make them better"
 readme = "README.md"
@@ -32,7 +32,7 @@ dependencies = [
 ]
 
 [project.scripts]
-aiobserve = "aiobserve.cli:main"
+hp = "hyphae.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -56,7 +56,7 @@ dev = [
   # Mutation testing — `mise run mutate`. Answers what a green suite cannot: whether a leaf
   # would notice the code being wrong. Outside `check`, because it costs a test run per mutant.
   "mutmut>=3.7",
-  # Watches the templates and the stylesheets behind `aiobserve view --dev` (`view/dev.py`).
+  # Watches the templates and the stylesheets behind `hp view --dev` (`view/dev.py`).
   # A dev-group dependency deliberately: the shipped viewer never imports it, so `--dev` in a
   # checkout without these deps fails at startup rather than serving a loop that never fires.
   "watchfiles>=1.0",
@@ -154,11 +154,11 @@ unfixable = ["F401"]
 
 [tool.ruff.lint.per-file-ignores]
 # The CLI's output is its interface, and the generators print the block `aigarden cog` splices.
-"src/aiobserve/cli.py" = ["T201"]
+"src/hyphae/cli.py" = ["T201"]
 "tools/*" = ["T201"]
 # The record models spell Claude Code's field names exactly, camelCase and all, because that
-# is what a transcript holds (`src/aiobserve/extract/records/`).
-"src/aiobserve/extract/records/*" = ["N815"]
+# is what a transcript holds (`src/hyphae/extract/records/`).
+"src/hyphae/extract/records/*" = ["N815"]
 # Tests are not an attack surface: `assert` is the point, a subprocess is the fixture, and a
 # `/tmp` path is a value a test invents. Everything else bandit checks stays on in `src/`.
 "tests/**" = ["S"]
@@ -175,7 +175,7 @@ docstring-code-format = true
 # The viewer's templates and `tests/gallery/index.html` — `mise run format-html` writes what
 # `format-html-check` gates and VS Code runs on save. Formatter only: djLint's linter wants
 # `{{ url_for() }}` for every internal link, and this viewer builds its URLs in
-# `src/aiobserve/view/nodes.py` on purpose.
+# `src/hyphae/view/nodes.py` on purpose.
 [tool.djlint]
 # Jinja, not HTML: this is what makes `{% %}` a tag djLint indents rather than text it reflows,
 # and what keeps `{%- -%}` intact.
@@ -221,7 +221,7 @@ markers = [
 # What `mise run mutate` mutates when it is given no scope of its own. mutmut copies the tree
 # into `mutants/` (gitignored) and re-runs, per mutant, only the tests that cover the mutated
 # line. Config keys are 3.x's: `paths_to_mutate` and `tests_dir` are the deprecated 2.x names.
-source_paths = ["src/aiobserve"]
+source_paths = ["src/hyphae"]
 # The suite is the oracle, so a mutant that survives is a gap in it. `-x` stops at the first
 # test that catches the mutant, which is all a kill needs.
 pytest_add_cli_args = ["-x", "-p", "no:cacheprovider"]

@@ -17,8 +17,8 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from aiobserve.view.app import PORT
-from aiobserve.view.dev import RELOAD_URL
+from hyphae.view.app import PORT
+from hyphae.view.dev import RELOAD_URL
 from tests.conftest import build_enriched_store
 from tests.gallery import serve
 from tests.view.scenarios import ROUTES

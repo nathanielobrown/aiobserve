@@ -1,21 +1,21 @@
 ---
 description: Viewer UI conventions
 paths:
-  - "src/aiobserve/view/templates/**/*.html"
-  - "src/aiobserve/view/static/*.css"
-  - "src/aiobserve/view/static/*.js"
+  - "src/hyphae/view/templates/**/*.html"
+  - "src/hyphae/view/static/*.css"
+  - "src/hyphae/view/static/*.js"
 ---
 
 # Viewer UI
 
-The viewer is server-rendered Jinja with two scripts on a shipped page: vendored htmx, and `src/aiobserve/view/static/tree-width.js` for the one thing a reader sets that no URL carries. A third, `src/aiobserve/view/static/dev-reload.js`, rides `aiobserve view --dev` alone (below). These are the conventions a template has to hold to; what each page shows is in `docs/viewer.md`, and how to edit one with the page open in front of you — and the two traps in the formatter that owns their layout — is in `docs/ui-development.md`.
+The viewer is server-rendered Jinja with two scripts on a shipped page: vendored htmx, and `src/hyphae/view/static/tree-width.js` for the one thing a reader sets that no URL carries. A third, `src/hyphae/view/static/dev-reload.js`, rides `hp view --dev` alone (below). These are the conventions a template has to hold to; what each page shows is in `docs/viewer.md`, and how to edit one with the page open in front of you — and the two traps in the formatter that owns their layout — is in `docs/ui-development.md`.
 
 # One body, two mounts
 
 A node's body is one macro in `_node_body.html`, mounted twice:
 
 - Its **full view**, `node.html`, wraps the body with the tree, the crumbs above it, its enrichment, its previewed values, its children log, and prev/next
-- Its **expansion**, `src/aiobserve/view/templates/fragments/body.html`, is the body alone — opened in a log row while the reader stays on the parent
+- Its **expansion**, `src/hyphae/view/templates/fragments/body.html`, is the body alone — opened in a log row while the reader stays on the parent
 
 Render a node's facts in the body macro and nowhere else. A pane and a tree row that disagree tell a reader two stories about one node.
 
@@ -25,7 +25,7 @@ Every node reachable in the pane has a URL that renders the whole page cold. Not
 
 # A node's title comes off the node
 
-Print `Node.tree_title`, `log_title` or `pane_title`, whichever fits the surface. Never join words in a template and never print a row's own column where a node is being named: the three are one title at three widths (`src/aiobserve/view/nodes.py`), and a surface composing its own would be a second answer to what the node is called. What each kind is titled is in `docs/viewer.md`.
+Print `Node.tree_title`, `log_title` or `pane_title`, whichever fits the surface. Never join words in a template and never print a row's own column where a node is being named: the three are one title at three widths (`src/hyphae/view/nodes.py`), and a surface composing its own would be a second answer to what the node is called. What each kind is titled is in `docs/viewer.md`.
 
 # Tooltips are native `title` attributes
 
@@ -35,7 +35,7 @@ A `title` is worth its bytes where the mark on screen is smaller than what it me
 
 # The glyph is bare in the tree, spelled out in the pane
 
-`✨` marks a title a model helped write and leads the whole of it, halves the session wrote included (`docs/viewer.md`). Write it through `parts.glyph(node)`, which reads the `GLYPH` and `GLYPH_CLASS` globals from `src/aiobserve/view/enrichment.py`; don't type the character into a template.
+`✨` marks a title a model helped write and leads the whole of it, halves the session wrote included (`docs/viewer.md`). Write it through `parts.glyph(node)`, which reads the `GLYPH` and `GLYPH_CLASS` globals from `src/hyphae/view/enrichment.py`; don't type the character into a template.
 
 Where a title repeats — a tree row, a crumb, a log row, a walk control — the glyph goes bare. The pane carries the one that says what the mark means: `parts.summary` hangs `Described.provenance` off it as a `title`, naming the model, when it ran, the prompt and taxonomy versions, and whether the row is stale. A `title` on every repeat would be the same sentence 400 times in one page's markup.
 
@@ -79,15 +79,15 @@ Witnessed in a real Chromium on 2026-08-20 at a viewport where the tree overflow
 
 # A rendered value goes through one macro
 
-Prose a person or a model wrote — a prompt, a run's brief, what a call said — shows as the Markdown it was written in, through `parts.prose`. `src/aiobserve/view/render.py` owns the escaping, and no template may hand `|safe` to a value that did not come through it.
+Prose a person or a model wrote — a prompt, a run's brief, what a call said — shows as the Markdown it was written in, through `parts.prose`. `src/hyphae/view/render.py` owns the escaping, and no template may hand `|safe` to a value that did not come through it.
 
 Both mounts of one value use that macro: the head a pane previews, and the whole of it the fetch swaps into the same block. A value rendered one way in the preview and another in the fetch is a value a reader cannot tell has a head.
 
 # A cut value goes through the filter that marks it
 
-A string its query cut arrives one character past the width it is printed at, and the filter that prints it cuts it back and marks where the rest was left behind (`src/aiobserve/view/format.py:cut`): `line` for a children log's row, `head` and `member` for a header, `short` and `item` for a row of the session list. Print such a value bare and a reader cannot tell a name that ended from one that was stopped. A title arrives marked already, at whichever of the three widths `src/aiobserve/view/nodes.py` cut it to.
+A string its query cut arrives one character past the width it is printed at, and the filter that prints it cuts it back and marks where the rest was left behind (`src/hyphae/view/format.py:cut`): `line` for a children log's row, `head` and `member` for a header, `short` and `item` for a row of the session list. Print such a value bare and a reader cannot tell a name that ended from one that was stopped. A title arrives marked already, at whichever of the three widths `src/hyphae/view/nodes.py` cut it to.
 
-A closed vocabulary is the one thing cut without a mark: a taxonomy value is bound at `queries.TAG_CHARS` because a page whose size is arithmetic needs every width named, not because any member reaches it (`src/aiobserve/enrich/taxonomy.py`). `_parts.html:counted` takes `mark=false` for those, and a mark there would claim a name went on when nothing was left behind.
+A closed vocabulary is the one thing cut without a mark: a taxonomy value is bound at `queries.TAG_CHARS` because a page whose size is arithmetic needs every width named, not because any member reaches it (`src/hyphae/enrich/taxonomy.py`). `_parts.html:counted` takes `mark=false` for those, and a mark there would claim a name went on when nothing was left behind.
 
 A mark is three bytes on every row of the page that carries it, so adding one to a column of the session list moves `bounds.SESSIONS` — the ceiling is derived from the dearest row, and the pin in `tests/view/test_bounds.py` holds it from both sides against what `tests/view/budgets.py` measured that row at.
 
@@ -97,7 +97,7 @@ A rendered value goes in `<span data-field="{{ name }}">`, and a repeated thing 
 
 # What a dev page does when the files change under it
 
-`aiobserve view --dev` puts `src/aiobserve/view/static/dev-reload.js` on every page and serves `/dev/reload`, which sends one message per debounced save under the templates and the static files (`src/aiobserve/view/dev.py`). A stylesheet-only save swaps the sheets in place; anything else reloads the page; and the client reloads on a reconnect too, so a restarted server is what the open page is reading. Nothing else on the page triggers either.
+`hp view --dev` puts `src/hyphae/view/static/dev-reload.js` on every page and serves `/dev/reload`, which sends one message per debounced save under the templates and the static files (`src/hyphae/view/dev.py`). A stylesheet-only save swaps the sheets in place; anything else reloads the page; and the client reloads on a reconnect too, so a restarted server is what the open page is reading. Nothing else on the page triggers either.
 
 Witnessed in a real Chromium on 2026-08-25, over a store built from the `resume_pair` and `spine` fixtures on port 8491, and again on 2026-08-26 against `mise run gallery` on 8478 — never 8477, which is a live viewer. In the second run, on an open node page scrolled down the pane:
 

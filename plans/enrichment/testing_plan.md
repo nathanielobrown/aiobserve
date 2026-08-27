@@ -116,7 +116,7 @@ Invented or planted data, each labeled where it is used, because no recorded ses
 ### opt-in live
 
 - One two-item live check reaches the real API through `SyncClient` and returns schema-conformant output. *Evidence:* `@pytest.mark.slow`, skipped unless an env var opts in **and** `ANTHROPIC_API_KEY` is set; two smallest-render items from the fixture DB; assert both results validate and that `mise run test` with the variable unset makes no network call. Mirrors the pipeline plan's opt-in census pattern. The batch client's own live round trip stays manual — see *Not covered*.
-  - *As built:* `AIOBSERVE_LIVE_API` is the opt-in, beside `test_prompts.py`'s `AIOBSERVE_LIVE_STORE`. Written and skipped, never run: the machine that built it held no `ANTHROPIC_API_KEY`, so the leaf is due a first green run — as is the manual batch check — before the clients are trusted.
+  - *As built:* `HYPHAE_LIVE_API` is the opt-in, beside `test_prompts.py`'s `HYPHAE_LIVE_STORE`. Written and skipped, never run: the machine that built it held no `ANTHROPIC_API_KEY`, so the leaf is due a first green run — as is the manual batch check — before the clients are trusted.
 
 ## Slice 3 — agent runs
 
@@ -196,7 +196,7 @@ Invented or planted data, each labeled where it is used, because no recorded ses
 Each is a real obligation the design creates, reported rather than dropped or demoted.
 
 1. **Truncation and elision are not provable at the design's stated budgets.** Every fixture string outside the structural keep-list is redacted to `[redacted]`, so no fixture row comes within two orders of magnitude of the 30K cap, and the design's stated check — "`test_prompts.py` asserts budgets are never exceeded on real fixture rows" — is vacuous as written. Two changes discharge it: make each render take its budget as a **parameter** defaulting to the constant in `prompts.py`, so the elision leaves run on real rows at a small budget; and add an opt-in, env-gated slow test that renders the live store and asserts no prompt exceeds its real budget. The second reads private data, so it is gated like the pipeline plan's census. This is a small seam change, not a redesign — but the leaves above assume it.
-   - *As built:* the gated test copies the store `AIOBSERVE_LIVE_STORE` names, write-ahead log included, and opens the copy. Opening a store creates the enrichment schema, and that variable points at the archive (`docs/store.md`) — a test may read it, not write to it.
+   - *As built:* the gated test copies the store `HYPHAE_LIVE_STORE` names, write-ahead log included, and opens the copy. Opening a store creates the enrichment schema, and that variable points at the archive (`docs/store.md`) — a test may read it, not write to it.
 
 2. **Content-exclusion claims need a sentinel, not a fixture.** For the same redaction reason, "the render excluded `thinking`" and "the render included `thinking`" produce identical characters on every recorded fixture. The leaves plant a sentinel into one field of a real row. That proves the exclusion for the field planted; it cannot prove that no *other* field leaks. A render whose output is asserted whole (the first leaf of slice 1) is the partial answer, and the reason that leaf spells out the expected string rather than checking substrings.
 

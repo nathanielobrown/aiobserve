@@ -1,6 +1,6 @@
 # The UI development loop
 
-Edit a viewer template or stylesheet and see it in the browser without touching the browser. Two things make that a loop: `mise run gallery`, which serves every scenario the viewer tier pins, and `aiobserve view --dev`, which reloads the open page when you save. What each page shows is in [the viewer guide](viewer.md); the conventions a template has to hold to are in `.claude/rules/viewer-ui.md`.
+Edit a viewer template or stylesheet and see it in the browser without touching the browser. Two things make that a loop: `mise run gallery`, which serves every scenario the viewer tier pins, and `hp view --dev`, which reloads the open page when you save. What each page shows is in [the viewer guide](viewer.md); the conventions a template has to hold to are in `.claude/rules/viewer-ui.md`.
 
 ## Open the scenario you are about to change
 
@@ -30,13 +30,13 @@ djLint writes every template's indentation and attribute layout, and `[tool.djli
 
 Two things to know before you edit a template:
 
-- **The whitespace it writes is bytes on the page.** Jinja renders the newline and the indent the formatter puts between a row's cells, and a tree row is spent 3,217 times on the worst page (`.claude/rules/viewer-ui.md`). A space a reader has to see is written `{{ " " }}`, because a literal one sits where djLint reflows (`src/aiobserve/view/templates/_parts.html`)
-- **Never write a raw tag inside a `{# … #}` comment.** djLint reads the opening tag as the real thing and leaves the rest of the file unindented. Name the element in words instead (`src/aiobserve/view/templates/base.html`)
+- **The whitespace it writes is bytes on the page.** Jinja renders the newline and the indent the formatter puts between a row's cells, and a tree row is spent 3,217 times on the worst page (`.claude/rules/viewer-ui.md`). A space a reader has to see is written `{{ " " }}`, because a literal one sits where djLint reflows (`src/hyphae/view/templates/_parts.html`)
+- **Never write a raw tag inside a `{# … #}` comment.** djLint reads the opening tag as the real thing and leaves the rest of the file unindented. Name the element in words instead (`src/hyphae/view/templates/base.html`)
 
 ## Run the same loop over your own store
 
 ```bash
-uv run aiobserve view --dev
+uv run hp view --dev
 ```
 
 `--dev` mounts the reload stream and puts its client on every page, and changes nothing else: a shipped page is a dev page minus one script tag. The watcher's dependency lives in the dev group, so an installed viewer never carries it and `--dev` in a checkout without it fails at startup rather than serving a loop that never fires. Run `mise run sync` if it does.

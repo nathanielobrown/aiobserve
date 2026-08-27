@@ -22,7 +22,7 @@ Proposed:
 - `mise run check-fast` additionally depends on `lint-docs` (`aigarden check --fix`) — fix-mode inner loop, mirroring `format`/`lint`; with never-wrap configured, this is also the prose formatter
 - `mise run cogs` (`aigarden cog --write`) regenerates stale blocks in place; `cogs-check` never writes (separate code paths in aigarden by design)
 - `mise run mv-doc <src> <dst>` → `aigarden mv`: move a doc and rewrite every reference
-- Cog data flow: `aigarden cog` parses `<!-- aigarden:cog sh "uv run python tools/gen_routes.py" -->` … `<!-- aigarden:end -->` markers in tracked markdown, runs the command with cwd = repo root, splices stdout between the markers. Generators import the installed package (`aiobserve.view.app`, `aiobserve.view.bounds`), so `uv run` from the project venv is the invocation; CI's `mise run sync` precedes `check`, so the venv exists there
+- Cog data flow: `aigarden cog` parses `<!-- aigarden:cog sh "uv run python tools/gen_routes.py" -->` … `<!-- aigarden:end -->` markers in tracked markdown, runs the command with cwd = repo root, splices stdout between the markers. Generators import the installed package (`hyphae.view.app`, `hyphae.view.bounds`), so `uv run` from the project venv is the invocation; CI's `mise run sync` precedes `check`, so the venv exists there
 
 ## File-tree diff
 
@@ -34,7 +34,7 @@ tools/gen_routes.py          + viewer.md route-table generator
 tools/gen_bounds.py          + viewer.md bounds + URL-knob table generator
 tools/gen_layout.py          + CLAUDE.md Layout-tree generator
 tools/gen_schema.py          + schema.md field-table generator (reads the record models)
-src/aiobserve/extract/records.py  + Pydantic models of Claude Code's raw record shapes: docstrings + Field descriptions + evidence metadata
+src/hyphae/extract/records.py  + Pydantic models of Claude Code's raw record shapes: docstrings + Field descriptions + evidence metadata
 tests/tools/                 + generator unit tests
 docs/viewer.md               ~ three tables become cog blocks
 CLAUDE.md                    ~ Layout tree becomes a cog block
@@ -59,13 +59,13 @@ pyproject.toml               ~ slice 6: ruff select expansion + pins, pyrefly st
 - `[per-file-ignores]`:
   - `"plans/**" = ["bare-path", "file-length", "markdown-style"]` — historical documents: citations describe the repo as it was, and reflowing them would churn history for no reader (440 of the repo's 704 wrap points live here)
   - `"reports/**" = ["bare-path"]` — same citation logic; style stays on (zero wrap points today)
-  - `"src/aiobserve/analyze/templates/**" = ["markdown-style"]` — prompt templates: their bytes are model input, and a reflow would silently change prompts and stale every enrichment stamp
+  - `"src/hyphae/analyze/templates/**" = ["markdown-style"]` — prompt templates: their bytes are model input, and a reflow would silently change prompts and stale every enrichment stamp
   - the 11 current over-budget code files each mapped to `["file-length"]` (the ratchet: new files held to 700 lines, offenders shrink as touched)
 - Config typos fail loudly (`deny_unknown_fields`, exit 2) — aigarden is pre-1.0; the exact mise pin means a break surfaces only on a deliberate bump
 
 **Generator contract**: each `tools/gen_*.py` exposes `generate() -> str` and a `main()` that prints it; emits body content only (aigarden owns the framing newlines); crashes on any surprise rather than emitting a partial table. `gen_routes.py` lifts each reader-facing handler's docstring first line for the description column — the docstring becomes the single source, backfilled where missing. `gen_layout.py` keeps a curated entry list in the script and lifts glosses from package docstrings (code entries) and first sentences (docs entries). Generator output must not hard-wrap (it feeds never-wrapped docs).
 
-**Record models (`extract/records.py`)**: one Pydantic model per registered record type, `extra="allow"` (Claude Code adds fields without notice; only record *types* are closed-world). Each field carries `Field(description=...)` for the Meaning column and evidence metadata (fixture path + CC version, via `json_schema_extra`) for the Evidence column — `gen_schema.py` crashes on a field missing either, turning schema.md's "every claim needs a recording" rule into a code-level requirement. Shared fields (`uuid`, `timestamp`, session context) are defined once on base-model mixins; the generator derives the Records column from which models inherit a field, so nothing is stated twice. Two drift tests tie the models to the parser: every registry enum member (RecordType, SystemSubtype, ContentBlock) has a model or documented value, and every field the models document appears in `claude_code.py`. **As built,** the models are a package, `src/aiobserve/extract/records/`: `evidence` carries `Cited`, `blocks` and `shapes` carry the declarations, and `schema` is the walk `gen_schema.py` reads.
+**Record models (`extract/records.py`)**: one Pydantic model per registered record type, `extra="allow"` (Claude Code adds fields without notice; only record *types* are closed-world). Each field carries `Field(description=...)` for the Meaning column and evidence metadata (fixture path + CC version, via `json_schema_extra`) for the Evidence column — `gen_schema.py` crashes on a field missing either, turning schema.md's "every claim needs a recording" rule into a code-level requirement. Shared fields (`uuid`, `timestamp`, session context) are defined once on base-model mixins; the generator derives the Records column from which models inherit a field, so nothing is stated twice. Two drift tests tie the models to the parser: every registry enum member (RecordType, SystemSubtype, ContentBlock) has a model or documented value, and every field the models document appears in `claude_code.py`. **As built,** the models are a package, `src/hyphae/extract/records/`: `evidence` carries `Cited`, `blocks` and `shapes` carry the declarations, and `schema` is the walk `gen_schema.py` reads.
 
 **mise pin**: `"github:nathanielobrown/aigarden" = "0.1.4"` (or whatever slice 0 cuts) exact — never `latest` (mise freezes a `latest` resolve permanently) — plus `minimum_release_age_excludes = ["github:nathanielobrown/aigarden"]` so a just-cut release installs.
 
@@ -95,7 +95,7 @@ Unit tests drive `generate()` directly and assert properties against the live co
 - **Ratchet for file-length** — rejected: budgets above today's max (too loose) and ignoring the rule (user-confirmed)
 - **`per-file-ignores` for `plans/**` and `reports/**` citations, not `status-header`** — our plans carry no `**Status:**` headers; adopting that convention is its own change
 - **Fix the 10 `viewer-ui.md` shorthand paths rather than suppress** — they violate `documentation.md`'s own repo-root path rule; the finding is correct
-- **Generators as `tools/*.py` scripts, not package modules** — repo tooling, not shipped code; rejected: `src/aiobserve/` placement
+- **Generators as `tools/*.py` scripts, not package modules** — repo tooling, not shipped code; rejected: `src/hyphae/` placement
 - **Glosses lifted from docstrings/first sentences, not a data file** — a spec file would duplicate prose that already exists
 - **schema.md generated from descriptive Pydantic record models, parser unchanged for now** — meanings and evidence move into code as the single source (user-confirmed: DRY); the models are written with raw camelCase field names so the parser can later adopt them wholesale. Rejected for this change: rewriting `claude_code.py` to parse *through* the models — a 1156-line closed-world parser rewrite with corpus-wide re-extraction, its own project; the drift tests hold the two together until then. Also rejected: SQLAlchemy `doc=` params — they'd describe our store tables, not Claude Code's transcript fields, which is what schema.md documents
 - **`extra="allow"` on record models** — Claude Code adds fields without notice and the parser today ignores unknown fields; `extra="forbid"` would turn every upstream addition into a crash on shapes we never read. The closed-world crash stays where it is: unregistered record types
@@ -126,9 +126,9 @@ Unit tests drive `generate()` directly and assert properties against the live co
 
 **Verified locally (2026-08-26)**: the shadow-run numbers; the broken anchor; the per-file finding lists; gitignored trees not walked; `reflow = true` in 0.1.3 is `MD013Config::default()` + reflow (source: `src/rumdl_adapter.rs::style_rules`) and reports nothing on short hard-wrapped lines (probe); wrap-point census: 704 total — 440 `plans/`, 180 fixture READMEs (built-in exclude), 23 prompt templates, 61 living docs; `schema.md` documents Claude Code's raw fields with fixture+version evidence; `model.py` is frozen dataclasses with rich comments; the store is raw-SQL DDL in `export/duckdb.py`; the extractor parses records as dicts with closed-world StrEnum registries and no typed raw-record models; pydantic is not currently a dependency. **Inferred from subagent research** (verify at implementation): remaining aigarden config key names, mycelia config excerpts, the `sh`-generator cwd contract.
 
-## Appendix: tooling drift, mycelia → aiobserve (feeds slice 6)
+## Appendix: tooling drift, mycelia → hyphae (feeds slice 6)
 
-| Tool | mycelia | aiobserve today |
+| Tool | mycelia | hyphae today |
 | --- | --- | --- |
 | ruff | `==0.15.17` exact; ~40 curated select groups; `docstring-code-format`; commented ignore list | `>=0.12` floor; 7 groups (E F I UP B SIM TID) |
 | pyrefly | `>=1.0`; `preset = "strict"`, `min-severity = "warn"`, every warn-kind promoted to error, sub-config relaxes tests | `>=0.24`; includes + search-path only |

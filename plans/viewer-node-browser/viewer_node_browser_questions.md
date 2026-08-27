@@ -2,7 +2,7 @@
 
 Six forks, all independent of each other. Everything downstream (tooltips, enrichment markers, syntax highlighting, bounds arithmetic, PR slicing) waits on these.
 
-What I checked before asking, so you don't have to: the store already holds every input and output — `raw_records.raw` archives every transcript line, `tool_calls.input`/`.result` hold tool arguments and results, `offload_files.content` holds the ones Claude Code wrote to disk, and `api_calls.text`/`.thinking` hold model output. Nothing is dropped at extract. The viewer already opens most of them on demand. htmx 2.0.6 is vendored, so "the viewer ships no script of its own" means no *first-party* script. Each citation string names a real file: `src/aiobserve/analyze/queries/view_session_header.sql`.
+What I checked before asking, so you don't have to: the store already holds every input and output — `raw_records.raw` archives every transcript line, `tool_calls.input`/`.result` hold tool arguments and results, `offload_files.content` holds the ones Claude Code wrote to disk, and `api_calls.text`/`.thinking` hold model output. Nothing is dropped at extract. The viewer already opens most of them on demand. htmx 2.0.6 is vendored, so "the viewer ships no script of its own" means no *first-party* script. Each citation string names a real file: `src/hyphae/analyze/queries/view_session_header.sql`.
 
 ## 1. Replace the paged timeline and the run page with one uniform node view?
 
@@ -307,7 +307,7 @@ The way out is that the two paths aren't the same node. One is the run; the othe
 turn 4
 ├─ api call 1
 ├─ api call 2
-│  ├─ Read src/aiobserve/view/app.py
+│  ├─ Read src/hyphae/view/app.py
 │  └─ Task → auditor            ← a tool call node; its view links to the run
 ├─ 🤖 auditor run  ↖ from api call 2
 │  ├─ turn 1

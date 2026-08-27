@@ -16,9 +16,9 @@ session looks like, not an invented one.
 import duckdb
 from fastapi.testclient import TestClient
 
-from aiobserve.analyze import queries
-from aiobserve.view import bounds
-from aiobserve.view.app import build_app
+from hyphae.analyze import queries
+from hyphae.view import bounds
+from hyphae.view.app import build_app
 from tests.conftest import DENSE_TOOL, FORK_ORIGIN, FORK_ORIGIN_RUN, SPINE
 from tests.view.conftest import MISSING, Planter, fields, inside, one, rows, values
 

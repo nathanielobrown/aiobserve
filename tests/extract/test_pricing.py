@@ -8,7 +8,7 @@ asserting a constant against itself proves nothing. `pricing.py` records the che
 
 import pytest
 
-from aiobserve.extract.pricing import (
+from hyphae.extract.pricing import (
     CONTEXT_WINDOWS,
     PRICES,
     SYNTHETIC_MODEL,

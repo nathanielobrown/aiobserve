@@ -17,11 +17,11 @@ from pathlib import Path
 import duckdb
 from fastapi.testclient import TestClient
 
-from aiobserve.analyze import macros
-from aiobserve.extract.pricing import CONTEXT_WINDOWS, CostSplit, TokenUsage, split_cost
-from aiobserve.view.app import build_app
-from aiobserve.view.format import ABSENT
-from aiobserve.view.nodes import NUMBERS_URL, Kind
+from hyphae.analyze import macros
+from hyphae.extract.pricing import CONTEXT_WINDOWS, CostSplit, TokenUsage, split_cost
+from hyphae.view.app import build_app
+from hyphae.view.format import ABSENT
+from hyphae.view.nodes import NUMBERS_URL, Kind
 from tests.conftest import (
     ANCESTOR,
     DENSE_CALL,

@@ -1,6 +1,6 @@
 # The trace store
 
-The trace store is one DuckDB file, `data/traces.duckdb`: the archive `aiobserve extract` writes to and every query reads. It is gitignored with the rest of `data/`. Treat it as an archive — read this guide before deleting it, moving it, or changing a version constant.
+The trace store is one DuckDB file, `data/traces.duckdb`: the archive `hp extract` writes to and every query reads. It is gitignored with the rest of `data/`. Treat it as an archive — read this guide before deleting it, moving it, or changing a version constant.
 
 ## The store holds traces and derived data
 
@@ -21,11 +21,11 @@ erDiagram
     agent_runs ||--o{ agent_runs : "spawned"
 ```
 
-`_SCHEMA` in `src/aiobserve/export/duckdb.py` defines the trace tables and their columns. The OTLP exporter defines its own `otlp_delivery` table in `src/aiobserve/export/otlp_delivery.py`. Other components that write to the store also own their tables, including the enrichment tables described below. [The schema guide](schema.md) defines each telemetry field and cites the recording that proves it.
+`_SCHEMA` in `src/hyphae/export/duckdb.py` defines the trace tables and their columns. The OTLP exporter defines its own `otlp_delivery` table in `src/hyphae/export/otlp_delivery.py`. Other components that write to the store also own their tables, including the enrichment tables described below. [The schema guide](schema.md) defines each telemetry field and cites the recording that proves it.
 
 A session's main thread and agent runs use the same trace tables. The `source` column distinguishes them, so `(session_id, source, id)` identifies a turn or call.
 
-Queries use views instead of reading the trace tables directly. `_VIEWS` in `src/aiobserve/export/duckdb.py` defines `live_*` views, which omit records replayed by a fork. The `corpus_*` views also omit records already stored for an earlier session. Resumed sessions copy their ancestor's records, so counting both would count the same records twice. `session_rollups` and `corpus_rollups` reduce each family to one row per session.
+Queries use views instead of reading the trace tables directly. `_VIEWS` in `src/hyphae/export/duckdb.py` defines `live_*` views, which omit records replayed by a fork. The `corpus_*` views also omit records already stored for an earlier session. Resumed sessions copy their ancestor's records, so counting both would count the same records twice. `session_rollups` and `corpus_rollups` reduce each family to one row per session.
 
 [Enrichment](enrichment.md) adds three `*_enrichments` tables keyed one-to-one to sessions, turns, and agent runs. It also adds views that join the enrichments to those records. Until an enrichment pass writes these tables, queries against them fail with an error that says they don't exist.
 
@@ -39,9 +39,9 @@ Once Claude Code deletes those files, the store holds the only copy. Deleting it
 
 ## Choose the right path for each version change
 
-Each session fingerprint includes `EXTRACTOR_VERSION` from `src/aiobserve/extract/claude_code.py`. Raising that version makes the next refresh re-extract every session whose files remain on disk. Extraction updates the existing store, so you don't need to delete it. Pruned sessions keep the rows produced by the parser that first extracted them.
+Each session fingerprint includes `EXTRACTOR_VERSION` from `src/hyphae/extract/claude_code.py`. Raising that version makes the next refresh re-extract every session whose files remain on disk. Extraction updates the existing store, so you don't need to delete it. Pruned sessions keep the rows produced by the parser that first extracted them.
 
-`SCHEMA_VERSION` in `src/aiobserve/export/duckdb.py` has no migrations while the project is early. The program refuses to read or write a store created with another schema version. It tells you to extract into a fresh store instead. Don't delete the old store until you run the check below.
+`SCHEMA_VERSION` in `src/hyphae/export/duckdb.py` has no migrations while the project is early. The program refuses to read or write a store created with another schema version. It tells you to extract into a fresh store instead. Don't delete the old store until you run the check below.
 
 A fresh store has an empty `otlp_delivery` table. Because `export-otlp` uses that table to track what each backend confirmed, the next export sends every session to every backend again. See [the OTLP export guide](otlp-export.md).
 

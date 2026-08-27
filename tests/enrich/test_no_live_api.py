@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from aiobserve.enrich.client import CliClient, EnrichRequest
+from hyphae.enrich.client import CliClient, EnrichRequest
 from tests.enrich.conftest import LIVE_CLI, SubprocessForbidden
 
 

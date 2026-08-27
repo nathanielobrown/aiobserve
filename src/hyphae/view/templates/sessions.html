@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% import "_parts.html" as parts %}
+{% block title %}Sessions — hyphae{% endblock %}
+{# A column heading: a link that re-sorts, marked when it is the sort in force. The mark is
+   spelled in ARIA's own vocabulary and not the query string's — `aria_direction`, from
+   `view/listing.py` — because a token ARIA does not define announces nothing. #}
+{% macro heading(key) %}
+  <th scope="col"
+      data-column="{{ key }}"
+      {%- if key == sort %} aria-sort="{{ aria_direction }}"{% endif %}>
+    <a href="{{ links[key] }}">{{ sorts[key] }}</a>
+  </th>
+{% endmacro %}
+{# The list carries the same pager above and below the table; `place` tells them apart —
+   including for a reader who hears the two rather than seeing where they sit. #}
+{% macro pager(place) %}
+  <nav class="pager" data-pager="{{ place }}" aria-label="{{ place }} pager">
+    {% if previous %}<a data-page="previous" href="{{ previous }}">← newer page</a>{% endif %}
+    <span data-field="range">{% if sessions %}Sessions {{ first | count }}–{{ (first
+    + (sessions | length) - 1) | count }}{% else %}No sessions{% endif %}</span>
+  {% if next %}<a data-page="next" href="{{ next }}">older page →</a>{% endif %}
+</nav>
+{% endmacro %}
+{% block main %}
+  <h1>Sessions</h1>
+  {# One input per filter the list offers, generated from `FILTERS` rather than listed here, so
+     a filter added in `view/listing.py` appears without a template edit. Submitting keeps the sort
+     and drops the page: page 4 of a narrower list is a different page. #}
+  <form id="filters" method="get" action="/sessions">
+    <input type="hidden" name="sort" value="{{ sort }}">
+    <input type="hidden" name="direction" value="{{ direction }}">
+    {% for control in controls %}
+      <label data-filter="{{ control.key }}">
+        {{ control.key }}
+        <input type="{{ control.type }}"
+               name="{{ control.key }}"
+               value="{{ control.value }}"
+               {% if control.key == 'project' %}list="project-names"{% endif %}>
+      </label>
+    {% endfor %}
+    <button type="submit">Filter</button>
+    <a href="/sessions">clear</a>
+  </form>
+  {# Suggestions, not a closed set: a project the store has no sessions for is an empty list
+     rather than an error, and typing a path the datalist lacks still runs. #}
+  <datalist id="project-names">
+    {% for project in projects %}<option value="{{ project }}">{% endfor %}
+  </datalist>
+  {{ pager("top") }}
+  <table id="sessions">
+    <thead>
+      <tr>
+        {{ heading("started_at") }}
+        {{ heading("title") }}
+        {{ heading("project_dir") }}
+        {{ heading("turns") }}
+        {{ heading("api_calls") }}
+        {{ heading("tool_calls") }}
+        {{ heading("compactions") }}
+        {{ heading("tool_errors") }}
+        {{ heading("cost_usd") }}
+        {{ heading("wall_ms") }}
+        {{ heading("agent_runs") }}
+        <th scope="col">Skills</th>
+        {# Only over a store a pass has described: an empty column would be a claim about what
+           these sessions did that the store cannot support. #}
+        {% if described %}<th scope="col">Work</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in sessions %}
+        <tr data-session-id="{{ row.session_id }}">
+          {# When, at the scale a list is scanned at, over the timestamp a report would quote. #}
+          <td class="when">
+            {{ parts.stacked('ago', row.started_at | ago,
+              'started_at', row.started_at | when) }}
+          </td>
+          <td class="title">
+            <a class="primary"
+               data-field="title"
+               href="/session/{{ row.session_id }}">{{ (row.title or row.session_id) | short }}</a>
+            {# What the pass said this session was, under the prompt's own title. Absent over a
+               store no pass has touched, and over a session it has not reached yet. Never a
+               stale tag: the list joins the words and not the versions that would judge them,
+               and the session's own page says so a click away. #}
+            {% if row.description %}
+              <span class="enrichment secondary" data-enrichment="{{ row.session_id }}">
+                <span data-field="description">{{ row.description | short }}</span>
+                {{ parts.tags({'category': row.category, 'outcome': row.outcome, 'stale': false}) }}
+              </span>
+            {% endif %}
+          </td>
+          <td data-field="project_dir" class="path">{{ row.project_dir | short | path }}</td>
+          <td data-field="turns" class="number">{{ row.turns | count }}</td>
+          <td data-field="api_calls" class="number">{{ row.api_calls | count }}</td>
+          <td data-field="tool_calls" class="number">{{ row.tool_calls | count }}</td>
+          <td data-field="compactions" class="number">{{ row.compactions | count }}</td>
+          {# The rate says whether a session was going wrong; the count is what ranks it, which is
+             why the heading over it sorts by the line underneath. #}
+          <td class="number">
+            {{ parts.stacked('error_rate', row.tool_errors | share(row.tool_calls),
+              'tool_errors', row.tool_errors | count, 'errors') }}
+          </td>
+          {# The unpriced count rides beside the cost: a total with calls our price table
+             missed is not the session's cost, and the page has to say so. #}
+          <td class="number">
+            {% call parts.stacked('cost_usd', row.cost_usd | money,
+              'output_tokens', row.output_tokens | count, 'out')
+              %}{{ parts.unpriced(row.unpriced_api_calls) }}{% endcall %}</td>
+          <td class="number">{{ parts.stacked('wall_ms', row.wall_ms | duration,
+            'active_ms', row.active_ms | duration, 'active') }}
+              </td>
+              {# The three lists that grow with a session, so the query cuts each and says how many it
+                 left: a row of the list is multiplied by the size of the page. The two a transcript
+                 named have their members marked where the cut bit; the kinds of work do not, because
+                 that vocabulary is closed and cannot reach its cut. #}
+              <td data-field="agent_types" class="names">{{ parts.counted(row.agent_types or [], 'runs')
+              }}{{ parts.more(row.agent_types_cut) }}</td>
+              <td data-field="skills" class="names">{{ (row.skills or []) | map("item") | join(', ')
+              }}{{ parts.more(row.skills_cut) }}</td>
+              {% if described %}
+                <td data-field="work" class="names">
+                  {{ parts.counted(row.work or [], 'turns', mark=false)
+                  }}{{ parts.more(row.work_cut) }}
+                </td>
+              {% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {{ pager("bottom") }}
+{% endblock %}

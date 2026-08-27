@@ -4,8 +4,8 @@ The fixtures are the same redacted mycelia sessions the rest of the extractor te
 `tests/fixtures/*/README.md` names each source session and its Claude Code version.
 """
 
-from aiobserve.extract.claude_code import ClaudeCodeExtractor
-from aiobserve.model import MAIN_SOURCE, ToolCall
+from hyphae.extract.claude_code import ClaudeCodeExtractor
+from hyphae.model import MAIN_SOURCE, ToolCall
 from tests.conftest import SourceFactory
 from tests.extract.test_claude_code import SPINE, at
 

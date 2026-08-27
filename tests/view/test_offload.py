@@ -11,8 +11,8 @@ from urllib.parse import quote
 import duckdb
 from fastapi.testclient import TestClient
 
-from aiobserve.view import bounds
-from aiobserve.view.app import build_app
+from hyphae.view import bounds
+from hyphae.view.app import build_app
 from tests.conftest import (
     CONFIG_ONLY,
     FORK_ORIGIN,

@@ -12,7 +12,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from aiobserve.export.duckdb import (
+from hyphae.export.duckdb import (
     SCHEMA_VERSION,
     TABLES,  # every table a session owns — read off the exporter so a new one cannot slip past
     DuckDbExporter,

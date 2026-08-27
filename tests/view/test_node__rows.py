@@ -11,11 +11,11 @@ import re
 import duckdb
 from fastapi.testclient import TestClient
 
-from aiobserve.analyze import queries
-from aiobserve.view import nodes
-from aiobserve.view.app import build_app
-from aiobserve.view.format import ELLIPSIS
-from aiobserve.view.nodes import LEAD_SEPARATOR
+from hyphae.analyze import queries
+from hyphae.view import nodes
+from hyphae.view.app import build_app
+from hyphae.view.format import ELLIPSIS
+from hyphae.view.nodes import LEAD_SEPARATOR
 from tests.view.conftest import (
     Planter,
     fields,
@@ -58,10 +58,10 @@ def test_a_tool_row_says_what_the_tool_was_asked(
             [session_id, source, call_id],
         ).fetchall()
     ]
-    project = "/Users/planted/repos/aiobserve"
+    project = "/Users/planted/repos/hyphae"
     asked = {
         # A file the session's own project holds, and one it does not.
-        tools[0]: ("Read", f'{{"file_path": "{project}/src/aiobserve/view/app.py"}}'),
+        tools[0]: ("Read", f'{{"file_path": "{project}/src/hyphae/view/app.py"}}'),
         tools[1]: ("Read", '{"file_path": "/etc/hosts"}'),
         # A command, which carries both what it was for and what it ran.
         tools[2]: ("Bash", '{"command": "git status --short", "description": "Read the tree"}'),
@@ -79,7 +79,7 @@ def test_a_tool_row_says_what_the_tool_was_asked(
         page = planted.get(f"/session/{session_id}/thread/{source}/call/{call_id}").text
     rows = {tool_id: fields(page, "data-child", f"tool:{tool_id}") for tool_id in tools}
     # The project's own file reads from the project root, and the one outside it in full.
-    assert rows[tools[0]]["title"] == "src/aiobserve/view/app.py"
+    assert rows[tools[0]]["title"] == "src/hyphae/view/app.py"
     assert rows[tools[1]]["title"] == "/etc/hosts"
     # The command reads as what it was for, with what it ran under it.
     assert rows[tools[2]]["title"] == "Read the tree"
@@ -87,8 +87,8 @@ def test_a_tool_row_says_what_the_tool_was_asked(
     # And the tool with no field the rule knows shows the input as stored.
     assert rows[tools[3]]["title"] == '{"todos": [{"content": "write the test"}]}'
     assert "command" not in rows[tools[3]]
-    # A directory whose name merely starts with the project's reads absolute: `aiobserve2` is
-    # not inside `aiobserve`, and without the separator the guard carries it would relativise
+    # A directory whose name merely starts with the project's reads absolute: `hyphae2` is
+    # not inside `hyphae`, and without the separator the guard carries it would relativise
     # to `/src/x.py` — a path that looks like it sits at the repository root. Real: 2,053 of
     # the 67,252 `file_path` rows in the recorded store share the project's prefix from
     # outside it.
@@ -143,7 +143,7 @@ def test_a_tool_row_says_what_the_tool_was_asked(
     with TestClient(build_app(homeless)) as planted:
         loose = planted.get(f"/session/{session_id}/thread/{source}/call/{call_id}").text
     assert fields(loose, "data-child", f"tool:{tools[0]}")["title"] == (
-        f"{project}/src/aiobserve/view/app.py"
+        f"{project}/src/hyphae/view/app.py"
     )
 
 
@@ -191,7 +191,7 @@ def test_a_call_row_says_what_the_call_said_and_which_tools_it_called(
             [session_id, source, call_id],
         ).fetchall()
     ]
-    project = "/Users/planted/repos/aiobserve"
+    project = "/Users/planted/repos/hyphae"
     said = "I will read the app and then check what the tree is standing on."
     dressed = plant(
         ("UPDATE sessions SET project_dir = ? WHERE id = ?", [project, session_id]),
@@ -216,7 +216,7 @@ def test_a_call_row_says_what_the_call_said_and_which_tools_it_called(
         # the two derivations the tools log's own rows show.
         (
             "UPDATE tool_calls SET name = ?, input = ? WHERE id = ?",
-            ["Read", f'{{"file_path": "{project}/src/aiobserve/view/app.py"}}', tools[0]],
+            ["Read", f'{{"file_path": "{project}/src/hyphae/view/app.py"}}', tools[0]],
         ),
         (
             "UPDATE tool_calls SET name = ?, input = ? WHERE id = ?",
@@ -234,14 +234,14 @@ def test_a_call_row_says_what_the_call_said_and_which_tools_it_called(
     assert row["text"] == said
     # ...and the tools it called are named, in the order it called them and no others: what
     # the re-indexed call asked for last comes last, under the count of them.
-    assert row["tool_titles"] == "Read the tree, src/aiobserve/view/app.py"
+    assert row["tool_titles"] == "Read the tree, src/hyphae/view/app.py"
     assert row["tool_calls"] == str(held)
 
     # Both are cut to the column's width and marked where they were cut, like every other
     # string a row of a hundred prints: a call that talked for a page and called forty tools
     # is a row, not a page of one.
     long_said = "s" * (queries.LOG_CHARS + 40)
-    long_path = f"src/aiobserve/{'v' * queries.LOG_CHARS}.sql"
+    long_path = f"src/hyphae/{'v' * queries.LOG_CHARS}.sql"
     reach = plant(
         ("UPDATE sessions SET project_dir = ? WHERE id = ?", [project, session_id]),
         ("UPDATE api_calls SET text = ? WHERE id = ?", [long_said, call_id]),
@@ -344,14 +344,14 @@ def test_one_tool_call_is_titled_the_same_way_wherever_it_is_named(
         ' ORDER BY "index" LIMIT 1',
         [session_id, source, call_id],
     )[0]
-    project = "/Users/planted/repos/aiobserve"
+    project = "/Users/planted/repos/hyphae"
     # A failed read of a file inside the session's own project: one row every one of the four
     # surfaces has a reason to name — the errors list only lists what failed.
     path = plant(
         ("UPDATE sessions SET project_dir = ? WHERE id = ?", [project, session_id]),
         (
             "UPDATE tool_calls SET name = ?, input = ?, is_error = true WHERE id = ?",
-            ["Read", f'{{"file_path": "{project}/src/aiobserve/view/nodes.py"}}', tool_id],
+            ["Read", f'{{"file_path": "{project}/src/hyphae/view/nodes.py"}}', tool_id],
         ),
     )
     with TestClient(build_app(path)) as planted:
@@ -359,7 +359,7 @@ def test_one_tool_call_is_titled_the_same_way_wherever_it_is_named(
         parent = planted.get(f"/session/{session_id}/thread/{source}/call/{call_id}").text
         listed = planted.get(f"/session/{session_id}/errors").text
     # The title the derivation composes: what the tool was, then what it was asked.
-    titled = f"Read{LEAD_SEPARATOR}src/aiobserve/view/nodes.py"
+    titled = f"Read{LEAD_SEPARATOR}src/hyphae/view/nodes.py"
     # Its own pane heads it, the tree row it stands on carries it, and the errors list — which
     # reads a query of its own, over every thread of the session — carries the same string.
     assert fields(pane, "data-body", "tool")["title"] == titled
@@ -368,7 +368,7 @@ def test_one_tool_call_is_titled_the_same_way_wherever_it_is_named(
     # And the children log under the parent call prints the words under its own `Title` column,
     # with the lead standing in the `Tool` column beside it rather than twice in one row.
     row = fields(parent, "data-child", f"tool:{tool_id}")
-    assert row["title"] == "src/aiobserve/view/nodes.py"
+    assert row["title"] == "src/hyphae/view/nodes.py"
     assert row["name"] == "Read"
 
     # A path long enough that cutting the project directory off it matters. The four surfaces
@@ -376,7 +376,7 @@ def test_one_tool_call_is_titled_the_same_way_wherever_it_is_named(
     # is the head of the *relative* path, marked where it stopped. A derivation that cut the
     # absolute path first would hand every surface the same short string, unmarked and one
     # project directory shorter than the width it was asked for.
-    long_path = f"src/aiobserve/{'v' * 380}.sql"
+    long_path = f"src/hyphae/{'v' * 380}.sql"
     reach = plant(
         ("UPDATE sessions SET project_dir = ? WHERE id = ?", [project, session_id]),
         (
@@ -402,7 +402,7 @@ def test_one_tool_call_is_titled_the_same_way_wherever_it_is_named(
     # And a path that fits every width reaches every surface whole, extension and all: the
     # pane has the least room of the three and 30 characters of project directory is what
     # decides whether a reader sees the end of the name or a cut that says nothing.
-    fits = f"src/aiobserve/{'v' * 72}.sql"
+    fits = f"src/hyphae/{'v' * 72}.sql"
     assert len(f"Read{LEAD_SEPARATOR}{fits}") < queries.HEADER_CHARS
     snug = plant(
         ("UPDATE sessions SET project_dir = ? WHERE id = ?", [project, session_id]),

@@ -21,9 +21,9 @@ import duckdb
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
-from aiobserve.analyze import queries
-from aiobserve.view import nodes
-from aiobserve.view.templating import TEMPLATES
+from hyphae.analyze import queries
+from hyphae.view import nodes
+from hyphae.view.templating import TEMPLATES
 from tests.conftest import (
     BASH_TOOL,
     DENSE_CALL,

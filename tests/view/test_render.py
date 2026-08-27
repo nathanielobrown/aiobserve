@@ -6,7 +6,7 @@ two escaping layers the design names; the outer one is the planted-sentinel rout
 `tests/view/test_app.py`, which sees what a template does after `render.py` is done.
 """
 
-from aiobserve.view import render
+from hyphae.view import render
 from tests.view.conftest import plain
 
 

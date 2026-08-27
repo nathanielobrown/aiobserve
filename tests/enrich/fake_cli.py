@@ -21,14 +21,14 @@ from typing import Any
 
 import pytest
 
-from aiobserve.enrich.client import (
+from hyphae.enrich.client import (
     CLAUDE,
     ITEM_TIMEOUT,
     EnrichRequest,
     Failed,
     Result,
 )
-from aiobserve.enrich.validation import FailureKind
+from hyphae.enrich.validation import FailureKind
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

@@ -3,7 +3,7 @@
 A plain module rather than a fixture file: each number here is a measurement taken against a
 rendered page, and the leaves that spend them read them as constants — behind a fixture the
 arithmetic would be a request rather than a sum you can follow. `tests/view/test_bounds.py`
-and its neighbours are the callers; `src/aiobserve/view/bounds.py` holds the caps the app
+and its neighbours are the callers; `src/hyphae/view/bounds.py` holds the caps the app
 itself enforces.
 """
 
@@ -11,12 +11,12 @@ import re
 
 from markupsafe import escape
 
-from aiobserve.analyze import queries
-from aiobserve.view import bounds, nodes
-from aiobserve.view.format import ELLIPSIS
-from aiobserve.view.knobs import knobs
-from aiobserve.view.listing import SHOWN
-from aiobserve.view.store import Page
+from hyphae.analyze import queries
+from hyphae.view import bounds, nodes
+from hyphae.view.format import ELLIPSIS
+from hyphae.view.knobs import knobs
+from hyphae.view.listing import SHOWN
+from hyphae.view.store import Page
 from tests.view.conftest import (
     Statement,
 )

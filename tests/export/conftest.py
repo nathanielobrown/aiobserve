@@ -25,17 +25,17 @@ from opentelemetry.proto.common.v1 import common_pb2
 from opentelemetry.proto.resource.v1 import resource_pb2
 from opentelemetry.proto.trace.v1 import trace_pb2
 
-from aiobserve.export.duckdb import open_trace_store
-from aiobserve.export.otlp import METADATA_ONLY, TextPolicy
-from aiobserve.export.otlp_delivery import (
+from hyphae.export.duckdb import open_trace_store
+from hyphae.export.otlp import METADATA_ONLY, TextPolicy
+from hyphae.export.otlp_delivery import (
     DEFAULT_BATCH_SPANS,
     DEFAULT_RATE,
     Backend,
     OtlpExporter,
 )
-from aiobserve.extract.store import StoreSource
-from aiobserve.model import SessionTrace
-from aiobserve.pipeline import RefreshResult, SessionSource, refresh
+from hyphae.extract.store import StoreSource
+from hyphae.model import SessionTrace
+from hyphae.pipeline import RefreshResult, SessionSource, refresh
 from tests.conftest import FIXTURES, MYCELIA, SERVER_TOOLS, SPINE, build_store
 
 # No request in these tests crosses a network, so a slow one is a hang, not a slow link.
@@ -50,7 +50,7 @@ SECOND = SPINE
 KEY_SENTINEL = "planted-key-not-a-real-credential"
 
 # Names the backend an opt-in live send ships to. Unset, every leaf here stays on this machine.
-LIVE_ENV = "AIOBSERVE_LIVE_OTLP"
+LIVE_ENV = "HYPHAE_LIVE_OTLP"
 
 # The only hosts a test may reach. Anything else is a real backend: billed, and handed a
 # transcript.

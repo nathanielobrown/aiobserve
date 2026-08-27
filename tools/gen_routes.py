@@ -18,9 +18,9 @@ from pathlib import Path
 from fastapi import FastAPI
 from starlette.routing import Route
 
-from aiobserve.export.duckdb import DuckDbExporter
-from aiobserve.view import nodes
-from aiobserve.view.app import build_app
+from hyphae.export.duckdb import DuckDbExporter
+from hyphae.view import nodes
+from hyphae.view.app import build_app
 from tools import text
 
 

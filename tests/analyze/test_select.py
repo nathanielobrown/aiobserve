@@ -15,7 +15,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from aiobserve.analyze.manifest import QUERIES
+from hyphae.analyze.manifest import QUERIES
 from tests.analyze.conftest import (
     AGENT_TYPES,
     AS_OF_PARTIAL,
@@ -289,7 +289,7 @@ def test_the_production_quotas_are_the_designed_reading_budget() -> None:
         "compaction_quota": 4,
         "discovery_quota": 8,
         "skill_threshold": 5,
-        "seed": "aiobserve",
+        "seed": "hyphae",
         "min_api_calls": 1,
         "min_discovery_api_calls": 10,
     }

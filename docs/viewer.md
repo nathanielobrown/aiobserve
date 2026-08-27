@@ -1,8 +1,8 @@
 # The trace viewer
 
-`aiobserve view` opens the trace store in a local browser. Everything a session recorded is a node with a page of its own — the session, its turns, the runs it spawned, the api calls, the tool calls, the compactions between them — and you read one node at a time, with a tree beside it showing where that node sits. Copy the URL of anything you want to cite.
+`hp view` opens the trace store in a local browser. Everything a session recorded is a node with a page of its own — the session, its turns, the runs it spawned, the api calls, the tool calls, the compactions between them — and you read one node at a time, with a tree beside it showing where that node sits. Copy the URL of anything you want to cite.
 
-The server binds only to `127.0.0.1`, opens the store read-only, and serves only vendored assets. Run `aiobserve view --help` for flags. [The node-browser design](../plans/viewer-node-browser/design.md) holds the choices behind the tree, and [the trace-viewer design](../plans/trace-viewer/design.md) the ones behind the pages around it. [URLs and page bounds](viewer-bounds.md) covers what a URL may ask for and what a page is allowed to weigh. Editing a template is governed by `.claude/rules/viewer-ui.md`, and [the UI development loop](ui-development.md) is how to edit one and watch the page: `--dev` reloads the open page on save, and `mise run gallery` serves the scenarios the tests pin.
+The server binds only to `127.0.0.1`, opens the store read-only, and serves only vendored assets. Run `hp view --help` for flags. [The node-browser design](../plans/viewer-node-browser/design.md) holds the choices behind the tree, and [the trace-viewer design](../plans/trace-viewer/design.md) the ones behind the pages around it. [URLs and page bounds](viewer-bounds.md) covers what a URL may ask for and what a page is allowed to weigh. Editing a template is governed by `.claude/rules/viewer-ui.md`, and [the UI development loop](ui-development.md) is how to edit one and watch the page: `--dev` reloads the open page on save, and `mise run gallery` serves the scenarios the tests pin.
 
 ## Follow a session down to any record it holds
 
@@ -54,7 +54,7 @@ Solid edges lead to pages with their own URLs. Dotted edges fetch a fragment int
 | An offload file | `/session/{session_id}/offload/{offload_name:path}` | One chunk of a tool result Claude Code wrote to a file beside the transcript |
 <!-- aigarden:end -->
 
-`build_app` in `src/aiobserve/view/app.py` mounts one route module per subject, fragments included, and the table above is read back off the app it builds. Nothing renders in the reading pane that a cold GET of its own URL doesn't render whole, tree and all.
+`build_app` in `src/hyphae/view/app.py` mounts one route module per subject, fragments included, and the table above is read back off the app it builds. Nothing renders in the reading pane that a cold GET of its own URL doesn't render whole, tree and all.
 
 ## The landing page counts projects
 
@@ -135,7 +135,7 @@ By kind:
 
 A title that leads with a word — a run's agent type, a tool call's name — drops that word in a children log heading a column with it: the unattached bucket's log heads a column with the agent type, and a tool log with the tool name, and a row does not print one value twice. A `Bash` call's command hangs under its title there, on a second line. One log names its rows by something other than the child's title: an api call's row is named by the model that answered. What the call said stands beside it in a column of its own, two dim lines cut where the second ends, and the tools it went on to call are named under the count of them — so a turn's calls read without opening one.
 
-A tool call's title is derived in SQL, a macro every query that names one calls (`src/aiobserve/analyze/macros.py`), because the input it reads is a fat column no page may load whole. The rest are composed in `src/aiobserve/view/nodes.py`, over what the query that read the node returned — an api call's tool calls reach it as their names in order and what the first one asked, read through that same macro, so the queries fetch the parts and the composition owns the sentence and its widths. Either way each kind has one derivation, and the three widths above are the only cuts of it.
+A tool call's title is derived in SQL, a macro every query that names one calls (`src/hyphae/analyze/macros.py`), because the input it reads is a fat column no page may load whole. The rest are composed in `src/hyphae/view/nodes.py`, over what the query that read the node returned — an api call's tool calls reach it as their names in order and what the first one asked, read through that same macro, so the queries fetch the parts and the composition owns the sentence and its widths. Either way each kind has one derivation, and the three widths above are the only cuts of it.
 
 ## A mark says what kind of node a page names
 
@@ -153,7 +153,7 @@ A store that has never been enriched has none of the enrichment tables. The view
 
 ## Extracts and page loads can contend for the store
 
-The viewer closes its database connection after each request, leaving `aiobserve extract` free to take DuckDB's write lock while the viewer is idle. Neither side retries a collision:
+The viewer closes its database connection after each request, leaving `hp extract` free to take DuckDB's write lock while the viewer is idle. Neither side retries a collision:
 
 - If an extract starts while a page request holds the store, the extract fails with DuckDB's lock error. Reload the page, then run the extract again
 - If a page loads while an extract holds the lock, the viewer returns 503 and says the store is being written. Reload after the writer releases the lock

@@ -6,7 +6,7 @@ Designed against real sessions and full-corpus scans: `~/.claude/projects/-Users
 
 ## Problem
 
-`aiobserve` can locate sessions (`src/aiobserve/sessions.py`) but cannot read them. Analysis, enrichment, and the trace viewer all need one queryable store. Three constraints decide the shape:
+`hyphae` can locate sessions (`src/hyphae/sessions.py`) but cannot read them. Analysis, enrichment, and the trace viewer all need one queryable store. Three constraints decide the shape:
 
 - Claude Code prunes transcripts from disk after ~20–30 days, so the store must be the durable archive — raw records and offloaded tool outputs go into the DB, not pointers to files
 - DuckDB permits transactional per-session replace, which makes the prior importer's append-only OTLP machinery (ledger files, prefix-diff resend, settle windows) unnecessary for this path
@@ -27,7 +27,7 @@ Sessions present in the DB but gone from disk are kept: the DB is the archive.
 ## File-tree diff
 
 ```
-src/aiobserve/
+src/hyphae/
   model.py               NEW  canonical trace model (frozen dataclasses)
   pipeline.py            NEW  Extractor/Exporter protocols, SessionSource, refresh()
   extract/
@@ -107,7 +107,7 @@ class RawRecord: # session_id; source ("main", agent id, or "wf_<id>/journal"); 
                  # uuid; timestamp (both None on most bookkeeping types); type; raw (JSON str)
 ```
 
-**As built,** `src/aiobserve/model.py` is the field list; four members arrived after this sketch. `ApiCall.fallback_from` and `ToolCall.server_side` came from the `fallback` and `server_tool_use` blocks, which were unregistered — a server-side advisor call produced no row and no crash ([the schema doc](../../docs/schema.md)). `Compaction.source` says which transcript hit the limit, because subagents compact far more often than main transcripts do. `OffloadFile.lossy_decode` marks the 9 of 567 offload files that are not valid UTF-8, whose `content` carries replacement characters while `size_bytes` still reports the file.
+**As built,** `src/hyphae/model.py` is the field list; four members arrived after this sketch. `ApiCall.fallback_from` and `ToolCall.server_side` came from the `fallback` and `server_tool_use` blocks, which were unregistered — a server-side advisor call produced no row and no crash ([the schema doc](../../docs/schema.md)). `Compaction.source` says which transcript hit the limit, because subagents compact far more often than main transcripts do. `OffloadFile.lossy_decode` marks the 9 of 567 offload files that are not valid UTF-8, whose `content` carries replacement characters while `size_bytes` still reports the file.
 
 ### Turn boundaries
 

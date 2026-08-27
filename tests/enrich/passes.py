@@ -11,16 +11,16 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from aiobserve.enrich.client import (
+from hyphae.enrich.client import (
     EnrichRequest,
     Result,
     Succeeded,
 )
-from aiobserve.enrich.prompts import (
+from hyphae.enrich.prompts import (
     AgentRunItem,
     TurnItem,
 )
-from aiobserve.enrich.store import EnrichmentStore
+from hyphae.enrich.store import EnrichmentStore
 from tests.enrich.conftest import (
     MODEL,
 )

@@ -7,7 +7,7 @@ the render — is in `test_prompts__budget.py`.
 
 from pathlib import Path
 
-from aiobserve.enrich.prompts import (
+from hyphae.enrich.prompts import (
     OUTPUT_SCHEMA,
     PROMPT_VERSION,
     Level,
@@ -16,8 +16,8 @@ from aiobserve.enrich.prompts import (
     render_session,
     render_turn,
 )
-from aiobserve.enrich.store import EnrichmentStore
-from aiobserve.enrich.taxonomy import (
+from hyphae.enrich.store import EnrichmentStore
+from hyphae.enrich.taxonomy import (
     CATEGORY_DEFINITIONS,
     OUTCOME_DEFINITIONS,
     TAXONOMY_VERSION,

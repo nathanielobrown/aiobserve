@@ -14,7 +14,7 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from aiobserve.view.nodes import (
+from hyphae.view.nodes import (
     Kind,
     Preset,
 )

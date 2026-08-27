@@ -13,26 +13,26 @@ from pathlib import Path
 
 import pytest
 
-from aiobserve import cli
-from aiobserve.enrich.client import (
+from hyphae import cli
+from hyphae.enrich.client import (
     Failed,
     Succeeded,
 )
-from aiobserve.enrich.enricher import (
+from hyphae.enrich.enricher import (
     ROUND_ORDER,
     EnrichmentFailed,
     EnrichReport,
     enrich,
 )
-from aiobserve.enrich.prompts import (
+from hyphae.enrich.prompts import (
     PROMPT_VERSION,
     Level,
     input_hash,
     render_turn,
 )
-from aiobserve.enrich.store import LEVELS, EnrichmentStore
-from aiobserve.enrich.taxonomy import TAXONOMY_VERSION
-from aiobserve.enrich.validation import FailureKind
+from hyphae.enrich.store import LEVELS, EnrichmentStore
+from hyphae.enrich.taxonomy import TAXONOMY_VERSION
+from hyphae.enrich.validation import FailureKind
 from tests.conftest import MODEL_ONLY, build_store, fixture_transcripts
 from tests.enrich.conftest import (
     AUDITOR_RUN,
@@ -199,7 +199,7 @@ def test_a_taxonomy_bump_re_enriches(
 ) -> None:
     """A taxonomy revision makes existing rows stale without invalidating them."""
     enrich(store, FakeClient())
-    monkeypatch.setattr("aiobserve.enrich.enricher.TAXONOMY_VERSION", 99)
+    monkeypatch.setattr("hyphae.enrich.enricher.TAXONOMY_VERSION", 99)
     client = FakeClient()
     enrich(store, client)
     assert client.keys == [

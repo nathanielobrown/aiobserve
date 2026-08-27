@@ -48,7 +48,7 @@ Rendering the whole corpus to compute hashes is a local DB read, cheap by constr
 
 `claude-haiku-4-5-20251001` by default, `--model` to override. Production calls go through the **Message Batches API** (50% discount; latency is fine for a backfill-and-nightly tool — most batches finish under an hour, worst case 24h per round). One invocation runs sequential rounds: agent runs in topological order over `parent_agent_id` (leaves first, so parents can embed child descriptions; the 46 rootless runs are roots — the store has zero `parent_agent_id` values naming a missing run, and a new one would crash), then main turns, then sessions — bounded by max spawn depth 5, so ≤8 rounds. For prompt iteration and `--limit`-sized dev runs, `--no-batch` selects `SyncClient`, a synchronous Messages-API implementation of the same `BatchClient` protocol — full price, minutes not hours.
 
-Failure handling, fail-fast without losing the batch: every succeeded item is upserted as results stream in; a failed item (API error, schema-invalid or secret-bearing output, or a request the Batches API **expired unbilled** at its 24h limit) writes nothing, and its parents are skipped that round. At the end the run **crashes** with a summary classifying failures by kind and naming item keys — never model output. Because failures wrote no rows, they are still stale — rerunning `aiobserve enrich` is the retry, with no separate resume state.
+Failure handling, fail-fast without losing the batch: every succeeded item is upserted as results stream in; a failed item (API error, schema-invalid or secret-bearing output, or a request the Batches API **expired unbilled** at its 24h limit) writes nothing, and its parents are skipped that round. At the end the run **crashes** with a summary classifying failures by kind and naming item keys — never model output. Because failures wrote no rows, they are still stale — rerunning `hp enrich` is the retry, with no separate resume state.
 
 `ANTHROPIC_API_KEY` is loaded from `.env`/environment, validated non-empty at command start, never printed.
 
@@ -75,7 +75,7 @@ Truncation-aware render sizes, from the store (queries in `enrich/prompts.py` mi
 
 Items: 2,458 + 1,409 + 473 = 4,340. At 3.3–4 chars/token (4 is a floor for code-heavy text, not a ceiling): 10–12.1M content tokens + ~3.0M instruction overhead (~700 tokens × item) ≈ 13–15.1M input, ~0.9M output (200/item). Haiku 4.5 batch rates ($0.50 in / $2.50 out per MTok): **≈ $9–12 per full-corpus pass** (~$18–24 unbatched). Not an upper bound except with respect to caching, which the estimate counts at zero. A taxonomy or prompt bump re-buys its level(s); the hash keeps everything else free. `--dry-run` prints stale counts and this estimate before spending.
 
-*As built (slice 4):* the arithmetic lives in **`src/aiobserve/enrich/cost.py`**, a file the tree below does not list — the rate table and the constants behind it are the sort of thing that gets edited without touching a prompt or a store, and burying them in the CLI would hide them. Two departures from the numbers above. Instruction overhead is measured from the real `instructions(level)` text per item rather than assumed at ~700 tokens, so an instruction edit re-prices itself. `CHARS_PER_TOKEN` is the single value 3.3 — the low end of the measured range, which makes the quote read high — rather than a range, because the report has to print one number. Rates are stored at list price with a `BATCH_DISCOUNT` of 0.5 applied, so the table can be checked line by line against Anthropic's price page. A model absent from the table crashes: quoting zero for a pass nobody has costed is the failure worth being loud about.
+*As built (slice 4):* the arithmetic lives in **`src/hyphae/enrich/cost.py`**, a file the tree below does not list — the rate table and the constants behind it are the sort of thing that gets edited without touching a prompt or a store, and burying them in the CLI would hide them. Two departures from the numbers above. Instruction overhead is measured from the real `instructions(level)` text per item rather than assumed at ~700 tokens, so an instruction edit re-prices itself. `CHARS_PER_TOKEN` is the single value 3.3 — the low end of the measured range, which makes the quote read high — rather than a range, because the report has to print one number. Rates are stored at list price with a `BATCH_DISCOUNT` of 0.5 applied, so the table can be checked line by line against Anthropic's price page. A model absent from the table crashes: quoting zero for a pass nobody has costed is the failure worth being loud about.
 
 ## Schema
 
@@ -99,7 +99,7 @@ Consumers query three views: `enriched_turns` (`live_turns` ⋈ `turn_enrichment
 ## File-tree diff
 
 ```
-src/aiobserve/enrich/
+src/hyphae/enrich/
   __init__.py      NEW
   taxonomy.py      NEW  Category/Outcome StrEnums, TAXONOMY_VERSION
   prompts.py       NEW  per-level render + input_hash, PROMPT_VERSION per level; budgets are render parameters, defaults defined here; the forced output tool, whose schema PROMPT_VERSION covers
@@ -107,7 +107,7 @@ src/aiobserve/enrich/
   batches.py       NEW  BatchClient protocol + AnthropicBatchClient (submit/poll/collect) + SyncClient (dev)
   enricher.py      NEW  enrich(): rounds, per-round staleness, zombie sweep, skip-parents-of-failures, crash summary
   cost.py          NEW  (slice 4, not in the original tree) rate table, chars-per-token, and the dry run's arithmetic
-src/aiobserve/cli.py  CHANGED  `enrich [--db] [--project] [--model] [--dry-run] [--limit] [--no-batch]`
+src/hyphae/cli.py  CHANGED  `enrich [--db] [--project] [--model] [--dry-run] [--limit] [--no-batch]`
 docs/enrichment.md    NEW  taxonomy meanings + staleness model (schema.md stays telemetry-only)
 CLAUDE.md             CHANGED  Layout entry for docs/enrichment.md (doc-sync will enforce)
 pyproject.toml        CHANGED  deps: anthropic, python-dotenv

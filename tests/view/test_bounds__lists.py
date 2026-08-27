@@ -14,13 +14,13 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from aiobserve.analyze import queries
-from aiobserve.analyze.queries import ParamValue
-from aiobserve.enrich.taxonomy import Category, Outcome
-from aiobserve.view import bounds
-from aiobserve.view.app import build_app
-from aiobserve.view.format import ELLIPSIS
-from aiobserve.view.store import TURN_CURSOR, Page, cursorless_rows
+from hyphae.analyze import queries
+from hyphae.analyze.queries import ParamValue
+from hyphae.enrich.taxonomy import Category, Outcome
+from hyphae.view import bounds
+from hyphae.view.app import build_app
+from hyphae.view.format import ELLIPSIS
+from hyphae.view.store import TURN_CURSOR, Page, cursorless_rows
 from tests.conftest import (
     FORK_ORIGIN,
     RESUME,

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from aiobserve.sessions import SessionFiles, encode_project_path, find_sessions, resolve_project
+from hyphae.sessions import SessionFiles, encode_project_path, find_sessions, resolve_project
 
 
 def make_projects_root(tmp_path: Path, project: Path, session_ids: list[str]) -> Path:

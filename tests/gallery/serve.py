@@ -18,8 +18,8 @@ import uvicorn
 from fastapi import FastAPI, Request, Response
 from starlette.templating import Jinja2Templates
 
-from aiobserve.view.app import DEV_SHUTDOWN_SECONDS, HOST, build_app, claim
-from aiobserve.view.templating import TEMPLATES
+from hyphae.view.app import DEV_SHUTDOWN_SECONDS, HOST, build_app, claim
+from hyphae.view.templating import TEMPLATES
 from tests.conftest import build_enriched_store
 from tests.view.scenarios import ROUTES
 
@@ -70,7 +70,7 @@ def main() -> None:
         store = Path(scratch) / "traces.duckdb"
         build_enriched_store(store, corpus=None)
         claim(port, "Pass --port to use another.")
-        print(f"aiobserve gallery: http://{HOST}:{port}{INDEX}")  # noqa: T201 — the URL to open
+        print(f"hyphae gallery: http://{HOST}:{port}{INDEX}")  # noqa: T201 — the URL to open
         # The same shutdown cap `--dev` takes: the reload stream has no last chunk, so a
         # graceful exit that waited for it would never return (`view/app.py`).
         uvicorn.run(

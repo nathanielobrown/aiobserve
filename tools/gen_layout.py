@@ -63,13 +63,13 @@ UNLISTED = {
 
 # The tree, in reading order: the package first, then what tests and documents it.
 ENTRIES = (
-    Entry("src/aiobserve/", Module("aiobserve")),
-    Entry("src/aiobserve/extract/", Module("aiobserve.extract")),
-    Entry("src/aiobserve/export/", Module("aiobserve.export")),
-    Entry("src/aiobserve/enrich/", Module("aiobserve.enrich")),
-    Entry("src/aiobserve/analyze/", Module("aiobserve.analyze")),
-    Entry("src/aiobserve/view/", Module("aiobserve.view")),
-    Entry("src/aiobserve/pipeline.py", Module("aiobserve.pipeline")),
+    Entry("src/hyphae/", Module("hyphae")),
+    Entry("src/hyphae/extract/", Module("hyphae.extract")),
+    Entry("src/hyphae/export/", Module("hyphae.export")),
+    Entry("src/hyphae/enrich/", Module("hyphae.enrich")),
+    Entry("src/hyphae/analyze/", Module("hyphae.analyze")),
+    Entry("src/hyphae/view/", Module("hyphae.view")),
+    Entry("src/hyphae/pipeline.py", Module("hyphae.pipeline")),
     Entry("tests/", Module("tests")),
     Entry("tools/", Module("tools")),
     Entry("docs/", None),

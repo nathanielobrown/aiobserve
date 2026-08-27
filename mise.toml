@@ -45,11 +45,11 @@ description = "Format the viewer's templates with djLint"
 # `--quiet` drops the per-file diff — `git diff` says it better. The trailing test swallows
 # djLint's exit 1, which is what it returns when it rewrote a file: a formatter doing its job,
 # not something that should stop `check-fast`. A real error still exits 2 and still fails.
-run = "uv run djlint src/aiobserve/view/templates tests/gallery/index.html --reformat --quiet || [ $? -eq 1 ]"
+run = "uv run djlint src/hyphae/view/templates tests/gallery/index.html --reformat --quiet || [ $? -eq 1 ]"
 
 [tasks.format-html-check]
 description = "Check template formatting without writing (the CI shape)"
-run = "uv run djlint src/aiobserve/view/templates tests/gallery/index.html --check"
+run = "uv run djlint src/hyphae/view/templates tests/gallery/index.html --check"
 
 [tasks.lint]
 description = "Lint Python with ruff, applying safe fixes"
@@ -148,11 +148,11 @@ run = 'uv run python -m tests.gallery.serve ${usage_port:+--port "$usage_port"}'
 description = "Mutation-test the source this branch changed; pass mutant globs to scope it yourself"
 # Asks what a green suite cannot: would a leaf notice the code being wrong? Deliberately out
 # of `check` — it re-runs the covering tests once per mutant. Whole-branch scope by default,
-# because a run over the package takes hours; `mise run mutate 'aiobserve.sessions.*'` narrows
+# because a run over the package takes hours; `mise run mutate 'hyphae.sessions.*'` narrows
 # it. mutmut names a mutant `<module path>.x_<function>__mutmut_<n>`, and a method's
 # `<module path>.xǁ<Class>ǁ<method>__mutmut_<n>`; it takes globs over that.
 # Read the survivors with `uv run mutmut browse`.
-usage = 'arg "[mutants]" var=#true help="mutant globs to score, e.g. aiobserve.view.format.*"'
+usage = 'arg "[mutants]" var=#true help="mutant globs to score, e.g. hyphae.view.format.*"'
 run = """
 # `set -f` throughout: a mutant name ends in `*`, and an unquoted one the shell expands is a
 # name no mutant has. mise hands a variadic arg over shell-escaped, so `eval` is what undoes
@@ -160,12 +160,12 @@ run = """
 set -f
 eval "set -- ${usage_mutants:-}"
 if [ "$#" -eq 0 ]; then
-  set -- $(git diff --name-only --diff-filter=d "$(git merge-base HEAD main)" -- 'src/aiobserve/*.py' \
+  set -- $(git diff --name-only --diff-filter=d "$(git merge-base HEAD main)" -- 'src/hyphae/*.py' \
     | sed -e 's|^src/||' -e 's|\\.py$||' -e 's|/|.|g' -e 's|$|.*|')
   if [ "$#" -eq 0 ]; then
-    echo 'mutate: nothing to do — this branch changes no file under src/aiobserve, so the'
+    echo 'mutate: nothing to do — this branch changes no file under src/hyphae, so the'
     echo '        default scope is empty. Pass a mutant glob, e.g.'
-    echo "        mise run mutate 'aiobserve.view.format.*'"
+    echo "        mise run mutate 'hyphae.view.format.*'"
     exit 1
   fi
   echo "mutate: branch scope $*"

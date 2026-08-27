@@ -16,14 +16,14 @@ import httpx
 import pytest
 from opentelemetry.proto.trace.v1 import trace_pb2
 
-from aiobserve.export.duckdb import SCHEMA_VERSION, DuckDbExporter, open_trace_store
-from aiobserve.export.otlp import (
+from hyphae.export.duckdb import SCHEMA_VERSION, DuckDbExporter, open_trace_store
+from hyphae.export.otlp import (
     MAPPER_VERSION,
     METADATA_ONLY,
     PlacelessSessionError,
     session_spans,
 )
-from aiobserve.export.otlp_delivery import (
+from hyphae.export.otlp_delivery import (
     DEFAULT_BATCH_SPANS,
     DEFAULT_RATE,
     Backend,
@@ -33,8 +33,8 @@ from aiobserve.export.otlp_delivery import (
     RejectedSpansError,
     named_backend,
 )
-from aiobserve.extract.store import StoreSource
-from aiobserve.pipeline import refresh
+from hyphae.extract.store import StoreSource
+from hyphae.pipeline import refresh
 from tests.conftest import MYCELIA
 from tests.export.conftest import (
     FIRST,
@@ -97,8 +97,8 @@ def test_the_resource_names_the_project_and_the_exporter(
     # carries the version a re-shaping would bump...
     assert receiver.attributes(receiver.resources[0]) == {
         "service.name": "mycelia",
-        "aiobserve.exporter.version": MAPPER_VERSION,
-        "aiobserve.telemetry.source": "store-export",
+        "hyphae.exporter.version": MAPPER_VERSION,
+        "hyphae.telemetry.source": "store-export",
     }
     # ...and an operator who wants another dataset overrides the service name.
     receiver.bodies.clear()

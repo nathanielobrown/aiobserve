@@ -82,7 +82,7 @@ def test_prompt_templates_are_exempt_from_markdown_style(
     # prompt, which changes the stamp, which stales every enrichment derived from it
     # (`docs/enrichment.md`). The damage is invisible until a pass re-runs the whole corpus,
     # so the entry's loss has to be loud here rather than in a review.
-    assert "markdown-style" in per_file_ignores["src/aiobserve/analyze/templates/**"]
+    assert "markdown-style" in per_file_ignores["src/hyphae/analyze/templates/**"]
 
 
 def test_every_pattern_in_the_config_still_matches_a_file(

@@ -2,7 +2,7 @@
 
 The queries are the subject here, so their evidence has to be rows the real pipeline wrote:
 `corpus_db` extracts every recorded fixture transcript into one DuckDB file, once per test
-session. Tests read it through `aiobserve query` and never write to it — a test that plants
+session. Tests read it through `hp query` and never write to it — a test that plants
 a row copies the file first, as `worktree_db` does.
 """
 
@@ -17,11 +17,11 @@ from typing import Any, Self, override
 import duckdb
 import pytest
 
-from aiobserve import cli
-from aiobserve.export.duckdb import DuckDbExporter
-from aiobserve.extract.claude_code import ClaudeCodeExtractor
-from aiobserve.pipeline import SessionSource
-from aiobserve.sessions import SessionFiles
+from hyphae import cli
+from hyphae.export.duckdb import DuckDbExporter
+from hyphae.extract.claude_code import ClaudeCodeExtractor
+from hyphae.pipeline import SessionSource
+from hyphae.sessions import SessionFiles
 from tests.conftest import (
     ANCESTOR,
     FIXTURES,
@@ -116,7 +116,7 @@ IN_WINDOW_AT_MID = 12
 
 @dataclass(frozen=True)
 class Output:
-    """What one `aiobserve query` run printed, split by stream."""
+    """What one `hp query` run printed, split by stream."""
 
     stdout: str
     stderr: str
@@ -136,7 +136,7 @@ QueryRunner = Callable[..., Output]
 
 
 def query(db: Path, capsys: pytest.CaptureFixture[str], name: str, *arguments: str) -> Output:
-    """Run `aiobserve query` against one store, returning what it printed."""
+    """Run `hp query` against one store, returning what it printed."""
     cli.main("query", name, "--db", str(db), *arguments)
     captured = capsys.readouterr()
     return Output(captured.out, captured.err)
@@ -161,7 +161,7 @@ def scalar(db: Path, sql: str, *parameters: Any, columns: int = 1) -> Any:
 
 @pytest.fixture
 def run_query(corpus_db: Path, capsys: pytest.CaptureFixture[str]) -> QueryRunner:
-    """Run `aiobserve query` against the fixture corpus, returning what it printed."""
+    """Run `hp query` against the fixture corpus, returning what it printed."""
 
     def run(name: str, *arguments: str) -> Output:
         return query(corpus_db, capsys, name, *arguments)
@@ -171,7 +171,7 @@ def run_query(corpus_db: Path, capsys: pytest.CaptureFixture[str]) -> QueryRunne
 
 @pytest.fixture
 def enriched_query(enriched_db: Path, capsys: pytest.CaptureFixture[str]) -> QueryRunner:
-    """Run `aiobserve query` against the corpus an enrichment pass has written to."""
+    """Run `hp query` against the corpus an enrichment pass has written to."""
 
     def run(name: str, *arguments: str) -> Output:
         return query(enriched_db, capsys, name, *arguments)

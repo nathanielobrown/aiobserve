@@ -13,9 +13,9 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from aiobserve.export.duckdb import SCHEMA_VERSION
-from aiobserve.view.app import CSP, build_app, serve
-from aiobserve.view.store import SchemaMoved, StoreLocked
+from hyphae.export.duckdb import SCHEMA_VERSION
+from hyphae.view.app import CSP, build_app, serve
+from hyphae.view.store import SchemaMoved, StoreLocked
 from tests.conftest import locked
 from tests.view.conftest import fields
 

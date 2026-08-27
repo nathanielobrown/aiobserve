@@ -10,9 +10,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from aiobserve.extract.claude_code import ClaudeCodeExtractor
-from aiobserve.extract.record_types import TranscriptSchemaError
-from aiobserve.model import MAIN_SOURCE, ApiCall, PrLink, Session, Turn
+from hyphae.extract.claude_code import ClaudeCodeExtractor
+from hyphae.extract.record_types import TranscriptSchemaError
+from hyphae.model import MAIN_SOURCE, ApiCall, PrLink, Session, Turn
 from tests.conftest import SourceFactory
 
 SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"

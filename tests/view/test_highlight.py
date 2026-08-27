@@ -10,9 +10,9 @@ onerror=…>` inside one has to arrive at the browser as text whichever arm rend
 
 import json
 
-from aiobserve.analyze import queries
-from aiobserve.view import bounds
-from aiobserve.view.highlight import Syntax, by_suffix, lit
+from hyphae.analyze import queries
+from hyphae.view import bounds
+from hyphae.view.highlight import Syntax, by_suffix, lit
 from tests.view.conftest import classed, plain
 
 # One tool argument in the shape a recorded one has — a path and a pattern — with markup put

@@ -1,7 +1,7 @@
 """What the CLI does around a run: dry runs, the price it quotes, the flags it forwards.
 
 Same real store and same fake model as `test_enricher.py` (`passes.py`), driven through
-`aiobserve enrich` rather than the library — so a leaf here is about what a person typing the
+`hp enrich` rather than the library — so a leaf here is about what a person typing the
 command sees and what reaches the client, not about what a round writes.
 """
 
@@ -10,17 +10,17 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from aiobserve import cli
-from aiobserve.enrich.client import (
+from hyphae import cli
+from hyphae.enrich.client import (
     DEFAULT_CONCURRENCY,
     CliClient,
 )
-from aiobserve.enrich.cost import Prompt, estimate
-from aiobserve.enrich.enricher import (
+from hyphae.enrich.cost import Prompt, estimate
+from hyphae.enrich.enricher import (
     enrich,
     plan,
 )
-from aiobserve.enrich.store import EnrichmentStore
+from hyphae.enrich.store import EnrichmentStore
 from tests.conftest import MYCELIA
 from tests.enrich.conftest import (
     MODEL,
@@ -201,7 +201,7 @@ def test_a_dry_run_quotes_a_price_it_computed_itself(
 def test_the_cli_writes_what_the_library_writes(
     spine_store: Path, tmp_path: Path, logged_in: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`aiobserve enrich` leaves the same rows as calling `enrich` directly, and needs no key.
+    """`hp enrich` leaves the same rows as calling `enrich` directly, and needs no key.
 
     The command is a thin wrapper by intent; a check on the library alone would miss an
     argument the CLI forgets to pass through.

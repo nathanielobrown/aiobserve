@@ -20,13 +20,13 @@ import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
-from aiobserve.analyze import macros, queries
-from aiobserve.analyze.manifest import QUERIES
-from aiobserve.analyze.queries import VIEW_PREFIX
-from aiobserve.view import bounds
-from aiobserve.view.app import build_app
-from aiobserve.view.citation import QUERY_URL
-from aiobserve.view.store import Fragment, Page, Value
+from hyphae.analyze import macros, queries
+from hyphae.analyze.manifest import QUERIES
+from hyphae.analyze.queries import VIEW_PREFIX
+from hyphae.view import bounds
+from hyphae.view.app import build_app
+from hyphae.view.citation import QUERY_URL
+from hyphae.view.store import Fragment, Page, Value
 from tests.conftest import (
     CONFIG_ONLY,
     MAIN,
@@ -166,7 +166,7 @@ def test_every_macro_the_scan_trusts_answers_one_character_past_the_width() -> N
     """
     connection = duckdb.connect(":memory:")
     macros.install(connection)
-    project = "/Users/planted/repos/aiobserve"
+    project = "/Users/planted/repos/hyphae"
     inside = json.dumps({"file_path": f"{project}/src/{'v' * 400}.py"})
     outside = json.dumps({"file_path": f"/opt/homebrew/{'v' * 400}.py"})
     described = json.dumps({"description": "d" * 400, "command": "c" * 400})

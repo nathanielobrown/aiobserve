@@ -13,11 +13,11 @@ from pathlib import Path
 
 import pytest
 
-from aiobserve.enrich.client import CLAUDE
-from aiobserve.enrich.prompts import SessionItem
-from aiobserve.enrich.store import EnrichmentStore, Stamp
-from aiobserve.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
-from aiobserve.enrich.validation import Enrichment
+from hyphae.enrich.client import CLAUDE
+from hyphae.enrich.prompts import SessionItem
+from hyphae.enrich.store import EnrichmentStore, Stamp
+from hyphae.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
+from hyphae.enrich.validation import Enrichment
 from tests.conftest import build_store, fixture_transcripts
 from tests.enrich.fake_cli import FakeCli, Reply
 
@@ -146,7 +146,7 @@ def mutable_db(fixture_db: Path, tmp_path: Path) -> Path:
 
 
 # The opt-in for anything that really runs a process. Set it and the `live` tests run.
-LIVE_CLI = "AIOBSERVE_LIVE_CLI"
+LIVE_CLI = "HYPHAE_LIVE_CLI"
 
 
 class SubprocessForbidden(Exception):

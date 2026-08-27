@@ -4,7 +4,7 @@ Binds `plans/aigarden-adoption/design.md`. Obligations only; the implementer dis
 
 Twenty-two committed obligations across five levels, six manual probes, three upstream summaries. Two obligations are unreachable through the design's seam and are marked **UNREACHABLE** with what to do instead.
 
-## unit (generators) — `tests/tools/`, no store I/O; the world is the live package: `aiobserve.view.app`, `aiobserve.view.bounds`, `aiobserve.view.nodes`, and the repo's own tree. Tests call `generate()` and assert properties, never golden strings
+## unit (generators) — `tests/tools/`, no store I/O; the world is the live package: `hyphae.view.app`, `hyphae.view.bounds`, `hyphae.view.nodes`, and the repo's own tree. Tests call `generate()` and assert properties, never golden strings
 
 ### `tools/gen_routes.py`
 
@@ -24,7 +24,7 @@ Twenty-two committed obligations across five levels, six manual probes, three up
 
 - Every path in the curated entry list exists in the repo. *Evidence:* `Path(entry).exists()` per entry, run from the repo root; the failure names the dead path.
 - Every tracked top-level directory is either in the entry list or in the generator's explicit exclusion list. *Evidence:* compare the entry list against the top-level directories from `git ls-files`; the failure names the undocumented directory.
-- A gloss is lifted from the source, and a missing source crashes. *Evidence:* assert the generated gloss for `src/aiobserve/extract/` equals the first line of `aiobserve.extract.__doc__`; a second case uses a stub package with `__doc__ = None` and asserts `pytest.raises` naming the module.
+- A gloss is lifted from the source, and a missing source crashes. *Evidence:* assert the generated gloss for `src/hyphae/extract/` equals the first line of `hyphae.extract.__doc__`; a second case uses a stub package with `__doc__ = None` and asserts `pytest.raises` naming the module.
 
 ## unit (record models) — `tests/extract/`; the world is recorded fixtures under `tests/fixtures/`, not invented records
 
@@ -47,7 +47,7 @@ Twenty-two committed obligations across five levels, six manual probes, three up
 
 ## config assertion — `tests/tools/`; parses `aigarden.toml` as data. Low power on its own, but it guards two hazards a probe can only catch once
 
-- **`src/aiobserve/analyze/templates/**` is ignored for `markdown-style`.** Bolded: a reflow of a prompt template changes model input and stales every enrichment stamp — the one config entry whose loss is expensive and invisible. *Evidence:* parse `aigarden.toml`, assert the per-file-ignore entry exists and includes `markdown-style`; the test's comment carries the reason.
+- **`src/hyphae/analyze/templates/**` is ignored for `markdown-style`.** Bolded: a reflow of a prompt template changes model input and stales every enrichment stamp — the one config entry whose loss is expensive and invisible. *Evidence:* parse `aigarden.toml`, assert the per-file-ignore entry exists and includes `markdown-style`; the test's comment carries the reason.
 - Every path pattern in `[per-file-ignores]` matches at least one file in the repo. *Evidence:* glob each pattern from the repo root and assert a non-empty match, so the file-length ratchet's 11 entries shrink as files are fixed rather than rotting in place.
 
 ## manual probes — one-time deliberate faults during implementation, not committed tests. Record each result in the PR body

@@ -12,11 +12,11 @@ import re
 import duckdb
 from fastapi.testclient import TestClient
 
-from aiobserve.analyze import queries
-from aiobserve.extract.pricing import CONTEXT_WINDOWS
-from aiobserve.view import bounds, nodes
-from aiobserve.view.app import build_app
-from aiobserve.view.format import ELLIPSIS
+from hyphae.analyze import queries
+from hyphae.extract.pricing import CONTEXT_WINDOWS
+from hyphae.view import bounds, nodes
+from hyphae.view.app import build_app
+from hyphae.view.format import ELLIPSIS
 from tests.view.budgets import (
     DEAR_PANE_DETAILS,
     DESCRIBED_AT_EVERY_CAP,

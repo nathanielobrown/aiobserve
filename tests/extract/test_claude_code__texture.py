@@ -11,9 +11,9 @@ import logging
 
 import pytest
 
-from aiobserve.extract.claude_code import ClaudeCodeExtractor
-from aiobserve.extract.record_types import TranscriptSchemaError
-from aiobserve.model import MAIN_SOURCE, Compaction
+from hyphae.extract.claude_code import ClaudeCodeExtractor
+from hyphae.extract.record_types import TranscriptSchemaError
+from hyphae.model import MAIN_SOURCE, Compaction
 from tests.conftest import SourceFactory
 from tests.extract.test_claude_code import at
 

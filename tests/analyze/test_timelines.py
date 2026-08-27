@@ -12,7 +12,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from aiobserve.analyze import queries
+from hyphae.analyze import queries
 from tests.analyze.conftest import QueryRunner, mappings, query, scalar
 from tests.conftest import (
     FORK_ORIGIN,

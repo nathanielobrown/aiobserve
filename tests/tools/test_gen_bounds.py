@@ -7,8 +7,8 @@ number, and the coverage leaf makes a new bound impossible to leave undocumented
 
 import pytest
 
-from aiobserve.view import bounds, nodes
-from aiobserve.view.knobs import KNOB_DEFAULTS
+from hyphae.view import bounds, nodes
+from hyphae.view.knobs import KNOB_DEFAULTS
 from tests.tools.conftest import cells, numbers
 from tools import gen_bounds
 

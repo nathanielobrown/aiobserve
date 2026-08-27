@@ -8,7 +8,7 @@ This iteration is deliberately narrow. The corpus grew by essentially one sessio
 
 - Store stamp: 575 sessions, `max(sessions.started_at)` 2026-08-07 07:47 EDT, `max(api_calls.started_at)` 2026-08-09 10:53 EDT, schema_version 7, extractor_version 7 (`data/analysis/2026_08_09/stamp.txt`). The refresh extracted 4 sessions and left 571 unchanged; roughly 95% of the new activity is `cb76d8e4`
 - Analysis window: trailing 28 days at `as_of=2026-08-09` — 256 sessions, 2,571 turns, 119,024 tool calls, 1,670 agent runs, 876 compactions, $11,109.87 (`session_counts.sql`)
-- Every count comes from `src/aiobserve/analyze/queries/<name>.sql` with `project=/Users/nob/repos/mycelia, since=NULL, as_of=2026-08-09, window_days=28`; CSVs and full citation lines are in `data/analysis/2026_08_09/counts/`. Non-default `--param` bindings are stated inline
+- Every count comes from `src/hyphae/analyze/queries/<name>.sql` with `project=/Users/nob/repos/mycelia, since=NULL, as_of=2026-08-09, window_days=28`; CSVs and full citation lines are in `data/analysis/2026_08_09/counts/`. Non-default `--param` bindings are stated inline
 - The window moved two days against v1: sessions from July 10–12 fell out while `cb76d8e4` and three small sessions came in. Every count delta below mixes both effects, so none is read as a trend
 - Read sample: session `cb76d8e4` (stratum: cost — ranked #2 in the window by `select_sessions`, and the window's highest compaction count) plus 13 of its runs in three strata: 4 implementer cost outliers, 6 non-implementer coverage runs (including all 4 that `select_runs` drew from this session independently), and 3 runs nearest the session's median run cost. Reader reports live in gitignored `data/analysis/2026_08_09/{sessions,runs}/`
 
@@ -109,7 +109,7 @@ The manager read issue and plan docs with chained Bash (`cat …; echo ===; head
 
 Per the checklist in `docs/analysis.md`.
 
-**Scope deviation.** This iteration ran focused, not full: the extract refresh changed 4 sessions, ~95% of the delta being `cb76d8e4`, so a full stratified re-selection would have re-read a corpus v1 already covered. Selection evidence for the anchor: `select_sessions` (default quotas, `seed=aiobserve`, now with `min_api_calls=1`) ranks it #2 by window cost; `select_runs` independently drew 4 of its runs (designer and test-planner, cost and errors strata). Full re-selection is deferred to iteration 3, by which time the window will have turned over materially.
+**Scope deviation.** This iteration ran focused, not full: the extract refresh changed 4 sessions, ~95% of the delta being `cb76d8e4`, so a full stratified re-selection would have re-read a corpus v1 already covered. Selection evidence for the anchor: `select_sessions` (default quotas, `seed=hyphae`, now with `min_api_calls=1`) ranks it #2 by window cost; `select_runs` independently drew 4 of its runs (designer and test-planner, cost and errors strata). Full re-selection is deferred to iteration 3, by which time the window will have turned over materially.
 
 **Strata.** All three read strata earned their slots, differently: the implementer-outlier stratum corroborated C5's mechanism (3 of 4 runs) and produced A12; non-implementer coverage spread C5 across agent definitions (designer, test-planner) and supplied the clean-run contrast that scopes the friction to implementers and the manager thread; the median-cost typicals — a stratum v1 didn't have — produced A11, this iteration's main discovery. The lesson: outliers corroborate, typicals discover.
 

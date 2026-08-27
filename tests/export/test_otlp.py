@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from aiobserve.export.duckdb import open_trace_store
-from aiobserve.export.otlp import (
+from hyphae.export.duckdb import open_trace_store
+from hyphae.export.otlp import (
     CLIENT,
     INTERNAL,
     AmbiguousKeyError,
@@ -21,9 +21,9 @@ from aiobserve.export.otlp import (
     session_spans,
     span_id,
 )
-from aiobserve.extract.store import StoreSource
-from aiobserve.model import SessionTrace
-from aiobserve.pipeline import SessionSource
+from hyphae.extract.store import StoreSource
+from hyphae.model import SessionTrace
+from hyphae.pipeline import SessionSource
 from tests.conftest import (
     FIXTURES,
     FORK_ORIGIN,

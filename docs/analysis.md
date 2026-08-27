@@ -6,10 +6,10 @@ Commit one report under `reports/` for each pass. Keep every other artifact in g
 
 ## Make one pass
 
-1. **Refresh and stamp the corpus.** Run `aiobserve extract`. Write the session count, `max(started_at)`, `meta.schema_version`, and distinct `extract_state.extractor_version` values to `data/analysis/<YYYY_MM_DD>/stamp.txt`. This **corpus stamp** defines the data behind the findings, so every artifact must cite it.
-2. **Survey the corpus.** Run the count and cluster queries that apply to the pass from `src/aiobserve/analyze/queries/`. Save their CSV output under `data/analysis/<YYYY_MM_DD>/counts/`, with each result's citation line. The citation must name the query and every resolved binding.
-3. **Select what to read.** Run `aiobserve query select_sessions` and `aiobserve query select_runs`. Both queries make deterministic draws under the rules below.
-4. **Read the sample.** Assign each selected session to one reader subagent. The reader writes a session report from `src/aiobserve/analyze/templates/session.md` and a run report from `src/aiobserve/analyze/templates/run.md` for every run it flags. Use the same run template for runs drawn by `select_runs`. Save the reports under the pass's `sessions/` and `runs/` directories. If synthesis chooses another run to answer the pass's question, read it the same way and tag it `synthesis-draw`.
+1. **Refresh and stamp the corpus.** Run `hp extract`. Write the session count, `max(started_at)`, `meta.schema_version`, and distinct `extract_state.extractor_version` values to `data/analysis/<YYYY_MM_DD>/stamp.txt`. This **corpus stamp** defines the data behind the findings, so every artifact must cite it.
+2. **Survey the corpus.** Run the count and cluster queries that apply to the pass from `src/hyphae/analyze/queries/`. Save their CSV output under `data/analysis/<YYYY_MM_DD>/counts/`, with each result's citation line. The citation must name the query and every resolved binding.
+3. **Select what to read.** Run `hp query select_sessions` and `hp query select_runs`. Both queries make deterministic draws under the rules below.
+4. **Read the sample.** Assign each selected session to one reader subagent. The reader writes a session report from `src/hyphae/analyze/templates/session.md` and a run report from `src/hyphae/analyze/templates/run.md` for every run it flags. Use the same run template for runs drawn by `select_runs`. Save the reports under the pass's `sessions/` and `runs/` directories. If synthesis chooses another run to answer the pass's question, read it the same way and tag it `synthesis-draw`.
 5. **Synthesize the findings.** In a high-effort pass, read the session and run reports, count tables, and cluster output. Promote candidates under the evidence rules below, then write the committed report according to [the report guide](../reports/README.md).
 6. **Review the process.** Answer the fixed checklist below in the report's final section. Land any fixes to the queries, templates, or this guide in the same PR as the report.
 
@@ -19,7 +19,7 @@ Commit one report under `reports/` for each pass. Keep every other artifact in g
 
 The strata claim sessions in this order: cost, tool errors, compactions, one slot for each major skill, then seeded discovery. Each stratum walks down its ranking and skips sessions already claimed. This walk-down keeps the cost, error, and compaction strata from collapsing onto the same few large sessions. Each selected session carries the stratum that claimed it, and its report records that tag.
 
-Every quota is a bound parameter. `src/aiobserve/analyze/manifest.py` defines the production defaults that committed reports quote. Change a pass's reading budget with `--param`, not by editing the query.
+Every quota is a bound parameter. `src/hyphae/analyze/manifest.py` defines the production defaults that committed reports quote. Change a pass's reading budget with `--param`, not by editing the query.
 
 Interpret the draw by these rules:
 
@@ -34,7 +34,7 @@ Interpret the draw by these rules:
 
 Give a reader only the session id, selection stratum, template path, and a link to this guide. Don't paste transcript content into the brief. That would spend the context this protocol is meant to protect.
 
-Readers start with `aiobserve query` timelines and use `records_slice` as their only route to raw transcript text. Its required line range and character cap bound both context and exposure to private data. The citation records the cap, so the report shows how much raw text the reader opened.
+Readers start with `hp query` timelines and use `records_slice` as their only route to raw transcript text. Its required line range and character cap bound both context and exposure to private data. The citation records the cap, so the report shows how much raw text the reader opened.
 
 Follow these working rules:
 

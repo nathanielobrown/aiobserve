@@ -1,4 +1,4 @@
-"""`aiobserve export-otlp`: the production path, end to end.
+"""`hp export-otlp`: the production path, end to end.
 
 Argument parsing, environment validation, the store's single writer and `refresh()` — the
 tiers below prove the parts, and these leaves prove the wiring, which is the only thing an
@@ -13,10 +13,10 @@ from typing import Any
 import duckdb
 import pytest
 
-from aiobserve import cli
-from aiobserve.export.duckdb import open_trace_store
-from aiobserve.export.otlp import TextPolicy
-from aiobserve.export.otlp_delivery import (
+from hyphae import cli
+from hyphae.export.duckdb import open_trace_store
+from hyphae.export.otlp import TextPolicy
+from hyphae.export.otlp_delivery import (
     ENDPOINT_ENV,
     GENERIC,
     HEADERS_ENV,
@@ -25,8 +25,8 @@ from aiobserve.export.otlp_delivery import (
     OtlpExporter,
     census,
 )
-from aiobserve.extract.store import StoreSource
-from aiobserve.pipeline import refresh
+from hyphae.extract.store import StoreSource
+from hyphae.pipeline import refresh
 from tests.conftest import MYCELIA, locked
 from tests.export.conftest import KEY_SENTINEL, Receiver, attributes, delivery_rows
 

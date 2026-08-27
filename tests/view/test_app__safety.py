@@ -10,8 +10,8 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from aiobserve.view import nodes
-from aiobserve.view.app import CSP, build_app
+from hyphae.view import nodes
+from hyphae.view.app import CSP, build_app
 from tests.conftest import (
     ANCESTOR,
     DENSE_CALL,

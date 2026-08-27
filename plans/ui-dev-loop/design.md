@@ -4,7 +4,7 @@ Two additions that make viewer UI work iterative: a dev-only live reload (watchf
 
 ## Problem
 
-Editing a template today means saving, switching to the browser, refreshing by hand, and navigating back. The server half of the loop is already live — Starlette's `Jinja2Templates` leaves Jinja's `auto_reload` on (`view/app.py:497`), so an edited template re-renders on the next request — but nothing tells the browser a request is worth making. And the only browser view of a component state is `aiobserve view` over the canonical store: whatever one's own data happens to hold, not the states the tests pin.
+Editing a template today means saving, switching to the browser, refreshing by hand, and navigating back. The server half of the loop is already live — Starlette's `Jinja2Templates` leaves Jinja's `auto_reload` on (`view/app.py:497`), so an edited template re-renders on the next request — but nothing tells the browser a request is worth making. And the only browser view of a component state is `hp view` over the canonical store: whatever one's own data happens to hold, not the states the tests pin.
 
 Three constraints decide the shape:
 
@@ -14,11 +14,11 @@ Three constraints decide the shape:
 
 ## Call paths, current → proposed
 
-Current: `aiobserve view` → `build_app(store)` → `uvicorn.run(app, …)` (`view/app.py:2114`). Template edits appear on the next manual refresh.
+Current: `hp view` → `build_app(store)` → `uvicorn.run(app, …)` (`view/app.py:2114`). Template edits appear on the next manual refresh.
 
 Proposed:
 
-- `aiobserve view --dev` → `build_app(db_path, dev=True)`, which mounts `view/dev.py`'s router — `GET /dev/reload`, an SSE stream fed by `watchfiles.awatch` over the templates and static directories (watch paths are a router argument defaulting to the package's template/static constants, so a test can point them at a tmp dir) — and sets the template flag that makes `base.html` include `/static/dev-reload.js`. The `--dev` flag itself lands in `cli.py`, where the parser lives
+- `hp view --dev` → `build_app(db_path, dev=True)`, which mounts `view/dev.py`'s router — `GET /dev/reload`, an SSE stream fed by `watchfiles.awatch` over the templates and static directories (watch paths are a router argument defaulting to the package's template/static constants, so a test can point them at a tmp dir) — and sets the template flag that makes `base.html` include `/static/dev-reload.js`. The `--dev` flag itself lands in `cli.py`, where the parser lives
 - `dev-reload.js` opens an `EventSource`. An all-CSS event re-busts every stylesheet `<link>` in place — no reload, no state lost; any other event calls `location.reload()`. A dropped stream auto-reconnects, and the reconnect reloads onto whatever the restarted server now serves
 - `mise run gallery` → `tests/gallery/serve.py` → builds a fixture store with the enriched-copy logic the `enriched_db` fixture uses (`tests/conftest.py:310` currently inlines it, so slice 3 first extracts a shared builder the fixture and the gallery both call), wraps `build_app(fixture_store, dev=True)` with an index route at `/gallery` (`/` is already the projects page, a `ROUTES` entry) listing `ROUTES` by name, and serves on a fixed port distinct from the live viewer's
 
@@ -27,11 +27,11 @@ Reload is lossless here because every reader state but tree width rides the URL.
 ## File-tree diff
 
 ```
-src/aiobserve/view/dev.py                 +  SSE reload router; imports watchfiles; imported only when dev
-src/aiobserve/view/static/dev-reload.js   +  the client, a static file
-src/aiobserve/view/templates/base.html    ~  dev-gated script tag
-src/aiobserve/view/app.py                 ~  build_app(db_path, dev=…); serve() forwards dev
-src/aiobserve/cli.py                      ~  --dev flag on the view command
+src/hyphae/view/dev.py                 +  SSE reload router; imports watchfiles; imported only when dev
+src/hyphae/view/static/dev-reload.js   +  the client, a static file
+src/hyphae/view/templates/base.html    ~  dev-gated script tag
+src/hyphae/view/app.py                 ~  build_app(db_path, dev=…); serve() forwards dev
+src/hyphae/cli.py                      ~  --dev flag on the view command
 tests/test_cli.py                         ~  --dev parsing and forwarding
 tests/view/scenarios.py                   +  ROUTES and the ids it names, extracted from conftest
 tests/view/conftest.py                    ~  imports scenarios

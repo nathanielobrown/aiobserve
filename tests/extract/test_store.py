@@ -15,15 +15,15 @@ from typing import Any
 import duckdb
 import pytest
 
-from aiobserve.export.duckdb import open_trace_store
-from aiobserve.extract.store import (
+from hyphae.export.duckdb import open_trace_store
+from hyphae.extract.store import (
     ROW_ORDER,
     StoreSource,
     UnknownProjectError,
     UnplaceableSessionError,
 )
-from aiobserve.model import SessionTrace
-from aiobserve.pipeline import SessionSource
+from hyphae.model import SessionTrace
+from hyphae.pipeline import SessionSource
 from tests.conftest import (
     FIXTURES,
     MYCELIA,

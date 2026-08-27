@@ -10,7 +10,7 @@ leaves own what is true of a run whichever tree it appears in.
 import duckdb
 from fastapi.testclient import TestClient
 
-from aiobserve.analyze import queries
+from hyphae.analyze import queries
 from tests.conftest import (
     BYREF_FORK,
     FORK_ORIGIN,

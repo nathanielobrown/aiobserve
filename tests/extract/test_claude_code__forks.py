@@ -11,9 +11,9 @@ import json
 
 import pytest
 
-from aiobserve.extract.claude_code import ClaudeCodeExtractor
-from aiobserve.extract.record_types import TranscriptSchemaError
-from aiobserve.model import SessionTrace
+from hyphae.extract.claude_code import ClaudeCodeExtractor
+from hyphae.extract.record_types import TranscriptSchemaError
+from hyphae.model import SessionTrace
 from tests.conftest import FIXTURES, PlantedFactory, SourceFactory
 from tests.extract.test_claude_code import at
 

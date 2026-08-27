@@ -10,7 +10,7 @@ from dataclasses import replace
 
 import pytest
 
-from aiobserve.export.otlp import (
+from hyphae.export.otlp import (
     CompactionBeforeRunError,
     SpanKey,
     TimelessRunError,
@@ -172,8 +172,8 @@ def test_the_invoke_agent_id_survives_a_matched_to_orphan_flip(
     # ...and what does move is where it hangs and the flag that says why.
     assert matched.parent_span_id == digest(SPINE, SpanKey.api_call, MAIN, SPINE_SPAWN_CALL)
     assert orphaned.parent_span_id == digest(SPINE, SpanKey.session, "", SPINE)
-    assert attributes(orphaned)["aiobserve.orphan"] is True
-    assert "aiobserve.orphan" not in attributes(matched)
+    assert attributes(orphaned)["hyphae.orphan"] is True
+    assert "hyphae.orphan" not in attributes(matched)
 
 
 def test_an_orphan_run_hangs_off_the_root(fixture_trace: TraceFactory) -> None:
@@ -185,7 +185,7 @@ def test_an_orphan_run_hangs_off_the_root(fixture_trace: TraceFactory) -> None:
     # existed.
     assert span.name == "invoke_agent architect"
     assert span.parent_span_id == digest(TEAMMATE, SpanKey.session, "", TEAMMATE)
-    assert attributes(span)["aiobserve.orphan"] is True
+    assert attributes(span)["hyphae.orphan"] is True
 
 
 def test_a_run_naming_a_call_this_trace_never_held_hangs_off_the_root(
@@ -203,7 +203,7 @@ def test_a_run_naming_a_call_this_trace_never_held_hangs_off_the_root(
     # are told apart in the data rather than by a second flag.
     span = one(session_spans(trace), digest(FORK_ORIGIN, SpanKey.agent_run, "", FORK_ORIGIN_RUN))
     assert span.parent_span_id == digest(FORK_ORIGIN, SpanKey.session, "", FORK_ORIGIN)
-    assert attributes(span)["aiobserve.orphan"] is True
+    assert attributes(span)["hyphae.orphan"] is True
     assert attributes(span)["claude_code.agent_run.tool_use_id"] == run.tool_use_id
 
 
@@ -258,7 +258,7 @@ def test_an_incomplete_tool_call_ends_where_it_started(fixture_trace: TraceFacto
         span = one(spans, digest(SPINE, SpanKey.tool_call, call.source, call.id))
         assert span.start_time_unix_nano == nanos(call.started_at)
         assert span.end_time_unix_nano - span.start_time_unix_nano == 1_000_000
-        assert attributes(span)["aiobserve.incomplete"] is True
+        assert attributes(span)["hyphae.incomplete"] is True
 
 
 def test_flagged_tool_times_ride_the_recorded_clock(fixture_trace: TraceFactory) -> None:
@@ -293,7 +293,7 @@ def test_a_placeholder_reply_is_flagged_as_synthetic(fixture_trace: TraceFactory
     # It reports no tokens and costs nothing, so counting it as a model call inflates the
     # call count of every aggregation that does not filter it out.
     assert span.name == "chat <synthetic>"
-    assert attributes(span)["aiobserve.synthetic"] is True
+    assert attributes(span)["hyphae.synthetic"] is True
 
 
 def test_a_main_thread_compaction_is_a_span_under_the_root(fixture_trace: TraceFactory) -> None:

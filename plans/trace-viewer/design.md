@@ -1,6 +1,6 @@
 # Design: the local trace viewer
 
-`aiobserve view` serves a browser UI over the canonical store so Nathaniel can orient across 575+ sessions and drill from a session to a turn, a subagent run, and a single raw record — locally, with DuckDB as the only backend.
+`hp view` serves a browser UI over the canonical store so Nathaniel can orient across 575+ sessions and drill from a session to a turn, a subagent run, and a single raw record — locally, with DuckDB as the only backend.
 
 Designed against `data/traces.duckdb`, schema 7, probed 2026-08-07: 575 sessions, 3,962 turns (3,945 live), 127,510 api calls, 154,800 tool calls, 2,459 agent runs, 520,892 raw records (2.09 GB of raw text; max record 1.27 MB, p99 34.5 KB; the largest session holds 180 MB of raw). Page-level timings below come from the top-cost session `1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9` (268 turns, 240 runs, $1,268).
 
@@ -14,21 +14,21 @@ The store answers SQL and the analysis process reads bounded digests, but nothin
 
 ## Call paths, current → proposed
 
-Current: orientation is ad-hoc SQL in a Python REPL; reading a session means opening a transcript file that Claude Code prunes within weeks, or dumping unbounded `raw_records`. The `aiobserve query` runner (`plans/mycelia-analysis/design.md`) is designed but unbuilt — `src/aiobserve/analyze/` does not exist yet.
+Current: orientation is ad-hoc SQL in a Python REPL; reading a session means opening a transcript file that Claude Code prunes within weeks, or dumping unbounded `raw_records`. The `hp query` runner (`plans/mycelia-analysis/design.md`) is designed but unbuilt — `src/hyphae/analyze/` does not exist yet.
 
-Proposed: `aiobserve view` (`cli.py`) → `view.app.build_app(db_path)` → uvicorn on `127.0.0.1:8477` → `webbrowser.open`. Each route opens a short-lived `duckdb.connect(read_only=True)`, loads its SQL through `analyze.queries.load(name)`, renders Jinja; htmx `hx-get` fragments lazy-load anything heavy (turn detail, one raw record).
+Proposed: `hp view` (`cli.py`) → `view.app.build_app(db_path)` → uvicorn on `127.0.0.1:8477` → `webbrowser.open`. Each route opens a short-lived `duckdb.connect(read_only=True)`, loads its SQL through `analyze.queries.load(name)`, renders Jinja; htmx `hx-get` fragments lazy-load anything heavy (turn detail, one raw record).
 
 ## File-tree diff
 
 ```
-src/aiobserve/view/
+src/hyphae/view/
   app.py                 build_app(db_path) -> FastAPI, all routes
   render.py              markdown (HTML passthrough off), pretty-JSON, preview helpers
   templates/*.html       Jinja, autoescape on
   static/                vendored htmx.min.js + one stylesheet — no CDN
-src/aiobserve/analyze/queries.py     shared loader: load(name) -> str  (see seams)
-src/aiobserve/analyze/queries/*.sql  the viewer's queries join the analysis library
-src/aiobserve/cli.py     + `view` subcommand
+src/hyphae/analyze/queries.py     shared loader: load(name) -> str  (see seams)
+src/hyphae/analyze/queries/*.sql  the viewer's queries join the analysis library
+src/hyphae/cli.py     + `view` subcommand
 pyproject.toml           + fastapi, uvicorn, jinja2, markdown-it-py (each commented)
 docs/viewer.md           what the viewer shows and the URL contract; CLAUDE.md Layout line
 tests/view/test_app.py
@@ -36,7 +36,7 @@ tests/view/test_app.py
 
 ## Key contracts
 
-**CLI.** `aiobserve view [--db PATH] [--port N] [--no-browser]`. `--db` defaults to `DEFAULT_DB` like the sibling commands. `--port` defaults to **8477, fixed** — a citable URL must survive a relaunch. On open the app checks `meta.schema_version` and refuses a store this build does not read, same message shape as `EnrichmentStore._check_base_schema` — a schema move crashes at launch, never degrades mid-page.
+**CLI.** `hp view [--db PATH] [--port N] [--no-browser]`. `--db` defaults to `DEFAULT_DB` like the sibling commands. `--port` defaults to **8477, fixed** — a citable URL must survive a relaunch. On open the app checks `meta.schema_version` and refuses a store this build does not read, same message shape as `EnrichmentStore._check_base_schema` — a schema move crashes at launch, never degrades mid-page.
 
 **URLs are the citation surface.** `/session/{session_id}`, `/session/{session_id}/run/{run_id}`, `/session/{session_id}/records/{source}?after=N#L{line_no}`. All natural keys, so an analysis report's citation `(session_id, source, line_no–line_no)` maps to a records URL mechanically. Reports keep citing the tuple, not the URL — the URL is derived, so a port or route change breaks nothing stored. **As built,** a later route change proved it: the records page reads at `/session/{session_id}/thread/{source}/records?after=N#L{line_no}` and every saved tuple still resolves.
 
@@ -58,14 +58,14 @@ tests/view/test_app.py
 
 **Performance.** Measured, not assumed: rollup scans 30–50 ms, list join under 30 ms, every session-page query < 10 ms on the monster session. **No indexes, no materialized views** — at this scale they buy nothing. Payload bounds by construction: full pages ship scalars and SQL-truncated previews only — session list ~575 rows of scalars, session timeline ≤ 79 main turns (the corpus max) × 300-char previews — and every fragment page is capped as the turn-expand contract states. **Worst-case first paint: no page or fragment exceeds ~350 KB of HTML at the manifest defaults**; anything larger arrives only through a per-value fetch (≤ 77 KB for a tool result, ≤ 1.27 MB for one raw record) or a 100 KB offload chunk. The rules that make it hold: no query behind a page or list ever selects a fat column (`raw`, `text`, `thinking`, `result`, `input`, `content`) untruncated; one value per per-value fetch. Growth point: if the list join passes ~1 s (tens of thousands of sessions), materialize it — not now.
 
-**Concurrency with `extract`.** Connections are per-request read-only and closed immediately, so `aiobserve extract` can usually take the write lock between requests; a collision fails extract with DuckDB's lock error, documented in `docs/viewer.md` rather than retried. The reverse direction is handled, not deferred: while an extract holds the write lock, every viewer connect raises `duckdb.IOException` ("Conflicting lock is held" — verified cross-process 2026-08-07), and the connect wrapper turns that into a **503 "the store is being written — retry in a moment" page** instead of a raw traceback. That exception only reproduces across processes — an in-process second connect raises `duckdb.ConnectionException` about differing configuration, a branch production never takes — so the honest 503 test holds the lock from a subprocess and carries the `slow` marker. The same wrapper re-checks `meta.schema_version` per request (one scalar read), so a delete-and-re-extract under a bumped schema while the viewer runs fails with the version message, not mid-page confusion. Launch on a taken port fails with a "kill the old `aiobserve view`" hint rather than a bare `EADDRINUSE`.
+**Concurrency with `extract`.** Connections are per-request read-only and closed immediately, so `hp extract` can usually take the write lock between requests; a collision fails extract with DuckDB's lock error, documented in `docs/viewer.md` rather than retried. The reverse direction is handled, not deferred: while an extract holds the write lock, every viewer connect raises `duckdb.IOException` ("Conflicting lock is held" — verified cross-process 2026-08-07), and the connect wrapper turns that into a **503 "the store is being written — retry in a moment" page** instead of a raw traceback. That exception only reproduces across processes — an in-process second connect raises `duckdb.ConnectionException` about differing configuration, a branch production never takes — so the honest 503 test holds the lock from a subprocess and carries the `slow` marker. The same wrapper re-checks `meta.schema_version` per request (one scalar read), so a delete-and-re-extract under a bumped schema while the viewer runs fails with the version message, not mid-page confusion. Launch on a taken port fails with a "kill the old `hp view`" hint rather than a bare `EADDRINUSE`.
 
 ## Integration seams
 
-**One SQL library, two consumers.** The viewer's queries live in `src/aiobserve/analyze/queries/*.sql` beside the analysis library and go through the same loader (`analyze/queries.py`: read file, return SQL), so `session_digest`/`run_digest` logic exists once and every viewer number stays a citable, runnable query. **As built,** a rule two query files share is a DuckDB temp macro in `src/aiobserve/analyze/macros.py`, and each consumer installs the set on the connection it is about to query through (`analyze/runner.py`, `view/store.py`). A statement that names one runs under a consumer rather than in a bare `duckdb` shell, so `/query/{name}` prints the definitions above it and the cited SQL stays runnable as shown. The seam's fine print, which is where the two in-flight implementations would otherwise collide:
+**One SQL library, two consumers.** The viewer's queries live in `src/hyphae/analyze/queries/*.sql` beside the analysis library and go through the same loader (`analyze/queries.py`: read file, return SQL), so `session_digest`/`run_digest` logic exists once and every viewer number stays a citable, runnable query. **As built,** a rule two query files share is a DuckDB temp macro in `src/hyphae/analyze/macros.py`, and each consumer installs the set on the connection it is about to query through (`analyze/runner.py`, `view/store.py`). A statement that names one runs under a consumer rather than in a bare `duckdb` shell, so `/query/{name}` prints the definitions above it and the cited SQL stays runnable as shown. The seam's fine print, which is where the two in-flight implementations would otherwise collide:
 
 - **Manifest ownership.** Every `.sql` in the directory needs an entry in the runner's per-query manifest — the analysis smoke test executes all of them and fails on a missing entry. **The slice that adds a query adds its manifest entry**: viewer slices own the entries for viewer queries. A keyed query's entry marks its keys required-with-no-default (`$session_id`, `$source` for `run_digest` — the house rule for a choice the caller must make)
-- **Query scope.** The manifest gains a `scope` field: `corpus` queries take the runner's required `--project` and corpus predicate as designed; **`keyed` queries are exempt from both** — a corpus predicate on `WHERE session_id = $session_id` is noise. So `aiobserve query run_digest --param session_id=… --param source=…` works as-is, and "every viewer column is runnable" survives. This extends the analysis design's runner contract; the extension lives here and the in-flight analysis implementer needs to see it
+- **Query scope.** The manifest gains a `scope` field: `corpus` queries take the runner's required `--project` and corpus predicate as designed; **`keyed` queries are exempt from both** — a corpus predicate on `WHERE session_id = $session_id` is noise. So `hp query run_digest --param session_id=… --param source=…` works as-is, and "every viewer column is runnable" survives. This extends the analysis design's runner contract; the extension lives here and the in-flight analysis implementer needs to see it
 - **Sort and filter mechanism.** A `?sort=` column and optional filters cannot be bound parameters in static SQL. The library file stays the citable core — one plain SELECT with bound params — and `view/app.py` composes around it: `SELECT * FROM (<library sql>) WHERE <predicate> ORDER BY <column> <direction>`, where predicate, column, and direction come from a **closed dict mapping request-param names to fixed SQL fragments**, and user-supplied values (dates, a skill name) reach DuckDB only as bound parameters. An unknown key 400s. Nothing user-controlled is ever interpolated into SQL. The page footer cites the library query name, the resolved bindings, and the applied sort/filter keys — same claim-carries-its-query shape as the runner's citation header
 - **No-clock rule.** Shared-library files never read the clock, per the analysis design; the viewer's date-range filter is a composed predicate binding the user's dates, so the rule costs the viewer nothing
 - **Landing order.** With the above written down there is no ordering constraint: whichever of analysis slice 1 and viewer slice 1 lands first creates `analyze/queries.py` and the manifest shape; the second rebases onto it
@@ -98,7 +98,7 @@ FastAPI `TestClient` over `build_app` pointed at a temp store the real extract p
 ## Out of scope
 
 - Annotation or any write from the UI — the viewer is read-only by construction
-- Full-text search over message content — an FTS index is a real feature with its own design; the records browser plus `aiobserve query` cover interim needs
+- Full-text search over message content — an FTS index is a real feature with its own design; the records browser plus `hp query` cover interim needs
 - Charts and trend dashboards — the analysis process owns aggregate findings; revisit with the dataviz skill if wanted
 - Auth of any kind — localhost, one user
 - Live tailing/auto-refresh during extraction; multi-store switching
@@ -107,7 +107,7 @@ FastAPI `TestClient` over `build_app` pointed at a temp store the real extract p
 
 What the implementation does differently from the paragraphs above. Everything else landed as designed.
 
-- **The list is paged.** Rendering all 575 sessions came to 587 KB (1,021 B a row, measured 2026-08-08), well past the ~350 KB ceiling — so "whole list server-rendered" was a latency claim that does not carry the payload. `/` takes `page` and `size`, bound by `PAGE_SESSIONS` (200) and `MAX_PAGE_SESSIONS` (500) in `src/aiobserve/view/app.py`, which is the design's own no-exceptions rule about page sizes. The join stays un-materialized; nothing about the growth threshold changes
+- **The list is paged.** Rendering all 575 sessions came to 587 KB (1,021 B a row, measured 2026-08-08), well past the ~350 KB ceiling — so "whole list server-rendered" was a latency claim that does not carry the payload. `/` takes `page` and `size`, bound by `PAGE_SESSIONS` (200) and `MAX_PAGE_SESSIONS` (500) in `src/hyphae/view/app.py`, which is the design's own no-exceptions rule about page sizes. The join stays un-materialized; nothing about the growth threshold changes
 - **A direction carries its NULLs placement.** `asc` composes `ASC NULLS LAST` and `desc` `DESC NULLS FIRST`, with a same-direction `session_id` tie-break, so a sort and its reverse are exact opposites and the order is total. `<column> <direction>` alone is neither
 - **A run spawned from another run's turn nests under its parent's chip** rather than waiting for the run page. Without it the session page shows fewer runs than its own header counts; `timeline()` raises if any run cannot be placed
 - **CSP is app-level middleware**, not a per-route header, so 400s, 404s, the 503 page and the static files all carry it

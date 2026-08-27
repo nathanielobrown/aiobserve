@@ -11,7 +11,7 @@ Use this guide to decide where project documentation belongs and how to keep it 
 | Conventions for a set of files, such as tests | `.claude/rules/` |
 | A guide to one project topic | `docs/`, linked from the `CLAUDE.md` Layout tree |
 | This guide | `docs/documentation.md` |
-| The meaning and source of a telemetry field | Its field on a record model in `src/aiobserve/extract/records/`, which `docs/schema.md` prints |
+| The meaning and source of a telemetry field | Its field on a record model in `src/hyphae/extract/records/`, which `docs/schema.md` prints |
 | A table restating something the code already holds | A generator in `tools/`, spliced into the document; see [Generate a table from the code that owns it](#generate-a-table-from-the-code-that-owns-it) |
 | A picture of how parts connect or data moves | A ` ```mermaid ` block in the document that owns the topic; see [the Mermaid guide](mermaid-guide.md) |
 | A finding about an AI coding agent and its evidence | `reports/`; see [the report guide](../reports/README.md) |

@@ -15,9 +15,9 @@ import sys
 from enum import StrEnum
 from typing import NamedTuple
 
-from aiobserve.analyze import queries
-from aiobserve.view import bounds, nodes
-from aiobserve.view.knobs import KNOB_DEFAULTS
+from hyphae.analyze import queries
+from hyphae.view import bounds, nodes
+from hyphae.view.knobs import KNOB_DEFAULTS
 from tools import text
 
 # Where a cited name is looked up. `bounds.py` names every page size beside its ceiling and

@@ -1,6 +1,6 @@
 # Project Overview
 
-aiobserve turns AI coding-agent telemetry — mostly traces — into queryable data and evidence-backed findings about how to improve agents. Claude Code is the first target.
+hyphae turns AI coding-agent telemetry — mostly traces — into queryable data and evidence-backed findings about how to improve agents. Claude Code is the first target.
 
 The project is early. Don't optimize for feature speed or backward compatibility yet. Prefer clean breaking changes to compatibility shims and deprecation paths.
 
@@ -35,7 +35,7 @@ Change the tooling or add tools when they make the work easier or enforce projec
 
 <!-- aigarden:cog sh "uv run python -m tools.gen_layout" -->
 ```
-src/aiobserve/            Analyze AI coding agents from their telemetry
+src/hyphae/               Analyze AI coding agents from their telemetry
   extract/                Extractors: recorded agent sessions in, `SessionTrace` out
   export/                 Exporters: `SessionTrace` in, rows in a sink out
   enrich/                 The enrichment layer: what a model wrote about each run, turn and session in the store
@@ -46,13 +46,13 @@ tests/                    The suite, mirroring the package layout; fixtures are 
 tools/                    The repo's own generators: the tables the docs cite, written from the code that owns them
 docs/
   analysis.md             Follow this process to turn the trace store into evidence-backed findings about how an AI coding agent behaved on a project
-  schema.md               Every Claude Code telemetry field aiobserve reads, what it means, and the recording that proves it
-  store.md                The trace store is one DuckDB file, `data/traces.duckdb`: the archive `aiobserve extract` writes to and every query reads
+  schema.md               Every Claude Code telemetry field hyphae reads, what it means, and the recording that proves it
+  store.md                The trace store is one DuckDB file, `data/traces.duckdb`: the archive `hp extract` writes to and every query reads
   enrichment.md           Enrichment describes every agent run, main turn, and session in the trace store
-  viewer.md               `aiobserve view` opens the trace store in a local browser
+  viewer.md               `hp view` opens the trace store in a local browser
   viewer-bounds.md        What a viewer URL may ask for, and what the page that comes back is allowed to weigh
   ui-development.md       Edit a viewer template or stylesheet and see it in the browser without touching the browser
-  otlp-export.md          `aiobserve export-otlp` sends sessions from the trace store to an OTLP/HTTP backend as spans
+  otlp-export.md          `hp export-otlp` sends sessions from the trace store to an OTLP/HTTP backend as spans
   documentation.md        Use this guide to decide where project documentation belongs and how to keep it current
   writing_style_guide.md  How to write effectively; based on William Zinsser's *On Writing Well*
   mermaid-guide.md        Use this guide to write Mermaid diagrams that stay small, render on GitHub, and share one visual language
@@ -94,7 +94,7 @@ Claude Code controls the transcript and span schemas and can change them without
 
 - Open a real recorded session before writing a parser, query, or documentation about a field
 - Follow `.claude/rules/python.md` when a parser encounters an unexpected shape
-- A confirmed fact is declared on its record model in `src/aiobserve/extract/records/`, with the session and Claude Code version that proved it; `docs/schema.md` prints what the models carry. Anything absent from that document isn't established
+- A confirmed fact is declared on its record model in `src/hyphae/extract/records/`, with the session and Claude Code version that proved it; `docs/schema.md` prints what the models carry. Anything absent from that document isn't established
 
 ## Write comments for future readers
 

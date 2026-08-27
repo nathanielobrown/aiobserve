@@ -32,9 +32,9 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from watchfiles import Change, awatch
 
-import aiobserve.view
-from aiobserve.view.app import CSP, HOST, STATIC, build_app, claim
-from aiobserve.view.dev import RELOAD_URL, Event, Rendered, event_for, reload_router
+import hyphae.view
+from hyphae.view.app import CSP, HOST, STATIC, build_app, claim
+from hyphae.view.dev import RELOAD_URL, Event, Rendered, event_for, reload_router
 from tests.view.scenarios import ROUTES
 
 # The one line `base.html` adds under `--dev`, whole: the newline and the indent included, so
@@ -254,8 +254,8 @@ def test_dev_mode_without_the_watcher_installed_refuses_to_start(
     monkeypatch.setitem(sys.modules, "watchfiles", None)
     # ...and `view.dev` has to be re-imported for the hiding to reach it, which means clearing
     # it from both places an import looks: the module table, and the package it hangs off.
-    monkeypatch.delitem(sys.modules, "aiobserve.view.dev", raising=False)
-    monkeypatch.delattr(aiobserve.view, "dev", raising=False)
+    monkeypatch.delitem(sys.modules, "hyphae.view.dev", raising=False)
+    monkeypatch.delattr(hyphae.view, "dev", raising=False)
     with pytest.raises(ImportError):
         build_app(corpus_db, dev=True)
     # The shipped viewer is untouched by the absence.
@@ -334,7 +334,7 @@ def test_a_port_the_server_could_bind_is_not_refused_by_the_probe_that_guards_it
 _SERVER = """
 import sys
 from pathlib import Path
-from aiobserve.view.app import serve
+from hyphae.view.app import serve
 
 serve(Path(sys.argv[1]), int(sys.argv[2]), open_browser=False, dev=True)
 """

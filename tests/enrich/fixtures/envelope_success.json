@@ -55,10 +55,10 @@
   "fast_mode_disabled_reason": "sdk_opt_in_required",
   "subtype": "success",
   "api_error_status": null,
-  "result": "{\"category\":\"implement\",\"description\":\"Added a --concurrency flag to the enrich command in src/aiobserve/cli.py, enabling users to control the level of concurrency for the enrich operation.\",\"outcome\":\"completed\",\"friction\":null}",
+  "result": "{\"category\":\"implement\",\"description\":\"Added a --concurrency flag to the enrich command in src/hyphae/cli.py, enabling users to control the level of concurrency for the enrich operation.\",\"outcome\":\"completed\",\"friction\":null}",
   "structured_output": {
     "category": "implement",
-    "description": "Added a --concurrency flag to the enrich command in src/aiobserve/cli.py, enabling users to control the level of concurrency for the enrich operation.",
+    "description": "Added a --concurrency flag to the enrich command in src/hyphae/cli.py, enabling users to control the level of concurrency for the enrich operation.",
     "outcome": "completed",
     "friction": null
   },

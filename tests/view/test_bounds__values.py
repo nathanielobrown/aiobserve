@@ -12,9 +12,9 @@ from pathlib import Path
 import duckdb
 from fastapi.testclient import TestClient
 
-from aiobserve.analyze import queries
-from aiobserve.view.app import build_app
-from aiobserve.view.format import ELLIPSIS
+from hyphae.analyze import queries
+from hyphae.view.app import build_app
+from hyphae.view.format import ELLIPSIS
 from tests.conftest import (
     ANCESTOR,
     DENSE_TOOL,

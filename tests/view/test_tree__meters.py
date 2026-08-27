@@ -12,9 +12,9 @@ from typing import NamedTuple
 import duckdb
 from fastapi.testclient import TestClient
 
-from aiobserve.extract.pricing import CONTEXT_WINDOWS, SYNTHETIC_MODEL
-from aiobserve.view.app import build_app
-from aiobserve.view.nodes import (
+from hyphae.extract.pricing import CONTEXT_WINDOWS, SYNTHETIC_MODEL
+from hyphae.view.app import build_app
+from hyphae.view.nodes import (
     BAR_STEPS,
     STEPS,
     Kind,

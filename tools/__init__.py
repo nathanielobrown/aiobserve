@@ -2,5 +2,5 @@
 
 Each module here exposes `generate()` and a `main()` that prints it, and is run by an
 `aigarden:cog` block in the document that carries the table. Repo tooling rather than shipped
-code — nothing under `src/aiobserve/` imports any of it.
+code — nothing under `src/hyphae/` imports any of it.
 """

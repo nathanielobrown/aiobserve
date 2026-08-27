@@ -16,22 +16,22 @@ from types import ModuleType
 
 import pytest
 
-from aiobserve.extract import claude_code
-from aiobserve.extract.record_types import (
+from hyphae.extract import claude_code
+from hyphae.extract.record_types import (
     ArchiveRecordType,
     ContentBlock,
     RecordType,
     SystemSubtype,
 )
-from aiobserve.extract.records import blocks, schema, shapes
+from hyphae.extract.records import blocks, schema, shapes
 
 # The models side, whose source names every documented field as a literal. Reading it as parser
 # source would make "the parser reads this field" true of every field ever documented.
-MODELS = "aiobserve.extract.records"
+MODELS = "hyphae.extract.records"
 
 
 def parsing_modules(entry: ModuleType) -> list[ModuleType]:
-    """Every `aiobserve.extract` module the extractor reaches, entry point first.
+    """Every `hyphae.extract` module the extractor reaches, entry point first.
 
     Found by walking imports rather than named here, because the parser is split across modules
     and a list would go stale the next time it is split again — silently, since the leaves below
@@ -44,7 +44,7 @@ def parsing_modules(entry: ModuleType) -> list[ModuleType]:
             if not isinstance(node, ast.ImportFrom) or node.module is None:
                 continue
             name = node.module
-            reached = name.startswith("aiobserve.extract.")
+            reached = name.startswith("hyphae.extract.")
             if (
                 reached
                 and name != MODELS

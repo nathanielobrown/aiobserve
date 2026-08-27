@@ -12,12 +12,12 @@ import jinja2
 import pytest
 from fastapi.testclient import TestClient
 
-from aiobserve.view import templating
-from aiobserve.view.listing import (
+from hyphae.view import templating
+from hyphae.view.listing import (
     FILTERS,
     LIST_KEYS,
 )
-from aiobserve.view.templating import TEMPLATES
+from hyphae.view.templating import TEMPLATES
 from tests.conftest import (
     MYCELIA,
 )

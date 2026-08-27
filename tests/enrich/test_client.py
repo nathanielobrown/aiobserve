@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from aiobserve.enrich.client import (
+from hyphae.enrich.client import (
     ATTEMPTS,
     BREAKER_BOUND,
     ITEM_TIMEOUT,
@@ -19,8 +19,8 @@ from aiobserve.enrich.client import (
     Failed,
     Succeeded,
 )
-from aiobserve.enrich.taxonomy import Category, Outcome
-from aiobserve.enrich.validation import Enrichment, FailureKind, validate
+from hyphae.enrich.taxonomy import Category, Outcome
+from hyphae.enrich.validation import Enrichment, FailureKind, validate
 from tests.enrich.fake_cli import (
     MODEL,
     OTHER_MODEL,

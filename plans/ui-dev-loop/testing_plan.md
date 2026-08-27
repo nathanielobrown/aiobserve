@@ -40,7 +40,7 @@ Behavior-preserving. Its obligations are that nothing moved but the text.
 - A `.js` edit is a page event, not a CSS one. *Evidence:* invented set holding `static/dev-reload.js`; assert `"page"` — the client script itself only takes effect on a load.
 - Classification reads the path, not the kind of change. *Evidence:* parametrize one `.css` path over `Change.added`, `Change.modified`, `Change.deleted`; all three answer `"css"`.
 - An empty change set is a broken assumption, not a classification. *Evidence:* `event_for(set())` raises with a message naming the empty set (`.claude/rules/python.md` fail-fast) — asserted with `pytest.raises`. If the implementer instead decides an empty set is `"page"`, the leaf becomes an assertion on that, and the choice gets a why-comment.
-- No surviving mutant in the classifier. *Evidence:* `mise run mutate 'aiobserve.view.dev.*'` reports zero survivors, or a survivor with a written reason.
+- No surviving mutant in the classifier. *Evidence:* `mise run mutate 'hyphae.view.dev.*'` reports zero survivors, or a survivor with a written reason.
 
 ### integration (watcher)
 
@@ -56,12 +56,12 @@ Behavior-preserving. Its obligations are that nothing moved but the text.
 - `GET /dev/reload` answers `200` with `content-type: text/event-stream`. *Evidence:* `with client.stream("GET", "/dev/reload") as response:` — assert status and header, then leave the block without draining the body.
 - **The CSP header is the same string in both modes, on a page and on the stream.** *Evidence:* `response.headers["content-security-policy"] == CSP` asserted on a dev page, a prod page, and the `/dev/reload` stream — the imported constant, the way `tests/view/test_lifecycle.py:39` does it. Bolded: the whole shape of this design (SSE, a static client script) was chosen to keep this string untouched; an assertion that reads it back is what makes that claim checkable.
 - `/static/dev-reload.js` is served in both modes and is the file on disk. *Evidence:* the served bytes equal `STATIC/"dev-reload.js"` read from disk. A static mount serves it either way; what matters is that only dev asks for it.
-- **`--dev` with watchfiles absent fails at startup, not at the first save.** *Evidence:* hide `watchfiles` from imports (a `sys.meta_path` finder that raises for that name, plus `sys.modules` cleared of `aiobserve.view.dev`), then assert `build_app(corpus_db, dev=True)` raises `ImportError` while `build_app(corpus_db)` still returns an app. Bolded: this is the leaf that pins the design's "the shipped viewer gains no dependency" claim — it fails the moment someone hoists `from . import dev` to the top of `app.py`.
+- **`--dev` with watchfiles absent fails at startup, not at the first save.** *Evidence:* hide `watchfiles` from imports (a `sys.meta_path` finder that raises for that name, plus `sys.modules` cleared of `hyphae.view.dev`), then assert `build_app(corpus_db, dev=True)` raises `ImportError` while `build_app(corpus_db)` still returns an app. Bolded: this is the leaf that pins the design's "the shipped viewer gains no dependency" claim — it fails the moment someone hoists `from . import dev` to the top of `app.py`.
 - The SSE generator does not hold shutdown open. *Evidence:* open the stream, then exit the `TestClient` context inside a bounded wait; the context manager returns within the deadline. See **Findings** — the honest version of this leaf may need a uvicorn subprocess.
 
 ### CLI surface
 
-- `aiobserve view --dev` parses to `dev=True`, and the default is `False`. *Evidence:* the `"view"` row of the `SURFACES` table (`tests/test_cli.py:76`) gains `"dev": False`, discharged by the existing parametrized leaf; plus one parse of `["view", "--dev"]` asserting `dev is True`.
+- `hp view --dev` parses to `dev=True`, and the default is `False`. *Evidence:* the `"view"` row of the `SURFACES` table (`tests/test_cli.py:76`) gains `"dev": False`, discharged by the existing parametrized leaf; plus one parse of `["view", "--dev"]` asserting `dev is True`.
 - The flag reaches `serve`. *Evidence:* `test_the_viewer_opens_a_browser_unless_the_run_says_not_to` (`tests/test_cli.py:145`) extended — its recorded tuple carries the `dev` value, and `cli.main("view", "--dev")` records `True`.
 
 ### witnessed (Chromium)
@@ -125,7 +125,7 @@ Three, none of them dropped.
 
 Checked against the code at `main`, 2026-08-25:
 
-- **The `--dev` flag is not in `view/app.py`.** The parser lives in `src/aiobserve/cli.py` — `_view` at `:103` and `_view_arguments` at `:108`; `serve()` is `view/app.py:2103`. The file-tree diff omits `src/aiobserve/cli.py` and `tests/test_cli.py`, both of which this change must touch. Give `serve`'s new `dev` parameter no default: the caller decides (`CLAUDE.md`)
+- **The `--dev` flag is not in `view/app.py`.** The parser lives in `src/hyphae/cli.py` — `_view` at `:103` and `_view_arguments` at `:108`; `serve()` is `view/app.py:2103`. The file-tree diff omits `src/hyphae/cli.py` and `tests/test_cli.py`, both of which this change must touch. Give `serve`'s new `dev` parameter no default: the caller decides (`CLAUDE.md`)
 - `uvicorn.run(...)` is `view/app.py:2118`, not `:2114`. `CSP = "default-src 'self'"` at `:96` and `Jinja2Templates(directory=TEMPLATES)` at `:497` verified as written; `build_app` is `:487` and its parameter is named `db_path`, not `store`
 - **There is no shared enriched-store builder.** `corpus_db` (`tests/conftest.py:284`) calls `build_store`, but `enriched_db` (`:310`) inlines the `EnrichmentStore.upsert` loop in the fixture body. Slice 3 must extract it before it can be reused, which is why the "same builder" obligation above is written as a refactor with the existing enrichment leaves as its evidence
 - **The gallery index cannot live at `/`.** `/` is the projects page and a `ROUTES` entry; wrapping `build_app` with an index there would shadow a route the sweep covers. Pick a path outside `ROUTES` — `/gallery` — and pin it with the route-set leaf above

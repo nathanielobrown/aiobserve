@@ -11,10 +11,10 @@ import json
 import duckdb
 from fastapi.testclient import TestClient
 
-from aiobserve.view import bounds
-from aiobserve.view.app import build_app
-from aiobserve.view.format import ELLIPSIS
-from aiobserve.view.labels import LABELS
+from hyphae.view import bounds
+from hyphae.view.app import build_app
+from hyphae.view.format import ELLIPSIS
+from hyphae.view.labels import LABELS
 from tests.conftest import ANCESTOR, DENSE_TURN, MAIN, SLASH_TURN, SPINE
 from tests.view.conftest import (
     Planter,

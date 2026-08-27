@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from aiobserve.view.format import (
+from hyphae.view.format import (
     ABSENT,
     ELLIPSIS,
     ago,
@@ -180,16 +180,16 @@ def test_a_rate_over_nothing_is_a_gap_rather_than_zero(
     [
         # The reader's own home, folded: the list is scanned for which project a session was
         # in, and nine characters of a path every row repeats are not that.
-        (f"{HOME}/repos/aiobserve", "~/repos/aiobserve"),
+        (f"{HOME}/repos/hyphae", "~/repos/hyphae"),
         # The home itself, which is a project directory like any other.
         (HOME, "~"),
         # Someone else's home under the same parent. A prefix match on the string would fold
         # this one too, and `~` on another user's directory is a claim about this machine that
         # the session does not support.
-        ("/Users/readerly/repos/aiobserve", "/Users/readerly/repos/aiobserve"),
+        ("/Users/readerly/repos/hyphae", "/Users/readerly/repos/hyphae"),
         # A path the reader's home has nothing to do with — a session recorded on another
         # machine, or one under a shared checkout — prints as the store holds it.
-        ("/srv/checkouts/aiobserve", "/srv/checkouts/aiobserve"),
+        ("/srv/checkouts/hyphae", "/srv/checkouts/hyphae"),
         ("/Users", "/Users"),
     ],
 )

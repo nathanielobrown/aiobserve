@@ -88,7 +88,7 @@ Worst case at 5 B/escaped char: tree ≤ `1 + DEPTH×(KIN+1)` = **417 rows**. Th
 ## File-tree diff
 
 ```
-src/aiobserve/view/
+src/hyphae/view/
   tree.py, walk.py, nodes.py, highlight.py    new
   threads.py                                  deleted (meter() moves to tree.py)
   app.py        node routes ×8, /query, /fragment/body ×2 (run + kinded), value fragments prompt/brief;

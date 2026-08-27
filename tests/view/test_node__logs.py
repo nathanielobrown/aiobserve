@@ -11,10 +11,10 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from aiobserve.view.columns import COLUMNS, Shape
-from aiobserve.view.knobs import numbered
-from aiobserve.view.labels import label
-from aiobserve.view.nodes import BODY_URL
+from hyphae.view.columns import COLUMNS, Shape
+from hyphae.view.knobs import numbered
+from hyphae.view.labels import label
+from hyphae.view.nodes import BODY_URL
 from tests.view.conftest import (
     fields,
     icons,

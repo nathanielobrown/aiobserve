@@ -1,4 +1,4 @@
-"""The `aiobserve query` runner: what it selects, what it binds, and what it cites.
+"""The `hp query` runner: what it selects, what it binds, and what it cites.
 
 Nothing is mocked — every leaf drives `cli.main("query", …)` against a real DuckDB built
 from recorded fixtures, and reads the two streams apart, because which stream a line lands
@@ -11,8 +11,8 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from aiobserve.analyze import manifest, queries
-from aiobserve.export.duckdb import SCHEMA_VERSION
+from hyphae.analyze import manifest, queries
+from hyphae.export.duckdb import SCHEMA_VERSION
 from tests.analyze.conftest import AS_OF_PARTIAL, MYCELIA_SESSIONS, Output, QueryRunner, query
 from tests.conftest import (
     MAIN,

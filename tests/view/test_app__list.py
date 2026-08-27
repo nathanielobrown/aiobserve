@@ -14,12 +14,12 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from aiobserve.analyze import manifest, queries
-from aiobserve.view import bounds
-from aiobserve.view import format as fmt
-from aiobserve.view.app import build_app
-from aiobserve.view.format import ABSENT
-from aiobserve.view.listing import (
+from hyphae.analyze import manifest, queries
+from hyphae.view import bounds
+from hyphae.view import format as fmt
+from hyphae.view.app import build_app
+from hyphae.view.format import ABSENT
+from hyphae.view.listing import (
     ARIA_SORT,
     DEFAULT_DIRECTION,
     DEFAULT_SORT,

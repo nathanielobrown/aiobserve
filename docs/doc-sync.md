@@ -18,7 +18,7 @@ Read [the documentation guide](documentation.md) before you start. It defines wh
 
 2. **Find the docs that own those facts.** Use [Give each fact one home](documentation.md#give-each-fact-one-home), then open each likely owner and check whether the diff has made it stale. These changes often require a doc update:
    - A new top-level module or package needs a docstring whose first sentence reads as its gloss: the `CLAUDE.md` Layout tree is generated from those, so run `mise run cogs` rather than editing the tree
-   - A changed telemetry attribute, span name, or transcript field belongs on its record model in `src/aiobserve/extract/records/`, backed by the recorded session and Claude Code version that prove it; [the schema reference](schema.md) prints what the models carry, so run `mise run cogs` rather than editing its tables
+   - A changed telemetry attribute, span name, or transcript field belongs on its record model in `src/hyphae/extract/records/`, backed by the recorded session and Claude Code version that prove it; [the schema reference](schema.md) prints what the models carry, so run `mise run cogs` rather than editing its tables
    - A changed extraction or analysis command may affect the README usage section and its task description in `mise.toml`
    - A changed component relationship or flow may require a Mermaid diagram in the doc that owns the topic; follow [the Mermaid guide](mermaid-guide.md), and update diagrams the change has made stale
    - A finding that changes what the project believes about an agent's behavior belongs in the owning report under `reports/`

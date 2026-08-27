@@ -10,13 +10,13 @@ from pathlib import Path
 
 import pytest
 
-from aiobserve import cli
-from aiobserve.export.duckdb import DuckDbExporter
-from aiobserve.extract import claude_code
-from aiobserve.extract.claude_code import ClaudeCodeExtractor
-from aiobserve.model import SessionTrace
-from aiobserve.pipeline import Extractor, SessionSource, refresh
-from aiobserve.sessions import encode_project_path
+from hyphae import cli
+from hyphae.export.duckdb import DuckDbExporter
+from hyphae.extract import claude_code
+from hyphae.extract.claude_code import ClaudeCodeExtractor
+from hyphae.model import SessionTrace
+from hyphae.pipeline import Extractor, SessionSource, refresh
+from hyphae.sessions import encode_project_path
 from tests.conftest import FIXTURES
 
 SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"
@@ -287,7 +287,7 @@ def test_a_pruned_session_keeps_its_rows(corpus: Corpus, exporter: DuckDbExporte
 
 
 def test_the_cli_extract_command_writes_the_same_store(corpus: Corpus, tmp_path: Path):
-    """`aiobserve extract` drives the same pipeline the API does."""
+    """`hp extract` drives the same pipeline the API does."""
     corpus.add("spine", SPINE)
     through_api = tmp_path / "api.duckdb"
     with DuckDbExporter(through_api) as exporter:

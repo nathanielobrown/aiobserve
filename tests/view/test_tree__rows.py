@@ -13,12 +13,12 @@ from collections.abc import Sequence
 import duckdb
 from fastapi.testclient import TestClient
 
-from aiobserve.analyze import queries
-from aiobserve.model import MAIN_SOURCE
-from aiobserve.view import bounds
-from aiobserve.view.app import build_app
-from aiobserve.view.format import cut
-from aiobserve.view.nodes import (
+from hyphae.analyze import queries
+from hyphae.model import MAIN_SOURCE
+from hyphae.view import bounds
+from hyphae.view.app import build_app
+from hyphae.view.format import cut
+from hyphae.view.nodes import (
     LEAD_SEPARATOR,
     Kind,
     meter,

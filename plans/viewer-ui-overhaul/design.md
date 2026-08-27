@@ -25,7 +25,7 @@ One rule throughout: **identity and outcome first, volume second, provenance dim
 ```python
 # format.py — the one place numbers are shaped
 def utcnow() -> dt.datetime                                    # the clock seam: one-line wrapper over dt.datetime.now(UTC), module-level
-                                                              # so tests monkeypatch `aiobserve.view.format.utcnow` and freshness is testable
+                                                              # so tests monkeypatch `hyphae.view.format.utcnow` and freshness is testable
 def ago(value: dt.datetime | None, now: dt.datetime) -> str   # "3d ago", "2h ago", "just now"; the registered filter is a closure that
                                                               # calls format.utcnow() at render, never captured at build_app — a
                                                               # long-lived server must not drift
@@ -81,24 +81,24 @@ def share(part: float | None, whole: float | None) -> str      # "2.2%" (one dec
 ## File-tree diff
 
 ```
-src/aiobserve/view/app.py            ~  / → projects_page; session list → /sessions; + GET /fragment/nav/{session_id}; ago/share filters
-src/aiobserve/view/bounds.py         ~  + PROJECTS, NAV; SESSIONS re-derived (fatter row → expect default ≈ 100)
-src/aiobserve/view/format.py         ~  + ago, share
-src/aiobserve/view/listing.py        ~  SORTS shrink; project filter → prefix predicate; list_url → /sessions
-src/aiobserve/view/threads.py        ~  + nav_tree()
-src/aiobserve/view/templates/projects.html      +
-src/aiobserve/view/templates/sessions.html      ~  recomposed columns
-src/aiobserve/view/templates/session.html       ~  grid, nav, grouped header
-src/aiobserve/view/templates/_parts.html        ~  stacked(), nav macros, command-aware heading
-src/aiobserve/view/templates/fragments/nav.html +
-src/aiobserve/view/static/style.css             ~  tokens, grid, nav, stacked cells, meter classes
-src/aiobserve/analyze/queries/view_project_rollups.sql  +
-src/aiobserve/analyze/queries/view_projects.sql ~  datalist suggestions fold onto stored prefix-ancestors, matching the landing rows
-src/aiobserve/analyze/queries/view_session_nav.sql      +
-src/aiobserve/analyze/queries/view_sessions.sql         ~  counted agent_types
-src/aiobserve/analyze/queries/view_described_sessions.sql ~  + work categories
-src/aiobserve/analyze/queries/session_digest.sql, run_digest.sql ~  + command_args head
-src/aiobserve/analyze/queries.py     ~  new params (NAV_CHARS, …)
+src/hyphae/view/app.py            ~  / → projects_page; session list → /sessions; + GET /fragment/nav/{session_id}; ago/share filters
+src/hyphae/view/bounds.py         ~  + PROJECTS, NAV; SESSIONS re-derived (fatter row → expect default ≈ 100)
+src/hyphae/view/format.py         ~  + ago, share
+src/hyphae/view/listing.py        ~  SORTS shrink; project filter → prefix predicate; list_url → /sessions
+src/hyphae/view/threads.py        ~  + nav_tree()
+src/hyphae/view/templates/projects.html      +
+src/hyphae/view/templates/sessions.html      ~  recomposed columns
+src/hyphae/view/templates/session.html       ~  grid, nav, grouped header
+src/hyphae/view/templates/_parts.html        ~  stacked(), nav macros, command-aware heading
+src/hyphae/view/templates/fragments/nav.html +
+src/hyphae/view/static/style.css             ~  tokens, grid, nav, stacked cells, meter classes
+src/hyphae/analyze/queries/view_project_rollups.sql  +
+src/hyphae/analyze/queries/view_projects.sql ~  datalist suggestions fold onto stored prefix-ancestors, matching the landing rows
+src/hyphae/analyze/queries/view_session_nav.sql      +
+src/hyphae/analyze/queries/view_sessions.sql         ~  counted agent_types
+src/hyphae/analyze/queries/view_described_sessions.sql ~  + work categories
+src/hyphae/analyze/queries/session_digest.sql, run_digest.sql ~  + command_args head
+src/hyphae/analyze/queries.py     ~  new params (NAV_CHARS, …)
 docs/viewer.md                       ~  doc-sync: routes, columns, nav, filter semantics
 tests/view/                          ~  see seam; no new fixture — spine/model_only/teammate already record six slash-command turns, two with empty-string args (both heading arms reachable)
 ```

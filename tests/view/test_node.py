@@ -13,8 +13,8 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from aiobserve.view.columns import COLUMNS, Shape
-from aiobserve.view.nodes import BODY_URL
+from hyphae.view.columns import COLUMNS, Shape
+from hyphae.view.nodes import BODY_URL
 from tests.conftest import ANCESTOR, DENSE_TURN, MAIN, SPINE
 from tests.view.conftest import (
     MISSING,

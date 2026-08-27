@@ -7,7 +7,7 @@ counts the planner already holds — so a dry run costs nothing and works offlin
 
 import pytest
 
-from aiobserve.enrich.cost import (
+from hyphae.enrich.cost import (
     CHARS_PER_TOKEN,
     OUTPUT_TOKENS,
     PRICES,
@@ -16,7 +16,7 @@ from aiobserve.enrich.cost import (
     Prompt,
     estimate,
 )
-from aiobserve.enrich.prompts import Level, instructions
+from hyphae.enrich.prompts import Level, instructions
 
 MODEL = "claude-haiku-4-5-20251001"
 

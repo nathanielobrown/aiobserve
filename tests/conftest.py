@@ -16,15 +16,15 @@ from pathlib import Path
 
 import pytest
 
-from aiobserve.enrich.prompts import PROMPT_VERSION, Level
-from aiobserve.enrich.store import EnrichmentStore, Stamp
-from aiobserve.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
-from aiobserve.enrich.validation import Enrichment
-from aiobserve.export.duckdb import DuckDbExporter
-from aiobserve.extract.claude_code import ClaudeCodeExtractor
-from aiobserve.model import SessionTrace
-from aiobserve.pipeline import SessionSource
-from aiobserve.sessions import SessionFiles
+from hyphae.enrich.prompts import PROMPT_VERSION, Level
+from hyphae.enrich.store import EnrichmentStore, Stamp
+from hyphae.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
+from hyphae.enrich.validation import Enrichment
+from hyphae.export.duckdb import DuckDbExporter
+from hyphae.extract.claude_code import ClaudeCodeExtractor
+from hyphae.model import SessionTrace
+from hyphae.pipeline import SessionSource
+from hyphae.sessions import SessionFiles
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

@@ -13,18 +13,18 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from aiobserve.export.duckdb import open_trace_store
-from aiobserve.export.otlp import SpanKey, session_spans, span_id
-from aiobserve.export.otlp_delivery import AmbiguousCompactionError, census
-from aiobserve.extract.store import StoreSource
-from aiobserve.model import SessionTrace
+from hyphae.export.duckdb import open_trace_store
+from hyphae.export.otlp import SpanKey, session_spans, span_id
+from hyphae.export.otlp_delivery import AmbiguousCompactionError, census
+from hyphae.extract.store import StoreSource
+from hyphae.model import SessionTrace
 from tests.conftest import FORK_ORIGIN, FORK_RUN, MYCELIA, SPINE, SPINE_RUN
 
 # The store a dry run reads when one is named, mirroring the pipeline plan's census pattern:
 # the leaf skips rather than inventing a corpus, since no fixture set is the real one.
-CORPUS_ENV = "AIOBSERVE_CENSUS_STORE"
+CORPUS_ENV = "HYPHAE_CENSUS_STORE"
 # The project whose sessions that store holds; the canonical corpus is mycelia's.
-CORPUS_PROJECT_ENV = "AIOBSERVE_CENSUS_PROJECT"
+CORPUS_PROJECT_ENV = "HYPHAE_CENSUS_PROJECT"
 
 # What the mapper emits per session, spelled independently in SQL. Kept as the formula rather
 # than today's total so the leaf does not rot as fixtures land: one root per shipped session,

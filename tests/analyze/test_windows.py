@@ -12,10 +12,10 @@ from pathlib import Path
 
 import pytest
 
-from aiobserve.export.duckdb import DuckDbExporter
-from aiobserve.extract.claude_code import ClaudeCodeExtractor
-from aiobserve.pipeline import SessionSource
-from aiobserve.sessions import SessionFiles
+from hyphae.export.duckdb import DuckDbExporter
+from hyphae.extract.claude_code import ClaudeCodeExtractor
+from hyphae.pipeline import SessionSource
+from hyphae.sessions import SessionFiles
 from tests.analyze.conftest import (
     AS_OF_MID,
     AS_OF_PARTIAL,

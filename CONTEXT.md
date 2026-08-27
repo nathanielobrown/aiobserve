@@ -1,6 +1,6 @@
 # Domain language
 
-The canonical name and one-line meaning of every aiobserve concept. One term per physical line so a definition greps: `rg -i '^- \*\*(turn|pane)' CONTEXT.md`. Vocabulary only — the code and docs each section points at hold the detail. When a change coins or bends a term, update this file in the same change.
+The canonical name and one-line meaning of every hyphae concept. One term per physical line so a definition greps: `rg -i '^- \*\*(turn|pane)' CONTEXT.md`. Vocabulary only — the code and docs each section points at hold the detail. When a change coins or bends a term, update this file in the same change.
 
 ## The system in one sentence
 
@@ -8,7 +8,7 @@ An **extractor** reads each recorded **session** into the model, the **store** a
 
 ## Telemetry
 
-What one session recorded. Entities: `src/aiobserve/model.py`; relationships: `docs/store.md`; Claude Code's own field names: `docs/schema.md`.
+What one session recorded. Entities: `src/hyphae/model.py`; relationships: `docs/store.md`; Claude Code's own field names: `docs/schema.md`.
 
 - **Session** — one recorded Claude Code session: the main transcript plus everything its subagents wrote
 - **Project** — the absolute, symlink-free working directory a session ran in
@@ -25,7 +25,7 @@ What one session recorded. Entities: `src/aiobserve/model.py`; relationships: `d
 
 ## Pipeline
 
-The extract → store → export seam: `src/aiobserve/pipeline.py`; the store: `docs/store.md`; OTLP: `docs/otlp-export.md`.
+The extract → store → export seam: `src/hyphae/pipeline.py`; the store: `docs/store.md`; OTLP: `docs/otlp-export.md`.
 
 - **Extractor** — reads one agent's sessions into the model
 - **Exporter** — writes the model to a sink; the store and OTLP are sinks
@@ -38,7 +38,7 @@ The extract → store → export seam: `src/aiobserve/pipeline.py`; the store: `
 
 ## Enrichment
 
-Model-written descriptions beside the telemetry: `docs/enrichment.md`; the vocabularies: `src/aiobserve/enrich/taxonomy.py`.
+Model-written descriptions beside the telemetry: `docs/enrichment.md`; the vocabularies: `src/hyphae/enrich/taxonomy.py`.
 
 - **Enrichment** — one accepted model answer about one item: description, category, outcome, friction
 - **Level** — the three kinds a pass describes: turn, agent run, session
@@ -48,7 +48,7 @@ Model-written descriptions beside the telemetry: `docs/enrichment.md`; the vocab
 
 ## Viewer pages
 
-What each page shows and cites: `docs/viewer.md`; the routes: the modules `src/aiobserve/view/app.py` mounts, one per subject.
+What each page shows and cites: `docs/viewer.md`; the routes: the modules `src/hyphae/view/app.py` mounts, one per subject.
 
 - **Projects page** — `/`, the landing page: every project and its recent sessions
 - **Session list** — `/sessions`: the filter form above one page of sessions
@@ -74,7 +74,7 @@ What each page shows and cites: `docs/viewer.md`; the routes: the modules `src/a
 - **Reading pane** — the right column, reading one node whole
 - **Body** — one node's rendered content: title, facts, enrichment, details; the reading pane holds one, an expansion another
 - **Crumb chain** — the ancestors leading the reading pane, down to the node
-- **Facts** — the labelled store fields under the title; the label registry is `src/aiobserve/view/labels.py`
+- **Facts** — the labelled store fields under the title; the label registry is `src/hyphae/view/labels.py`
 - **Enrichment block** — what a pass wrote about the node: description, tags, friction, behind the `✨` glyph
 - **Detail** — a fat value the reading pane previews, cut at 4,000 characters with the rest a fetch away (`?detail=`)
 - **Children log** — the paged table of one kind of child under the details (`?log=`)

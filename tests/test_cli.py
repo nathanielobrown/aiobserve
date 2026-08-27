@@ -11,13 +11,13 @@ from typing import Any
 
 import pytest
 
-from aiobserve import cli
-from aiobserve.cli import DEFAULT_DB
-from aiobserve.enrich.client import DEFAULT_CONCURRENCY, DEFAULT_MODEL
-from aiobserve.export.otlp import DEFAULT_MAX_CHARS
-from aiobserve.export.otlp_delivery import DEFAULT_RATE, GENERIC
-from aiobserve.sessions import DEFAULT_PROJECTS_ROOT, encode_project_path
-from aiobserve.view.app import PORT
+from hyphae import cli
+from hyphae.cli import DEFAULT_DB
+from hyphae.enrich.client import DEFAULT_CONCURRENCY, DEFAULT_MODEL
+from hyphae.export.otlp import DEFAULT_MAX_CHARS
+from hyphae.export.otlp_delivery import DEFAULT_RATE, GENERIC
+from hyphae.sessions import DEFAULT_PROJECTS_ROOT, encode_project_path
+from hyphae.view.app import PORT
 from tests.test_sessions import make_projects_root
 
 PROJECT = Path("repos/mycelia")
@@ -123,7 +123,7 @@ def test_the_store_flag_is_one_flag_wherever_it_appears() -> None:
 def test_the_sessions_command_lists_the_transcripts_it_found(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """`aiobserve sessions` prints a line per session: its id, its subagents, and its path.
+    """`hp sessions` prints a line per session: its id, its subagents, and its path.
 
     The subcommand that reads no store — it walks the projects root instead — so nothing else
     drives its handler and a rewiring of it would otherwise land silently.
@@ -146,7 +146,7 @@ def test_the_sessions_command_lists_the_transcripts_it_found(
 def test_the_viewer_opens_a_browser_unless_the_run_says_not_to(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`aiobserve view` serves the store it was given, and `--no-browser` is what suppresses
+    """`hp view` serves the store it was given, and `--no-browser` is what suppresses
     the tab.
 
     The one flag on the command line whose value is inverted between the argument and the

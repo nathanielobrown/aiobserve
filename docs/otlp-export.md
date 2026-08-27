@@ -1,11 +1,11 @@
 # Export stored traces over OTLP
 
-`aiobserve export-otlp` sends sessions from the trace store to an OTLP/HTTP backend as spans. Use a dry run first, then review the data policy and delivery limits below before sending traces to a shared backend.
+`hp export-otlp` sends sessions from the trace store to an OTLP/HTTP backend as spans. Use a dry run first, then review the data policy and delivery limits below before sending traces to a shared backend.
 
 ## Preview the exact export
 
 ```console
-aiobserve export-otlp /path/to/repo --db data/traces.duckdb --dry-run
+hp export-otlp /path/to/repo --db data/traces.duckdb --dry-run
 ```
 
 A dry run shapes every selected session with the same mapper used by a real export. It reports the session and span counts, including compactions, without configuring a backend or key. It opens the store read-only, writes no delivery records, and sends no requests.
@@ -27,13 +27,13 @@ A real export reads sessions and writes its delivery ledger through one DuckDB c
 The default `generic` backend sends to `OTLP_ENDPOINT`. Set optional request headers in `OTLP_HEADERS` as comma-separated `name=value` pairs:
 
 ```console
-aiobserve export-otlp /path/to/repo --db data/traces.duckdb
+hp export-otlp /path/to/repo --db data/traces.duckdb
 ```
 
-Named backends and their key variables live in `BACKENDS` in `src/aiobserve/export/otlp_delivery.py`; `--help` lists the accepted names. For example:
+Named backends and their key variables live in `BACKENDS` in `src/hyphae/export/otlp_delivery.py`; `--help` lists the accepted names. For example:
 
 ```console
-aiobserve export-otlp /path/to/repo --db data/traces.duckdb --backend honeycomb
+hp export-otlp /path/to/repo --db data/traces.duckdb --backend honeycomb
 ```
 
 Keys come from `.env` or the environment. The command validates the endpoint and required key before opening the store, and it never prints keys. `OTLP_ENDPOINT` overrides the endpoint of a named backend, which lets you put a collector in front of it.
@@ -48,7 +48,7 @@ The default omits transcript-derived text: prompts, command arguments, model res
 
 Each session becomes one trace. Its root span has children for turns, model calls, tool calls, subagent runs, and compactions. A tool call that starts a subagent becomes the subagent span rather than a second tool span. Rows copied into a fork emit no span because sending them would double-count the work.
 
-`session_spans()` in `src/aiobserve/export/otlp.py` defines what ships. `tests/export/test_otlp__privacy.py` scans the raw request bytes for every excluded field.
+`session_spans()` in `src/hyphae/export/otlp.py` defines what ships. `tests/export/test_otlp__privacy.py` scans the raw request bytes for every excluded field.
 
 Use `--include-text` only when you intend to publish transcript content to the backend. It adds the excluded fields and cuts each one to `--max-chars`, which defaults to 500. Truncation limits size; it does not redact secrets.
 

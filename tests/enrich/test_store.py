@@ -11,9 +11,9 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from aiobserve.enrich.prompts import Level, TurnItem
-from aiobserve.enrich.store import EnrichmentStore, Stamp
-from aiobserve.export.duckdb import SchemaVersionError
+from hyphae.enrich.prompts import Level, TurnItem
+from hyphae.enrich.store import EnrichmentStore, Stamp
+from hyphae.export.duckdb import SchemaVersionError
 from tests.conftest import MODEL_ONLY, MYCELIA, build_store, fixture_transcripts
 from tests.enrich.conftest import (
     COMPACTION,
@@ -205,7 +205,7 @@ def test_a_multi_line_command_output_survives_whole(mutable_db: Path) -> None:
 def test_a_project_filter_narrows_the_items(fixture_db: Path, mutable_db: Path) -> None:
     """`--project` takes a repository's own sessions and the ones its worktrees recorded.
 
-    The same corpus `aiobserve query --project` and `export-otlp` take, which is what makes
+    The same corpus `hp query --project` and `export-otlp` take, which is what makes
     a description written under one command citable by the other.
     """
     # If a project nothing was recorded under is asked for, it has no items, while the store
