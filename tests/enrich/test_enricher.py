@@ -58,7 +58,7 @@ from tests.enrich.conftest import (
     stamp,
 )
 
-# The recorded `claude` envelopes, shared with `test_client.py`.
+# The recorded `claude` envelopes, shared with `fake_cli.py`.
 FIXTURES = Path(__file__).parent / "fixtures"
 
 # An invented credential, in a shape the screen knows, for the answer that must be refused.
