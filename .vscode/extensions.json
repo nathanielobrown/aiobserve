@@ -1,0 +1,10 @@
+{
+  // What `settings.json` beside this file assumes is installed.
+  "recommendations": [
+    // Formats the templates on save through the venv's djlint (`djlint.useVenv`).
+    "monosans.djlint",
+    // Resolves the interpreter djlint-vscode then finds the venv from. The extension declares
+    // no dependency on it, so an editor without it silently falls back to a global djlint.
+    "ms-python.python"
+  ]
+}
