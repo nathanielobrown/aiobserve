@@ -1,50 +1,39 @@
 """A whole enrichment run, driven by a fake client: what gets sent, written, and refused.
 
 The store is real — built by running the pipeline over `spine/`, the fixture with four main
-turns. Only the model is fake: `FakeClient` records what it was asked and answers from a
-script, so every claim about rounds, staleness and failure handling is checked against real
-rows without a request leaving the machine. Its answers are invented, as model output must
-be — there is no recorded session to draw them from.
+turns. Only the model is fake (`passes.py`). What the CLI does around a run is in
+`test_enricher__cli.py`; here every leaf is about the rounds themselves: what a pass sends,
+what it writes, what makes an item stale, and how a new description travels up.
 """
 
 import json
 import subprocess
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
 
-import duckdb
 import pytest
 
 from aiobserve import cli
 from aiobserve.enrich.client import (
-    DEFAULT_CONCURRENCY,
-    CliClient,
-    EnrichRequest,
     Failed,
-    Result,
     Succeeded,
 )
-from aiobserve.enrich.cost import Prompt, estimate
 from aiobserve.enrich.enricher import (
     ROUND_ORDER,
     EnrichmentFailed,
     EnrichReport,
     enrich,
-    plan,
 )
 from aiobserve.enrich.prompts import (
     PROMPT_VERSION,
-    AgentRunItem,
     Level,
-    TurnItem,
     input_hash,
     render_turn,
 )
 from aiobserve.enrich.store import LEVELS, EnrichmentStore
 from aiobserve.enrich.taxonomy import TAXONOMY_VERSION
 from aiobserve.enrich.validation import FailureKind
-from tests.conftest import MODEL_ONLY, MYCELIA, build_store, fixture_transcripts
+from tests.conftest import MODEL_ONLY, build_store, fixture_transcripts
 from tests.enrich.conftest import (
     AUDITOR_RUN,
     MODEL,
@@ -57,69 +46,21 @@ from tests.enrich.conftest import (
     session_item,
     stamp,
 )
-
-# The recorded `claude` envelopes, shared with `fake_cli.py`.
-FIXTURES = Path(__file__).parent / "fixtures"
-
-# An invented credential, in a shape the screen knows, for the answer that must be refused.
-FAKE_SECRET = "AKIAIOSFODNN7EXAMPLE"
-
-# A sentinel inside an out-of-vocabulary answer: if it reaches the crash summary, so would
-# whatever a real answer had said there.
-FAKE_CATEGORY = "SENTINEL-5c1a-out-of-vocabulary"
-
-
-class FakeClient:
-    """Answers every request, records every round, and never starts a process.
-
-    `answers` overrides the reply for one key — a failure, or an answer the validator will
-    refuse. Everything else gets a well-formed description naming its own key, so a row can
-    be traced back to the request that wrote it.
-    """
-
-    def __init__(self, model: str = MODEL, answers: Mapping[str, Result] | None = None) -> None:
-        self.model = model
-        self.answers = answers or {}
-        self.rounds: list[tuple[EnrichRequest, ...]] = []
-
-    def submit(self, requests: Sequence[EnrichRequest]) -> list[Result]:
-        self.rounds.append(tuple(requests))
-        return [
-            self.answers.get(request.key, Succeeded(key=request.key, output=answer(request.key)))
-            for request in requests
-        ]
-
-    @property
-    def keys(self) -> list[str]:
-        """Every key the client was asked about, in the order it was asked."""
-        return [request.key for sent in self.rounds for request in sent]
-
-
-def answer(key: str, **overrides: object) -> dict[str, Any]:
-    """A well-formed model answer (invented) for one item."""
-    return {
-        "description": f"Described {key}.",
-        "category": "test",
-        "outcome": "completed",
-        "friction": None,
-    } | overrides
-
-
-@pytest.fixture(scope="module")
-def spine_store(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """`spine/` alone as a trace store: four main turns, two of them slash commands."""
-    path = tmp_path_factory.mktemp("enricher") / "traces.duckdb"
-    build_store(path, fixture_transcripts("spine"))
-    return path
-
-
-@pytest.fixture
-def store(spine_store: Path, tmp_path: Path) -> Iterator[EnrichmentStore]:
-    """A private copy of the `spine/` store, open for enrichment."""
-    copy = tmp_path / "traces.duckdb"
-    copy.write_bytes(spine_store.read_bytes())
-    with EnrichmentStore(copy) as opened:
-        yield opened
+from tests.enrich.passes import (
+    FAKE_CATEGORY,
+    FAKE_SECRET,
+    FIXTURES,
+    FakeClient,
+    answer,
+    key_of,
+    session_key,
+    stored,
+    stored_runs,
+    stored_sessions,
+    turn_key,
+    turns,
+    written_at,
+)
 
 
 @pytest.fixture(scope="module")
@@ -141,74 +82,6 @@ def forest(forest_store: Path, tmp_path: Path) -> Iterator[EnrichmentStore]:
     copy.write_bytes(forest_store.read_bytes())
     with EnrichmentStore(copy) as opened:
         yield opened
-
-
-@pytest.fixture
-def logged_in(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Answer the CLI's auth question without asking it.
-
-    Every real run preflights, which starts a process the autouse guard refuses. The real
-    call is pinned in `test_a_dry_run_asks_no_auth_question` and
-    `test_the_auth_blob_never_reaches_the_output`; everything else here is about what the run
-    does afterwards.
-    """
-    monkeypatch.setattr(cli, "preflight", lambda: None)
-
-
-def turns(store: EnrichmentStore) -> list[TurnItem]:
-    """The store's main turns in the order a run sends them — the order they happened in."""
-    return store.turn_items()
-
-
-def runs(store: EnrichmentStore) -> list[AgentRunItem]:
-    """The store's agent runs, in no particular order — the rounds decide what goes when."""
-    return store.run_items()
-
-
-def key_of(store: EnrichmentStore, agent_run_id: str) -> str:
-    """The item key one agent run is sent and stored under."""
-    return next(item.key for item in runs(store) if item.agent_run_id == agent_run_id)
-
-
-def turn_key(store: EnrichmentStore, prefix: str) -> str:
-    """The item key of the one main turn whose id starts with `prefix`."""
-    return next(item.key for item in turns(store) if item.turn_id.startswith(prefix))
-
-
-def session_key(store: EnrichmentStore, session_id: str) -> str:
-    """The item key one session is sent and stored under."""
-    return next(item.key for item in store.session_items() if item.session_id == session_id)
-
-
-def stored_sessions(store: EnrichmentStore) -> list[tuple[Any, ...]]:
-    return store.connection.execute(
-        "SELECT session_id, description, input_hash FROM session_enrichments ORDER BY session_id"
-    ).fetchall()
-
-
-def stored_runs(store: EnrichmentStore) -> list[tuple[Any, ...]]:
-    return store.connection.execute(
-        "SELECT agent_run_id, description, input_hash, enriched_at"
-        " FROM agent_run_enrichments ORDER BY agent_run_id"
-    ).fetchall()
-
-
-def written_at(store: EnrichmentStore) -> list[tuple[Any, ...]]:
-    """Every enrichment row of every level, against the moment it was written."""
-    return store.connection.execute(
-        "SELECT turn_id, enriched_at FROM turn_enrichments"
-        " UNION ALL SELECT agent_run_id, enriched_at FROM agent_run_enrichments"
-        " UNION ALL SELECT session_id, enriched_at FROM session_enrichments"
-        " ORDER BY 1"
-    ).fetchall()
-
-
-def stored(store: EnrichmentStore) -> list[tuple[Any, ...]]:
-    return store.connection.execute(
-        "SELECT session_id, source, turn_id, description, category, outcome, friction,"
-        " input_hash, prompt_version, taxonomy_version, model"
-        " FROM turn_enrichments ORDER BY turn_id"
-    ).fetchall()
 
 
 def test_every_level_the_store_can_write_gets_a_round() -> None:
@@ -419,218 +292,6 @@ def test_a_failed_request_leaves_its_item_stale(store: EnrichmentStore, tmp_path
     # ...and the crash wrote no resume file to find it by: the store and DuckDB's own
     # write-ahead log are everything on disk.
     assert {path.name for path in tmp_path.iterdir()} <= {"traces.duckdb", "traces.duckdb.wal"}
-
-
-def test_a_dry_run_asks_no_auth_question(
-    store: EnrichmentStore, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Quoting a run asks nothing about auth; a run that would spend asks before it renders.
-
-    Whoever decides whether to pay for a pass is not always whoever is logged in. The autouse
-    subprocess guard is the assertion for the first half: `preflight` shells out to `claude`,
-    so a dry run that checked would raise here instead of printing a quote.
-    """
-    # If a store is priced with `preflight` left alone...
-    cli.main("enrich", "--db", str(store.path), "--dry-run")
-    # ...then it quotes the plan and writes no row...
-    assert "at most 7 item(s) would be sent" in capsys.readouterr().out
-    assert stored(store) == []
-    # ...and a real run over the same store asks first: the auth question comes before the
-    # client that would spend, so a logged-out machine fails before it renders a prompt.
-    order: list[str] = []
-
-    def client(model: str, *, concurrency: int) -> FakeClient:
-        order.append("client")
-        return FakeClient()
-
-    monkeypatch.setattr(cli, "preflight", lambda: order.append("preflight"))
-    monkeypatch.setattr(cli, "build_client", client)
-    cli.main("enrich", "--db", str(store.path), "--limit", "1")
-    assert order == ["preflight", "client"]
-
-
-def test_the_removed_batch_flag_is_rejected(store: EnrichmentStore) -> None:
-    """`--no-batch` is gone: a script still passing it stops rather than silently batching.
-
-    There is one path now, and it is neither of the two the flag chose between.
-    """
-    with pytest.raises(SystemExit):
-        cli.main("enrich", "--db", str(store.path), "--no-batch")
-
-
-def test_a_dry_run_creates_the_enrichment_tables_it_finds_missing(
-    spine_store: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """A dry run over a store nothing has enriched leaves its three tables behind, empty.
-
-    Deliberate, and the one thing a dry run does write: opening a store is the single path
-    that creates the enrichment schema, and a read-only second path would be a second way to
-    be wrong about it. The tables are empty, and any run would have created them anyway.
-    """
-    # If a store the pipeline wrote and enrichment has never opened is priced...
-    fresh = tmp_path / "fresh.duckdb"
-    fresh.write_bytes(spine_store.read_bytes())
-    cli.main("enrich", "--db", str(fresh), "--dry-run")
-    assert "at most 7 item(s) would be sent" in capsys.readouterr().out
-    # ...then all three tables are there afterwards — the query would raise if one were
-    # missing — and every one of them is empty.
-    connection = duckdb.connect(str(fresh), read_only=True)
-    assert connection.execute(
-        "SELECT (SELECT count(*) FROM turn_enrichments),"
-        " (SELECT count(*) FROM agent_run_enrichments),"
-        " (SELECT count(*) FROM session_enrichments)"
-    ).fetchone() == (0, 0, 0)
-    connection.close()
-
-
-def test_a_dry_run_writes_nothing_and_sends_nothing(
-    store: EnrichmentStore, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """`--dry-run` says how much a run would send, broken down by level."""
-    # If a dry run is asked for...
-    cli.main("enrich", "--db", str(store.path), "--dry-run")
-    # ...then it reports the two stale runs, the four stale turns and the session, and writes
-    # no row.
-    printed = capsys.readouterr().out
-    assert "at most 7 item(s) would be sent" in printed
-    assert "2 agent_run, 4 turn, 1 session" in printed
-    assert stored(store) == []
-
-
-def test_a_dry_run_scoped_to_a_project_places_a_relative_path(
-    store: EnrichmentStore, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """`--project` names a repository from any working directory, relative spelling included."""
-    # If the project is named the way a shell in its parent directory would name it — and a
-    # recorded `project_dir` is absolute, so the root is the one such directory here...
-    monkeypatch.chdir("/")
-    cli.main(
-        "enrich",
-        "--db",
-        str(store.path),
-        "--dry-run",
-        "--project",
-        str(Path(MYCELIA).relative_to("/")),
-    )
-    relative = capsys.readouterr().out
-    # ...then it prices what the absolute spelling prices, rather than the nothing an
-    # unresolved path finds.
-    cli.main("enrich", "--db", str(store.path), "--dry-run", "--project", MYCELIA)
-    assert relative == capsys.readouterr().out
-    assert "at most 7 item(s) would be sent" in relative
-
-
-def test_a_dry_run_counts_the_ancestors_of_what_is_stale(
-    store: EnrichmentStore, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """One stale leaf is quoted as four items: itself and everything that embeds it.
-
-    Whether the cascade really reaches that far is unknowable before the answers come back,
-    which is why the report says "at most" rather than naming a price.
-    """
-    # If a fully enriched store has one leaf run made stale — by renaming a tool call only
-    # that run's prompt renders...
-    enrich(store, FakeClient())
-    store.connection.execute(
-        "UPDATE tool_calls SET name = 'Grep' WHERE id = 'toolu_01SzCMuLzJk8ag5BnK545sWY'"
-    )
-    # ...then a dry run quotes the leaf, the run that spawned it, the main turn that spawned
-    # *that*, and the session holding the turn — one per level of the chain above it.
-    planned = plan(store, MODEL, project=None, limit=None)
-    assert {entry.item.key for entry in planned} == {
-        key_of(store, SPINE_LEAF),
-        key_of(store, SPINE_RUN),
-        turn_key(store, "818588ad"),
-        session_key(store, SPINE),
-    }
-    cli.main("enrich", "--db", str(store.path), "--dry-run")
-    assert "at most 4 item(s) would be sent" in capsys.readouterr().out
-
-
-def test_a_dry_run_quotes_a_price_it_computed_itself(
-    store: EnrichmentStore, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """The quoted dollars are arithmetic over the prompts, checkable without a network.
-
-    The autouse subprocess guard is what proves the "without a network" half: an
-    implementation that asked the model what it charges would raise here rather than print.
-    """
-    # If a dry run reports on a store nothing has enriched...
-    planned = plan(store, MODEL, project=None, limit=None)
-    cli.main("enrich", "--db", str(store.path), "--dry-run")
-    printed = capsys.readouterr().out
-    # ...then the price it printed is the one `estimate` derives from the same prompts —
-    # one figure now, because there is one way to send an item...
-    quote = estimate([Prompt(entry.item.level, entry.rendered) for entry in planned], MODEL)
-    assert f"at most ${quote.usd:.2f}" in printed
-    # ...and seven short fixture prompts cost a fraction of a cent, so the report has to
-    # carry the token counts to be worth reading at all.
-    assert f"~{quote.input_tokens:,} input" in printed
-
-
-def test_the_cli_writes_what_the_library_writes(
-    spine_store: Path, tmp_path: Path, logged_in: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """`aiobserve enrich` leaves the same rows as calling `enrich` directly, and needs no key.
-
-    The command is a thin wrapper by intent; a check on the library alone would miss an
-    argument the CLI forgets to pass through.
-    """
-    # If the same store is enriched twice — once through the command, once through the
-    # function — with the same fake answering both, on a machine holding no API key at all...
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    through_cli, direct = tmp_path / "cli.duckdb", tmp_path / "direct.duckdb"
-    for copy in (through_cli, direct):
-        copy.write_bytes(spine_store.read_bytes())
-    monkeypatch.setattr(cli, "build_client", lambda model, *, concurrency: FakeClient())
-    cli.main("enrich", "--db", str(through_cli))
-    with EnrichmentStore(direct) as store:
-        enrich(store, FakeClient())
-        expected = stored(store) + [row[:3] for row in stored_runs(store)] + stored_sessions(store)
-    # ...then both stores hold the same rows at every level, `enriched_at` aside — the one
-    # column a second run cannot reproduce.
-    with EnrichmentStore(through_cli) as store:
-        assert (
-            stored(store) + [row[:3] for row in stored_runs(store)] + stored_sessions(store)
-            == expected
-        )
-
-
-def test_the_cli_limits_what_it_sends(
-    store: EnrichmentStore, logged_in: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """`--limit N` sends at most N items, which is what makes a dev run cheap."""
-    client = FakeClient()
-    monkeypatch.setattr(cli, "build_client", lambda model, *, concurrency: client)
-    cli.main("enrich", "--db", str(store.path), "--limit", "2")
-    assert len(client.keys) == 2
-    # The limit is spent from the deepest round outwards, so it buys the two agent runs
-    # before it reaches a turn.
-    assert len(stored_runs(store)) == 2
-    assert stored(store) == []
-
-
-def test_the_concurrency_flag_reaches_the_client(
-    store: EnrichmentStore, logged_in: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """`--concurrency N` sets how many `claude` processes a round runs at once, defaulting to 4."""
-    # If the one place a client is built is asked for one, it answers with the real client,
-    # holding the model the rows will be stamped with and the width it was given...
-    built = cli.build_client(MODEL, concurrency=2)
-    assert isinstance(built, CliClient)
-    assert (built.model, built.concurrency) == (MODEL, 2)
-    # ...and the flag is what decides that width, with a default a bare run can afford.
-    asked: list[int] = []
-
-    def record(model: str, *, concurrency: int) -> FakeClient:
-        asked.append(concurrency)
-        return FakeClient()
-
-    monkeypatch.setattr(cli, "build_client", record)
-    cli.main("enrich", "--db", str(store.path), "--limit", "1")
-    cli.main("enrich", "--db", str(store.path), "--limit", "1", "--concurrency", "2")
-    assert asked == [DEFAULT_CONCURRENCY, 2]
-    assert DEFAULT_CONCURRENCY == 4
 
 
 def test_the_auth_blob_never_reaches_the_output(

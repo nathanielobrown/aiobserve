@@ -8,14 +8,14 @@ it costs an extraction per fixture, so `fixture_db` builds once per test session
 
 import shutil
 import subprocess
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 
 import pytest
 
 from aiobserve.enrich.client import CLAUDE
 from aiobserve.enrich.prompts import SessionItem
-from aiobserve.enrich.store import Stamp
+from aiobserve.enrich.store import EnrichmentStore, Stamp
 from aiobserve.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
 from aiobserve.enrich.validation import Enrichment
 from tests.conftest import build_store, fixture_transcripts
@@ -110,6 +110,23 @@ def session_item(session_id: str) -> SessionItem:
         cost_usd=0.0,
         children=(),
     )
+
+
+@pytest.fixture(scope="module")
+def spine_store(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """`spine/` alone as a trace store: four main turns, two of them slash commands."""
+    path = tmp_path_factory.mktemp("enricher") / "traces.duckdb"
+    build_store(path, fixture_transcripts("spine"))
+    return path
+
+
+@pytest.fixture
+def store(spine_store: Path, tmp_path: Path) -> Iterator[EnrichmentStore]:
+    """A private copy of the `spine/` store, open for enrichment."""
+    copy = tmp_path / "traces.duckdb"
+    copy.write_bytes(spine_store.read_bytes())
+    with EnrichmentStore(copy) as opened:
+        yield opened
 
 
 @pytest.fixture(scope="session")
