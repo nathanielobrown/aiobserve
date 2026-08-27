@@ -30,7 +30,7 @@ The default `generic` backend sends to `OTLP_ENDPOINT`. Set optional request hea
 aiobserve export-otlp /path/to/repo --db data/traces.duckdb
 ```
 
-Named backends and their key variables live in `BACKENDS` in `src/aiobserve/export/otlp.py`; `--help` lists the accepted names. For example:
+Named backends and their key variables live in `BACKENDS` in `src/aiobserve/export/otlp_delivery.py`; `--help` lists the accepted names. For example:
 
 ```console
 aiobserve export-otlp /path/to/repo --db data/traces.duckdb --backend honeycomb

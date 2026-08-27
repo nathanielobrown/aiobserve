@@ -14,7 +14,8 @@ import pytest
 from aiobserve import cli
 from aiobserve.cli import DEFAULT_DB
 from aiobserve.enrich.client import DEFAULT_CONCURRENCY, DEFAULT_MODEL
-from aiobserve.export.otlp import DEFAULT_MAX_CHARS, DEFAULT_RATE, GENERIC
+from aiobserve.export.otlp import DEFAULT_MAX_CHARS
+from aiobserve.export.otlp_delivery import DEFAULT_RATE, GENERIC
 from aiobserve.sessions import DEFAULT_PROJECTS_ROOT, encode_project_path
 from aiobserve.view.app import PORT
 from tests.test_sessions import make_projects_root

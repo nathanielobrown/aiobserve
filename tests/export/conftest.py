@@ -26,13 +26,12 @@ from opentelemetry.proto.resource.v1 import resource_pb2
 from opentelemetry.proto.trace.v1 import trace_pb2
 
 from aiobserve.export.duckdb import open_trace_store
-from aiobserve.export.otlp import (
+from aiobserve.export.otlp import METADATA_ONLY, TextPolicy
+from aiobserve.export.otlp_delivery import (
     DEFAULT_BATCH_SPANS,
     DEFAULT_RATE,
-    METADATA_ONLY,
     Backend,
     OtlpExporter,
-    TextPolicy,
 )
 from aiobserve.extract.store import StoreSource
 from aiobserve.model import SessionTrace
