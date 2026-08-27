@@ -23,6 +23,12 @@ from typing import Any
 
 import duckdb
 
+from hyphae.export.schema import (
+    SCHEMA_MISMATCH_REMEDY,
+    SCHEMA_VERSION,
+    SchemaVersionError,
+    held_schema_version,
+)
 from hyphae.model import (
     AgentRun,
     ApiCall,
@@ -34,18 +40,6 @@ from hyphae.model import (
     SessionTrace,
     ToolCall,
     Turn,
-)
-
-# Bumped whenever the DDL below changes. There are no migrations while the project is
-# early: a mismatch refuses the store and says to extract into a fresh one.
-SCHEMA_VERSION = 8
-
-# The remedy every version-mismatch message carries, written once because getting it wrong is
-# expensive: a store can be the only copy of a session Claude Code has pruned from disk, so
-# the operator is sent to `docs/store.md` — which holds the check — rather than to `rm`.
-SCHEMA_MISMATCH_REMEDY = (
-    "Extract into a fresh store. This one may hold the only copy of a pruned session — "
-    "read docs/store.md before deleting it."
 )
 
 _SCHEMA = """
@@ -289,28 +283,6 @@ TABLES: dict[str, type] = {
 }
 # `sessions` keys on the session id itself; every other table carries it as a column.
 SESSION_KEY = {"sessions": "id"}
-
-
-class SchemaVersionError(Exception):
-    """The DB on disk was written by a different version of this schema."""
-
-
-def held_schema_version(connection: duckdb.DuckDBPyConnection) -> int | None:
-    """The version stamped in an open store, or None when it carries no stamp at all.
-
-    None covers both a file that is not a trace store and one that crashed between its DDL
-    and its stamp, so every reader can say "holds nothing" instead of raising a catalog
-    error on someone else's database — and, raising nothing, leaves its caller free to close
-    the connection. Asking the catalog has to be its own statement: DuckDB binds every table
-    a query names before any filter in that same query can spare it.
-    """
-    stamped = connection.execute(
-        "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'meta'"
-    ).fetchone()
-    if not stamped or not stamped[0]:
-        return None
-    row = connection.execute("SELECT schema_version FROM meta").fetchone()
-    return None if row is None else row[0]
 
 
 def open_trace_store(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnection:

@@ -15,12 +15,11 @@ import pytest
 
 from hyphae.export.duckdb import (
     _SCHEMA,
-    SCHEMA_VERSION,
     TABLES,  # every table a session owns — read off the exporter so a new one cannot slip past
     DuckDbExporter,
-    SchemaVersionError,
     open_trace_store,
 )
+from hyphae.export.schema import SCHEMA_VERSION, SchemaVersionError
 from tests.conftest import TraceFactory, lock_is_free
 
 SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"

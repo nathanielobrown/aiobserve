@@ -26,7 +26,7 @@ from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from hyphae.export.duckdb import SCHEMA_VERSION
+from hyphae.export.schema import SCHEMA_VERSION
 from hyphae.view import (
     expansions,
     fragments,

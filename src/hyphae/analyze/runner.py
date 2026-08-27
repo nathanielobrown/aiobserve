@@ -16,7 +16,7 @@ import duckdb
 
 from hyphae.analyze import macros, manifest, queries
 from hyphae.analyze.queries import NoDefault, ParamType, ParamValue, Scope
-from hyphae.export.duckdb import (
+from hyphae.export.schema import (
     SCHEMA_MISMATCH_REMEDY,
     SCHEMA_VERSION,
     held_schema_version,

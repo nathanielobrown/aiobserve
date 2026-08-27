@@ -13,7 +13,7 @@ import pytest
 
 from hyphae.enrich.prompts import Level, TurnItem
 from hyphae.enrich.store import EnrichmentStore, Stamp
-from hyphae.export.duckdb import SchemaVersionError
+from hyphae.export.schema import SchemaVersionError
 from tests.conftest import MODEL_ONLY, MYCELIA, build_store, fixture_transcripts
 from tests.enrich.conftest import (
     COMPACTION,

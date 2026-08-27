@@ -20,7 +20,7 @@ import duckdb
 
 from hyphae.analyze import macros, queries
 from hyphae.analyze.queries import ParamValue
-from hyphae.export.duckdb import SCHEMA_VERSION, held_schema_version
+from hyphae.export.schema import SCHEMA_VERSION, held_schema_version
 
 # DuckDB's wording when another process holds the store's write lock. Matched on text
 # because the exception type it arrives as covers every other I/O failure too.

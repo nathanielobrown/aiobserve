@@ -13,7 +13,7 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from hyphae.export.duckdb import SCHEMA_VERSION
+from hyphae.export.schema import SCHEMA_VERSION
 from hyphae.view.app import CSP, build_app, serve
 from hyphae.view.store import SchemaMoved, StoreLocked
 from tests.conftest import locked

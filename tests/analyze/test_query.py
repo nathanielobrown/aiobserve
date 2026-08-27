@@ -12,7 +12,7 @@ import duckdb
 import pytest
 
 from hyphae.analyze import manifest, queries
-from hyphae.export.duckdb import SCHEMA_VERSION
+from hyphae.export.schema import SCHEMA_VERSION
 from tests.analyze.conftest import AS_OF_PARTIAL, MYCELIA_SESSIONS, Output, QueryRunner, query
 from tests.conftest import (
     MAIN,
