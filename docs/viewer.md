@@ -2,7 +2,7 @@
 
 `aiobserve view` opens the trace store in a local browser. Everything a session recorded is a node with a page of its own — the session, its turns, the runs it spawned, the api calls, the tool calls, the compactions between them — and you read one node at a time, with a tree beside it showing where that node sits. Copy the URL of anything you want to cite.
 
-The server binds only to `127.0.0.1`, opens the store read-only, and serves only vendored assets. Run `aiobserve view --help` for flags. [The node-browser design](../plans/viewer-node-browser/design.md) holds the choices behind the tree, and [the trace-viewer design](../plans/trace-viewer/design.md) the ones behind the pages around it. Editing a template is governed by `.claude/rules/viewer-ui.md`, and [the UI development loop](ui-development.md) is how to edit one and watch the page: `--dev` reloads the open page on save, and `mise run gallery` serves the scenarios the tests pin.
+The server binds only to `127.0.0.1`, opens the store read-only, and serves only vendored assets. Run `aiobserve view --help` for flags. [The node-browser design](../plans/viewer-node-browser/design.md) holds the choices behind the tree, and [the trace-viewer design](../plans/trace-viewer/design.md) the ones behind the pages around it. [URLs and page bounds](viewer-bounds.md) covers what a URL may ask for and what a page is allowed to weigh. Editing a template is governed by `.claude/rules/viewer-ui.md`, and [the UI development loop](ui-development.md) is how to edit one and watch the page: `--dev` reloads the open page on save, and `mise run gallery` serves the scenarios the tests pin.
 
 ## Follow a session down to any record it holds
 
@@ -58,7 +58,7 @@ Solid edges lead to pages with their own URLs. Dotted edges fetch a fragment int
 
 ## The landing page counts projects
 
-`/` lists the projects the store holds sessions for, most recently active first, with sessions and spend over the last 7 days, the last 30, and all time. The page is [bounded](#hard-bounds-cap-every-page-most-at-500-kb) like every other, so a store holding more projects than it shows ends with the number it left out. A row opens the session list filtered to that project. Sessions recorded from a checkout's worktrees count under the checkout, and sessions with no recorded directory gather into an unlinked `(no project)` row. The footer cites the query and `as_of`, the date both windows were measured back from, so the page reproduces tomorrow.
+`/` lists the projects the store holds sessions for, most recently active first, with sessions and spend over the last 7 days, the last 30, and all time. The page is [bounded](viewer-bounds.md#hard-bounds-cap-every-page-most-at-500-kb) like every other, so a store holding more projects than it shows ends with the number it left out. A row opens the session list filtered to that project. Sessions recorded from a checkout's worktrees count under the checkout, and sessions with no recorded directory gather into an unlinked `(no project)` row. The footer cites the query and `as_of`, the date both windows were measured back from, so the page reproduces tomorrow.
 
 ## The session list keeps the query visible
 
@@ -76,7 +76,7 @@ Beside every node page is the session's tree, with one path open: the selection,
 
 A session's children are the main thread's turns, the compactions that happened between two of them, its calls that answer no turn, and the runs nothing placed. A turn's children are its api calls and the compactions that happened while it ran, in the order they happened; an api call's are its tool calls. An agent run reads like a session: its children are its own turns. A run renders under the *turn* it belongs to, right after the api call that spawned it — the run is the turn's child, not the call's, and a `Task` tool call keeps its own slot with a link to the run at the head of its page.
 
-Above the rows are the presets: **full**, **no api calls**, **agents only**, with the one in force marked. Each is the node you are reading under a different tree, so a switch keeps your place and your knobs — the preset is [`?nav=`](#urls-preserve-the-query-behind-what-you-saw), and the control is the only link on the page that changes it.
+Above the rows are the presets: **full**, **no api calls**, **agents only**, with the one in force marked. Each is the node you are reading under a different tree, so a switch keeps your place and your knobs — the preset is [`?nav=`](viewer-bounds.md#urls-preserve-the-query-behind-what-you-saw), and the control is the only link on the page that changes it.
 
 Every row with spend badges it: the dollar value sits on a warm ground that deepens with the row's share of what the session cost, logarithmic over three orders of magnitude, because a session's cheapest turn and its dearest are that far apart and a linear scale would paint all but the dearest alike. Tool calls show no cost and wear no badge; what a tool call took is the api call's.
 
@@ -151,45 +151,6 @@ The reading pane prints the first 200 characters of a description or friction li
 
 A store that has never been enriched has none of the enrichment tables. The viewer then shows no enrichment fields, and cites no enrichment query. An item the current pass has not reached looks the same.
 
-## URLs preserve the query behind what you saw
-
-Every page is a plain GET you can paste into a report or message. One rule shapes every path: **a word saying what kind of id comes next stands in front of each id, so no two ids sit side by side**. A turn reads at `/session/{session_id}/thread/{source}/turn/{turn_id}` — a session, then the thread the node was recorded on (`main` or a run's id), then the turn. A run is the exception the rule allows: its id is also the thread its rows carry, so `/session/{session_id}/run/{run_id}` says it once. Fragment URLs obey the rule too, and a node's fragment is its own path under a prefix: `/fragment/body/session/{session_id}/thread/{source}/turn/{turn_id}`. `tests/view/test_app.py` holds every route the app exposes to the rule.
-
-Node pages take four knobs, and every link on a page carries the ones that aren't defaults, so a click serves the URL it displays:
-
-<!-- aigarden:cog sh "uv run python -m tools.gen_bounds knobs" -->
-| Knob | What it does |
-| --- | --- |
-| `?nav=full` | The whole tree. The default |
-| `?nav=noapi` | The api calls folded away, each turn's tool calls standing directly under it |
-| `?nav=agents` | The runs alone, each under the run that spawned it — the session's org chart |
-| `?kin=` | Children per open level, at most 200 |
-| `?log=` | Rows in one page of the reading pane's children log, at most 100 |
-| `?detail=` | Characters of each value the reading pane previews, at most 4,000 |
-<!-- aigarden:end -->
-
-The three sizes only go down. Each default is also its ceiling, because the page's byte bound is arithmetic over the defaults and there is no headroom to spend. A size outside its range or a `nav` the viewer doesn't have returns 400 rather than a guess.
-
-A value's own URL — the one a preview's `+N more character(s)` link opens — answers 404 where the row is there and the column under it is empty: a `Read` ran no command, a slash turn typed no prompt of its own. Nothing links to one of those, so a request for one is a URL that was typed or kept.
-
-How wide the tree is drawn is the one thing you set that no URL carries: it belongs to the screen you are reading on, not to the node you linked to, so a pasted link would hand someone else your column. Drag the handle between the tree and the reading pane — or focus it and press the arrow keys — and this browser keeps the width for every session you open.
-
-The presets are the [control above the tree](#the-tree-opens-one-path-and-nothing-else), and typing one into the URL does the same thing. Every preset leaves every visible node with a visible parent, and a level whose preset would hide the path you are standing on renders in full instead.
-
-The session list accepts `sort`, `direction`, `page`, `size`, and its filter keys, and returns 400 for an unknown key, an unknown sort or direction, a filter value of the wrong type, or a page outside its bounds. Sort keys map to fixed columns, filter keys map to fixed predicates, and request values reach SQL only as bound parameters. A children log pages with `?page=`, numbered from one; page one is the node's own URL. A number below one is a 400, like any other size a URL carries out of bounds; a number past the level's last page is a 404, because only the level knows where it ends.
-
-Reports cite raw records as `(session_id, source, line_no)`. The records URL derives from that natural key, so a later port or route change does not invalidate the saved tuple. This form opens the records browser on the cited line:
-
-```text
-/session/{session_id}/thread/{source}/records?after={line_no - 1}#L{line_no}
-```
-
-## Large values open only when you ask
-
-The records page shows each archived line's number, type, length, and head; opening a row fetches the full line. The record the page opens on — the first row, which is the one a citation names — arrives open with its line already fetched, as long as it is under 15,000 characters. A record wider than that waits for a click like every other row: nothing bounds how long an archived line is, the store holds one of 7.6 million characters, and a page that pulls one unasked is a page nobody budgeted. Every turn links both to its thread's transcript and to the one line it was read from, so you can move between the modeled turn and the archived record in one click.
-
-When Claude Code writes a tool result to a file instead of the transcript, the result links to `/session/{session_id}/offload/{offload_name}`. Some offloads are tens of megabytes, so the page serves them in chunks and returns the next offset. The route treats the name as a key into `offload_files`; it never opens a path from the URL.
-
 ## Extracts and page loads can contend for the store
 
 The viewer closes its database connection after each request, leaving `aiobserve extract` free to take DuckDB's write lock while the viewer is idle. Neither side retries a collision:
@@ -199,35 +160,3 @@ The viewer closes its database connection after each request, leaving `aiobserve
 - If a re-extract changes the schema while the viewer runs, the viewer returns 503 with the schema version this build expects. Restart the viewer
 
 The viewer fails at startup if the store is missing, its schema is unsupported, or the port is already in use.
-
-## Hard bounds cap every page, most at 500 KB
-
-A browser can hang if the viewer renders a whole transcript. The viewer therefore bounds the row counts and text behind pages at the SQL boundary. Those queries do not select an uncut column that can hold agent or user content: `raw`, `text`, `thinking`, `result`, `input`, `content`, `agent_type`, `model`, `brief`, or `description`. `tests/view/test_bounds.py` enforces that rule.
-
-Full-value requests are the declared exception. Each returns one whole value — `src/aiobserve/view/store.py:Value` names them, from a transcript line to a line an enrichment pass wrote — so its size depends on the largest such value in the store rather than on a page of them. The tail row's fetch is a second: a reader who clicks `+N more` is asking for the rest of that level, so it serves the level less the window at a tree row apiece — 1.8 MB for the widest level in the canonical store, 1,587 tool calls under one turn with the api calls folded away, since the fetch serves whichever preset the URL names. A query's citation page is the third, and the one no corpus moves: it is the size of a statement we ship. Offloads remain chunked. JSON is re-indented only while doing so remains cheap; deeply nested data stays as stored because indentation work grows quadratically with nesting.
-
-`src/aiobserve/view/bounds.py` defines each page size beside its ceiling. A typed size above its ceiling returns 400. The payload checks charge each transcript character at five bytes, the longest HTML escape, and add measured markup costs from the canonical store.
-
-<!-- aigarden:cog sh "uv run python -m tools.gen_bounds bounds" -->
-| Surface | Default and limit |
-| --- | --- |
-| Session list | 97 sessions; each long string is cut to 100 characters, skills and agent types to 4 20-character names, and work to 3 |
-| Projects | 100 projects; the path is cut to 100 characters |
-| A session's errors | 100 failed tool calls; each title is cut to 110 characters |
-| Tree | 200 children per open level, 16 levels deep, each title cut to 110 characters |
-| Children log | 100 rows a page, each string cut to 300 characters |
-| Previewed value | 4,000 characters, with the rest a fetch away |
-| Raw records | 100 rows by default, at most 200 |
-| Offload | 50,000 characters by default, at most 60,000 |
-| Syntax highlighting | 256,000 characters, above which the value prints as stored |
-<!-- aigarden:end -->
-
-The worst node page comes to 7,047,702 bytes of the 7,080,000 a node page is allowed — its own budget rather than the 500,000 every other page is weighed against, because the tree is a window a reader widens in place and not a page. The tree is what multiplies: an open path is `1 + 16 × (200 + 1)` = 3,217 rows, and a row is pinned at 1,866 bytes, which is 6,002,922 of the page, six sevenths of it. The rest is 16 crumbs at 930 bytes, 100 log rows at 6,465, a pager at 600, three previewed values at 120,600 each, and 21,000 of chrome. The 32,298 spare is the rounding every ceiling here carries. The kind mark on a row is 49 bytes of it — 45 of markup around a 3-byte character, and the space after it — which over 3,217 rows is 157,633, the context bar's two classes are 8 bytes at their widest, 25,736 over the tree, and the popover trigger is 362, which is 1,164,554; `NODE_BYTES` in `tests/view/test_bounds.py` records what each raise of the ceiling bought. A preview the page marks up is priced at 30 bytes a character against the five an escaped one costs — an element around every token — and that price holds whether the markup is the syntax the record named or the Markdown a session wrote. A run's is the first reading pane whose three previews are all rendered, which is why the arithmetic charges three. A log row is the dearest thing on the page after the tree: it prints up to three of the store's own strings at 300 characters each, which is what a reader gets for reading a level without opening it. An api call's is the widest row there is — the model that answered, the head of what it said, and the tools it went on to call. `TREE_ROW_BYTES` is measured through the app rather than budgeted, at a title of nothing but `&` and the longest query string a link can carry, and pinned with no slack in either direction: a byte of slack there is 3,217 bytes of page, and the room above is spoken for. Nearly all of a row is its URL, written three times: the `href` a reader follows, the `hx-get` htmx fetches, and the popover's own path under a prefix. What the click does with its response is written once on `#tree-rows` and inherited; what the popover does with its own cannot be, because htmx walks up from the element that fetched, and a swap written on the row would be taken by the link inside it — so its five attributes are spelled out on every row, and a store whose agent runs carry longer ids than the recorded corpus does is a re-measure.
-
-An expansion carries a ceiling of its own, 660,000 bytes. A click fetches it, like the full-value requests exempted above, but what comes back is a page of rows rather than one value: an api call's body opened in a log row lists the tools it called, at the `?log=` the reader is already reading under, and comes to 655,000. `tests/view/test_bounds.py` declares the number rather than deriving it from the 500,000, because a page of rows nobody counted is what a click can afford to hide.
-
-A session's errors list grows the way the corpus pages do — nothing about a session caps how often its tools fail — so it is bounded the same way and projects to 108 KB: 3.2 KB of chrome plus 100 rows at 1,050 bytes, of which 550 is a title of nothing but `&`.
-
-The session list is bound independently of corpus size. Its filter box offers the 10 busiest project paths that fit its bound, whole or not at all; a cut path would filter by a directory nobody named. The projects page cuts a long path the same way and leaves that row unlinked. The same rule keeps row filtering correct: the viewer filters whole titles, paths, and skill lists, then cuts only the rows it renders. The worst-case list projects to 499 KB: 10.5 KB of page chrome plus 97 rows at 5 KB each.
-
-A session header does not have a reader-controlled size, so its query cuts every string, skill list and PR list. The description and friction line beside them come from the enrichment query and are cut at its own wider width. `tests/view/test_bounds.py` measures these fixed costs and checks every route the viewer exposes against its own ceiling, once with no query string and once with the dearest knobs a URL can carry.

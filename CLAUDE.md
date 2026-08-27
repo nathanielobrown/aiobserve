@@ -50,6 +50,7 @@ docs/
   store.md                The trace store is one DuckDB file, `data/traces.duckdb`: the archive `aiobserve extract` writes to and every query reads
   enrichment.md           Enrichment describes every agent run, main turn, and session in the trace store
   viewer.md               `aiobserve view` opens the trace store in a local browser
+  viewer-bounds.md        What a viewer URL may ask for, and what the page that comes back is allowed to weigh
   ui-development.md       Edit a viewer template or stylesheet and see it in the browser without touching the browser
   otlp-export.md          `aiobserve export-otlp` sends sessions from the trace store to an OTLP/HTTP backend as spans
   documentation.md        Use this guide to decide where project documentation belongs and how to keep it current
