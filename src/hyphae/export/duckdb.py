@@ -38,7 +38,7 @@ from hyphae.model import (
 
 # Bumped whenever the DDL below changes. There are no migrations while the project is
 # early: a mismatch refuses the store and says to extract into a fresh one.
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 # The remedy every version-mismatch message carries, written once because getting it wrong is
 # expensive: a store can be the only copy of a session Claude Code has pruned from disk, so

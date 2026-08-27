@@ -5,6 +5,7 @@ columns under test hold values a real transcript produced.
 """
 
 import dataclasses
+import hashlib
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -13,6 +14,7 @@ import duckdb
 import pytest
 
 from hyphae.export.duckdb import (
+    _SCHEMA,
     SCHEMA_VERSION,
     TABLES,  # every table a session owns — read off the exporter so a new one cannot slip past
     DuckDbExporter,
@@ -485,3 +487,24 @@ def test_a_newer_schema_version_refuses_to_open(db: Path):
 
     with pytest.raises(SchemaVersionError, match=r"docs/store\.md"):
         DuckDbExporter(db)
+
+
+# The digest of `_SCHEMA` at the current `SCHEMA_VERSION`. Update both together, never one:
+# the pair is the whole point of the leaf below.
+SCHEMA_DIGEST = "88abfdc98ce80ee62a16edd67c5bfc358b1df2eb1f86d07a92a1b572988fe829"
+
+
+def test_the_stored_schema_cannot_change_without_its_version():
+    """Editing the DDL without bumping `SCHEMA_VERSION` fails here rather than at an INSERT.
+
+    `open_trace_store` compares versions, and `CREATE TABLE IF NOT EXISTS` leaves an existing
+    table alone. So a renamed column in a store that still stamps the old version passes every
+    check and then crashes on the first write, with a binder error naming the column rather
+    than the remedy in `docs/store.md`. Nothing at runtime ties the two constants; this is
+    the tie.
+    """
+    digest = hashlib.sha256(_SCHEMA.encode()).hexdigest()
+    assert digest == SCHEMA_DIGEST, (
+        f"The trace-store DDL changed at SCHEMA_VERSION {SCHEMA_VERSION}. Bump the version so "
+        f"an existing store is refused with its remedy, then set SCHEMA_DIGEST to {digest}."
+    )
