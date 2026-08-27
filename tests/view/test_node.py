@@ -368,3 +368,20 @@ def test_the_same_node_url_serves_the_same_bytes_cold_and_warm(client: TestClien
     warm = client.get(TURN, headers=HTMX)
     assert warm.status_code == cold.status_code == 200
     assert warm.content == cold.content
+
+
+def test_the_citation_footer_scrolls_with_the_pane_it_cites(client: TestClient) -> None:
+    """A node page's footer sits inside the reading pane, last, rather than beside it.
+
+    The page fills the viewport: the NavTree and the pane each carry a scrollbar and the
+    document carries none, so a footer outside both would be a strip pinned under them or a
+    line below the fold of a page that does not scroll. Inside the pane it scrolls with the
+    node it cites — and a tree click, which takes `#reading-pane` out of the response, now
+    brings that node's citations along instead of leaving the last node's behind.
+
+    Containment is what is asserted rather than a class: CSS alone could stand a sibling under
+    the pane and look right, while the swap kept serving stale provenance.
+    """
+    ids = inside(client.get(TURN).text, "id", "reading-pane", "id")
+    assert ids[0] == "reading-pane"
+    assert ids[-1] == "citation"

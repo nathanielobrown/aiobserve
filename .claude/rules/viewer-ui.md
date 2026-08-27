@@ -69,6 +69,21 @@ A NavTree row swaps `#nav-tree-rows` out of band and takes `#reading-pane` out o
 
 Put it inside `#nav-tree-rows` rather than adding a second out-of-band target: a target costs bytes on every NavTree row, and the row is the one thing on the page multiplied 3,217 times.
 
+# The document does not scroll
+
+The frame is a column exactly the viewport's height: the masthead takes what it needs, and what sits under it takes the rest and scrolls inside itself. Every page but the node browser scrolls `main`. The node page gives its whole content box to `#browser` and hands the scroll down to the two columns, so the NavTree and the reading pane each carry a scrollbar and neither the window nor `main` carries one.
+
+That is why the citation footer of a node page renders inside `#reading-pane`, last, rather than under the document (`node.html`): a footer outside both columns would sit below a fold nobody can reach. It also means a click brings the new node's citations with it, since the swap takes `#reading-pane` out of the response. `test_the_citation_footer_scrolls_with_the_pane_it_cites` pins the containment.
+
+Size a pane against the room its parent gave it — `height: 100%` under a grid row of `minmax(0, 1fr)` — and not against `100vh`, which measures the window and forgets the masthead.
+
+Witnessed in a real Chromium on 2026-08-27 against `mise run gallery --port 9062` — never 8477, which is a live viewer:
+
+- At 1400×500 on a turn page the document overflowed by 0 px, `#browser` ran from the masthead's lower edge to the bottom of the window, and the pane scrolled 255 px to its end, where the footer came into view
+- At 1400×260, small enough that both columns overflow: scrolling the NavTree to its end left the pane and the document at 0, and scrolling the pane afterwards left the NavTree where it stood. The preset control stayed pinned directly under the masthead
+- At 800×500 the browser fell back to block flow and `main` took the scroll — 439 px of it, which is the page scroll the ≤900px layout keeps, ending on the footer
+- The console stayed empty throughout
+
 # The scroller stays outside the swapped element
 
 The NavTree keeps a reader's place across a click for one reason: `#nav-tree` carries the scrollbar and the swap replaces `#nav-tree-rows` inside it. An untouched scroller keeps its `scrollTop`, so nothing in the markup has to ask for it and `hx-preserve` is not needed.

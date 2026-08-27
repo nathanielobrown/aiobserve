@@ -3,6 +3,7 @@
 {% import "_logs.html" as logs %}
 {% import "_parts.html" as parts %}
 {% import "_nav_tree.html" as navtree %}
+{% import "_citation.html" as frame %}
 {% block title %}{{ selection.icon }} {{ selection.nav_tree_title }} · hyphae{% endblock %}
 {# One node of a session, whole: the NavTree it sits in, and the pane that reads it. Both arrive
    in one response, and a click on a NavTree row re-fetches this same URL — htmx takes `#reading-pane`
@@ -127,6 +128,13 @@
           {%- endif %}
         </nav>
       {% endif %}
+      {# What produced the page, last in the pane rather than under the document. This page
+         fills the viewport and the pane is what scrolls, so a footer outside it would sit
+         below a fold nobody can reach — and the swap takes `#reading-pane` out of the
+         response, so standing it here is also what keeps a clicked node's citations current. #}
+      {{ frame.citation(citations) }}
     </article>
   </div>
 {% endblock %}
+{# The frame's own footer, emptied: this page renders it inside the pane above. #}
+{% block footer %}{% endblock %}

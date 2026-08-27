@@ -32,8 +32,15 @@
   :root { --ink: #e6e6ea; --dim: #9a9aa5; --line: #33333c; --paper: #17171c; --mark: #7aa2f7;
     --bad: #ff8f85; --hot: #8a5a12; }
 }
+/* One screen, and the masthead across the top of it. The document itself never scrolls: the
+   frame is a column exactly the viewport's height, the masthead takes what it needs, and what
+   is under it takes the rest and scrolls inside itself. Fixed by structure rather than by
+   `position: fixed`, so nothing has to know how tall the masthead is. */
 body {
   margin: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
   background: var(--paper);
   color: var(--ink);
   font-family: ui-sans-serif, system-ui, sans-serif;
@@ -41,8 +48,12 @@ body {
   line-height: 1.45;
 }
 a { color: var(--mark); }
-main { padding: 0 var(--space-3) var(--space-4); }
+/* The page's own scroller on every page but the node browser, which hands the scroll down to
+   its two columns. `min-height: 0` because a flex item's floor is its content, and without it a
+   long list would push the column past the viewport and take the document's scrollbar back. */
+main { flex: 1; min-height: 0; overflow: auto; padding: 0 var(--space-3) var(--space-4); }
 #masthead {
+  flex: none;
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--line);
   font-weight: 600;
@@ -97,25 +108,35 @@ td.title .secondary { display: -webkit-box; -webkit-box-orient: vertical;
 
 /* The node browser: the NavTree a reader walks on the left, the node they are reading on the
    right. The NavTree is one flat list — a click swaps the whole of it out of band — so a row's
-   place in the hierarchy is drawn from `data-depth` rather than from nesting. */
+   place in the hierarchy is drawn from `data-depth` rather than from nesting.
+
+   The browser is the whole of its screen: one grid row as tall as what `main` gave it, with
+   each column scrolling inside itself. `minmax(0, 1fr)` on the row is what holds it there — an
+   auto row grows to its tallest item, and a session of 3,000 rows would push the page down
+   until the document took the scrollbar back. */
+main:has(#browser) { overflow: hidden; padding-bottom: 0; }
 #browser { display: grid;
   grid-template-columns: var(--nav-tree-width, 24rem) auto minmax(0, 1fr);
-  column-gap: var(--space-3); align-items: start;
+  grid-template-rows: minmax(0, 1fr); height: 100%;
+  column-gap: var(--space-3);
   /* The grip's width, named here because the popover measures the pane's left edge from it. */
   --grip-width: 5px; }
+/* The pane owns its scroll, and the citation footer is the last thing in it (`node.html`) —
+   so the provenance of the page arrives at the end of the node rather than under a document
+   that does not scroll. */
+#reading-pane { min-height: 0; overflow: auto; padding-bottom: var(--space-4); }
 /* The handle between the two columns. It carries the width the reader dragged to and nothing
    else does: `static/nav-tree-width.js` writes `--nav-tree-width` above, and the bounds it may take
    are that file's, so a drag has one stop rather than a clamp here and a limit there. Held
-   beside the NavTree's own scroller, the full height of it, so there is something to grab
-   wherever the reader's eye already is. */
-#nav-tree-grip { position: sticky; top: var(--space-2); height: calc(100vh - 4rem);
-  width: var(--grip-width);
+   beside the NavTree's own scroller, the full height of it — a stretched grid item, so it is
+   grabbable wherever the reader's eye already is without naming a height of its own. */
+#nav-tree-grip { width: var(--grip-width);
   border-radius: 3px; background: var(--line); cursor: col-resize; }
 #nav-tree-grip:hover, #nav-tree-grip:focus-visible { background: var(--mark); }
 /* The NavTree scrolls on its own, so a deep session scrolls its rows without losing the pane
    beside them. Monospaced at the label step, because a name's cut and the numbers after it
    line up down the column: the NavTree is scanned rather than read. */
-#nav-tree { position: sticky; top: var(--space-2); max-height: calc(100vh - 4rem); overflow: auto;
+#nav-tree { min-height: 0; overflow: auto;
   font-family: ui-monospace, monospace; font-size: var(--type-label); line-height: 1.6; }
 #nav-tree .rows { margin: 0; padding: 0; list-style: none; }
 /* The preset in force, and the two beside it. Held at the top of the NavTree's own scroller, so a
@@ -245,11 +266,15 @@ li.more > button:hover { background-color: color-mix(in srgb, var(--mark) 12%, t
   box-shadow: inset 3px 0 var(--mark); padding: var(--space-2) var(--space-3); }
 
 /* Narrow enough that two columns would leave neither readable: the NavTree folds above the pane
-   and is scrolled inside itself, so the node stays in reach. */
+   and is scrolled inside itself, so the node stays in reach. Here the two panes stop owning
+   their scroll and the page takes it back — `main` scrolls the block flow, which is the one
+   place in the viewer a reader scrolls past the end of a node. */
 @media (max-width: 900px) {
-  #browser { display: block; }
+  main:has(#browser) { overflow: auto; padding-bottom: var(--space-4); }
+  #browser { display: block; height: auto; }
   #nav-tree-grip { display: none; }
-  #nav-tree { position: static; max-height: 50vh; margin-bottom: var(--space-3); }
+  #nav-tree { max-height: 50vh; margin-bottom: var(--space-3); }
+  #reading-pane { overflow: visible; padding-bottom: 0; }
 }
 
 /* The context bar: how full the model's context window was when the node ended, over a track
