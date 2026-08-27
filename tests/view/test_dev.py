@@ -420,7 +420,8 @@ async def _stream(
 def declared(client: TestClient) -> set[str]:
     """Every path an app declares, its included routers' included.
 
-    `test_bounds.py:908` reads the top level alone, which is the whole of the shipped viewer;
+    `test_bounds.py:test_every_route_the_viewer_exposes_is_in_the_payload_sweep` reads the top
+    level alone, which is the whole of the shipped viewer;
     FastAPI keeps an included router nested under one route object rather than flattening its
     routes into `app.routes`, so the dev half needs the walk.
     """
