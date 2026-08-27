@@ -255,6 +255,6 @@ def shown(value: ParamValue) -> str:
     """A binding as it is written down — NULL is a value a reader can rebind.
 
     One spelling for both places a binding leaves the process: the citation line above, and the
-    link a page's footer makes out of it (`view/app.py:cited`).
+    link a page's footer makes out of it (`view/citation.py:cited`).
     """
     return "NULL" if value is None else str(value)
