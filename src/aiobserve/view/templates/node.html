@@ -46,7 +46,7 @@
     </nav>
     {{ body.body(selection, header, suffix) }}
     {# What an enrichment pass said about this node, when a pass has reached it. #}
-    {% if enrichment %}{{ parts.summary(enrichment, wrote) }}{% endif %}
+    {% if enrichment %}{{ parts.summary(enrichment, lines) }}{% endif %}
     {# The node's own values, cut to the pane's width, each with the way to the whole of it. #}
     {% for item in details %}{{ parts.detail(item) }}{% endfor %}
     {# What the extractor read, under what it made of it. The record arrives on open, one

@@ -75,14 +75,14 @@
 
 {# What a pass said about the item whose page this is, beside the header counting what it did.
    Model-written from a private transcript, so it is text like any other the viewer renders. #}
-{% macro summary(described, wrote) %}
-<section class="enrichment" data-enrichment="{{ described.item_id }}">
+{% macro summary(enrichment, lines) %}
+<section class="enrichment" data-enrichment="{{ enrichment.item_id }}">
   <p><span class="{{ GLYPH_CLASS }}" data-field="enriched"
-       title="{{ described.provenance }}">{{ GLYPH }}</span>
-    {{ line(wrote.description) }}</p>
-  <p class="tags">{{ tags(described) }}</p>
-  {% if wrote.friction %}
-  <p class="friction">{{ line(wrote.friction) }}</p>
+       title="{{ enrichment.provenance }}">{{ GLYPH }}</span>
+    {{ line(lines.description) }}</p>
+  <p class="tags">{{ tags(enrichment) }}</p>
+  {% if lines.friction %}
+  <p class="friction">{{ line(lines.friction) }}</p>
   {% endif %}
 </section>
 {% endmacro %}
@@ -93,12 +93,12 @@
    more and offer no way to it.
 
    The link sits outside the labelled span and inside the block it swaps, which is what makes
-   `closest .wrote` land: the glyph and the provenance hanging off it stay put. #}
+   `closest .enrichment-line` land: the glyph and the provenance hanging off it stay put. #}
 {% macro line(item) %}
-{%- if item %}<span class="wrote" data-wrote="{{ item.name }}"><span
+{%- if item %}<span class="enrichment-line" data-enrichment-line="{{ item.name }}"><span
   data-field="{{ item.name }}">{{ item.head }}</span>
   {%- if item.cut %} <a class="more" data-whole="{{ item.name }}" href="{{ item.url }}"
-    hx-get="{{ item.url }}" hx-target="closest .wrote" hx-swap="outerHTML"
+    hx-get="{{ item.url }}" hx-target="closest .enrichment-line" hx-swap="outerHTML"
     >+<span data-field="cut">{{ item.cut | count }}</span> more character(s)</a>{% endif -%}
 </span>{% endif %}
 {%- endmacro %}

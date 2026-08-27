@@ -35,10 +35,10 @@ EMPTIED = tuple((f"DELETE FROM {spec.table}", ()) for spec in LEVELS.values())
 
 # The fetches behind what a pass wrote, read off the route sweep rather than listed, so a
 # fourth level's pair lands in the absence check with the rest.
-WROTE_URLS = tuple(
+ENRICHMENT_URLS = tuple(
     url
     for path, url in ROUTES.items()
-    if path.startswith(("/fragment/said/", "/fragment/friction/"))
+    if path.startswith(("/fragment/description/", "/fragment/friction/"))
 )
 
 
@@ -236,7 +236,8 @@ def test_every_described_node_carries_its_own_words_on_its_own_page(
                 assert answered.status_code == 200, fetch
                 # And what comes back is the whole line, under the name and in the block the
                 # head stood in: the fetch replaces the preview rather than sitting beside it.
-                assert fields(answered.text, "data-wrote", field) == {field: words[field]}, fetch
+                whole = fields(answered.text, "data-enrichment-line", field)
+                assert whole == {field: words[field]}, fetch
 
 
 def test_a_run_page_shows_the_runs_own_enrichment_beside_its_brief(
@@ -275,8 +276,8 @@ def test_a_store_no_enrichment_pass_has_touched_renders_every_page(
     # links to one — the section that carries the link is not rendered at all — but the URLs
     # are ones a reader can paste from a described store's page, and the table they read does
     # not exist: unguarded, the query raises a catalog error and the route serves a 500.
-    assert WROTE_URLS, "the route sweep no longer names the fetches behind a pass's words"
-    for url in WROTE_URLS:
+    assert ENRICHMENT_URLS, "the route sweep no longer names the fetches behind a pass's words"
+    for url in ENRICHMENT_URLS:
         assert client.get(url).status_code == 404, url
     # And the store really is the bare one, so the sweep above proves what it claims.
     tables = {row[0] for row in store.execute("SELECT table_name FROM duckdb_tables()").fetchall()}
