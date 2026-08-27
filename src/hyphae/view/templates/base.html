@@ -1,3 +1,4 @@
+{% import "_citation.html" as frame %}
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -38,23 +39,9 @@
   <main>
     {% block main %}{% endblock %}
   </main>
-  {# Every page says what produced it: the query file and the bindings, ready to re-run. Folded
-     shut, because it is provenance rather than content — and each line links to the query it
-     names, so a reader who wants to know what a column means can read the SQL. #}
-  {% if citations %}
-    <footer id="citation">
-      <details data-citations="{{ citations | length }}">
-        <summary>what produced this page</summary>
-        <ul>
-          {% for name, ran in citations.items() %}
-            <li><a data-field="{{ name }}" href="{{ ran.url }}"><code>{{ ran.line }}</code></a></li>
-          {% endfor %}
-        </ul>
-      </details>
-      {# Where a fragment's own citations land. A page that loads one leaves the slot; the
-         fragment fills it out of band, so both sets read as one footer. #}
-      {% block citation_extra %}{% endblock %}
-    </footer>
-  {% endif %}
+  {# What produced the page, at the end of it. The node page overrides this block and stands the
+     same footer inside its reading pane instead, because that page's scrollers are its two
+     columns and a document footer under them would never come into view. #}
+  {% block footer %}{{ frame.citation(citations) }}{% endblock %}
 </body>
 </html>

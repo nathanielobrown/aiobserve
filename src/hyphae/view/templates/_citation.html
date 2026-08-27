@@ -1,0 +1,23 @@
+{# Every page says what produced it: the query file and the bindings, ready to re-run. Folded
+   shut, because it is provenance rather than content — and each line links to the query it
+   names, so a reader who wants to know what a column means can read the SQL.
+
+   A macro because two pages stand it in different places: a list page's footer ends the
+   document, and a node page's ends the reading pane, which is the scroller that page has
+   (`node.html`). Its own file rather than a macro in `_parts.html`, so the frame keeps asking
+   its environment for the `DEV` global and no filter — which is what lets the gallery's index
+   extend `base.html` (`tests/gallery/serve.py`). #}
+{% macro citation(citations) %}
+  {% if citations %}
+    <footer id="citation">
+      <details data-citations="{{ citations | length }}">
+        <summary>what produced this page</summary>
+        <ul>
+          {% for name, ran in citations.items() %}
+            <li><a data-field="{{ name }}" href="{{ ran.url }}"><code>{{ ran.line }}</code></a></li>
+          {% endfor %}
+        </ul>
+      </details>
+    </footer>
+  {% endif %}
+{% endmacro %}
