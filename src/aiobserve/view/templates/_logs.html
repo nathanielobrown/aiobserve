@@ -124,7 +124,7 @@
         <nav class="pager" data-pager="{{ shape }}" aria-label="{{ shape }} pager">
           {%- if pager.previous %}<a data-page="previous" href="{{ pager.previous }}">← previous page</a>{% endif %}
           <span data-field="place">{{ pager.place }}</span>
-          {%- if pager.following %}<a data-page="next" href="{{ pager.following }}">next page →</a>{% endif %}
+          {%- if pager.next %}<a data-page="next" href="{{ pager.next }}">next page →</a>{% endif %}
         </nav>
       {% endif %}
     </section>

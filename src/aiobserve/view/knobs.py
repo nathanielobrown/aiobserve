@@ -101,7 +101,7 @@ class Pager(NamedTuple):
     # Which page of how many, in words — the label the control is read and heard by.
     place: str
     previous: str | None
-    following: str | None
+    next: str | None
 
 
 def pager(url: str, marks: str, page: int, pages: int) -> Pager | None:
@@ -111,7 +111,7 @@ def pager(url: str, marks: str, page: int, pages: int) -> Pager | None:
     return Pager(
         place=f"Page {page} of {pages}",
         previous=numbered(url, marks, page - 1) if page > 1 else None,
-        following=numbered(url, marks, page + 1) if page < pages else None,
+        next=numbered(url, marks, page + 1) if page < pages else None,
     )
 
 
