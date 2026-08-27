@@ -673,6 +673,23 @@ def test_the_kin_cap_cuts_the_children_but_never_the_open_path(
     assert max(Counter(depth for depth, _ in rows(html)).values()) <= 1
 
 
+def test_a_row_pairs_its_depth_with_the_key_in_the_same_tag() -> None:
+    """`rows()` reads the pair whatever the tag's layout, and never reaches across a tag.
+
+    Every leaf here reads the tree through that pair, and the tag boundary is the whole of what
+    it rests on: a tail row carries a depth and no key — the leaf above builds one — so a pair
+    that could span `>` would hand it the next row's key and every level would read one long.
+    How a tag is laid out belongs to the formatter (`mise run format-html`), which today
+    neither reorders these attributes nor writes anything between them; the first case is
+    invented for exactly that reason, standing for a layout djLint is free to produce.
+    """
+    apart = '<li class="row node" data-depth="2" data-selected="turn:a" data-tree="turn:a">'
+    assert rows(apart) == [(2, "turn:a")]
+    # A tail row's depth, and the next tag's key: two tags, so nothing to pair.
+    tail = '<li class="row more" data-depth="1" data-more="session:s">\n<a data-tree="turn:b">'
+    assert rows(tail) == []
+
+
 def test_a_tail_row_stands_the_rest_of_its_level_where_it_stands(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
