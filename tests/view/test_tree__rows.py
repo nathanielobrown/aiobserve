@@ -244,8 +244,10 @@ def test_a_row_pairs_its_depth_with_the_key_in_the_same_tag() -> None:
     """
     apart = '<li class="row node" data-depth="2" data-selected="turn:a" data-tree="turn:a">'
     assert rows(apart) == [(2, "turn:a")]
-    # A tail row's depth, and the next tag's key: two tags, so nothing to pair.
-    tail = '<li class="row more" data-depth="1" data-more="session:s">\n<a data-tree="turn:b">'
+    # A tail row's depth, and the next tag's key: two tags, so nothing to pair. On one line,
+    # so the `>` is the only thing that can separate them — a newline between the tags would
+    # part them on its own, whatever the pattern says about tag boundaries.
+    tail = '<li class="row more" data-depth="1" data-more="session:s"><a data-tree="turn:b">'
     assert rows(tail) == []
 
 
