@@ -499,7 +499,11 @@ def test_the_pager_counts_a_store_deeper_than_a_page_with_separators(
             [over + 1, SPINE],
         ),
     )
-    size, page_number = bounds.SESSIONS.default, 11
+    # The first page whose numbers run past a thousand, derived rather than typed: the page
+    # size moves with what a row costs (`tests/view/test_bounds.py`), and a page number that
+    # did not move with it would stop reaching the boundary this test is about.
+    size = bounds.SESSIONS.default
+    page_number = 1_000 // size + 2
     with TestClient(build_app(path)) as planted:
         page = planted.get("/sessions", params={"size": size, "page": page_number}).text
     first = (page_number - 1) * size + 1

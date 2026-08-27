@@ -158,79 +158,92 @@ PAGE_BYTES = 500_000
 # every row without leaving the node they are reading: what a phase held in the window, what it
 # added, and where its dollars went. The arithmetic comes to 6,435,557 B, and the 29,443 B over
 # it is what the next thing a row grows by is measured against.
-NODE_BYTES = 6_465_000
+#
+# Raised again from 6,465,000 when the templates went under djLint (`docs/ui-development.md`).
+# The formatter writes each attribute of a tag on its own line and indents every block it
+# opens, and Jinja renders that whitespace into the page: a tree row went from 1,681 B to
+# 1,866 B, which over 3,217 rows is 595,145 B, and a log row, the chrome and the crumbs
+# together add 18,000 B more. It is the second dearest thing the tree has ever grown, and a
+# reader gets nothing at all for it — what the repo gets is one formatter over the templates
+# and an editor whose output `check` agrees with. The arithmetic comes to 7,047,702 B, and the
+# 32,298 B over it is what the next thing a row grows by is measured against.
+NODE_BYTES = 7_080_000
 # What one expansion may weigh: a node's body opened in place, inside someone else's children
 # log. It is over `PAGE_BYTES` and declared here rather than derived against it, for the reason
 # `bounds.OPENED_RECORD_CHARS` draws the same line the other way — a reader clicked. An
 # expansion is a row of a hundred asking for the level under it, priced like the per-value
 # fetches a click starts, and what bounds it is the `?log=` cap the reader is already reading
 # under rather than a second cap under that. The arithmetic is `worst_expansion_bytes`: the
-# body's own chrome plus one page of log rows at the widest a row gets, 638,000 B, which leaves
-# 2,000 B over. A `bounds.LOG` ceiling raised past 100 spends it a row at a time — which is the
+# body's own chrome plus one page of log rows at the widest a row gets, 655,000 B, which leaves
+# 5,000 B over. A `bounds.LOG` ceiling raised past 100 spends it a row at a time — which is the
 # point of naming the number, because a page of rows nobody budgeted is what a click can afford
 # to hide.
-EXPANSION_BYTES = 640_000
+EXPANSION_BYTES = 660_000
 # What the markup around one row of the list costs, with the content the row carries taken off.
 # Re-measured through the app by the leaf at the bottom of this file, every cap full of `&`,
-# at the dearest row the list holds rather than at whichever one sorted second: that row cost
-# 4,519 B, of which 2,730 B is content at those caps and 257 B the enrichment markup below,
-# leaving 1,532 B of stacked cells, counted lists and the row around them.
-MEASURED_SESSION_ROW_MARKUP = 1_600
+# at the dearest row the list holds rather than at whichever one sorted second: one more row
+# cost 4,862 B, against the 2,833 B of content and marks the arithmetic below prices at those
+# caps and the 300 B of enrichment markup under it, leaving 1,729 B of stacked cells, counted
+# lists and the row around them. Up 319 B when the templates went under a formatter, which is
+# what cut `bounds.SESSIONS` from 103 rows to 97.
+MEASURED_SESSION_ROW_MARKUP = 1_900
 # What the markup around one row's enrichment costs on top of that, with the model's own words
 # taken off. Measured through the app by the leaf at the bottom of this file, every field
-# planted full of `&`: 257 B. The list never renders the stale tag — it joins what a pass wrote
+# planted full of `&`: 287 B. The list never renders the stale tag — it joins what a pass wrote
 # and not the versions that would judge it — so this is the two tags and the block around them.
 MEASURED_LIST_ENRICHMENT_MARKUP = 300
 # What a list page weighs apart from its rows: the filter form, the project suggestions, the
 # table head and the two pagers. Measured through the app by the leaf at the bottom of this
-# file, with `&` planted in every suggestion and the box at its cap — 8,915 B, a worst case
+# file, with `&` planted in every suggestion and the box at its cap — 10,044 B, a worst case
 # rather than a corpus observation, because the box is bound in SQL like everything else.
-MEASURED_LIST_CHROME = 10_000
+MEASURED_LIST_CHROME = 10_500
 # What the markup around one row of the landing page costs, with the path it carries taken off,
 # and what that page weighs apart from its rows: the table head, and the line saying how many
 # projects it left out. Both re-measured through the app by the leaf at the bottom of this
 # file, every project path planted full of `&` and the store filled past the page's ceiling:
-# 2,076 B a row, of which 782 B is a planted path in its cell and in its link, leaving 1,294 B
-# of stacked window cells and the row around them — and 2,055 B of chrome, which is small
+# 2,183 B a row, of which 782 B is a planted path in its cell and in its link, leaving 1,401 B
+# of stacked window cells and the row around them — and 3,144 B of chrome, which is small
 # because the page carries no form, no pager and no suggestions.
-MEASURED_PROJECT_ROW_MARKUP = 1_400
-MEASURED_PROJECTS_CHROME = 2_500
+MEASURED_PROJECT_ROW_MARKUP = 1_500
+MEASURED_PROJECTS_CHROME = 3_200
 # The same two for the page that lists where a session failed, whose row is a link to the
 # failed tool call's own page, the thread it ran on and a timestamp. Measured through the app
 # by the leaf at the bottom of this file, every title planted full of `&` and the session
-# failing more calls than the page shows: 620 B a row, of which 240 B is a planted title,
-# leaving 380 B of the link and the two cells after it — and 2,375 B of chrome, which is small
-# for the same reason the landing page's is: no form, no pager and no suggestions.
-MEASURED_ERROR_ROW_MARKUP = 400
-MEASURED_ERRORS_CHROME = 2_500
+# failing more calls than the page shows: 957 B a row, of which 550 B is a planted title at
+# `NAV_CHARS`, leaving 407 B of the link and the two cells after it — and 3,150 B of chrome,
+# which is small for the same reason the landing page's is: no form, no pager, no suggestions.
+MEASURED_ERROR_ROW_MARKUP = 500
+MEASURED_ERRORS_CHROME = 3_200
 
 # What an expansion carries outside the rows it lists: the node's own body, the link to its
 # page, and the queries it cites. The body's facts are read at `HEADER_CHARS` rather than at
 # the reader's `?detail=` — an expansion previews no fat value — so this is a fraction of the
 # chrome a page carries. Measured through the app by the leaf below over all three kinds a log
 # opens a body for, each planted at the caps its body reads: an api call's is the dearest at
-# 6,376 B, against a turn's 3,013 and a tool call's 2,484. A call's body is the one standing
+# 8,270 B, against a turn's 3,312 and a tool call's 2,733. A call's body is the one standing
 # above a table, and its title is the head of what the call said.
-MEASURED_EXPANSION_CHROME = 6_500
+MEASURED_EXPANSION_CHROME = 8_500
 
 # What a row of the records browser really costs — the preview plus the row's own markup, most
 # of it the `hx-get` that fetches the record whole. Measured against `data/traces.duckdb` on
-# 2026-08-08: 83,659 B for a 100-record page less 1,865 B of chrome, over the 99 rows between.
-# The fixture records are redacted to a few characters, so they project nothing about this.
-MEASURED_RECORD_BYTES = 826
+# 2026-08-08: 83,659 B for a 100-record page less 1,865 B of chrome, over the 99 rows between,
+# plus the 110 B a row gained when the templates went under a formatter. That half is markup,
+# so it is measured through the fixture store — which the preview half cannot be, the fixture
+# records being redacted to a few characters and projecting nothing about a real one.
+MEASURED_RECORD_BYTES = 936
 
 # What the markup around one row of the pane's children log costs, with the strings it carries
 # taken off: a cell per column of the shape's own table, three copies of the node's URL — the
 # link, the `hx-get` behind it, and the mount the View button opens through — the swap the link
 # performs, the numbers that tell two children apart, and the row around them. Re-measured
 # through the app by the leaf at the bottom of this file, every cap full of `&` and every knob
-# at its longest — 6,226 B on an api call's row, of which 4,515 B is content at those caps and
-# 150 B the knobs, leaving 1,561 B. A string at its cap is 300 escapes and the mark that says
+# at its longest — 6,409 B on an api call's row, of which 4,515 B is content at those caps and
+# 150 B the knobs, leaving 1,744 B. A string at its cap is 300 escapes and the mark that says
 # it was cut; the arithmetic below charges the 301 escapes the cut selected, which is 2 B a
 # string more than a row can really carry. The dearest row moved from a tool call's to an api
 # call's when a call's row began saying what the call said and which tools it called: nine
 # columns against a tool row's seven, and the same three strings.
-MEASURED_LOG_ROW_MARKUP = 1_650
+MEASURED_LOG_ROW_MARKUP = 1_800
 # How many strings one row of a children log prints, each cut to `LOG_CHARS` and selected a
 # character past it. Three is the widest row there is: an api call's row is the model that
 # answered, the head of what it said, and the tools it went on to call; a tool row is the
@@ -243,14 +256,14 @@ LOG_ROW_STRINGS = 3
 # them, the place between them, and two copies of the node's own URL carrying the page's knobs
 # and a page number. Nearly all of it is those two URLs. Measured through the app by the leaf at
 # the bottom of this file, on logs driven to one row a page and read at a middle page, which is
-# the only page carrying both links — 533 B, the widest of the 30 that sweep renders, 20 of them
+# the only page carrying both links — 583 B, the widest of the 30 that sweep renders, 20 of them
 # with both links. Driving the log to one row a page is also what writes `log=1` into the suffix
 # on both of those URLs, where `worst_knob_bytes()` prices two digits: the worst pager is 2 B
 # wider than what was measured, inside the 67 B this leaves over it.
 MEASURED_PAGER_BYTES = 600
 # And what the markup around one crumb of the chain down to the selection costs: the link, the
 # node's key, the mark saying what kind of node the step is, and the glyph saying who named it.
-# Measured the same way — 915 B less 550 B of title and 50 B of knobs, leaving 315 B.
+# Measured the same way — 906 B less 550 B of title and 50 B of knobs, leaving 306 B.
 MEASURED_CRUMB_MARKUP = 330
 # And what the markup around one previewed value costs — the heading, the `<pre>` and the line
 # offering the rest of it — with the preview itself taken off.
@@ -279,11 +292,11 @@ DEAR_PANE_DETAILS = 3
 # page is about, which is the whole of what the two of them cost here.
 # What a pass wrote sits here too, and each of its two lines carries the fetch that offers the
 # rest of it — a URL written twice, the way every other value a pane previews offers its own.
-# Re-measured through the app by the leaf at the bottom of this file at 18,530 B. Up to five
+# Re-measured through the app by the leaf at the bottom of this file at 20,459 B. Up to five
 # of its strings are tree titles — the page title, and the two steppers under the pane — so it
 # moves with `queries.NAV_CHARS`, and one more is the name a session was recorded under, which
 # moves with `queries.HEADER_CHARS`.
-MEASURED_NODE_CHROME = 19_000
+MEASURED_NODE_CHROME = 21_000
 
 # The parameter every truncated column of a run row is cut to. Counted per query rather than
 # listed, so a fourth column added to a chip shows up in the arithmetic instead of quietly
