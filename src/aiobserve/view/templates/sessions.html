@@ -34,7 +34,7 @@
   {% for control in controls %}
   <label data-filter="{{ control.key }}">{{ control.key }}
     <input type="{{ control.type }}" name="{{ control.key }}" value="{{ control.value }}"
-           {% if control.key == 'project' %}list="projects"{% endif %}>
+           {% if control.key == 'project' %}list="project-names"{% endif %}>
   </label>
   {% endfor %}
   <button type="submit">Filter</button>
@@ -42,7 +42,7 @@
 </form>
 {# Suggestions, not a closed set: a project the store has no sessions for is an empty list
    rather than an error, and typing a path the datalist lacks still runs. #}
-<datalist id="projects">
+<datalist id="project-names">
   {% for project in projects %}<option value="{{ project }}">{% endfor %}
 </datalist>
 {{ pager('top') }}
