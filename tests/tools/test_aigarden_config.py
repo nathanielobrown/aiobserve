@@ -102,13 +102,13 @@ def test_every_file_length_exemption_names_a_file_still_over_budget(
     # The ratchet only ratchets if splitting a file takes its entry out with it. A file that
     # came back under its budget while its exemption stayed would leave the budget off for the
     # next thing that grows there. Only the named files are checked: the one wildcard carrying
-    # `file-length` is `plans/**`, exempt as history rather than as an offender.
+    # `file-length` is `plans/**`, exempt as history rather than as an offender. The list is
+    # empty today, which is the point: it is what the next entry anyone adds lands in.
     ratchet = [
         pattern
         for pattern, rules in per_file_ignores.items()
         if "file-length" in rules and "*" not in pattern
     ]
-    assert ratchet, "no per-file `file-length` entries left to check"
     under = [pattern for pattern in ratchet if over_budget(pattern, raised_budgets) is None]
     assert not under, f"file-length exemptions no longer excusing anything: {under}"
 
