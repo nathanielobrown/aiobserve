@@ -41,7 +41,13 @@ Once Claude Code deletes those files, the store holds the only copy. Deleting it
 
 Each session fingerprint includes `EXTRACTOR_VERSION` from `src/hyphae/extract/claude_code.py`. Raising that version makes the next refresh re-extract every session whose files remain on disk. Extraction updates the existing store, so you don't need to delete it. Pruned sessions keep the rows produced by the parser that first extracted them.
 
-`SCHEMA_VERSION` in `src/hyphae/export/duckdb.py` has no migrations while the project is early. The program refuses to read or write a store created with another schema version. It tells you to extract into a fresh store instead. Don't delete the old store until you run the check below.
+`SCHEMA_VERSION` in `src/hyphae/export/schema.py` stamps the file, not one owner's tables: three modules create tables in the one DuckDB file, so the version belongs to the file they share. Opening a store for write carries it forward. `MIGRATIONS` holds one step per version, keyed by the version it produces, and a store older than the build runs every step above it in one transaction. A store newer than the build, or one no step reaches, is still refused and sent to a fresh store — don't delete the old one until you run the check below. A read-only open cannot migrate, so the viewer and the analysis runner refuse an older store and tell you to open it for write once.
+
+Migrating rather than refusing bends this project's preference for clean breaking changes over compatibility shims. It loses to the constraint above: the store can hold the only copy of a pruned session, so a schema change has to move the store it finds rather than ask for a fresh one.
+
+The version alone doesn't catch a DDL edit that reached a store already on disk, because `CREATE TABLE IF NOT EXISTS` leaves a table that exists alone. So each owner also calls `check_shape` with its own DDL immediately before running it. It derives what that DDL would create by running it against a scratch database, diffs the result against the file, and names any table whose columns disagree. A declared table the store lacks is not drift — the enrichment and delivery tables exist only once those layers have run — and views are excluded, since `CREATE OR REPLACE` rebuilds them at every open.
+
+You meet this machinery when you change a DDL and `tests/export/test_schema.py` fails: it digests each owner's table statements and holds them to the current version. Bump `SCHEMA_VERSION`, add the step that carries an existing store across your change to `MIGRATIONS` under the new version, then set the digest to the one the failure prints.
 
 A fresh store has an empty `otlp_delivery` table. Because `export-otlp` uses that table to track what each backend confirmed, the next export sends every session to every backend again. See [the OTLP export guide](otlp-export.md).
 
