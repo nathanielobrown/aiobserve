@@ -95,7 +95,7 @@
        the pane is standing on one — the walk above reaches the next *node*, and a reader
        hunting failures wants the next *failure*, five spawns and two threads away. #}
     {% if session_tool_errors %}
-    <nav class="errors" aria-label="Where this session failed">
+    <nav class="error-stepper" aria-label="Where this session failed">
       {%- if step and step.previous %}
       <a data-step="previous" data-node="{{ step.previous.key }}"
          href="{{ step.previous.url }}{{ suffix }}"

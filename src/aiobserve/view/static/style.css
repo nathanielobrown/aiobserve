@@ -397,13 +397,13 @@ ul.prs { margin: var(--space-2) 0; padding: 0; list-style: none; overflow-wrap: 
 /* Where the session failed, laid out like the walk above it: the step back on the left, the
    step on on the right, and the way to the whole list between them. The list is the one
    control here that is always there, so it holds the middle rather than an end. */
-nav.errors { display: flex; gap: var(--space-3); align-items: baseline;
+nav.error-stepper { display: flex; gap: var(--space-3); align-items: baseline;
   margin-top: var(--space-2); }
-nav.errors a { max-width: 20rem; text-decoration: none; overflow-wrap: anywhere; }
-nav.errors [data-step="previous"] { margin-right: auto; }
-nav.errors [data-step="next"] { margin-left: auto; text-align: right; }
+nav.error-stepper a { max-width: 20rem; text-decoration: none; overflow-wrap: anywhere; }
+nav.error-stepper [data-step="previous"] { margin-right: auto; }
+nav.error-stepper [data-step="next"] { margin-left: auto; text-align: right; }
 /* The count, which is the one number on the page that says how much there is to jump to. */
-nav.errors [data-field="tool_errors"] { color: var(--bad); }
+nav.error-stepper [data-field="tool_errors"] { color: var(--bad); }
 
 /* One session's failures, whichever thread each ran on. */
 ol.errors { margin: var(--space-2) 0; padding: 0; list-style: none; }
