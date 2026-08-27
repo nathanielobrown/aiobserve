@@ -27,9 +27,3 @@ reflow = "never-wrap"
 # Prompt templates: their bytes are model input. A reflow would change the prompt and stale
 # every enrichment stamp derived from it (`docs/enrichment.md`).
 "src/aiobserve/analyze/templates/**" = ["markdown-style"]
-
-# The file-length ratchet. Every file over its budget today is held where it is, rather than
-# the budget being raised for everyone: a new file meets the rule, and an entry here comes out
-# when the file it names is split. `docs/documentation.md` has the reasons the budget exists at
-# all. Code is measured in lines, prose in the context tokens it costs a reader that loads it.
-"tests/enrich/test_prompts.py" = ["file-length"]
