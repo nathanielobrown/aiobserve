@@ -3,18 +3,35 @@
    would charge everything a call did to one of the things it did. What it has is the size of
    what it gave back, and the calls the model asked for in the same breath. #}
 {% import "_parts.html" as parts %}
-<div class="popover" data-popover="{{ key }}" data-query="{{ citation }}" tabindex="-1">
+<div class="popover"
+     data-popover="{{ key }}"
+     data-query="{{ citation }}"
+     tabindex="-1">
   <dl class="context">
-    <div><dt>asked</dt><dd data-field="input_chars">{{ row.input_chars | count }}</dd></div>
-    <div><dt>returned</dt><dd data-field="result_chars">{{ row.result_chars | count }}</dd></div>
+    <div>
+      <dt>asked</dt>
+      <dd data-field="input_chars">
+        {{ row.input_chars | count }}
+      </dd>
+    </div>
+    <div>
+      <dt>returned</dt>
+      <dd data-field="result_chars">
+        {{ row.result_chars | count }}
+      </dd>
+    </div>
     {%- if row.offload_file %}
-    <div><dt>offloaded to</dt><dd data-field="offload_file">{{ row.offload_file }}</dd></div>
+      <div>
+        <dt>offloaded to</dt>
+        <dd data-field="offload_file">
+          {{ row.offload_file }}
+        </dd>
+      </div>
     {%- endif %}
   </dl>
   {# What the same api call asked for beside this one, named the way every other surface names
      a tool call. Parallel work is the reading a row alone cannot give: a call that took a
      minute took it beside these. #}
-  <p class="beside">{% if row.siblings %}with <span data-field="siblings">{{
-    row.siblings | join(", ") }}</span>{{ parts.more(row.siblings_cut) }}{% else %}
-    the only tool call its api call made{% endif %}</p>
+  <p class="beside">{% if row.siblings %}with <span data-field="siblings">{{ row.siblings | join(", ") }}</span>{{ parts.more(row.siblings_cut) }}{% else %}
+  the only tool call its api call made{% endif %}</p>
 </div>

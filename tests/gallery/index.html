@@ -1,23 +1,23 @@
 {% extends "base.html" %}
 {% block title %}Gallery — aiobserve{% endblock %}
 {% block main %}
-<h1>Scenarios</h1>
-{# One row per entry of `tests/view/scenarios.py:ROUTES`: the route a page stands for, and the
+  <h1>Scenarios</h1>
+  {# One row per entry of `tests/view/scenarios.py:ROUTES`: the route a page stands for, and the
    one real URL the tier sweeps it at. Nothing is listed here that the tests do not cover. #}
-<table id="scenarios">
-  <thead>
-    <tr>
-      <th scope="col">Route</th>
-      <th scope="col">Page</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for route, url in routes.items() %}
-    <tr>
-      <td><code>{{ route }}</code></td>
-      <td><a data-scenario="{{ route }}" href="{{ url }}">{{ url }}</a></td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+  <table id="scenarios">
+    <thead>
+      <tr>
+        <th scope="col">Route</th>
+        <th scope="col">Page</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for route, url in routes.items() %}
+        <tr>
+          <td><code>{{ route }}</code></td>
+          <td><a data-scenario="{{ route }}" href="{{ url }}">{{ url }}</a></td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 {% endblock %}

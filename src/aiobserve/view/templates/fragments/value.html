@@ -5,7 +5,7 @@
    pane filed the value under is what the styling reads, and the value itself goes through the
    macro the pane's own preview goes through. #}
 {% import "_parts.html" as parts %}
-<div class="value detail" data-detail="{{ detail }}"
-  data-value="{{ (row.value or '') | length }}" data-query="{{ citation }}">
-  {{ parts.prose(detail, row.value) }}
-</div>
+<div class="value detail"
+     data-detail="{{ detail }}"
+     data-value="{{ (row.value or '') | length }}"
+     data-query="{{ citation }}">{{ parts.prose(detail, row.value) }}</div>
