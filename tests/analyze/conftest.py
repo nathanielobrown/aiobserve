@@ -74,21 +74,17 @@ def far_future(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # Mycelia sessions `corpus_rollups` credits with no turns and no agent runs, so no stratum
-# may reach them. Two of them compacted, which is what makes the exclusion visible: a pool
-# drawn on metrics alone would rank them.
-NO_WORK_SESSIONS = (
-    RESUME,
-    "8ee00a94-b01a-4394-b447-b065f74b11af",
-    "1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9",
-)
+# may reach them. One of them compacted, which is what makes the exclusion visible: a pool
+# drawn on metrics alone would rank it.
+NO_WORK_SESSIONS = (RESUME, "8ee00a94-b01a-4394-b447-b065f74b11af")
 
 # The id the planted agent-run compaction carries, so no first-seen twin can own it.
 PLANTED_COMPACTION = "planted-compaction"
 
-# Measured on 2026-08-15: of the in-window sessions, the ones with any turn or agent run.
-POOL_AT_WHOLE = 11
+# Measured on 2026-08-27: of the in-window sessions, the ones with any turn or agent run.
+POOL_AT_WHOLE = 12
 POOL_AT_PARTIAL = 6
-# Distinct `agent_type`s across the corpus's 7 agent runs — one run each.
+# Distinct `agent_type`s across the corpus's 11 agent runs.
 AGENT_TYPES = 7
 
 # Measured on 2026-08-15 by building the store below: 15 mycelia sessions between
@@ -183,10 +179,10 @@ def enriched_query(enriched_db: Path, capsys: pytest.CaptureFixture[str]) -> Que
 def planted_run_compaction_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     """The corpus plus a copy of a recorded main-thread compaction, moved onto an agent run.
 
-    Invented placement, and it has to be: a run that compacts is what iteration 1 kept seeing
-    and no fixture session recorded, so nothing would exercise the per-run counts otherwise.
-    A copy under a new id rather than a move, so the recorded compaction stays where it was
-    recorded and the `corpus_*` first-seen rule has no twin to prefer.
+    Invented placement, and it stays invented for one reader: `compaction/`'s run is the only
+    recorded run compaction, and its session has a single run, so nothing there contrasts two
+    runs of one session. A copy under a new id rather than a move, so the recorded compaction
+    stays where it was recorded and the `corpus_*` first-seen rule has no twin to prefer.
     """
     path = tmp_path_factory.mktemp("run_compaction") / "traces.duckdb"
     path.write_bytes(corpus_db.read_bytes())

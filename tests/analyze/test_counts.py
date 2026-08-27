@@ -7,10 +7,10 @@ answers "what did a thread pay to rebuild a context it already had". The leaves 
 about what a group holds: which rows fall into one signature or one command shape, which
 thread a compaction is counted under, and what the trailing window leaves out.
 
-The first three need a population the recorded corpus lacks — every recorded error is a
-one-off redacted down to a word, every tool input is redacted whole, and no recorded run
-compacted — so each plants one onto real rows and says so. `context_reloads` needs no plant:
-two recorded fixture threads rebuilt their whole context mid-run.
+The first two need a population the recorded corpus lacks — every recorded error is a one-off
+redacted down to a word and every tool input is redacted whole — so each plants one onto real rows
+and says so. The last two need no plant: `compaction/`'s agent run compacted, and three recorded
+fixture threads rebuilt their whole context mid-run.
 """
 
 import json
@@ -28,7 +28,7 @@ from tests.analyze.conftest import (
     query,
     scalar,
 )
-from tests.conftest import FORK_ORIGIN, MAIN, MYCELIA, SPINE
+from tests.conftest import COMPACTED, FORK_ORIGIN, MAIN, MYCELIA, SPINE
 
 # The first line every planted failure shares, and the tail that differs between them. A
 # recurring error is one signature over many bodies — "File has not been read yet" ahead of a
@@ -58,11 +58,11 @@ GUARDRAIL_HEAD = "This agent is isolated in the worktree /repo/.claude/worktrees
 GUARDRAIL_TAIL = ", but this command wanted to write outside it"
 # The one group they have to collapse into: the sentence, with the path standing for itself.
 GUARDRAIL_SIGNATURE = f"This agent is isolated in the worktree <path>{GUARDRAIL_TAIL}"
-# What the plant costs: every corpus `Bash` call, which is 4 calls over 3 sessions and 4
-# threads — one apiece in `SPINE`'s two threads, `CONFIG_ONLY` and the architect run.
-GUARDRAIL_ERRORS = 4
-GUARDRAIL_SESSIONS = 3
-GUARDRAIL_THREADS = 4
+# What the plant costs: every corpus `Bash` call — 5 calls over 4 sessions and 5 threads, one
+# apiece in `SPINE`'s two threads, `CONFIG_ONLY`, the architect run and `parallel_tools`'s auditor.
+GUARDRAIL_ERRORS = 5
+GUARDRAIL_SESSIONS = 4
+GUARDRAIL_THREADS = 5
 
 # Command lines planted onto real calls so `command_failures` has command text to shape. They
 # are invented — every fixture tool input is `[redacted]` — but the shapes are the canonical
@@ -94,11 +94,13 @@ MAIN_THREAD = "(main thread)"
 # The sentinel a rolled-up row carries where a thread kind would sit, `context_reloads`'s and
 # `reload_cost_split`'s alike.
 ALL_THREAD_KINDS = "(all)"
-# The agent definition the planted compaction lands under.
-PLANTED_DEFINITION = "auditor"
+# The definition of the one recorded run that compacted, and how many threads it has: the
+# ratio a reader ranks definitions by needs a denominator bigger than the compaction.
+COMPACTED_DEFINITION = "general-purpose"
+COMPACTED_RUN_THREADS = 3
 
-# The two threads of the recorded corpus that rebuilt their context mid-run, and what each
-# rebuilt (measured 2026-08-09 by building the store below). `ARCHITECT_RUN` is the sharper
+# The three threads of the recorded corpus that rebuilt their context mid-run, and what each
+# rebuilt (measured 2026-08-27 by building the store below). `ARCHITECT_RUN` is the sharper
 # case: both of its calls read nothing back, so its opening load is a rebuild in every
 # respect except being the one the thread started with.
 ARCHITECT_RUN = "aarchitect-5144001ac50718bc"
@@ -106,23 +108,28 @@ ARCHITECT_SESSION = "10d0349d-0705-4e23-aa64-5b1b97698b2e"
 ARCHITECT_DEFINITION = "architect"
 ARCHITECT_OPENING_TOKENS = 23_444
 ARCHITECT_RELOAD_TOKENS = 89_383
-# The silence its rebuild followed: 6,035 seconds, an hour and forty minutes. Shorter than
-# the main thread's below, which is what puts the corpus's two idle reloads either side of a
-# bound and lets a split be read.
+# The silence its rebuild followed: 6,035 seconds, an hour and forty minutes — shorter than the two
+# main-thread waits below, which is what puts the corpus's idle reloads either side of a bound.
 ARCHITECT_IDLE_SECONDS = 6_035
 # `SPINE`'s main thread went 23,773 seconds — 6h36m — between two calls and rebuilt 94,194
 # tokens on the far side, so its gap is what a rebound `$idle_seconds` can be walked past.
 SPINE_RELOAD_TOKENS = 94_194
 SPINE_IDLE_SECONDS = 23_773
-# The shortest silence the recorded corpus has over the five-minute floor, and what pins the
-# measure: 319 seconds passed between the two requests, 281 between the first one's reply and
-# the second request. A cache entry ages from the request that wrote it, so this gap clears a
-# 300-second floor — measured end to start it would fall out of the table.
-SHORTEST_IDLE_SECONDS = 319
-# How many silences over that floor the recorded corpus holds: six in main threads, one in an
-# agent run. The raw table holds two more — `corpus_api_calls` hides a resumed thread's
+# `COMPACTED`'s main thread is the third, and the only one whose rebuild followed a
+# compaction: 21,648 seconds of silence over a boundary, 36,465 tokens on the far side.
+COMPACTED_RELOAD_TOKENS = 36_465
+COMPACTED_IDLE_SECONDS = 21_648
+# The shortest silence the recorded corpus has over the five-minute floor: the 302 seconds
+# `COMPACTED`'s agent run spent compacting and rebuilding. The silence that pins the measure is
+# `ANCESTOR`'s — 319 seconds between two requests, 281 from the first one's reply. A cache entry
+# ages from the request that wrote it, so it clears the 300-second floor; measured end to start it
+# would fall out of the table.
+SHORTEST_IDLE_SECONDS = 302
+REQUEST_MEASURED_IDLE_SECONDS = 319
+# How many silences over that floor the recorded corpus holds: eight in main threads, two in
+# agent runs. The raw table holds two more — `corpus_api_calls` hides a resumed thread's
 # replayed rows, and a gap between two of them is not the corpus's to count.
-RECORDED_IDLE_GAPS = 7
+RECORDED_IDLE_GAPS = 10
 
 
 def test_error_signatures_counts_one_signature_over_many_bodies(
@@ -205,7 +212,7 @@ def test_error_signatures_groups_past_a_path_inside_the_line(
     def planted_query(name: str, *arguments: str) -> Output:
         return query(planted_failures_db, capsys, name, *arguments)
 
-    # If four calls failed with one guardrail message whose *first line* names the worktree it
+    # If five calls failed with one guardrail message whose *first line* names the worktree it
     # blocked — a different path each time, so the cut that keeps a trailing path out of the
     # signature cannot help...
     rows = [
@@ -268,26 +275,22 @@ def test_command_failures_groups_by_the_shape_of_the_command_line(
 
 
 def test_agent_compactions_counts_a_compaction_under_the_thread_that_had_it(
-    planted_run_compaction_db: Path, capsys: pytest.CaptureFixture[str]
+    run_query: QueryRunner, corpus_db: Path
 ) -> None:
     """A run that ran out of context is counted against its definition, not its session."""
-
-    def planted_query(name: str, *arguments: str) -> Output:
-        return query(planted_run_compaction_db, capsys, name, *arguments)
-
-    # If one compaction happened inside an agent run rather than on a main thread (planted:
-    # no recorded fixture run compacted, which is why iteration 1 could not count this)...
-    rows = _compactions(planted_query)
-    # ...then it is counted under that run's definition, once, and against the one run the
+    # If one compaction happened inside an agent run rather than on a main thread —
+    # `compaction/`'s `general-purpose` run, the only one the corpus records...
+    rows = _compactions(run_query)
+    # ...then it is counted under that run's definition, once, and against every run the
     # definition has — which is the ratio a reader ranks definitions by...
-    definition = rows[PLANTED_DEFINITION]
+    definition = rows[COMPACTED_DEFINITION]
     assert (int(definition["compactions"]), int(definition["compacting_threads"])) == (1, 1)
-    assert int(definition["threads"]) == 1
-    assert float(definition["compactions_per_thread"]) == 1.0
+    assert int(definition["threads"]) == COMPACTED_RUN_THREADS
+    assert float(definition["compactions_per_thread"]) == round(1 / COMPACTED_RUN_THREADS, 2)
     # ...and it is counted there instead of under the session's own thread: every compaction
     # the period holds is in exactly one row, so the column sums to the store's own total.
     total = scalar(
-        planted_run_compaction_db,
+        corpus_db,
         """SELECT count(*) FROM corpus_compactions k JOIN sessions s ON s.id = k.session_id
            WHERE s.project_dir = ?""",
         MYCELIA,
@@ -297,16 +300,12 @@ def test_agent_compactions_counts_a_compaction_under_the_thread_that_had_it(
 
 
 def test_agent_compactions_separates_how_many_threads_from_how_often(
-    planted_run_compaction_db: Path, capsys: pytest.CaptureFixture[str]
+    run_query: QueryRunner, corpus_db: Path
 ) -> None:
     """The main thread's row says both how many sessions compacted and how often they did."""
-
-    def planted_query(name: str, *arguments: str) -> Output:
-        return query(planted_run_compaction_db, capsys, name, *arguments)
-
     # If one session's main thread compacted twice and others compacted once...
     threads, compactions = scalar(
-        planted_run_compaction_db,
+        corpus_db,
         """SELECT count(DISTINCT k.session_id), count(*)
            FROM corpus_compactions k JOIN sessions s ON s.id = k.session_id
            WHERE s.project_dir = ? AND k.source = 'main'""",
@@ -316,14 +315,12 @@ def test_agent_compactions_separates_how_many_threads_from_how_often(
     assert compactions > threads
     # ...then the main-thread row keeps the two apart, so "most sessions compact" and "a few
     # sessions compact repeatedly" cannot be read for one another...
-    rows = _compactions(planted_query)
+    rows = _compactions(run_query)
     assert int(rows[MAIN_THREAD]["compacting_threads"]) == threads
     assert int(rows[MAIN_THREAD]["compactions"]) == compactions
     # ...and its population is every session in the period, not only the ones that compacted,
     # so the rate underneath is a rate and not a share of the sessions that already did.
-    sessions = scalar(
-        planted_run_compaction_db, "SELECT count(*) FROM sessions WHERE project_dir = ?", MYCELIA
-    )
+    sessions = scalar(corpus_db, "SELECT count(*) FROM sessions WHERE project_dir = ?", MYCELIA)
     assert int(rows[MAIN_THREAD]["threads"]) == sessions
     # ...while a definition that never compacted still gets a row, which is what makes the
     # absence readable: a missing row would look like a definition nobody ran.
@@ -451,10 +448,12 @@ def test_idle_gaps_keeps_the_silences_that_ended_in_no_rebuild(run_query: QueryR
     # counted twice is a population sized twice...
     keys = [(row["session_id"], row["source"], row["gap_start"]) for row in gaps]
     assert len(set(keys)) == len(keys) == RECORDED_IDLE_GAPS
-    # ...each one measured request to request, the interval a cache entry ages over: the
-    # shortest silence in the table ran 319 seconds between requests and 281 from the first
-    # reply, and it is the request pair that decides it clears the five-minute floor...
-    assert min(int(row["idle_seconds"]) for row in gaps) == SHORTEST_IDLE_SECONDS
+    # ...each one measured request to request, the interval a cache entry ages over: one
+    # silence ran 319 seconds between requests and 281 from the first reply, and it is the
+    # request pair that decides it clears the five-minute floor...
+    lengths = {int(row["idle_seconds"]) for row in gaps}
+    assert REQUEST_MEASURED_IDLE_SECONDS in lengths
+    assert min(lengths) == SHORTEST_IDLE_SECONDS
     # ...and the floor is the caller's: dropped to nothing it admits the short waits no cache
     # could have expired over, and raised past the longest silence it admits none.
     assert len(_gaps(run_query, {"min_idle_seconds": 0})) > len(gaps)
@@ -482,28 +481,36 @@ def test_reload_cost_split_says_what_share_of_a_rebuild_bill_short_waits_ran_up(
     run_query: QueryRunner,
 ) -> None:
     """The tokens rebuilt after short silences, as a share of everything idle waits rebuilt."""
-    # If the corpus's two idle reloads sit either side of a bound — a main thread's six-hour
-    # wait over it, an agent run's hour and forty minutes under it...
-    reloaded = {row["agent_type"]: row for row in _gaps(run_query, {}) if row["reloaded"] == "True"}
-    assert {name: int(row["idle_seconds"]) for name, row in reloaded.items()} == {
-        MAIN_THREAD: SPINE_IDLE_SECONDS,
-        ARCHITECT_DEFINITION: ARCHITECT_IDLE_SECONDS,
+    # If the corpus's three idle reloads sit either side of a bound — `SPINE`'s six-hour main
+    # thread wait over it, `COMPACTED`'s six-hour one and an agent run's hour and forty
+    # minutes under it. Keyed by thread, because two of the three waited on a main thread...
+    reloaded = {
+        (row["session_id"], row["source"]): row
+        for row in _gaps(run_query, {})
+        if row["reloaded"] == "True"
     }
-    # ...then splitting at the longer of the two puts one reload on each side...
+    assert {key: int(row["idle_seconds"]) for key, row in reloaded.items()} == {
+        (SPINE, MAIN): SPINE_IDLE_SECONDS,
+        (COMPACTED, MAIN): COMPACTED_IDLE_SECONDS,
+        (ARCHITECT_SESSION, ARCHITECT_RUN): ARCHITECT_IDLE_SECONDS,
+    }
+    # ...then splitting at the longest puts two reloads on the short side and one above...
     rows = _split(run_query, {"short_gap_seconds": SPINE_IDLE_SECONDS})
     corpus = rows[ALL_THREAD_KINDS]
-    assert (int(corpus["reloads"]), int(corpus["short_reloads"])) == (2, 1)
+    assert (int(corpus["reloads"]), int(corpus["short_reloads"])) == (3, 2)
     # ...and the query's two shares come out as different numbers, which is the whole reason
-    # it exists: an even split of the events is not an even split of the bill.
-    assert float(corpus["short_reload_pct"]) == 50.0
-    assert int(corpus["rebuilt_tokens"]) == SPINE_RELOAD_TOKENS + ARCHITECT_RELOAD_TOKENS
-    assert int(corpus["short_rebuilt_tokens"]) == ARCHITECT_RELOAD_TOKENS
-    share = 100 * ARCHITECT_RELOAD_TOKENS / (SPINE_RELOAD_TOKENS + ARCHITECT_RELOAD_TOKENS)
-    assert float(corpus["short_token_pct"]) == round(share, 1) != 50.0
+    # it exists: two thirds of the events are not two thirds of the bill.
+    short_tokens = ARCHITECT_RELOAD_TOKENS + COMPACTED_RELOAD_TOKENS
+    every_token = short_tokens + SPINE_RELOAD_TOKENS
+    assert float(corpus["short_reload_pct"]) == round(100 * 2 / 3, 1)
+    assert int(corpus["rebuilt_tokens"]) == every_token
+    assert int(corpus["short_rebuilt_tokens"]) == short_tokens
+    share = 100 * short_tokens / every_token
+    assert float(corpus["short_token_pct"]) == round(share, 1) != round(100 * 2 / 3, 1)
     # ...filed under the kind of thread that waited, so a recommendation scoped to short gaps
     # can say which threads it would apply to instead of inferring it from a corpus total.
     assert int(rows[ARCHITECT_DEFINITION]["short_rebuilt_tokens"]) == ARCHITECT_RELOAD_TOKENS
-    assert int(rows[MAIN_THREAD]["short_rebuilt_tokens"]) == 0
+    assert int(rows[MAIN_THREAD]["short_rebuilt_tokens"]) == COMPACTED_RELOAD_TOKENS
 
 
 def test_reload_cost_split_counts_the_silences_that_rebuilt_nothing(run_query: QueryRunner) -> None:
@@ -529,7 +536,7 @@ def test_reload_cost_split_is_bound_at_the_length_the_caller_names(run_query: Qu
     # ...then that wait joins the short side and the whole bill sits on it — which is what
     # pins the comparison as strict rather than inclusive, since the bound at the wait's own
     # length left it out above.
-    assert int(inclusive[ALL_THREAD_KINDS]["short_reloads"]) == 2
+    assert int(inclusive[ALL_THREAD_KINDS]["short_reloads"]) == 3
     assert float(inclusive[ALL_THREAD_KINDS]["short_token_pct"]) == 100.0
     # ...while a bound under every recorded silence reports a share of zero rather than an
     # empty one: no short reload is a number, not a missing answer.

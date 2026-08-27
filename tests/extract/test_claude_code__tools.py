@@ -6,7 +6,7 @@ The fixtures are the same redacted mycelia sessions the rest of the extractor te
 
 from hyphae.extract.claude_code import ClaudeCodeExtractor
 from hyphae.model import MAIN_SOURCE, ToolCall
-from tests.conftest import SourceFactory
+from tests.conftest import PARALLEL, SourceFactory
 from tests.extract.test_claude_code import SPINE, at
 
 # The one call in `spine/` whose result record survived the trim, and the message that
@@ -27,9 +27,6 @@ REFUSED = "srvtoolu_01KUMaS97sNkE7Z12UW4HMEp"
 ENCRYPTED = "srvtoolu_01TK5pPoxEdDu3g975oMijMg"
 UNANSWERED = "srvtoolu_01FHMDigqBGzPfr9CkXyA91v"
 DELEGATION = "a3b37063695183556"
-# The `parallel_tools/` session, which issued a batch each way: two calls in one record, and
-# two a record apart.
-PARALLEL = "5f4b59fb-a9a8-4ca1-af62-a64b9d0ce515"
 ONE_RECORD = "msg_011Cd6RyHnMi8h4ZAceminTf"
 MANY_RECORDS = "msg_011Cd6SbrBGHDLxr2oKBJZCf"
 
@@ -112,9 +109,11 @@ def test_calls_issued_in_one_record_keep_their_measured_start(fixture_source: So
         index=0,
         name="SendMessage",
         server_side=False,
-        # ...arguments and answer as recorded, which this fixture's redaction replaced...
+        # ...arguments and answer as recorded. Redaction replaced every value an agent
+        # wrote; `to` survives because it is an id, and the run it addresses is in the
+        # fixture, so the viewer has something to resolve it against...
         input=(
-            '{"to": "[redacted]", "summary": "[redacted]", "message": "[redacted]", '
+            '{"to": "a43bfe9fc86734ff1", "summary": "[redacted]", "message": "[redacted]", '
             '"type": "[redacted]", "recipient": "[redacted]", "content": "[redacted]"}'
         ),
         result="[redacted]",

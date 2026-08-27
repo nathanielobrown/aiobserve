@@ -18,6 +18,8 @@ from tests.conftest import SourceFactory
 from tests.extract.test_claude_code import at
 
 COMPACTED = "1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9"
+# Its agent run, the corpus's one thread that compacted outside `main`.
+COMPACTED_RUN = "a003de2a5c1985f71"
 LEGACY_TITLE = "0b34d1b8-ebd3-40a6-bd89-f1881e1de2ba"
 # The tripwire planted in both invented transcripts' broken line, standing for whatever a
 # transcript holds: no crash message and no log line may carry it.
@@ -28,8 +30,9 @@ def test_a_compaction_records_what_it_dropped(fixture_source: SourceFactory):
     """Each context compaction is a row saying when it ran, why, and how much it shed."""
     trace = ClaudeCodeExtractor().extract(fixture_source("compaction", COMPACTED))
 
-    # If a session compacted twice — once because the operator asked and once because it
-    # ran out of window — then both boundaries are rows...
+    # If a session compacted three times — twice on its main thread, once because the
+    # operator asked and once because it ran out of window, and once inside an agent run —
+    # then every boundary is a row, on the thread that had it...
     assert trace.compactions == [
         Compaction(
             id="459d0d29-cb67-477a-9cf1-f9bb19417c49",
@@ -53,6 +56,18 @@ def test_a_compaction_records_what_it_dropped(fixture_source: SourceFactory):
             post_tokens=13556,
             duration_ms=127487,
         ),
+        Compaction(
+            id="1c83df25-c70c-4ef1-965d-395a34f281ef",
+            session_id=COMPACTED,
+            # ...and the agent run's, three days later, carrying the run's own id where the
+            # main thread's carry the sentinel: a subagent runs out of window too.
+            source=COMPACTED_RUN,
+            timestamp=at("2026-07-05T18:28:15.577"),
+            trigger="auto",
+            pre_tokens=240349,
+            post_tokens=16918,
+            duration_ms=119332,
+        ),
     ]
 
 
@@ -65,9 +80,14 @@ def test_a_compaction_pairs_with_the_summary_it_wrote(fixture_source: SourceFact
     trace = ClaudeCodeExtractor().extract(fixture_source("compaction", COMPACTED))
 
     summaries = [r for r in trace.raw_records if json.loads(r.raw).get("isCompactSummary")]
-    assert len(summaries) == len(trace.compactions) == 2
-    # ...and the summary follows its boundary, so the pair reads in transcript order.
-    assert [r.line_no for r in summaries] == [2, 4]
+    assert len(summaries) == len(trace.compactions) == 3
+    # ...and the summary follows its boundary in its own thread's transcript, so the pair
+    # reads in transcript order on the main thread and inside the run alike.
+    assert [(r.source, r.line_no) for r in summaries] == [
+        (MAIN_SOURCE, 3),
+        (MAIN_SOURCE, 7),
+        (COMPACTED_RUN, 4),
+    ]
 
 
 def test_a_session_before_custom_titles_takes_its_generated_one(fixture_source: SourceFactory):

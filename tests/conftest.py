@@ -122,6 +122,12 @@ TEAMMATE_RUN = "aarchitect-5144001ac50718bc"
 # of the two — the node a compaction's own page is served for.
 COMPACTED = "1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9"
 COMPACTED_BOUNDARY = "459d0d29-cb67-477a-9cf1-f9bb19417c49"
+# Its agent run, the corpus's one thread that compacted outside `main`.
+COMPACTED_RUN = "a003de2a5c1985f71"
+# `parallel_tools/`'s session, which issued a batch each way — two calls in one record, and
+# two a record apart — and addressed two of its own runs by id.
+PARALLEL = "5f4b59fb-a9a8-4ca1-af62-a64b9d0ce515"
+PARALLEL_RUNS = ("a43bfe9fc86734ff1", "aa52d3fe48cec7f58")
 
 # What the planted enrichment rows say. Invented, and it has to be: the four fields are a
 # model's words about a private transcript, and no fixture records one. The tiers under test

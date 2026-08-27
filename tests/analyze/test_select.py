@@ -5,7 +5,7 @@ leaves here pin the mechanics a report's realized composition is built from: str
 order, each walks down past what an earlier stratum took, a stratum whose metric runs out
 stops short rather than padding, and the slots nobody used fall through to discovery.
 
-Every quota is bound small — the fixture pool is eleven sessions — except the last leaf, which
+Every quota is bound small — the fixture pool is twelve sessions — except the last leaf, which
 pins the production defaults a committed report cites.
 """
 
@@ -29,11 +29,13 @@ from tests.analyze.conftest import (
 )
 from tests.conftest import (
     ANCESTOR,
+    COMPACTED,
     CONFIG_ONLY,
     DEEP_RESEARCH_SESSION,
     FORK_ORIGIN,
     MODEL_ONLY,
     MYCELIA,
+    PARALLEL,
     REGISTRY_ZOO,
     SERVER_TOOLS,
     SPINE,
@@ -50,7 +52,7 @@ COMPACTIONS = "compactions"
 DISCOVERY = "discovery"
 GRILL_ME = "skill:grill-me"
 
-# Quotas small enough that an eleven-session pool can show a stratum running out. Each leaf
+# Quotas small enough that a twelve-session pool can show a stratum running out. Each leaf
 # overrides the ones it is about; anything it leaves alone stays off, so the set it asserts
 # on is only the mechanism it names.
 OFF: dict[str, int | str] = {
@@ -90,24 +92,24 @@ def test_the_same_bindings_select_the_same_sessions_however_the_store_was_built(
     # makes, and a draw that depended on insertion order would break here and nowhere else.
     assert first == second == reversed_build
     # ...and the ranked strata took what their rankings say, with `grill-me`'s only two pool
-    # users already taken by cost, so its slot fell through to discovery.
+    # users already taken — one by cost, one by errors — so its slot fell through to discovery.
     assert first[:4] == [
         (COST, SPINE),
-        (COST, SERVER_TOOLS),
-        (ERRORS, FORK_ORIGIN),
-        (COMPACTIONS, ANCESTOR),
+        (COST, PARALLEL),
+        (ERRORS, SERVER_TOOLS),
+        (COMPACTIONS, COMPACTED),
     ]
     assert [stratum for stratum, _ in first[4:]] == [DISCOVERY] * 3
 
 
 def test_a_later_stratum_walks_past_what_an_earlier_one_took(run_query: QueryRunner) -> None:
     """A session an earlier stratum took does not spend a later stratum's quota."""
-    # If the cost stratum's five take `ANCESTOR`, one of only two sessions that compacted...
+    # If the cost stratum's five take `COMPACTED`, the session that compacted most...
     picks = _select(run_query, {"cost_quota": 5, "compaction_quota": 1})
-    assert (COST, ANCESTOR) in picks
-    # ...then the compaction stratum walks down to the other one and still meets its quota,
-    # rather than reporting a session the cost stratum already accounted for.
-    assert [pick for pick in picks if pick[0] == COMPACTIONS] == [(COMPACTIONS, REGISTRY_ZOO)]
+    assert (COST, COMPACTED) in picks
+    # ...then the compaction stratum walks down to the next session that compacted and still
+    # meets its quota, rather than reporting one the cost stratum already accounted for.
+    assert [pick for pick in picks if pick[0] == COMPACTIONS] == [(COMPACTIONS, ANCESTOR)]
 
 
 def test_a_ranked_stratum_takes_only_nonzero_sessions_and_stops_short(
@@ -141,11 +143,12 @@ def test_an_unused_ranked_slot_falls_through_to_discovery(run_query: QueryRunner
 
 def test_a_stratum_ranks_by_its_metric_then_by_session_id(run_query: QueryRunner) -> None:
     """Sessions tied on a stratum's metric are ordered by session id, so the draw is fixed."""
-    # If the two sessions that compacted both compacted once, the tie is all that decides...
-    picks = _select(run_query, {"compaction_quota": 1})
-    # ...and the lower session id is taken. Without the tiebreak the draw is whatever the
-    # storage layer felt like returning that day.
-    assert picks == [(COMPACTIONS, ANCESTOR)]
+    # If three pool sessions compacted — `COMPACTED` three times, the other two once each,
+    # so the metric decides the first slot and a tie decides the second...
+    picks = _select(run_query, {"compaction_quota": 2})
+    # ...then the lower session id takes the tied slot. Without the tiebreak that draw is
+    # whatever the storage layer felt like returning that day.
+    assert picks == [(COMPACTIONS, COMPACTED), (COMPACTIONS, ANCESTOR)]
     assert ANCESTOR < REGISTRY_ZOO
 
 
@@ -174,6 +177,7 @@ def test_skills_are_iterated_in_name_order_each_taking_its_most_recent_user(
     assert skills == [
         ("skill:deep-research", DEEP_RESEARCH_SESSION),
         (GRILL_ME, SERVER_TOOLS),
+        ("skill:manager", COMPACTED),
         ("skill:pr-and-document", ANCESTOR),
     ]
 
@@ -182,12 +186,12 @@ def test_a_skill_whose_users_are_all_selected_gives_its_slot_to_discovery(
     run_query: QueryRunner,
 ) -> None:
     """A skill with nothing left to offer costs the iteration a slot, not a session."""
-    # If the cost stratum's two take both of `grill-me`'s pool users...
-    picks = _select(run_query, {"cost_quota": 2, "discovery_quota": 1, "skill_threshold": 2})
+    # If the cost stratum's four take both of `grill-me`'s pool users...
+    picks = _select(run_query, {"cost_quota": 4, "discovery_quota": 1, "skill_threshold": 2})
     # ...then no skill row appears, and the skill's slot turns up in discovery: the budget
     # the citation reports is still the budget that was read.
     assert not [pick for pick in picks if pick[0].startswith("skill:")]
-    assert [stratum for stratum, _ in picks] == [COST, COST, DISCOVERY, DISCOVERY]
+    assert [stratum for stratum, _ in picks] == [COST] * 4 + [DISCOVERY, DISCOVERY]
 
 
 def test_discovery_is_a_function_of_its_seed_and_never_re_picks(run_query: QueryRunner) -> None:
@@ -217,14 +221,20 @@ def test_discovery_passes_over_a_session_with_almost_nothing_in_it(run_query: Qu
     """A session that barely did anything cannot take a discovery slot, but is still ranked."""
     # If discovery is asked for the whole pool with the substance floor at four api calls...
     picks = _select(run_query, {"discovery_quota": 20, "min_discovery_api_calls": 4})
-    # ...then it draws the three pool sessions that made at least that many, and passes over
+    # ...then it draws the five pool sessions that made at least that many, and passes over
     # the rest, which made one to three. On mycelia's 2026-08-13 window, four of the eight
     # discovery draws had gone to sessions of 1, 4, 4 and 9 api calls.
-    assert {session for _, session in picks} == {SERVER_TOOLS, SPINE, ANCESTOR}
+    assert {session for _, session in picks} == {
+        SERVER_TOOLS,
+        SPINE,
+        ANCESTOR,
+        COMPACTED,
+        PARALLEL,
+    }
     assert {stratum for stratum, _ in picks} == {DISCOVERY}
     # ...while the floor is discovery's alone: a ranked stratum still reaches the thinnest
     # session in the corpus, because what it ranks on is the reason to read it.
-    ranked = _select(run_query, {"compaction_quota": 2, "min_discovery_api_calls": 4})
+    ranked = _select(run_query, {"compaction_quota": 3, "min_discovery_api_calls": 4})
     assert (COMPACTIONS, REGISTRY_ZOO) in ranked
 
 
@@ -234,8 +244,8 @@ def test_a_session_that_did_no_work_of_its_own_is_outside_the_pool(
     """Sessions with no turns and no agent runs are unreadable, so no stratum reaches them."""
     # If discovery is asked for more sessions than the pool holds, every stratum runs dry...
     picks = _select(run_query, {"cost_quota": 4, "compaction_quota": 2, "discovery_quota": 20})
-    # ...and what comes back is the pool itself — which excludes the three sessions whose
-    # work belongs to another session, two of them despite having compacted.
+    # ...and what comes back is the pool itself — which excludes the two sessions whose
+    # work belongs to another session, one of them despite having compacted.
     assert len(picks) == POOL_AT_WHOLE
     assert not ({session for _, session in picks} & set(NO_WORK_SESSIONS))
 
@@ -305,7 +315,7 @@ def test_every_agent_type_gives_up_its_worst_and_its_costliest_run(
     run_query: QueryRunner,
 ) -> None:
     """A commonly used agent definition is read every iteration, through its furthest runs."""
-    # If the corpus holds seven runs across seven distinct agent types, one of which hit a
+    # If the corpus holds eleven runs across seven distinct agent types, one of which hit a
     # tool error, and the threshold is set low enough to admit all seven...
     output = run_query(
         "select_runs",
@@ -348,7 +358,7 @@ def test_every_agent_type_gives_up_its_worst_and_its_costliest_run(
         "--as-of",
         AS_OF_WHOLE,
         "--param",
-        "min_runs=2",
+        "min_runs=4",
         "--csv",
     )
     assert len(quiet.csv_rows()) <= 1

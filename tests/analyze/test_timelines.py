@@ -297,7 +297,7 @@ def test_view_runs_carries_what_ranking_a_session_s_runs_takes(
     """A session's runs come back with each one's cost, failed tool calls and compactions."""
     # If a session's two runs differ on every measure a reader ranks by — one spent four
     # times the other, one failed a tool call, one ran out of context (that compaction is
-    # planted onto a real run: no recorded fixture run compacted)...
+    # planted onto a real run: the one recorded run compaction is in a single-run session)...
     rows = {
         row["run_id"]: row
         for row in mappings(

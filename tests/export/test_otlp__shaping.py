@@ -298,13 +298,14 @@ def test_a_placeholder_reply_is_flagged_as_synthetic(fixture_trace: TraceFactory
 
 def test_a_main_thread_compaction_is_a_span_under_the_root(fixture_trace: TraceFactory) -> None:
     """A compaction spans the time it took to summarise, under the thread that compacted."""
-    # If the session holding two recorded compactions is shaped...
+    # If the session holding two recorded main-thread compactions is shaped...
     trace = fixture_trace("compaction", COMPACTED)
     spans = session_spans(trace)
-    assert len(trace.compactions) == 2
+    main_thread = [row for row in trace.compactions if row.source == MAIN]
+    assert len(main_thread) == 2
     # ...then each is a span under the root, as long as the summarising took, carrying the
     # context sizes either side — the point where the session's account of itself gets lossy.
-    for compaction in trace.compactions:
+    for compaction in main_thread:
         span = one(spans, digest(COMPACTED, SpanKey.compaction, compaction.source, compaction.id))
         assert span.name == "claude_code.compaction"
         assert span.parent_span_id == digest(COMPACTED, SpanKey.session, "", COMPACTED)
