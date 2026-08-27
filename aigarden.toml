@@ -36,6 +36,5 @@ reflow = "never-wrap"
 "tests/enrich/test_enricher.py" = ["file-length"]
 "tests/enrich/test_prompts.py" = ["file-length"]
 "tests/view/test_app.py" = ["file-length"]
-"tests/view/test_bounds.py" = ["file-length"]
 "tests/view/test_node.py" = ["file-length"]
 "tests/view/test_tree.py" = ["file-length"]

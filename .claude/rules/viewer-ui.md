@@ -43,7 +43,7 @@ Every mark saying what a thing *is* — the kind of node a surface names, and th
 
 # A tree row is priced, not budgeted
 
-`bounds.TREE_ROW_BYTES` is measured through the app, pinned with no slack, and spent 3,217 times on the worst page. An attribute added to `_tree.html` is that many bytes of page, so re-measure with `tests/view/test_bounds.py` rather than guessing — the pin fails first, which is the point.
+`bounds.TREE_ROW_BYTES` is measured through the app, pinned with no slack, and spent 3,217 times on the worst page. An attribute added to `_tree.html` is that many bytes of page, so re-measure with `tests/view/test_bounds__node.py` rather than guessing — the pin fails first, which is the point.
 
 Link where you fetch: a row's `href` and its `hx-get` are the same URL, and both carry the page's knob suffix, so a click, a paste, and a bookmark serve the same bytes. The mount an expansion opens through carries it too, so the fragment's own links come back under the preset the reader was in.
 
@@ -89,7 +89,7 @@ A string its query cut arrives one character past the width it is printed at, an
 
 A closed vocabulary is the one thing cut without a mark: a taxonomy value is bound at `queries.TAG_CHARS` because a page whose size is arithmetic needs every width named, not because any member reaches it (`src/aiobserve/enrich/taxonomy.py`). `_parts.html:counted` takes `mark=false` for those, and a mark there would claim a name went on when nothing was left behind.
 
-A mark is three bytes on every row of the page that carries it, so adding one to a column of the session list moves `bounds.SESSIONS` — the ceiling is derived from the dearest row, and the pin in `tests/view/test_bounds.py` holds it from both sides.
+A mark is three bytes on every row of the page that carries it, so adding one to a column of the session list moves `bounds.SESSIONS` — the ceiling is derived from the dearest row, and the pin in `tests/view/test_bounds.py` holds it from both sides against what `tests/view/budgets.py` measured that row at.
 
 # Label every value a test reads
 

@@ -113,7 +113,7 @@ COMMAND_HEAD_CHARS = 60
 # and nowhere else, because the payload bound the design states is arithmetic over these
 # numbers, and every character of what a row prints can escape to five bytes.
 # `view/bounds.py` names each of them beside the ceiling a URL may not pass, and
-# `tests/view/test_bounds.py` asserts the arithmetic still fits.
+# the `test_bounds*` leaves assert the arithmetic still fits.
 # How many children one node page's log lists — its api calls, its tool calls, its turns.
 # One size for every kind of child, because one pane holds one log. A hundred because the log
 # is numbered rather than a cursor: a reader who can see how many pages a level has is reading

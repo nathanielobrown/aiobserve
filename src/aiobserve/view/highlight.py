@@ -123,7 +123,7 @@ class _ShortClasses(HtmlFormatter[str]):
     the formatter classes one of those with a name per step up to a type it does know
     (`l l-Scalar l-Scalar-Plain`). Two reasons not to: `static/pygments.css` paints the short
     names and nothing else, and how wide a class can be is a term in the page's byte budget
-    (`tests/view/test_bounds.py:MARKED_CHAR_BYTES`). So an unnamed token is classed as the
+    (`tests/view/budgets.py:MARKED_CHAR_BYTES`). So an unnamed token is classed as the
     nearest named one above it, which is a class this viewer chose rather than one a library
     can widen under it.
 

@@ -106,7 +106,7 @@ def test_every_class_the_markup_carries_is_one_of_pygments_short_names() -> None
     joins a class for every step (`l l-Scalar l-Scalar-Plain`). Those types are reachable: the
     markdown lexer hands a fenced block to whatever lexer the fence names, and that is any
     lexer Pygments ships — so the widest class on the page would be a property of a library
-    rather than of this viewer, and `tests/view/test_bounds.py:MARKED_CHAR_BYTES` prices one
+    rather than of this viewer, and `tests/view/budgets.py:MARKED_CHAR_BYTES` prices one
     at three characters. The nearest named type is what a token is classed as instead, which
     is also the only class `static/pygments.css` paints.
     """

@@ -7,7 +7,8 @@ answering "what bounds this page?" meant visiting four files under three naming 
 
 A size a query binds keeps its default in the manifest, where the parameter is declared, and
 is named here beside its ceiling; a size the viewer composes around a query is defined here
-outright. `tests/view/test_bounds.py` does the arithmetic over this module.
+outright. `tests/view/budgets.py` holds what each page and row was measured at, and the
+`test_bounds*` leaves beside it do the arithmetic over this module.
 
 Only `SESSIONS` is pinned from below there. Its ceiling is the most rows that fit under the
 page, so a row that grew has to move the number rather than eat the slack silently. The other
@@ -45,7 +46,7 @@ class Bound(NamedTuple):
 # The tree's is a window on a level rather than a limit on it: the tail row fetches whatever
 # the window left out and stands the rows in its own place, so a reader reaches the rest of a
 # level without leaving the page. That fetch is bound by the level, not by this — which is why
-# the node page has a ceiling of its own (`tests/view/test_bounds.py`) rather than sharing the
+# the node page has a ceiling of its own (`tests/view/budgets.py:NODE_BYTES`) rather than sharing
 # one every other page is weighed against. The log's is a page: it says which of how many it
 # is and offers the ones either side, so a level of a hundred is read in one go and not nine.
 #
@@ -74,7 +75,7 @@ RECORDS = Bound(default=queries.PAGE_RECORDS, ceiling=200)
 # against the page that triggers it rather than against the value route it goes to. A record
 # is the one value nothing here bounds: the canonical store archives one of 7.6 M characters,
 # which renders to nine megabytes. Derived against the page ceiling at `MARKED_CHAR_BYTES` a
-# character and the indentation below (`tests/view/test_bounds.py`), which leaves 96% of the
+# character and the indentation below (`tests/view/budgets.py`), which leaves 96% of the
 # canonical store's records opening on arrival and the rest one click away — where every other
 # row on the page already is.
 OPENED_RECORD_CHARS = 15_000
@@ -145,7 +146,7 @@ HIGHLIGHT_CHARS = 256_000
 # is a page over the bound, and the answer is a slimmer row.
 #
 # Measured through the app rather than budgeted, at every title full of `&` and the longest
-# query string a link can carry (`tests/view/test_bounds.py`). Pinned at exactly what it
+# query string a link can carry (`tests/view/test_bounds__node.py`). Pinned at exactly what it
 # measures, with no slack, for the same reason: a byte of slack here is 3,217 bytes of page.
 # That leaf holds it from below as well as from above, so slack cannot hide in the room the
 # node page's ceiling keeps for this row's next addition.
