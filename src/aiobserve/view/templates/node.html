@@ -82,11 +82,11 @@
         hx-get="{{ previous.node.url }}{{ suffix }}"
         >{% if previous.climbed %}↑{% else %}←{% endif %} {{ parts.glyph(previous.node) }}<span data-field="kind">{{ previous.node.kind }}</span> <span data-field="title">{{ previous.node.tree_title }}</span></button>
       {% endif %}
-      {% if following %}
-      <button type="button" class="button" data-walk="next" data-node="{{ following.node.key }}"
-        {%- if following.climbed %} data-climb="next"{% endif %}
-        hx-get="{{ following.node.url }}{{ suffix }}"
-        >{{ parts.glyph(following.node) }}<span data-field="kind">{{ following.node.kind }}</span> <span data-field="title">{{ following.node.tree_title }}</span> {% if following.climbed %}↑{% else %}→{% endif %}</button>
+      {% if next %}
+      <button type="button" class="button" data-walk="next" data-node="{{ next.node.key }}"
+        {%- if next.climbed %} data-climb="next"{% endif %}
+        hx-get="{{ next.node.url }}{{ suffix }}"
+        >{{ parts.glyph(next.node) }}<span data-field="kind">{{ next.node.kind }}</span> <span data-field="title">{{ next.node.tree_title }}</span> {% if next.climbed %}↑{% else %}→{% endif %}</button>
       {% endif %}
     </nav>
     {# Where this session failed. Written once here rather than per kind of node, because it
@@ -103,10 +103,10 @@
       {%- endif %}
       <a data-step="all" href="/session/{{ selection.session_id }}/errors"
         ><span data-field="tool_errors">{{ session_tool_errors | count }}</span> tool error(s)</a>
-      {%- if step and step.following %}
-      <a data-step="next" data-node="{{ step.following.key }}"
-         href="{{ step.following.url }}{{ suffix }}"
-        ><span data-field="title">{{ step.following.tree_title }}</span> →</a>
+      {%- if step and step.next %}
+      <a data-step="next" data-node="{{ step.next.key }}"
+         href="{{ step.next.url }}{{ suffix }}"
+        ><span data-field="title">{{ step.next.tree_title }}</span> →</a>
       {%- endif %}
     </nav>
     {% endif %}
