@@ -24,7 +24,7 @@ flowchart LR
     bucket -->|"a call or a run it holds"| api_call
     turn -->|"the transcript line it was read from"| records["raw records"]
     tool -->|"a result written to a file"| offload["an offloaded result"]
-    turn -.->|"a value the pane only previews"| value["one whole value"]
+    turn -.->|"a value the reading pane only previews"| value["one whole value"]
     api_call -.-> value
     tool -.-> value
     records -.->|"opening a row"| value
@@ -54,7 +54,7 @@ Solid edges lead to pages with their own URLs. Dotted edges fetch a fragment int
 | An offload file | `/session/{session_id}/offload/{offload_name:path}` | One chunk of a tool result Claude Code wrote to a file beside the transcript |
 <!-- aigarden:end -->
 
-`src/aiobserve/view/app.py` declares every route, fragments included. Nothing renders in the pane that a cold GET of its own URL doesn't render whole, tree and all.
+`src/aiobserve/view/app.py` declares every route, fragments included. Nothing renders in the reading pane that a cold GET of its own URL doesn't render whole, tree and all.
 
 ## The landing page counts projects
 
@@ -98,18 +98,18 @@ A tool call has none of that, because its tokens are its api call's. Its popover
 
 The tree opens one path, so a failure five spawns down a run tree is behind everything in front of it. `/session/{session_id}/errors` is the way past that: every `is_error` tool call the session made, on every thread, in the order they happened, each row a link to that call's own page. Every node page of a session that failed something carries the count and the way in, under the walk controls.
 
-Standing on a failed tool call, the same block gains a step to the failure before it and the one after — across threads, because the list is the session's rather than one thread's. No other page runs the query: a pane reading anything else has no step to offer.
+Standing on a failed tool call, the same block gains a step to the failure before it and the one after — across threads, because the list is the session's rather than one thread's. No other page runs the query: a reading pane on anything else has no step to offer.
 
 The list is bounded like the landing page rather than paged: it shows the first 100 failures in that order and says how many it left. The stepper reads the same capped list, so a failure past the cap is one neither surface reaches. A session that failed nothing has no page here — the URL is a 404, worded apart from a session the store never held.
 
-## The pane reads one node
+## The reading pane reads one node
 
-The pane leads with the crumb chain down to the node, then the node's title and the facts the store holds for it. Under those:
+The reading pane leads with the crumb chain down to the node, then the node's title and the facts the store holds for it. Under those:
 
 - What an enrichment pass said about the node, when a pass has reached it
 - The node's own fat values, cut to 4,000 characters, each with a link that fetches the rest: a turn's prompt, a run's task brief, an api call's text and thinking, a tool call's input and result, and the command a `Bash` call ran. A run shows two more, read off the call that spawned it: what it was asked, and what its parent received back. That answer is the spawning call's result rather than the run's last turn — a run that stopped without reporting told its parent nothing, and the page says so. A turn typed as a slash command has no prompt among its values: what was typed is the `<command-…>` wrapper Claude Code expanded it into, and the two facts inside it — the command and what followed it — stand as values of their own. The wrapper is still what was sent, and the thread's transcript has it whole
 - The thread's transcript, and — for a turn — the archived line it was read from, in a `<details>` that fetches on open
-- The children log: one numbered page of 100 children, as a table. A column per number the children are told apart by, each under a heading that names it — a turn's api calls read nothing like its tool calls, and a start time is not a duration. One wide column names the child and links to its page, and a `View` button opens the child's own pane in place, as a row of the same table, without leaving the parent. An opened body stops one level down: an api call's lists the tools it called, as rows of the same table with no `View` of their own, and every other kind stands a count and a link to its own page. The heading counts the level, not the page; a level running past one page carries prev and next under it, and says which page of how many you are on
+- The children log: one numbered page of 100 children, as a table. A column per number the children are told apart by, each under a heading that names it — a turn's api calls read nothing like its tool calls, and a start time is not a duration. One wide column names the child and links to its page, and a `View` button opens the child's own body in place, as a row of the same table, without leaving the parent. An opened body stops one level down: an api call's lists the tools it called, as rows of the same table with no `View` of their own, and every other kind stands a count and a link to its own page. The heading counts the level, not the page; a level running past one page carries prev and next under it, and says which page of how many you are on
 - Prev and next, two buttons that read the level the node is on: the row beside it, and at the end of the level whatever follows the branch. Neither descends — going down is what the tree is for — and a step that leaves the level shows `↑` instead of an arrow along it. Each names the neighbour's kind and its title. The buckets and the compactions are stops like any other, and the controls ignore what the tree was capped to: a reading order that shortened with the tree would skip nodes silently
 - [Where the session failed](#jump-straight-to-where-a-session-failed): how many tool calls it failed, the way to the list of them, and — on a failed call — the step to the failure before it and the one after
 
@@ -119,7 +119,7 @@ A value is marked up in the syntax the record says it is written in: the JSON a 
 
 ## One title names a node everywhere
 
-Every node has one title: the most readable name the record supports for it. The pane's heading, the tree row, the crumb, the children log, the walk controls, the errors list and the browser tab all print that title, each cut to what it has room for — 100 characters at the head of a pane, 110 on a tree row, 300 in a children log. One derivation per kind, read by all of them, so a reader who clicks a row lands on a pane headed with the words they clicked.
+Every node has one title: the most readable name the record supports for it. The reading pane's heading, the tree row, the crumb, the children log, the walk controls, the errors list and the browser tab all print that title, each cut to what it has room for — 100 characters at the head of the reading pane, 110 on a tree row, 300 in a children log. One derivation per kind, read by all of them, so a reader who clicks a row lands on a pane headed with the words they clicked.
 
 A title names its node; it does not quote the store. It may drop the project directory off a path, join what a model wrote to what the session recorded, or lead with the kind of thing it names — and where a title looks like stored text, it is still a name standing for the value rather than reproducing it. What the store holds verbatim is under the heading: the node's own values, the archived record it was read from, and the thread's transcript. Where a record supports no readable name, the title falls back to the head of what was stored rather than inventing one.
 
@@ -139,15 +139,15 @@ A tool call's title is derived in SQL, a macro every query that names one calls 
 
 ## A mark says what kind of node a page names
 
-Four surfaces say what kind of node they name with one character: the tree row, the crumb, the pane's heading, and the browser tab. `❖` a session, `❯` a turn, `◎` an agent run, `⇄` an api call, `⚒` a tool call, `⊟` a compaction, and `∅` either bucket — the calls that answer no turn, and the runs nothing placed. Three of them also head a children log's column about that kind, because a column head and a tree row are one reader meeting one thing twice.
+Four surfaces say what kind of node they name with one character: the tree row, the crumb, the reading pane's heading, and the browser tab. `❖` a session, `❯` a turn, `◎` an agent run, `⇄` an api call, `⚒` a tool call, `⊟` a compaction, and `∅` either bucket — the calls that answer no turn, and the runs nothing placed. Three of them also head a children log's column about that kind, because a column head and a tree row are one reader meeting one thing twice.
 
-The mark is decoration and the markup says so. It stands for a word already there — the row's class, the crumb's field name, the pane's own kind — so a screen reader passes over it and reads the title.
+The mark is decoration and the markup says so. It stands for a word already there — the row's class, the crumb's field name, the reading pane's own kind — so a screen reader passes over it and reads the title.
 
 ## Enrichment appears beside the recorded trace
 
 After [an enrichment pass](enrichment.md), the viewer places its output beside the stored telemetry. A `✨` marks a title a model helped write, and stands before the whole of it — on the tree row, the crumb, the log line, and the walk control. It is a claim about how the title was made rather than about which words came from where: a run's title is the agent type the session recorded followed by what the pass said the run did, and one glyph leads both halves. Three kinds of node can carry it, the three a pass describes: a session, a turn and an agent run. The pane carries the one glyph that explains itself: hover it for the model, when it ran, the prompt and taxonomy versions, and whether the row is stale. `stale` means the pass used an older prompt or taxonomy version, so rerun the pass; it does not mean the saved description is false.
 
-A pane prints the first 200 characters of a description or friction line, marks where it cut, and stands a link behind the mark that fetches the rest into the block the head stood in — the preview-and-fetch every other fat value the pane shows rides. The session list adds each session's one-line description and two tags, cutting the line to the 100-character head a row's title takes and marking it there too. It does not show `stale` because the list joins the words written by a pass without loading the versions needed to judge them.
+The reading pane prints the first 200 characters of a description or friction line, marks where it cut, and stands a link behind the mark that fetches the rest into the block the head stood in — the preview-and-fetch every other fat value the reading pane shows rides. The session list adds each session's one-line description and two tags, cutting the line to the 100-character head a row's title takes and marking it there too. It does not show `stale` because the list joins the words written by a pass without loading the versions needed to judge them.
 
 A store that has never been enriched has none of the enrichment tables. The viewer then shows no enrichment fields, and cites no enrichment query. An item the current pass has not reached looks the same.
 
@@ -164,15 +164,15 @@ Node pages take four knobs, and every link on a page carries the ones that aren'
 | `?nav=noapi` | The api calls folded away, each turn's tool calls standing directly under it |
 | `?nav=agents` | The runs alone, each under the run that spawned it — the session's org chart |
 | `?kin=` | Children per open level, at most 200 |
-| `?log=` | Rows in one page of the pane's children log, at most 100 |
-| `?detail=` | Characters of each value the pane previews, at most 4,000 |
+| `?log=` | Rows in one page of the reading pane's children log, at most 100 |
+| `?detail=` | Characters of each value the reading pane previews, at most 4,000 |
 <!-- aigarden:end -->
 
 The three sizes only go down. Each default is also its ceiling, because the page's byte bound is arithmetic over the defaults and there is no headroom to spend. A size outside its range or a `nav` the viewer doesn't have returns 400 rather than a guess.
 
 A value's own URL — the one a preview's `+N more character(s)` link opens — answers 404 where the row is there and the column under it is empty: a `Read` ran no command, a slash turn typed no prompt of its own. Nothing links to one of those, so a request for one is a URL that was typed or kept.
 
-How wide the tree is drawn is the one thing you set that no URL carries: it belongs to the screen you are reading on, not to the node you linked to, so a pasted link would hand someone else your column. Drag the handle between the tree and the pane — or focus it and press the arrow keys — and this browser keeps the width for every session you open.
+How wide the tree is drawn is the one thing you set that no URL carries: it belongs to the screen you are reading on, not to the node you linked to, so a pasted link would hand someone else your column. Drag the handle between the tree and the reading pane — or focus it and press the arrow keys — and this browser keeps the width for every session you open.
 
 The presets are the [fold above the tree](#the-tree-opens-one-path-and-nothing-else), and typing one into the URL does the same thing. Every preset leaves every visible node with a visible parent, and a level whose preset would hide the path you are standing on renders in full instead.
 
@@ -222,7 +222,7 @@ Full-value requests are the declared exception. Each returns one whole value —
 | Syntax highlighting | 256,000 characters, above which the value prints as stored |
 <!-- aigarden:end -->
 
-The worst node page comes to 6,435,557 bytes of the 6,465,000 a node page is allowed — its own budget rather than the 500,000 every other page is weighed against, because the tree is a window a reader widens in place and not a page. The tree is what multiplies: an open path is `1 + 16 × (200 + 1)` = 3,217 rows, and a row is pinned at 1,681 bytes, which is 5,407,777 of the page, five sixths of it. The rest is 16 crumbs at 930 bytes, 100 log rows at 6,315, a pager at 600, three previewed values at 120,600 each, and 19,000 of chrome. The 29,443 spare is the rounding every ceiling here carries. The kind mark on a row is 49 bytes of it — 45 of markup around a 3-byte character, and the space after it — which over 3,217 rows is 157,633, the context bar's two classes are 8 bytes at their widest, 25,736 over the tree, and the popover trigger is 362, which is 1,164,554; `NODE_BYTES` in `tests/view/test_bounds.py` records what each raise of the ceiling bought. A preview the page marks up is priced at 30 bytes a character against the five an escaped one costs — an element around every token — and that price holds whether the markup is the syntax the record named or the Markdown a session wrote. A run's is the first pane whose three previews are all rendered, which is why the arithmetic charges three. A log row is the dearest thing on the page after the tree: it prints up to three of the store's own strings at 300 characters each, which is what a reader gets for reading a level without opening it. An api call's is the widest row there is — the model that answered, the head of what it said, and the tools it went on to call. `TREE_ROW_BYTES` is measured through the app rather than budgeted, at a title of nothing but `&` and the longest query string a link can carry, and pinned with no slack in either direction: a byte of slack there is 3,217 bytes of page, and the room above is spoken for. Nearly all of a row is its URL, written three times: the `href` a reader follows, the `hx-get` htmx fetches, and the popover's own path under a prefix. What the click does with its response is written once on `#tree-rows` and inherited; what the popover does with its own cannot be, because htmx walks up from the element that fetched, and a swap written on the row would be taken by the link inside it — so its five attributes are spelled out on every row, and a store whose agent runs carry longer ids than the recorded corpus does is a re-measure.
+The worst node page comes to 6,435,557 bytes of the 6,465,000 a node page is allowed — its own budget rather than the 500,000 every other page is weighed against, because the tree is a window a reader widens in place and not a page. The tree is what multiplies: an open path is `1 + 16 × (200 + 1)` = 3,217 rows, and a row is pinned at 1,681 bytes, which is 5,407,777 of the page, five sixths of it. The rest is 16 crumbs at 930 bytes, 100 log rows at 6,315, a pager at 600, three previewed values at 120,600 each, and 19,000 of chrome. The 29,443 spare is the rounding every ceiling here carries. The kind mark on a row is 49 bytes of it — 45 of markup around a 3-byte character, and the space after it — which over 3,217 rows is 157,633, the context bar's two classes are 8 bytes at their widest, 25,736 over the tree, and the popover trigger is 362, which is 1,164,554; `NODE_BYTES` in `tests/view/test_bounds.py` records what each raise of the ceiling bought. A preview the page marks up is priced at 30 bytes a character against the five an escaped one costs — an element around every token — and that price holds whether the markup is the syntax the record named or the Markdown a session wrote. A run's is the first reading pane whose three previews are all rendered, which is why the arithmetic charges three. A log row is the dearest thing on the page after the tree: it prints up to three of the store's own strings at 300 characters each, which is what a reader gets for reading a level without opening it. An api call's is the widest row there is — the model that answered, the head of what it said, and the tools it went on to call. `TREE_ROW_BYTES` is measured through the app rather than budgeted, at a title of nothing but `&` and the longest query string a link can carry, and pinned with no slack in either direction: a byte of slack there is 3,217 bytes of page, and the room above is spoken for. Nearly all of a row is its URL, written three times: the `href` a reader follows, the `hx-get` htmx fetches, and the popover's own path under a prefix. What the click does with its response is written once on `#tree-rows` and inherited; what the popover does with its own cannot be, because htmx walks up from the element that fetched, and a swap written on the row would be taken by the link inside it — so its five attributes are spelled out on every row, and a store whose agent runs carry longer ids than the recorded corpus does is a re-measure.
 
 An expansion carries a ceiling of its own, 640,000 bytes. A click fetches it, like the full-value requests exempted above, but what comes back is a page of rows rather than one value: an api call's body opened in a log row lists the tools it called, at the `?log=` the reader is already reading under, and comes to 638,000. `tests/view/test_bounds.py` declares the number rather than deriving it from the 500,000, because a page of rows nobody counted is what a click can afford to hide.
 

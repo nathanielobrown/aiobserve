@@ -7,7 +7,7 @@
 {% block title %}{{ selection.icon }} {{ selection.tree_title }} · aiobserve{% endblock %}
 
 {# One node of a session, whole: the tree it sits in, and the pane that reads it. Both arrive
-   in one response, and a click on a tree row re-fetches this same URL — htmx takes `#pane`
+   in one response, and a click on a tree row re-fetches this same URL — htmx takes `#reading-pane`
    out of the response and swaps `#tree-rows` out of band, so a pasted link and a click serve
    the same bytes. #}
 {% block scripts %}
@@ -20,13 +20,13 @@
 <div id="browser">
   <nav id="tree" aria-label="Session tree">
     {# What every row of the tree does on a click, written once: fetch the row's own URL, take
-       `#pane` out of the response and put it where the pane is, and swap these rows in out of
+       `#reading-pane` out of the response and put it where the pane is, and swap these rows in out of
        band. htmx reads each of these off the closest ancestor carrying it, so the rows below
        carry only the URL that differs between them — 3,217 rows is four fifths of a node page's
-       budget (`.claude/rules/viewer-ui.md`). `outerHTML` because `hx-select` hands back the `#pane`
+       budget (`.claude/rules/viewer-ui.md`). `outerHTML` because `hx-select` hands back the `#reading-pane`
        element itself; without `hx-target` htmx would swap it into the clicked link. #}
-    <div id="tree-rows" hx-target="#pane" hx-swap="outerHTML"
-         hx-select="#pane" hx-select-oob="#tree-rows" hx-push-url="true">
+    <div id="tree-rows" hx-target="#reading-pane" hx-swap="outerHTML"
+         hx-select="#reading-pane" hx-select-oob="#tree-rows" hx-push-url="true">
       {{ treeview.switcher(presets) }}
       <ul class="rows">{{ treeview.lines(rows, suffix, source) }}</ul>
     </div>
@@ -36,7 +36,7 @@
      dragging. `static/tree-width.js` is what it moves. #}
   <div id="tree-grip" role="separator" aria-orientation="vertical" aria-label="Tree width"
        tabindex="0"></div>
-  <article id="pane">
+  <article id="reading-pane">
     {# Where the node sits, outermost first: the same chain the tree has open. #}
     <nav class="crumbs" data-crumbs="{{ selection.kind }}" aria-label="Where this node sits">
       {% for step in chain %}
@@ -44,7 +44,7 @@
         >{{ parts.mark(step.icon) }} {{ parts.glyph(step) }}<span data-field="{{ step.kind }}">{{ step.tree_title }}</span></a>
       {% endfor %}
     </nav>
-    {{ body.pane(selection, header, suffix) }}
+    {{ body.body(selection, header, suffix) }}
     {# What an enrichment pass said about this node, when a pass has reached it. #}
     {% if enrichment %}{{ parts.summary(enrichment, wrote) }}{% endif %}
     {# The node's own values, cut to the pane's width, each with the way to the whole of it. #}
@@ -74,8 +74,8 @@
        move the pane rather than leading anywhere new: the swap they carry is the one a tree
        row carries, written here because the pane is what the click replaces. A step that
        leaves the level says so with an up arrow. #}
-    <nav class="walk" aria-label="Read in order" hx-target="#pane" hx-swap="outerHTML"
-         hx-select="#pane" hx-select-oob="#tree-rows" hx-push-url="true">
+    <nav class="walk" aria-label="Read in order" hx-target="#reading-pane" hx-swap="outerHTML"
+         hx-select="#reading-pane" hx-select-oob="#tree-rows" hx-push-url="true">
       {% if previous %}
       <button type="button" class="button" data-walk="previous" data-node="{{ previous.node.key }}"
         {%- if previous.climbed %} data-climb="previous"{% endif %}

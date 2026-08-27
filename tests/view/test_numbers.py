@@ -455,8 +455,8 @@ def test_a_row_fetches_its_numbers_when_a_pointer_arrives_and_when_a_key_does(
     }
     # The link a row is still a link: it swaps the pane out of `#tree-rows`'s own wiring, and
     # nothing the popover wrote reached it.
-    assert wiring[key]["hx-target"] == "#pane"
-    assert wiring[key]["hx-select"] == "#pane"
+    assert wiring[key]["hx-target"] == "#reading-pane"
+    assert wiring[key]["hx-select"] == "#reading-pane"
 
 
 def test_a_kind_with_no_numbers_is_a_route_that_answers_nothing(client: TestClient) -> None:

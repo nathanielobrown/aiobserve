@@ -1079,7 +1079,7 @@ def priced(html: str) -> tuple[str, dict[str, list[str]]]:
     # twice, and a wrapper taken out hides part of the page this measures.
     assert not values(html, "data-crumb") and not values(html, "data-tree")
     assert not values(html, "data-child") and not values(html, "data-detail")
-    assert 'id="tree-rows"' in html and 'id="pane"' in html
+    assert 'id="tree-rows"' in html and 'id="reading-pane"' in html
     return html, rows
 
 
@@ -1786,7 +1786,7 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # A tree row is a line in the tree, so its title takes the narrowest cut of the four —
     # the same one whatever kind of node the row stands for. Read off the tree half of the
     # page: the same `title` field names the node in three places, each at its own width.
-    tree, pane = session.split('<article id="pane">')
+    tree, pane = session.split('<article id="reading-pane">')
     titles = re.findall(r'<span data-field="title">(.*?)</span>', tree, flags=re.DOTALL)
     # Cut and marked as cut: every column a title is composed from comes back one character
     # past the width, so a row that fills the line says the value went on.
