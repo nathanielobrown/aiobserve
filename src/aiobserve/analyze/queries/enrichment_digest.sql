@@ -1,6 +1,6 @@
 -- One session's enrichment sheet: what the model said about the session, each of its main
--- turns, and each of its agent runs. Read it beside the digest that shows what the item
--- actually did — `session_digest` keys on the same `turn_index` and `turn_id`, `run_digest`
+-- turns, and each of its agent runs. Read it beside the timeline that shows what the item
+-- actually did — `session_timeline` keys on the same `turn_index` and `turn_id`, `run_timeline`
 -- and `view_runs` on the same run id — which is how a description gets checked against the
 -- records it was written from.
 -- An item no pass has reached keeps its row with a NULL description, so what is missing is
@@ -27,7 +27,7 @@ WITH item AS (
     FROM enriched_turns t
     WHERE t.session_id = $session_id AND t.source = 'main'
     UNION ALL
-    -- A run's id is also the source its rows carry, so one column opens both digests. Its
+    -- A run's id is also the source its rows carry, so one column opens both timelines. Its
     -- `agent_type` is the label, which is what a reader recognises a run by.
     SELECT
         'agent_run', r.id, r.id, NULL, r.agent_type, r.started_at,

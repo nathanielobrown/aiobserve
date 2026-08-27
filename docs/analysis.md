@@ -34,7 +34,7 @@ Interpret the draw by these rules:
 
 Give a reader only the session id, selection stratum, template path, and a link to this guide. Don't paste transcript content into the brief. That would spend the context this protocol is meant to protect.
 
-Readers start with `aiobserve query` digests and use `records_slice` as their only route to raw transcript text. Its required line range and character cap bound both context and exposure to private data. The citation records the cap, so the report shows how much raw text the reader opened.
+Readers start with `aiobserve query` timelines and use `records_slice` as their only route to raw transcript text. Its required line range and character cap bound both context and exposure to private data. The citation records the cap, so the report shows how much raw text the reader opened.
 
 Follow these working rules:
 
@@ -43,7 +43,7 @@ Follow these working rules:
 - Run `error_records` before opening raw records; it identifies each error's thread, tool, and line without a transcript scan
 - Estimate context use in the report's **Context spent** field so the process review can assess the reading cost
 
-These bounds are conventions, not access controls. A reader still has Bash and can open the store directly. The brief keeps raw text out of the initial context, and the process review checks whether readers stayed within the digests.
+These bounds are conventions, not access controls. A reader still has Bash and can open the store directly. The brief keeps raw text out of the initial context, and the process review checks whether readers stayed within the timelines.
 
 Keep all session and run reports in gitignored `data/`. Commit only the synthesized report, under the quoting rules below.
 

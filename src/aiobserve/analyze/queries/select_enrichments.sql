@@ -4,8 +4,8 @@
 -- the common ones, and the categories nobody checks are the ones a classifier gets wrong.
 -- The pool is every session `--project` selects rather than the trailing window: a pass
 -- describes the whole store, and validating it reads the same set. `--since` narrows it.
--- Each row carries what it takes to open the item — the session and source `run_digest`,
--- `session_digest` and `enrichment_digest` are bound at — and what it costs to read it.
+-- Each row carries what it takes to open the item — the session and source `run_timeline`,
+-- `session_timeline` and `enrichment_digest` are bound at — and what it costs to read it.
 -- The seed is bound, so the draw is one anyone can re-run and a later read can rotate.
 WITH described AS (
     SELECT

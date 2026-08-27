@@ -61,8 +61,8 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     # directory — the bucket for a path with none — and no failing call in it at all.
     "path_failures": {"min_occurrences": "0"},
     "records_slice": {"session_id": RESUME, "source": MAIN, "first_line": "1", "last_line": "5"},
-    "run_digest": {"session_id": SPINE, "source": SPINE_RUN},
-    "session_digest": {"session_id": SPINE},
+    "run_timeline": {"session_id": SPINE, "source": SPINE_RUN},
+    "session_timeline": {"session_id": SPINE},
     "session_overview": {"session_id": SPINE},
     # `spine/` is the fixture session with agent runs; its main thread never compacted, so
     # the compaction markers come from the session that did.

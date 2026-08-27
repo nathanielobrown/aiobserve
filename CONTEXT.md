@@ -33,6 +33,7 @@ The extract → store → export seam: `src/aiobserve/pipeline.py`; the store: `
 - **Fingerprint** — changes when any of a session's files do; the only thing deciding re-extraction
 - **Corpus** — the rows minus every replayed copy: the basis for any cross-session count
 - **Rollup** — one row per session: counts, tokens, cost
+- **Timeline** — one thread in outline, a row per turn in the order they ran: `session_timeline` for `main`, `run_timeline` for an agent run
 - **Span** — a store row's OTLP shadow; one OTLP trace per session
 
 ## Enrichment

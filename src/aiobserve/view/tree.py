@@ -187,8 +187,8 @@ def home(source: str, turn_id: str | None) -> Ref:
     return Ref(Kind.TURN, source, turn_id)
 
 
-def _digest(session_id: str, source: str) -> tuple[Library, dict[str, ParamValue]]:
-    """Which digest answers for a thread, and what it binds: `main` has one of its own."""
+def _timeline(session_id: str, source: str) -> tuple[Library, dict[str, ParamValue]]:
+    """Which timeline answers for a thread, and what it binds: `main` has one of its own."""
     bound: dict[str, ParamValue] = {"session_id": session_id, "log_chars": queries.LOG_CHARS}
     if source == MAIN_SOURCE:
         return Page.TIMELINE, bound
@@ -198,14 +198,14 @@ def _digest(session_id: str, source: str) -> tuple[Library, dict[str, ParamValue
 def unattributed(
     connection: duckdb.DuckDBPyConnection, corpus: Corpus, source: str
 ) -> Standing | None:
-    """One thread's calls that answer no turn, as its digest's own cursorless row reads them.
+    """One thread's calls that answer no turn, as its timeline's own cursorless row reads them.
 
     None where every call on the thread answers a turn — and where the thread is not one this
     session holds, which is the same answer: there is no bucket at that URL either way.
     """
-    digest, bound = _digest(corpus.session_id, source)
-    rows = cursorless_rows(connection, digest, TURN_CURSOR, bounds.CURSORLESS_TURNS, **bound)
-    return Standing(rows[0], (digest, bound)) if rows else None
+    timeline, bound = _timeline(corpus.session_id, source)
+    rows = cursorless_rows(connection, timeline, TURN_CURSOR, bounds.CURSORLESS_TURNS, **bound)
+    return Standing(rows[0], (timeline, bound)) if rows else None
 
 
 def _thread_level(
@@ -228,7 +228,7 @@ def _thread_level(
     # The thread's calls that answer no turn, as one group — the bucket's own row, read the
     # same way the bucket's own page reads it.
     standing = unattributed(connection, corpus, source)
-    digest, bound = _digest(corpus.session_id, source)
+    timeline, bound = _timeline(corpus.session_id, source)
     placed = _interleave(
         [
             (
@@ -255,7 +255,9 @@ def _thread_level(
         loose_runs = [run for run in corpus.runs if run["spawn_source"] is None]
         if loose_runs:
             placed.append(unattached_node(corpus.session_id, loose_runs, corpus.whole))
-    return Level(placed, [(Page.TREE_TURNS, listed), (Page.COMPACTIONS, chipped), (digest, bound)])
+    return Level(
+        placed, [(Page.TREE_TURNS, listed), (Page.COMPACTIONS, chipped), (timeline, bound)]
+    )
 
 
 def _interleave[T](

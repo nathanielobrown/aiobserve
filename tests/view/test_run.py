@@ -192,7 +192,7 @@ def test_the_run_page_cites_the_two_queries_that_read_its_thread(client: TestCli
         f"-- queries/view_run_header.sql session_id={SPINE} run_id={SPINE_RUN}"
         " head_chars=100 detail_chars=4000"
     )
-    assert citations["run_digest"] == (
-        f"-- queries/run_digest.sql session_id={SPINE} log_chars={queries.LOG_CHARS}"
+    assert citations["run_timeline"] == (
+        f"-- queries/run_timeline.sql session_id={SPINE} log_chars={queries.LOG_CHARS}"
         f" source={SPINE_RUN}"
     )

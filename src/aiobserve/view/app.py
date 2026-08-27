@@ -963,7 +963,7 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
         )
 
     def turn_log(corpus: tree.Corpus, source: str, rows: list[Row]) -> list[LogRow]:
-        """A page of one thread's digest as a children log reads it: a row per turn."""
+        """A page of one thread's timeline as a children log reads it: a row per turn."""
         return [
             LogRow(
                 nodes.turn_node(

@@ -4,7 +4,7 @@ Enrichment writes a model's words beside a run, a turn and a session, and nothin
 store says whether those words are true. So the leaves here are about the three things a
 reader needs before trusting them: a coverage row that counts the items a pass could have
 described rather than every row of a level, a per-session sheet that pairs an item's
-description with the digest that shows what the item did, and a draw that puts every
+description with the timeline that shows what the item did, and a draw that puts every
 category in front of a validation reader instead of the common ones.
 
 The rows come from `enriched_db`, which plants through the real writer: the keys are a
@@ -149,7 +149,7 @@ def test_coverage_splits_a_level_by_the_stamp_its_rows_were_written_under(
 def test_a_digest_lists_one_session_at_every_level_and_says_what_is_undescribed(
     enriched_query: QueryRunner, enriched_db: Path
 ) -> None:
-    """A session's sheet holds its own turns, runs and session row, keyed as the digests key."""
+    """A session's sheet holds its own turns, runs and session row, keyed as the timelines key."""
     rows = digest(enriched_query, SPINE)
     # If the session's sheet holds a row per main turn, per agent run, and one for itself...
     assert {row["level"] for row in rows} == {TURN, AGENT_RUN, SESSION}

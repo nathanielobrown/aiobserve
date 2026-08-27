@@ -1,8 +1,8 @@
-"""The reading-support queries: the digests, `view_runs`, `error_records`, `records_slice`.
+"""The reading-support queries: the timelines, `view_runs`, `error_records`, `records_slice`.
 
-A digest is what a reader sees instead of the transcript, so the leaves here are about
-agreement and containment: the digest's cost has to equal the rollup for the scope it
-claims, and one run's digest has to hold that run's rows and no other's. Every expected
+A timeline is what a reader sees instead of the transcript, so the leaves here are about
+agreement and containment: the timeline's cost has to equal the rollup for the scope it
+claims, and one run's timeline has to hold that run's rows and no other's. Every expected
 number is read back out of the store rather than pinned in the test, so a fixture change
 moves both sides together.
 """
@@ -28,9 +28,9 @@ from tests.conftest import (
     SPINE_RUN,
 )
 
-# The marker a digest gives the row for api calls that sit under no turn.
+# The marker a timeline gives the row for api calls that sit under no turn.
 UNATTRIBUTED = "(unattributed)"
-# The caps the design sets: a digest's prompt cell, a raw record slice, an error's text. The
+# The caps the design sets: a timeline's prompt cell, a raw record slice, an error's text. The
 # prompt is the one a page prints, so it comes back one character past its cut — that extra
 # character is what tells whoever prints it that the prompt went on (`view/format.py:cut`).
 PROMPT_CAP = queries.LOG_CHARS + 1
@@ -43,10 +43,10 @@ SENTINEL_TAIL = "TAIL"
 SENTINEL = "planted text " * 40 + SENTINEL_TAIL
 
 
-def test_a_session_digest_accounts_for_api_calls_that_sit_under_no_turn(
+def test_a_session_timeline_accounts_for_api_calls_that_sit_under_no_turn(
     corpus_db: Path, run_query: QueryRunner
 ) -> None:
-    """Calls belonging to no turn get their own digest row, so the cost still adds up."""
+    """Calls belonging to no turn get their own timeline row, so the cost still adds up."""
     # If a resumed session's api calls all carry a NULL `turn_id` — no turn of its own owns
     # them, because the turns they answered live in the session it resumed...
     unattributed = scalar(
@@ -55,22 +55,22 @@ def test_a_session_digest_accounts_for_api_calls_that_sit_under_no_turn(
         RESUME,
     )
     assert unattributed > 0
-    # ...then the digest still lists them, in one row that names itself...
-    rows = mappings(run_query("session_digest", "--param", f"session_id={RESUME}", "--csv"))
+    # ...then the timeline still lists them, in one row that names itself...
+    rows = mappings(run_query("session_timeline", "--param", f"session_id={RESUME}", "--csv"))
     orphans = [row for row in rows if row["turn_id"] == UNATTRIBUTED]
     assert len(orphans) == 1
     assert int(orphans[0]["api_calls"]) == unattributed
-    # ...and the digest's total is the session's rollup cost, not the $0 a plain turn join
+    # ...and the timeline's total is the session's rollup cost, not the $0 a plain turn join
     # would report against a front matter quoting the real number.
     rollup = scalar(corpus_db, "SELECT cost_usd FROM session_rollups WHERE session_id = ?", RESUME)
     assert rollup > 0
     assert _total(rows, "cost_usd") == pytest.approx(rollup, abs=1e-4)
 
 
-def test_a_session_digest_totals_only_the_thread_it_lists(
+def test_a_session_timeline_totals_only_the_thread_it_lists(
     corpus_db: Path, run_query: QueryRunner
 ) -> None:
-    """A digest of the main thread reports the main thread's cost, not the session's."""
+    """A timeline of the main thread reports the main thread's cost, not the session's."""
     # If a session spends part of its cost inside an agent run — here on a call under no turn
     # at all, the shape most likely to be swept into the wrong scope...
     scoped, elsewhere = scalar(
@@ -85,18 +85,18 @@ def test_a_session_digest_totals_only_the_thread_it_lists(
         columns=2,
     )
     assert elsewhere > 0
-    # ...then the main-thread digest totals the main thread and stops there: a digest that
+    # ...then the main-thread timeline totals the main thread and stops there: a timeline that
     # lists one scope and advertises another's total is a number no reader can reconcile.
-    rows = mappings(run_query("session_digest", "--param", f"session_id={SERVER_TOOLS}", "--csv"))
+    rows = mappings(run_query("session_timeline", "--param", f"session_id={SERVER_TOOLS}", "--csv"))
     assert _total(rows, "cost_usd") == pytest.approx(scoped, abs=1e-4)
 
 
-def test_a_run_digest_holds_one_run_and_no_other(corpus_db: Path, run_query: QueryRunner) -> None:
-    """A run's digest counts that run's own turns and calls, not its children's."""
+def test_a_run_timeline_holds_one_run_and_no_other(corpus_db: Path, run_query: QueryRunner) -> None:
+    """A run's timeline counts that run's own turns and calls, not its children's."""
     # If a run spawned a leaf run of its own...
     rows = mappings(
         run_query(
-            "run_digest",
+            "run_timeline",
             "--param",
             f"session_id={SPINE}",
             "--param",
@@ -104,7 +104,7 @@ def test_a_run_digest_holds_one_run_and_no_other(corpus_db: Path, run_query: Que
             "--csv",
         )
     )
-    # ...then its digest lists exactly its own turns...
+    # ...then its timeline lists exactly its own turns...
     turns = scalar(
         corpus_db,
         "SELECT count(*) FROM live_turns WHERE session_id = ? AND source = ?",
@@ -122,10 +122,10 @@ def test_a_run_digest_holds_one_run_and_no_other(corpus_db: Path, run_query: Que
             SPINE_RUN,
         )
         assert _total(rows, column) == expected
-    # ...and the leaf's own rows are absent, since they answer to the leaf's digest.
+    # ...and the leaf's own rows are absent, since they answer to the leaf's timeline.
     leaf = mappings(
         run_query(
-            "run_digest",
+            "run_timeline",
             "--param",
             f"session_id={SPINE}",
             "--param",
@@ -136,19 +136,19 @@ def test_a_run_digest_holds_one_run_and_no_other(corpus_db: Path, run_query: Que
     assert {row["turn_id"] for row in rows}.isdisjoint({row["turn_id"] for row in leaf})
 
 
-def test_a_digest_truncates_a_long_prompt(
+def test_a_timeline_truncates_a_long_prompt(
     planted_prompt_db: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A digest's prompt cell is bounded, so reading a session cannot flood the reader."""
+    """A timeline's prompt cell is bounded, so reading a session cannot flood the reader."""
     # If a turn's prompt runs past the cap (planted: the longest recorded prompt is 145 chars
     # after redaction, so no fixture can carry this)...
     rows = mappings(
         query(
-            planted_prompt_db, capsys, "session_digest", "--param", f"session_id={SPINE}", "--csv"
+            planted_prompt_db, capsys, "session_timeline", "--param", f"session_id={SPINE}", "--csv"
         )
     )
     prompts = [row["prompt"] for row in rows if len(row["prompt"]) >= PROMPT_CAP]
-    # ...then the digest cuts it at the cap and the tail never reaches the reader.
+    # ...then the timeline cuts it at the cap and the tail never reaches the reader.
     assert len(prompts) == 1
     assert len(prompts[0]) == PROMPT_CAP
     assert SENTINEL_TAIL not in prompts[0]

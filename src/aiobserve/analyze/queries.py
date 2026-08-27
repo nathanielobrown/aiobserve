@@ -78,7 +78,7 @@ class Query:
 
 
 # The keys of a keyed query: which session, and which thread inside it. Neither has a
-# sensible default — a digest of "some session" is not a question anyone asked.
+# sensible default — a timeline of "some session" is not a question anyone asked.
 SESSION_ID = Param(type=ParamType.TEXT, default=REQUIRED)
 SOURCE = Param(type=ParamType.TEXT, default=REQUIRED)
 # Which turn, which run, which api call, which tool call. Keys for the same reason, one
@@ -230,7 +230,7 @@ SKIPPED = Param(type=ParamType.INTEGER, default=0)
 # the citation carries it, so a draw can be re-run — and rotated when a read wants new ground.
 DRAW_SEED = Param(type=ParamType.TEXT, default="aiobserve")
 
-# The turn id `session_digest` and `run_digest` give the api calls that sit under no turn. A
+# The turn id `session_timeline` and `run_timeline` give the api calls that sit under no turn. A
 # sentinel rather than NULL so it can travel in a URL; `view_turn_calls` takes NULL for the
 # same rows, and the viewer translates at the route.
 UNATTRIBUTED = "(unattributed)"
@@ -368,7 +368,7 @@ QUERIES: dict[str, Query] = {
             "max_chars": Param(type=ParamType.INTEGER, default=RAW_CHARS),
         },
     ),
-    "run_digest": Query(
+    "run_timeline": Query(
         scope=Scope.KEYED,
         params={"session_id": SESSION_ID, "source": SOURCE, "log_chars": LOG_CHARS_PARAM},
     ),
@@ -421,7 +421,7 @@ QUERIES: dict[str, Query] = {
         },
     ),
     "session_counts": Query(scope=Scope.CORPUS, params={}),
-    "session_digest": Query(
+    "session_timeline": Query(
         scope=Scope.KEYED, params={"session_id": SESSION_ID, "log_chars": LOG_CHARS_PARAM}
     ),
     "session_overview": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
