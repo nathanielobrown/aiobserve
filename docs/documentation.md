@@ -64,7 +64,7 @@ To move a document, run `mise run mv-doc <src> <dst>`: it moves the file and rew
 
 Every file carries a size budget: code in readable lines, prose in the context tokens it costs a reader who loads it. `mise run check` reports a file over its budget, and `aigarden explain file-length` prints the budgets. A document past its budget is one a reader skims and an agent loads whole to reach the paragraph it needed.
 
-`aigarden.toml` names every file over budget today, each held where it is rather than the budget being raised for everyone, so a new document meets the rule. An entry comes out when the file it names is split. Get under by cutting ideas or moving a topic to its own document, not by compressing sentences.
+No file in the repository is over budget. `docs/schema.md` carries a raised ceiling in `aigarden.toml` rather than an exemption, with the reason beside it; raise one there the same way, for the one file that earns it, rather than raising the budget for everyone. Get under by cutting ideas or moving a topic to its own document, not by compressing sentences.
 
 ## Keep each source paragraph on one line
 
