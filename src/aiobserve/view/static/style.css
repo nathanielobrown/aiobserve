@@ -118,15 +118,15 @@ td.title .secondary { display: -webkit-box; -webkit-box-orient: vertical;
 #tree { position: sticky; top: var(--space-2); max-height: calc(100vh - 4rem); overflow: auto;
   font-family: ui-monospace, monospace; font-size: var(--type-label); line-height: 1.6; }
 #tree .rows { margin: 0; padding: 0; list-style: none; }
-/* The fold in force, and the two beside it. Held at the top of the tree's own scroller, so a
+/* The preset in force, and the two beside it. Held at the top of the tree's own scroller, so a
    deep session scrolls its rows under the control rather than past it — and ruled off from
    them, because three words above a tree read as the tree's root until they look clickable. */
-#tree .switch { position: sticky; top: 0; z-index: 1; margin: 0 0 var(--space-1); display: flex;
+#tree .presets { position: sticky; top: 0; z-index: 1; margin: 0 0 var(--space-1); display: flex;
   gap: var(--space-2); padding: var(--space-1); background: var(--paper);
   border-bottom: 1px solid var(--line); }
-#tree .switch .button { color: var(--dim); font-size: var(--type-label);
+#tree .presets .button { color: var(--dim); font-size: var(--type-label);
   padding: 0 var(--space-1); }
-#tree .switch [aria-current] { color: var(--ink); border-color: var(--mark); font-weight: 600; }
+#tree .presets [aria-current] { color: var(--ink); border-color: var(--mark); font-weight: 600; }
 /* One rung per level a chain can open (`view/bounds.py:DEPTH`), each a step further in than
    the one above: a subagent's turns sit four levels down and its calls deeper still, and a
    ladder that stopped short laid them flush against the session. Written out rather than

@@ -544,7 +544,7 @@ def children(
     preset: Preset,
     descends: str | None,
 ) -> Level:
-    """What hangs under one node in one fold: the cell of the table above, read.
+    """What hangs under one node in one preset: the cell of the table above, read.
 
     Identity is the whole of what a level needs — the cell is picked by kind and the query it
     runs is keyed by ids — so a caller holding a ref can read a level without rendering the
@@ -552,7 +552,7 @@ def children(
 
     `descends` is the key of the child the open path goes through, or None where this level is
     not on it. A preset filters children and never the expanded chain: where the cell hides
-    that child, the level comes back in full instead, so a reader standing on a kind the fold
+    that child, the level comes back in full instead, so a reader standing on a kind the preset
     hides still sees where it sits. Adding the step to the filtered level would draw part of
     the tree twice — `noapi` hoists a tool call to its turn, so an api call spliced back in
     would render its own copy of a row already sitting a level higher.

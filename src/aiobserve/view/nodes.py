@@ -212,7 +212,8 @@ class Preset(StrEnum):
 
     @property
     def label(self) -> str:
-        """What the tree's switcher calls this fold, for a reader who never reads the URL."""
+        """What the control above the tree calls this preset, for a reader who never reads
+        the URL."""
         return _PRESET_LABELS[self]
 
 

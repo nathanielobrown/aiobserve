@@ -818,9 +818,9 @@ def test_a_row_badges_its_cost_only_where_it_has_a_share_to_draw(
     # The session is the basis, so a session that spent anything wears the deepest badge.
     spine = client.get(f"/session/{SPINE}").text
     assert "s10" in inside(spine, "data-tree", f"session:{SPINE}", "class")[0].split()
-    # Swept over every session under every fold rather than over the deepest session alone.
+    # Swept over every session under every preset rather than over the deepest session alone.
     # The rows that take their own share — the buckets, which are not rows of the store — are
-    # gathered by a different builder under each fold, and are not all on one session's page.
+    # gathered by a different builder under each preset, and are not all on one session's page.
     for session_id in sessions:
         badges: dict[str, tuple[str | None, frozenset[str]]] = {}
         for preset in Preset:
@@ -831,8 +831,8 @@ def test_a_row_badges_its_cost_only_where_it_has_a_share_to_draw(
                 cost = fields(html, "data-tree", key).get("cost_usd")
                 # Every row either shows what it cost with a badge behind it, or shows neither.
                 assert bool(steps) == (cost is not None), key
-                # And a fold decides which rows are drawn, never what one of them spent or how
-                # much of the session that was: a badge that moved between folds is a share
+                # And a preset decides which rows are drawn, never what one of them spent or how
+                # much of the session that was: a badge that moved between presets is a share
                 # taken against something other than the session.
                 assert badges.setdefault(key, (cost, steps)) == (cost, steps), (key, preset)
     assert whole, "the session this reads has a spend to take shares of"
@@ -1299,7 +1299,7 @@ def test_every_row_is_named_from_the_column_its_kind_is_named_by(
 
     A tree row carries `TREE_ROW_BYTES` and no more, so the title is where a kind spends what
     it has to say — and every kind spends it differently. Every node the store names is read
-    on its own page, where its row is on the open path whichever fold the reader picked: a
+    on its own page, where its row is on the open path whichever preset the reader picked: a
     column that only one recorded row exercises — a slash turn with no arguments after it —
     is one a sample would step over.
     """
@@ -1495,7 +1495,7 @@ def test_every_priced_row_carries_the_spend_the_store_holds_under_it(
 
     The buckets add up for themselves; every other priced row is handed the store's own
     number, and this is where that number is read back. Read on the page of each priced node,
-    where its own row is on the open path whichever fold the reader picked.
+    where its own row is on the open path whichever preset the reader picked.
     """
     # Keyed by session as well as by row, for the reason the titles are.
     said = {
@@ -1609,7 +1609,7 @@ def tool_level(
 
     The api calls are hidden, so their tool calls rise to the turn in call-then-tool order and
     a run follows the tool call that spawned it rather than the api call that held it. A
-    compaction hangs off the turn whichever fold the reader is in, so it drops in by time here
+    compaction hangs off the turn whichever preset the reader is in, so it drops in by time here
     too. `turn_id` None is the unattributed bucket's level, which reads the same way.
     """
     tools = store.execute(
@@ -1910,12 +1910,12 @@ def test_every_open_level_is_its_own_cell_or_the_full_one_that_holds_the_path(
 
 
 @pytest.mark.parametrize("preset", list(Preset))
-def test_the_tree_offers_every_fold_at_the_node_the_reader_stands_on(
+def test_the_tree_offers_every_preset_at_the_node_the_reader_stands_on(
     client: TestClient, store: duckdb.DuckDBPyConnection, preset: Preset
 ) -> None:
-    """A fold is a control above the tree, not a query string a reader has to know to type.
+    """A preset is a control above the tree, not a query string a reader has to know to type.
 
-    One link per preset, each pointing at the *same* node under a different fold, and the fold
+    One link per preset, each pointing at the *same* node under a different preset, and the preset
     in force marked. Read on a node of every kind because every kind's page carries the tree,
     and read with a knob turned down because a link that dropped `?kin=` would quietly serve a
     wider page than the one the reader is standing on.
@@ -1924,19 +1924,19 @@ def test_the_tree_offers_every_fold_at_the_node_the_reader_stands_on(
         (picked,) = richest(store, preset, kind, 1)
         at = node_url(kind, *picked)
         html = client.get(at, params={"nav": preset, "kin": 2}).text
-        # Every fold is offered, in the order the enum declares them, and the control rides the
+        # Every preset is offered, in the order the enum declares them, and the control rides the
         # rows: it sits inside the element a tree click swaps out of band, so the links follow
         # the reader to the node they land on instead of pointing back at the one they left.
         assert inside(html, "id", "tree-rows", "data-nav") == [choice.value for choice in Preset]
         for choice in Preset:
             (href,) = inside(html, "data-nav", choice, "href")
             went = urlsplit(href)
-            # The same node under a different fold, carrying the knobs the reader arrived with.
+            # The same node under a different preset, carrying the knobs the reader arrived with.
             assert went.path == at, (kind, choice)
             carried = {name: value for name, (value,) in parse_qs(went.query).items()}
             wanted = {"kin": "2"} | ({} if choice is Preset.FULL else {"nav": str(choice)})
             assert carried == wanted, (kind, choice)
-            # And the fold in force is the marked one, so the control says where the reader is.
+            # And the preset in force is the marked one, so the control says where the reader is.
             marked = ["true"] if choice is preset else []
             assert inside(html, "data-nav", choice, "aria-current") == marked, (kind, choice)
 
@@ -1978,20 +1978,20 @@ def test_a_preset_rides_every_node_link_the_page_mints(
     The tree's rows, the tail a cap left, the crumbs, the pane's children log and the two walk
     controls are all node URLs, and a reader who picked a view keeps it through any of them.
     Both the `href` a reader can paste and the `hx-get` a click follows, because the walk
-    controls are buttons and mint only the second. The switcher above the tree is the one
-    exception, and the only one: its whole job is to change the fold, so its three links are
+    controls are buttons and mint only the second. The presets above the tree are the one
+    exception, and the only one: their whole job is to change the preset, so their three links are
     excluded here and checked on their own leaf. Read with `?kin=1` so the tail row is on the
     page to check too, and with `?log=1` so the children log runs past one page: the corpus's
     widest level is five children, so at the production page size no pager is ever minted.
 
-    The body a log row expands is the same node under the same view, so the fold rides the
+    The body a log row expands is the same node under the same view, so the preset rides the
     mount as well — and rides out again on the links the fragment itself mints, which are the
     reader's way on from inside a parent's page. Every kind of body is opened, because the two
     fragment routes mint their suffix apart and only a tool's body mints a link of its own.
     """
     html = client.get(url(open_turn(store)), params={"nav": "agents", "kin": 1, "log": 1}).text
-    switching = set(inside(html, "class", "switch", "href"))
-    assert len(switching) == len(Preset), "the switcher's own links, which change the fold"
+    switching = set(inside(html, "class", "presets", "href"))
+    assert len(switching) == len(Preset), "the control's own links, which change the preset"
     # `values` reads the markup and `inside` reads it parsed, so an href with two knobs on it
     # arrives `&amp;`-escaped from one and bare from the other.
     links = [
@@ -2011,11 +2011,11 @@ def test_a_preset_rides_every_node_link_the_page_mints(
         found = mounts(page)
         assert found, f"the log rows on {at} mount an expansion"
         for mount in found:
-            # The mount a log row opens its child's body through carries the fold...
+            # The mount a log row opens its child's body through carries the preset...
             assert parse_qs(mount.partition("?")[2]).get("nav") == ["agents"], mount
             served = client.get(mount)
             assert served.status_code == 200, mount
-            # ...and the body it serves links on under that fold rather than dropping it.
+            # ...and the body it serves links on under that preset rather than dropping it.
             onward = [href for href in values(served.text, "href") if node_link(href)]
             assert onward, f"the fragment offers the way to its own node: {mount}"
             for href in onward:
@@ -2023,7 +2023,7 @@ def test_a_preset_rides_every_node_link_the_page_mints(
             opened.add(mounted_kind(mount))
             led += len(values(served.text, "data-spawned"))
     # And the rows a tail row fetches are minted by the fragment and not by the page, so the
-    # fold rides the fetch out and comes back on every row it answers with.
+    # preset rides the fetch out and comes back on every row it answers with.
     spilling = spilled(html)
     assert spilling, "the window left a tail row on the page"
     for fetch in spilling:
@@ -2046,8 +2046,8 @@ def test_a_preset_the_viewer_does_not_have_is_refused(
 ) -> None:
     """`?nav=` names one of the three views or the request is a 400, not a quiet full tree.
 
-    Asked of a fragment as well as a page: the fold rides the mount an expansion opens, so a
-    fold the viewer does not have has to be refused there too rather than written into every
+    Asked of a fragment as well as a page: the preset rides the mount an expansion opens, so a
+    preset the viewer does not have has to be refused there too rather than written into every
     link the fragment serves.
     """
     at = url(open_turn(store))

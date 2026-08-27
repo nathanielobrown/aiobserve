@@ -77,7 +77,7 @@ def test_a_size_knob_carries_the_ceiling_that_caps_it() -> None:
 
 
 def test_the_word_maps_describe_exactly_what_the_app_still_offers() -> None:
-    # Both label maps are hand-written, so both rot in both directions: a knob or a fold with
+    # Both label maps are hand-written, so both rot in both directions: a knob or a preset with
     # no words would print a blank cell, and words for one the app dropped would describe a
     # URL nobody can type. Neither is visible in a green table, so it is pinned here.
     assert set(gen_bounds.SIZE_WORDS) == set(KNOB_DEFAULTS) - {"nav"}
@@ -93,7 +93,7 @@ def test_a_size_knob_with_no_words_crashes_the_generator(monkeypatch: pytest.Mon
 
 
 def test_a_preset_with_no_words_crashes_the_generator(monkeypatch: pytest.MonkeyPatch) -> None:
-    # A new fold must be described before it can be listed: a blank cell would say the viewer
+    # A new preset must be described before it can be listed: a blank cell would say the viewer
     # has a view nobody can explain.
     monkeypatch.delitem(gen_bounds.PRESET_WORDS, nodes.Preset.AGENTS)
     with pytest.raises(ValueError, match="agents"):

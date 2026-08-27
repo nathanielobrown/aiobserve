@@ -4,11 +4,11 @@
    indents by, so nesting buys the markup nothing. #}
 {% import "_parts.html" as parts %}
 
-{# The fold the tree is in, and the two the reader can switch to: the same node under each
+{# The preset the tree is in, and the two the reader can switch to: the same node under each
    `?nav=`, so a switch never costs them their place. Inside the swapped element rather than
    above it, which is what keeps the links pointing at the node a click just landed on. #}
-{% macro switcher(choices) %}
-<p class="switch" aria-label="Fold the tree">
+{% macro presets(choices) %}
+<p class="presets" aria-label="Tree presets">
   {%- for choice in choices %}
   <a class="button" data-nav="{{ choice.preset }}" href="{{ choice.url }}"
     {%- if choice.current %} aria-current="true"{% endif %}>{{ choice.preset.label }}</a>
