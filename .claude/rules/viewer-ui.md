@@ -8,7 +8,7 @@ paths:
 
 # Viewer UI
 
-The viewer is server-rendered Jinja with two scripts on a shipped page: vendored htmx, and `src/aiobserve/view/static/tree-width.js` for the one thing a reader sets that no URL carries. A third, `src/aiobserve/view/static/dev-reload.js`, rides `aiobserve view --dev` alone (below). These are the conventions a template has to hold to; what each page shows is in `docs/viewer.md`, and how to edit one with the page open in front of you is in `docs/ui-development.md`.
+The viewer is server-rendered Jinja with two scripts on a shipped page: vendored htmx, and `src/aiobserve/view/static/tree-width.js` for the one thing a reader sets that no URL carries. A third, `src/aiobserve/view/static/dev-reload.js`, rides `aiobserve view --dev` alone (below). These are the conventions a template has to hold to; what each page shows is in `docs/viewer.md`, and how to edit one with the page open in front of you — and the two traps in the formatter that owns their layout — is in `docs/ui-development.md`.
 
 # One body, two mounts
 
