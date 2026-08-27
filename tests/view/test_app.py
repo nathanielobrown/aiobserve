@@ -1025,7 +1025,7 @@ def test_planted_markup_arrives_inert(plant: Planter) -> None:
             "UPDATE turns SET prompt = ?, command_args = ? WHERE session_id = ?",
             [sentinel, sentinel, SPINE],
         ),
-        ("UPDATE agent_runs SET description = ? WHERE session_id = ?", [sentinel, SPINE]),
+        ("UPDATE agent_runs SET brief = ? WHERE session_id = ?", [sentinel, SPINE]),
         # The markdown path: what a model wrote, which is the one value the viewer renders
         # rather than escapes, and the tool arguments beside it.
         (

@@ -44,7 +44,7 @@ The backend name also identifies its delivery ledger. Sending the same sessions 
 
 The default export sends the structure of the work: span ids and times, project metadata, model and tool names, token counts, costs, stop reasons, agent types, command names, and PR numbers. This metadata is not anonymous; it includes such values as the project path, Git branch, session ids, and request ids.
 
-The default omits transcript-derived text: prompts, command arguments, model responses and thinking, tool inputs and results, session titles, session agent names, subagent descriptions, PR URLs, and repository names. PR links still become events on the session root, but those events contain only the PR number by default.
+The default omits transcript-derived text: prompts, command arguments, model responses and thinking, tool inputs and results, session titles, session agent names, subagent briefs, PR URLs, and repository names. PR links still become events on the session root, but those events contain only the PR number by default.
 
 Each session becomes one trace. Its root span has children for turns, model calls, tool calls, subagent runs, and compactions. A tool call that starts a subagent becomes the subagent span rather than a second tool span. Rows copied into a fork emit no span because sending them would double-count the work.
 

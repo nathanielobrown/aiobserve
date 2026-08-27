@@ -15,8 +15,8 @@ SELECT
     -- The task brief, cut one character past a pane's width — the protocol
     -- `view/format.py:cut` reads — with its whole length beside it; the rest is fetched as
     -- one value (`view_run_brief`).
-    substr(a.description, 1, $detail_chars + 1) AS description,
-    length(a.description) AS description_chars,
+    substr(a.brief, 1, $detail_chars + 1) AS brief,
+    length(a.brief) AS brief_chars,
     substr(a.model, 1, $head_chars + 1) AS model,
     -- What the run was asked and what its parent got back, both read off the one call that
     -- spawned it: Claude Code records a run's instructions as that call's `prompt` and the

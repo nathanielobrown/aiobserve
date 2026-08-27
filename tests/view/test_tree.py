@@ -1280,14 +1280,14 @@ def titled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, tuple
         said[f"{Kind.TURN}:{turn_id}"] = (
             f"{command_name} {command_args or ''}".strip() if command_name is not None else prompt
         )
-    for run_id, description, agent_type in store.execute(
-        "SELECT id, description, agent_type FROM live_agent_runs WHERE session_id = ?",
+    for run_id, brief, agent_type in store.execute(
+        "SELECT id, brief, agent_type FROM live_agent_runs WHERE session_id = ?",
         [session_id],
     ).fetchall():
         # The definition it ran, always first — which agent this was is what a reader picks a
         # run out of a tree by — and after it the brief it was given, where one was recorded.
         said[f"{Kind.RUN}:{run_id}"] = (
-            f"{agent_type}{LEAD_SEPARATOR}{description}" if description else agent_type
+            f"{agent_type}{LEAD_SEPARATOR}{brief}" if brief else agent_type
         )
     return {key: (value, kept.get(key, "")) for key, value in said.items()}
 

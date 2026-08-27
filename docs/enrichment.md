@@ -17,7 +17,7 @@ Enrichment spends the Claude Code subscription by running `claude -p` once per i
 
 `turn_enrichments`, `agent_run_enrichments`, and `session_enrichments` hold one row per described item. Each row has four model-written fields: `description`, `category`, `outcome`, and a nullable `friction` note. `src/aiobserve/enrich/taxonomy.py` defines the closed vocabularies. The enricher rejects answers outside them.
 
-Query these rows through `enriched_turns`, `enriched_agent_runs`, and `enriched_sessions`. Each view left-joins enrichments onto the live base rows, so a `NULL` description means "not described yet." Count those rows when reporting coverage. To keep `description` consistent across the views, `enriched_agent_runs` calls the recorded run task `task_description` and the recorded model `agent_model`.
+Query these rows through `enriched_turns`, `enriched_agent_runs`, and `enriched_sessions`. Each view left-joins enrichments onto the live base rows, so a `NULL` description means "not described yet." Count those rows when reporting coverage. To keep `description` consistent across the views, `enriched_agent_runs` calls the run's own recorded model `agent_model`; the run's recorded task is `brief` and needs no rename.
 
 The query library provides three report-ready questions, which `aiobserve query` can run:
 

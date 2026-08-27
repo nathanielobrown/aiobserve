@@ -534,7 +534,7 @@ def _agent_runs(
                 tool_use_id=tool_use_id,
                 agent_type=meta["agentType"],
                 # Both absent when the caller named none.
-                description=meta.get("description"),
+                brief=meta.get("description"),
                 model=meta.get("model"),
                 workflow_id=agent.workflow_id,
                 # Absent on one meta of the 2764 on this machine, a 2.1.186 session.

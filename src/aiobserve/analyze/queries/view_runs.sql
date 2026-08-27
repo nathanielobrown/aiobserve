@@ -13,7 +13,7 @@
 SELECT
     a.id AS run_id,
     substr(a.agent_type, 1, $chip_chars + 1) AS agent_type,
-    substr(a.description, 1, $chip_chars + 1) AS description,
+    substr(a.brief, 1, $chip_chars + 1) AS brief,
     substr(a.model, 1, $chip_chars + 1) AS model,
     a.spawn_depth,
     a.is_fork,

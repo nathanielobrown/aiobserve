@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     parent_agent_id VARCHAR,
     tool_use_id VARCHAR,
     agent_type VARCHAR NOT NULL,
-    description VARCHAR,
+    brief VARCHAR,
     model VARCHAR,
     workflow_id VARCHAR,
     spawn_depth INTEGER,

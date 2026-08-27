@@ -589,7 +589,7 @@ def run_node(session_id: str, row: Row, whole: float, described: str | None) -> 
         # Which agent ran leads the name wherever no column heads it (`Node.lead`), and after
         # it what the pass said the run did, else the brief it was given, else nothing.
         lead=row["agent_type"],
-        words=_words(described or row["description"]),
+        words=_words(described or row["brief"]),
         cost_usd=cost,
         unpriced_api_calls=row["unpriced_api_calls"],
         share=_share(cost, whole),

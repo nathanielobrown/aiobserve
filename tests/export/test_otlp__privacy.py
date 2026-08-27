@@ -36,7 +36,7 @@ EXCLUDED = {
     ("api_calls", "thinking"): "planted-leak-api-call-thinking",
     ("tool_calls", "input"): "planted-leak-tool-call-input",
     ("tool_calls", "result"): "planted-leak-tool-call-result",
-    ("agent_runs", "description"): "planted-leak-agent-run-description",
+    ("agent_runs", "brief"): "planted-leak-agent-run-brief",
     ("pr_links", "pr_url"): "planted-leak-pr-link-url",
     ("pr_links", "pr_repository"): "planted-leak-pr-repository",
 }
@@ -141,7 +141,7 @@ TEXT_KEYS = {
     "claude_code.api_call.thinking",
     "claude_code.tool_call.input",
     "claude_code.tool_call.result",
-    "claude_code.agent_run.description",
+    "claude_code.agent_run.brief",
     "claude_code.pr_link.url",
     "claude_code.pr_link.repository",
 }

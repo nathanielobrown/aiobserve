@@ -96,5 +96,5 @@ Each means several things until qualified.
 - **Trace** — say *session trace* (one extraction result), the *trace store* (the archive), or an *OTLP trace* (one session's span tree)
 - **Call** — say *api call* or *tool call*; bare `call` is only the viewer's kind name for the former
 - **Run** — an *agent run*; a person-started iteration is a *pass*
-- **Description** — an enrichment's summary; what the spawner typed for an agent run is its *brief* (the reading pane's label: "Task brief")
+- **Description** — an enrichment's summary; what the spawner typed for an agent run is its *brief* (the store column `brief`, the reading pane's label: "Task brief")
 - **Model** — say which: the model that *answered* a call, the alias a run *asked for*, or the model that *wrote* an enrichment

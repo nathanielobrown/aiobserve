@@ -187,8 +187,8 @@ class AgentRun:
     # Which agent definition ran: "general-purpose", "auditor", "workflow-subagent", a
     # session-defined name. Not a closed set — sessions name their own.
     agent_type: str
-    # The one-line summary of the task, from the spawning call. Absent on some runs.
-    description: str | None
+    # The one-line brief the spawning call gave the run. Absent on some runs.
+    brief: str | None
     # The model alias the caller asked for, e.g. "opus". Absent when the caller named none.
     model: str | None
     # The `wf_<id>` fan-out this run belonged to, from the directory it sits in.

@@ -18,7 +18,7 @@ LABELS: dict[str, str] = {
     "entrypoint": "Entrypoint",
     # What the spawning agent typed in the Agent tool's `description`, which is the brief the
     # run was given rather than a description of what it did.
-    "description": "Task brief",
+    "brief": "Task brief",
     "agent_type": "Agent",
     "model": "Model",
     # The model a fallback replaced, present only on a call that fell back.
@@ -83,10 +83,11 @@ LABELS: dict[str, str] = {
     "command": "Command",
     "result": "Result",
     "result_chars": "Result (chars)",
-    # And the friction line an enrichment pass wrote, which the pane previews like any other
-    # value a fetch stands behind. It prints under no heading — the paragraph above it is the
-    # description and the glyph beside that says who wrote both — so the word is here for the
-    # registry to stay closed over what the panes preview rather than for a reader.
+    # And the two lines an enrichment pass wrote, which the pane previews like any other value
+    # a fetch stands behind. Neither prints under a heading — the glyph beside them says who
+    # wrote both — so the words are here for the registry to stay closed over what the panes
+    # preview rather than for a reader.
+    "description": "Description",
     "friction": "Friction",
     # What Claude Code recorded the session as, which is `title` in the store and not the
     # `title` below: that one is the viewer's own derivation, and on a described session the

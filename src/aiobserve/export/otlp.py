@@ -395,7 +395,7 @@ def _run_span(
             "claude_code.agent_run.spawn_depth": run.spawn_depth,
             # A continuation of another run, carrying a copy of its transcript's prefix.
             "claude_code.agent_run.is_fork": run.is_fork or None,
-            "claude_code.agent_run.description": _text(text, run.description),
+            "claude_code.agent_run.brief": _text(text, run.brief),
             # No tool call in this trace placed it, so it hangs off the root.
             "aiobserve.orphan": orphan or None,
             "logfire.msg": f"invoke_agent {run.agent_type}",
