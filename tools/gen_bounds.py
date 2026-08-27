@@ -1,4 +1,4 @@
-"""The two bounds tables in `docs/viewer.md`: what a URL can ask for, and what a page holds.
+"""The two bounds tables in `docs/viewer-bounds.md`: what a URL can ask for, and what a page holds.
 
 Run by two cog blocks in that document — `uv run python -m tools.gen_bounds knobs` and
 `… bounds` — because the tables sit in different sections. Every number comes from

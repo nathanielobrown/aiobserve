@@ -32,7 +32,6 @@ reflow = "never-wrap"
 # the budget being raised for everyone: a new file meets the rule, and an entry here comes out
 # when the file it names is split. `docs/documentation.md` has the reasons the budget exists at
 # all. Code is measured in lines, prose in the context tokens it costs a reader that loads it.
-"docs/viewer.md" = ["file-length"]
 "src/aiobserve/analyze/queries.py" = ["file-length"]
 "src/aiobserve/export/otlp.py" = ["file-length"]
 "src/aiobserve/extract/claude_code.py" = ["file-length"]
