@@ -20,6 +20,19 @@ A reload costs a reader nothing here because every state but tree width rides th
 
 Python edits are the exception. Nothing watches them — restart the gallery or the viewer by hand, and the open page will follow.
 
+## A formatter owns the layout
+
+```bash
+mise run format-html
+```
+
+djLint writes every template's indentation and attribute layout, and `[tool.djlint]` in `pyproject.toml` decides how. `mise run check-fast` formats them for you and `mise run check` fails on a file that is not formatted. VS Code formats on save through that same binary and that same block, so an editor's output is the check's output; `.vscode/settings.json` carries only what that parity needs.
+
+Two things to know before you edit a template:
+
+- **The whitespace it writes is bytes on the page.** Jinja renders the newline and the indent the formatter puts between a row's cells, and a tree row is spent 3,217 times on the worst page (`.claude/rules/viewer-ui.md`). A space a reader has to see is written `{{ " " }}`, because a literal one sits where djLint reflows (`src/aiobserve/view/templates/_parts.html`)
+- **Never write a raw tag inside a `{# … #}` comment.** djLint reads the opening tag as the real thing and leaves the rest of the file unindented. Name the element in words instead (`src/aiobserve/view/templates/base.html`)
+
 ## Run the same loop over your own store
 
 ```bash
