@@ -47,8 +47,12 @@ def bound(line: str) -> dict[str, str]:
 
 
 def echoed(html: str) -> dict[str, str]:
-    """The bindings a query page shows, keyed by parameter."""
-    return dict(re.findall(r'data-binding="(\w+)">([^<]*)<', html))
+    """The bindings a query page shows, keyed by parameter.
+
+    Stripped, because the formatter stands a cell's value on a line of its own: what the page
+    shows is the value, and the indentation around it is the markup's own.
+    """
+    return {key: value.strip() for key, value in re.findall(r'data-binding="(\w+)">([^<]*)<', html)}
 
 
 def numbered(text: str) -> str:

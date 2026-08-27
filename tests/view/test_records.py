@@ -21,13 +21,25 @@ from tests.view.conftest import MISSING, Planter, block, fields, inside, one, pl
 
 # The records a page opens with its own body already fetched, in document order. Read off the
 # start tag rather than through `inside`, because what says a record is open is `open` itself —
-# an attribute with no value, which nothing keyed by value can see.
-OPENED = re.compile(r'<details class="whole" open data-open-record="(\d+)"')
+# an attribute with no value, which nothing keyed by value can see. The tag is matched whole
+# and read inside it: the formatter lays a tag's attributes out as it likes, and the one
+# invariant is that they belong to the same tag.
+DETAILS = re.compile(r'<details class="whole"([^>]*)>')
+RECORD = re.compile(r'data-open-record="(\d+)"')
+# `open` on its own, not the middle of `data-open-record`.
+FLAG = re.compile(r"(?<![-\w])open(?![-\w])")
 
 
 def opened(html: str) -> list[str]:
     """The line numbers of the records the page renders expanded."""
-    return OPENED.findall(html)
+    numbers = []
+    for attributes in DETAILS.findall(html):
+        if not FLAG.search(attributes):
+            continue
+        line = RECORD.search(attributes)
+        assert line, f"an open record with no line number: {attributes}"
+        numbers.append(line.group(1))
+    return numbers
 
 
 def test_the_browser_pages_by_line_number_without_repeating_or_skipping(

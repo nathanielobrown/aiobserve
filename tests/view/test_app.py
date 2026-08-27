@@ -63,6 +63,7 @@ from tests.view.conftest import (
     inside,
     one,
     pages,
+    reads,
     suggestions,
     values,
 )
@@ -135,6 +136,10 @@ def test_the_list_holds_every_session_with_its_own_numbers(
     assert (row["cost_usd"], row["output_tokens"]) == (money(cost), counted(tokens))
     assert (row["wall_ms"], row["active_ms"]) == (fmt.duration(wall), fmt.duration(active))
     assert row["started_at"] == fmt.when(started)
+    # ...and the unit word stands off the number under it, which is the one thing on this row
+    # no `data-field` carries: `0 errors`, never `0errors`. The space is written as an
+    # expression because a literal one is the formatter's to drop (`_parts.html`).
+    assert f"{errors} errors" in reads(page, "data-session-id", SPINE)
 
 
 def test_a_column_the_store_left_null_reads_as_one_dash(
@@ -695,14 +700,26 @@ def test_a_header_labels_its_facts_in_words(client: TestClient) -> None:
     into the other. `wall_ms` is the case that forces the split — the value under it already
     prints as `24h 25m`, and a label ending in `_ms` contradicts the cell it stands over.
     """
+    # The formatter is free to put the two tags on lines of their own, so the pattern reads
+    # across whatever it left between them; what it may not do is pair a label with the value
+    # of some other fact, which is why nothing but whitespace is allowed there.
     labelled = dict(
         re.findall(
-            r"<dt>([^<]*)</dt><dd data-field=\"([^\"]+)\"", client.get(f"/session/{SPINE}").text
+            r"<dt>([^<]*)</dt>\s*<dd data-field=\"([^\"]+)\"",
+            client.get(f"/session/{SPINE}").text,
         )
     )
     assert labelled["Wall time"] == "wall_ms"
     assert labelled["Session"] == "session_id"
     assert labelled["Cost"] == "cost_usd"
+    # And a label reads off its own value with a space between the two — `Cost $1.48`, never
+    # `Cost$1.48`. The formatter stands the two tags on lines of their own, where before the
+    # stylesheet was the only thing holding them apart.
+    page = client.get(f"/session/{SPINE}").text
+    shown = fields(page, "data-body", "session")
+    said = reads(page, "data-body", "session")
+    assert f"Cost {shown['cost_usd']}" in said
+    assert f"Wall time {shown['wall_ms']}" in said
 
 
 def test_every_fact_a_header_asks_for_has_a_label() -> None:
