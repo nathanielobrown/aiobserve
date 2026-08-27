@@ -1,6 +1,5 @@
 {# The cells more than one page wants: the list's two-line columns, the enrichment block a
    node page and the list both show, and the fact rows a pane is built out of. #}
-
 {# One two-line cell: the value a reader scans a column for, and the texture under it. Both
    halves are labelled, so a test reads either without matching prose. The unit word sits
    outside the labelled span — what a reader sees is a number and a word, what a `data-field`
@@ -11,23 +10,19 @@
    An expression rather than `&#32;` so the rendered space stays one byte: five of them a row
    is 13 kB of the tree's ceiling (`view/bounds.py`). #}
 {% macro stacked(field, primary, secondary_field, secondary, unit='', mark='') %}
-<span data-field="{{ field }}" class="primary">{{ primary }}</span>
-{%- if caller %}{{ caller() }}{% endif %}
-<span class="secondary"><span data-field="{{ secondary_field }}">{{ secondary }}</span>
-  {%- if mark %}{{ mark }}{% endif %}
+  <span data-field="{{ field }}" class="primary">{{ primary }}</span>
+  {%- if caller %}{{ caller() }}{% endif %}
+  <span class="secondary"><span data-field="{{ secondary_field }}">{{ secondary }}</span>
+    {%- if mark %}{{ mark }}{% endif %}
   {%- if unit %}{{ " " }}{{ unit }}{% endif %}</span>
 {% endmacro %}
-
 {# The mark a cost carries when our price table priced none of some calls under it: a total
    missing calls is not what was spent, and the page has to say so. Outside the labelled span
    either way — a `data-field` carries the number the store holds and nothing else — and
    written once because both pages that print a cost hang it off one. #}
 {% macro unpriced(calls) -%}
-{% if calls %}<sup
-  title="{{ calls | count }} call(s) at a model our price table lacks">*</sup>{% endif %}
+  {% if calls %}<sup title="{{ calls | count }} call(s) at a model our price table lacks">*</sup>{% endif %}
 {%- endmacro %}
-
-
 {# The mark saying what a thing is: what kind of node a row, a crumb or a heading names, and
    what a children log's column counts. `aria-hidden` and no `title`: the mark stands for a word
    the markup around it already carries — the tree row's class, the crumb's field name, the
@@ -36,20 +31,16 @@
    own: every caller puts one after it, and a byte here is 3,217 bytes of page
    (`view/bounds.py`). #}
 {% macro mark(character) -%}
-<span class="icon" aria-hidden="true">{{ character }}</span>
+  <span class="icon" aria-hidden="true">{{ character }}</span>
 {%- endmacro %}
-
-
 {# The mark on a title a model helped write. Bare wherever a title repeats —
    a tree row, a crumb, a log line, a walk control — because what a reader wants beside a mark
    is on the pane, once, hanging off the paragraph the pass wrote. The space after it is an
    expression for `stacked`'s reason: a literal one is the formatter's to drop. It sits inside
    the test, because a row with no mark owes no space. #}
 {% macro glyph(node) -%}
-{% if node.enriched %}<span class="{{ GLYPH_CLASS }}">{{ GLYPH }}</span>{{ " " }}{% endif %}
+  {% if node.enriched %}<span class="{{ GLYPH_CLASS }}">{{ GLYPH }}</span>{{ " " }}{% endif %}
 {%- endmacro %}
-
-
 {# A counted list of names — the agent types a session spawned, the kinds of work its turns
    were. `key` is what the store called the count, because the two lists count different
    things. Every integer goes through `count`, like every other one a page prints, and every
@@ -59,40 +50,37 @@
    cut at a width its own words cannot reach (`analyze/queries.py:TAG_CHARS`), so a mark on one
    would say a name went on when nothing was left behind. #}
 {% macro counted(entries, key, mark=true) %}
-{%- for entry in entries %}{{ entry.name | item if mark else entry.name
+  {%- for entry in entries %}{{ entry.name | item if mark else entry.name
   }} ×{{ entry[key] | count }}{{ ", " if not loop.last }}
-{%- endfor %}
+  {%- endfor %}
 {%- endmacro %}
-
 {# What a cut list left out, in the one wording every list on a row uses. #}
 {% macro more(cut) %}{% if cut %} and {{ cut | count }} more{% endif %}{% endmacro %}
-
 {# What an enrichment pass said an item was and how it went. The vocabularies are closed
    (`enrich/taxonomy.py`); `stale` says the row was written under a prompt or taxonomy version
    this build has moved past, which is a reason to re-run a pass and not a reason to distrust
    the words. #}
 {% macro tags(described) %}
-<span class="tag" data-field="category">{{ described.category }}</span>
-<span class="tag" data-field="outcome">{{ described.outcome }}</span>
-{%- if described.stale %}<span class="tag stale" data-field="stale">stale</span>{% endif %}
+  <span class="tag" data-field="category">{{ described.category }}</span>
+  <span class="tag" data-field="outcome">{{ described.outcome }}</span>
+  {%- if described.stale %}<span class="tag stale" data-field="stale">stale</span>{% endif %}
 {% endmacro %}
-
-
-
 {# What a pass said about the item whose page this is, beside the header counting what it did.
    Model-written from a private transcript, so it is text like any other the viewer renders. #}
 {% macro summary(enrichment, lines) %}
-<section class="enrichment" data-enrichment="{{ enrichment.item_id }}">
-  <p><span class="{{ GLYPH_CLASS }}" data-field="enriched"
-       title="{{ enrichment.provenance }}">{{ GLYPH }}</span>
-    {{ line(lines.description) }}</p>
-  <p class="tags">{{ tags(enrichment) }}</p>
-  {% if lines.friction %}
-  <p class="friction">{{ line(lines.friction) }}</p>
-  {% endif %}
-</section>
+  <section class="enrichment" data-enrichment="{{ enrichment.item_id }}">
+    <p>
+      <span class="{{ GLYPH_CLASS }}"
+            data-field="enriched"
+            title="{{ enrichment.provenance }}">{{ GLYPH }}</span>
+      {{ line(lines.description) }}
+    </p>
+    <p class="tags">{{ tags(enrichment) }}</p>
+    {% if lines.friction %}
+      <p class="friction">{{ line(lines.friction) }}</p>
+    {% endif %}
+  </section>
 {% endmacro %}
-
 {# One line a pass wrote as the pane shows it: the head its query cut, and the link that
    fetches the rest of it into the head's own place. A pass answers in paragraphs, so nearly
    every line it writes about a run runs past the width — the mark alone would say there is
@@ -101,14 +89,16 @@
    The link sits outside the labelled span and inside the block it swaps, which is what makes
    `closest .enrichment-line` land: the glyph and the provenance hanging off it stay put. #}
 {% macro line(item) %}
-{%- if item %}<span class="enrichment-line" data-enrichment-line="{{ item.name }}"><span
-  data-field="{{ item.name }}">{{ item.head }}</span>
-  {%- if item.cut %} <a class="more" data-whole="{{ item.name }}" href="{{ item.url }}"
-    hx-get="{{ item.url }}" hx-target="closest .enrichment-line" hx-swap="outerHTML"
-    >+<span data-field="cut">{{ item.cut | count }}</span> more character(s)</a>{% endif -%}
-</span>{% endif %}
+  {%- if item %}<span class="enrichment-line" data-enrichment-line="{{ item.name }}"><span data-field="{{ item.name }}">{{ item.head }}</span>
+  {%- if item.cut %} <a class="more"
+    data-whole="{{ item.name }}"
+    href="{{ item.url }}"
+    hx-get="{{ item.url }}"
+    hx-target="closest .enrichment-line"
+    hx-swap="outerHTML">+<span data-field="cut">{{ item.cut | count }}</span> more character(s)</a>{% endif -%}
+  </span>
+{% endif %}
 {%- endmacro %}
-
 {# One value as the markdown a session wrote it in. Rendered rather than printed because that
    is what it is: a prompt, a model's answer and the brief a run was given are written in
    markdown by whoever typed them. `view/render.py` owns the escaping — html passthrough off,
@@ -119,27 +109,25 @@
    of it the fetch swaps into that same block. A value shown two ways is a value a reader
    cannot tell has one head. #}
 {% macro prose(field, value) -%}
-<div class="prose" data-field="{{ field }}">{{ value | markdown }}</div>
+  <div class="prose" data-field="{{ field }}">{{ value | markdown }}</div>
 {%- endmacro %}
-
-
 {# One value in the syntax it was written in — a tool's arguments, an archived record, a query
    file. Marked up by class rather than by inline color, because the policy in `app.CSP` allows
    no `style` attribute; `static/pygments.css` paints the classes. A value past the ceiling
    prints as stored and says so: the markup costs about four bytes for every byte of value, and
    past a point that is a page nobody can read rather than a page that reads better. #}
 {% macro code(value, syntax, field) %}
-{%- set shown = value | lit(syntax) %}
-{%- if shown.over %}
-<p class="plain" data-plain="{{ field }}">Printed as stored:
-  <span data-field="over">{{ shown.over | count }}</span> characters is past the
-  {{ HIGHLIGHT_CHARS | count }} this viewer marks up.</p>
-{%- endif %}
-<pre data-field="{{ field }}"
-  {%- if shown.syntax %} class="code {{ shown.syntax }}"{% endif %}>{{ shown.html }}</pre>
+  {%- set shown = value | lit(syntax) %}
+  {%- if shown.over %}
+    <p class="plain" data-plain="{{ field }}">
+      Printed as stored:
+      <span data-field="over">{{ shown.over | count }}</span> characters is past the
+      {{ HIGHLIGHT_CHARS | count }} this viewer marks up.
+    </p>
+  {%- endif %}
+  <pre data-field="{{ field }}"
+       {%- if shown.syntax %} class="code {{ shown.syntax }}"{% endif %}>{{ shown.html }}</pre>
 {%- endmacro %}
-
-
 {# One labelled fact of a header. Every value goes through `text`, so a column the store left
    NULL prints the dash the rest of the viewer prints rather than Python's `None`: a header
    names its fields whether or not the session filled them. And through `head`, which is the
@@ -150,29 +138,34 @@
    joined list already bounded by its query loses the count of what it left rather than a tail
    of its last member. #}
 {% macro fact(name, value, cut=true) %}
-{%- set shown = (value | head) if cut else (value | text) %}
-<div><dt>{{ label(name) }}</dt><dd data-field="{{ name }}">{{ shown }}</dd></div>
+  {%- set shown = (value | head) if cut else (value | text) %}
+  <div>
+    <dt>{{ label(name) }}</dt>
+    <dd data-field="{{ name }}">
+      {{ shown }}
+    </dd>
+  </div>
 {% endmacro %}
-
-
 {# One of a node's own values as the pane shows it: the head the header query cut, and the way
    to the rest. The link fetches the whole value and replaces this block, which is the one
    place a fat column crosses the wire whole (`view/store.py`'s per-value queries). A head
    whose row said what it was written in is marked up in that syntax; the rest is prose. #}
 {% macro detail(item) %}
-<section class="detail" data-detail="{{ item.name }}">
-  <h3>{{ label(item.name) }}</h3>
-  {%- if item.syntax %}
-  {{ code(item.head, item.syntax, item.name) }}
-  {%- elif item.markdown %}
-  {{ prose(item.name, item.head) }}
-  {%- else %}
-  <pre data-field="{{ item.name }}">{{ item.head }}</pre>
-  {%- endif %}
-  {% if item.cut %}
-  <p class="more"><a data-whole="{{ item.name }}" href="{{ item.url }}" hx-get="{{ item.url }}"
-     hx-target="closest .detail" hx-swap="outerHTML"
-     >+<span data-field="cut">{{ item.cut | count }}</span> more character(s)</a></p>
-  {% endif %}
-</section>
+  <section class="detail" data-detail="{{ item.name }}">
+    <h3>{{ label(item.name) }}</h3>
+    {%- if item.syntax %}
+      {{ code(item.head, item.syntax, item.name) }}
+    {%- elif item.markdown %}
+      {{ prose(item.name, item.head) }}
+    {%- else %}
+      <pre data-field="{{ item.name }}">{{ item.head }}</pre>
+    {%- endif %}
+    {% if item.cut %}
+      <p class="more"><a data-whole="{{ item.name }}"
+   href="{{ item.url }}"
+   hx-get="{{ item.url }}"
+   hx-target="closest .detail"
+   hx-swap="outerHTML">+<span data-field="cut">{{ item.cut | count }}</span> more character(s)</a></p>
+    {% endif %}
+  </section>
 {% endmacro %}

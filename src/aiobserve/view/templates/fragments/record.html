@@ -2,7 +2,9 @@
    than rendered as markdown — what a reader wants here is the shape Claude Code wrote, field
    by field. #}
 {% import "_parts.html" as parts %}
-<div class="value" data-record-value="{{ row.line_no }}" data-query="{{ citation }}">
+<div class="value"
+     data-record-value="{{ row.line_no }}"
+     data-query="{{ citation }}">
   <p class="numbers">
     <span data-field="type" class="type">{{ row.type }}</span>
     {# Not every record carries one: a summary record has no uuid, and a turn links to the
