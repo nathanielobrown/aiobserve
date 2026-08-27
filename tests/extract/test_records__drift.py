@@ -121,8 +121,13 @@ def test_no_module_outside_the_parser_source_reads_a_documented_field() -> None:
     # reasons, but nothing writes `toolUseResult` except a reader of Claude Code's transcript.
     reached = {module.__file__ for module in PARSER_MODULES}
     fields = {field for field in documented_fields() if not field.islower()}
-    for path in Path(claude_code.__file__).parent.glob("*.py"):
-        if str(path) in reached:
+    # Recursively, because this gate was written after one split and the next one is exactly
+    # what it would otherwise miss: a reader moved into a subpackage is a module the walk above
+    # never reaches. `records/` is the one subpackage today, and it is the models side, which
+    # names every documented field by design.
+    models = Path(importlib.import_module(MODELS).__file__ or "").parent
+    for path in Path(claude_code.__file__).parent.rglob("*.py"):
+        if str(path) in reached or models in path.parents:
             continue
         source = path.read_text()
         read = {field for field in fields if f'"{field}"' in source}
