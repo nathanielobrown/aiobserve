@@ -15,14 +15,14 @@ import pytest
 
 from aiobserve import cli
 from aiobserve.export.duckdb import open_trace_store
-from aiobserve.export.otlp import (
+from aiobserve.export.otlp import TextPolicy
+from aiobserve.export.otlp_delivery import (
     ENDPOINT_ENV,
     GENERIC,
     HEADERS_ENV,
     Backend,
     DeliveryError,
     OtlpExporter,
-    TextPolicy,
     census,
 )
 from aiobserve.extract.store import StoreSource

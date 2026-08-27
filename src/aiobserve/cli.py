@@ -24,15 +24,14 @@ from aiobserve.enrich.cost import Prompt, estimate
 from aiobserve.enrich.enricher import ROUND_ORDER, PlannedItem, enrich, plan
 from aiobserve.enrich.store import EnrichmentStore
 from aiobserve.export.duckdb import DuckDbExporter, open_trace_store
-from aiobserve.export.otlp import (
+from aiobserve.export.otlp import DEFAULT_MAX_CHARS, TextPolicy
+from aiobserve.export.otlp_delivery import (
     BACKEND_NAMES,
-    DEFAULT_MAX_CHARS,
     DEFAULT_RATE,
     ENDPOINT_ENV,
     GENERIC,
     ConfigurationError,
     OtlpExporter,
-    TextPolicy,
     census,
     named_backend,
 )

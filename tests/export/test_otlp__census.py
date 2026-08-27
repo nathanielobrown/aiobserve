@@ -14,13 +14,8 @@ import duckdb
 import pytest
 
 from aiobserve.export.duckdb import open_trace_store
-from aiobserve.export.otlp import (
-    AmbiguousCompactionError,
-    SpanKey,
-    census,
-    session_spans,
-    span_id,
-)
+from aiobserve.export.otlp import SpanKey, session_spans, span_id
+from aiobserve.export.otlp_delivery import AmbiguousCompactionError, census
 from aiobserve.extract.store import StoreSource
 from aiobserve.model import SessionTrace
 from tests.conftest import FORK_ORIGIN, FORK_RUN, MYCELIA, SPINE, SPINE_RUN

@@ -18,18 +18,20 @@ from opentelemetry.proto.trace.v1 import trace_pb2
 
 from aiobserve.export.duckdb import SCHEMA_VERSION, DuckDbExporter, open_trace_store
 from aiobserve.export.otlp import (
-    DEFAULT_BATCH_SPANS,
-    DEFAULT_RATE,
     MAPPER_VERSION,
     METADATA_ONLY,
+    PlacelessSessionError,
+    session_spans,
+)
+from aiobserve.export.otlp_delivery import (
+    DEFAULT_BATCH_SPANS,
+    DEFAULT_RATE,
     Backend,
     ConfigurationError,
     DeliveryError,
     OtlpExporter,
-    PlacelessSessionError,
     RejectedSpansError,
     named_backend,
-    session_spans,
 )
 from aiobserve.extract.store import StoreSource
 from aiobserve.pipeline import refresh
