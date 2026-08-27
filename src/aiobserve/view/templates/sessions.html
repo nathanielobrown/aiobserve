@@ -24,7 +24,7 @@
 {% block main %}
   <h1>Sessions</h1>
   {# One input per filter the list offers, generated from `FILTERS` rather than listed here, so
-     a filter added in `view/app.py` appears without a template edit. Submitting keeps the sort
+     a filter added in `view/listing.py` appears without a template edit. Submitting keeps the sort
      and drops the page: page 4 of a narrower list is a different page. #}
   <form id="filters" method="get" action="/sessions">
     <input type="hidden" name="sort" value="{{ sort }}">
