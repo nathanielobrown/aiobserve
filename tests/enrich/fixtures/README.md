@@ -20,4 +20,4 @@ placeholders. The placeholders are load-bearing: `test_preflight_never_prints_th
 searches the output for them.
 
 Error envelopes other than the logged-out one are **mutations** of `envelope_success.json`, built in
-`tests/enrich/test_client.py` and labelled there as derived.
+`tests/enrich/fake_cli.py` and labelled there as derived.

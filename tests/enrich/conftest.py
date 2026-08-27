@@ -8,15 +8,18 @@ it costs an extraction per fixture, so `fixture_db` builds once per test session
 
 import shutil
 import subprocess
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import pytest
 
+from aiobserve.enrich.client import CLAUDE
 from aiobserve.enrich.prompts import SessionItem
 from aiobserve.enrich.store import Stamp
 from aiobserve.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
 from aiobserve.enrich.validation import Enrichment
 from tests.conftest import build_store, fixture_transcripts
+from tests.enrich.fake_cli import FakeCli, Reply
 
 # The model the fake answers are attributed to, at both doors that write rows.
 MODEL = "claude-haiku-4-5-20251001"
@@ -157,3 +160,23 @@ def refuse_subprocess(request: pytest.FixtureRequest, monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(subprocess, "run", refuse)
     monkeypatch.setattr(subprocess, "Popen", refuse)
+
+
+@pytest.fixture
+def fake(monkeypatch: pytest.MonkeyPatch, refuse_subprocess: None) -> Callable[..., FakeCli]:
+    """Install a `FakeCli` over the guard, so the test's own seam is the one in place."""
+
+    def install(replies: Mapping[str, Reply], *, gate: Callable[[str], None] | None = None):
+        return FakeCli(replies, gate=gate).install(monkeypatch)
+
+    return install
+
+
+@pytest.fixture
+def refuse_binary(monkeypatch: pytest.MonkeyPatch, refuse_subprocess: None) -> None:
+    """A machine with no `claude` on PATH, as `subprocess.run` reports one."""
+
+    def missing(*_args: object, **_kwargs: object) -> None:
+        raise FileNotFoundError(2, "No such file or directory", CLAUDE)
+
+    monkeypatch.setattr(subprocess, "run", missing)
