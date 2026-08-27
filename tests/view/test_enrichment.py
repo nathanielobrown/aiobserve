@@ -27,7 +27,7 @@ from aiobserve.view.format import cut, when
 from aiobserve.view.nodes import LEAD_SEPARATOR
 from aiobserve.view.store import Page
 from tests.conftest import SPINE, SPINE_RUN
-from tests.view.conftest import Planter, fields, inside, one, pages, values
+from tests.view.conftest import Planter, fields, inside, one, pages, reads, values
 from tests.view.scenarios import ROUTES
 
 # Every enrichment table, and the statement that empties one — the second absent-safety case.
@@ -406,6 +406,10 @@ def test_a_tree_row_the_model_named_carries_a_bare_glyph(
     # ...and marked as the model's words, with nothing hanging off the mark.
     assert GLYPH_CLASS in inside(page, "data-tree", f"turn:{turn_id}", "class")
     assert not inside(page, "data-tree", f"turn:{turn_id}", "title")
+    # The mark stands off the title it marks — `✨ what the pass said`, never `✨what` — and the
+    # space that does it is markup no `data-field` can see (`_parts.html`).
+    titled = fields(page, "data-tree", f"turn:{turn_id}")["title"]
+    assert f"{GLYPH} {titled}" in reads(page, "data-tree", f"turn:{turn_id}")
     # The session's own row is built by a third builder and marked the same way, for the pass
     # that named the whole session rather than one of its turns.
     named = enrichment_of(enriched_store, Level.session, SPINE)

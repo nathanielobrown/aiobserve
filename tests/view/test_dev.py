@@ -39,7 +39,7 @@ from tests.view.scenarios import ROUTES
 
 # The one line `base.html` adds under `--dev`, whole: the newline and the indent included, so
 # that a prod page is a dev page with this string taken out and nothing else changed.
-TAG = b'\n  <script src="/static/dev-reload.js" defer></script>'
+TAG = b'\n    <script src="/static/dev-reload.js" defer></script>'
 
 
 @pytest.fixture(scope="module")

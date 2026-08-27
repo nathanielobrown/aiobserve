@@ -333,6 +333,7 @@ class _Element(HTMLParser):
         self.marking = False
         self.marks: list[str] = []
         self.attributes: list[dict[str, str | None]] = []
+        self.text: list[str] = []
 
     @override
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -352,6 +353,8 @@ class _Element(HTMLParser):
 
     @override
     def handle_data(self, data: str) -> None:
+        if self.depth:
+            self.text.append(data)
         if self.field is not None:
             self.fields[self.field] += data
         elif self.marking:
@@ -374,6 +377,17 @@ def _element(html: str, attribute: str, value: str) -> _Element:
 def fields(html: str, attribute: str, value: str) -> dict[str, str]:
     """One element's labelled fields, keyed by `data-field` and stripped of whitespace."""
     return {name: text.strip() for name, text in _element(html, attribute, value).fields.items()}
+
+
+def reads(html: str, attribute: str, value: str) -> str:
+    """What a browser shows of one element, its whitespace collapsed the way a browser does.
+
+    The one reader here that can see a space between two values: `fields` strips each one and
+    `plain` keeps the markup's own indentation, so neither can tell `0 errors` from `0errors`.
+    That is the difference a formatter is free to make of a literal space, and the two the
+    templates hold with an expression are pinned through this (`_parts.html`).
+    """
+    return " ".join("".join(_element(html, attribute, value).text).split())
 
 
 def icons(html: str, attribute: str, value: str) -> list[str]:
