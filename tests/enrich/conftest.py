@@ -35,9 +35,8 @@ TEAMMATE = "10d0349d-0705-4e23-aa64-5b1b97698b2e"
 # turn its origin ran.
 FORK_BYREF = "07a769d7-828c-4edb-b3ce-af51e2712aa3"
 FORK_ORIGIN = "5a88789c-1da7-4f32-b631-40a7e243334b"
-# The two sessions that record no main turn and no agent run: nothing to describe, so
-# enrichment skips them rather than sending an empty prompt.
-COMPACTION = "1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9"
+# The session that records no main turn and no agent run: nothing to describe, so enrichment
+# skips it rather than sending an empty prompt.
 DUP_UUID = "8ee00a94-b01a-4394-b447-b065f74b11af"
 # The session holding a main turn whose last api call stopped `end_turn` — the one recorded
 # value the `Ended:` line exists for, and no other enrichment fixture carries it.

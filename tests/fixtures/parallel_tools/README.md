@@ -21,9 +21,34 @@ while separate records rank the calls by the order Claude Code got round to runn
 | 8 | 505 | the same message's second call, `Agent`, 19s after the first — the queue position a per-record start would report as duration |
 | 9 | 506 | its result |
 
+## The runs the messages address
+
+The excerpt's three `SendMessage` calls carry a `to` naming a run of this session by id: two address
+`a43bfe9fc86734ff1` and `aa52d3fe48cec7f58`, one addresses the second again. That id is a lookup, not
+a label — it resolves to an `agent_runs` row and prints as that run's `agent_type` — so both runs
+have an opening excerpt under `5f4b59fb-.../subagents/`, enough to give the id a row to resolve
+against:
+
+- `agent-a43bfe9fc86734ff1.jsonl`, lines 1 and 4–6 of 194 — `agentType: general-purpose`. Its
+  prompt, one api call on `claude-fable-5` split over two records, and the result answering it
+- `agent-aa52d3fe48cec7f58.jsonl`, lines 1–4 of 154 — `agentType: auditor`. Its prompt, one api call
+  issuing two tools from one record, and both results
+
+Each `.meta.json` came whole but for a redacted `description`. The `toolUseId` each names is the
+`Agent` call that spawned it, and neither of those calls is in this excerpt: the runs are here to be
+addressed, not to be spawned, and the extractor places a run from its `meta.json` either way.
+
 ## Redaction
 
-As `spine/` — see that README — with two tightenings, since this excerpt's calls carry agent
-addressing: every string under a tool's `input` or under `toolUseResult` is `[redacted]` whatever its
-key, so no agent id or run name survives. `gitBranch` and `slug` are pseudonymised. Session ids,
-uuids, timestamps, tool names, tool_use ids and usage numbers are as recorded.
+As `spine/` — see that README — with one tightening and one loosening, since this excerpt's calls
+carry agent addressing. Tightening: every string under `toolUseResult`, and every string under a
+tool's `input` other than `to`, is `[redacted]` whatever its key, so no agent name, prompt or path
+survives. Loosening: `SendMessage`'s `to` is kept as recorded.
+
+**The sensitivity call.** A run id is an opaque token Claude Code minted for one session — no path,
+no prompt, no credential, and meaningless outside a transcript the store already keeps whole. The
+`agent_type` it resolves to is a role word out of the repo's own `.claude/agents/`. `summary`,
+`message` and every other string under `input` stay redacted, because those are prose an agent wrote.
+
+`gitBranch` and `slug` are pseudonymised. Session ids, uuids, timestamps, tool names, tool_use ids
+and usage numbers are as recorded.

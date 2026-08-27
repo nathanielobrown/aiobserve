@@ -16,7 +16,6 @@ from hyphae.enrich.store import EnrichmentStore, Stamp
 from hyphae.export.schema import SchemaVersionError
 from tests.conftest import MODEL_ONLY, MYCELIA, build_store, fixture_transcripts
 from tests.enrich.conftest import (
-    COMPACTION,
     DUP_UUID,
     FORK_BYREF,
     LEGACY_TITLE,
@@ -385,11 +384,11 @@ def test_a_session_with_no_turn_and_no_run_is_never_enriched(fixture_db: Path) -
             ).fetchall()
         }
     # ...then it is not an item, so nothing ever sends it or writes a row for it, while every
-    # other session of the fixture corpus is. `resume_pair/`'s resume is the third: its api
+    # other session of the fixture corpus is. `resume_pair/`'s resume is the second: its api
     # calls all sit under a turn its ancestor ran, so it opened none of its own.
-    assert empty == {COMPACTION, DUP_UUID, RESUME}
+    assert empty == {DUP_UUID, RESUME}
     assert described & empty == set()
-    assert len(described) == 8
+    assert len(described) == 9
 
 
 def test_an_api_call_carries_the_stop_reason_as_recorded(fixture_db: Path) -> None:

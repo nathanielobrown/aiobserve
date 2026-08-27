@@ -29,20 +29,20 @@ from tests.analyze.conftest import (
 from tests.conftest import FORK_ORIGIN, MYCELIA, SPINE, SPINE_LEAF, SPINE_RUN
 
 # How the recorded corpus classifies under the manifest's own thresholds, measured on
-# 2026-08-15 by building the fixture store: four of the seven shapes, over all 15 mycelia
+# 2026-08-27 by building the fixture store: four of the seven shapes, over all 15 mycelia
 # sessions. The rebindings below are read against this.
 RECORDED_SHAPES = {
     "conversational": 7,
-    "no-work": 3,
-    "read-only-analysis": 3,
+    "no-work": 2,
+    "read-only-analysis": 4,
     "skill-orchestrated": 2,
 }
 
-# The three sessions `corpus_rollups` credits with no turns and no agent runs, and what makes
-# them worth a shape of their own: all three compacted, so they are sessions that did work for
-# a thread elsewhere rather than sessions where nothing happened.
-NO_WORK_SESSIONS = 3
-NO_WORK_COMPACTIONS = 3
+# The two sessions `corpus_rollups` credits with no turns and no agent runs, and what makes
+# them worth a shape of their own: one compacted, so they are sessions that did work for a
+# thread elsewhere rather than sessions where nothing happened.
+NO_WORK_SESSIONS = 2
+NO_WORK_COMPACTIONS = 1
 
 # The session the editing plant lands on, and what the plant is worth: `FORK_ORIGIN` holds 8
 # recorded `Read` calls, of which the corpus views keep 4 — its fork replays the other half
@@ -61,6 +61,7 @@ RECORDED_SKILLS = {
     "pr-and-document": (4, 1),
     "grill-me": (2, 2),
     "deep-research": (2, 1),
+    "manager": (1, 1),
     "night-run": (1, 1),
 }
 # The skills the plant invokes: one the corpus already attributes calls to, so the two halves
@@ -123,7 +124,7 @@ def test_a_session_that_did_no_work_is_shaped_before_any_threshold_is_read(
     The ladder is ordered and first match wins, which only matters at the top: `no-work` is a
     statement about the session, and the shapes under it are statements about a threshold.
     """
-    # The three no-work sessions are not empty recordings — they compacted, and their spend is
+    # The no-work sessions are not empty recordings — one compacted, and their spend is
     # counted — so a ladder that read the metrics first would have something to say about them.
     (row,) = [row for row in rows_of(run_query, "session_shapes") if row["shape"] == "no-work"]
     assert int(row["sessions"]) == NO_WORK_SESSIONS
@@ -131,21 +132,21 @@ def test_a_session_that_did_no_work_is_shaped_before_any_threshold_is_read(
     assert float(row["cost_usd"]) > 0
     # With `$skill_share_pct` bound at 0 every session that made an api call while a skill was
     # loaded matches the arm below, so the whole corpus would be skill-orchestrated if the
-    # first arm did not win. The three stay where they are.
+    # first arm did not win. The two stay where they are.
     assert shapes(run_query, {"skill_share_pct": 0})["no-work"] == NO_WORK_SESSIONS
 
 
 @pytest.mark.parametrize(
     ("binding", "moved"),
     [
-        # Two of the three read-only-analysis sessions ran 2 agent runs each, so lowering the
-        # bar for delegation takes them and leaves the third...
+        # Three of the four read-only-analysis sessions ran 2 agent runs each, so lowering
+        # the bar for delegation takes them and leaves the fourth...
         (
             {"delegating_runs": 2},
             {
                 "conversational": 7,
-                "no-work": 3,
-                "delegation-heavy": 2,
+                "no-work": 2,
+                "delegation-heavy": 3,
                 "skill-orchestrated": 2,
                 "read-only-analysis": 1,
             },
@@ -154,15 +155,15 @@ def test_a_session_that_did_no_work_is_shaped_before_any_threshold_is_read(
         # through to whatever the arms below say they are...
         (
             {"skill_share_pct": 101},
-            {"conversational": 8, "read-only-analysis": 4, "no-work": 3},
+            {"conversational": 8, "read-only-analysis": 5, "no-work": 2},
         ),
         # ...and raising what counts as busy moves sessions the other way, out of analysis and
         # into conversation, because the same threshold decides both arms.
         (
             {"busy_tool_calls": 8},
             {
-                "conversational": 9,
-                "no-work": 3,
+                "conversational": 10,
+                "no-work": 2,
                 "skill-orchestrated": 2,
                 "read-only-analysis": 1,
             },
@@ -229,9 +230,15 @@ def test_an_agent_types_numbers_are_the_runs_own_thread_not_its_subtree(
     definition's per-run average silently doubles-counts the work its children did.
     """
     rows = {row["agent_type"]: row for row in rows_of(run_query, "agent_types")}
-    # Every recorded agent type ran once, so `runs` cannot hide a fan-out...
+    # Every recorded run is counted once, under the definition that ran it, so `runs` cannot
+    # hide a fan-out...
     assert len(rows) == AGENT_TYPES
-    assert {int(row["runs"]) for row in rows.values()} == {1}
+    assert sum(int(row["runs"]) for row in rows.values()) == scalar(
+        corpus_db,
+        """SELECT count(*) FROM corpus_agent_runs a JOIN sessions s ON s.id = a.session_id
+           WHERE s.project_dir = ?""",
+        MYCELIA,
+    )
     # ...and the parent's tool calls are its own thread's, with the child's counted only under
     # the child. Read from the store by source, which is what the query claims to do.
     parent, child = (
@@ -362,15 +369,15 @@ def test_tool_failures_reports_each_error_beside_the_calls_it_is_a_rate_over(
         MYCELIA,
     )
     # ...and the two recorded failures come back as rates over very different denominators,
-    # which is the pair this query exists to keep together: one `Agent` call in nine failed,
-    # in one of the four sessions that called it, against one server-side `advisor` call in
+    # which is the pair this query exists to keep together: one `Agent` call in ten failed,
+    # in one of the five sessions that called it, against one server-side `advisor` call in
     # three, in the only session that called it at all.
     failing = {row["tool"]: row for row in rows if int(row["errors"]) > 0}
     assert {
         tool: (int(row["errors"]), int(row["calls"]), float(row["error_rate"]))
         for tool, row in failing.items()
-    } == {"Agent": (1, 9, 0.1111), "advisor": (1, 3, 0.3333)}
-    assert (int(failing["Agent"]["sessions"]), int(failing["Agent"]["erring_sessions"])) == (4, 1)
+    } == {"Agent": (1, 10, 0.1), "advisor": (1, 3, 0.3333)}
+    assert (int(failing["Agent"]["sessions"]), int(failing["Agent"]["erring_sessions"])) == (5, 1)
 
 
 @pytest.fixture(scope="session")

@@ -31,8 +31,8 @@ from tests.conftest import (
 # fourth item (`tests/conftest.py:planted_enrichment`) — so the two fetches behind a described
 # pane need an item that has both, or the sweep below reads a 404 as a route that broke. Found
 # by asking the described store for a row whose `friction` is not null.
-DESCRIBED_SESSION = ANCESTOR
-DESCRIBED_RUN = "af6473ae437c9608d"
+DESCRIBED_SESSION = FORK_ORIGIN
+DESCRIBED_RUN = SPINE_RUN
 DESCRIBED_TURN = "5b848af7-f86e-4950-b474-cd98125fad24"
 
 # One real URL per route the app exposes, keyed by the route's own path template. Two tiers
