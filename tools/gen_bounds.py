@@ -17,7 +17,7 @@ from typing import NamedTuple
 
 from aiobserve.analyze import queries
 from aiobserve.view import bounds, nodes
-from aiobserve.view.app import KNOB_DEFAULTS
+from aiobserve.view.knobs import KNOB_DEFAULTS
 from tools import text
 
 # Where a cited name is looked up. `bounds.py` names every page size beside its ceiling and

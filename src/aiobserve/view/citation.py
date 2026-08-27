@@ -1,0 +1,35 @@
+"""How a page says what it ran: the line a reader re-runs, and the link to the query page.
+
+Every footer in the viewer carries one. The page composes its bindings, `cited` writes them
+both ways, and `_parts.html:footer` prints them — so what the comment says was bound and what
+the link binds are one thing (`docs/viewer.md`).
+"""
+
+from collections.abc import Mapping
+from typing import NamedTuple
+from urllib.parse import urlencode
+
+from aiobserve.analyze import queries
+from aiobserve.analyze.queries import ParamValue
+
+# Where the SQL behind a page is read. Every citation in a footer links here, so the path is
+# written once and the route below takes the query's name from it.
+QUERY_URL = "/query"
+
+
+class Cited(NamedTuple):
+    """One query a page ran, as the footer shows it: the line to re-run, and where to read it."""
+
+    line: str
+    url: str
+
+
+def cited(name: str, bindings: Mapping[str, ParamValue]) -> Cited:
+    """What produced a page, both ways a reader follows it.
+
+    The line is what a report quotes and a shell re-runs; the URL is the same query as a page,
+    bindings and all. Both spell a binding the one way `queries.shown` does, so the link a
+    footer carries and the comment beside it cannot disagree about what was bound.
+    """
+    written = {key: queries.shown(value) for key, value in bindings.items()}
+    return Cited(queries.citation(name, bindings), f"{QUERY_URL}/{name}?{urlencode(written)}")

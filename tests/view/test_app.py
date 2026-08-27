@@ -16,16 +16,17 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import duckdb
+import jinja2
 import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from aiobserve.analyze import manifest, queries
 from aiobserve.view import app as view_app
-from aiobserve.view import bounds, nodes
+from aiobserve.view import bounds, nodes, templating
 from aiobserve.view import columns as view_columns
 from aiobserve.view import format as fmt
-from aiobserve.view.app import CSP, TEMPLATES, build_app
+from aiobserve.view.app import CSP, build_app
 from aiobserve.view.format import ABSENT
 from aiobserve.view.labels import LABELS
 from aiobserve.view.listing import (
@@ -37,6 +38,7 @@ from aiobserve.view.listing import (
     LIST_KEYS,
     SORTS,
 )
+from aiobserve.view.templating import TEMPLATES
 from tests.conftest import (
     ANCESTOR,
     BASH_TOOL,
@@ -732,14 +734,19 @@ def test_every_fact_a_header_asks_for_has_a_label() -> None:
     to any of them lands in this check. The panes are a source because a previewed value is
     labelled by the name the route passed it under, which no template holds; the column table
     is one because a children log heads itself from a variable, which no regex over a template
-    can see.
+    can see. Every module of the view package is read rather than `app.py` alone, so a pane
+    that moves to a module of its own keeps its previews in the check.
     """
     asked = {
         name
         for path in TEMPLATES.rglob("*.html")
         for name in re.findall(r"(?:parts\.fact|label)\('([a-z_]+)'", path.read_text())
     }
-    previewed = set(re.findall(r'detail_of\(\s*"([a-z_]+)"', Path(view_app.__file__).read_text()))
+    previewed = {
+        name
+        for path in Path(view_app.__file__).parent.glob("*.py")
+        for name in re.findall(r'detail_of\(\s*"([a-z_]+)"', path.read_text())
+    }
     headed = {column.field for shape in view_columns.COLUMNS.values() for column in shape}
     assert asked | previewed | headed == set(LABELS)
 
@@ -769,15 +776,15 @@ def test_every_filter_the_app_registers_is_one_a_template_names() -> None:
 
     The formatters themselves are Python one page or another calls directly; what this closes
     is the Jinja registry, where a filter nothing names is a name in the environment of every
-    render for no reader. Read off the app's own registration block and the templates rather
-    than listed here, so a filter added to either lands in this check.
+    render for no reader. Read off a built environment and the templates rather than listed
+    here — off the environment and not the source that writes it, so a filter registered
+    anywhere in the package lands in this check.
     """
-    source = Path(view_app.__file__).read_text()
-    block = source.partition("templates.env.filters |= {")[2].partition("}")[0]
-    # Both halves read a Python identifier, not a word: a filter named `to_json` or `md2` has
-    # to reach both sides of this comparison or the leaf passes by never seeing it.
-    registered = set(re.findall(r'"(\w+)":', block))
-    assert len(registered) > 5, "the registration block is not where this expects it"
+    # Against stock Jinja, so what is left is our own: `Jinja2Templates` adds no filter of its
+    # own over an autoescaping environment.
+    stock = set(jinja2.Environment(autoescape=True).filters)
+    registered = set(templating.environment(dev=False).env.filters) - stock
+    assert len(registered) > 5, "the built environment holds none of ours, so this sees nothing"
     named = {
         name
         for path in TEMPLATES.rglob("*.html")

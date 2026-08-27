@@ -27,8 +27,10 @@ from aiobserve.analyze.queries import VIEW_PREFIX, ParamValue
 from aiobserve.enrich.taxonomy import Category, Outcome
 from aiobserve.extract.pricing import CONTEXT_WINDOWS
 from aiobserve.view import bounds, nodes
-from aiobserve.view.app import QUERY_URL, build_app, knobs
+from aiobserve.view.app import build_app
+from aiobserve.view.citation import QUERY_URL
 from aiobserve.view.format import ELLIPSIS
+from aiobserve.view.knobs import knobs
 from aiobserve.view.listing import SHOWN
 from aiobserve.view.store import TURN_CURSOR, Fragment, Page, Value, cursorless_rows
 from tests.conftest import (
