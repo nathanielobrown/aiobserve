@@ -311,7 +311,7 @@ class Node:
         strings at this width or wider — a tool header's input comes back at a preview's,
         because the same pane previews it — so a title is cut here and marked where the query
         left more behind. A pane names its node from the header it read rather than from the
-        tree row it stands on (`view/app.py:TITLED`) — the tree cuts at a row's width, which
+        tree row it stands on (`view/browse.py:TITLED`) — the tree cuts at a row's width, which
         would head a turn with a third of the prompt it is about.
         """
         return self._at(queries.HEADER_CHARS, self.lead, self.words)

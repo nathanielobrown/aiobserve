@@ -159,7 +159,7 @@ DEFINITIONS = {
 }
 
 # The same set as one script a reader can paste, which is what the viewer prints above a
-# statement that calls any of them (`view/app.py:query_page`). Semicolons and the install
+# statement that calls any of them (`view/pages.py:query_page`). Semicolons and the install
 # order are the whole difference: what a consumer does on your behalf, written out.
 SETUP = ";\n".join(definition.strip() for definition in DEFINITIONS.values()) + ";"
 
