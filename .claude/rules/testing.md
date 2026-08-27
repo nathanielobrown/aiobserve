@@ -8,7 +8,9 @@ paths:
 
 Test files mirror the package layout: tests for `src/aiobserve/extract/claude_code.py` live in `tests/extract/test_claude_code.py`. Keep test structure and names consistent with the code as you refactor.
 
-Split a long file by **behavior or topic**, not by private sub-module — we test the public interface, so topics track user-facing feature areas. Name the pieces `test_<unit>__<topic>.py`. Shared scaffolding goes in `conftest.py`, unless a process outside pytest imports it too: the gallery reads the viewer's scenario list, so that list is a plain module (`tests/view/scenarios.py`).
+Split a long file by **behavior or topic**, not by private sub-module — we test the public interface, so topics track user-facing feature areas. Name the pieces `test_<unit>__<topic>.py`.
+
+Fixtures go in `conftest.py` — pytest resolves one by name, so a fixture imported from anywhere else reads as an unused import and ruff deletes it. Everything else a split leaves shared — measurements, readers, a fake several files drive — may be a plain module beside them, named for what it holds (`tests/view/budgets.py`, `tests/enrich/fake_cli.py`). Say in its docstring why it is not the conftest. Two reasons recur: a process outside pytest imports it too (the gallery reads `tests/view/scenarios.py`), or the readers of one subject belong in one place a reader can open.
 
 # Fixtures: use real sessions
 
