@@ -56,7 +56,8 @@ ERROR_ICON = "⚠"
 # shape because the columns are the shape's own: what tells two turns apart is not what tells
 # two tool calls apart. Every row fills every column of its shape — a log that skipped a cell
 # where the store held nothing would slide every later value under the wrong heading — and
-# `tests/view/test_node.py` reads head and rows against this table.
+# `tests/view/test_node__logs.py` reads a served head against this table, and
+# `tests/view/test_node__rows.py` the cells under it.
 #
 # One column of each shape is `what`: the wide one carrying the node's own words and the link
 # to its page. The last is the control that opens the child's body in place.
