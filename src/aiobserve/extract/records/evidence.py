@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, ConfigDict
 
-from aiobserve.extract.claude_code import ContentBlock
+from aiobserve.extract.record_types import ContentBlock
 
 # The fixtures the claims below cite, spelled the way a reader would type them.
 COMPACTION = "tests/fixtures/compaction/"

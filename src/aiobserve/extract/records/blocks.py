@@ -1,14 +1,14 @@
 """The blocks a `message.content` list holds, and the messages that hold them.
 
 A block model's docstring is the meaning its own table row prints, and `BLOCK` names the
-registered kind it describes, which is what ties this file to `claude_code.py`'s registry.
+registered kind it describes, which is what ties this file to `record_types.py`'s registry.
 """
 
 from typing import Annotated, Any, ClassVar
 
 from pydantic import Field
 
-from aiobserve.extract.claude_code import ContentBlock
+from aiobserve.extract.record_types import ContentBlock
 from aiobserve.extract.records.evidence import (
     OFFLOAD,
     PARALLEL_TOOLS,

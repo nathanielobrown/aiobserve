@@ -8,7 +8,7 @@ from typing import Annotated, Any, ClassVar
 
 from pydantic import Field
 
-from aiobserve.extract.claude_code import (
+from aiobserve.extract.record_types import (
     ArchiveRecordType,
     ContentBlock,
     RecordType,
@@ -519,7 +519,7 @@ RECORD_MODELS: tuple[type[Record], ...] = (
 
 
 # Registered shapes no model describes, each with the reason. The drift tier holds this set to
-# the registries in `claude_code.py`, so a new record type lands here or gets a model.
+# the registries in `record_types.py`, so a new record type lands here or gets a model.
 UNMODELLED: dict[str, str] = {
     **{
         kind.value: "archived verbatim and read by nothing, so there is no field to describe"
@@ -544,8 +544,8 @@ UNMODELLED: dict[str, str] = {
     ContentBlock.IMAGE.value: "no fixture holds one, so there is nothing to cite",
 }
 
-# Documented fields the parser never reads. Every other documented name appears in
-# `claude_code.py`, which the drift tier checks.
+# Documented fields the parser never reads. Every other documented name appears in the
+# parser's own source, which the drift tier checks.
 OBSERVED_UNREAD: dict[str, str] = {
     "sessionId": "the extractor takes the session id from the file name",
     "originalModel": "the model_consent_fallback record is archived, not parsed",

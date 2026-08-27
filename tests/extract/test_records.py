@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from aiobserve.extract.claude_code import ContentBlock
+from aiobserve.extract.record_types import ContentBlock
 from aiobserve.extract.records import blocks, evidence, schema, shapes
 from tests.conftest import FIXTURES
 

@@ -10,7 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from aiobserve.extract.claude_code import ClaudeCodeExtractor, TranscriptSchemaError
+from aiobserve.extract.claude_code import ClaudeCodeExtractor
+from aiobserve.extract.record_types import TranscriptSchemaError
 from aiobserve.model import MAIN_SOURCE, OffloadFile, SessionTrace
 from tests.conftest import FIXTURES, PlantedFactory, SourceFactory
 from tests.extract.test_claude_code import SPINE

@@ -15,7 +15,7 @@ from typing import Annotated, Any, ClassVar
 import pytest
 from pydantic import Field
 
-from aiobserve.extract.claude_code import RecordType
+from aiobserve.extract.record_types import RecordType
 from aiobserve.extract.records import schema, shapes
 from tests.tools.conftest import cells
 from tools import gen_schema
