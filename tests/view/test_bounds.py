@@ -248,9 +248,10 @@ MEASURED_LOG_ROW_MARKUP = 1_800
 # character past it. Three is the widest row there is: an api call's row is the model that
 # answered, the head of what it said, and the tools it went on to call; a tool row is the
 # tool's name, the head of what it was asked, and the command that head describes. A turn row
-# prints one and a run two. Listed rather than counted off `nodes.COLUMNS`, because most of
-# those columns are a number or a stamp; what keeps the number honest is the leaf at the bottom
-# of this file, which plants every string a row can print past its cut and weighs the row.
+# prints one and a run two. Listed rather than counted off `view/columns.py:COLUMNS`, because
+# most of those columns are a number or a stamp; what keeps the number honest is the leaf at
+# the bottom of this file, which plants every string a row can print past its cut and weighs
+# the row.
 LOG_ROW_STRINGS = 3
 # What the control under a children log costs, with both of its links rendered: the nav around
 # them, the place between them, and two copies of the node's own URL carrying the page's knobs

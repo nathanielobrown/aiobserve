@@ -23,6 +23,7 @@ from fastapi.testclient import TestClient
 from aiobserve.analyze import queries
 from aiobserve.view import app as view_app
 from aiobserve.view import bounds, nodes
+from aiobserve.view import columns as view_columns
 from aiobserve.view import format as fmt
 from aiobserve.view.app import CSP, TEMPLATES, build_app
 from aiobserve.view.format import ABSENT
@@ -739,7 +740,7 @@ def test_every_fact_a_header_asks_for_has_a_label() -> None:
         for name in re.findall(r"(?:parts\.fact|label)\('([a-z_]+)'", path.read_text())
     }
     previewed = set(re.findall(r'detail_of\(\s*"([a-z_]+)"', Path(view_app.__file__).read_text()))
-    headed = {column.field for columns in nodes.COLUMNS.values() for column in columns}
+    headed = {column.field for shape in view_columns.COLUMNS.values() for column in shape}
     assert asked | previewed | headed == set(LABELS)
 
 
@@ -754,8 +755,8 @@ def test_a_column_that_prints_a_length_says_so_in_its_heading() -> None:
     """
     lengths = {
         column.field
-        for columns in nodes.COLUMNS.values()
-        for column in columns
+        for shape in view_columns.COLUMNS.values()
+        for column in shape
         if column.field.endswith("_chars")
     }
     assert lengths, "the log heads no length column, so this contract has no subject"

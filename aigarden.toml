@@ -37,7 +37,6 @@ reflow = "never-wrap"
 "src/aiobserve/export/otlp.py" = ["file-length"]
 "src/aiobserve/extract/claude_code.py" = ["file-length"]
 "src/aiobserve/view/app.py" = ["file-length"]
-"src/aiobserve/view/nodes.py" = ["file-length"]
 "tests/enrich/test_client.py" = ["file-length"]
 "tests/enrich/test_enricher.py" = ["file-length"]
 "tests/enrich/test_prompts.py" = ["file-length"]
