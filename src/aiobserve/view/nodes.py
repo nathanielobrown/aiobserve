@@ -561,7 +561,7 @@ def session_node(header: Row, described: Descriptions) -> Node:
 
 
 def turn_node(session_id: str, source: str, row: Row, whole: float, described: str | None) -> Node:
-    """One turn as a node, from a tree row, a digest row, or the turn's own header."""
+    """One turn as a node, from a tree row, a timeline row, or the turn's own header."""
     cost = row["cost_usd"]
     return Node(
         kind=Kind.TURN,
@@ -681,7 +681,7 @@ def compaction_node(session_id: str, source: str, row: Row) -> Node:
 
 
 def unattributed_node(session_id: str, source: str, row: Row, whole: float) -> Node:
-    """One thread's calls that answer no turn, as the digest's own cursorless row reads them."""
+    """One thread's calls that answer no turn, as the timeline's own cursorless row reads them."""
     cost = row["cost_usd"]
     return Node(
         kind=Kind.UNATTRIBUTED,

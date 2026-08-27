@@ -25,7 +25,7 @@ tool_errors:
      report exists to say what this agent definition did well or badly; the session around it
      is the session report's job.
 
-     Numbers come from `aiobserve query run_digest --param session_id=<id> --param
+     Numbers come from `aiobserve query run_timeline --param session_id=<id> --param
      source=<agent_id>`. Delete this block when you fill the template. -->
 
 ## Narrative

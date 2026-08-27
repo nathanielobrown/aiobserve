@@ -118,9 +118,9 @@ LOG_CHARS = queries.LOG_CHARS
 # so `view/tree.py:ancestry` raises instead of building it. The response's bound is arithmetic
 # over this and `KIN`, which is what makes it a bound rather than a preference.
 DEPTH = 16
-# The turn rows a page renders that no cursor reaches. `session_digest` gives one — the calls
+# The turn rows a page renders that no cursor reaches. `session_timeline` gives one — the calls
 # that answer no turn are a single group — and the tree reads it as the unattributed bucket's
-# row. Bound because a level renders it: a digest answering with more than one raises rather
+# row. Bound because a level renders it: a timeline answering with more than one raises rather
 # than serving a row nothing counted.
 CURSORLESS_TURNS = 1
 # How much indentation a JSON value may gain before it is served as stored instead

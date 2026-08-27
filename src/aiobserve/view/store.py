@@ -28,7 +28,7 @@ _LOCKED = "Conflicting lock is held"
 
 Row = dict[str, Any]
 
-# The column both turn digests are ordered by: unique and ascending within one thread, and
+# The column both turn timelines are ordered by: unique and ascending within one thread, and
 # NULL on the row standing for the calls that answer no turn, which rides no page of them.
 TURN_CURSOR = "turn_index"
 
@@ -60,9 +60,9 @@ class Page(StrEnum):
     TREE_CALLS = "view_tree_calls"
     TREE_TOOLS = "view_tree_tools"
     # The two turn timelines, shared with `aiobserve query` — the same rows a report cites.
-    # One query per thread kind: `session_digest` reads `main`, `run_digest` a bound source.
-    TIMELINE = "session_digest"
-    RUN_TIMELINE = "run_digest"
+    # One query per thread kind: `session_timeline` reads `main`, `run_timeline` a bound source.
+    TIMELINE = "session_timeline"
+    RUN_TIMELINE = "run_timeline"
     RUNS = "view_runs"
     COMPACTIONS = "view_compactions"
     # What an enrichment pass said about the session, its turns and its runs. Absent from a
@@ -247,7 +247,7 @@ def window(
 def thread_outline(
     connection: duckdb.DuckDBPyConnection, page: Library, cursor: str, **bindings: ParamValue
 ) -> list[Row]:
-    """A whole thread in outline — a digest's rows, id and cursor and clock only.
+    """A whole thread in outline — a timeline's rows, id and cursor and clock only.
 
     Two questions need the thread and not the page: which runs the session could place, and
     which page each compaction falls on. Both are cheap here because the projection is three
@@ -269,7 +269,7 @@ def cursorless_rows(
 ) -> list[Row]:
     """The rows a paged query gives no cursor value, which no window can reach.
 
-    The digests' unattributed row is the case: it stands for the calls that answer no turn,
+    The timelines' unattributed row is the case: it stands for the calls that answer no turn,
     so it has no turn index and rides the last page instead. `limit` is what the page that
     renders them budgeted; a query answering with more raises, because these rows arrive
     outside the size the reader asked for and a page that serves them anyway is a page whose

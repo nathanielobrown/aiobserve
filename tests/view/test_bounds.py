@@ -67,7 +67,7 @@ from tests.view.scenarios import ROUTES
 # it, and a model name is a string an api request carried.
 # `prompt` is whatever was typed or pasted at a turn, and `command_args` whatever followed a
 # slash command — the canonical store holds one of 7,947 characters. Both reach a page through
-# a turn's heading, and both are cut by the digests that select them.
+# a turn's heading, and both are cut by the timelines that select them.
 FAT = (
     "raw",
     "text",
@@ -715,7 +715,7 @@ def test_every_viewer_query_is_declared_as_a_page_a_fragment_or_a_value() -> Non
     declared = set(Page) | set(Fragment) | set(Value)
     # Every query the viewer owns is scanned by one of the leaves above...
     assert {name for name in QUERIES if name.startswith(VIEW_PREFIX)} <= declared
-    # ...and every name declared is a query that ships, digests shared with the runner too.
+    # ...and every name declared is a query that ships, timelines shared with the runner too.
     assert declared <= set(QUERIES)
 
 
@@ -1127,7 +1127,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
             [item, over + 1],
         ),
         # What a turn's tree row, log row and pane read. All three go in past every cut that
-        # touches them: the digest cuts each to a log line's width, and the prompt is the
+        # touches them: the timeline cuts each to a log line's width, and the prompt is the
         # pane's one preview as well as the row's title, which is the wider of the two.
         ("UPDATE turns SET prompt = ?, command_name = ?, command_args = ?", [fat] * 3),
         ("UPDATE agent_runs SET agent_type = ?, model = ?, description = ?", [fat, fat, fat]),
@@ -1622,17 +1622,17 @@ def test_an_errors_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     assert row_bytes <= worst_error_row_bytes()
 
 
-def test_the_digest_rows_no_window_reaches_are_capped_at_what_a_page_budgets(
+def test_the_timeline_rows_no_window_reaches_are_capped_at_what_a_page_budgets(
     store: duckdb.DuckDBPyConnection,
 ) -> None:
     """The rows that ride the last page outside its window are bounded, not counted afterwards.
 
-    A digest row with no turn index cannot be windowed, so it arrives on the last page
+    A timeline row with no turn index cannot be windowed, so it arrives on the last page
     whatever `turns` a reader asked for — which is why the arithmetic above budgets
     `bounds.CURSORLESS_TURNS` turn rows on top of the size the route admits. `RESUME` answers turns
     that live in the session it resumed, so every one of its api calls is unattributed and
-    its digest carries exactly this row. The cap is bound down to zero to reach a boundary no
-    recorded digest crosses: more of these rows than the ceiling budgets raises rather than
+    its timeline carries exactly this row. The cap is bound down to zero to reach a boundary no
+    recorded timeline crosses: more of these rows than the ceiling budgets raises rather than
     riding a page nothing counted them on.
     """
     bound: dict[str, ParamValue] = {"session_id": RESUME, "log_chars": queries.LOG_CHARS}

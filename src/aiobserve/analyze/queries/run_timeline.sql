@@ -1,18 +1,15 @@
--- One session's main thread, a row per turn: what was asked, and what it cost to answer.
--- Reads the `live_*` family, so a resumed session shows the work it actually ran (the
--- deduplicated view is for counting across sessions, not for reading one).
--- The last row is the api calls that sit under no turn — a resume's calls answer turns that
--- live in the session it resumed. Without that row the digest reports $0 against a front
--- matter quoting the real cost. `run_digest` is this query at an agent source.
+-- One agent run's turns: `session_timeline` at a bound source instead of the main thread.
+-- The source is the run's agent id, so a run's timeline holds that run's own rows — the runs
+-- it spawned have their own sources, and their own timelines.
 WITH turn AS (
-    SELECT * FROM live_turns WHERE session_id = $session_id AND source = 'main'
+    SELECT * FROM live_turns WHERE session_id = $session_id AND source = $source
 ), call AS (
-    SELECT * FROM live_api_calls WHERE session_id = $session_id AND source = 'main'
+    SELECT * FROM live_api_calls WHERE session_id = $session_id AND source = $source
 ), tool AS (
     SELECT c.turn_id, count(*) AS tool_calls, count(*) FILTER (tc.is_error) AS tool_errors
     FROM live_tool_calls tc
     JOIN call c ON c.id = tc.api_call_id
-    WHERE tc.session_id = $session_id AND tc.source = 'main'
+    WHERE tc.session_id = $session_id AND tc.source = $source
     GROUP BY c.turn_id
 ), spend AS (
     SELECT

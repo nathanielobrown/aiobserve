@@ -1,6 +1,6 @@
 -- One agent run's header: what it was asked to do, where it sits, and what it spent.
 -- A run's id is also the `source` its rows carry, so its counts are the session's rows at
--- that source — the same rule `run_digest` reads by.
+-- that source — the same rule `run_timeline` reads by.
 -- Every column is the run's own row or a count of its rows. Where a run hangs in the tree is
 -- `view_runs`' answer, read once for the whole session; resolving it again here would give
 -- the two a way to disagree.

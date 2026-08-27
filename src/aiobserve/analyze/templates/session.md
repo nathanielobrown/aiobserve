@@ -69,7 +69,7 @@ commands:
 
 ## Context spent
 
-<!-- Roughly what you loaded to write this report: digest calls, records_slice ranges and
+<!-- Roughly what you loaded to write this report: timeline calls, records_slice ranges and
      caps, anything that dominated. One or two lines; the process review reads it. -->
 
 -

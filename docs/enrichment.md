@@ -22,7 +22,7 @@ Query these rows through `enriched_turns`, `enriched_agent_runs`, and `enriched_
 The query library provides three report-ready questions, which `aiobserve query` can run:
 
 - `enrichment_coverage` reports coverage at each level by category, outcome, model, and prompt version; the row with no category is the gap
-- `enrichment_digest` returns one session's descriptions under keys that align with `session_digest`, `run_digest`, and `view_runs`
+- `enrichment_digest` returns one session's descriptions under keys that align with `session_timeline`, `run_timeline`, and `view_runs`
 - `select_enrichments` draws a seeded number of described items from each category for checks against their source records
 
 These queries read tables created by an enrichment pass. If no pass has touched the store, they fail and explain that the tables are missing.

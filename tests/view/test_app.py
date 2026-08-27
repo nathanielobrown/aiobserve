@@ -828,8 +828,8 @@ def test_a_node_page_cites_every_query_it_ran(client: TestClient) -> None:
             f" chip_chars={queries.NAV_CHARS}"
         ),
         # The whole thread in outline, which is what places the runs: no window, so no paging.
-        "session_digest": (
-            f"-- queries/session_digest.sql session_id={SPINE} log_chars={queries.LOG_CHARS}"
+        "session_timeline": (
+            f"-- queries/session_timeline.sql session_id={SPINE} log_chars={queries.LOG_CHARS}"
         ),
     }
 
