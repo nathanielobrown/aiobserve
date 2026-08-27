@@ -53,7 +53,7 @@ A main turn that ran a slash command includes the command's printed output, capp
 
 The prompt names all three output states: recorded output, "the command printed nothing," and "not recorded." Every recorded `/clear` falls into the second state. Claude Code stores slash-command output in either of two record shapes documented in the [schema](schema.md). If the enricher finds a third shape, it stops rather than treating the answer as empty.
 
-`sweep_zombies` checks session rows against `describable_sessions`. The next run removes enrichments written before this gate and reports how many it removed. The gate does not apply to turns, so a turn that made no API call keeps its row.
+`sweep_zombies` checks session rows against `describable_sessions`. The next pass removes enrichments written before this gate and reports how many it removed. The gate does not apply to turns, so a turn that made no API call keeps its row.
 
 ## Four values decide whether a row is stale
 
@@ -68,7 +68,7 @@ The hash covers rendered content, not extraction metadata. Re-extracting unchang
 
 For this reason, a dry run reports an upper bound. It quotes every stale item and every item that embeds one; it cannot know which descriptions will change before the model answers.
 
-There is no resume file. A failed item writes no row and remains stale for the next run. An item with a failed child also writes nothing. Otherwise, a description built around a missing child could be hashed as current and no later run could repair it.
+There is no resume file. A failed item writes no row and remains stale for the next pass. An item with a failed child also writes nothing. Otherwise, a description built around a missing child could be hashed as current and no later pass could repair it.
 
 ## Each round protects paid answers
 
@@ -94,7 +94,7 @@ Within a round, a thread pool runs one `claude -p` process per item, up to `--co
 
 The subprocess gets a constructed environment rather than inheriting the caller's. It contains only `HOME`, `PATH`, `USER`, and `MAX_THINKING_TOKENS=0`. `USER` lets the process find the OAuth token in the keychain; without it, every call appears logged out. Because `ANTHROPIC_API_KEY` and `ANTHROPIC_BASE_URL` never reach the child, they cannot divert work from the subscription. Preflight checks auth under the same environment used by paid calls.
 
-The first item runs alone as a canary and is the only call that may crash the run immediately. Every later call spends the subscription. `submit` returns all results before the enricher writes the round, because an exception during fan-out would otherwise discard answers already paid for.
+The first item runs alone as a canary and is the only call that may crash the pass immediately. Every later call spends the subscription. `submit` returns all results before the enricher writes the round, because an exception during fan-out would otherwise discard answers already paid for.
 
 Five consecutive failures trip the breaker. The enricher starts nothing else, marks the unsent items `Failed(aborted)`, writes completed answers, and then crashes with both kinds of failure in its report.
 

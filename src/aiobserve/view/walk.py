@@ -9,7 +9,7 @@ they did not ask to be.
 
 What the walk reads is the store, never the rendered rows. A `?kin=` cap cuts what is drawn
 beside the pane; it cannot cut what comes next, because a reading order that shortened with
-the sidebar would silently skip nodes. Each step is one level read — an ancestor's children —
+the tree would silently skip nodes. Each step is one level read — an ancestor's children —
 on top of the chain the page already resolved.
 """
 

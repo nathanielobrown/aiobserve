@@ -198,7 +198,7 @@ TAG_CHARS = 20
 RECORD_PREVIEW = 160
 
 # How much of a title a tree row carries — a turn's, a run's, an api call's. What a row *can*
-# say rather than what fits: the sidebar is draggable (`view/static/tree-width.js`), and at 48 a
+# say rather than what fits: the tree is draggable (`view/static/tree-width.js`), and at 48 a
 # reader who widened it got more whitespace and no more of the title, because the cut had
 # already happened in SQL. CSS clamps the line to one with an ellipsis, so this is the reach
 # of a drag and not a wrap. It prices every row of the tree (`view/bounds.py:TREE_ROW_BYTES`).

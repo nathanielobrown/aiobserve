@@ -82,4 +82,4 @@ A skill should usually import the document that owns its procedure and keep only
 
 After implementation, dispatch the `doc-writer` agent in `.claude/agents/doc-writer.md`. Its `doc-sync` skill checks the branch and reports what to update or why no update is needed. The `pr` skill runs this step.
 
-After an analysis run, update the report under `reports/` and any guidance changed by the finding in the same change.
+After an analysis pass, update the report under `reports/` and any guidance changed by the finding in the same change.

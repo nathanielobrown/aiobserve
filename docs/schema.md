@@ -33,7 +33,7 @@ A transcript stores one JSON object per line. Each object has a `type`. `aiobser
 | `entrypoint` | `user`, `assistant`, `system` | How the session was launched, such as `cli` | `tests/fixtures/spine/`, CC 2.1.221; absent from `tests/fixtures/legacy_entrypoint/`, CC 1.0.128 — the oldest corpus transcripts |
 | `isMeta` | `user`, `system` | Claude Code wrote the record on the user's behalf, such as a caveat or a hook echo. It is not a prompt | `tests/fixtures/spine/`, CC 2.1.221 |
 | `isCompactSummary` | `user` | Claude Code wrote the record after compaction to replace the dropped context. It is not a prompt, and every one has a `compact_boundary` record beside it | `tests/fixtures/dup_uuid/`, CC 2.1.211 |
-| `isSidechain` | `user`, `assistant`, `system` | The record belongs to a subagent stream. In a main transcript, skip it because the subagent's own file records the work better. In a subagent transcript every record carries it, and skipping those would remove every turn | `tests/fixtures/spine/`, CC 2.1.221 — holds both main and subagent records |
+| `isSidechain` | `user`, `assistant`, `system` | The record belongs to a subagent stream. On a main thread, skip it because the subagent's own file records the work better. On a subagent thread every record carries it, and skipping those would remove every turn | `tests/fixtures/spine/`, CC 2.1.221 — holds both main and subagent records |
 <!-- aigarden:end -->
 
 Of 240 encoded working directories under `~/.claude/projects` on the recording machine, 181 lie under a symlinked root—153 under `-private-var` and 28 under `-private-tmp`—but none uses the unresolved `-var-…` or `-tmp-…` spelling (scanned 2026-08-15). The likely mechanism is Node's `process.cwd()`, which returns a physical path, but that mechanism is inferred. No fixture demonstrates it because every fixture session ran under an unsymlinked path.
@@ -119,7 +119,7 @@ Of 240 encoded working directories under `~/.claude/projects` on the recording m
 
 ## Read transcript records by these rules
 
-### A leading tag distinguishes prompts from harness messages
+### A leading tag distinguishes prompts from other records
 
 When a `user` record contains a string, its leading XML-like tag often determines whether the record starts a turn.
 
@@ -144,7 +144,7 @@ Claude Code writes the output in two shapes:
 
 The text between the tags can span lines, so don't stop at the first line. It can also be empty. All 21 recorded `/clear` outputs are empty, compared with a median body length of 71 characters and a maximum of 2,038 (scanned 2026-08-13).
 
-A resumed session can replay the same output under the plain turn that now precedes it. The corpus contains 183 such records. If `parentUuid` points to a turn that ran no command, the output has no owning turn in that transcript; the archive is not malformed.
+A resumed session can replay the same output under the plain turn that now precedes it. The corpus contains 183 such records. If `parentUuid` points to a turn that ran no command, the output has no owning turn in that thread; the archive is not malformed.
 
 *Evidence:* `tests/fixtures/spine/`, CC 2.1.221, contains the `user` carrier; `tests/fixtures/model_only/`, CC 2.1.215, contains the `system` carrier and an empty `/clear` body; `tests/fixtures/resume_pair/`, CC 2.1.202, contains the replay.
 
@@ -178,7 +178,7 @@ No recorded duplicate pair changes `message.content`. Such a change would mean t
 
 Every `system` / `compact_boundary` record has a corresponding `user` record with `isCompactSummary`. The mycelia corpus contains 1,026 of each, with matching counts in every file (CC 2.1.191–2.1.221; scanned 2026-08-07).
 
-Subagents compact much more often than main transcripts. Attribute a compaction to the file that reached the limit, not to the session as a whole.
+Subagents compact much more often than main threads. Attribute a compaction to the file that reached the limit, not to the session as a whole.
 
 *Evidence:* `tests/fixtures/compaction/`, CC 2.1.198, contains one `auto` and one `manual` boundary, each with its summary.
 

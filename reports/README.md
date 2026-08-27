@@ -1,6 +1,6 @@
 # Reports
 
-One analysis run, written down. A report is the durable output of this project: a finding about how an AI coding agent behaves, with the evidence a reader needs to disagree with it.
+One analysis pass, written down. A report is the durable output of this project: a finding about how an AI coding agent behaves, with the evidence a reader needs to disagree with it.
 
 Name a report `YYYY_MM_DD_<project>_<topic>.md` — the date it was run, the project analyzed, and what it was about.
 

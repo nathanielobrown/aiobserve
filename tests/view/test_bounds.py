@@ -734,7 +734,7 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     # recomputes from whatever this says, so a literal is the only thing that reds when the
     # window silently narrows back to what it was.
     assert bounds.Bound(200, 200) == bounds.KIN
-    # How much of a title a row of the tree shows. Wide enough that a draggable sidebar has
+    # How much of a title a row of the tree shows. Wide enough that a draggable tree has
     # something to show when a reader widens it — the cut is what a row can say, and CSS
     # decides how much of it fits. Every level cuts to the same width, whatever kind of child
     # it holds.
@@ -1783,7 +1783,7 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # still being full — an absence read off an empty list is no absence at all.
     offered = suggestions(listing)
     assert offered and not [path for path in offered if "x" in path]
-    # A tree row is a line in a sidebar, so its title takes the narrowest cut of the four —
+    # A tree row is a line in the tree, so its title takes the narrowest cut of the four —
     # the same one whatever kind of node the row stands for. Read off the tree half of the
     # page: the same `title` field names the node in three places, each at its own width.
     tree, pane = session.split('<article id="pane">')

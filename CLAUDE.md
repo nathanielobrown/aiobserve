@@ -60,7 +60,7 @@ docs/
   doc-sync.md             Use this process after the code is done and before writing the PR description
   handoffs.md             Use a handoff to pass scratch from one agent to another during a run
 plans/                    Designs and testing plans, one directory per change — committed on the implementing branch, not left untracked on main (`docs/documentation.md`)
-reports/                  One analysis run, written down
+reports/                  One analysis pass, written down
 handoffs/                 Gitignored: scratch one agent run leaves for the next (`docs/handoffs.md`)
 data/                     Gitignored: the canonical trace store `traces.duckdb` (`docs/store.md`) and analysis scratch
 ```
