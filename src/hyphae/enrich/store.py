@@ -27,6 +27,7 @@ from hyphae.enrich.prompts import (
 )
 from hyphae.enrich.validation import Enrichment
 from hyphae.export.duckdb import open_trace_store
+from hyphae.export.schema import check_shape
 from hyphae.model import MAIN_SOURCE
 from hyphae.sessions import project_predicate
 
@@ -205,7 +206,16 @@ class EnrichmentStore:
         # wrote is not one this code can enrich, and it opens on the same terms as every
         # other reader: nothing is created at a path that holds no store.
         self.connection = open_trace_store(path, read_only=False)
-        self.connection.execute(_SCHEMA)
+        try:
+            # Before the DDL: an enrichment table that drifted from it would otherwise be
+            # left alone by `CREATE TABLE IF NOT EXISTS` and fail at the first read below.
+            check_shape(self.connection, _SCHEMA)
+            self.connection.execute(_SCHEMA)
+        except Exception:
+            # Nothing was handed out, so no `with` block will close it, and the write lock
+            # would outlive the refusal.
+            self.connection.close()
+            raise
 
     def __enter__(self) -> "EnrichmentStore":
         return self

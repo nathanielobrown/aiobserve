@@ -26,6 +26,7 @@ import duckdb
 from hyphae.export.schema import (
     SCHEMA_VERSION,
     SchemaVersionError,
+    check_shape,
     check_version,
     migrate,
 )
@@ -321,11 +322,13 @@ class DuckDbExporter:
             # Timestamps go in as UTC and must come back as UTC, whatever the machine's clock
             # is set to.
             self.connection.execute("SET TimeZone='UTC'")
-            # Both before any DDL: a file this build cannot write must be left exactly as it
-            # was, and `migrate` carries an older one forward while `CREATE TABLE IF NOT
-            # EXISTS` still would not.
+            # All three before any DDL: a file this build cannot write must be left exactly
+            # as it was. `migrate` carries an older store forward, and `check_shape` catches
+            # a table that drifted with no migration behind it — which `CREATE TABLE IF NOT
+            # EXISTS` would otherwise skip over and leave to fail at the first insert.
             self._check_store_is_ours()
             migrate(self.connection, self.path)
+            check_shape(self.connection, _SCHEMA)
             self.connection.execute(_SCHEMA)
             # After the tables: every view below reads them.
             self.connection.execute(_VIEWS)

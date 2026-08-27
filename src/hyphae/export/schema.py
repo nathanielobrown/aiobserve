@@ -1,15 +1,19 @@
-"""The version the whole store file carries, and the steps that carry a store to it.
+"""The version the whole store file carries, and the two guards that hold a file to it.
 
 Three modules create tables in the one DuckDB file — `export/duckdb.py`, `enrich/store.py`,
 and `export/otlp_delivery.py` — so the version stamps the file rather than any one owner's
 tables, and lives here instead of with one of them. This module imports nothing from
 `hyphae`: the owners import it, and one of them already imports another.
 
-`migrate` carries a store forward to `SCHEMA_VERSION` by the steps in `MIGRATIONS`, before
-any owner's DDL touches the file. The archive can hold the only copy of a session Claude
-Code has pruned from disk, so a schema change moves a store rather than replacing it.
+Both guards run before an owner's DDL touches a file. `migrate` carries a store forward to
+`SCHEMA_VERSION` by the steps in `MIGRATIONS`. `check_shape` refuses a store whose tables no
+longer match the DDL that declares them, which is what a rename with no migration behind it
+leaves: `CREATE TABLE IF NOT EXISTS` skips the table that exists, `SELECT *` views rebind
+across the rename, and the mismatch surfaces at the first insert as a binder error naming a
+column, with no version and no remedy in it.
 """
 
+import re
 from collections.abc import Callable
 from pathlib import Path
 
@@ -35,6 +39,92 @@ MIGRATE_REMEDY = "Open it for write once to migrate it — `hp extract` or `hp e
 
 class SchemaVersionError(Exception):
     """The store on disk was written by a version of the schema this build cannot use."""
+
+
+class SchemaShapeError(Exception):
+    """A store's tables no longer match the DDL that declares them."""
+
+
+_VIEW_STATEMENT = re.compile(r"\bCREATE\s+(?:OR\s+REPLACE\s+)?VIEW\b", re.IGNORECASE)
+
+
+def table_ddl(ddl: str) -> str:
+    """The statements of `ddl` that create tables, with every view statement dropped.
+
+    Views are excluded everywhere the schema is pinned or compared: they are `CREATE OR
+    REPLACE`, so every open rebuilds them from the code and no store can hold a stale one.
+    """
+    return ";".join(
+        statement for statement in ddl.split(";") if not _VIEW_STATEMENT.search(statement)
+    )
+
+
+def declared_shape(ddl: str) -> dict[str, set[str]]:
+    """The tables a DDL creates and the columns of each, derived by running it.
+
+    Against a scratch in-memory database, so the answer is DuckDB's rather than a second
+    copy of the schema kept by hand beside the first.
+    """
+    with duckdb.connect() as scratch:
+        scratch.execute(table_ddl(ddl))
+        rows = scratch.execute(
+            "SELECT c.table_name, c.column_name FROM information_schema.columns c "
+            "JOIN information_schema.tables t USING (table_catalog, table_schema, table_name) "
+            "WHERE t.table_type = 'BASE TABLE'"
+        ).fetchall()
+    shape: dict[str, set[str]] = {}
+    for table, column in rows:
+        shape.setdefault(table, set()).add(column)
+    return shape
+
+
+def check_shape(connection: duckdb.DuckDBPyConnection, ddl: str) -> None:
+    """Refuse a store whose tables have drifted from `ddl`, before that DDL runs against it.
+
+    Call it from whatever owns the DDL, immediately before executing it. A declared table the
+    store lacks is not drift — the enrichment and delivery tables exist only once those
+    layers have run — so what this catches is a table that exists with other columns.
+    """
+    declared = declared_shape(ddl)
+    drifted = []
+    for table in sorted(declared):
+        stored = _stored_columns(connection, table)
+        if stored is None or stored == declared[table]:
+            continue
+        extra = ", ".join(sorted(stored - declared[table])) or "nothing the code lacks"
+        missing = ", ".join(sorted(declared[table] - stored)) or "nothing the store lacks"
+        drifted.append(f"  {table}: the store has {extra}; the code expects {missing}")
+    if drifted:
+        raise SchemaShapeError(
+            f"{_database_path(connection)} holds tables this build's schema does not "
+            f"describe:\n" + "\n".join(drifted) + "\nAdd a migration step to "
+            "src/hyphae/export/schema.py and bump SCHEMA_VERSION. Read docs/store.md first: "
+            "this store may hold the only copy of a pruned session."
+        )
+
+
+def _stored_columns(connection: duckdb.DuckDBPyConnection, table: str) -> set[str] | None:
+    """The columns a store holds for one table, or None when it holds no such table."""
+    columns = {
+        name
+        for (name,) in connection.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = ?", [table]
+        ).fetchall()
+    }
+    return columns or None
+
+
+def _database_path(connection: duckdb.DuckDBPyConnection) -> str:
+    """The file a connection is open on, for a message that has to name it.
+
+    Read off the connection rather than passed in, so every owner's refusal names the file
+    DuckDB really has open — including the one owner that is handed a connection and never
+    sees a path.
+    """
+    row = connection.execute(
+        "SELECT path FROM duckdb_databases() WHERE database_name = current_database()"
+    ).fetchone()
+    return str(row[0]) if row and row[0] else "This store"
 
 
 def _rename_agent_run_description_to_brief(connection: duckdb.DuckDBPyConnection) -> None:

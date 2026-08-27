@@ -32,6 +32,7 @@ from hyphae.export.otlp import (
     session_resource,
     session_spans,
 )
+from hyphae.export.schema import check_shape
 from hyphae.model import SessionTrace
 
 # Spans per POST. The biggest canonical session is ~29K spans, so a backfill of it is ~15
@@ -240,6 +241,9 @@ class OtlpExporter:
         self.sleep = sleep
         self.pacer = _Pacer(rate, monotonic, sleep)
         self.client = httpx.Client(timeout=timeout)
+        # Before the DDL, like every other owner of a table in this file: a ledger that
+        # drifted from the DDL is skipped by `CREATE TABLE IF NOT EXISTS` and fails later.
+        check_shape(self.connection, _DELIVERY_SCHEMA)
         self.connection.execute(_DELIVERY_SCHEMA)
 
     def __enter__(self) -> "OtlpExporter":
