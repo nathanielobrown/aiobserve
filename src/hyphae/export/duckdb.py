@@ -24,10 +24,10 @@ from typing import Any
 import duckdb
 
 from hyphae.export.schema import (
-    SCHEMA_MISMATCH_REMEDY,
     SCHEMA_VERSION,
     SchemaVersionError,
-    held_schema_version,
+    check_version,
+    migrate,
 )
 from hyphae.model import (
     AgentRun,
@@ -289,21 +289,24 @@ def open_trace_store(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnectio
     """Open a store an extract already wrote, for a reader or a writer that comes after one.
 
     Creates nothing: a path with no store behind it is a typo rather than a new store, and
-    `DuckDbExporter` stays the only thing that writes the DDL. `read_only` has no default
+    `DuckDbExporter` stays the only thing that writes the DDL. A write open migrates a store
+    of an older vintage; a read-only one cannot, and says so. `read_only` has no default
     because DuckDB admits one writer at a time — a reader that takes the write lock by
     accident locks the viewer out.
     """
     if not path.exists():
         raise FileNotFoundError(f"{path} holds no trace store. Run `hp extract` first.")
     connection = duckdb.connect(str(path), read_only=read_only)
-    connection.execute("SET TimeZone='UTC'")
-    held = held_schema_version(connection)
-    if held != SCHEMA_VERSION:
+    try:
+        connection.execute("SET TimeZone='UTC'")
+        if not read_only:
+            migrate(connection, path)
+        check_version(connection, path)
+    except Exception:
+        # Nothing was handed out, so no `with` block will close it: a refusal that kept the
+        # connection would hold DuckDB's write lock until the process ends.
         connection.close()
-        raise SchemaVersionError(
-            f"{path} holds schema version {held or 'nothing'}, this build reads "
-            f"{SCHEMA_VERSION}. {SCHEMA_MISMATCH_REMEDY}"
-        )
+        raise
     return connection
 
 
@@ -318,8 +321,11 @@ class DuckDbExporter:
             # Timestamps go in as UTC and must come back as UTC, whatever the machine's clock
             # is set to.
             self.connection.execute("SET TimeZone='UTC'")
-            # Before any DDL: a file this build cannot read must be left exactly as it was.
-            self._check_schema_version()
+            # Both before any DDL: a file this build cannot write must be left exactly as it
+            # was, and `migrate` carries an older one forward while `CREATE TABLE IF NOT
+            # EXISTS` still would not.
+            self._check_store_is_ours()
+            migrate(self.connection, self.path)
             self.connection.execute(_SCHEMA)
             # After the tables: every view below reads them.
             self.connection.execute(_VIEWS)
@@ -344,13 +350,13 @@ class DuckDbExporter:
     def close(self) -> None:
         self.connection.close()
 
-    def _check_schema_version(self) -> None:
-        """Refuse a file this build's DDL does not fit, before that DDL touches it.
+    def _check_store_is_ours(self) -> None:
+        """Refuse a file that is someone else's database, before any DDL touches it.
 
         Runs first because the damage is silent otherwise: `CREATE TABLE IF NOT EXISTS`
-        would add current tables to a file written by an older schema, and the kept
-        archives beside the live store are exactly the files an operator points here by
-        mistake. An empty file is a new store; anything else has to carry our stamp.
+        would add our tables to a file that has nothing to do with us, and an operator points
+        one here by mistake. An empty file is a new store; anything else has to carry the
+        stamp `migrate` then reads.
         """
         tables = {
             name
@@ -358,19 +364,10 @@ class DuckDbExporter:
                 "SELECT table_name FROM duckdb_tables()"
             ).fetchall()
         }
-        if not tables:
-            return
-        if "meta" not in tables:
+        if tables and "meta" not in tables:
             raise SchemaVersionError(
                 f"{self.path} holds tables this build did not write. Point at a different "
                 f"file, or delete this one and re-extract."
-            )
-        row = self.connection.execute("SELECT schema_version FROM meta").fetchone()
-        # An empty `meta` is a store that crashed between its DDL and its stamp.
-        if row is not None and row[0] != SCHEMA_VERSION:
-            raise SchemaVersionError(
-                f"{self.path} holds schema version {row[0]}, this build writes "
-                f"{SCHEMA_VERSION}. {SCHEMA_MISMATCH_REMEDY}"
             )
 
     def _stamp_schema_version(self) -> None:
