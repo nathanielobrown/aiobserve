@@ -54,7 +54,7 @@ Solid edges lead to pages with their own URLs. Dotted edges fetch a fragment int
 | An offload file | `/session/{session_id}/offload/{offload_name:path}` | One chunk of a tool result Claude Code wrote to a file beside the transcript |
 <!-- aigarden:end -->
 
-`src/aiobserve/view/app.py` declares every route, fragments included. Nothing renders in the reading pane that a cold GET of its own URL doesn't render whole, tree and all.
+`build_app` in `src/aiobserve/view/app.py` mounts one route module per subject, fragments included, and the table above is read back off the app it builds. Nothing renders in the reading pane that a cold GET of its own URL doesn't render whole, tree and all.
 
 ## The landing page counts projects
 

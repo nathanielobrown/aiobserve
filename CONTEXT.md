@@ -48,7 +48,7 @@ Model-written descriptions beside the telemetry: `docs/enrichment.md`; the vocab
 
 ## Viewer pages
 
-What each page shows and cites: `docs/viewer.md`; the routes: `src/aiobserve/view/app.py`.
+What each page shows and cites: `docs/viewer.md`; the routes: the modules `src/aiobserve/view/app.py` mounts, one per subject.
 
 - **Projects page** — `/`, the landing page: every project and its recent sessions
 - **Session list** — `/sessions`: the filter form above one page of sessions
@@ -66,6 +66,7 @@ What each page shows and cites: `docs/viewer.md`; the routes: `src/aiobserve/vie
 - **Unattached** — the session's one bucket of agent runs no tool call spawned; it spans every thread
 - **Tree** — the left column: the one open path through the session (never "sidebar")
 - **Presets** — the tree's depth choices and the control above it that picks one: full, no api calls, agents only (`?nav=`)
+- **Knob** — one of the four things a node-page URL may name: the preset and the three sizes; every link a page mints carries the ones that are not defaults (`docs/viewer-bounds.md`)
 - **Cost badge** — the warm ground behind a tree row's dollar value, deepening with the row's share of what the session spent
 - **Context bar** — the line under a tree row: how full the model's context window was when the node ended, with what the node added left bright at the tip
 - **Popover** — the numbers behind one tree row, fetched when a reader points at it or tabs to it: what the badge and the bar draw, written out
