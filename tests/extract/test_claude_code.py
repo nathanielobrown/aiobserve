@@ -10,7 +10,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from aiobserve.extract.claude_code import ClaudeCodeExtractor, TranscriptSchemaError
+from aiobserve.extract.claude_code import ClaudeCodeExtractor
+from aiobserve.extract.record_types import TranscriptSchemaError
 from aiobserve.model import MAIN_SOURCE, ApiCall, PrLink, Session, Turn
 from tests.conftest import SourceFactory
 

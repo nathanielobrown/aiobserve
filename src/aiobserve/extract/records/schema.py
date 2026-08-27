@@ -7,7 +7,7 @@ added to a model is a row and a field deleted is a row gone, with no second plac
 from collections.abc import Iterator
 from typing import Any, ForwardRef, NamedTuple, get_args
 
-from aiobserve.extract.claude_code import RecordType
+from aiobserve.extract.record_types import RecordType
 from aiobserve.extract.records.blocks import Message
 from aiobserve.extract.records.evidence import Among, Cited, Described, Step
 from aiobserve.extract.records.shapes import RECORD_MODELS, Record
