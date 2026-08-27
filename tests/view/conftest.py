@@ -298,8 +298,11 @@ def step(tokens: int | None, model: str) -> int | None:
 
 # One tree row that stands for a node, depth beside key. Read as a pair rather than as two
 # `values` scans because a cap's tail row carries a depth and no key, so the two lists are
-# not the same length whenever a level was cut.
-_ROW = re.compile(r'data-depth="(\d+)"\s+data-tree="([^"]*)"')
+# not the same length whenever a level was cut. Anything but a `>` may sit between the two
+# attributes: the formatter owns how a tag is laid out (`mise run format-html`), and a tag
+# boundary is the only thing this needs to hold — a tail row's depth cannot pair with the
+# next row's key.
+_ROW = re.compile(r'data-depth="(\d+)"[^>]*?\sdata-tree="([^"]*)"')
 
 
 def rows(html: str) -> list[tuple[int, str]]:
