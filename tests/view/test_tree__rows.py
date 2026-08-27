@@ -1,0 +1,489 @@
+"""What one row of the tree shows, and how the page lays the rows out.
+
+A row says three things at once: how deep it stands, what node it is, and what to fetch when a
+reader clicks it. These leaves read all three back off the rendered page — the indent, the
+links, the column each kind is named from, and the totals a bucket row carries for the rows it
+gathers, which are its own because a bucket is not a row of the store.
+"""
+
+import json
+import re
+from collections.abc import Sequence
+
+import duckdb
+from fastapi.testclient import TestClient
+
+from aiobserve.analyze import queries
+from aiobserve.model import MAIN_SOURCE
+from aiobserve.view import bounds
+from aiobserve.view.app import build_app
+from aiobserve.view.format import cut
+from aiobserve.view.nodes import (
+    LEAD_SEPARATOR,
+    Kind,
+    meter,
+)
+from tests.conftest import MAIN, SPINE
+from tests.view.conftest import (
+    Planter,
+    fields,
+    inside,
+    one,
+    rows,
+    values,
+    wired,
+)
+from tests.view.trees import (
+    STANDING,
+    THREAD,
+    candidates,
+    edges,
+    node_link,
+    node_url,
+    open_turn,
+    url,
+    weighed,
+)
+
+
+def test_every_link_that_swaps_the_pane_lands_the_pane_in_the_pane(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The whole of what a click does, on both the mounts that mount a node link.
+
+    A tree row, a children-log row and the two walk controls are how a reader moves without
+    leaving the page, and all of them do the same thing: fetch the node's URL, take `#reading-pane`
+    out of the response, put it where the pane already is, and swap the rows out of band.
+    Read as htmx composes it, inheritance and all, because that is what the browser acts on.
+
+    `hx-target` is the half that has no default worth having: htmx aims at the clicked
+    element, so a page missing it swaps the whole pane inside the `<a>` the reader clicked
+    and leaves the pane itself showing the node they came from. `hx-swap` is `outerHTML`
+    because `hx-select` hands back the `#reading-pane` element itself, not its contents.
+    """
+    html = client.get(url(open_turn(store))).text
+    swap = {
+        "hx-target": "#reading-pane",
+        "hx-swap": "outerHTML",
+        "hx-select": "#reading-pane",
+        "hx-select-oob": "#tree-rows",
+        "hx-push-url": "true",
+    }
+    for mount in ("data-tree", "data-child", "data-walk"):
+        # A row's other fetch is its body toggle, which opens in place and has nowhere to go:
+        # the ones that move the reader are the ones fetching a node's own URL.
+        moving = [(key, w) for key, w in wired(html, mount) if node_link(w["hx-get"])]
+        assert len(moving) > 1, mount
+        for key, wiring in moving:
+            # A link fetches what it points at: one URL, however the reader gets there. A walk
+            # control has no `href` to agree with — it is a button, because what it offers is
+            # a move through the pane and not a place of its own to paste.
+            assert wiring.get("href", wiring["hx-get"]) == wiring["hx-get"], (mount, key)
+            assert {name: wiring.get(name) for name in swap} == swap, (mount, key)
+    # The two ids the swap aims at, each written exactly once.
+    assert html.count('id="reading-pane"') == 1
+    assert html.count('id="tree-rows"') == 1
+
+
+def test_every_level_a_tree_opens_is_indented_one_step_further_than_the_one_above(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A row sits one step further in than its parent, however deep the session nests.
+
+    A subagent's own turns render four levels down and its api calls deeper still, so a
+    stylesheet with a rung for the first three levels laid them flush against the session and
+    the hierarchy vanished exactly where a reader most needs it. CSS cannot read `data-depth`
+    as a number portably and `app.CSP` forbids the inline style that would carry one, so every
+    level a chain can open is written out — and this is what keeps that ladder as long as
+    `bounds.DEPTH` says a chain can be.
+    """
+    # A turn of a subagent's own thread opens the session, the turn that spawned the run, the
+    # run, the turn itself and its api calls — five levels, past the three the ladder had...
+    turn_id, source = one(
+        store,
+        'SELECT id, source FROM live_turns WHERE session_id = ? AND source <> ? ORDER BY "index"'
+        " LIMIT 1",
+        [SPINE, MAIN],
+    )
+    page = client.get(f"/session/{SPINE}/thread/{source}/turn/{turn_id}").text
+    rendered = {depth for depth, _ in rows(page)}
+    assert max(rendered) > 3, "the recorded subagent no longer nests past three levels"
+    # ...and the stylesheet indents each of them by its own depth, in one step a level.
+    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
+    ladder = {
+        int(depth): int(steps)
+        for depth, steps in re.findall(
+            r'li\.row\[data-depth="(\d+)"\][^{]*\{[^}]*calc\((\d+) \* var\(--tree-step\)\)', style
+        )
+    }
+    # Every level a chain can open has a rung, and no rung stands for a level nothing reaches.
+    assert ladder == {depth: depth for depth in range(1, bounds.DEPTH + 1)}
+    assert rendered <= set(ladder) | {0}
+
+
+def test_a_row_reads_from_the_left_and_only_its_cost_sits_at_the_right(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The parts of a row are pushed together at the left, and the spare width goes to the title.
+
+    A row is a flex line of four parts — the kind mark, the enrichment glyph, the title and the
+    cost — and free space in a flex line goes wherever the line says to put it. Spread between
+    the parts, a short title floats out in the middle of the column with the glyph adrift ahead
+    of it, and a column of them reads as centred text; the indent that says how deep a row sits
+    then measures from a mark nothing follows. So the free width belongs to the title: it is
+    the one part that can use it, and giving it there is what keeps every other part where the
+    reader's eye already is.
+
+    Read off the stylesheet because that is where it is decided — the served markup is the same
+    either way, and nothing else in the tier can see a laid-out box.
+    """
+    page = client.get(url(open_turn(store))).text
+    # The row is the flex line the rule below is about, with its parts in reading order.
+    parts = r'class="icon".*data-field="title".*class="secondary"'
+    assert [
+        row
+        for row in re.findall(r'<li class="row node.*?</li>', page, flags=re.DOTALL)
+        if re.search(parts, row, flags=re.DOTALL)
+    ]
+    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
+    row_rules = re.findall(r"li\.node > a \{([^}]*)\}", style)
+    assert any("display: flex" in rule for rule in row_rules)
+    # Nothing distributes the spare width between the parts — that is the centring itself.
+    assert not [rule for rule in row_rules if "justify-content" in rule]
+    # The title takes it instead, so the cost is what ends up against the right edge.
+    (title,) = re.findall(r'li\.node \[data-field="title"\] \{([^}]*)\}', style)
+    assert "flex: 1" in title
+
+
+def test_the_tree_keeps_its_place_because_the_scroller_is_not_what_swaps(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """What holds a reader's place in a long tree when a click replaces its rows.
+
+    Nothing in the markup says "keep the scroll offset" — the tree keeps it because the
+    element carrying the scrollbar is `#tree`, and the swap replaces `#tree-rows` inside it.
+    An untouched scroller keeps its `scrollTop`, which is why the design could drop
+    `hx-preserve`. Move `overflow` down onto the rows and every click sends the reader back to
+    the top of the session, and no assertion on served HTML would notice.
+
+    So the structure is what gets pinned: the rows the swap replaces are nested inside the
+    element the stylesheet scrolls, and nothing scrolls below it.
+    """
+    page = client.get(url(open_turn(store))).text
+    # The element the swap replaces sits inside the one the tree is scrolled by.
+    assert "tree-rows" in inside(page, "id", "tree", "id")
+    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
+    scrolls = {
+        selector.strip()
+        for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", style)
+        if "overflow:" in body
+    }
+    # One of them scrolls, and it is the one the swap leaves alone. The two selectors that
+    # could take the scrollbar off it are the rows themselves, under either name.
+    assert "#tree" in scrolls
+    assert not [rule for rule in scrolls if "#tree-rows" in rule or "#tree .rows" in rule]
+
+
+def test_the_tree_is_widened_by_a_handle_and_the_width_outlives_the_page(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A handle beside the tree drags it wider, and the browser remembers how wide.
+
+    Every other thing a reader sets rides the URL. A width cannot: it belongs to the screen
+    they are reading on and not to the node they linked to, so a pasted link would carry
+    someone else's column. What this pins is the chain that lets a script set it instead —
+    a handle in the markup, a grid whose tree column is one custom property, and a script
+    served from this app, because `app.CSP` forbids an inline one and a page load would
+    forget a width that CSS alone had kept.
+    """
+    page = client.get(url(open_turn(store))).text
+    # The handle sits between the two columns it divides, and says what it is to a reader who
+    # cannot see it.
+    assert [at for at in values(page, "id") if at in {"tree", "tree-grip", "reading-pane"}] == [
+        "tree",
+        "tree-grip",
+        "reading-pane",
+    ]
+    grip = re.findall(r"<div id=\"tree-grip\"[^>]*>", page)
+    assert len(grip) == 1 and 'role="separator"' in grip[0] and 'tabindex="0"' in grip[0]
+    # The tree's column is one custom property, which is the whole of what the script writes:
+    # a width the stylesheet fixed some other way is a handle that drags nothing.
+    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
+    (columns,) = re.findall(r"#browser\s*\{[^}]*grid-template-columns:([^;]*);", style)
+    assert "var(--tree-width" in columns
+    # And the script that writes it is a file this app serves, keeping the width where a page
+    # load cannot reach it.
+    (src,) = [asset for asset in values(page, "src") if "tree-width" in asset]
+    served = client.get(src)
+    assert served.status_code == 200
+    assert "--tree-width" in served.text and "localStorage" in served.text
+    # And where the width starts when this browser remembers none: the column the stylesheet
+    # lays out, read off the grid's own first track. Not the tree's laid-out box — under the
+    # narrow layout below, `#browser` is a block and the tree is the whole page, so a width
+    # seeded from it survives into the wide layout as a column twice the one above. Witnessed
+    # in Chromium on 2026-08-25: loaded at 800 px and widened to 1600, the tree held 768 px
+    # against the stylesheet's 384 and left the pane narrower than the tree.
+    # And it reads the *first* track of that grid, which is the tree's: `parseFloat` takes the
+    # leading number of `"384px 8px 1fr"` and stops there. A read that walked to another track
+    # would seed the gap or the pane — and where the walk misses, `apply()` clamps the `NaN` it
+    # yields to `NaN` and the column comes out broken. Pinned as one expression, which is as
+    # far as a server-side test can follow a script this app only serves.
+    assert re.search(r"parseFloat\(getComputedStyle\(\w+\)\.gridTemplateColumns\)", served.text)
+    assert "getBoundingClientRect" not in served.text
+
+
+def test_a_row_pairs_its_depth_with_the_key_in_the_same_tag() -> None:
+    """`rows()` reads the pair whatever the tag's layout, and never reaches across a tag.
+
+    Every leaf here reads the tree through that pair, and the tag boundary is the whole of what
+    it rests on: a tail row carries a depth and no key — the leaf above builds one — so a pair
+    that could span `>` would hand it the next row's key and every level would read one long.
+    How a tag is laid out belongs to the formatter (`mise run format-html`), which today
+    neither reorders these attributes nor writes anything between them; the first case is
+    invented for exactly that reason, standing for a layout djLint is free to produce.
+    """
+    apart = '<li class="row node" data-depth="2" data-selected="turn:a" data-tree="turn:a">'
+    assert rows(apart) == [(2, "turn:a")]
+    # A tail row's depth, and the next tag's key: two tags, so nothing to pair.
+    tail = '<li class="row more" data-depth="1" data-more="session:s">\n<a data-tree="turn:b">'
+    assert rows(tail) == []
+
+
+def _titled(given: str | None, project: str | None, chars: int) -> str:
+    """What a tool call is called, restated in Python from the input the store holds.
+
+    The point of restating it is that this oracle must not read the derivation it checks
+    (`analyze/macros.py:tool_title`): a shared implementation would agree with itself whatever
+    it said. Each field is cut before it is chosen, the way the SQL cuts it, so a path longer
+    than the column loses its repository prefix off an already-bounded head.
+
+    Every input the corpus holds is a JSON object of strings; a fixture holding anything else
+    reads as no title here and goes red rather than passing quietly.
+    """
+    try:
+        asked = json.loads(given) if given is not None else None
+    except json.JSONDecodeError:
+        asked = None
+    fields = asked if isinstance(asked, dict) else {}
+
+    def head(key: str) -> str | None:
+        value = fields.get(key)
+        return value[: chars + 1] if isinstance(value, str) else None
+
+    path = head("file_path")
+    if path is not None:
+        if project and path.startswith(f"{project}/"):
+            path = path[len(project) + 1 :]
+        return path
+    if (described := head("description")) is not None:
+        return described
+    return (given or "")[: chars + 1]
+
+
+def _tallied(names: Sequence[str]) -> str:
+    """The count of each tool after the first, restated from the tool names the store holds.
+
+    In the order each tool first appears among them, which is the order the calls were made.
+    No cut: no recorded call invokes enough distinct tools to reach `nodes.TALLY_CHARS`, and
+    a corpus that grew one would go red here rather than pass on a shortened count.
+    """
+    counted: dict[str, int] = {}
+    for name in names:
+        counted[name] = counted.get(name, 0) + 1
+    return "".join(f" +{made}({name})" for name, made in counted.items())
+
+
+def titled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, tuple[str, str]]:
+    """Every row of one session whose title the store composes, keyed the way a row is.
+
+    Read off the columns the design names a node from, not off the page: a tool call named by
+    its input alone, or a run named by the definition it ran where its own brief was recorded,
+    is a row pointing at a node the reader did not ask for.
+
+    Each title comes back in two halves: what a surface cuts, and the part that survives the
+    cut — an api call's tool count, which the width is budgeted around rather than spent on.
+    """
+    said: dict[str, str] = {}
+    # What must still be there after the cut, per row, empty for every title that is all one
+    # piece. Only an api call named by its tool calls carries one.
+    kept: dict[str, str] = {}
+    for tool_id, name, given, project in store.execute(
+        "SELECT t.id, t.name, t.input, s.project_dir FROM live_tool_calls t"
+        " LEFT JOIN sessions s ON s.id = t.session_id WHERE t.session_id = ?",
+        [session_id],
+    ).fetchall():
+        # The tool it called, always first — which tool this was is what a reader picks a call
+        # out of a tree by — and after it the title, which tells two `Read` rows apart.
+        titled = _titled(given, project, queries.NAV_CHARS)
+        said[f"{Kind.TOOL}:{tool_id}"] = f"{name}{LEAD_SEPARATOR}{titled}" if titled else name
+    for call_id, spoken, model, tools, given, project in store.execute(
+        # The tool calls a call went on to make, in the order it made them: their names, and
+        # the input of the first, which is the only one whose own title is shown.
+        "SELECT c.id, c.text, c.model,"
+        ' list(t.name ORDER BY t."index") FILTER (t.id IS NOT NULL),'
+        ' min_by(t.input, t."index"), any_value(s.project_dir)'
+        " FROM live_api_calls c"
+        " LEFT JOIN live_tool_calls t ON t.session_id = c.session_id AND t.source = c.source"
+        "  AND t.api_call_id = c.id"
+        " LEFT JOIN sessions s ON s.id = c.session_id"
+        " WHERE c.session_id = ? GROUP BY c.id, c.text, c.model",
+        [session_id],
+    ).fetchall():
+        # What the call said. Where it said nothing, what it did instead: the tool it called
+        # first and that call's own title, then how many of each tool followed. A call that
+        # neither spoke nor called a tool is named by the model that was asked.
+        if spoken:
+            said[f"{Kind.CALL}:{call_id}"] = spoken
+        elif tools:
+            asked = _titled(given, project, queries.NAV_CHARS)
+            said[f"{Kind.CALL}:{call_id}"] = (
+                f"{tools[0]}{LEAD_SEPARATOR}{asked}" if asked else tools[0]
+            )
+            kept[f"{Kind.CALL}:{call_id}"] = _tallied(tools[1:])
+        else:
+            said[f"{Kind.CALL}:{call_id}"] = model
+    for compaction_id, trigger in store.execute(
+        "SELECT id, trigger FROM live_compactions WHERE session_id = ?", [session_id]
+    ).fetchall():
+        said[f"{Kind.COMPACTION}:{compaction_id}"] = f"compaction · {trigger}"
+    for turn_id, prompt, command_name, command_args in store.execute(
+        "SELECT id, prompt, command_name, command_args FROM live_turns WHERE session_id = ?",
+        [session_id],
+    ).fetchall():
+        # The command a turn ran and what followed it, else the prompt as the reader typed it.
+        said[f"{Kind.TURN}:{turn_id}"] = (
+            f"{command_name} {command_args or ''}".strip() if command_name is not None else prompt
+        )
+    for run_id, brief, agent_type in store.execute(
+        "SELECT id, brief, agent_type FROM live_agent_runs WHERE session_id = ?",
+        [session_id],
+    ).fetchall():
+        # The definition it ran, always first — which agent this was is what a reader picks a
+        # run out of a tree by — and after it the brief it was given, where one was recorded.
+        said[f"{Kind.RUN}:{run_id}"] = (
+            f"{agent_type}{LEAD_SEPARATOR}{brief}" if brief else agent_type
+        )
+    return {key: (value, kept.get(key, "")) for key, value in said.items()}
+
+
+def test_every_row_is_named_from_the_column_its_kind_is_named_by(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A row's title is the whole of what it says, so it is read back against its own column.
+
+    A tree row carries `TREE_ROW_BYTES` and no more, so the title is where a kind spends what
+    it has to say — and every kind spends it differently. Every node the store names is read
+    on its own page, where its row is on the open path whichever preset the reader picked: a
+    column that only one recorded row exercises — a slash turn with no arguments after it —
+    is one a sample would step over.
+    """
+    # Keyed by session as well as by row: two sessions of the corpus record an api call under
+    # the same id, and a row carries the id alone.
+    # Composed at a tree row's width the way the surfaces compose it: the count of an api
+    # call's tool calls is taken out of the width first, so the row is cut around it.
+    said = {
+        (str(at), key): (cut(head, queries.NAV_CHARS - len(kept)) + kept).strip()
+        for (at,) in store.execute("SELECT id FROM sessions").fetchall()
+        for key, (head, kept) in titled(store, str(at)).items()
+    }
+    read: set[tuple[str, str]] = set()
+    for kind in (Kind.TOOL, Kind.CALL, Kind.COMPACTION, Kind.RUN, Kind.TURN):
+        for session_id, source, node_id in candidates(store, kind):
+            # A page holds more than the node it opens, so the ones already read are skipped.
+            if (session_id, f"{kind}:{node_id}") in read:
+                continue
+            page = client.get(node_url(kind, session_id, source, node_id)).text
+            assert f"{kind}:{node_id}" in values(page, "data-tree"), node_id
+            for key in values(page, "data-tree"):
+                if (at := (session_id, key)) in said:
+                    assert fields(page, "data-tree", key)["title"] == said[at], at
+                    read.add(at)
+    # Every row the store names a title for was reached. A sweep that missed one would pass on
+    # a title built from any column at all.
+    assert read == set(said)
+
+
+def test_a_bucket_row_carries_the_totals_of_what_it_gathers(
+    client: TestClient, store: duckdb.DuckDBPyConnection, plant: Planter
+) -> None:
+    """Neither bucket is a row of the store: its numbers are sums over what it holds.
+
+    The rest of the tree hands a row the store's own numbers, so a bucket is the one place the
+    viewer adds up. What it adds up is read back here — the spend, the bar that spend takes
+    against the session, and the mark saying some of the calls under it went unpriced — for
+    every bucket the corpus records, on the page the bucket hangs on.
+    """
+    # The session's threads whose calls answer no turn of them, and the runs nothing placed.
+    standing = store.execute(
+        "SELECT DISTINCT c.session_id, c.source FROM live_api_calls c"
+        " LEFT JOIN live_turns t ON t.session_id = c.session_id AND t.source = c.source"
+        "  AND t.id = c.turn_id"
+        " WHERE t.id IS NULL ORDER BY 1, 2"
+    ).fetchall()
+    gathered: tuple[str, list[str]] | None = None
+    for session_id, source in standing:
+        at = (
+            f"/session/{session_id}"
+            if source == MAIN_SOURCE
+            else f"/session/{session_id}/run/{source}"
+        )
+        cost, unpriced = one(store, STANDING, [str(session_id), str(source)])
+        weighed(client.get(at).text, f"unattributed:{source}", store, session_id, cost, unpriced)
+    for (session_id,) in store.execute("SELECT id FROM sessions ORDER BY 1").fetchall():
+        loose = [edge.run_id for edge in edges(store, str(session_id)) if edge.spawn_source is None]
+        if not loose:
+            continue
+        # The bucket's own row is every loose run's thread at once, which is the sum the
+        # session's page shows against a row that has no children of the store's to point at.
+        totals = [one(store, THREAD, [str(session_id), run_id]) for run_id in loose]
+        cost, unpriced = sum(row[0] for row in totals), sum(row[1] for row in totals)
+        page = client.get(f"/session/{session_id}").text
+        weighed(page, f"unattached:{session_id}", store, str(session_id), cost, unpriced)
+        # Opening it hands its children the same basis: a run under the bucket draws its share
+        # of the session, like every other run, and not a share of the bucket that gathered it.
+        (whole,) = one(
+            store, "SELECT cost_usd FROM session_rollups WHERE session_id = ?", [str(session_id)]
+        )
+        opened = client.get(f"/session/{session_id}/unattached").text
+        for run_id, (spent, _) in zip(loose, totals, strict=True):
+            drawn = inside(opened, "data-tree", f"run:{run_id}", "class")[0].split()
+            assert meter(spent / whole if whole else None) in drawn, run_id
+        gathered = gathered or (str(session_id), loose)
+    # Both buckets are read above rather than one of them: they are built by different code
+    # over different rows, and only one of them can span threads.
+    assert standing and gathered is not None
+    # No recorded bucket holds a call our price table could not price, so the mark that says
+    # one does is planted: a thread under each bucket loses its costs, and the bucket has to
+    # both count what went unpriced and total what is left. The expectations read the planted
+    # store through the same sums, so the plant moves the page and the oracle together.
+    thread, source = str(standing[0][0]), str(standing[0][1])
+    loose_at, loose_runs = gathered
+    path = plant(
+        (
+            "UPDATE api_calls SET cost_usd = NULL WHERE session_id = ? AND source = ?",
+            [thread, source],
+        ),
+        (
+            "UPDATE api_calls SET cost_usd = NULL WHERE session_id = ? AND source = ?",
+            [loose_at, loose_runs[0]],
+        ),
+    )
+    planted = duckdb.connect(str(path), read_only=True)
+    with TestClient(build_app(path)) as marked:
+        cost, unpriced = one(planted, STANDING, [thread, source])
+        assert unpriced, "the plant leaves the unattributed bucket calls to mark"
+        at = f"/session/{thread}" if source == MAIN_SOURCE else f"/session/{thread}/run/{source}"
+        weighed(marked.get(at).text, f"unattributed:{source}", planted, thread, cost, unpriced)
+        totals = [one(planted, THREAD, [loose_at, run_id]) for run_id in loose_runs]
+        cost, unpriced = sum(row[0] for row in totals), sum(row[1] for row in totals)
+        assert unpriced, "and leaves the unattached bucket calls to mark"
+        page = marked.get(f"/session/{loose_at}").text
+        weighed(page, f"unattached:{loose_at}", planted, loose_at, cost, unpriced)
+        # A child of the bucket says the same thing for itself: the run whose calls the plant
+        # left unpriced carries its own count, and the runs beside it carry no mark at all.
+        opened = marked.get(f"/session/{loose_at}/unattached").text
+        for run_id, (_, missing) in zip(loose_runs, totals, strict=True):
+            marks = inside(opened, "data-tree", f"run:{run_id}", "title")
+            assert bool(marks) == bool(missing), run_id
+            assert not missing or str(missing) in marks[0], run_id
+    planted.close()
