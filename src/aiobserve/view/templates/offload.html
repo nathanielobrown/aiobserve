@@ -8,7 +8,7 @@
       <span><span data-field="size_bytes">{{ row.size_bytes | count }}</span> bytes on disk</span>
       <span><span data-field="content_chars">{{ row.content_chars | count }}</span> chars stored</span>
       {# Only when it happened: the extractor could not decode the file as text and replaced
-       what it could not read, so what is shown here is not what the tool wrote. #}
+         what it could not read, so what is shown here is not what the tool wrote. #}
       {% if row.lossy_decode %}
         <span data-field="lossy_decode">some bytes did not decode as text</span>
       {% endif %}

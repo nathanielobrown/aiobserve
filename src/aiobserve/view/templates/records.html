@@ -18,10 +18,10 @@
           <span><span data-field="raw_chars">{{ row.raw_chars | count }}</span> chars</span>
           <code data-field="raw_head">{{ row.raw_head }}</code>
           {# The whole record on first open, one request per record: a page of them whole is the
-         one payload nothing here bounds. One row is the exception — the one the route picked
-         as `opened`, which is the record a citation named — and it arrives open and fetches
-         itself as the page loads. Still a fetch and not inlined: the page stays bounded, and
-         what is unbounded stays one record at a time. #}
+             one payload nothing here bounds. One row is the exception — the one the route picked
+             as `opened`, which is the record a citation named — and it arrives open and fetches
+             itself as the page loads. Still a fetch and not inlined: the page stays bounded, and
+             what is unbounded stays one record at a time. #}
           <details class="whole"
                    {% if row.line_no == opened %} open{% endif %}
                    data-open-record="{{ row.line_no }}"

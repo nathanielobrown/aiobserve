@@ -96,9 +96,9 @@
                 {{ cell('tool_index', item.row.tool_index | count, 'number') }}
                 {{ cell('name', item.row.name | line) }}
                 {#- The title alone, with the name already in its own column beside it. The command
-            reads through the same cut, and is left out rather than dashed where the tool ran
-            none: a dash under a description is a line of nothing where the second line means
-            "and this is what it ran". #}
+                   reads through the same cut, and is left out rather than dashed where the tool ran
+                   none: a dash under a description is a line of nothing where the second line means
+                   "and this is what it ran". #}
                 {{ what(item.node, suffix, 'title', item.node.log_title,
                   item.row.command | line if item.row.command else '') }}
                 {{ cell('is_error', ('error' if item.row.is_error else none) | text) }}
@@ -118,8 +118,8 @@
         </tbody>
       </table>
       {#- Only where the level runs past one page: a control offering no page to go to is a
-      control a reader has to read to learn there is nothing under it. Plain links, because
-      turning a page is a page load — the tree beside it opens on the child the reader is on. #}
+         control a reader has to read to learn there is nothing under it. Plain links, because
+         turning a page is a page load — the tree beside it opens on the child the reader is on. #}
       {% if pager %}
         <nav class="pager" data-pager="{{ shape }}" aria-label="{{ shape }} pager">
           {%- if pager.previous %}<a data-page="previous" href="{{ pager.previous }}">← previous page</a>{% endif %}
