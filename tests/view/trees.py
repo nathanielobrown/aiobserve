@@ -9,7 +9,9 @@ each run after the call that spawned it. Reading the order back out of the store
 pinning it means a re-recorded fixture moves the expectation instead of reddening the tier.
 
 `cell` is the design's kind x preset table written out — every cell in full, including the ones
-a preset passes through, so a table edit has to be an edit here before it can pass.
+a preset passes through, so a table edit has to be an edit here before it can pass. A plain
+module rather than the conftest, so the readers of a tree and the levels they are checked
+against sit in one place.
 """
 
 import datetime as dt

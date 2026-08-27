@@ -2,7 +2,8 @@
 
 Every kind is here on purpose — the pane dispatches on the kind, and a kind missing from a
 sweep is a kind whose page nothing renders. Each is read out of the store rather than pinned,
-so a re-recorded fixture moves the selection instead of reddening the tier.
+so a re-recorded fixture moves the selection instead of reddening the tier. A plain module
+rather than the conftest, so every tier that sweeps the kinds sweeps the same list.
 """
 
 import duckdb
