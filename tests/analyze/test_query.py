@@ -11,7 +11,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from aiobserve.analyze import queries
+from aiobserve.analyze import manifest, queries
 from aiobserve.export.duckdb import SCHEMA_VERSION
 from tests.analyze.conftest import AS_OF_PARTIAL, MYCELIA_SESSIONS, Output, QueryRunner, query
 from tests.conftest import (
@@ -189,7 +189,9 @@ def test_the_store_is_opened_read_only(
     """No query can write to the store, whatever its SQL says."""
     # If a query file asks for DDL (planted here — no shipped query does)...
     monkeypatch.setattr(queries, "QUERY_DIR", tmp_path)
-    monkeypatch.setitem(queries.QUERIES, "ddl", queries.Query(scope=queries.Scope.KEYED, params={}))
+    monkeypatch.setitem(
+        manifest.QUERIES, "ddl", queries.Query(scope=queries.Scope.KEYED, params={})
+    )
     (tmp_path / "ddl.sql").write_text("CREATE TABLE planted (a INTEGER);")
     before = _tables(corpus_db)
     # ...then running it raises...

@@ -19,7 +19,7 @@ Commit one report under `reports/` for each pass. Keep every other artifact in g
 
 The strata claim sessions in this order: cost, tool errors, compactions, one slot for each major skill, then seeded discovery. Each stratum walks down its ranking and skips sessions already claimed. This walk-down keeps the cost, error, and compaction strata from collapsing onto the same few large sessions. Each selected session carries the stratum that claimed it, and its report records that tag.
 
-Every quota is a bound parameter. `src/aiobserve/analyze/queries.py` defines the production defaults that committed reports quote. Change a pass's reading budget with `--param`, not by editing the query.
+Every quota is a bound parameter. `src/aiobserve/analyze/manifest.py` defines the production defaults that committed reports quote. Change a pass's reading budget with `--param`, not by editing the query.
 
 Interpret the draw by these rules:
 

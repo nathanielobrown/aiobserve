@@ -18,7 +18,7 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from aiobserve.analyze import macros, queries
+from aiobserve.analyze import macros, manifest, queries
 from aiobserve.view.app import QUERY_URL
 from aiobserve.view.highlight import Syntax, lit
 from tests.conftest import SPINE
@@ -110,7 +110,7 @@ def test_a_citation_quotes_every_binding_its_query_takes(path: str, client: Test
     lines = fields(client.get(path).text, "id", "citation")
     assert lines, path
     for name, line in lines.items():
-        assert set(queries.QUERIES[name].params) <= set(bound(line)), name
+        assert set(manifest.QUERIES[name].params) <= set(bound(line)), name
 
 
 def test_the_query_page_serves_the_statement_the_citation_named(client: TestClient) -> None:
@@ -141,7 +141,7 @@ def test_a_query_page_carries_the_definitions_its_statement_runs_under(
     bare `duckdb` gets a catalog error and no way to find out why, so the page carries the
     setup above the statement. A query that calls none carries nothing extra.
     """
-    for name in queries.QUERIES:
+    for name in manifest.QUERIES:
         page = client.get(f"{QUERY_URL}/{name}").text
         calls = any(f"{macro}(" in queries.load(name) for macro in macros.DEFINITIONS)
         assert ('data-field="macros"' in page) == calls, name
@@ -232,7 +232,7 @@ def test_the_sheet_paints_only_classes_the_highlighter_can_emit(
     # names (`code`, `plain`, `lineno`) out of the comparison.
     painted = {found for rule in selectors for found in re.findall(r"\.([a-z]{1,3}\d?)\b", rule)}
     emitted: set[str] = set()
-    for name in queries.QUERIES:
+    for name in manifest.QUERIES:
         emitted |= classed(lit(queries.load(name), Syntax.SQL).html)
     for (value,) in store.execute(
         "SELECT input FROM live_tool_calls UNION ALL SELECT result FROM live_tool_calls"

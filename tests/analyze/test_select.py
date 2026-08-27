@@ -15,7 +15,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from aiobserve.analyze.queries import QUERIES
+from aiobserve.analyze.manifest import QUERIES
 from tests.analyze.conftest import (
     AGENT_TYPES,
     AS_OF_PARTIAL,

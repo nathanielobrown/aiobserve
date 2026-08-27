@@ -14,7 +14,7 @@ from typing import Any
 
 import duckdb
 
-from aiobserve.analyze import macros, queries
+from aiobserve.analyze import macros, manifest, queries
 from aiobserve.analyze.queries import NoDefault, ParamType, ParamValue, Scope
 from aiobserve.export.duckdb import (
     SCHEMA_MISMATCH_REMEDY,
@@ -98,9 +98,9 @@ def run(
     undeclared parameter, a required one left unbound, `--project` where it is needed or
     where it means nothing.
     """
-    query = queries.QUERIES.get(name)
+    query = manifest.QUERIES.get(name)
     if query is None:
-        raise QueryError(f"no query named {name!r}. Known queries: {', '.join(queries.QUERIES)}")
+        raise QueryError(f"no query named {name!r}. Known queries: {', '.join(manifest.QUERIES)}")
     bindings = _resolve(name, query.params, params)
     corpus = query.scope is Scope.CORPUS
     if corpus and project is None:
