@@ -151,8 +151,8 @@ class SessionContext(Identified):
         Field(
             default=None,
             description=(
-                "The record belongs to a subagent stream. In a main transcript, skip it because "
-                "the subagent's own file records the work better. In a subagent transcript every "
+                "The record belongs to a subagent stream. On a main thread, skip it because "
+                "the subagent's own file records the work better. On a subagent thread every "
                 "record carries it, and skipping those would remove every turn"
             ),
         ),

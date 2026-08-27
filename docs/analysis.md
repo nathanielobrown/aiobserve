@@ -1,15 +1,15 @@
 # Analyze agent behavior
 
-Follow this process to turn the trace store into evidence-backed findings about how an AI coding agent behaved on a project. Read it before each iteration; reader subagents should read it again before opening a session. [The analysis design](../plans/mycelia-analysis/design.md) explains why the process works this way and how its reading budget was set.
+Follow this process to turn the trace store into evidence-backed findings about how an AI coding agent behaved on a project. Read it before each pass; reader subagents should read it again before opening a session. [The analysis design](../plans/mycelia-analysis/design.md) explains why the process works this way and how its reading budget was set.
 
-Commit one report under `reports/` for each iteration. Keep every other artifact in gitignored `data/analysis/<YYYY_MM_DD>/`. Session notes may repeat private transcript text and must not enter the repository.
+Commit one report under `reports/` for each pass. Keep every other artifact in gitignored `data/analysis/<YYYY_MM_DD>/`. Session notes may repeat private transcript text and must not enter the repository.
 
-## Run one iteration
+## Make one pass
 
 1. **Refresh and stamp the corpus.** Run `aiobserve extract`. Write the session count, `max(started_at)`, `meta.schema_version`, and distinct `extract_state.extractor_version` values to `data/analysis/<YYYY_MM_DD>/stamp.txt`. This **corpus stamp** defines the data behind the findings, so every artifact must cite it.
-2. **Survey the corpus.** Run the count and cluster queries that apply to the iteration from `src/aiobserve/analyze/queries/`. Save their CSV output under `data/analysis/<YYYY_MM_DD>/counts/`, with each result's citation line. The citation must name the query and every resolved binding.
+2. **Survey the corpus.** Run the count and cluster queries that apply to the pass from `src/aiobserve/analyze/queries/`. Save their CSV output under `data/analysis/<YYYY_MM_DD>/counts/`, with each result's citation line. The citation must name the query and every resolved binding.
 3. **Select what to read.** Run `aiobserve query select_sessions` and `aiobserve query select_runs`. Both queries make deterministic draws under the rules below.
-4. **Read the sample.** Assign each selected session to one reader subagent. The reader writes a session report from `src/aiobserve/analyze/templates/session.md` and a run report from `src/aiobserve/analyze/templates/run.md` for every run it flags. Use the same run template for runs drawn by `select_runs`. Save the reports under the iteration's `sessions/` and `runs/` directories. If synthesis chooses another run to answer the iteration's question, read it the same way and tag it `synthesis-draw`.
+4. **Read the sample.** Assign each selected session to one reader subagent. The reader writes a session report from `src/aiobserve/analyze/templates/session.md` and a run report from `src/aiobserve/analyze/templates/run.md` for every run it flags. Use the same run template for runs drawn by `select_runs`. Save the reports under the pass's `sessions/` and `runs/` directories. If synthesis chooses another run to answer the pass's question, read it the same way and tag it `synthesis-draw`.
 5. **Synthesize the findings.** In a high-effort pass, read the session and run reports, count tables, and cluster output. Promote candidates under the evidence rules below, then write the committed report according to [the report guide](../reports/README.md).
 6. **Review the process.** Answer the fixed checklist below in the report's final section. Land any fixes to the queries, templates, or this guide in the same PR as the report.
 
@@ -19,7 +19,7 @@ Commit one report under `reports/` for each iteration. Keep every other artifact
 
 The strata claim sessions in this order: cost, tool errors, compactions, one slot for each major skill, then seeded discovery. Each stratum walks down its ranking and skips sessions already claimed. This walk-down keeps the cost, error, and compaction strata from collapsing onto the same few large sessions. Each selected session carries the stratum that claimed it, and its report records that tag.
 
-Every quota is a bound parameter. `src/aiobserve/analyze/queries.py` defines the production defaults that committed reports quote. Change an iteration's reading budget with `--param`, not by editing the query.
+Every quota is a bound parameter. `src/aiobserve/analyze/queries.py` defines the production defaults that committed reports quote. Change a pass's reading budget with `--param`, not by editing the query.
 
 Interpret the draw by these rules:
 
@@ -28,7 +28,7 @@ Interpret the draw by these rules:
 - Unused ranked slots remain available to discovery, but discovery applies its own substance floor. The reading budget is a cap, not a promised sample size. Report the realized count and composition
 - Discovery uses a seeded draw because it has no metric to justify a choice. Its substance floor avoids spending reading slots on sessions too small to support careful analysis
 
-`select_runs` supplements the session sample. For each `agent_type` that meets its usage floor, it draws the highest-error runs, then the highest-cost runs not already selected for errors. Session strata rank whole sessions and may otherwise miss a commonly used agent definition for several iterations.
+`select_runs` supplements the session sample. For each `agent_type` that meets its usage floor, it draws the highest-error runs, then the highest-cost runs not already selected for errors. Session strata rank whole sessions and may otherwise miss a commonly used agent definition for several passes.
 
 ## Bound each reader's context
 
@@ -83,9 +83,9 @@ Before a transcript quote enters a committed report, it must:
 
 Synthesis checks every quote for a citation. Nathaniel compares each quoted line with the redaction rule during PR review; the citation makes that a check rather than a judgment call.
 
-## Improve the next iteration
+## Improve the next pass
 
-Give each iteration a new dated report and leave old reports unchanged. Their process-review sections record how the method evolved.
+Give each pass a new dated report and leave old reports unchanged. Their process-review sections record how the method evolved.
 
 Answer this checklist in the process review:
 

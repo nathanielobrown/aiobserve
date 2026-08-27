@@ -481,7 +481,7 @@ def test_a_popover_is_hidden_until_its_row_is_pointed_at_or_tabbed_into(
     style = client.get("/static/style.css").text
     assert re.search(r"\.popover\s*\{[^{}]*display: none", style)
     # Fixed rather than absolute: `#tree` scrolls under `overflow: auto`, which clips anything
-    # positioned inside it — and a popover of numbers is wider than the sidebar.
+    # positioned inside it — and a popover of numbers is wider than the tree.
     assert re.search(r"\.popover\s*\{[^{}]*position: fixed", style)
     # And it stands where the reading pane does: the tree's width, the grip between the columns,
     # and the gutter on either side of it. Measured from the same `--grip-width` the grip is
