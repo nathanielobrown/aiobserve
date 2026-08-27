@@ -39,8 +39,19 @@ from aiobserve.analyze.queries import ParamValue
 from aiobserve.enrich.prompts import Level
 from aiobserve.export.duckdb import SCHEMA_VERSION
 from aiobserve.model import MAIN_SOURCE
-from aiobserve.view import bounds, errors, highlight, nodes, numbers, render, tree, walk
+from aiobserve.view import (
+    bounds,
+    columns,
+    errors,
+    highlight,
+    nodes,
+    numbers,
+    render,
+    tree,
+    walk,
+)
 from aiobserve.view import format as fmt
+from aiobserve.view.columns import Shape
 from aiobserve.view.enrichment import (
     GLYPH,
     GLYPH_CLASS,
@@ -64,7 +75,7 @@ from aiobserve.view.listing import (
     narrowing,
     sorted_sessions,
 )
-from aiobserve.view.nodes import Kind, Ref, Shape
+from aiobserve.view.nodes import Kind, Ref
 from aiobserve.view.store import (
     TURN_CURSOR,
     Fragment,
@@ -637,7 +648,7 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
     templates.env.globals["thread_url"] = nodes.thread_url  # pyrefly: ignore
     # The columns each children log heads and fills, so the head and the rows cannot drift
     # apart, and how many of them an expansion opened under a row has to span.
-    templates.env.globals["COLUMNS"] = nodes.COLUMNS  # pyrefly: ignore
+    templates.env.globals["COLUMNS"] = columns.COLUMNS  # pyrefly: ignore
     templates.env.globals["spanned"] = nodes.spanned  # pyrefly: ignore
     # And whether this viewer was started for editing it, which `base.html` reads to decide
     # one script tag — the only difference between a dev page and a shipped one.
