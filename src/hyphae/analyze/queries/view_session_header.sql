@@ -16,7 +16,7 @@ WITH skill AS (
     -- Where the session's main thread left the context window: the fill of its last call that
     -- went to a model, in the window that model answers in. The main thread alone, because
     -- that is the window a reader of the session is in — a run holds its own, and says so on
-    -- its own row. Synthetic replies are out for the reason `view_tree_turns` states.
+    -- its own row. Synthetic replies are out for the reason `view_nav_tree_turns` states.
     SELECT
         max_by(context_fill(c), c."index") AS fill,
         max_by(context_window(c.model), c."index") AS window_tokens

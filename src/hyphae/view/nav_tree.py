@@ -1,6 +1,6 @@
-"""The tree beside a node page: the path down to the selection, and only that path opened.
+"""The NavTree beside a node page: the path down to the selection, and only that path opened.
 
-Every node of a session has a URL of its own, and the tree is how a reader walks between
+Every node of a session has a URL of its own, and the NavTree is how a reader walks between
 them. What renders is one open path — the selection's ancestors, the selection, and the
 selection's children — so a session's whole shape is never on the page at once. The rows come
 back flat, in document order, because a click swaps the list out of band and a nested list
@@ -54,7 +54,7 @@ Ran = list[tuple[Library, Mapping[str, ParamValue]]]
 
 @dataclass(frozen=True)
 class Corpus:
-    """What every level of one session's tree is built against, read once for the request.
+    """What every level of one session's NavTree is built against, read once for the request.
 
     The runs are the session's whole set because a run is placed by the call that spawned it
     rather than by the thread it ran on, so any level may need any of them. The enrichment is
@@ -63,7 +63,7 @@ class Corpus:
     """
 
     session_id: str
-    # What the session spent, the basis every share on the tree is a share of.
+    # What the session spent, the basis every share on the NavTree is a share of.
     whole: float
     runs: list[Row]
     described: Descriptions
@@ -91,8 +91,8 @@ class Level(NamedTuple):
 
 
 @dataclass(frozen=True)
-class TreeRow:
-    """One line of the tree: a node at its depth, or the tail standing for what a cap cut."""
+class NavTreeRow:
+    """One line of the NavTree: a node at its depth, or the tail standing for what a cap cut."""
 
     node: Node
     depth: int
@@ -106,10 +106,10 @@ class TreeRow:
     opened: str | None = None
 
 
-class Tree(NamedTuple):
-    """A whole tree: its rows in document order, the open path, and every query it ran."""
+class NavTree(NamedTuple):
+    """A whole NavTree: its rows in document order, the open path, and every query it ran."""
 
-    rows: list[TreeRow]
+    rows: list[NavTreeRow]
     # The open path as rendered nodes, outermost first — what the crumbs above the pane show.
     chain: list[Node]
     ran: Ran
@@ -223,7 +223,7 @@ def _thread_level(
     keyed: dict[str, ParamValue] = {"session_id": corpus.session_id, "source": source}
     listed = keyed | {"nav_chars": queries.NAV_CHARS}
     chipped = keyed | {"chip_chars": queries.NAV_CHARS}
-    turns = page_rows(connection, Page.TREE_TURNS, **listed)
+    turns = page_rows(connection, Page.NAV_TREE_TURNS, **listed)
     marks = page_rows(connection, Page.COMPACTIONS, **chipped)
     # The thread's calls that answer no turn, as one group — the bucket's own row, read the
     # same way the bucket's own page reads it.
@@ -256,7 +256,7 @@ def _thread_level(
         if loose_runs:
             placed.append(unattached_node(corpus.session_id, loose_runs, corpus.whole))
     return Level(
-        placed, [(Page.TREE_TURNS, listed), (Page.COMPACTIONS, chipped), (timeline, bound)]
+        placed, [(Page.NAV_TREE_TURNS, listed), (Page.COMPACTIONS, chipped), (timeline, bound)]
     )
 
 
@@ -334,7 +334,7 @@ def _hoisted(
     `placed` pairs each row's id with its node, and `edge` is the run column naming one — the
     api call under `full`, the tool call under `noapi`, which is what the preset leaves
     showing. A run whose row this level does not hold still belongs to the node the level
-    hangs under, so it trails the level: dropping it would lose a run the tree is the only
+    hangs under, so it trails the level: dropping it would lose a run the NavTree is the only
     way to.
     """
     waiting: dict[str, list[Row]] = {}
@@ -360,7 +360,7 @@ def _calls_level(
     """
     keyed: dict[str, ParamValue] = {"session_id": corpus.session_id, "source": source}
     bound = keyed | {"turn_id": turn_id, "nav_chars": queries.NAV_CHARS}
-    calls = page_rows(connection, Page.TREE_CALLS, **bound)
+    calls = page_rows(connection, Page.NAV_TREE_CALLS, **bound)
     marks, mark_ran = _marks(connection, corpus, source, turn_id)
     # Each row keyed by its own id, which is what `_hoisted` reads to place a run after the
     # call that spawned it. A compaction's id answers no spawning edge, so it just passes.
@@ -375,7 +375,7 @@ def _calls_level(
         marks,
     )
     level = _hoisted(corpus, placed, _spawned(corpus, source, turn_id), "spawn_call_id")
-    return Level(level, [(Page.TREE_CALLS, bound), *mark_ran])
+    return Level(level, [(Page.NAV_TREE_CALLS, bound), *mark_ran])
 
 
 def _tools_level(
@@ -399,7 +399,7 @@ def _tools_level(
         "turn_id": turn_id,
         "nav_chars": queries.NAV_CHARS,
     }
-    rows = page_rows(connection, Page.TREE_TOOLS, **bound)
+    rows = page_rows(connection, Page.NAV_TREE_TOOLS, **bound)
     under = None if api_call_id is not None else turn_id
     marks, mark_ran = _marks(connection, corpus, source, under)
     placed = _interleave(
@@ -411,7 +411,7 @@ def _tools_level(
     )
     spawned = [] if api_call_id is not None else _spawned(corpus, source, turn_id)
     return Level(
-        _hoisted(corpus, placed, spawned, "tool_use_id"), [(Page.TREE_TOOLS, bound), *mark_ran]
+        _hoisted(corpus, placed, spawned, "tool_use_id"), [(Page.NAV_TREE_TOOLS, bound), *mark_ran]
     )
 
 
@@ -509,7 +509,7 @@ Builder = Callable[[duckdb.DuckDBPyConnection, Corpus, Ref], Level]
 
 # What one kind of node holds under one filter preset — the design's kind × preset table, one
 # entry per cell. Total over `Kind × Preset` on purpose, and spelled out rather than defaulted:
-# the tree opens whatever the path reaches, so a missing cell would be a page that renders and
+# the NavTree opens whatever the path reaches, so a missing cell would be a page that renders and
 # then raises halfway down, and a cell a preset passes through is a decision either way.
 CHILDREN: dict[tuple[Kind, Preset], Builder] = {
     (Kind.SESSION, Preset.FULL): _session_level,
@@ -556,7 +556,7 @@ def children(
     not on it. A preset filters children and never the expanded chain: where the cell hides
     that child, the level comes back in full instead, so a reader standing on a kind the preset
     hides still sees where it sits. Adding the step to the filtered level would draw part of
-    the tree twice — `noapi` hoists a tool call to its turn, so an api call spliced back in
+    the NavTree twice — `noapi` hoists a tool call to its turn, so an api call spliced back in
     would render its own copy of a row already sitting a level higher.
     """
     level = CHILDREN[(at.kind, preset)](connection, corpus, at)
@@ -565,15 +565,15 @@ def children(
     return level
 
 
-def tree(
+def nav_tree(
     connection: duckdb.DuckDBPyConnection,
     corpus: Corpus,
     root: Node,
     trail: Sequence[Ref],
     preset: Preset,
     cap: int,
-) -> Tree:
-    """The session's tree with `trail` open — its steps, their siblings, and its children.
+) -> NavTree:
+    """The session's NavTree with `trail` open — its steps, their siblings, and its children.
 
     `trail` runs outermost first and ends at the selection; `root` is the node `trail[0]` names,
     which the page read for its own header. Every step is expanded and nothing else is, so a
@@ -581,17 +581,17 @@ def tree(
     each level shows, except that a level whose cell hides the path's own next step renders in
     full: a reader standing on a folded-away kind still sees where it sits. `cap` bounds a
     level and a tail row says what it left out, except that the row the path goes through is
-    always kept: a cut that hid the selection would leave the pane describing a node the tree
+    always kept: a cut that hid the selection would leave the pane describing a node the NavTree
     does not show.
     """
     open_keys = [ref.key for ref in trail]
     selection = open_keys[-1]
-    rows: list[TreeRow] = []
+    rows: list[NavTreeRow] = []
     chain: list[Node] = []
     ran: Ran = []
 
     def expand(node: Node, depth: int) -> None:
-        rows.append(TreeRow(node, depth, selected=node.key == selection))
+        rows.append(NavTreeRow(node, depth, selected=node.key == selection))
         if node.key not in open_keys:
             return
         chain.append(node)
@@ -604,7 +604,7 @@ def tree(
             expand(child, depth + 1)
         if shown.cut:
             rows.append(
-                TreeRow(node, depth + 1, selected=False, cut=len(shown.cut), opened=descends)
+                NavTreeRow(node, depth + 1, selected=False, cut=len(shown.cut), opened=descends)
             )
 
     expand(root, 0)
@@ -612,7 +612,7 @@ def tree(
     # a level did not hold the child the path named — a store shape, not a page to serve.
     if len(chain) != len(trail):
         raise ValueError(f"nothing under {chain[-1].key} holds {open_keys[len(chain)]}")
-    return Tree(rows, chain, ran)
+    return NavTree(rows, chain, ran)
 
 
 class Window(NamedTuple):

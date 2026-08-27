@@ -2,10 +2,10 @@
 -- happened: the list behind the viewer's errors page and the stepper beside a pane reading a
 -- failure (`view/errors.py`).
 -- Session-wide rather than per thread, for the reason the unattached bucket is: what a
--- subagent failed at is what the session failed at, and the tree opens one path — so nothing
+-- subagent failed at is what the session failed at, and the NavTree opens one path — so nothing
 -- else on a node page reaches a failure five spawns down without reading everything first.
 -- No join up to the api call or the turn: each row leads to the tool call's own page, which
--- carries the crumb chain that places it. Thin like `view_tree_tools`, and cut to the same
+-- carries the crumb chain that places it. Thin like `view_nav_tree_tools`, and cut to the same
 -- width, because both name a node rather than describe one.
 -- The order is total — `(source, "index")` and `(source, id)` are each unique within a
 -- session (`export/duckdb.py`) — which is what a cut means anything against: a page showing

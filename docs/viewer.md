@@ -1,8 +1,8 @@
 # The trace viewer
 
-`hp view` opens the trace store in a local browser. Everything a session recorded is a node with a page of its own — the session, its turns, the runs it spawned, the api calls, the tool calls, the compactions between them — and you read one node at a time, with a tree beside it showing where that node sits. Copy the URL of anything you want to cite.
+`hp view` opens the trace store in a local browser. Everything a session recorded is a node with a page of its own — the session, its turns, the runs it spawned, the api calls, the tool calls, the compactions between them — and you read one node at a time, with a NavTree beside it showing where that node sits. Copy the URL of anything you want to cite.
 
-The server binds only to `127.0.0.1`, opens the store read-only, and serves only vendored assets. Run `hp view --help` for flags. [The node-browser design](../plans/viewer-node-browser/design.md) holds the choices behind the tree, and [the trace-viewer design](../plans/trace-viewer/design.md) the ones behind the pages around it. [URLs and page bounds](viewer-bounds.md) covers what a URL may ask for and what a page is allowed to weigh. Editing a template is governed by `.claude/rules/viewer-ui.md`, and [the UI development loop](ui-development.md) is how to edit one and watch the page: `--dev` reloads the open page on save, and `mise run gallery` serves the scenarios the tests pin.
+The server binds only to `127.0.0.1`, opens the store read-only, and serves only vendored assets. Run `hp view --help` for flags. [The node-browser design](../plans/viewer-node-browser/design.md) holds the choices behind the NavTree, and [the trace-viewer design](../plans/trace-viewer/design.md) the ones behind the pages around it. [URLs and page bounds](viewer-bounds.md) covers what a URL may ask for and what a page is allowed to weigh. Editing a template is governed by `.claude/rules/viewer-ui.md`, and [the UI development loop](ui-development.md) is how to edit one and watch the page: `--dev` reloads the open page on save, and `mise run gallery` serves the scenarios the tests pin.
 
 ## Follow a session down to any record it holds
 
@@ -29,8 +29,8 @@ flowchart LR
     tool -.-> value
     records -.->|"opening a row"| value
     turn -.->|"a child's body, in place"| body["a node's body"]
-    turn -.->|"what the tree's window left out"| kin["the rest of a level"]
-    turn -.->|"the numbers behind a tree row"| numbers["a row's numbers"]
+    turn -.->|"what the NavTree's window left out"| kin["the rest of a level"]
+    turn -.->|"the numbers behind a NavTree row"| numbers["a row's numbers"]
 ```
 
 Solid edges lead to pages with their own URLs. Dotted edges fetch a fragment into the open page.
@@ -40,7 +40,7 @@ Solid edges lead to pages with their own URLs. Dotted edges fetch a fragment int
 | --- | --- | --- |
 | Projects page | `/` | Every project the store holds sessions for, most recently active first |
 | Session list | `/sessions` | One page of sessions, under the filter, sort and size the URL carries |
-| A session | `/session/{session_id}` | A session's own node: what it was, and its main thread as the tree's first level |
+| A session | `/session/{session_id}` | A session's own node: what it was, and its main thread as the NavTree's first level |
 | A turn | `/session/{session_id}/thread/{source}/turn/{turn_id}` | One turn: what it was asked, and the api calls that answered it |
 | An agent run | `/session/{session_id}/run/{run_id}` | One agent run: the brief it was given, and its own thread of turns |
 | An api call | `/session/{session_id}/thread/{source}/call/{api_call_id}` | One api call: what it answered, what it thought, and the tools it called |
@@ -54,7 +54,7 @@ Solid edges lead to pages with their own URLs. Dotted edges fetch a fragment int
 | An offload file | `/session/{session_id}/offload/{offload_name:path}` | One chunk of a tool result Claude Code wrote to a file beside the transcript |
 <!-- aigarden:end -->
 
-`build_app` in `src/hyphae/view/app.py` mounts one route module per subject, fragments included, and the table above is read back off the app it builds. Nothing renders in the reading pane that a cold GET of its own URL doesn't render whole, tree and all.
+`build_app` in `src/hyphae/view/app.py` mounts one route module per subject, fragments included, and the table above is read back off the app it builds. Nothing renders in the reading pane that a cold GET of its own URL doesn't render whole, NavTree and all.
 
 ## The landing page counts projects
 
@@ -70,13 +70,13 @@ The form above the list filters by project, date range, skill, or a minimum numb
 
 Filters survive sorting and paging. The `clear` link beside the form drops them. The footer prints a citation after paging and names every active filter, so it describes the rows on screen.
 
-## The tree opens one path and nothing else
+## The NavTree opens one path and nothing else
 
-Beside every node page is the session's tree, with one path open: the selection, its ancestors, each ancestor's children, and the selection's own children. Clicking a row selects it, which opens that row's path and closes the one you left. There are no independent twisties and no way to open two branches at once, so no session makes the tree wider than one open path. Its depth is a hard limit rather than a cap: an open path runs at most 16 levels, and a node deeper than that fails instead of serving a page the byte arithmetic never priced. The deepest chain the recorded corpus holds is 14 — a tool call inside a run five spawns down — so the margin is one more spawn level.
+Beside every node page is the session's NavTree, with one path open: the selection, its ancestors, each ancestor's children, and the selection's own children. Clicking a row selects it, which opens that row's path and closes the one you left. There are no independent twisties and no way to open two branches at once, so no session makes the NavTree wider than one open path. Its depth is a hard limit rather than a cap: an open path runs at most 16 levels, and a node deeper than that fails instead of serving a page the byte arithmetic never priced. The deepest chain the recorded corpus holds is 14 — a tool call inside a run five spawns down — so the margin is one more spawn level.
 
 A session's children are the main thread's turns, the compactions that happened between two of them, its calls that answer no turn, and the runs nothing placed. A turn's children are its api calls and the compactions that happened while it ran, in the order they happened; an api call's are its tool calls. An agent run reads like a session: its children are its own turns. A run renders under the *turn* it belongs to, right after the api call that spawned it — the run is the turn's child, not the call's, and a `Task` tool call keeps its own slot with a link to the run at the head of its page.
 
-Above the rows are the presets: **full**, **no api calls**, **agents only**, with the one in force marked. Each is the node you are reading under a different tree, so a switch keeps your place and your knobs — the preset is [`?nav=`](viewer-bounds.md#urls-preserve-the-query-behind-what-you-saw), and the control is the only link on the page that changes it.
+Above the rows are the presets: **full**, **no api calls**, **agents only**, with the one in force marked. Each is the node you are reading under a different NavTree, so a switch keeps your place and your knobs — the preset is [`?nav=`](viewer-bounds.md#urls-preserve-the-query-behind-what-you-saw), and the control is the only link on the page that changes it.
 
 Every row with spend badges it: the dollar value sits on a warm ground that deepens with the row's share of what the session cost, logarithmic over three orders of magnitude, because a session's cheapest turn and its dearest are that far apart and a linear scale would paint all but the dearest alike. Tool calls show no cost and wear no badge; what a tool call took is the api call's.
 
@@ -88,7 +88,7 @@ A tool call that came back an error carries an `error` mark on its row, in the s
 
 ## Pointing at a row prints its numbers
 
-Point at a tree row, or tab to it, and the numbers behind its badge and its bar appear beside the tree. A row fetches them once: 200 ms after the pointer arrives, or the moment focus lands anywhere inside it, so a keyboard reaches what a pointer reaches. There is nothing to pin. The popover belongs to the row, so it stays open while the pointer is inside it, and a click into it holds it open while you drag across a number and copy it.
+Point at a NavTree row, or tab to it, and the numbers behind its badge and its bar appear beside the NavTree. A row fetches them once: 200 ms after the pointer arrives, or the moment focus lands anywhere inside it, so a keyboard reaches what a pointer reaches. There is nothing to pin. The popover belongs to the row, so it stays open while the pointer is inside it, and a click into it holds it open while you drag across a number and copy it.
 
 A node made of api calls — a session, a turn, an agent run, a call — shows what its calls read from cache, took as new input and wrote as output; how full the window was when it ended, and the window that fullness was measured against; what it added over the node before it, signed, so a turn after a compaction reads as the negative it is; and the model that answered last. A window the table holds no number for reads `unknown` rather than scaling the counts to a guess. Under those is where the dollars went — input, cache read, cache write, output — then the total and how many api calls it covers. The four are the stored total taken apart at the price table the extract charged each call at, so the legend cannot disagree with the badge above it. Where some of those calls ran on a model the table lacks, the line says how many, and the total is a floor.
 
@@ -96,7 +96,7 @@ A tool call has none of that, because its tokens are its api call's. Its popover
 
 ## Jump straight to where a session failed
 
-The tree opens one path, so a failure five spawns down a run tree is behind everything in front of it. `/session/{session_id}/errors` is the way past that: every `is_error` tool call the session made, on every thread, in the order they happened, each row a link to that call's own page. Every node page of a session that failed something carries the count and the way in, under the walk controls.
+The NavTree opens one path, so a failure five spawns down a run tree is behind everything in front of it. `/session/{session_id}/errors` is the way past that: every `is_error` tool call the session made, on every thread, in the order they happened, each row a link to that call's own page. Every node page of a session that failed something carries the count and the way in, under the walk controls.
 
 Standing on a failed tool call, the same block gains a step to the failure before it and the one after — across threads, because the list is the session's rather than one thread's. No other page runs the query: a reading pane on anything else has no step to offer.
 
@@ -110,7 +110,7 @@ The reading pane leads with the crumb chain down to the node, then the node's ti
 - The node's own fat values, cut to 4,000 characters, each with a link that fetches the rest: a turn's prompt, a run's task brief, an api call's text and thinking, a tool call's input and result, and the command a `Bash` call ran. A run shows two more, read off the call that spawned it: what it was asked, and what its parent received back. That answer is the spawning call's result rather than the run's last turn — a run that stopped without reporting told its parent nothing, and the page says so. A turn typed as a slash command has no prompt among its values: what was typed is the `<command-…>` wrapper Claude Code expanded it into, and the two facts inside it — the command and what followed it — stand as values of their own. The wrapper is still what was sent, and the thread's transcript has it whole
 - The thread's transcript, and — for a turn — the archived line it was read from, in a `<details>` that fetches on open
 - The children log: one numbered page of 100 children, as a table. A column per number the children are told apart by, each under a heading that names it — a turn's api calls read nothing like its tool calls, and a start time is not a duration. One wide column names the child and links to its page, and a `View` button opens the child's own body in place, as a row of the same table, without leaving the parent. An opened body stops one level down: an api call's lists the tools it called, as rows of the same table with no `View` of their own, and every other kind stands a count and a link to its own page. The heading counts the level, not the page; a level running past one page carries prev and next under it, and says which page of how many you are on
-- Prev and next, two buttons that read the level the node is on: the row beside it, and at the end of the level whatever follows the branch. Neither descends — going down is what the tree is for — and a step that leaves the level shows `↑` instead of an arrow along it. Each names the neighbour's kind and its title. The buckets and the compactions are stops like any other, and the controls ignore what the tree was capped to: a reading order that shortened with the tree would skip nodes silently
+- Prev and next, two buttons that read the level the node is on: the row beside it, and at the end of the level whatever follows the branch. Neither descends — going down is what the NavTree is for — and a step that leaves the level shows `↑` instead of an arrow along it. Each names the neighbour's kind and its title. The buckets and the compactions are stops like any other, and the controls ignore what the NavTree was capped to: a reading order that shortened with the NavTree would skip nodes silently
 - [Where the session failed](#jump-straight-to-where-a-session-failed): how many tool calls it failed, the way to the list of them, and — on a failed call — the step to the failure before it and the one after
 
 A value is marked up in the syntax the record says it is written in: the JSON a tool was passed, the SQL behind a page, the shell a `Bash` call ran, and the file a `Read` returned — read off the name the call asked for, so a `.md`, `.py`, `.sql` or `.sh` result is shown as its source rather than rendered. A tool result is evidence, and a heading made out of a `#` is a character the agent saw and the page does not. What a model or a person wrote is prose: the pane renders it as the Markdown it was written in, and so does the fetch that opens it whole, with a fenced block inside marked up in the language the fence names. The 4,000-character cut is made in the store and lands where it lands, so a preview can open a construct the whole value closes. Anything the viewer cannot place prints as it was stored, and so does a value past 256,000 characters, with a line saying why. Every page's footer cites the queries behind it, and each citation links to `/query/{query_name}`, which shows that query's SQL under the bindings the page used. Where a statement calls one of the library's shared SQL macros, that page prints their definitions above it, so what it shows runs in a `duckdb` shell that installed nothing.
@@ -119,14 +119,14 @@ A value is marked up in the syntax the record says it is written in: the JSON a 
 
 ## One title names a node everywhere
 
-Every node has one title: the most readable name the record supports for it. The reading pane's heading, the tree row, the crumb, the children log, the walk controls, the errors list and the browser tab all print that title, each cut to what it has room for — 100 characters at the head of the reading pane, 110 on a tree row, 300 in a children log. One derivation per kind, read by all of them, so a reader who clicks a row lands on a pane headed with the words they clicked.
+Every node has one title: the most readable name the record supports for it. The reading pane's heading, the NavTree row, the crumb, the children log, the walk controls, the errors list and the browser tab all print that title, each cut to what it has room for — 100 characters at the head of the reading pane, 110 on a NavTree row, 300 in a children log. One derivation per kind, read by all of them, so a reader who clicks a row lands on a pane headed with the words they clicked.
 
 A title names its node; it does not quote the store. It may drop the project directory off a path, join what a model wrote to what the session recorded, or lead with the kind of thing it names — and where a title looks like stored text, it is still a name standing for the value rather than reproducing it. What the store holds verbatim is under the heading: the node's own values, the archived record it was read from, and the thread's transcript. Where a record supports no readable name, the title falls back to the head of what was stored rather than inventing one.
 
 By kind:
 
 - a **session**: what an [enrichment pass](enrichment.md) said it was, else the title Claude Code recorded, else the session id — which is what a reader pasted to arrive here
-- a **turn**: the slash command it ran and what followed, else the prompt as typed. The command comes first because a slash command's prompt is the `<command-…>` wrapper Claude Code expanded it into, which says nothing in the width of a tree row
+- a **turn**: the slash command it ran and what followed, else the prompt as typed. The command comes first because a slash command's prompt is the `<command-…>` wrapper Claude Code expanded it into, which says nothing in the width of a NavTree row
 - an **agent run**: the agent type, then what the pass said the run did, else the task brief it was given — `Explore — found the indent bug`. Which agent ran is what tells six runs of one turn apart
 - an **api call**: the head of the text it answered with, else what it went on to do, else the model that answered. A call whose answer was tool calls has no words to quote, and which tools it called is the record's own answer to which call it was: the title of the tool call it made first leads, then a count of each tool that followed — `Bash — Remove temp mutation clones +2(Bash) +1(Read)`, grouped in the order each tool first appears. The count is what survives every cut, because each width is spent on the title less the count rather than the other way round
 - a **tool call**: the tool's name, then what the tool was asked, which is what tells two calls of one tool apart — a `Read`'s file path, relative to the session's project directory where the file is inside it and absolute where it is not; a `Bash` call's description; and the head of the input for every other tool. Which part of the input the title comes from is read off the input rather than off a list of tool names, so a tool this viewer has never seen still names itself
@@ -139,13 +139,13 @@ A tool call's title is derived in SQL, a macro every query that names one calls 
 
 ## A mark says what kind of node a page names
 
-Four surfaces say what kind of node they name with one character: the tree row, the crumb, the reading pane's heading, and the browser tab. `❖` a session, `❯` a turn, `◎` an agent run, `⇄` an api call, `⚒` a tool call, `⊟` a compaction, and `∅` either bucket — the calls that answer no turn, and the runs nothing placed. Three of them also head a children log's column about that kind, because a column head and a tree row are one reader meeting one thing twice.
+Four surfaces say what kind of node they name with one character: the NavTree row, the crumb, the reading pane's heading, and the browser tab. `❖` a session, `❯` a turn, `◎` an agent run, `⇄` an api call, `⚒` a tool call, `⊟` a compaction, and `∅` either bucket — the calls that answer no turn, and the runs nothing placed. Three of them also head a children log's column about that kind, because a column head and a NavTree row are one reader meeting one thing twice.
 
 The mark is decoration and the markup says so. It stands for a word already there — the row's class, the crumb's field name, the reading pane's own kind — so a screen reader passes over it and reads the title.
 
 ## Enrichment appears beside the recorded trace
 
-After [an enrichment pass](enrichment.md), the viewer places its output beside the stored telemetry. A `✨` marks a title a model helped write, and stands before the whole of it — on the tree row, the crumb, the log line, and the walk control. It is a claim about how the title was made rather than about which words came from where: a run's title is the agent type the session recorded followed by what the pass said the run did, and one glyph leads both halves. Three kinds of node can carry it, the three a pass describes: a session, a turn and an agent run. The pane carries the one glyph that explains itself: hover it for the model, when it ran, the prompt and taxonomy versions, and whether the row is stale. `stale` means the pass used an older prompt or taxonomy version, so rerun the pass; it does not mean the saved description is false.
+After [an enrichment pass](enrichment.md), the viewer places its output beside the stored telemetry. A `✨` marks a title a model helped write, and stands before the whole of it — on the NavTree row, the crumb, the log line, and the walk control. It is a claim about how the title was made rather than about which words came from where: a run's title is the agent type the session recorded followed by what the pass said the run did, and one glyph leads both halves. Three kinds of node can carry it, the three a pass describes: a session, a turn and an agent run. The pane carries the one glyph that explains itself: hover it for the model, when it ran, the prompt and taxonomy versions, and whether the row is stale. `stale` means the pass used an older prompt or taxonomy version, so rerun the pass; it does not mean the saved description is false.
 
 The reading pane prints the first 200 characters of a description or friction line, marks where it cut, and stands a link behind the mark that fetches the rest into the block the head stood in — the preview-and-fetch every other fat value the reading pane shows rides. The session list adds each session's one-line description and two tags, cutting the line to the 100-character head a row's title takes and marking it there too. It does not show `stale` because the list joins the words written by a pass without loading the versions needed to judge them.
 

@@ -56,7 +56,7 @@ def counted(value: int) -> str:
 def pages(store: duckdb.DuckDBPyConnection) -> list[str]:
     """Every page one store can serve — the list, and every node of every session it holds.
 
-    One URL per node the tree can reach, read from the store the way the routes read it, so a
+    One URL per node the NavTree can reach, read from the store the way the routes read it, so a
     sweep over this list is a sweep over the whole viewer rather than over the two pages that
     used to exist. Every URL here answers 200: the two buckets are included only where the
     store has something to put in them, because an empty bucket is a node that is not there.
@@ -293,11 +293,11 @@ def values(html: str, attribute: str) -> list[str]:
 def bar(page: str, key: str) -> tuple[int | None, int | None]:
     """The two steps a row's context bar is drawn at: how full it is, and how much it added.
 
-    Shared, because the bar is where the tree's numbers and the popover's have to disagree:
+    Shared, because the bar is where the NavTree's numbers and the popover's have to disagree:
     a turn that gave the window back draws no tip and prints a negative delta, and a leaf
     that read one seam alone could not say so.
     """
-    classes = inside(page, "data-tree", key, "class")[0].split()
+    classes = inside(page, "data-nav-tree", key, "class")[0].split()
     steps = {name[0]: int(name[1:]) for name in classes if re.fullmatch(r"[ft]\d+", name)}
     return steps.get("f"), steps.get("t")
 
@@ -315,25 +315,25 @@ def step(tokens: int | None, model: str) -> int | None:
     return min(round(tokens / CONTEXT_WINDOWS[model] * BAR_STEPS), BAR_STEPS)
 
 
-# One tree row that stands for a node, depth beside key. Read as a pair rather than as two
+# One NavTree row that stands for a node, depth beside key. Read as a pair rather than as two
 # `values` scans because a cap's tail row carries a depth and no key, so the two lists are
 # not the same length whenever a level was cut. Anything but a `>` may sit between the two
 # attributes: the formatter owns how a tag is laid out (`mise run format-html`), and a tag
 # boundary is the only thing this needs to hold — a tail row's depth cannot pair with the
 # next row's key.
-_ROW = re.compile(r'data-depth="(\d+)"[^>]*?\sdata-tree="([^"]*)"')
+_ROW = re.compile(r'data-depth="(\d+)"[^>]*?\sdata-nav-tree="([^"]*)"')
 
 
 def rows(html: str) -> list[tuple[int, str]]:
-    """Every tree row that stands for a node: its depth beside its key, in document order."""
+    """Every NavTree row that stands for a node: its depth beside its key, in document order."""
     return [(int(depth), key) for depth, key in _ROW.findall(html)]
 
 
 def kin(html: str) -> list[str]:
-    """The children the tree opened under the selection, as node keys in document order.
+    """The children the NavTree opened under the selection, as node keys in document order.
 
     The rows one level below the open chain, which is what the crumbs count. Everything else
-    on the tree is an ancestor, an ancestor's sibling, or a tail row.
+    on the NavTree is an ancestor, an ancestor's sibling, or a tail row.
     """
     depth = len(values(html, "data-crumb"))
     return [key for at, key in rows(html) if at == depth]
@@ -414,7 +414,7 @@ def icons(html: str, attribute: str, value: str) -> list[str]:
 
     Read by class rather than by a `data-` key: a mark is not a value the store holds, so it
     carries no `data-field` (`.claude/rules/viewer-ui.md`) — and a key naming it would be
-    twenty bytes on every one of a node page's 3,217 tree rows.
+    twenty bytes on every one of a node page's 3,217 NavTree rows.
     """
     return _element(html, attribute, value).marks
 
@@ -480,7 +480,7 @@ class _Wiring(HTMLParser):
 def wired(html: str, key: str) -> list[tuple[str, dict[str, str]]]:
     """What htmx would do, for every fetching element under a `key` attribute, in page order.
 
-    Inheritance and all: the tree writes the swap its rows share on the element it hands back,
+    Inheritance and all: the NavTree writes the swap its rows share on the element it hands back,
     so an assertion on a row's own attributes would read a page that works and one that does
     not the same way. Each pair is the `key` of the row an element sits in and its wiring; a
     row holding two of them — a link and a body toggle — gives two pairs.

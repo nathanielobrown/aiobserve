@@ -1,6 +1,6 @@
 """Prev and next beside the pane: how a reader gets along a level and back out of it.
 
-Neither control ever descends. Going down is what the tree is for — a click on a row opens
+Neither control ever descends. Going down is what the NavTree is for — a click on a row opens
 it — so the two controls read the level the reader is standing on: the next sibling, then the
 next, and at the end of the level whatever follows the thing it sits inside. Prev is the same
 level backwards, and from its first row the node that holds it. A step that leaves the level
@@ -9,7 +9,7 @@ they did not ask to be.
 
 What the walk reads is the store, never the rendered rows. A `?kin=` cap cuts what is drawn
 beside the pane; it cannot cut what comes next, because a reading order that shortened with
-the tree would silently skip nodes. Each step is one level read — an ancestor's children —
+the NavTree would silently skip nodes. Each step is one level read — an ancestor's children —
 on top of the chain the page already resolved.
 """
 
@@ -18,8 +18,8 @@ from typing import NamedTuple
 
 import duckdb
 
+from hyphae.view.nav_tree import Corpus, Ran, children
 from hyphae.view.nodes import Node, Preset
-from hyphae.view.tree import Corpus, Ran, children
 
 
 class _Reader:
@@ -31,7 +31,7 @@ class _Reader:
         self.ran: Ran = []
 
     def children(self, node: Node) -> list[Node]:
-        """One node's children in full-preset tree order, the query line recorded.
+        """One node's children in full-preset NavTree order, the query line recorded.
 
         Always full: a filter preset is a view of the session, not a reading order, and three
         orders would be three reading needs to test for the one a reader has.

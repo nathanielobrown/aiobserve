@@ -15,7 +15,7 @@ from starlette.routing import BaseRoute
 
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
-from hyphae.view import bounds, nodes, tree
+from hyphae.view import bounds, nav_tree, nodes
 from hyphae.view.browse import (
     LogRow,
 )
@@ -56,7 +56,7 @@ class Body(NamedTuple):
     """How one kind answers an expansion: the header it reads, and what it says is under it.
 
     `children` is the column counting what the full view would have listed, and `shape` names
-    those children the way the full view's log heading does. A kind with neither ends the tree.
+    those children the way the full view's log heading does. A kind with neither ends the NavTree.
     Where `listed` is None the count and a link stand in for the list.
     """
 
@@ -115,7 +115,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         shape: Shape,
         children: int | None,
         marks: str,
-        ran: tree.Ran,
+        ran: nav_tree.Ran,
         under: list[LogRow],
     ) -> Response:
         """One node's body alone, the way an expansion in someone else's log mounts it.
@@ -198,7 +198,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
             # log row that opened this expansion has it.
             describes = described(connection, session_id, source) if shaped.described else None
         told = describes.turns.get(node_id) if describes else None
-        ran: tree.Ran = [(shaped.page, bound)]
+        ran: nav_tree.Ran = [(shaped.page, bound)]
         if shaped.listed is not None:
             ran.append((shaped.listed.query, level))
         if describes is not None and describes.queried:
@@ -239,7 +239,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
             # A run's id is the thread its own rows carry, so it is what the pass keyed on too.
             describes = described(connection, session_id, run_id)
         row = describes.runs.get(run_id)
-        ran: tree.Ran = [(Page.RUN_HEADER, bound)]
+        ran: nav_tree.Ran = [(Page.RUN_HEADER, bound)]
         if describes.queried:
             ran.append((Page.ENRICHMENT, keyed))
         return expanded(
@@ -267,8 +267,8 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
     ) -> Response:
         """The children one level's window left out: the rows a `+N more` row stands in for.
 
-        The tree draws a window on a level and a tail row saying how many it left out; this
-        serves the rest of that level, at the depth the tree had reached, so a click can stand
+        The NavTree draws a window on a level and a tail row saying how many it left out; this
+        serves the rest of that level, at the depth the NavTree had reached, so a click can stand
         them where the tail row stood. `opened` is the key of the child the open path descends
         through, which the window keeps wherever in the level it sits — the page sent it so
         that the two halves of one split agree, and this is the half that must not repeat it.
@@ -285,7 +285,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         checked(log, bounds.LOG.ceiling)
         checked(detail, bounds.DETAIL.ceiling)
         if not 0 < depth <= bounds.DEPTH:
-            raise HTTPException(400, f"A tree row sits between depth 1 and {bounds.DEPTH}.")
+            raise HTTPException(400, f"A NavTree row sits between depth 1 and {bounds.DEPTH}.")
         keyed: dict[str, ParamValue] = {"session_id": session_id}
         with open_store(viewer.db) as connection:
             head = page_rows(
@@ -298,21 +298,21 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
             )
             if not head:
                 raise HTTPException(404, "No session with that id is in this store.")
-            corpus = tree.Corpus(
+            corpus = nav_tree.Corpus(
                 session_id=session_id,
                 whole=head[0]["cost_usd"] or 0,
                 runs=page_rows(connection, Page.RUNS, **keyed, chip_chars=queries.NAV_CHARS),
                 described=described(connection, session_id, thread),
                 source=thread,
             )
-            level = tree.children(connection, corpus, at, preset, opened or None)
+            level = nav_tree.children(connection, corpus, at, preset, opened or None)
         return viewer.templates.TemplateResponse(
             request,
             "fragments/kin.html",
             {
                 "rows": [
-                    tree.TreeRow(node, depth, selected=False)
-                    for node in tree.windowed(level.nodes, cap, [opened]).cut
+                    nav_tree.NavTreeRow(node, depth, selected=False)
+                    for node in nav_tree.windowed(level.nodes, cap, [opened]).cut
                 ],
                 "thread": thread,
                 "suffix": carried(nav, kin, log, detail),
@@ -336,9 +336,9 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
     ) -> Response:
         """The rest of one level, under a node recorded on a thread.
 
-        Neither `thread` nor `depth` has a default: these rows are going somewhere in a tree
+        Neither `thread` nor `depth` has a default: these rows are going somewhere in a NavTree
         that already exists, and only the row that asked for them knows where they land and
-        which thread's descriptions the tree around them was drawn by.
+        which thread's descriptions the NavTree around them was drawn by.
         """
         if kind not in set(Kind):
             raise HTTPException(404, "No level is served for that kind of node.")

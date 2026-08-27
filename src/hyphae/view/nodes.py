@@ -3,10 +3,10 @@
 Everything a session records is a node — the session, its turns, the runs it spawned, the api
 calls those turns made, the tool calls those calls made, the compactions between them, and the
 two buckets that hold what attaches to nothing. Each has a page of its own, so each needs one
-title, one URL and one share of the spend, minted here and nowhere else: a tree row, a crumb
+title, one URL and one share of the spend, minted here and nowhere else: a NavTree row, a crumb
 and a pane all read the same node.
 
-`view/tree.py` builds the levels out of these; this module is the vocabulary they are built in.
+`view/nav_tree.py` builds the levels out of these; this module is the vocabulary they are built in.
 """
 
 import math
@@ -71,9 +71,9 @@ class Kind(StrEnum):
 # reader meets them as one kind of hole rather than two.
 BUCKET_ICON = "∅"
 
-# What each kind is marked with, wherever a page names a node of it — the tree row, the crumb,
+# What each kind is marked with, wherever a page names a node of it — the NavTree row, the crumb,
 # the pane's own heading, and the browser tab. Eight characters a reader learns once and then
-# reads a tree by without reading a title, which is why the table is here rather than in a
+# reads a NavTree by without reading a title, which is why the table is here rather than in a
 # template: one of them written into one surface is a node that looks like something else on
 # that surface. Total over `Kind`, so a kind added without a mark is a `KeyError` on the first
 # page that renders it rather than a row saying nothing.
@@ -121,7 +121,7 @@ class Preset(StrEnum):
 
     @property
     def label(self) -> str:
-        """What the control above the tree calls this preset, for a reader who never reads
+        """What the control above the NavTree calls this preset, for a reader who never reads
         the URL."""
         return _PRESET_LABELS[self]
 
@@ -223,7 +223,7 @@ NUMBERED = frozenset({Kind.SESSION, Kind.TURN, Kind.RUN, Kind.CALL, Kind.TOOL})
 
 @dataclass(frozen=True)
 class Node:
-    """One node of a session, wherever it is read — a tree row, a crumb, or the pane itself."""
+    """One node of a session, wherever it is read — a NavTree row, a crumb, or the pane itself."""
 
     kind: Kind
     session_id: str
@@ -250,7 +250,7 @@ class Node:
     # glyph beside the title marks. Three kinds can be: a session, a turn and a run.
     enriched: bool = False
     # Whether the tool call came back an error. Only ever True for a `Kind.TOOL` node: it is
-    # the column the tree's mark and the errors list (`view/errors.py`) are both read from.
+    # the column the NavTree's mark and the errors list (`view/errors.py`) are both read from.
     is_error: bool = False
     # What every cut of the title keeps, printed after the words: how many of each tool an api
     # call went on to invoke after the first (`call_node`). A surface cuts the words to its
@@ -288,16 +288,16 @@ class Node:
         return cut(self._joined(*parts), chars - len(self.tail)) + self.tail
 
     @property
-    def tree_title(self) -> str:
-        """The title at the width of a tree row, a crumb, or a walk control."""
+    def nav_tree_title(self) -> str:
+        """The title at the width of a NavTree row, a crumb, or a walk control."""
         return self._at(queries.NAV_CHARS, self.lead, self.words)
 
     @property
     def log_title(self) -> str:
         """The title at the width of a children log's own column.
 
-        Wider than a tree row's because the log is a table and the column is the width of the
-        pane: a description cut to a tree row's width is the reason a reader opens a node to
+        Wider than a NavTree row's because the log is a table and the column is the width of the
+        pane: a description cut to a NavTree row's width is the reason a reader opens a node to
         find out what it was. The words alone — a log that leads a column with a word heads
         that column with it too (`lead`).
         """
@@ -311,8 +311,8 @@ class Node:
         strings at this width or wider — a tool header's input comes back at a preview's,
         because the same pane previews it — so a title is cut here and marked where the query
         left more behind. A pane names its node from the header it read rather than from the
-        tree row it stands on (`view/browse.py:TITLED`) — the tree cuts at a row's width, which
-        would head a turn with a third of the prompt it is about.
+        NavTree row it stands on (`view/browse.py:TITLED`) — the NavTree cuts at a row's
+        width, which would head a turn with a third of the prompt it is about.
         """
         return self._at(queries.HEADER_CHARS, self.lead, self.words)
 
@@ -383,7 +383,7 @@ class Node:
     def rest(self) -> str:
         """Where the children this node's window left out are fetched, for a tail row to open.
 
-        The same level the tree drew, past the window it drew — rows ready to stand where the
+        The same level the NavTree drew, past the window it drew — rows ready to stand where the
         tail row stands. Not the node's own path under a prefix like `expansion` is: what the
         route resolves is a level rather than a node, so a kind whose page needs no id — a
         session, either bucket — still names itself and its id here.
@@ -427,7 +427,7 @@ def _context(row: Row) -> Context | None:
     """Where the row says its node left the window, or None where it says nothing.
 
     A level of nodes that end on no window leaves the column out, and a node whose model our
-    table has no window for answers NULL inside it: both are a bar the tree does not draw,
+    table has no window for answers NULL inside it: both are a bar the NavTree does not draw,
     the way a model we cannot price is a cost it does not print.
     """
     held = row.get("context")
@@ -447,7 +447,7 @@ def _words(text: str | None) -> str:
 
 
 def session_node(header: Row, described: Descriptions) -> Node:
-    """The root of every tree: the session everything under it was recorded in."""
+    """The root of every NavTree: the session everything under it was recorded in."""
     cost = header["cost_usd"] or 0
     return Node(
         kind=Kind.SESSION,
@@ -470,7 +470,7 @@ def session_node(header: Row, described: Descriptions) -> Node:
 
 
 def turn_node(session_id: str, source: str, row: Row, whole: float, described: str | None) -> Node:
-    """One turn as a node, from a tree row, a timeline row, or the turn's own header."""
+    """One turn as a node, from a NavTree row, a timeline row, or the turn's own header."""
     cost = row["cost_usd"]
     return Node(
         kind=Kind.TURN,
@@ -627,7 +627,7 @@ def _turn_title(row: Row) -> str:
     """What to call a turn: the command it ran and what followed, else the prompt as typed.
 
     The prompt is last because a slash command's prompt is the `<command-…>` wrapper Claude
-    Code put around it, which says nothing in the width of a tree.
+    Code put around it, which says nothing in the width of a NavTree.
     """
     if row["command_name"] is not None:
         return f"{row['command_name']} {row['command_args'] or ''}".strip()

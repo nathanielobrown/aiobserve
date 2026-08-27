@@ -7,7 +7,7 @@
    the registry's, the same one a pane's facts read.
 
    A row is a line that gets a reader to the child's own page rather than a preview of it: what
-   it prints in the wide column is the child's title, the same words the tree row and the pane
+   it prints in the wide column is the child's title, the same words the NavTree row and the pane
    heading use (`docs/viewer.md`).
 
    The heading counts the level and not the page. A reader who lands on page 2 of a turn's
@@ -32,7 +32,7 @@
        hx-target="#reading-pane"
        hx-swap="outerHTML"
        hx-select="#reading-pane"
-       hx-select-oob="#tree-rows"
+       hx-select-oob="#nav-tree-rows"
        hx-push-url="true">{{ parts.glyph(node) }}<span data-field="{{ field }}">{{ words }}</span></a>
     {%- if second %}<span class="secondary" data-field="command">{{ second }}</span>{% endif %}
   </td>
@@ -119,7 +119,7 @@
       </table>
       {#- Only where the level runs past one page: a control offering no page to go to is a
          control a reader has to read to learn there is nothing under it. Plain links, because
-         turning a page is a page load — the tree beside it opens on the child the reader is on. #}
+         turning a page is a page load — the NavTree beside it opens on the child the reader is on. #}
       {% if pager %}
         <nav class="pager" data-pager="{{ shape }}" aria-label="{{ shape }} pager">
           {%- if pager.previous %}<a data-page="previous" href="{{ pager.previous }}">← previous page</a>{% endif %}

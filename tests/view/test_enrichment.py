@@ -170,7 +170,7 @@ def test_every_described_node_carries_its_own_words_on_its_own_page(
         page = enriched_client.get(f"/session/{SPINE}/thread/main/turn/{turn_id}").text
         shown = fields(page, "data-enrichment", turn_id)
         assert (shown["description"], shown["category"], shown["outcome"]) == said, turn_id
-        # And it is the only enrichment on the page: the tree rows beside it only name nodes.
+        # And it is the only enrichment on the page: the NavTree rows beside it only name nodes.
         assert values(page, "data-enrichment") == [turn_id], turn_id
     for run_id, said in enrichment_of(enriched_store, Level.agent_run, SPINE).items():
         page = enriched_client.get(f"/session/{SPINE}/run/{run_id}").text
@@ -387,38 +387,38 @@ def test_an_item_described_under_an_older_prompt_is_marked_stale(
     ]
 
 
-def test_a_tree_row_the_model_named_carries_a_bare_glyph(
+def test_a_nav_tree_row_the_model_named_carries_a_bare_glyph(
     enriched_client: TestClient, enriched_store: duckdb.DuckDBPyConnection
 ) -> None:
     """A row named by the pass says so with the glyph alone — no tooltip, no second copy.
 
-    The tree is the page's multiplied part: a row carries `TREE_ROW_BYTES` and no more, so
+    The NavTree is the page's multiplied part: a row carries `NAV_TREE_ROW_BYTES` and no more, so
     the provenance a pane spells out is a mark here. Read against a described turn and an
     undescribed one of the same thread, because a glyph on every row would say nothing.
     """
     described = enrichment_of(enriched_store, Level.turn, SPINE)
     turn_id = next(iter(described))
     page = enriched_client.get(f"/session/{SPINE}").text
-    # The described row is titled with what the pass said, cut to the width of the tree...
-    assert fields(page, "data-tree", f"turn:{turn_id}")["title"] == cut(
+    # The described row is titled with what the pass said, cut to the width of the NavTree...
+    assert fields(page, "data-nav-tree", f"turn:{turn_id}")["title"] == cut(
         described[turn_id][0], queries.NAV_CHARS
     )
     # ...and marked as the model's words, with nothing hanging off the mark.
-    assert GLYPH_CLASS in inside(page, "data-tree", f"turn:{turn_id}", "class")
-    assert not inside(page, "data-tree", f"turn:{turn_id}", "title")
+    assert GLYPH_CLASS in inside(page, "data-nav-tree", f"turn:{turn_id}", "class")
+    assert not inside(page, "data-nav-tree", f"turn:{turn_id}", "title")
     # The mark stands off the title it marks — `✨ what the pass said`, never `✨what` — and the
     # space that does it is markup no `data-field` can see (`_parts.html`).
-    titled = fields(page, "data-tree", f"turn:{turn_id}")["title"]
-    assert f"{GLYPH} {titled}" in reads(page, "data-tree", f"turn:{turn_id}")
+    titled = fields(page, "data-nav-tree", f"turn:{turn_id}")["title"]
+    assert f"{GLYPH} {titled}" in reads(page, "data-nav-tree", f"turn:{turn_id}")
     # The session's own row is built by a third builder and marked the same way, for the pass
     # that named the whole session rather than one of its turns.
     named = enrichment_of(enriched_store, Level.session, SPINE)
-    assert fields(page, "data-tree", f"session:{SPINE}")["title"] == cut(
+    assert fields(page, "data-nav-tree", f"session:{SPINE}")["title"] == cut(
         named[SPINE][0], queries.NAV_CHARS
     )
-    assert GLYPH_CLASS in inside(page, "data-tree", f"session:{SPINE}", "class")
-    assert not inside(page, "data-tree", f"session:{SPINE}", "title")
-    # The one turn of the corpus no pass reached sits on another session's tree, titled by
+    assert GLYPH_CLASS in inside(page, "data-nav-tree", f"session:{SPINE}", "class")
+    assert not inside(page, "data-nav-tree", f"session:{SPINE}", "title")
+    # The one turn of the corpus no pass reached sits on another session's NavTree, titled by
     # what the session itself recorded and carrying no mark.
     bare_session, bare = one(
         enriched_store,
@@ -427,7 +427,7 @@ def test_a_tree_row_the_model_named_carries_a_bare_glyph(
         " WHERE t.source = 'main' AND e.turn_id IS NULL",
     )
     undescribed = enriched_client.get(f"/session/{bare_session}").text
-    assert GLYPH_CLASS not in inside(undescribed, "data-tree", f"turn:{bare}", "class")
+    assert GLYPH_CLASS not in inside(undescribed, "data-nav-tree", f"turn:{bare}", "class")
     # A run reads the same way through a different builder, with one difference: its title
     # leads with the definition it ran whatever else names it, so what the pass wrote stands
     # after the agent type rather than in place of it — and carries the same bare mark.
@@ -437,11 +437,11 @@ def test_a_tree_row_the_model_named_carries_a_bare_glyph(
         enriched_store, "SELECT agent_type FROM live_agent_runs WHERE id = ?", [run_id]
     )
     page = enriched_client.get(f"/session/{SPINE}/run/{run_id}").text
-    assert fields(page, "data-tree", f"run:{run_id}")["title"] == cut(
+    assert fields(page, "data-nav-tree", f"run:{run_id}")["title"] == cut(
         f"{agent_type}{LEAD_SEPARATOR}{ran[run_id][0]}", queries.NAV_CHARS
     )
-    assert GLYPH_CLASS in inside(page, "data-tree", f"run:{run_id}", "class")
-    assert not inside(page, "data-tree", f"run:{run_id}", "title")
+    assert GLYPH_CLASS in inside(page, "data-nav-tree", f"run:{run_id}", "class")
+    assert not inside(page, "data-nav-tree", f"run:{run_id}", "title")
 
 
 def test_a_model_written_description_is_escaped_like_any_other_transcript_text(
@@ -461,16 +461,16 @@ def test_a_model_written_description_is_escaped_like_any_other_transcript_text(
     )
     with TestClient(build_app(path)) as planted:
         page = planted.get(f"/session/{SPINE}").text
-    # Nothing the model wrote opened a tag, in the pane or on the tree beside it...
+    # Nothing the model wrote opened a tag, in the pane or on the NavTree beside it...
     assert "<script>" not in page and "<b>bold</b>" not in page
     # ...and the reader still sees the text it wrote, as the session's own summary...
     shown = fields(page, "data-enrichment", SPINE)
     assert shown["description"] == injected and shown["friction"] == injected
     # ...and as the title of every turn row, which is the second surface and the second route.
-    titled = [key for key in values(page, "data-tree") if key.startswith("turn:")]
+    titled = [key for key in values(page, "data-nav-tree") if key.startswith("turn:")]
     assert titled, "the session that carries the fixture turn tree no longer opens one"
     for key in titled:
-        assert fields(page, "data-tree", key)["title"] == injected[: queries.NAV_CHARS]
+        assert fields(page, "data-nav-tree", key)["title"] == injected[: queries.NAV_CHARS]
 
 
 def test_a_run_pages_turns_carry_no_description_of_their_own(

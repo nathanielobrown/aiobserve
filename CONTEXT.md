@@ -52,7 +52,7 @@ What each page shows and cites: `docs/viewer.md`; the routes: the modules `src/h
 
 - **Projects page** — `/`, the landing page: every project and its recent sessions
 - **Session list** — `/sessions`: the filter form above one page of sessions
-- **Node page** — the one page shape every node kind shares: tree beside reading pane
+- **Node page** — the one page shape every node kind shares: NavTree beside reading pane
 - **Errors page** — every failed tool call of a session, on every thread, in order
 - **Records page** — one thread's raw records, verbatim
 - **Query page** — the SQL behind a page; every footer cites one
@@ -64,13 +64,13 @@ What each page shows and cites: `docs/viewer.md`; the routes: the modules `src/h
 - **Bucket** — a synthetic node gathering rows the transcript attached to nothing, kept visible rather than dropped or given a fake parent; it stands for no store row, so its title names what is missing
 - **Unattributed** — a thread's bucket of api calls that answer no turn, such as calls before the first prompt
 - **Unattached** — the session's one bucket of agent runs no tool call spawned; it spans every thread
-- **Tree** — the left column: the one open path through the session (never "sidebar")
-- **Presets** — the tree's depth choices and the control above it that picks one: full, no api calls, agents only (`?nav=`)
+- **NavTree** — the left column: the one open path through the session (never "sidebar")
+- **Presets** — the NavTree's depth choices and the control above it that picks one: full, no api calls, agents only (`?nav=`)
 - **Knob** — one of the four things a node-page URL may name: the preset and the three sizes; every link a page mints carries the ones that are not defaults (`docs/viewer-bounds.md`)
-- **Cost badge** — the warm ground behind a tree row's dollar value, deepening with the row's share of what the session spent
-- **Context bar** — the line under a tree row: how full the model's context window was when the node ended, with what the node added left bright at the tip
-- **Popover** — the numbers behind one tree row, fetched when a reader points at it or tabs to it: what the badge and the bar draw, written out
-- **Pane** — any major region of a page; the node page splits into two: the tree and the reading pane
+- **Cost badge** — the warm ground behind a NavTree row's dollar value, deepening with the row's share of what the session spent
+- **Context bar** — the line under a NavTree row: how full the model's context window was when the node ended, with what the node added left bright at the tip
+- **Popover** — the numbers behind one NavTree row, fetched when a reader points at it or tabs to it: what the badge and the bar draw, written out
+- **Pane** — any major region of a page; the node page splits into two: the NavTree and the reading pane
 - **Reading pane** — the right column, reading one node whole
 - **Body** — one node's rendered content: title, facts, enrichment, details; the reading pane holds one, an expansion another
 - **Crumb chain** — the ancestors leading the reading pane, down to the node
@@ -95,6 +95,7 @@ The generators: `tools/`; how to write one and where a generated fact belongs: `
 Each means several things until qualified.
 
 - **Trace** — say *session trace* (one extraction result), the *trace store* (the archive), or an *OTLP trace* (one session's span tree)
+- **Tree** — say *NavTree* for the viewer's left column; a data structure, a spawn tree, or the Layout tree is just a tree
 - **Call** — say *api call* or *tool call*; bare `call` is only the viewer's kind name for the former
 - **Run** — an *agent run*; a person-started iteration is a *pass*
 - **Description** — an enrichment's summary; what the spawner typed for an agent run is its *brief* (the store column `brief`, the reading pane's label: "Task brief")

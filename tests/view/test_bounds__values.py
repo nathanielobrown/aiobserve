@@ -90,7 +90,7 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     """Every preview is truncated before it reaches a page, so no one huge value can bloat it.
 
     The four widths the viewer cuts to, checked at once against one planted store: a list
-    row's, a tree row's title, a children log row's, and a pane's — a header's strings at one
+    row's, a NavTree row's title, a children log row's, and a pane's — a header's strings at one
     cut and the one value it is about at another, wider one. The oversized values are
     invented: redaction flattened every recorded string to a few characters, so no fixture
     reaches a cap.
@@ -179,8 +179,8 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # still being full — an absence read off an empty list is no absence at all.
     offered = suggestions(listing)
     assert offered and not [path for path in offered if "x" in path]
-    # A tree row is a line in the tree, so its title takes the narrowest cut of the four —
-    # the same one whatever kind of node the row stands for. Read off the tree half of the
+    # A NavTree row is a line in the NavTree, so its title takes the narrowest cut of the four —
+    # the same one whatever kind of node the row stands for. Read off the NavTree half of the
     # page: the same `title` field names the node in three places, each at its own width.
     tree, pane = session.split('<article id="reading-pane">')
     titles = re.findall(r'<span data-field="title">(.*?)</span>', tree, flags=re.DOTALL)
@@ -198,8 +198,8 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     assert len(reached) == 6
     assert set(reached) == {"x" * queries.LOG_CHARS + ELLIPSIS}
     # And the pane heads the node it is about at the widest of the three, because nothing on
-    # the page repeats it. Every kind, not the session alone: the tree built the row the pane
-    # stands on and cut its words to a tree row's width, and a title that took the tree's
+    # the page repeats it. Every kind, not the session alone: the NavTree built the row the pane
+    # stands on and cut its words to a NavTree row's width, and a title that took the NavTree's
     # word for it would head a turn with a third of the prompt it is about.
     #
     # Every string a header prints is cut at that width and says so, whether it heads the pane

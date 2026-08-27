@@ -97,7 +97,7 @@ def test_planted_markup_arrives_inert(plant: Planter) -> None:
     with TestClient(build_app(path)) as client:
         served = (
             client.get("/sessions").text,
-            # The session pane, whose tree rows are named by the turn prompts and the run
+            # The session pane, whose NavTree rows are named by the turn prompts and the run
             # descriptions the plant rewrote.
             client.get(f"/session/{SPINE}").text,
             # A turn pane, whose children log previews the calls' text.

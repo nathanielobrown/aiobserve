@@ -37,8 +37,8 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         """Every failed tool call of one session, in the order they happened.
 
         Not a node page: a failure is a property of a tool call rather than a place in the
-        tree, and a session's failures are scattered across every thread it ran. So this is a
-        list, and each row leads to the tool call's own page — which opens the tree at it and
+        NavTree, and a session's failures are scattered across every thread it ran. So this is a
+        list, and each row leads to the tool call's own page — which opens the NavTree at it and
         carries the crumbs that place it.
         """
         with open_store(viewer.db) as connection:

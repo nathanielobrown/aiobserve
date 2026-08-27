@@ -53,7 +53,7 @@ AS creation_tokens >= min_tokens
 # there. The fill is everything the reply was billed for: the cache it read is context it was
 # working in, and its own output is context the next call inherits. What it added is that less
 # the read — the part of the window this call put in front of the model.
-# Macros because every level of the tree derives them and the popover prints them, and a level
+# Macros because every level of the NavTree derives them and the popover prints them, and a level
 # that counted the window its own way would draw a bar denying the row above it. Neither reads
 # a fat column: what they take is a row of `live_api_calls`, and what they answer is a count.
 _CONTEXT_FILL = """

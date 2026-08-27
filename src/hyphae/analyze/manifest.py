@@ -354,7 +354,7 @@ QUERIES: dict[str, Query] = {
     "view_run_result": Query(
         scope=Scope.KEYED, params={"session_id": SESSION_ID, "run_id": RUN_ID}
     ),
-    # The numbers behind one node's row, which the tree draws as a bar and a badge. One query
+    # The numbers behind one node's row, which the NavTree draws as a bar and a badge. One query
     # for every kind that is made of api calls, keyed by the kind as well as the id; the tool
     # call, which is made of none, has its own.
     "view_numbers": Query(
@@ -446,8 +446,8 @@ QUERIES: dict[str, Query] = {
         scope=Scope.KEYED,
         params={
             "session_id": SESSION_ID,
-            # Labelled at a tree row's width, because the rows link to nodes: a failure reads
-            # as the same line here as it does in the tree beside its own page.
+            # Labelled at a NavTree row's width, because the rows link to nodes: a failure reads
+            # as the same line here as it does in the NavTree beside its own page.
             "nav_chars": NAV_CHARS_PARAM,
             "errors": Param(type=ParamType.INTEGER, default=PAGE_ERRORS),
         },
@@ -488,7 +488,7 @@ QUERIES: dict[str, Query] = {
             "head_chars": Param(type=ParamType.INTEGER, default=HEADER_CHARS),
         },
     ),
-    "view_tree_calls": Query(
+    "view_nav_tree_calls": Query(
         scope=Scope.KEYED,
         params={
             "session_id": SESSION_ID,
@@ -499,12 +499,12 @@ QUERIES: dict[str, Query] = {
             "nav_chars": NAV_CHARS_PARAM,
         },
     ),
-    "view_tree_tools": Query(
+    "view_nav_tree_tools": Query(
         scope=Scope.KEYED,
         params={
             "session_id": SESSION_ID,
             "source": SOURCE,
-            # Both NULL-able and both required for the same reason as `view_tree_calls`:
+            # Both NULL-able and both required for the same reason as `view_nav_tree_calls`:
             # NULL is the question "under this turn, whichever call made it" at the first and
             # "under no turn of this thread" at the second, not a key left out.
             "api_call_id": API_CALL_ID,
@@ -512,7 +512,7 @@ QUERIES: dict[str, Query] = {
             "nav_chars": NAV_CHARS_PARAM,
         },
     ),
-    "view_tree_turns": Query(
+    "view_nav_tree_turns": Query(
         scope=Scope.KEYED,
         params={"session_id": SESSION_ID, "source": SOURCE, "nav_chars": NAV_CHARS_PARAM},
     ),

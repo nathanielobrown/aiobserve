@@ -20,9 +20,9 @@
   --space-2: 0.5rem;
   --space-3: 1rem;
   --space-4: 2rem;
-  /* How far one level of the tree sits in from the level above it. Small, because the tree is
+  /* How far one level of the NavTree sits in from the level above it. Small, because the NavTree is
      a narrow column and a session nests as far as an agent spawns. */
-  --tree-step: var(--space-3);
+  --nav-tree-step: var(--space-3);
 }
 /* Dark holds the same roles at the same contrast: ink and dim stay legible on paper, and the
    accent lightens so a bar and a link read against a dark row rather than sinking into it.
@@ -95,60 +95,60 @@ td.title { max-width: 26rem; }
 td.title .secondary { display: -webkit-box; -webkit-box-orient: vertical;
   -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; margin: 0; }
 
-/* The node browser: the tree a reader walks on the left, the node they are reading on the
-   right. The tree is one flat list — a click swaps the whole of it out of band — so a row's
+/* The node browser: the NavTree a reader walks on the left, the node they are reading on the
+   right. The NavTree is one flat list — a click swaps the whole of it out of band — so a row's
    place in the hierarchy is drawn from `data-depth` rather than from nesting. */
 #browser { display: grid;
-  grid-template-columns: var(--tree-width, 24rem) auto minmax(0, 1fr);
+  grid-template-columns: var(--nav-tree-width, 24rem) auto minmax(0, 1fr);
   column-gap: var(--space-3); align-items: start;
   /* The grip's width, named here because the popover measures the pane's left edge from it. */
   --grip-width: 5px; }
 /* The handle between the two columns. It carries the width the reader dragged to and nothing
-   else does: `static/tree-width.js` writes `--tree-width` above, and the bounds it may take
+   else does: `static/nav-tree-width.js` writes `--nav-tree-width` above, and the bounds it may take
    are that file's, so a drag has one stop rather than a clamp here and a limit there. Held
-   beside the tree's own scroller, the full height of it, so there is something to grab
+   beside the NavTree's own scroller, the full height of it, so there is something to grab
    wherever the reader's eye already is. */
-#tree-grip { position: sticky; top: var(--space-2); height: calc(100vh - 4rem);
+#nav-tree-grip { position: sticky; top: var(--space-2); height: calc(100vh - 4rem);
   width: var(--grip-width);
   border-radius: 3px; background: var(--line); cursor: col-resize; }
-#tree-grip:hover, #tree-grip:focus-visible { background: var(--mark); }
-/* The tree scrolls on its own, so a deep session scrolls its rows without losing the pane
+#nav-tree-grip:hover, #nav-tree-grip:focus-visible { background: var(--mark); }
+/* The NavTree scrolls on its own, so a deep session scrolls its rows without losing the pane
    beside them. Monospaced at the label step, because a name's cut and the numbers after it
-   line up down the column: the tree is scanned rather than read. */
-#tree { position: sticky; top: var(--space-2); max-height: calc(100vh - 4rem); overflow: auto;
+   line up down the column: the NavTree is scanned rather than read. */
+#nav-tree { position: sticky; top: var(--space-2); max-height: calc(100vh - 4rem); overflow: auto;
   font-family: ui-monospace, monospace; font-size: var(--type-label); line-height: 1.6; }
-#tree .rows { margin: 0; padding: 0; list-style: none; }
-/* The preset in force, and the two beside it. Held at the top of the tree's own scroller, so a
+#nav-tree .rows { margin: 0; padding: 0; list-style: none; }
+/* The preset in force, and the two beside it. Held at the top of the NavTree's own scroller, so a
    deep session scrolls its rows under the control rather than past it — and ruled off from
-   them, because three words above a tree read as the tree's root until they look clickable. */
-#tree .presets { position: sticky; top: 0; z-index: 1; margin: 0 0 var(--space-1); display: flex;
+   them, because three words above a NavTree read as the NavTree's root until they look clickable. */
+#nav-tree .presets { position: sticky; top: 0; z-index: 1; margin: 0 0 var(--space-1); display: flex;
   gap: var(--space-2); padding: var(--space-1); background: var(--paper);
   border-bottom: 1px solid var(--line); }
-#tree .presets .button { color: var(--dim); font-size: var(--type-label);
+#nav-tree .presets .button { color: var(--dim); font-size: var(--type-label);
   padding: 0 var(--space-1); }
-#tree .presets [aria-current] { color: var(--ink); border-color: var(--mark); font-weight: 600; }
+#nav-tree .presets [aria-current] { color: var(--ink); border-color: var(--mark); font-weight: 600; }
 /* One rung per level a chain can open (`view/bounds.py:DEPTH`), each a step further in than
    the one above: a subagent's turns sit four levels down and its calls deeper still, and a
    ladder that stopped short laid them flush against the session. Written out rather than
    computed from `data-depth`, because reading an attribute as a number is not portable CSS
-   and `app.CSP` forbids the inline style that would carry one. `tests/view/test_tree.py` is
+   and `app.CSP` forbids the inline style that would carry one. `tests/view/test_nav_tree.py` is
    what keeps the ladder as long as a chain can be. */
-li.row[data-depth="1"] > :is(a, button) { padding-left: calc(1 * var(--tree-step)); }
-li.row[data-depth="2"] > :is(a, button) { padding-left: calc(2 * var(--tree-step)); }
-li.row[data-depth="3"] > :is(a, button) { padding-left: calc(3 * var(--tree-step)); }
-li.row[data-depth="4"] > :is(a, button) { padding-left: calc(4 * var(--tree-step)); }
-li.row[data-depth="5"] > :is(a, button) { padding-left: calc(5 * var(--tree-step)); }
-li.row[data-depth="6"] > :is(a, button) { padding-left: calc(6 * var(--tree-step)); }
-li.row[data-depth="7"] > :is(a, button) { padding-left: calc(7 * var(--tree-step)); }
-li.row[data-depth="8"] > :is(a, button) { padding-left: calc(8 * var(--tree-step)); }
-li.row[data-depth="9"] > :is(a, button) { padding-left: calc(9 * var(--tree-step)); }
-li.row[data-depth="10"] > :is(a, button) { padding-left: calc(10 * var(--tree-step)); }
-li.row[data-depth="11"] > :is(a, button) { padding-left: calc(11 * var(--tree-step)); }
-li.row[data-depth="12"] > :is(a, button) { padding-left: calc(12 * var(--tree-step)); }
-li.row[data-depth="13"] > :is(a, button) { padding-left: calc(13 * var(--tree-step)); }
-li.row[data-depth="14"] > :is(a, button) { padding-left: calc(14 * var(--tree-step)); }
-li.row[data-depth="15"] > :is(a, button) { padding-left: calc(15 * var(--tree-step)); }
-li.row[data-depth="16"] > :is(a, button) { padding-left: calc(16 * var(--tree-step)); }
+li.row[data-depth="1"] > :is(a, button) { padding-left: calc(1 * var(--nav-tree-step)); }
+li.row[data-depth="2"] > :is(a, button) { padding-left: calc(2 * var(--nav-tree-step)); }
+li.row[data-depth="3"] > :is(a, button) { padding-left: calc(3 * var(--nav-tree-step)); }
+li.row[data-depth="4"] > :is(a, button) { padding-left: calc(4 * var(--nav-tree-step)); }
+li.row[data-depth="5"] > :is(a, button) { padding-left: calc(5 * var(--nav-tree-step)); }
+li.row[data-depth="6"] > :is(a, button) { padding-left: calc(6 * var(--nav-tree-step)); }
+li.row[data-depth="7"] > :is(a, button) { padding-left: calc(7 * var(--nav-tree-step)); }
+li.row[data-depth="8"] > :is(a, button) { padding-left: calc(8 * var(--nav-tree-step)); }
+li.row[data-depth="9"] > :is(a, button) { padding-left: calc(9 * var(--nav-tree-step)); }
+li.row[data-depth="10"] > :is(a, button) { padding-left: calc(10 * var(--nav-tree-step)); }
+li.row[data-depth="11"] > :is(a, button) { padding-left: calc(11 * var(--nav-tree-step)); }
+li.row[data-depth="12"] > :is(a, button) { padding-left: calc(12 * var(--nav-tree-step)); }
+li.row[data-depth="13"] > :is(a, button) { padding-left: calc(13 * var(--nav-tree-step)); }
+li.row[data-depth="14"] > :is(a, button) { padding-left: calc(14 * var(--nav-tree-step)); }
+li.row[data-depth="15"] > :is(a, button) { padding-left: calc(15 * var(--nav-tree-step)); }
+li.row[data-depth="16"] > :is(a, button) { padding-left: calc(16 * var(--nav-tree-step)); }
 /* A row is one line: what the node is on the left, what it cost on the right, and a title too
    long for the column cut rather than wrapped. The spare width belongs to the title and to
    nothing else. Spread between the parts instead, a short title floats out into the middle of
@@ -160,7 +160,7 @@ li.node > a {
 }
 li.node [data-field="title"] { flex: 1;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#tree .secondary { color: var(--dim); white-space: nowrap; }
+#nav-tree .secondary { color: var(--dim); white-space: nowrap; }
 li.node > a:hover { background-color: color-mix(in srgb, var(--mark) 12%, transparent); }
 /* The row the pane is about, held at full strength while everything around it recedes. The
    wash alone is what a hover already does, so the selection is also railed in the accent —
@@ -170,17 +170,17 @@ li.row[data-selected] > a { font-weight: 600; color: var(--ink);
   background-color: color-mix(in srgb, var(--mark) 12%, transparent);
   box-shadow: inset 3px 0 var(--mark); }
 /* The numbers behind a row, shown while the reader is pointing at it or has tabbed into it.
-   `position: fixed` rather than absolute: the tree scrolls under `overflow: auto`, which clips
-   anything positioned inside it, and the popover is wider than the tree column. Fixed beside
-   the tree rather than under the pointer — no stylesheet can find a pointer — so a reader
+   `position: fixed` rather than absolute: the NavTree scrolls under `overflow: auto`, which clips
+   anything positioned inside it, and the popover is wider than the NavTree column. Fixed beside
+   the NavTree rather than under the pointer — no stylesheet can find a pointer — so a reader
    knows where the numbers will be before they arrive. It stands where the reading pane does:
-   `--tree-width` is the width the reader dragged to, set on `#browser` and inherited down to
+   `--nav-tree-width` is the width the reader dragged to, set on `#browser` and inherited down to
    here, and the grip and the two gutters beside it are what separate the two columns.
    The popover is a descendant of its row, so `:hover` on the row holds while the pointer is
    inside the popover itself, and `:focus-within` holds once a click lands on it — which is
    what makes the numbers selectable without a pin to hold them open. */
 .popover { display: none; position: fixed; bottom: var(--space-3); z-index: 2;
-  left: calc(var(--tree-width, 24rem) + var(--grip-width) + var(--space-3) * 2);
+  left: calc(var(--nav-tree-width, 24rem) + var(--grip-width) + var(--space-3) * 2);
   max-width: 32rem;
   padding: var(--space-2); background: var(--paper); color: var(--ink);
   border: 1px solid var(--line); border-radius: 4px;
@@ -199,7 +199,7 @@ li.node:hover .popover, li.node:focus-within .popover { display: block; }
 
 /* The tail of a level, which fetches the rest of it and stands the rows in its own place. A
    button, because there is no page at the other end — and dressed as the row it sits in
-   rather than as a control, so the tree stays one column of one kind of line. Held to the
+   rather than as a control, so the NavTree stays one column of one kind of line. Held to the
    weight of `li.node > a` above, so the rules that indent a row by its depth outrank it here
    the same way they outrank the anchor's own padding. */
 li.row.more { color: var(--dim); }
@@ -244,12 +244,12 @@ li.more > button:hover { background-color: color-mix(in srgb, var(--mark) 12%, t
 #reading-pane .log tr.expansion > td { background: color-mix(in srgb, var(--mark) 12%, transparent);
   box-shadow: inset 3px 0 var(--mark); padding: var(--space-2) var(--space-3); }
 
-/* Narrow enough that two columns would leave neither readable: the tree folds above the pane
+/* Narrow enough that two columns would leave neither readable: the NavTree folds above the pane
    and is scrolled inside itself, so the node stays in reach. */
 @media (max-width: 900px) {
   #browser { display: block; }
-  #tree-grip { display: none; }
-  #tree { position: static; max-height: 50vh; margin-bottom: var(--space-3); }
+  #nav-tree-grip { display: none; }
+  #nav-tree { position: static; max-height: 50vh; margin-bottom: var(--space-3); }
 }
 
 /* The context bar: how full the model's context window was when the node ended, over a track
@@ -427,7 +427,7 @@ section.enrichment { border-left: 2px solid var(--line); padding-left: var(--spa
    title beside it is the same fact — so it is dim, and the markup hides it. */
 .icon { color: var(--dim); }
 /* The mark on a title a model helped write. Not dimmed with the rest — it is the one thing
-   on a tree row that says where the words came from, and a dimmed mark reads as decoration. */
+   on a NavTree row that says where the words came from, and a dimmed mark reads as decoration. */
 .glyph { color: inherit; cursor: help; }
 /* Outlined in the colour it is written in, not in the rule colour: a chip is a thing the
    reader is asked to see, and `--line` against either paper is 1.4:1 — a pill with no edge. */

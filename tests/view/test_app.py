@@ -8,8 +8,8 @@ stop being covered.
 
 The session list is `test_app__list.py` and its filter form `test_app__filters.py`; the header
 above a node is `test_app__headers.py`, and what a page does with untrusted text is
-`test_app__safety.py`. The node pages themselves live in `test_node.py` and the tree beside
-them in `test_tree.py`, each with its neighbours.
+`test_app__safety.py`. The node pages themselves live in `test_node.py` and the NavTree beside
+them in `test_nav_tree.py`, each with its neighbours.
 """
 
 import json
@@ -48,7 +48,7 @@ def test_a_node_page_cites_every_query_it_ran(client: TestClient) -> None:
     """A node page's footer holds one re-runnable line per query behind it.
 
     The session node is the case with the most reads behind one page: its own header, the
-    level of the tree under it, and the runs and compactions every level needs to place. Each
+    level of the NavTree under it, and the runs and compactions every level needs to place. Each
     line carries the bindings this request made rather than the query file's defaults, which
     is what makes it a citation and not a filename.
     """
@@ -58,11 +58,11 @@ def test_a_node_page_cites_every_query_it_ran(client: TestClient) -> None:
             f"-- queries/view_session_header.sql session_id={SPINE}"
             " head_chars=100 item_chars=60 head_items=5"
         ),
-        "view_tree_turns": (
-            f"-- queries/view_tree_turns.sql session_id={SPINE} source={MAIN}"
+        "view_nav_tree_turns": (
+            f"-- queries/view_nav_tree_turns.sql session_id={SPINE} source={MAIN}"
             f" nav_chars={queries.NAV_CHARS}"
         ),
-        # A run is printed twice on this page — as a tree row and as a children log row — so
+        # A run is printed twice on this page — as a NavTree row and as a children log row — so
         # the citation says which of the two widths this request read them at: the wider.
         "view_runs": f"-- queries/view_runs.sql session_id={SPINE} chip_chars={queries.LOG_CHARS}",
         "view_compactions": (
@@ -219,7 +219,7 @@ def test_the_stylesheet_paints_only_fields_a_page_carries(
     whose tree names each node and marks the failure, whose walk names the kind either side,
     and which counts the session's failures under the pane.
 
-    The `data-field` rules only. The depth ladder beside them runs to the tree's hard limit of
+    The `data-field` rules only. The depth ladder beside them runs to the NavTree's hard limit of
     16 levels and the deepest chain the corpus records is 14, so no page can show that the top
     of that ladder is live.
     """

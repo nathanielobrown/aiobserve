@@ -8,7 +8,7 @@
    written as an expression because a literal space there is whitespace the formatter may drop
    (`mise run format-html`), and this one is the difference between `0 errors` and `0errors`.
    An expression rather than `&#32;` so the rendered space stays one byte: five of them a row
-   is 13 kB of the tree's ceiling (`view/bounds.py`). #}
+   is 13 kB of the NavTree's ceiling (`view/bounds.py`). #}
 {% macro stacked(field, primary, secondary_field, secondary, unit='', mark='') %}
   <span data-field="{{ field }}" class="primary">{{ primary }}</span>
   {%- if caller %}{{ caller() }}{% endif %}
@@ -25,7 +25,7 @@
 {%- endmacro %}
 {# The mark saying what a thing is: what kind of node a row, a crumb or a heading names, and
    what a children log's column counts. `aria-hidden` and no `title`: the mark stands for a word
-   the markup around it already carries — the tree row's class, the crumb's field name, the
+   the markup around it already carries — the NavTree row's class, the crumb's field name, the
    pane's `data-body`, the column's head — so a reader who cannot see it loses nothing, and a
    `title` here would be the same word 3,217 times in one page. Written with no space of its
    own: every caller puts one after it, and a byte here is 3,217 bytes of page
@@ -34,7 +34,7 @@
   <span class="icon" aria-hidden="true">{{ character }}</span>
 {%- endmacro %}
 {# The mark on a title a model helped write. Bare wherever a title repeats —
-   a tree row, a crumb, a log line, a walk control — because what a reader wants beside a mark
+   a NavTree row, a crumb, a log line, a walk control — because what a reader wants beside a mark
    is on the pane, once, hanging off the paragraph the pass wrote. The space after it is an
    expression for `stacked`'s reason: a literal one is the formatter's to drop. It sits inside
    the test, because a row with no mark owes no space. #}

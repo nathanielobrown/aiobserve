@@ -77,12 +77,12 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     "view_session_errors": {"session_id": FORK_ORIGIN},
     # The tree levels beside a node page, bound at the session the tree tests open and
     # at the turn under it holding 4 api calls, so each level answers with more than one row.
-    "view_tree_turns": {"session_id": ANCESTOR, "source": MAIN},
-    "view_tree_calls": {"session_id": ANCESTOR, "source": MAIN, "turn_id": DENSE_TURN},
+    "view_nav_tree_turns": {"session_id": ANCESTOR, "source": MAIN},
+    "view_nav_tree_calls": {"session_id": ANCESTOR, "source": MAIN, "turn_id": DENSE_TURN},
     # Bound at one api call, which is the level under a call; the turn is what the other
     # question binds — every tool call under a turn, the level `noapi` puts there — and the
     # CLI has no way to send the NULL that asks it, so this run exercises the first.
-    "view_tree_tools": {
+    "view_nav_tree_tools": {
         "session_id": FORK_ORIGIN,
         "source": FORK_ORIGIN_RUN,
         "api_call_id": DENSE_CALL,

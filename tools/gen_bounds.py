@@ -46,11 +46,11 @@ class Row(NamedTuple):
     cites: tuple[str, ...]
 
 
-# What each preset of the tree shows, for the reader of a URL rather than of the control —
+# What each preset of the NavTree shows, for the reader of a URL rather than of the control —
 # `Preset` carries its own label there, which says which preset rather than what it does.
 # A preset missing from here crashes `generate`.
 PRESET_WORDS = {
-    nodes.Preset.FULL: "The whole tree",
+    nodes.Preset.FULL: "The whole NavTree",
     nodes.Preset.NO_API: (
         "The api calls folded away, each turn's tool calls standing directly under it"
     ),
@@ -74,7 +74,7 @@ UNCITED = {
     "OPENED_RECORD_CHARS": "how long a record the records browser opens by itself may be",
     "CURSORLESS_TURNS": "how many turn rows a level renders that no cursor reaches",
     "INDENT_CHARS": "when a JSON value is re-indented rather than served as stored",
-    "TREE_ROW_BYTES": "what one tree row weighs — the page arithmetic's multiplicand",
+    "NAV_TREE_ROW_BYTES": "what one NavTree row weighs — the page arithmetic's multiplicand",
 }
 
 
@@ -180,7 +180,7 @@ def bound_rows() -> list[Row]:
             ("bounds.ERRORS.default", "queries.NAV_CHARS"),
         ),
         Row(
-            "Tree",
+            "NavTree",
             f"{text.count(bounds.KIN.default)} children per open level, "
             f"{text.count(bounds.DEPTH)} levels deep, each title cut to "
             f"{text.count(queries.NAV_CHARS)} characters",

@@ -14,7 +14,7 @@ from tests.view.conftest import (
 )
 
 # The corpus's densest main-thread turn — 4 api calls under it — so the pane's children log
-# has more than one row and the tree has a level under the selection worth rendering.
+# has more than one row and the NavTree has a level under the selection worth rendering.
 TURN = f"/session/{ANCESTOR}/thread/{MAIN}/turn/{DENSE_TURN}"
 
 

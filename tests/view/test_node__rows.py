@@ -2,7 +2,7 @@
 
 A row is the whole of a child a reader gets without opening it, so what each cell prints is the
 subject here: what a tool was asked, what a call said and which tools it went on to call, and
-the title that has to read the same in a tree row, a crumb and a log cell however it is cut.
+the title that has to read the same in a NavTree row, a crumb and a log cell however it is cut.
 """
 
 import json
@@ -192,7 +192,7 @@ def test_a_call_row_says_what_the_call_said_and_which_tools_it_called(
         ).fetchall()
     ]
     project = "/Users/planted/repos/hyphae"
-    said = "I will read the app and then check what the tree is standing on."
+    said = "I will read the app and then check what the NavTree is standing on."
     dressed = plant(
         ("UPDATE sessions SET project_dir = ? WHERE id = ?", [project, session_id]),
         ("UPDATE api_calls SET text = ? WHERE id = ?", [said, call_id]),
@@ -322,7 +322,7 @@ def test_one_tool_call_is_titled_the_same_way_wherever_it_is_named(
 ) -> None:
     """The four surfaces that name a tool call agree, because one derivation names it.
 
-    The pane's own heading, the tree row beside it, the row in its parent's children log, and
+    The pane's own heading, the NavTree row beside it, the row in its parent's children log, and
     the session's errors list. They read four different queries at three different widths, so
     the agreement is a fact about the derivation rather than about the page: before it was
     shared, three of these showed the input JSON as stored and the fourth showed the path.
@@ -360,10 +360,10 @@ def test_one_tool_call_is_titled_the_same_way_wherever_it_is_named(
         listed = planted.get(f"/session/{session_id}/errors").text
     # The title the derivation composes: what the tool was, then what it was asked.
     titled = f"Read{LEAD_SEPARATOR}src/hyphae/view/nodes.py"
-    # Its own pane heads it, the tree row it stands on carries it, and the errors list — which
+    # Its own pane heads it, the NavTree row it stands on carries it, and the errors list — which
     # reads a query of its own, over every thread of the session — carries the same string.
     assert fields(pane, "data-body", "tool")["title"] == titled
-    assert fields(pane, "data-tree", f"tool:{tool_id}")["title"] == titled
+    assert fields(pane, "data-nav-tree", f"tool:{tool_id}")["title"] == titled
     assert fields(listed, "data-error", f"tool:{tool_id}")["title"] == titled
     # And the children log under the parent call prints the words under its own `Title` column,
     # with the lead standing in the `Tool` column beside it rather than twice in one row.
@@ -390,7 +390,7 @@ def test_one_tool_call_is_titled_the_same_way_wherever_it_is_named(
         listed = planted.get(f"/session/{session_id}/errors").text
     whole = f"Read{LEAD_SEPARATOR}{long_path}"
     assert fields(pane, "data-body", "tool")["title"] == whole[: queries.HEADER_CHARS] + ELLIPSIS
-    for shown, where in ((pane, "data-tree"), (listed, "data-error")):
+    for shown, where in ((pane, "data-nav-tree"), (listed, "data-error")):
         assert (
             fields(shown, where, f"tool:{tool_id}")["title"]
             == whole[: queries.NAV_CHARS] + ELLIPSIS
@@ -427,7 +427,7 @@ def test_an_api_call_that_answered_with_tool_calls_is_named_by_what_it_called(
     call this was: the first one's title, and how many of each tool followed it.
 
     Read off the store rather than pinned, like every other selection here. What is pinned is
-    the agreement: the pane's heading, the tree row beside it and the browser tab print one
+    the agreement: the pane's heading, the NavTree row beside it and the browser tab print one
     string, because one derivation composes it from two queries at two widths.
     """
     session_id, source, call_id, turn_id, model = one(
@@ -452,7 +452,7 @@ def test_an_api_call_that_answered_with_tool_calls_is_named_by_what_it_called(
     # And after that, the tools it went on to call, counted once per tool.
     assert titled.endswith("".join(f" +1({name})" for name in dict.fromkeys(names[1:]))), titled
     # The three surfaces that name the node agree, at three widths and off two queries.
-    assert fields(page, "data-tree", f"call:{call_id}")["title"] == titled
+    assert fields(page, "data-nav-tree", f"call:{call_id}")["title"] == titled
     assert f"<title>⇄ {titled} ·" in page
     # The one documented exception stands: the children log under the turn names its api-call
     # rows by the model that answered, with what each said in a column of its own beside it.
@@ -501,7 +501,7 @@ def test_the_count_of_a_calls_tools_survives_every_width_the_title_is_cut_to(
     with TestClient(build_app(plant(silent, described))) as planted:
         page = planted.get(url).text
     tally = " +2(Read)"
-    for where, chars in (("data-body", queries.HEADER_CHARS), ("data-tree", queries.NAV_CHARS)):
+    for where, chars in (("data-body", queries.HEADER_CHARS), ("data-nav-tree", queries.NAV_CHARS)):
         key = "call" if where == "data-body" else f"call:{call_id}"
         shown = fields(page, where, key)["title"]
         assert shown == f"Bash{LEAD_SEPARATOR}{asked}"[: chars - len(tally)] + ELLIPSIS + tally
@@ -523,7 +523,7 @@ def test_the_count_of_a_calls_tools_survives_every_width_the_title_is_cut_to(
 
     # The count is bounded in its turn, because it is the half no width cuts. A call that
     # invoked a handful of tools with names as long as an MCP tool's would otherwise spend a
-    # whole tree row on counts. Whole groups go rather than half a name: `+1(mcp__…` counts
+    # whole NavTree row on counts. Whole groups go rather than half a name: `+1(mcp__…` counts
     # calls of a tool the reader cannot identify.
     named = (
         "UPDATE tool_calls SET name = 'mcp__a_long_server_name__tool_' || \"index\""

@@ -1,7 +1,7 @@
 """The fetches a page makes for itself: one whole value, one popover, one enrichment line.
 
 Nothing here serves a document. Every route answers one element that a page already showing
-its head asks for — the rest of a cut value, or the numbers behind a tree row — and every
+its head asks for — the rest of a cut value, or the numbers behind a NavTree row — and every
 answer is a fragment of markup htmx swaps into the page that asked (`docs/viewer.md`).
 
 The pane decides what to offer and mints the URL; a route here only reads the one column it
@@ -32,7 +32,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
     def counted(
         request: Request, kind: Kind, session_id: str, source: str, node_id: str
     ) -> Response:
-        """One node's numbers, for the popover its tree row fetches.
+        """One node's numbers, for the popover its NavTree row fetches.
 
         `source` is the thread the window is read on, which is not always the thread the node
         sits on: a session's reader is reading `main`, and its spend is every thread's. What

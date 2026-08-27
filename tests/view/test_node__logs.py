@@ -156,7 +156,7 @@ def test_the_bucket_that_pages_in_memory_walks_the_same_way_the_query_does(
 ) -> None:
     """The unattached bucket's log pages by slicing, and owes what the queried log owes.
 
-    Its runs arrive with the session's, which every level of the tree needs anyway, so this one
+    Its runs arrive with the session's, which every level of the NavTree needs anyway, so this one
     level cuts a list it already holds instead of asking the store for a page. Read on the one
     recorded bucket that holds more than one run: the pages have to concatenate to the level,
     the heading has to count the level rather than the page, and the last page has to be last.
@@ -263,10 +263,10 @@ def test_every_children_log_heads_the_columns_its_rows_fill(
 SHARED = {"call": "api_calls", "tool": "tool_calls", "run": "agent_type"}
 
 
-def test_a_kind_is_marked_the_same_in_the_tree_and_in_the_column_that_counts_it(
+def test_a_kind_is_marked_the_same_in_the_nav_tree_and_in_the_column_that_counts_it(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """A column head and a tree row are one reader meeting one thing twice, so they agree.
+    """A column head and a NavTree row are one reader meeting one thing twice, so they agree.
 
     `⇄` over a turn's api-call count and `⇄` on an api call's own row are the same fact said in
     two places, and a reader who learned the mark in a table head has to find it again in the
@@ -284,7 +284,7 @@ def test_a_kind_is_marked_the_same_in_the_tree_and_in_the_column_that_counts_it(
     for kind, field in SHARED.items():
         page = client.get(node_url(store, kind)).text
         (selected,) = values(page, "data-selected")
-        (mark,) = icons(page, "data-tree", selected)
+        (mark,) = icons(page, "data-nav-tree", selected)
         # The heading is the mark and then the word for the column, which is what `headings`
         # reads back with its whitespace collapsed.
         assert headed[field].startswith(f"{mark} "), (kind, field, headed[field])

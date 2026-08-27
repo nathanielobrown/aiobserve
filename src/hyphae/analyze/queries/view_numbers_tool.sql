@@ -1,4 +1,4 @@
--- The exact numbers behind one tool call's tree row: how much it gave back, and what else the
+-- The exact numbers behind one tool call's NavTree row: how much it gave back, and what else the
 -- api call that made it asked for in the same breath.
 --
 -- A tool call reports no usage of its own — its tokens are its api call's (`docs/schema.md`) —

@@ -15,7 +15,7 @@ SELECT
     t.api_call_id,
     n.id AS turn_id,
     substr(t.name, 1, $head_chars + 1) AS name,
-    -- What the pane heads the call with, by the derivation the tree row, the errors list and
+    -- What the pane heads the call with, by the derivation the NavTree row, the errors list and
     -- the parent's children log all read (`analyze/macros.py`) — so a reader who clicked a
     -- row lands on a page headed the way the row was.
     tool_title(t.input, s.project_dir, $head_chars) AS title,

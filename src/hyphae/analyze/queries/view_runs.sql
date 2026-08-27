@@ -54,7 +54,7 @@ LEFT JOIN live_api_calls c
     ON c.session_id = a.session_id AND c.source = tc.source AND c.id = tc.api_call_id
 -- The turn the spawning call answers, resolved on the call's own thread. A fork's transcript
 -- replays calls whose `turn_id` names a turn of its parent, so the raw column can name a turn
--- this thread does not hold; the tree would then hang the run off a node no level renders.
+-- this thread does not hold; the NavTree would then hang the run off a node no level renders.
 LEFT JOIN live_turns st
     ON st.session_id = c.session_id AND st.source = c.source AND st.id = c.turn_id
 WHERE a.session_id = $session_id

@@ -1,4 +1,4 @@
-"""The popover behind a tree row: the exact numbers its bar and its badge stand for.
+"""The popover behind a NavTree row: the exact numbers its bar and its badge stand for.
 
 A row draws two summaries and can print neither — a bar is twenty steps of a window, and a
 badge is a dollar figure at cent precision. The popover is the numbers themselves, fetched
@@ -282,7 +282,7 @@ def test_a_tool_call_says_what_it_gave_back_and_what_was_asked_beside_it(
 def test_a_turn_that_compacted_says_the_window_it_gave_back(plant: Planter) -> None:
     """A compaction inside a turn leaves the window below where the turn before it stood.
 
-    The tree clamps that at nothing, because a bar has no way to draw a negative tip — so the
+    The NavTree clamps that at nothing, because a bar has no way to draw a negative tip — so the
     real delta is the popover's alone, and a popover that clamped too would print a turn that
     dropped thirty thousand tokens as one that added none.
 
@@ -316,7 +316,7 @@ def test_a_turn_that_compacted_says_the_window_it_gave_back(plant: Planter) -> N
     assert after["added"] == f"{tokens(after, 'fill') - tokens(before, 'fill'):+,}"
     assert after["added"].startswith("-")
     # And the row the popover opened from draws that same turn with no tip on it. This is the
-    # one place the two seams are meant to disagree: the tree holds the tip at the bottom of
+    # one place the two seams are meant to disagree: the NavTree holds the tip at the bottom of
     # the ladder, where a tree that carried the number through would draw a step below it.
     assert bar(page, f"{Kind.TURN}:{second}") == (step(tokens(after, "fill"), after["model"]), 0)
 
@@ -419,24 +419,24 @@ def test_a_row_fetches_its_numbers_when_a_pointer_arrives_and_when_a_key_does(
 
     The trigger listens on the row — `focusin` bubbles where `focus` does not, so a trigger on
     the row hears the link inside it being tabbed to — but it is *carried* by a sibling of that
-    link. htmx inherits its attributes down the tree, so the overrides a popover needs would be
+    link. htmx inherits its attributes down the NavTree, so the overrides a popover needs would be
     inherited by the link if they sat on the row itself, and a click would swap a popover's
     markup where the pane belongs. The last assertion here is that trap.
     """
     page = client.get(f"/session/{SPINE}").text
     key = f"{Kind.SESSION}:{SPINE}"
-    (trigger,) = inside(page, "data-tree", key, "hx-trigger")
+    (trigger,) = inside(page, "data-nav-tree", key, "hx-trigger")
     pointer, keyboard = trigger.split(", ")
     # Heard on the row, once apiece: the popover is markup that stays, and a second fetch
     # would stack another under the first.
     assert pointer.startswith("mouseenter from:closest li once")
     assert keyboard == "focusin from:closest li once"
-    # Delayed on the pointer alone, so running one down the tree does not fetch every row it
+    # Delayed on the pointer alone, so running one down the NavTree does not fetch every row it
     # crossed. A key press is deliberate and waits for nothing.
     assert re.search(r"delay:\d+m?s", pointer)
-    wiring = dict(wired(page, "data-tree"))
+    wiring = dict(wired(page, "data-nav-tree"))
     fetched = {
-        row: at for row, at in wired(page, "data-tree") if at["hx-get"].startswith(NUMBERS_URL)
+        row: at for row, at in wired(page, "data-nav-tree") if at["hx-get"].startswith(NUMBERS_URL)
     }
     assert fetched[key]["hx-get"] == f"{NUMBERS_URL}/session/{SPINE}"
     assert fetched[key]["hx-target"] == "this"
@@ -453,7 +453,7 @@ def test_a_row_fetches_its_numbers_when_a_pointer_arrives_and_when_a_key_does(
         Kind.CALL,
         Kind.TOOL,
     }
-    # The link a row is still a link: it swaps the pane out of `#tree-rows`'s own wiring, and
+    # The link a row is still a link: it swaps the pane out of `#nav-tree-rows`'s own wiring, and
     # nothing the popover wrote reached it.
     assert wiring[key]["hx-target"] == "#reading-pane"
     assert wiring[key]["hx-select"] == "#reading-pane"
@@ -480,16 +480,16 @@ def test_a_popover_is_hidden_until_its_row_is_pointed_at_or_tabbed_into(
     """
     style = client.get("/static/style.css").text
     assert re.search(r"\.popover\s*\{[^{}]*display: none", style)
-    # Fixed rather than absolute: `#tree` scrolls under `overflow: auto`, which clips anything
-    # positioned inside it — and a popover of numbers is wider than the tree.
+    # Fixed rather than absolute: `#nav-tree` scrolls under `overflow: auto`, which clips anything
+    # positioned inside it — and a popover of numbers is wider than the NavTree.
     assert re.search(r"\.popover\s*\{[^{}]*position: fixed", style)
-    # And it stands where the reading pane does: the tree's width, the grip between the columns,
+    # And it stands where the reading pane does: the NavTree's width, the grip between the columns,
     # and the gutter on either side of it. Measured from the same `--grip-width` the grip is
     # drawn at, so a popover cannot come to rest on top of the handle a reader drags.
     left = re.search(r"\.popover\s*\{[^{}]*left:([^;]*);", style)
     assert left is not None, "the popover names no left edge"
-    assert "--tree-width" in left.group(1) and "--grip-width" in left.group(1), left.group(1)
-    assert re.search(r"#tree-grip\s*\{[^{}]*width: var\(--grip-width\)", style)
+    assert "--nav-tree-width" in left.group(1) and "--grip-width" in left.group(1), left.group(1)
+    assert re.search(r"#nav-tree-grip\s*\{[^{}]*width: var\(--grip-width\)", style)
     shown = [
         selector
         for selector, body in re.findall(r"([^{}]*)\{([^{}]*)\}", style)

@@ -1,4 +1,4 @@
-"""What one row of the tree shows, and how the page lays the rows out.
+"""What one row of the NavTree shows, and how the page lays the rows out.
 
 A row says three things at once: how deep it stands, what node it is, and what to fetch when a
 reader clicks it. These leaves read all three back off the rendered page — the indent, the
@@ -33,7 +33,7 @@ from tests.view.conftest import (
     values,
     wired,
 )
-from tests.view.trees import (
+from tests.view.nav_trees import (
     STANDING,
     THREAD,
     candidates,
@@ -51,7 +51,7 @@ def test_every_link_that_swaps_the_pane_lands_the_pane_in_the_pane(
 ) -> None:
     """The whole of what a click does, on both the mounts that mount a node link.
 
-    A tree row, a children-log row and the two walk controls are how a reader moves without
+    A NavTree row, a children-log row and the two walk controls are how a reader moves without
     leaving the page, and all of them do the same thing: fetch the node's URL, take `#reading-pane`
     out of the response, put it where the pane already is, and swap the rows out of band.
     Read as htmx composes it, inheritance and all, because that is what the browser acts on.
@@ -66,10 +66,10 @@ def test_every_link_that_swaps_the_pane_lands_the_pane_in_the_pane(
         "hx-target": "#reading-pane",
         "hx-swap": "outerHTML",
         "hx-select": "#reading-pane",
-        "hx-select-oob": "#tree-rows",
+        "hx-select-oob": "#nav-tree-rows",
         "hx-push-url": "true",
     }
-    for mount in ("data-tree", "data-child", "data-walk"):
+    for mount in ("data-nav-tree", "data-child", "data-walk"):
         # A row's other fetch is its body toggle, which opens in place and has nowhere to go:
         # the ones that move the reader are the ones fetching a node's own URL.
         moving = [(key, w) for key, w in wired(html, mount) if node_link(w["hx-get"])]
@@ -82,10 +82,10 @@ def test_every_link_that_swaps_the_pane_lands_the_pane_in_the_pane(
             assert {name: wiring.get(name) for name in swap} == swap, (mount, key)
     # The two ids the swap aims at, each written exactly once.
     assert html.count('id="reading-pane"') == 1
-    assert html.count('id="tree-rows"') == 1
+    assert html.count('id="nav-tree-rows"') == 1
 
 
-def test_every_level_a_tree_opens_is_indented_one_step_further_than_the_one_above(
+def test_every_level_a_nav_tree_opens_is_indented_one_step_further_than_the_one_above(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
     """A row sits one step further in than its parent, however deep the session nests.
@@ -113,7 +113,8 @@ def test_every_level_a_tree_opens_is_indented_one_step_further_than_the_one_abov
     ladder = {
         int(depth): int(steps)
         for depth, steps in re.findall(
-            r'li\.row\[data-depth="(\d+)"\][^{]*\{[^}]*calc\((\d+) \* var\(--tree-step\)\)', style
+            r'li\.row\[data-depth="(\d+)"\][^{]*\{[^}]*calc\((\d+) \* var\(--nav-tree-step\)\)',
+            style,
         )
     }
     # Every level a chain can open has a rung, and no rung stands for a level nothing reaches.
@@ -155,13 +156,13 @@ def test_a_row_reads_from_the_left_and_only_its_cost_sits_at_the_right(
     assert "flex: 1" in title
 
 
-def test_the_tree_keeps_its_place_because_the_scroller_is_not_what_swaps(
+def test_the_nav_tree_keeps_its_place_because_the_scroller_is_not_what_swaps(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
     """What holds a reader's place in a long tree when a click replaces its rows.
 
-    Nothing in the markup says "keep the scroll offset" — the tree keeps it because the
-    element carrying the scrollbar is `#tree`, and the swap replaces `#tree-rows` inside it.
+    Nothing in the markup says "keep the scroll offset" — the NavTree keeps it because the
+    element carrying the scrollbar is `#nav-tree`, and the swap replaces `#nav-tree-rows` inside it.
     An untouched scroller keeps its `scrollTop`, which is why the design could drop
     `hx-preserve`. Move `overflow` down onto the rows and every click sends the reader back to
     the top of the session, and no assertion on served HTML would notice.
@@ -170,8 +171,8 @@ def test_the_tree_keeps_its_place_because_the_scroller_is_not_what_swaps(
     element the stylesheet scrolls, and nothing scrolls below it.
     """
     page = client.get(url(open_turn(store))).text
-    # The element the swap replaces sits inside the one the tree is scrolled by.
-    assert "tree-rows" in inside(page, "id", "tree", "id")
+    # The element the swap replaces sits inside the one the NavTree is scrolled by.
+    assert "nav-tree-rows" in inside(page, "id", "nav-tree", "id")
     style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
     scrolls = {
         selector.strip()
@@ -180,50 +181,52 @@ def test_the_tree_keeps_its_place_because_the_scroller_is_not_what_swaps(
     }
     # One of them scrolls, and it is the one the swap leaves alone. The two selectors that
     # could take the scrollbar off it are the rows themselves, under either name.
-    assert "#tree" in scrolls
-    assert not [rule for rule in scrolls if "#tree-rows" in rule or "#tree .rows" in rule]
+    assert "#nav-tree" in scrolls
+    assert not [rule for rule in scrolls if "#nav-tree-rows" in rule or "#nav-tree .rows" in rule]
 
 
-def test_the_tree_is_widened_by_a_handle_and_the_width_outlives_the_page(
+def test_the_nav_tree_is_widened_by_a_handle_and_the_width_outlives_the_page(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """A handle beside the tree drags it wider, and the browser remembers how wide.
+    """A handle beside the NavTree drags it wider, and the browser remembers how wide.
 
     Every other thing a reader sets rides the URL. A width cannot: it belongs to the screen
     they are reading on and not to the node they linked to, so a pasted link would carry
     someone else's column. What this pins is the chain that lets a script set it instead —
-    a handle in the markup, a grid whose tree column is one custom property, and a script
+    a handle in the markup, a grid whose NavTree column is one custom property, and a script
     served from this app, because `app.CSP` forbids an inline one and a page load would
     forget a width that CSS alone had kept.
     """
     page = client.get(url(open_turn(store))).text
     # The handle sits between the two columns it divides, and says what it is to a reader who
     # cannot see it.
-    assert [at for at in values(page, "id") if at in {"tree", "tree-grip", "reading-pane"}] == [
-        "tree",
-        "tree-grip",
+    assert [
+        at for at in values(page, "id") if at in {"nav-tree", "nav-tree-grip", "reading-pane"}
+    ] == [
+        "nav-tree",
+        "nav-tree-grip",
         "reading-pane",
     ]
-    grip = re.findall(r"<div id=\"tree-grip\"[^>]*>", page)
+    grip = re.findall(r"<div id=\"nav-tree-grip\"[^>]*>", page)
     assert len(grip) == 1 and 'role="separator"' in grip[0] and 'tabindex="0"' in grip[0]
-    # The tree's column is one custom property, which is the whole of what the script writes:
+    # The NavTree's column is one custom property, which is the whole of what the script writes:
     # a width the stylesheet fixed some other way is a handle that drags nothing.
     style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
     (columns,) = re.findall(r"#browser\s*\{[^}]*grid-template-columns:([^;]*);", style)
-    assert "var(--tree-width" in columns
+    assert "var(--nav-tree-width" in columns
     # And the script that writes it is a file this app serves, keeping the width where a page
     # load cannot reach it.
     (src,) = [asset for asset in values(page, "src") if "tree-width" in asset]
     served = client.get(src)
     assert served.status_code == 200
-    assert "--tree-width" in served.text and "localStorage" in served.text
+    assert "--nav-tree-width" in served.text and "localStorage" in served.text
     # And where the width starts when this browser remembers none: the column the stylesheet
-    # lays out, read off the grid's own first track. Not the tree's laid-out box — under the
-    # narrow layout below, `#browser` is a block and the tree is the whole page, so a width
+    # lays out, read off the grid's own first track. Not the NavTree's laid-out box — under the
+    # narrow layout below, `#browser` is a block and the NavTree is the whole page, so a width
     # seeded from it survives into the wide layout as a column twice the one above. Witnessed
-    # in Chromium on 2026-08-25: loaded at 800 px and widened to 1600, the tree held 768 px
-    # against the stylesheet's 384 and left the pane narrower than the tree.
-    # And it reads the *first* track of that grid, which is the tree's: `parseFloat` takes the
+    # in Chromium on 2026-08-25: loaded at 800 px and widened to 1600, the NavTree held 768 px
+    # against the stylesheet's 384 and left the pane narrower than the NavTree.
+    # And it reads the *first* track of that grid, which is the NavTree's: `parseFloat` takes the
     # leading number of `"384px 8px 1fr"` and stops there. A read that walked to another track
     # would seed the gap or the pane — and where the walk misses, `apply()` clamps the `NaN` it
     # yields to `NaN` and the column comes out broken. Pinned as one expression, which is as
@@ -235,19 +238,19 @@ def test_the_tree_is_widened_by_a_handle_and_the_width_outlives_the_page(
 def test_a_row_pairs_its_depth_with_the_key_in_the_same_tag() -> None:
     """`rows()` reads the pair whatever the tag's layout, and never reaches across a tag.
 
-    Every leaf here reads the tree through that pair, and the tag boundary is the whole of what
+    Every leaf here reads the NavTree through that pair, and the tag boundary is the whole of what
     it rests on: a tail row carries a depth and no key — the leaf above builds one — so a pair
     that could span `>` would hand it the next row's key and every level would read one long.
     How a tag is laid out belongs to the formatter (`mise run format-html`), which today
     neither reorders these attributes nor writes anything between them; the first case is
     invented for exactly that reason, standing for a layout djLint is free to produce.
     """
-    apart = '<li class="row node" data-depth="2" data-selected="turn:a" data-tree="turn:a">'
+    apart = '<li class="row node" data-depth="2" data-selected="turn:a" data-nav-tree="turn:a">'
     assert rows(apart) == [(2, "turn:a")]
     # A tail row's depth, and the next tag's key: two tags, so nothing to pair. On one line,
     # so the `>` is the only thing that can separate them — a newline between the tags would
     # part them on its own, whatever the pattern says about tag boundaries.
-    tail = '<li class="row more" data-depth="1" data-more="session:s"><a data-tree="turn:b">'
+    tail = '<li class="row more" data-depth="1" data-more="session:s"><a data-nav-tree="turn:b">'
     assert rows(tail) == []
 
 
@@ -373,7 +376,7 @@ def test_every_row_is_named_from_the_column_its_kind_is_named_by(
 ) -> None:
     """A row's title is the whole of what it says, so it is read back against its own column.
 
-    A tree row carries `TREE_ROW_BYTES` and no more, so the title is where a kind spends what
+    A NavTree row carries `NAV_TREE_ROW_BYTES` and no more, so the title is where a kind spends what
     it has to say — and every kind spends it differently. Every node the store names is read
     on its own page, where its row is on the open path whichever preset the reader picked: a
     column that only one recorded row exercises — a slash turn with no arguments after it —
@@ -381,7 +384,7 @@ def test_every_row_is_named_from_the_column_its_kind_is_named_by(
     """
     # Keyed by session as well as by row: two sessions of the corpus record an api call under
     # the same id, and a row carries the id alone.
-    # Composed at a tree row's width the way the surfaces compose it: the count of an api
+    # Composed at a NavTree row's width the way the surfaces compose it: the count of an api
     # call's tool calls is taken out of the width first, so the row is cut around it.
     said = {
         (str(at), key): (cut(head, queries.NAV_CHARS - len(kept)) + kept).strip()
@@ -395,10 +398,10 @@ def test_every_row_is_named_from_the_column_its_kind_is_named_by(
             if (session_id, f"{kind}:{node_id}") in read:
                 continue
             page = client.get(node_url(kind, session_id, source, node_id)).text
-            assert f"{kind}:{node_id}" in values(page, "data-tree"), node_id
-            for key in values(page, "data-tree"):
+            assert f"{kind}:{node_id}" in values(page, "data-nav-tree"), node_id
+            for key in values(page, "data-nav-tree"):
                 if (at := (session_id, key)) in said:
-                    assert fields(page, "data-tree", key)["title"] == said[at], at
+                    assert fields(page, "data-nav-tree", key)["title"] == said[at], at
                     read.add(at)
     # Every row the store names a title for was reached. A sweep that missed one would pass on
     # a title built from any column at all.
@@ -410,7 +413,7 @@ def test_a_bucket_row_carries_the_totals_of_what_it_gathers(
 ) -> None:
     """Neither bucket is a row of the store: its numbers are sums over what it holds.
 
-    The rest of the tree hands a row the store's own numbers, so a bucket is the one place the
+    The rest of the NavTree hands a row the store's own numbers, so a bucket is the one place the
     viewer adds up. What it adds up is read back here — the spend, the bar that spend takes
     against the session, and the mark saying some of the calls under it went unpriced — for
     every bucket the corpus records, on the page the bucket hangs on.
@@ -448,7 +451,7 @@ def test_a_bucket_row_carries_the_totals_of_what_it_gathers(
         )
         opened = client.get(f"/session/{session_id}/unattached").text
         for run_id, (spent, _) in zip(loose, totals, strict=True):
-            drawn = inside(opened, "data-tree", f"run:{run_id}", "class")[0].split()
+            drawn = inside(opened, "data-nav-tree", f"run:{run_id}", "class")[0].split()
             assert meter(spent / whole if whole else None) in drawn, run_id
         gathered = gathered or (str(session_id), loose)
     # Both buckets are read above rather than one of them: they are built by different code
@@ -485,7 +488,7 @@ def test_a_bucket_row_carries_the_totals_of_what_it_gathers(
         # left unpriced carries its own count, and the runs beside it carry no mark at all.
         opened = marked.get(f"/session/{loose_at}/unattached").text
         for run_id, (_, missing) in zip(loose_runs, totals, strict=True):
-            marks = inside(opened, "data-tree", f"run:{run_id}", "title")
+            marks = inside(opened, "data-nav-tree", f"run:{run_id}", "title")
             assert bool(marks) == bool(missing), run_id
             assert not missing or str(missing) in marks[0], run_id
     planted.close()

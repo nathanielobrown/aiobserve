@@ -14,7 +14,7 @@ from starlette.routing import BaseRoute
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.model import MAIN_SOURCE
-from hyphae.view import bounds, highlight, nodes, tree
+from hyphae.view import bounds, highlight, nav_tree, nodes
 from hyphae.view.browse import (
     LogRow,
     Seen,
@@ -56,9 +56,9 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         detail: int = bounds.DETAIL.default,
         page: int = 1,
     ) -> Response:
-        """A session's own node: what it was, and its main thread as the tree's first level."""
+        """A session's own node: what it was, and its main thread as the NavTree's first level."""
 
-        def read(connection: duckdb.DuckDBPyConnection, corpus: tree.Corpus, head: Row) -> Seen:
+        def read(connection: duckdb.DuckDBPyConnection, corpus: nav_tree.Corpus, head: Row) -> Seen:
             offset = skipped(page, log)
             bound: dict[str, ParamValue] = {
                 "session_id": session_id,
@@ -92,7 +92,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
     ) -> Response:
         """One turn: what it was asked, and the api calls that answered it."""
 
-        def read(connection: duckdb.DuckDBPyConnection, corpus: tree.Corpus, head: Row) -> Seen:
+        def read(connection: duckdb.DuckDBPyConnection, corpus: nav_tree.Corpus, head: Row) -> Seen:
             bound: dict[str, ParamValue] = {
                 "session_id": session_id,
                 "source": source,
@@ -164,7 +164,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         segment and why the enrichment is read at the run.
         """
 
-        def read(connection: duckdb.DuckDBPyConnection, corpus: tree.Corpus, head: Row) -> Seen:
+        def read(connection: duckdb.DuckDBPyConnection, corpus: nav_tree.Corpus, head: Row) -> Seen:
             bound: dict[str, ParamValue] = {
                 "session_id": session_id,
                 "run_id": run_id,
@@ -242,7 +242,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
     ) -> Response:
         """One api call: what it answered, what it thought, and the tools it called."""
 
-        def read(connection: duckdb.DuckDBPyConnection, corpus: tree.Corpus, head: Row) -> Seen:
+        def read(connection: duckdb.DuckDBPyConnection, corpus: nav_tree.Corpus, head: Row) -> Seen:
             bound: dict[str, ParamValue] = {
                 "session_id": session_id,
                 "source": source,
@@ -270,7 +270,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 header=row,
                 # The call's own header says which turn it answers, so its place costs no
                 # read: a NULL turn puts it in its thread's unattributed bucket instead.
-                trail=[tree.home(source, row["turn_id"]), Ref(Kind.CALL, source, api_call_id)],
+                trail=[nav_tree.home(source, row["turn_id"]), Ref(Kind.CALL, source, api_call_id)],
                 shape=Shape.TOOLS,
                 rows=[
                     LogRow(nodes.tool_node(session_id, source, item), item) for item in called.rows
@@ -318,7 +318,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
     ) -> Response:
         """One tool call: what it was passed, and what it returned. Nothing hangs under it."""
 
-        def read(connection: duckdb.DuckDBPyConnection, corpus: tree.Corpus, head: Row) -> Seen:
+        def read(connection: duckdb.DuckDBPyConnection, corpus: nav_tree.Corpus, head: Row) -> Seen:
             bound: dict[str, ParamValue] = {
                 "session_id": session_id,
                 "source": source,
@@ -336,7 +336,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 # The whole path down, out of one read: the call that made it, and the turn
                 # that call answers — else that thread's bucket, by the same rule.
                 trail=[
-                    tree.home(source, row["turn_id"]),
+                    nav_tree.home(source, row["turn_id"]),
                     Ref(Kind.CALL, source, row["api_call_id"]),
                     Ref(Kind.TOOL, source, tool_call_id),
                 ],
@@ -398,10 +398,10 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         """One compaction: where a thread's context was rewritten, and what that cost it.
 
         Read out of the thread's markers rather than by id — a compaction has no query of its
-        own because the thread's whole set is what the tree beside it renders anyway.
+        own because the thread's whole set is what the NavTree beside it renders anyway.
         """
 
-        def read(connection: duckdb.DuckDBPyConnection, corpus: tree.Corpus, head: Row) -> Seen:
+        def read(connection: duckdb.DuckDBPyConnection, corpus: nav_tree.Corpus, head: Row) -> Seen:
             bound: dict[str, ParamValue] = {
                 "session_id": session_id,
                 "source": source,
@@ -448,8 +448,8 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         """One thread's api calls that answer no turn — a resume's calls answer turns that
         live in the session it resumed, and this is where they are read."""
 
-        def read(connection: duckdb.DuckDBPyConnection, corpus: tree.Corpus, head: Row) -> Seen:
-            standing = tree.unattributed(connection, corpus, source)
+        def read(connection: duckdb.DuckDBPyConnection, corpus: nav_tree.Corpus, head: Row) -> Seen:
+            standing = nav_tree.unattributed(connection, corpus, source)
             if standing is None:
                 raise HTTPException(404, "Every api call on this thread answers a turn.")
             calls, log_rows, ran = call_log(connection, corpus, source, None, page, log)
@@ -482,7 +482,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         which thread spawned it, so the bucket hangs off the session itself.
         """
 
-        def read(connection: duckdb.DuckDBPyConnection, corpus: tree.Corpus, head: Row) -> Seen:
+        def read(connection: duckdb.DuckDBPyConnection, corpus: nav_tree.Corpus, head: Row) -> Seen:
             loose = [run for run in corpus.runs if run["spawn_source"] is None]
             if not loose:
                 raise HTTPException(404, "Every agent run in this session was placed.")

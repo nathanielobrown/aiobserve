@@ -193,16 +193,17 @@ TAG_CHARS = 20
 # is a page rather than a transcript.
 RECORD_PREVIEW = 160
 
-# How much of a title a tree row carries — a turn's, a run's, an api call's. What a row *can*
-# say rather than what fits: the tree is draggable (`view/static/tree-width.js`), and at 48 a
+# How much of a title a NavTree row carries — a turn's, a run's, an api call's. What a row *can*
+# say rather than what fits: the NavTree is draggable (`view/static/nav-tree-width.js`), and at 48 a
 # reader who widened it got more whitespace and no more of the title, because the cut had
 # already happened in SQL. CSS clamps the line to one with an ellipsis, so this is the reach
-# of a drag and not a wrap. It prices every row of the tree (`view/bounds.py:TREE_ROW_BYTES`).
+# of a drag and not a wrap. It prices every row of the NavTree
+# (`view/bounds.py:NAV_TREE_ROW_BYTES`).
 NAV_CHARS = 110
 NAV_CHARS_PARAM = Param(type=ParamType.INTEGER, default=NAV_CHARS)
 
 # How much of a string one row of a children log carries — a model name, a tool name. Wider
-# than a tree row, which is a line, and far narrower than the pane above it, which is one
+# than a NavTree row, which is a line, and far narrower than the pane above it, which is one
 # node read whole: a log is a dozen rows a reader picks the next node out of.
 LOG_CHARS = 300
 LOG_CHARS_PARAM = Param(type=ParamType.INTEGER, default=LOG_CHARS)

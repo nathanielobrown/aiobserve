@@ -1,4 +1,4 @@
-"""Where a node's dollars went, by category, for the popover behind a tree row.
+"""Where a node's dollars went, by category, for the popover behind a NavTree row.
 
 A row's badge prints one number, and one number cannot say whether a phase spent its money
 reading a cache or writing one. The split is the four charges `extract/pricing.py` already

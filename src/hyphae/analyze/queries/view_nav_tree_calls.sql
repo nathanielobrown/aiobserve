@@ -1,10 +1,10 @@
--- The api calls under one turn in outline, a row per call: the tree level below a turn.
+-- The api calls under one turn in outline, a row per call: the NavTree level below a turn.
 -- `$turn_id` NULL selects this thread's unattributed calls, which is the bucket's level.
 -- Unattributed is decided by the join and not by `c.turn_id IS NULL`: a fork's transcript
 -- replays its parent's turn, so its calls name a turn recorded on the parent's thread, and a
 -- call whose turn is not this thread's belongs to this thread's bucket rather than to the
 -- other thread's turn. `session_timeline` bins them the same way, through the same absence.
--- Thin like `view_tree_turns` and unlimited for the same reason — the cap lives in the
+-- Thin like `view_nav_tree_turns` and unlimited for the same reason — the cap lives in the
 -- composition, because it has to keep the row the open path goes through.
 SELECT
     c."index" AS call_index,

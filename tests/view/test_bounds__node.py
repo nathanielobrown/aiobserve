@@ -1,7 +1,7 @@
 """What a node page and an expansion cost, with every value on them as fat as the caps allow.
 
 The ceiling leaves in `test_bounds.py` say the page fits; these say what it spends to fit. The
-page is matched into the rows the arithmetic prices — a crumb, a tree row, a log row, a
+page is matched into the rows the arithmetic prices — a crumb, a NavTree row, a log row, a
 previewed value — and each is weighed against what `tests/view/budgets.py` measured it at, so
 a page that grows a field pays for it here before it reaches a ceiling.
 """
@@ -39,12 +39,12 @@ from tests.view.conftest import (
 )
 
 # What a node page's arithmetic prices row by row, which chrome is the page without: a crumb of
-# the chain down to the selection, a row of the tree, a row of the pane's children log, and one
+# the chain down to the selection, a row of the NavTree, a row of the pane's children log, and one
 # previewed value. Each is matched rather than differenced, so what the leaf below weighs is the
 # row itself and not a difference between two pages that could differ in something else.
 PRICED_ROWS = {
     "crumb": r"<a data-crumb=.*?</a>",
-    "tree": r'<li class="row.*?</li>',
+    "nav_tree": r'<li class="row.*?</li>',
     "log": r"<tr data-child=.*?</tr>",
     # The control under the log, which is once a page rather than once a row — priced apart
     # from the chrome because it renders only where the level runs past one page, so a page
@@ -73,9 +73,9 @@ def priced(html: str) -> tuple[str, dict[str, list[str]]]:
         html = re.sub(pattern, "", html, flags=re.DOTALL)
     # The split is the instrument, so it is checked both ways: a row left in is a cost counted
     # twice, and a wrapper taken out hides part of the page this measures.
-    assert not values(html, "data-crumb") and not values(html, "data-tree")
+    assert not values(html, "data-crumb") and not values(html, "data-nav-tree")
     assert not values(html, "data-child") and not values(html, "data-detail")
-    assert 'id="tree-rows"' in html and 'id="reading-pane"' in html
+    assert 'id="nav-tree-rows"' in html and 'id="reading-pane"' in html
     return html, rows
 
 
@@ -85,7 +85,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     """Every part of a node page weighs no more than the arithmetic above gives it.
 
     The node page is the one page `worst_node_bytes` multiplies four ways — a crumb per level
-    open, a tree row per child of each, a log row per child of the selection, and the values the
+    open, a NavTree row per child of each, a log row per child of the selection, and the values the
     pane previews — so a template that grows any of them puts the ceiling out by whatever size
     it is multiplied by. Every cap a title, a heading or a preview reads is planted full of `&`,
     the character that escapes to five bytes, because no recorded node is adversarial: what a
@@ -122,7 +122,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
             " '2026-01-01T00:00:00Z' FROM sessions s, range(1, ?) t(i))",
             [item, over + 1],
         ),
-        # What a turn's tree row, log row and pane read. All three go in past every cut that
+        # What a turn's NavTree row, log row and pane read. All three go in past every cut that
         # touches them: the timeline cuts each to a log line's width, and the prompt is the
         # pane's one preview as well as the row's title, which is the wider of the two.
         ("UPDATE turns SET prompt = ?, command_name = ?, command_args = ?", [fat] * 3),
@@ -132,7 +132,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
         # reads — a log row
         # that could not find a description would print the raw input in its place and leave
         # the line under it empty, which is a row two columns short of the widest one there is.
-        # Every call failed, too, which is the dearest a tool row gets: the mark the tree puts
+        # Every call failed, too, which is the dearest a tool row gets: the mark the NavTree puts
         # on a failure is markup no other kind of row carries. It does not make a tool the
         # widest row — a turn's row measures 914 B against a tool's 830 — but it is what puts
         # the stepper on every tool page, and that is the dearest the chrome under a pane gets.
@@ -189,7 +189,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     )
     with TestClient(build_app(path)) as planted:
         served = []
-        # Twice over the store: once at the defaults, where the tree holds a row of every kind
+        # Twice over the store: once at the defaults, where the NavTree holds a row of every kind
         # there is, and once at the knobs that make every link on the page longest. A reader
         # who narrows a page pays for the query string on every row of it, and the two sweeps
         # together hold the widest row of each kind beside the dearest link.
@@ -207,11 +207,11 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
             if response.status_code == 200:
                 served.append(response.text)
     # The list and the two pages that are not nodes come back too; only a node page splits.
-    split = [priced(page) for page in served if 'id="tree-rows"' in page]
-    # A crumb, a tree row, a log row and a preview each weigh what the arithmetic budgets...
+    split = [priced(page) for page in served if 'id="nav-tree-rows"' in page]
+    # A crumb, a NavTree row, a log row and a preview each weigh what the arithmetic budgets...
     for name, budget, measured in (
         ("crumb", worst_crumb_bytes(), False),
-        ("tree", bounds.TREE_ROW_BYTES, True),
+        ("nav_tree", bounds.NAV_TREE_ROW_BYTES, True),
         ("log", worst_log_row_bytes(), False),
         ("pager", MEASURED_PAGER_BYTES, False),
     ):
@@ -219,7 +219,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
         assert found, name
         widest_row = max(len(row.encode()) for row in found)
         # Three of the four are arithmetic over a cap, so a row that comes in under is a cap
-        # with room left in it. The tree row is measured rather than budgeted, and the tree is
+        # with room left in it. The NavTree row is measured rather than budgeted, and the NavTree is
         # four fifths of the page, so it is held from below as well: a byte of slack there is
         # 3,217 bytes the ceiling keeps for nothing, and `NODE_BYTES` now has room to hide one.
         assert widest_row == budget if measured else widest_row <= budget, (name, widest_row)
@@ -265,7 +265,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     escaped = {
         found.count("&amp;")
         for _, rows in split
-        for row in rows["tree"]
+        for row in rows["nav_tree"]
         for found in re.findall(r'<span data-field="title">(.*?)</span>', row, flags=re.DOTALL)
     }
     # No title got past the cut, and one reached it. Not every row's title is planted — a
@@ -274,9 +274,10 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     assert max(escaped) == queries.NAV_CHARS
     cuts = {row.count("more character(s)") for _, rows in split for row in rows["detail"]}
     assert cuts == {1}
-    # And the mark a failed call carries reached the rows the tree priced, so `TREE_ROW_BYTES`
-    # is a price for the dearest tool row rather than for one that happened to succeed.
-    assert any('data-field="is_error"' in row for _, rows in split for row in rows["tree"])
+    # And the mark a failed call carries reached the rows the NavTree priced, so
+    # `NAV_TREE_ROW_BYTES` is a price for the dearest tool row rather than for one that happened
+    # to succeed.
+    assert any('data-field="is_error"' in row for _, rows in split for row in rows["nav_tree"])
     # The enrichment sits in the chrome, stale tag and all, so it is planted with the rest.
     described = fields(session, "data-enrichment", values(session, "data-enrichment")[0])
     marked = "&" * queries.ENRICHMENT_CHARS + ELLIPSIS

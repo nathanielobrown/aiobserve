@@ -235,19 +235,19 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     assert QUERIES["view_records"].params["page_records"].default == 100
     assert QUERIES["view_records"].params["preview_chars"].default == 160
     assert QUERIES["view_offload"].params["chunk_chars"].default == 50_000
-    # How many children one open level of the tree shows. Not a manifest default — the tree
+    # How many children one open level of the NavTree shows. Not a manifest default — the NavTree
     # composes its window around the query rather than binding it — and every leaf below
     # recomputes from whatever this says, so a literal is the only thing that reds when the
     # window silently narrows back to what it was.
     assert bounds.Bound(200, 200) == bounds.KIN
-    # How much of a title a row of the tree shows. Wide enough that a draggable tree has
+    # How much of a title a row of the NavTree shows. Wide enough that a draggable tree has
     # something to show when a reader widens it — the cut is what a row can say, and CSS
     # decides how much of it fits. Every level cuts to the same width, whatever kind of child
     # it holds.
-    for level in ("view_tree_turns", "view_tree_calls", "view_tree_tools"):
+    for level in ("view_nav_tree_turns", "view_nav_tree_calls", "view_nav_tree_tools"):
         assert QUERIES[level].params["nav_chars"].default == 110, level
     # And how much of each string a row of the pane's children log shows, with the page it is
-    # read in. Wider than a tree row: a log row is a line of a table, with room for the first
+    # read in. Wider than a NavTree row: a log row is a line of a table, with room for the first
     # words of a prompt beside the numbers.
     assert QUERIES["view_turn_calls"].params["log_chars"].default == 300
     assert QUERIES["view_call_tools"].params["log_chars"].default == 300
@@ -264,9 +264,9 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     assert QUERIES["view_session_header"].params["head_chars"].default == 100
     assert QUERIES["view_session_header"].params["item_chars"].default == 60
     assert QUERIES["view_session_header"].params["head_items"].default == 5
-    # How much of a run row's and a compaction row's three columns a tree row shows. Both
+    # How much of a run row's and a compaction row's three columns a NavTree row shows. Both
     # queries keep no LIMIT of their own — a report quotes the whole set — so what bounds them
-    # on a page is the tree's own arithmetic below.
+    # on a page is the NavTree's own arithmetic below.
     assert QUERIES["view_runs"].params["chip_chars"].default == 60
     assert QUERIES["view_compactions"].params["chip_chars"].default == 60
     # The list's rows drop the agent types a session spawned, but the query behind them still
@@ -288,7 +288,7 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     assert QUERIES["view_project_rollups"].params["head_chars"].default == queries.LIST_CHARS
     assert QUERIES["view_project_rollups"].params["projects"].default == 100
     # And the errors list, bound the same way — a session can fail arbitrarily many calls —
-    # and titled at a tree row's width, because each of its rows leads to a node.
+    # and titled at a NavTree row's width, because each of its rows leads to a node.
     assert QUERIES["view_session_errors"].params["nav_chars"].default == queries.NAV_CHARS
     assert QUERIES["view_session_errors"].params["errors"].default == 100
     # Every ceiling is projected at the largest page a URL can ask for, because a size is
@@ -321,7 +321,7 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     # session caps how often its tools fail — and is not a size a URL carries either: a reader
     # jumps to a failure rather than paging through them.
     assert MEASURED_ERRORS_CHROME + bounds.ERRORS.ceiling * worst_error_row_bytes() < PAGE_BYTES
-    # And the node page, the one page every node URL serves: the tree a reader walks down the
+    # And the node page, the one page every node URL serves: the NavTree a reader walks down the
     # left, and the pane beside it. Its three sizes are each their own ceiling, so this is the
     # widest response any node URL can be asked for.
     assert worst_node_bytes() < NODE_BYTES
@@ -352,7 +352,7 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     }
     # The same for the bounds that are not sizes a URL carries: how deep a chain opens, how
     # many turn rows no cursor reaches, how much of a string a log row shows, how long a value
-    # is marked up in its own syntax, and what one row of the tree may weigh.
+    # is marked up in its own syntax, and what one row of the NavTree may weigh.
     assert {name for name, value in vars(bounds).items() if isinstance(value, int)} == {
         "DEPTH",
         "CURSORLESS_TURNS",
@@ -360,7 +360,7 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
         "INDENT_CHARS",
         "HIGHLIGHT_CHARS",
         "OPENED_RECORD_CHARS",
-        "TREE_ROW_BYTES",
+        "NAV_TREE_ROW_BYTES",
     }
 
 
@@ -422,7 +422,7 @@ def test_a_served_page_stays_under_its_ceiling(
     chrome = len(client.get("/sessions?size=1").content)
     per_session = (listing - chrome) / (count - 1)
     assert chrome + per_session * bounds.SESSIONS.ceiling < PAGE_BYTES
-    # And every session's own node page, which is the widest of the eight the tree opens on:
+    # And every session's own node page, which is the widest of the eight the NavTree opens on:
     # the whole main thread is under the selection. A node page's three sizes are each their
     # own ceiling, so the defaults are also the largest response a URL can ask for.
     for session_id in [row[0] for row in store.execute("SELECT id FROM sessions").fetchall()]:

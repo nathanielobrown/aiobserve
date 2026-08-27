@@ -1,14 +1,14 @@
-// How wide the tree is, dragged on the handle beside it and kept in this browser.
+// How wide the NavTree is, dragged on the handle beside it and kept in this browser.
 //
 // A file rather than an inline script, which `app.CSP` forbids, and a script rather than CSS
 // `resize`, which nothing would remember: a width belongs to the screen a session is read on,
 // so it cannot ride the URL the way every other thing a reader sets does. Setting a property
 // through the CSSOM is not an inline style and the policy allows it.
 (() => {
-  const grip = document.getElementById("tree-grip");
+  const grip = document.getElementById("nav-tree-grip");
   if (!grip) return; // every page but a node page
   const browser = document.getElementById("browser");
-  const KEY = "hyphae:tree-width";
+  const KEY = "hyphae:nav-tree-width";
   // What the column may be, in px: narrower than this cuts every title to nothing, wider
   // leaves a pane too short to read a turn in. The bounds live here rather than in a CSS
   // clamp, so a drag past either end stops there instead of running on unseen.
@@ -23,7 +23,7 @@
 
   const apply = (px) => {
     const held = Math.round(Math.min(WIDEST, Math.max(NARROWEST, px)));
-    browser.style.setProperty("--tree-width", `${held}px`);
+    browser.style.setProperty("--nav-tree-width", `${held}px`);
     grip.setAttribute("aria-valuenow", String(held));
     return held;
   };
@@ -39,10 +39,10 @@
     }
   };
   // The width this browser last kept, or the one the stylesheet lays the column out at, read
-  // off the grid's own first track. Not off the tree's box: under the narrow layout `#browser`
-  // is a block and the tree is the whole page, so a width seeded from it survives the reader
+  // off the grid's own first track. Not off the NavTree's box: under the narrow layout `#browser`
+  // is a block and the NavTree is the whole page, so a width seeded from it survives the reader
   // widening their window as a column twice the stylesheet's — 768 px against 384, with the
-  // pane left narrower than the tree.
+  // pane left narrower than the NavTree.
   const remembered = Number(orNothing(() => localStorage.getItem(KEY)));
   let width = apply(remembered || parseFloat(getComputedStyle(browser).gridTemplateColumns));
   const keep = () => orNothing(() => localStorage.setItem(KEY, String(width)));

@@ -1,6 +1,6 @@
 """Where a session failed: the list of every failed tool call, and the step between two.
 
-The tree opens one path and the walk reads the session in order, so neither gets a reader to
+The NavTree opens one path and the walk reads the session in order, so neither gets a reader to
 the third failure of a run five spawns down without reading everything in front of it. This
 module is the way that does not: one list of every `is_error` tool call the session holds,
 whichever thread it ran on, in the order they happened — and, where the pane is already
@@ -24,9 +24,9 @@ import duckdb
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.view import bounds
+from hyphae.view.nav_tree import Ran
 from hyphae.view.nodes import Node, tool_node
 from hyphae.view.store import Page, page_rows
-from hyphae.view.tree import Ran
 
 
 class Failure(NamedTuple):
@@ -48,7 +48,7 @@ class Failures(NamedTuple):
 def failures(connection: duckdb.DuckDBPyConnection, session_id: str) -> Failures:
     """Every failed tool call of one session, capped at what a page of them shows.
 
-    Read at the tree's title width rather than a log's: a row here leads to a node, so it
+    Read at the NavTree's title width rather than a log's: a row here leads to a node, so it
     is named the way that node is named everywhere else it appears.
     """
     bound: dict[str, ParamValue] = {

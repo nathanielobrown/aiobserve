@@ -1,8 +1,8 @@
-"""The one response every node page is: the tree with a path open, beside the pane reading it.
+"""The one response every node page is: the NavTree with a path open, beside the pane reading it.
 
 Eight URLs and one answer. What differs per kind is the `Reader` the route passes — its own
 header, where it sits, and what its children log lists — and everything else a node page needs
-is read here: the session, the corpus the tree is built from, the enrichment a pass wrote, and
+is read here: the session, the corpus the NavTree is built from, the enrichment a pass wrote, and
 the page of children under the selection (`docs/viewer.md`).
 """
 
@@ -17,7 +17,7 @@ from fastapi.responses import Response
 
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
-from hyphae.view import bounds, errors, nodes, tree, walk
+from hyphae.view import bounds, errors, nav_tree, nodes, walk
 from hyphae.view.citation import cited
 from hyphae.view.columns import Shape
 from hyphae.view.detail import Detail, enrichment_lines
@@ -54,7 +54,7 @@ class Seen(NamedTuple):
     """What one node's own reads answered, whatever kind of node it is.
 
     `trail` is what the node already knows about where it sits, innermost last — a call and a
-    tool name their turn in their own header, so neither costs a read to place; `tree.ancestry`
+    tool name their turn in their own header, so neither costs a read to place; `nav_tree.ancestry`
     resolves the rest. A kind that reads no children answers `Shape.NONE` and no rows.
     """
 
@@ -70,21 +70,21 @@ class Seen(NamedTuple):
     # has one: `turns.id` is a record's `uuid`, which is the store's own join down to the
     # bytes Claude Code wrote.
     record: int | None
-    ran: tree.Ran
+    ran: nav_tree.Ran
 
 
 # What one node route does beyond the reads every node page makes: its own header, its trail,
 # and its children log. The session header is passed in because every page reads it already.
-Reader = Callable[[duckdb.DuckDBPyConnection, tree.Corpus, Row], Seen]
+Reader = Callable[[duckdb.DuckDBPyConnection, nav_tree.Corpus, Row], Seen]
 
 
 # How a pane names the node it is about, per kind, from the header its own route read. The
-# tree built the row the pane stands on and cut its words where a tree row ends, which is a
-# third of what a title has to spend (`nodes.Node.pane_title`) — so a page that took the tree's
+# NavTree built the row the pane stands on and cut its words where a NavTree row ends, which is a
+# third of what a title has to spend (`nodes.Node.pane_title`) — so a page that took the NavTree's
 # word for it would head a turn with the first line of the prompt and stop. The kinds absent
 # are the ones no cut reaches: a session's node is read from its own header already, a
 # compaction is named by its trigger, and a bucket is named by the viewer.
-TITLED: dict[str, Callable[[str, str, Row, tree.Corpus], nodes.Node]] = {
+TITLED: dict[str, Callable[[str, str, Row, nav_tree.Corpus], nodes.Node]] = {
     Kind.TURN: lambda session_id, source, row, corpus: nodes.turn_node(
         session_id, source, row, corpus.whole, corpus.turn_text(source, row["turn_id"])
     ),
@@ -139,11 +139,11 @@ def browse(
     page: int,
     read: Reader,
 ) -> Response:
-    """One node page: the tree with the path to the node open, beside the pane reading it.
+    """One node page: the NavTree with the path to the node open, beside the pane reading it.
 
     Every kind serves through here, because a node page is one response whatever the node
     is. `source` is the thread the enrichment is read for — `view_enrichment` keys turns by
-    thread, and the tree spans the session, so a turn on another thread falls back to its
+    thread, and the NavTree spans the session, so a turn on another thread falls back to its
     prompt. What differs per kind is `read`, which answers the node's own header, where it
     sits, and what its children log lists, and 404s when the node is not in the store.
     """
@@ -159,7 +159,7 @@ def browse(
     if page < 1:
         raise HTTPException(400, "Ask for a children log page from one upwards.")
     bound = header_bound(session_id)
-    # The session's runs are read once and printed twice: as a tree row at its width
+    # The session's runs are read once and printed twice: as a NavTree row at its width
     # and as a children log row at the log's. Cut to the wider of the two here, and cut
     # again at each — a row cut to the narrower would print a line already stopped.
     runs_bound = {"session_id": session_id, "chip_chars": queries.LOG_CHARS}
@@ -168,9 +168,9 @@ def browse(
         if not head:
             raise HTTPException(404, "No session with that id is in this store.")
         # The session's runs whole, once: a run is placed by the call that spawned it
-        # rather than by the thread it ran on, so any level of the tree may need any of
+        # rather than by the thread it ran on, so any level of the NavTree may need any of
         # them, and both buckets are defined against the same set.
-        corpus = tree.Corpus(
+        corpus = nav_tree.Corpus(
             session_id=session_id,
             whole=head[0]["cost_usd"] or 0,
             runs=page_rows(connection, Page.RUNS, **runs_bound),
@@ -178,17 +178,17 @@ def browse(
             source=source,
         )
         seen = read(connection, corpus, head[0])
-        built = tree.tree(
+        built = nav_tree.nav_tree(
             connection,
             corpus,
             nodes.session_node(head[0], corpus.described),
-            tree.ancestry(corpus, seen.trail),
+            nav_tree.ancestry(corpus, seen.trail),
             preset,
             kin,
         )
         # What the reader reads before and after this node, off the same open path. Read
         # inside the request's own connection because it asks the store for levels the
-        # tree did not open.
+        # NavTree did not open.
         walked = walk.neighbours(connection, corpus, built.chain)
         # The failures either side of this one, read only where the pane is standing on a
         # failure. A session-wide list is a query per page load and the step it answers
@@ -203,12 +203,12 @@ def browse(
     if page > 1 and not seen.rows:
         raise HTTPException(404, "This node's children do not run to that page.")
     selection = built.chain[-1]
-    # Named from its own header rather than from the tree row it stands on (`TITLED`).
+    # Named from its own header rather than from the NavTree row it stands on (`TITLED`).
     # The words alone: what the node cost and what share of the session that is are the
-    # tree's to work out, against the whole session rather than against one header.
+    # NavTree's to work out, against the whole session rather than against one header.
     if (titled := TITLED.get(selection.kind)) is not None:
         selection = replace(selection, words=titled(session_id, source, seen.header, corpus).words)
-    ran: tree.Ran = [
+    ran: nav_tree.Ran = [
         (Page.SESSION_HEADER, bound),
         (Page.RUNS, runs_bound),
         *seen.ran,
@@ -261,7 +261,7 @@ def browse(
     )
 
 
-def turn_log(corpus: tree.Corpus, source: str, rows: list[Row]) -> list[LogRow]:
+def turn_log(corpus: nav_tree.Corpus, source: str, rows: list[Row]) -> list[LogRow]:
     """A page of one thread's timeline as a children log reads it: a row per turn."""
     return [
         LogRow(
@@ -280,16 +280,16 @@ def turn_log(corpus: tree.Corpus, source: str, rows: list[Row]) -> list[LogRow]:
 
 def call_log(
     connection: duckdb.DuckDBPyConnection,
-    corpus: tree.Corpus,
+    corpus: nav_tree.Corpus,
     source: str,
     turn_id: str | None,
     page: int,
     log: int,
-) -> tuple[Listed, list[LogRow], tree.Ran]:
+) -> tuple[Listed, list[LogRow], nav_tree.Ran]:
     """One page of the api calls under a turn — or, at `turn_id` NULL, under a bucket.
 
     One function for both because the two differ by that binding alone, which is the same
-    rule the tree's level reads by: a call answering no turn sits in its thread's bucket.
+    rule the NavTree's level reads by: a call answering no turn sits in its thread's bucket.
     """
     bound: dict[str, ParamValue] = {
         "session_id": corpus.session_id,
@@ -307,7 +307,7 @@ def call_log(
     return calls, rows, [(Fragment.TURN_CALLS, bound)]
 
 
-def run_log(corpus: tree.Corpus, rows: list[Row]) -> list[LogRow]:
+def run_log(corpus: nav_tree.Corpus, rows: list[Row]) -> list[LogRow]:
     """A list of agent runs as a children log reads it: a row per run."""
     return [
         LogRow(

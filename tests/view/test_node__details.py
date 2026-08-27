@@ -264,7 +264,7 @@ def call_to(store: duckdb.DuckDBPyConnection, tool: str) -> tuple[str, str, str]
     """One recorded call to `tool`: the session, the thread, and the call's id.
 
     Read out of the store rather than pinned, because a tool call this tier can render is one
-    the tree reaches — an id copied out of a transcript may name a record a later line
+    the NavTree reaches — an id copied out of a transcript may name a record a later line
     replaced, and its page is a 404 an absence assertion cannot tell from an answer.
     """
     return one(

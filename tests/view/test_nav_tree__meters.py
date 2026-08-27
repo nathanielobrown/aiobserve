@@ -1,4 +1,4 @@
-"""The two meters a tree row draws: what the node cost, and how full the window was.
+"""The two meters a NavTree row draws: what the node cost, and how full the window was.
 
 Both are read back off the rendered row rather than computed beside it — a cost badge is a step
 per decade of the session's spend, a context bar a pair of classes over the window the model
@@ -30,7 +30,7 @@ from tests.view.conftest import (
     step,
     values,
 )
-from tests.view.trees import (
+from tests.view.nav_trees import (
     THREAD,
     candidates,
     node_url,
@@ -54,7 +54,7 @@ def test_a_row_badges_its_cost_only_where_it_has_a_share_to_draw(
     )
     # The session is the basis, so a session that spent anything wears the deepest badge.
     spine = client.get(f"/session/{SPINE}").text
-    assert "s10" in inside(spine, "data-tree", f"session:{SPINE}", "class")[0].split()
+    assert "s10" in inside(spine, "data-nav-tree", f"session:{SPINE}", "class")[0].split()
     # Swept over every session under every preset rather than over the deepest session alone.
     # The rows that take their own share — the buckets, which are not rows of the store — are
     # gathered by a different builder under each preset, and are not all on one session's page.
@@ -62,10 +62,10 @@ def test_a_row_badges_its_cost_only_where_it_has_a_share_to_draw(
         badges: dict[str, tuple[str | None, frozenset[str]]] = {}
         for preset in Preset:
             html = client.get(f"/session/{session_id}", params={"nav": preset}).text
-            for key in values(html, "data-tree"):
-                classes = inside(html, "data-tree", key, "class")[0].split()
+            for key in values(html, "data-nav-tree"):
+                classes = inside(html, "data-nav-tree", key, "class")[0].split()
                 steps = frozenset(n for n in classes if n.startswith("s") and n[1:].isdigit())
-                cost = fields(html, "data-tree", key).get("cost_usd")
+                cost = fields(html, "data-nav-tree", key).get("cost_usd")
                 # Every row either shows what it cost with a badge behind it, or shows neither.
                 assert bool(steps) == (cost is not None), key
                 # And a preset decides which rows are drawn, never what one of them spent or how
@@ -104,7 +104,7 @@ def test_a_cost_badge_steps_by_decade_so_three_orders_of_magnitude_deepen_it(
     with TestClient(build_app(path)) as scaled:
         for (cost, step), (source, call_id) in zip(ladder.items(), calls, strict=True):
             page = scaled.get(node_url(Kind.CALL, SPINE, str(source), str(call_id))).text
-            classes = inside(page, "data-tree", f"{Kind.CALL}:{call_id}", "class")[0].split()
+            classes = inside(page, "data-nav-tree", f"{Kind.CALL}:{call_id}", "class")[0].split()
             assert step in classes, (cost, classes)
 
 
@@ -177,7 +177,7 @@ def test_a_row_bars_the_context_it_left_against_the_window_its_model_answers_in(
     ended, and how much of that the node put there.
 
     The expectation is built from `live_api_calls` here rather than from the columns the page
-    reads, so a derivation that drifted in the tree's SQL has nothing to agree with. Built from
+    reads, so a derivation that drifted in the NavTree's SQL has nothing to agree with. Built from
     the store rather than written down, so re-recording the fixture moves the oracle.
     """
     recorded = calls(store, SPINE)
@@ -230,7 +230,7 @@ def test_a_row_bars_the_context_it_left_against_the_window_its_model_answers_in(
         assert bar(row, f"{Kind.CALL}:{call.api_call_id}") == drawn, call.api_call_id
         # And nothing under a call is barred: a tool call's tokens are its api call's, and a
         # compaction is not a call at all.
-        for key in values(row, "data-tree"):
+        for key in values(row, "data-nav-tree"):
             if key.startswith((f"{Kind.TOOL}:", f"{Kind.COMPACTION}:")):
                 assert bar(row, key) == (None, None), key
 
@@ -294,7 +294,7 @@ def test_an_interrupt_and_another_threads_calls_move_no_bar_a_row_draws(
     with TestClient(build_app(planted)) as interrupted:
         for path in paths:
             page = client.get(path).text
-            drawn[path] = {key: bar(page, key) for key in values(page, "data-tree")}
+            drawn[path] = {key: bar(page, key) for key in values(page, "data-nav-tree")}
             after = interrupted.get(path).text
             assert {key: bar(after, key) for key in drawn[path]} == drawn[path], path
     # And the rows the plant reached draw a bar at all: a sweep over rows that draw nothing
@@ -306,7 +306,7 @@ def test_an_interrupt_and_another_threads_calls_move_no_bar_a_row_draws(
         assert drawn[path][f"{Kind.RUN}:{run_id}"] > (0, 0), run_id
 
 
-def test_a_model_we_hold_no_window_for_is_a_bar_the_tree_does_not_draw(
+def test_a_model_we_hold_no_window_for_is_a_bar_the_nav_tree_does_not_draw(
     store: duckdb.DuckDBPyConnection, plant: Planter
 ) -> None:
     """A window our table cannot name draws no bar, the way a price it lacks shows no cost.
@@ -318,11 +318,11 @@ def test_a_model_we_hold_no_window_for_is_a_bar_the_tree_does_not_draw(
     path = plant(("UPDATE api_calls SET model = 'claude-mythos-9' WHERE session_id = ?", [SPINE]))
     with TestClient(build_app(path)) as unknown:
         page = unknown.get(f"/session/{SPINE}").text
-        for key in values(page, "data-tree"):
+        for key in values(page, "data-nav-tree"):
             assert bar(page, key) == (None, None), key
         # The row still says what it cost: the price is what the store recorded at extraction,
         # and only the bar is the table's to answer for.
-        assert fields(page, "data-tree", f"{Kind.SESSION}:{SPINE}")["cost_usd"]
+        assert fields(page, "data-nav-tree", f"{Kind.SESSION}:{SPINE}")["cost_usd"]
 
 
 def test_a_context_bar_fills_linearly_and_stops_at_a_full_window(
@@ -468,7 +468,7 @@ def test_every_priced_row_carries_the_spend_the_store_holds_under_it(
             if (session_id, f"{kind}:{node_id}") in read:
                 continue
             page = client.get(node_url(kind, session_id, source, node_id)).text
-            for key in values(page, "data-tree"):
+            for key in values(page, "data-nav-tree"):
                 if (at := (session_id, key)) in said:
                     weighed(page, key, store, session_id, *said[at])
                     read.add(at)

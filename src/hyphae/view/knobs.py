@@ -2,7 +2,7 @@
 
 Four knobs: the view, and the three sizes (`docs/viewer-bounds.md`). A request's knobs are
 checked here or answered with a 400, and minted back into the suffix every link on the page
-carries — so a reader who narrowed the tree keeps it as they walk. The paging controls live
+carries — so a reader who narrowed the NavTree keeps it as they walk. The paging controls live
 here too: a page number is the one knob a children log adds to that suffix.
 """
 
@@ -17,7 +17,7 @@ from hyphae.view.store import Listed, Row
 
 # What a node URL can name, at the value a link that names none is served at: the view, and
 # the three sizes. Every href a node page mints carries whatever is *not* one of these
-# (`knobs`), so a reader who picked a view or narrowed the tree keeps it as they walk, and an
+# (`knobs`), so a reader who picked a view or narrowed the NavTree keeps it as they walk, and an
 # ordinary link stays short.
 KNOB_DEFAULTS: dict[str, int | str] = {
     "nav": nodes.Preset.FULL,
@@ -47,11 +47,11 @@ def checked(size: int, ceiling: int) -> int:
 def viewed(nav: str) -> nodes.Preset:
     """The filter preset from a query string, or a 400 — every node route's `?nav=` comes here.
 
-    A 400 rather than a fallback to the full tree: a reader who typed a view the viewer does
+    A 400 rather than a fallback to the full NavTree: a reader who typed a view the viewer does
     not have should be told, not served a different one under the URL they asked for.
     """
     if nav not in set(nodes.Preset):
-        raise HTTPException(400, f"Filter the tree by one of: {', '.join(nodes.Preset)}.")
+        raise HTTPException(400, f"Filter the NavTree by one of: {', '.join(nodes.Preset)}.")
     return nodes.Preset(nav)
 
 
@@ -66,7 +66,7 @@ def carried(nav: str, kin: int, log: int, detail: int) -> str:
 
 
 class PresetChoice(NamedTuple):
-    """One preset as the control above the tree offers it: where it goes, and whether we are
+    """One preset as the control above the NavTree offers it: where it goes, and whether we are
     in it."""
 
     preset: nodes.Preset
@@ -124,7 +124,7 @@ def sliced(items: Sequence[Row], page: int, size: int) -> Listed:
     """One numbered page of rows already in memory, cut the way a query's OFFSET cuts one.
 
     The unattached runs are the case: they arrive with the session's runs, which every level of
-    the tree needs anyway, so paging them is slicing rather than a second read.
+    the NavTree needs anyway, so paging them is slicing rather than a second read.
     """
     start = skipped(page, size)
     return Listed(list(items[start : start + size]), len(items))

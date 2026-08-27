@@ -1,7 +1,7 @@
 // The dev loop's browser half, on the page only under `hp view --dev`.
 //
 // `/dev/reload` sends one message per debounced change set (`view/dev.py`). A reload costs the
-// reader nothing here: every state but tree width rides the URL, so the page comes back at the
+// reader nothing here: every state but NavTree width rides the URL, so the page comes back at the
 // node, the view and the knobs it was on. A stylesheet still takes the faster path, because the
 // scroll position and the open sections are worth keeping while you nudge a colour.
 const reloads = new EventSource("/dev/reload");

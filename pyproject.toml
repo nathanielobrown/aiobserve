@@ -181,7 +181,7 @@ docstring-code-format = true
 # and what keeps `{%- -%}` intact.
 profile = "jinja"
 # Two, not djLint's four. The templates and the stylesheet beside them are written at two, and
-# a tree row nested six deep would otherwise start past column 24.
+# a NavTree row nested six deep would otherwise start past column 24.
 indent = 2
 # Everything else stays default. An unknown key here is ignored silently, unlike `aigarden.toml`
 # and `mise.toml`, so a typo turns a setting off and says nothing. djLint also reads an

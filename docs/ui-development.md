@@ -16,7 +16,7 @@ The gallery builds a store from the redacted fixtures, serves it in dev mode, an
 
 Jinja re-renders an edited template on the next request, so all the loop adds is the request. Save a template and the open page reloads; save a stylesheet and the page swaps its sheets in place, keeping the scroll and everything else a reload would cost; restart the server and the page reloads once, on the reconnect, onto whatever the new server serves. `.claude/rules/viewer-ui.md` records what a real Chromium did with each of the three.
 
-A reload costs a reader nothing here because every state but tree width rides the URL: the page comes back at the node, the view and the knobs it was on. That is why the loop needs no hot module replacement and no DOM morphing.
+A reload costs a reader nothing here because every state but NavTree width rides the URL: the page comes back at the node, the view and the knobs it was on. That is why the loop needs no hot module replacement and no DOM morphing.
 
 Python edits are the exception. Nothing watches them — restart the gallery or the viewer by hand, and the open page will follow.
 
@@ -30,7 +30,7 @@ djLint writes every template's indentation and attribute layout, and `[tool.djli
 
 Two things to know before you edit a template:
 
-- **The whitespace it writes is bytes on the page.** Jinja renders the newline and the indent the formatter puts between a row's cells, and a tree row is spent 3,217 times on the worst page (`.claude/rules/viewer-ui.md`). A space a reader has to see is written `{{ " " }}`, because a literal one sits where djLint reflows (`src/hyphae/view/templates/_parts.html`)
+- **The whitespace it writes is bytes on the page.** Jinja renders the newline and the indent the formatter puts between a row's cells, and a NavTree row is spent 3,217 times on the worst page (`.claude/rules/viewer-ui.md`). A space a reader has to see is written `{{ " " }}`, because a literal one sits where djLint reflows (`src/hyphae/view/templates/_parts.html`)
 - **Never write a raw tag inside a `{# … #}` comment.** djLint reads the opening tag as the real thing and leaves the rest of the file unindented. Name the element in words instead (`src/hyphae/view/templates/base.html`)
 
 ## Run the same loop over your own store

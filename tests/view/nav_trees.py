@@ -1,6 +1,6 @@
-"""Reading a rendered tree, and building the level the store says one should hold.
+"""Reading a rendered NavTree, and building the level the store says one should hold.
 
-`data-tree` carries a row's node key — `kind:id`, the key its URL is built from — so a tree
+`data-nav-tree` carries a row's node key — `kind:id`, the key its URL is built from — so a NavTree
 reads back as a list in document order, and `data-more` marks a row standing for children the
 cap left out. The levels here are built out of the store the way the design orders one, in the
 test's own SQL: turns with compactions dropped in by time, then the thread's unattributed
@@ -433,14 +433,14 @@ def weighed(
 ) -> None:
     """One row read against what the store holds under it: its spend, and what went unpriced."""
     (whole,) = one(store, "SELECT cost_usd FROM session_rollups WHERE session_id = ?", [session_id])
-    row = fields(page, "data-tree", key)
+    row = fields(page, "data-nav-tree", key)
     assert row["cost_usd"] == money(cost), key
     # The bar is that spend against the session, not against the row's parent or its own
     # children — and a session with nothing to take a share of draws every row at nothing.
     share = cost / whole if whole else None
-    assert meter(share) in inside(page, "data-tree", key, "class")[0].split(), key
+    assert meter(share) in inside(page, "data-nav-tree", key, "class")[0].split(), key
     # A `title` inside the row is the mark on a total our price table could not complete —
     # there where some call under the row went unpriced, and nowhere else.
-    marks = inside(page, "data-tree", key, "title")
+    marks = inside(page, "data-nav-tree", key, "title")
     assert bool(marks) == bool(unpriced), key
     assert not unpriced or str(unpriced) in marks[0], key

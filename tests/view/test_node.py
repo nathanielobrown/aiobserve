@@ -74,13 +74,13 @@ def test_every_kind_of_node_serves_a_page_that_says_what_it_is(
     # The pane is the one for this kind, and it carries the node's own facts.
     assert values(page.text, "data-body") == [kind], url
     assert fields(page.text, "data-body", kind), url
-    # The crumbs run outermost first and end at the selection, which is the row the tree marks.
+    # The crumbs run outermost first and end at the selection, which is the row the NavTree marks.
     crumbs = values(page.text, "data-crumb")
     (selected,) = values(page.text, "data-selected")
     assert crumbs[0].startswith("session:")
     assert crumbs[-1] == selected
     # And the selection's own row links to the URL that was asked for.
-    assert inside(page.text, "data-tree", selected, "href")[0] == url
+    assert inside(page.text, "data-nav-tree", selected, "href")[0] == url
     # Four places on this page name the node, and every one of them says what kind it is with
     # the same character: the pane's heading, the browser tab, the last crumb, and the row the
     # tree marks. A reader learns eight marks once and then reads a tree without reading a
@@ -90,7 +90,7 @@ def test_every_kind_of_node_serves_a_page_that_says_what_it_is(
     assert icons(page.text, "data-body", kind) == [mark], url
     assert page.text.count(f"<title>{mark} ") == 1, url
     assert icons(page.text, "data-crumb", crumbs[-1]) == [mark], url
-    assert icons(page.text, "data-tree", selected) == [mark], url
+    assert icons(page.text, "data-nav-tree", selected) == [mark], url
     # And a crumb above the selection is marked as what *it* is, not as what the page is
     # about: the chain says the kind of every step down to here.
     assert icons(page.text, "data-crumb", crumbs[0]) == [MARKS["session"]], url
@@ -98,7 +98,11 @@ def test_every_kind_of_node_serves_a_page_that_says_what_it_is(
     # already on the page — the pane's kind, the crumb's field name, the row's class — so a
     # screen reader passes over it and reads the title instead of announcing a character it
     # has no word for (`.claude/rules/viewer-ui.md`).
-    for where, key in (("data-body", kind), ("data-crumb", crumbs[-1]), ("data-tree", selected)):
+    for where, key in (
+        ("data-body", kind),
+        ("data-crumb", crumbs[-1]),
+        ("data-nav-tree", selected),
+    ):
         assert inside(page.text, where, key, "aria-hidden") == ["true"], (url, where)
 
 
@@ -197,7 +201,7 @@ def test_a_slash_turn_leads_with_the_command_it_ran(
 
 
 # What column of a node's own facts counts the children its expansion links to instead of
-# listing. A kind absent from here has none — a tool call ends the tree.
+# listing. A kind absent from here has none — a tool call ends the NavTree.
 CHILDREN = {"turn": "api_calls", "call": "tool_calls", "run": "turns"}
 
 
@@ -240,7 +244,7 @@ def test_a_log_row_expands_to_the_body_its_own_page_wraps(
             # And it is only the body: everything the full view wraps it in is absent. A
             # call's expansion is the one that lists a level under it — the tools it called,
             # which is what the leaf below reads.
-            for wrapper in ("data-crumb", "data-tree", "data-walk", "data-detail"):
+            for wrapper in ("data-crumb", "data-nav-tree", "data-walk", "data-detail"):
                 assert not values(served.text, wrapper), (mount, wrapper)
             # A call that called none has nothing to list, so it stands the count like the rest.
             called = (

@@ -1,6 +1,6 @@
 """Reading a session in order: the prev/next controls beside the pane.
 
-Neither control descends. A click on a tree row is how a reader goes down, so these two go
+Neither control descends. A click on a NavTree row is how a reader goes down, so these two go
 along the level the reader is standing on — the next row, then the next — and at the end of it
 out to whatever follows the thing that level sits in. Prev is the same level backwards, and
 from its first row the node that holds it. A step that changes level is marked, because a
@@ -8,8 +8,8 @@ reader who did not ask to leave the branch should see it coming.
 
 These leaves follow the controls themselves rather than calling `walk.py`: what a reader gets
 is the chain of pages, and only fetching them proves the chain closes. The expectation is read
-off the tree each page was served with — the rows at the selection's own depth are its level,
-in the order the tree drew it — so the reading order is checked against what the reader sees
+off the NavTree each page was served with — the rows at the selection's own depth are its level,
+in the order the NavTree drew it — so the reading order is checked against what the reader sees
 rather than derived from the store a second time.
 """
 
@@ -24,7 +24,7 @@ from tests.view.conftest import fields, inside, kin, one, pages, plain, rows, va
 
 
 class Page:
-    """One page the walk stepped on: where it sits, and the tree it was served with."""
+    """One page the walk stepped on: where it sits, and the NavTree it was served with."""
 
     def __init__(self, url: str, html: str) -> None:
         self.url = url
@@ -36,9 +36,9 @@ class Page:
 
     @property
     def levels(self) -> list[list[str]]:
-        """Each open level of the tree, outermost first — the level each crumb stands in.
+        """Each open level of the NavTree, outermost first — the level each crumb stands in.
 
-        The tree opens one path, so the rows at depth `d` are the whole of the level the
+        The NavTree opens one path, so the rows at depth `d` are the whole of the level the
         `d`-th crumb sits in and nothing else. A cap would cut one, which is why the sweep
         checks no level was cut before reading a level off a page.
         """
@@ -118,10 +118,10 @@ def first_child(client: TestClient, at: str) -> str:
     """The URL of the first row of the level under one page's selection.
 
     Where a walk of that level starts: the controls never descend, so a leaf that wants to
-    read a level has to arrive on it the way a reader does, by clicking a tree row.
+    read a level has to arrive on it the way a reader does, by clicking a NavTree row.
     """
     html = client.get(at).text
-    (href,) = inside(html, "data-tree", kin(html)[0], "href")
+    (href,) = inside(html, "data-nav-tree", kin(html)[0], "href")
     return href
 
 
@@ -160,7 +160,7 @@ def test_every_control_in_the_corpus_walks_its_own_level_or_climbs_out_of_it(
             continue
         html = client.get(url).text
         page = Page(url, html)
-        # The expectation is a level read off the tree, so a level the cap cut would make it a
+        # The expectation is a level read off the NavTree, so a level the cap cut would make it a
         # different claim. Nothing in this corpus comes near the window.
         assert values(html, "data-more") == [], url
         for named, expected in page.expected.items():
@@ -175,7 +175,7 @@ def test_every_control_in_the_corpus_walks_its_own_level_or_climbs_out_of_it(
 def test_the_two_controls_walk_one_level_and_mark_the_way_out_of_it(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """A reader who keeps pressing next reads the level they are on, in the tree's order.
+    """A reader who keeps pressing next reads the level they are on, in the NavTree's order.
 
     Followed as a reader follows it — each page fetched, the next control read off what came
     back — so the leaf proves the chain closes rather than that one page's markup is right.
@@ -198,18 +198,18 @@ def test_the_two_controls_walk_one_level_and_mark_the_way_out_of_it(
 
 
 @pytest.mark.parametrize("session_id", [SPINE, FORK_ORIGIN])
-def test_a_session_is_read_from_its_tree_and_not_from_the_controls(
+def test_a_session_is_read_from_its_nav_tree_and_not_from_the_controls(
     client: TestClient, session_id: str
 ) -> None:
     """A session page offers no step in either direction: it is the only node at its level.
 
     Which is the shape of the whole design — the controls read one level, and going down into
-    the session is what the tree is for. `FORK_ORIGIN` is here for the nesting: a session that
+    the session is what the NavTree is for. `FORK_ORIGIN` is here for the nesting: a session that
     spawned runs that spawned runs still offers nothing, because depth is not what they walk.
     """
     html = client.get(f"/session/{session_id}").text
     assert values(html, "data-walk") == []
-    # And the tree it was served with does hold the level a reader goes down into, so the
+    # And the NavTree it was served with does hold the level a reader goes down into, so the
     # absence above is the controls' rule and not an empty page.
     assert kin(html)
 
@@ -217,7 +217,7 @@ def test_a_session_is_read_from_its_tree_and_not_from_the_controls(
 def test_a_control_says_what_the_neighbour_is_and_what_it_was(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """A control names the neighbour's kind and its title — the same title its tree row carries.
+    """A control names the neighbour's kind and its title — the same title its NavTree row carries.
 
     A reader deciding whether to step has the node's own words, not the word "next". The kind
     is printed rather than left in an attribute: a step can climb out of the level, and a
@@ -229,7 +229,7 @@ def test_a_control_says_what_the_neighbour_is_and_what_it_was(
     for named, neighbour in (("previous", walked[0]), ("next", walked[2])):
         assert control(step.html, named) == (neighbour.key, False)
         # Both halves are text on the page: what the neighbour is, and what it is called. The
-        # title is the one the neighbour's own tree row carries — one node, one name, wherever
+        # title is the one the neighbour's own NavTree row carries — one node, one name, wherever
         # it is read.
         kind, _, _ = neighbour.key.partition(":")
         assert fields(step.html, "data-walk", named) == {
@@ -238,12 +238,12 @@ def test_a_control_says_what_the_neighbour_is_and_what_it_was(
         }
 
 
-def test_the_walk_is_the_same_however_the_tree_is_capped(
+def test_the_walk_is_the_same_however_the_nav_tree_is_capped(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """`?kin=` cuts the tree, never the reading order: the walk reads the store, not the rows.
+    """`?kin=` cuts the NavTree, never the reading order: the walk reads the store, not the rows.
 
-    The cap is dropped to one child a level, which is the smallest the knob goes, so the tree
+    The cap is dropped to one child a level, which is the smallest the knob goes, so the NavTree
     beside the pane loses everything but the open path — and the controls do not move.
     """
     for page in follow(client, f"/session/{SPINE}/thread/{MAIN}/turn/{deep_turn(store)}", "next"):

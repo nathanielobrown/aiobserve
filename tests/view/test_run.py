@@ -3,7 +3,7 @@
 A run is the one node whose id is also a `source` — its turns, its calls and its compactions
 are written to a transcript of its own. What makes its page more than a session page at
 another thread is placement: a run hangs where its *spawning call* sits, and the corpus
-records the two ways that resolves to nothing. `test_tree.py` owns the tree's ordering; these
+records the two ways that resolves to nothing. `test_nav_tree.py` owns the NavTree's ordering; these
 leaves own what is true of a run whichever tree it appears in.
 """
 
@@ -127,7 +127,7 @@ def test_an_agent_type_leads_a_runs_title_except_where_a_column_already_heads_it
     led = f"{agent_type} — {brief}"
     assert fields(page, "data-body", "run")["title"] == led
     assert fields(page, "data-crumb", f"run:{BYREF_FORK}")["run"] == led
-    assert fields(page, "data-tree", f"run:{BYREF_FORK}")["title"] == led
+    assert fields(page, "data-nav-tree", f"run:{BYREF_FORK}")["title"] == led
     assert f"<title>◎ {led} ·" in page
 
 
@@ -161,7 +161,7 @@ def test_a_forks_calls_under_no_turn_are_its_own_bucket(
 
 
 def test_a_fork_is_never_its_own_child(client: TestClient) -> None:
-    """A fork's transcript replays the call that spawned it, and the tree ignores that copy.
+    """A fork's transcript replays the call that spawned it, and the NavTree ignores that copy.
 
     `view_runs` excludes a spawning call recorded on the run's own thread (`tc.source <> a.id`).
     Drop the exclusion and the fork resolves to a turn of its own timeline: it becomes its own
@@ -170,7 +170,7 @@ def test_a_fork_is_never_its_own_child(client: TestClient) -> None:
     page = client.get(f"/session/{FORK_ORIGIN}/run/{FORK_RUN}").text
     # Its own page lists no child, and no row of the open tree repeats it.
     assert values(page, "data-child") == []
-    assert values(page, "data-tree").count(f"run:{FORK_RUN}") == 1
+    assert values(page, "data-nav-tree").count(f"run:{FORK_RUN}") == 1
     # Nor does the run it forked from claim it — the exclusion leaves the edge unresolved,
     # which is what puts both in the unattached bucket.
     assert values(page, "data-crumb")[-2:] == [

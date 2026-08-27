@@ -52,7 +52,7 @@ FAT = (
 # `bounds.CHIP_BUDGET` multiplies that 200 times. The alternative was cutting the budget, which
 # would put the widest forest the corpus records behind a "+N more" nobody can open.
 PAGE_BYTES = 500_000
-# What a node page may weigh, which is its own budget rather than the one above. The tree is
+# What a node page may weigh, which is its own budget rather than the one above. The NavTree is
 # `DEPTH` levels of `KIN` children, so the window a level opens on prices about half of the
 # page — and it is a window, not a limit: a tail row fetches what it left out and stands the
 # rows in its own place, without a page boundary anywhere. Widening the window is a reader
@@ -68,9 +68,9 @@ PAGE_BYTES = 500_000
 # previews a third value besides. The two together are 120,600 B, all of it on one preview of
 # one pane — and what a reader gets is the shell and the file read as what they are.
 #
-# Raised from 1,570,000 when the tree's window went from 50 children to 200 and its titles
+# Raised from 1,570,000 when the NavTree's window went from 50 children to 200 and its titles
 # from 48 characters to 110: four times the rows at a quarter more each is 3.3 MB of tree, and
-# the tree was already four fifths of the page. That is the whole of the increase, and what a
+# the NavTree was already four fifths of the page. That is the whole of the increase, and what a
 # reader gets for it is a level of two hundred read where a level of fifty was — the fetch a
 # tail row offers is the same rows over a second request, so the bytes were already reachable;
 # what moved is how many clicks reach them.
@@ -96,7 +96,7 @@ PAGE_BYTES = 500_000
 # log — `MEASURED_LOG_ROW_MARKUP` went from 1,450 B to 1,650 B — and a log is a hundred rows,
 # so 20,000 B of page. What a reader gets is a turn's calls read without opening one, where
 # before the column that named them said the same model a hundred times. The arithmetic under
-# it comes to 5,143,767 B, and `TREE_ROW_BYTES` is pinned from below so the 26,233 B left over
+# it comes to 5,143,767 B, and `NAV_TREE_ROW_BYTES` is pinned from below so the 26,233 B left over
 # cannot be spent by a row that quietly grew instead.
 #
 # Raised again from 5,170,000 for the two values a run's pane now reads off the call that
@@ -106,17 +106,17 @@ PAGE_BYTES = 500_000
 # reader gets is a run read whole where the page used to show only the line it was named by.
 # The arithmetic comes to 5,243,767 B, and the slack under the ceiling is the same 26,233 B.
 #
-# Raised again from 5,270,000 for the context bar every row of the tree now draws: a fill class
+# Raised again from 5,270,000 for the context bar every row of the NavTree now draws: a fill class
 # and a tip class, eight bytes a row at their widest spelling, which over 3,217 rows is
 # 25,736 B — the whole of what the ceiling had spare and a thousand more. What a reader gets is
-# how full the model's window was at every node of the walk, read down the tree rather than a
+# how full the model's window was at every node of the walk, read down the NavTree rather than a
 # node at a time. The arithmetic comes to 5,271,003 B, and the 28,997 B over it is what the
 # next thing a row grows by is measured against.
 #
-# Raised again from 5,300,000 for the popover every row of the tree now fetches: the trigger is
+# Raised again from 5,300,000 for the popover every row of the NavTree now fetches: the trigger is
 # 362 B a row — its own URL, the trigger's two events, and the five attributes of the swap it
 # cannot inherit — which over 3,217 rows is 1,164,554 B, forty times the slack the ceiling had.
-# It is the dearest thing the tree has ever grown, and the row it is measured on is the one
+# It is the dearest thing the NavTree has ever grown, and the row it is measured on is the one
 # where the URL is longest. What a reader gets is the numbers behind the bar and the badge on
 # every row without leaving the node they are reading: what a phase held in the window, what it
 # added, and where its dollars went. The arithmetic comes to 6,435,557 B, and the 29,443 B over
@@ -124,12 +124,16 @@ PAGE_BYTES = 500_000
 #
 # Raised again from 6,465,000 when the templates went under djLint (`docs/ui-development.md`).
 # The formatter writes each attribute of a tag on its own line and indents every block it
-# opens, and Jinja renders that whitespace into the page: a tree row went from 1,681 B to
+# opens, and Jinja renders that whitespace into the page: a NavTree row went from 1,681 B to
 # 1,866 B, which over 3,217 rows is 595,145 B, and a log row, the chrome and the crumbs
-# together add 18,000 B more. It is the second dearest thing the tree has ever grown, and a
+# together add 18,000 B more. It is the second dearest thing the NavTree has ever grown, and a
 # reader gets nothing at all for it — what the repo gets is one formatter over the templates
 # and an editor whose output `check` agrees with. The arithmetic comes to 7,047,702 B, and the
 # 32,298 B over it is what the next thing a row grows by is measured against.
+#
+# The row then grew 4 B when its key attribute became `data-nav-tree`, which over 3,217 rows
+# is 12,868 B. The arithmetic comes to 7,060,570 B, and the 19,430 B over it is what the next
+# thing a row grows by is measured against.
 NODE_BYTES = 7_080_000
 # What one expansion may weigh: a node's body opened in place, inside someone else's children
 # log. It is over `PAGE_BYTES` and declared here rather than derived against it, for the reason
@@ -245,7 +249,7 @@ PANE_DETAILS = 3
 # command a `Bash` call ran or the file a `Read` returned. No call is both tools, so a tool's
 # pane marks up one of its three.
 DEAR_PANE_DETAILS = 3
-# What a node page carries outside its tree rows, its log rows and its previews: the crumbs
+# What a node page carries outside its NavTree rows, its log rows and its previews: the crumbs
 # down to the selection, the node's own facts, and what a pass said about it. The session is
 # the widest of the eight panes — every string in its header is one a transcript wrote, and its
 # two lists grow with the session — so the allowance is a session header's, cut in SQL.
@@ -364,7 +368,7 @@ def worst_project_row_bytes() -> int:
 def worst_error_row_bytes() -> int:
     """What one row of a session's errors list can weigh: its markup, and a title of `&`.
 
-    A row is a link to the failed tool call, named the way a tree row names it — the tool's
+    A row is a link to the failed tool call, named the way a NavTree row names it — the tool's
     name and the head of what it was passed, cut to one width between them — beside the thread
     it ran on and the clock. The thread is an agent id the store minted, and the timestamp is
     as long as its type allows; only the title is text a transcript wrote.
@@ -448,14 +452,14 @@ def worst_rendered_detail_bytes() -> int:
 def worst_node_bytes() -> int:
     """The largest node page any sizes a URL can carry produce.
 
-    A page is its chrome, the crumbs down to the selection, the tree beside it, the values the
-    pane previews, and the log under it. The tree is the part that multiplies: every level of
+    A page is its chrome, the crumbs down to the selection, the NavTree beside it, the values the
+    pane previews, and the log under it. The NavTree is the part that multiplies: every level of
     the open path admits `KIN` children and a tail row saying what the cap left out, and the
-    path runs `DEPTH` levels deep — so `bounds.TREE_ROW_BYTES` is four fifths of the ceiling,
+    path runs `DEPTH` levels deep — so `bounds.NAV_TREE_ROW_BYTES` is four fifths of the ceiling,
     and the row is pinned rather than budgeted.
 
-    `KIN` children per level is the whole of it: `tree.windowed` keeps the child the path
-    descends through *inside* the window rather than past it, and `test_tree.py` pins that. A
+    `KIN` children per level is the whole of it: `nav_tree.windowed` keeps the child the path
+    descends through *inside* the window rather than past it, and `test_nav_tree.py` pins that. A
     rescue that added a row would put a level at `KIN + 1` and this page 16 rows over what it
     prices.
 
@@ -463,11 +467,11 @@ def worst_node_bytes() -> int:
     but a knob a reader turns down writes itself into every link on the page, so the rows are
     priced with the longest query string one can carry rather than with none.
     """
-    tree_rows = 1 + bounds.DEPTH * (bounds.KIN.ceiling + 1)
+    nav_tree_rows = 1 + bounds.DEPTH * (bounds.KIN.ceiling + 1)
     return (
         MEASURED_NODE_CHROME
         + bounds.DEPTH * worst_crumb_bytes()
-        + tree_rows * bounds.TREE_ROW_BYTES
+        + nav_tree_rows * bounds.NAV_TREE_ROW_BYTES
         + bounds.LOG.ceiling * worst_log_row_bytes()
         + MEASURED_PAGER_BYTES
         + (PANE_DETAILS - DEAR_PANE_DETAILS) * worst_stored_detail_bytes()
@@ -478,7 +482,7 @@ def worst_node_bytes() -> int:
 def worst_expansion_bytes() -> int:
     """What one expansion opened in a children log can weigh.
 
-    A body where the page has its tree and its crumbs, and under it the level the node's own
+    A body where the page has its NavTree and its crumbs, and under it the level the node's own
     page lists — the same log, at the same `?log=` cap and one column narrower, because no row
     inside an expansion opens another. So an expansion prices as a page of log rows plus a
     body, and the cap that bounds the log on a page is what bounds it here. `EXPANSION_BYTES`

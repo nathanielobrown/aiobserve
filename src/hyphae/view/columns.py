@@ -44,7 +44,7 @@ class Column(NamedTuple):
 
 
 # The marks a column head and a node's own kind both carry. Written once, so the `⇄` over a
-# turn's api-call count and the `⇄` on an api call's row in the tree cannot drift apart: they
+# turn's api-call count and the `⇄` on an api call's row in the NavTree cannot drift apart: they
 # are one reader meeting one thing twice. The rest of each vocabulary is its own — a column
 # counts things a kind is not, and two kinds no column counts are marked in `view/nodes.py`.
 CALL_ICON = "⇄"

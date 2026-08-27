@@ -26,7 +26,7 @@ from tests.view.conftest import (
     rows,
     values,
 )
-from tests.view.trees import (
+from tests.view.nav_trees import (
     candidates,
     cell,
     mounts,
@@ -171,13 +171,13 @@ def test_every_open_level_is_its_own_cell_or_the_full_one_that_holds_the_path(
 
 
 @pytest.mark.parametrize("preset", list(Preset))
-def test_the_tree_offers_every_preset_at_the_node_the_reader_stands_on(
+def test_the_nav_tree_offers_every_preset_at_the_node_the_reader_stands_on(
     client: TestClient, store: duckdb.DuckDBPyConnection, preset: Preset
 ) -> None:
-    """A preset is a control above the tree, not a query string a reader has to know to type.
+    """A preset is a control above the NavTree, not a query string a reader has to know to type.
 
     One link per preset, each pointing at the *same* node under a different preset, and the preset
-    in force marked. Read on a node of every kind because every kind's page carries the tree,
+    in force marked. Read on a node of every kind because every kind's page carries the NavTree,
     and read with a knob turned down because a link that dropped `?kin=` would quietly serve a
     wider page than the one the reader is standing on.
     """
@@ -188,7 +188,9 @@ def test_the_tree_offers_every_preset_at_the_node_the_reader_stands_on(
         # Every preset is offered, in the order the enum declares them, and the control rides the
         # rows: it sits inside the element a tree click swaps out of band, so the links follow
         # the reader to the node they land on instead of pointing back at the one they left.
-        assert inside(html, "id", "tree-rows", "data-nav") == [choice.value for choice in Preset]
+        assert inside(html, "id", "nav-tree-rows", "data-nav") == [
+            choice.value for choice in Preset
+        ]
         for choice in Preset:
             (href,) = inside(html, "data-nav", choice, "href")
             went = urlsplit(href)
@@ -208,7 +210,7 @@ def test_a_preset_hides_a_kind_without_hiding_the_path_down_to_one(
     """A node a preset filters out still renders when the reader is standing on it.
 
     `agents` hides turns and `noapi` hides api calls, and either one selected is a reading
-    position rather than a contradiction: the node is on the tree, it is the row the pane is
+    position rather than a contradiction: the node is on the NavTree, it is the row the pane is
     about, and its whole chain renders above it with nothing missing in between.
     """
     turn = open_turn(store)
@@ -225,7 +227,7 @@ def test_a_preset_hides_a_kind_without_hiding_the_path_down_to_one(
     for preset, (at, key) in hidden.items():
         served = client.get(at, params={"nav": preset})
         assert served.status_code == 200, preset
-        assert key in values(served.text, "data-tree"), preset
+        assert key in values(served.text, "data-nav-tree"), preset
         assert values(served.text, "data-selected") == [key], preset
         assert values(served.text, "data-crumb")[0] == f"session:{SPINE}", preset
         assert values(served.text, "data-crumb")[-1] == key, preset
@@ -236,10 +238,10 @@ def test_a_preset_rides_every_node_link_the_page_mints(
 ) -> None:
     """`?nav=` travels with the reader: every node link on the page carries it.
 
-    The tree's rows, the tail a cap left, the crumbs, the pane's children log and the two walk
+    The NavTree's rows, the tail a cap left, the crumbs, the pane's children log and the two walk
     controls are all node URLs, and a reader who picked a view keeps it through any of them.
     Both the `href` a reader can paste and the `hx-get` a click follows, because the walk
-    controls are buttons and mint only the second. The presets above the tree are the one
+    controls are buttons and mint only the second. The presets above the NavTree are the one
     exception, and the only one: their whole job is to change the preset, so their three links are
     excluded here and checked on their own leaf. Read with `?kin=1` so the tail row is on the
     page to check too, and with `?log=1` so the children log runs past one page: the corpus's

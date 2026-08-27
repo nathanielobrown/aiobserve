@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ session_id }} errors — hyphae{% endblock %}
 {# Where one session failed, whichever thread it happened on. A list rather than a pane: a
-   failure is not a place in the tree, so there is nothing to open a path to — each row leads
+   failure is not a place in the NavTree, so there is nothing to open a path to — each row leads
    to the tool call's own page, which carries the crumbs that place it. #}
 {% block main %}
   <section id="errors">
@@ -13,7 +13,7 @@
     <ol class="errors">
       {% for item in listed %}
         <li data-error="{{ item.node.key }}">
-          <a href="{{ item.node.url }}"><span data-field="title">{{ item.node.tree_title }}</span></a>
+          <a href="{{ item.node.url }}"><span data-field="title">{{ item.node.nav_tree_title }}</span></a>
           {# The thread it ran on, because the list spans all of them: two failures of one tool
              name are told apart by which agent hit them. #}
           <span data-field="source" class="source">{{ item.node.source }}</span>

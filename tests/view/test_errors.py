@@ -1,8 +1,8 @@
-"""Getting to a failure: the mark on a tree row, the session's list, and the stepper.
+"""Getting to a failure: the mark on a NavTree row, the session's list, and the stepper.
 
-A session can fail a tool call five spawns down a run tree, and neither the tree — which opens
+A session can fail a tool call five spawns down a run tree, and neither the NavTree — which opens
 one path — nor the walk gets a reader there without reading everything in front of it. These
-leaves cover the three surfaces that do: the `error` mark a tree row carries, the session-wide
+leaves cover the three surfaces that do: the `error` mark a NavTree row carries, the session-wide
 list at `/session/{session_id}/errors`, and the prev/next pair a pane offers when the node it
 is reading is itself a failure.
 
@@ -45,17 +45,17 @@ def failed(store: duckdb.DuckDBPyConnection, session_id: str) -> list[tuple[str,
     ]
 
 
-def test_a_tree_row_for_a_tool_call_that_failed_says_so(
+def test_a_nav_tree_row_for_a_tool_call_that_failed_says_so(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """The tree marks the tool calls that came back an error, and marks nothing else."""
+    """The NavTree marks the tool calls that came back an error, and marks nothing else."""
     # If a session recorded a failed tool call, on a thread of its own...
     source, tool_id = failed(store, FORK_ORIGIN)[0]
-    # ...then the tree beside that call carries the mark on its row...
+    # ...then the NavTree beside that call carries the mark on its row...
     page = client.get(f"/session/{FORK_ORIGIN}/thread/{source}/tool/{tool_id}").text
-    assert fields(page, "data-tree", f"tool:{tool_id}")["is_error"] == "error"
+    assert fields(page, "data-nav-tree", f"tool:{tool_id}")["is_error"] == "error"
     # ...and on no other row of the session, whatever kind of node it stands for.
-    marked = {key for _, key in rows(page) if "is_error" in fields(page, "data-tree", key)}
+    marked = {key for _, key in rows(page) if "is_error" in fields(page, "data-nav-tree", key)}
     assert marked == {f"tool:{tool_id}"}
 
 
@@ -65,7 +65,7 @@ def test_the_errors_page_lists_every_failure_of_the_session_in_the_order_they_ha
     """The list spans the whole session: what a subagent failed at is what the session failed at.
 
     Planted over `FORK_ORIGIN`, whose seven tool calls are split across two run threads — the
-    shape the list exists for, and the one the tree cannot show in a single open path.
+    shape the list exists for, and the one the NavTree cannot show in a single open path.
     """
     path = plant(ALL_FAILED)
     with TestClient(build_app(path)) as planted:

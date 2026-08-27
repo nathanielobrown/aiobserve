@@ -39,11 +39,11 @@ class Bound(NamedTuple):
 # The three sizes every node page takes, and the whole of what a reader can ask a node URL
 # for. Each is its own ceiling — `?kin=`, `?log=` and `?detail=` only go down — because the
 # response's bound is arithmetic over them at the default, so there is no headroom to spend.
-# How many children one expanded level of the tree shows before a tail row says how many it
+# How many children one expanded level of the NavTree shows before a tail row says how many it
 # left; how many rows one numbered page of the pane's children log lists; and how much of the
 # one value the pane is about it shows before offering the rest as its own fetch.
 #
-# The tree's is a window on a level rather than a limit on it: the tail row fetches whatever
+# The NavTree's is a window on a level rather than a limit on it: the tail row fetches whatever
 # the window left out and stands the rows in its own place, so a reader reaches the rest of a
 # level without leaving the page. That fetch is bound by the level, not by this — which is why
 # the node page has a ceiling of its own (`tests/view/budgets.py:NODE_BYTES`) rather than sharing
@@ -52,7 +52,7 @@ class Bound(NamedTuple):
 #
 # The tail's own fetch has no ceiling and is not to be given one: a reader who clicks it is
 # asking for the rest of the level, and paging that would open a second window inside the one
-# they just stepped out of. It costs the level less the window, at `TREE_ROW_BYTES` a row. It
+# they just stepped out of. It costs the level less the window, at `NAV_TREE_ROW_BYTES` a row. It
 # serves whichever preset the URL names, so the widest level is the widest a preset makes: in
 # the canonical store on 2026-08-25 that is 1,587 tool calls under a single turn under `noapi`,
 # where the api calls fold away and their tool calls hoist — 14 more than the 1,573 api calls
@@ -61,8 +61,8 @@ class Bound(NamedTuple):
 # counted against that page.
 #
 # The window was 50, which put a tail row under most turns of a working session and made the
-# tree a thing to expand rather than to read. Widening it spends the node page's ceiling —
-# four times the rows, and the tree is four fifths of that page — which is why the ceiling
+# NavTree a thing to expand rather than to read. Widening it spends the node page's ceiling —
+# four times the rows, and the NavTree is four fifths of that page — which is why the ceiling
 # moved with it rather than the window being raised inside the old one.
 KIN = Bound(default=200, ceiling=200)
 LOG = Bound(default=queries.LOG_ROWS, ceiling=queries.LOG_ROWS)
@@ -115,14 +115,14 @@ ERRORS = Bound(default=queries.PAGE_ERRORS, ceiling=queries.PAGE_ERRORS)
 # multiplicand rather than a knob. Declared with the parameter it binds (`analyze/queries.py`).
 LOG_CHARS = queries.LOG_CHARS
 
-# How deep a chain the tree will open, the selection counted. A session's nesting is a
+# How deep a chain the NavTree will open, the selection counted. A session's nesting is a
 # transcript's, and a transcript can nest as far as an agent spawns: the corpus reaches five,
 # and a chain past this is a store shape nothing here has seen rather than a page to render,
-# so `view/tree.py:ancestry` raises instead of building it. The response's bound is arithmetic
+# so `view/nav_tree.py:ancestry` raises instead of building it. The response's bound is arithmetic
 # over this and `KIN`, which is what makes it a bound rather than a preference.
 DEPTH = 16
 # The turn rows a page renders that no cursor reaches. `session_timeline` gives one — the calls
-# that answer no turn are a single group — and the tree reads it as the unattributed bucket's
+# that answer no turn are a single group — and the NavTree reads it as the unattributed bucket's
 # row. Bound because a level renders it: a timeline answering with more than one raises rather
 # than serving a row nothing counted.
 CURSORLESS_TURNS = 1
@@ -139,8 +139,8 @@ INDENT_CHARS = 20_000
 # neither of those is counted in bytes. So a multibyte value under this ceiling is marked up
 # even where its bytes run past it, which is deliberate: the cost follows the tokens.
 HIGHLIGHT_CHARS = 256_000
-# What one row of the tree may weigh, whole: its markup, a title of `queries.NAV_CHARS`
-# characters that each escape to five bytes, and the knobs every link repeats. The tree is
+# What one row of the NavTree may weigh, whole: its markup, a title of `queries.NAV_CHARS`
+# characters that each escape to five bytes, and the knobs every link repeats. The NavTree is
 # what multiplies — `1 + DEPTH * (KIN + 1)` rows spend this 3,217 times, four fifths of the
 # ceiling — so it is a price to defend rather than a knob to turn: a row that grows past it
 # is a page over the bound, and the answer is a slimmer row.
@@ -152,7 +152,7 @@ HIGHLIGHT_CHARS = 256_000
 # node page's ceiling keeps for this row's next addition.
 # Most of the row is its URL, written three times: the href a reader sees, the `hx-get` htmx
 # fetches, and the popover's own path under a prefix. The click's swap is written once on
-# `#tree-rows` and inherited; the popover's cannot be, because a swap written on the row would
+# `#nav-tree-rows` and inherited; the popover's cannot be, because a swap written on the row would
 # be inherited by the link inside it — so its five attributes are spelled out on every row.
 # The rest is the title, the mark saying what kind of node the row is, the spend beside it, and
 # the two classes the context bar is drawn from — a fill and a tip, eight bytes at their
@@ -164,4 +164,5 @@ HIGHLIGHT_CHARS = 256_000
 # into the row. Over 3,217 rows it is 595,145 B of the node page's ceiling, and it buys a
 # reader nothing — what it buys is one formatter over the templates and an editor that agrees
 # with `check`.
-TREE_ROW_BYTES = 1866
+# Up 4 B from 1,866 when the row's key attribute became `data-nav-tree`.
+NAV_TREE_ROW_BYTES = 1870

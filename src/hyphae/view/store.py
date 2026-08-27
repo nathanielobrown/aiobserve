@@ -44,7 +44,7 @@ class Page(StrEnum):
     # of the page: the projects on one page of sessions are not the projects to filter by.
     PROJECTS = "view_projects"
     SESSION_HEADER = "view_session_header"
-    # Every failed tool call of one session, across every thread — the one page the tree
+    # Every failed tool call of one session, across every thread — the one page the NavTree
     # cannot lead to, because a failure is scattered rather than nested (`view/errors.py`).
     SESSION_ERRORS = "view_session_errors"
     # One node read whole, the header of its own page. One per kind that has fields of its
@@ -53,12 +53,12 @@ class Page(StrEnum):
     TURN_HEADER = "view_turn_header"
     CALL_HEADER = "view_call_header"
     TOOL_HEADER = "view_tool_header"
-    # The levels of the tree beside a node page: one thin row per child, whatever the level
+    # The levels of the NavTree beside a node page: one thin row per child, whatever the level
     # holds. One query per kind of child rather than per kind of parent, so a turn's calls
     # are read the same way under a session, under a run, or under a bucket.
-    TREE_TURNS = "view_tree_turns"
-    TREE_CALLS = "view_tree_calls"
-    TREE_TOOLS = "view_tree_tools"
+    NAV_TREE_TURNS = "view_nav_tree_turns"
+    NAV_TREE_CALLS = "view_nav_tree_calls"
+    NAV_TREE_TOOLS = "view_nav_tree_tools"
     # The two turn timelines, shared with `hp query` — the same rows a report cites.
     # One query per thread kind: `session_timeline` reads `main`, `run_timeline` a bound source.
     TIMELINE = "session_timeline"
@@ -85,7 +85,7 @@ class Fragment(StrEnum):
     # One page of the api calls under a turn, and one page of the tool calls under a call.
     TURN_CALLS = "view_turn_calls"
     CALL_TOOLS = "view_call_tools"
-    # The numbers behind one tree row, fetched when a reader points at it: what the row draws
+    # The numbers behind one NavTree row, fetched when a reader points at it: what the row draws
     # as a bar and a badge, written out. One query for every kind made of api calls, and one
     # for the tool call, which is made of none.
     NUMBERS = "view_numbers"

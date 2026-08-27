@@ -22,7 +22,7 @@
        as the real thing, and every line under it in the file goes unindented. #}
     <meta name="htmx-config" content='{"includeIndicatorStyles": false}'>
     <script src="/static/htmx-2.0.6.min.js" defer></script>
-    {# What a page needs beyond htmx. Only the node page has any, and only for its tree. #}
+    {# What a page needs beyond htmx. Only the node page has any, and only for its NavTree. #}
     {% block scripts %}{% endblock %}
     {%- if DEV %}{# The dev reload client, which `hp view --dev` alone puts on the page: it
        listens on `/dev/reload` and reloads when a template or a stylesheet is saved. The whitespace

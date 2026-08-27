@@ -1,13 +1,13 @@
-"""The tree beside a node page: one open path through the session, and nothing else open.
+"""The NavTree beside a node page: one open path through the session, and nothing else open.
 
-The tree is served with the pane in one response, so these leaves fetch the same node URLs
+The NavTree is served with the pane in one response, so these leaves fetch the same node URLs
 `tests/view/test_node.py` does and read the rows instead, through the readers in
-`tests/view/trees.py`. What they hold to is where a node hangs: which level a page opens, which
+`tests/view/nav_trees.py`. What they hold to is where a node hangs: which level a page opens, which
 turn a compaction lands under, where a run stands, and what a cap cuts when a level runs past
 what the page prices.
 
-What a row draws is `test_tree__rows.py` and `test_tree__meters.py`; what `?nav=` leaves
-standing is `test_tree__presets.py`.
+What a row draws is `test_nav_tree__rows.py` and `test_nav_tree__meters.py`; what `?nav=` leaves
+standing is `test_nav_tree__presets.py`.
 """
 
 import datetime as dt
@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 
 from hyphae.analyze import queries
 from hyphae.model import MAIN_SOURCE
-from hyphae.view import bounds, tree
+from hyphae.view import bounds, nav_tree
 from hyphae.view.app import build_app
 from hyphae.view.enrichment import Descriptions
 from hyphae.view.nodes import (
@@ -41,7 +41,7 @@ from tests.view.conftest import (
     values,
     wired,
 )
-from tests.view.trees import (
+from tests.view.nav_trees import (
     cell,
     mounts,
     open_turn,
@@ -67,7 +67,7 @@ def test_every_sessions_own_page_opens_the_level_its_thread_holds(
     for session_id in sessions:
         html = client.get(f"/session/{session_id}").text
         expected = [f"session:{session_id}", *thread_level(store, session_id, MAIN)]
-        assert values(html, "data-tree") == expected, session_id
+        assert values(html, "data-nav-tree") == expected, session_id
         seen |= {key.split(":")[0] for key in expected}
     # And the sweep really did reach every rule above, so a corpus that lost its compactions
     # or its buckets would redden here rather than passing on the turns alone.
@@ -82,7 +82,7 @@ def test_a_compaction_hangs_off_the_turn_whose_span_covers_it(
     A compaction that happened while a turn was running is a child of that turn; one that
     happened between two turns is a sibling of them, in time order. The corpus exercises both
     sides but neither edge: no recorded compaction has a turn of its own thread starting after
-    it, and none lands on the instant a turn starts or the instant one ends, so the tree would
+    it, and none lands on the instant a turn starts or the instant one ends, so the NavTree would
     read the same with the rule's boundaries deleted. A compaction is where the reader sees the
     context being dropped, so the edges are planted — the same compaction moved to each of the
     three instants, and read off the turn's own page, where both levels are open at once.
@@ -190,7 +190,7 @@ def test_a_turn_holds_its_own_compactions_and_an_overlapped_instant_goes_to_the_
     )
 
 
-def test_the_tree_opens_the_selections_path_and_leaves_the_rest_shut(
+def test_the_nav_tree_opens_the_selections_path_and_leaves_the_rest_shut(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
     """One open path: the chain down to the selection, expanded, and no other subtree.
@@ -209,8 +209,8 @@ def test_the_tree_opens_the_selections_path_and_leaves_the_rest_shut(
         # The selection is the one node whose children render — every other row is a row.
         if key == f"turn:{selection}":
             expected += turn_level(store, SPINE, MAIN, selection)
-    assert values(html, "data-tree") == expected
-    # And the tree says which row the pane is about, once.
+    assert values(html, "data-nav-tree") == expected
+    # And the NavTree says which row the pane is about, once.
     assert values(html, "data-selected") == [f"turn:{selection}"]
 
 
@@ -231,10 +231,10 @@ def test_a_run_hoists_after_the_call_that_spawned_it(
     at = level.index(f"run:{run_id}")
     # The run sits immediately after the call that spawned it, and the level renders as read.
     assert level[at - 1] == f"call:{call_id}"
-    assert [key for key in values(html, "data-tree") if key in level] == level
+    assert [key for key in values(html, "data-nav-tree") if key in level] == level
     # And the row carries the node's title and its cost, and nothing naming that call: the
     # place is the whole of what says where the run came from.
-    assert set(fields(html, "data-tree", f"run:{run_id}")) == {"title", "cost_usd"}
+    assert set(fields(html, "data-nav-tree", f"run:{run_id}")) == {"title", "cost_usd"}
 
 
 def test_a_bucket_home_is_decided_by_the_spawning_edge(
@@ -258,20 +258,20 @@ def test_a_bucket_home_is_decided_by_the_spawning_edge(
     )
     with TestClient(build_app(path)) as moved:
         # The run is gone from the turn it used to hang under...
-        assert f"run:{run_id}" not in values(moved.get(url(str(turn_id))).text, "data-tree")
+        assert f"run:{run_id}" not in values(moved.get(url(str(turn_id))).text, "data-nav-tree")
         # ...and is in the thread's unattributed bucket, still after its spawning call.
         bucket_url = f"/session/{SPINE}/thread/{source}/unattributed"
         bucket = moved.get(bucket_url)
         assert bucket.status_code == 200
-        keys = values(bucket.text, "data-tree")
+        keys = values(bucket.text, "data-nav-tree")
         assert keys[keys.index(f"call:{call_id}") + 1] == f"run:{run_id}"
         # The unattached bucket, which is the other home, does not also hold it.
         loose = moved.get(f"/session/{SPINE}/unattached")
-        assert f"run:{run_id}" not in values(loose.text, "data-tree")
-        # The run's own page agrees with the bucket that holds it. Read here because the tree
+        assert f"run:{run_id}" not in values(loose.text, "data-nav-tree")
+        # The run's own page agrees with the bucket that holds it. Read here because the NavTree
         # above is drawn from the bucket down while a run page is drawn from the run up: the
         # two answers come from different code, and a page that disagreed would be a crash —
-        # the trail would look for the run under a bucket the session's tree does not hold.
+        # the trail would look for the run under a bucket the session's NavTree does not hold.
         own = moved.get(f"/session/{SPINE}/run/{run_id}")
         assert own.status_code == 200
         assert values(own.text, "data-crumb") == [
@@ -299,7 +299,7 @@ def test_the_kin_cap_cuts_the_children_but_never_the_open_path(
     window (`bounds.KIN`), which no recorded session comes near: the knob exists for exactly
     this. The cap bites twice here — once on the level beside the selection, once on the calls
     under it — and the selection survives it either way. A cut that hid the open path would
-    leave the pane describing a node the tree does not show.
+    leave the pane describing a node the NavTree does not show.
     """
     selection = open_turn(store)
     html = client.get(url(selection), params={"kin": 1}).text
@@ -309,15 +309,15 @@ def test_the_kin_cap_cuts_the_children_but_never_the_open_path(
     # being kept past it: the rescue rides inside the cap. A level of `kin + 1` children is a
     # page the byte arithmetic never priced, and the sibling the reader loses is one the tail
     # row still counts and the parent's own page still lists.
-    shown = [key for key in values(html, "data-tree") if key in level]
+    shown = [key for key in values(html, "data-nav-tree") if key in level]
     assert shown == [f"turn:{selection}"]
-    # ...with a tail saying how many rows are off the tree, and no way off the page at all:
+    # ...with a tail saying how many rows are off the NavTree, and no way off the page at all:
     # what it offers is a fetch for the rest of its own level, which the leaf below follows.
     assert fields(html, "data-more", f"session:{SPINE}")["cut"] == str(len(level) - len(shown))
     assert inside(html, "data-more", f"session:{SPINE}", "href") == []
     # And the level under the selection takes the same cap, where no rescue is owed: one child
     # of the several the turn has, and a tail for the rest.
-    assert [key for key in values(html, "data-tree") if key in under] == [under[0]]
+    assert [key for key in values(html, "data-nav-tree") if key in under] == [under[0]]
     assert fields(html, "data-more", f"turn:{selection}")["cut"] == str(len(under) - 1)
     # And no level on the page exceeds the cap, anywhere. `worst_node_bytes()` prices
     # `DEPTH * (KIN + 1)` rows on exactly this, so it is pinned here rather than left to a
@@ -365,7 +365,7 @@ def test_a_tail_row_stands_the_rest_of_its_level_where_it_stands(
     # Each of them reads on under the sizes the reader typed, like any row the page drew, and
     # by one URL whether it is clicked or pasted. The link, not the popover trigger beside it:
     # a row fetches twice, and only one of the two is somewhere a reader can go.
-    links = [(key, at) for key, at in wired(served.text, "data-tree") if "href" in at]
+    links = [(key, at) for key, at in wired(served.text, "data-nav-tree") if "href" in at]
     assert len(links) == len(level) - 1
     for key, wiring in links:
         assert wiring["href"] == wiring["hx-get"], key
@@ -377,8 +377,8 @@ def test_a_tail_row_stands_the_rest_of_its_level_where_it_stands(
         == f"{KIN_URL}/session/{SPINE}/thread/{MAIN}/turn/{selection}?kin=1&thread={MAIN}&depth=2"
     )
     assert rows(client.get(below["hx-get"]).text) == [(2, key) for key in under[1:]]
-    # The depth is the one thing a level cannot say for itself, and the tree's arithmetic
-    # prices `DEPTH` of them: rows claiming to stand outside the tree a page draws are rows
+    # The depth is the one thing a level cannot say for itself, and the NavTree's arithmetic
+    # prices `DEPTH` of them: rows claiming to stand outside the NavTree a page draws are rows
     # no page ever asked for.
     for depth, answer in ((0, 400), (1, 200), (bounds.DEPTH, 200), (bounds.DEPTH + 1, 400)):
         asked = client.get(
@@ -403,17 +403,21 @@ def test_a_fetched_row_is_described_by_the_thread_the_reader_stands_on(
     page = f"/session/{SPINE}/run/{SPINE_RUN}"
     # The main thread's turns as this page draws them: the level the run hangs under, whole.
     whole = enriched_client.get(page).text
-    drawn = {key: fields(whole, "data-tree", key)["title"] for at, key in rows(whole) if at == 1}
+    drawn = {
+        key: fields(whole, "data-nav-tree", key)["title"] for at, key in rows(whole) if at == 1
+    }
     # The same level under a window of one, and the rows its tail row stands for.
     tail = dict(wired(enriched_client.get(page, params={"kin": 1}).text, "data-more"))
     served = enriched_client.get(tail[f"session:{SPINE}"]["hx-get"]).text
-    fetched = {key: fields(served, "data-tree", key)["title"] for _, key in rows(served)}
+    fetched = {key: fields(served, "data-nav-tree", key)["title"] for _, key in rows(served)}
     assert fetched, "the window left nothing out: this page no longer proves the case"
     assert fetched == {key: drawn[key] for key in fetched}
     # And the claim has teeth: on its own page the main thread reads by its descriptions, so
     # a fragment that read the level's thread would have served those names instead.
     home = enriched_client.get(f"/session/{SPINE}").text
-    described = {key: fields(home, "data-tree", key)["title"] for at, key in rows(home) if at == 1}
+    described = {
+        key: fields(home, "data-nav-tree", key)["title"] for at, key in rows(home) if at == 1
+    }
     assert any(described[key] != title for key, title in fetched.items())
 
 
@@ -440,17 +444,17 @@ def test_a_chain_is_resolved_to_the_depth_the_page_prices_and_no_deeper(
         }
         for step in range(bounds.DEPTH // 2)
     ]
-    corpus = tree.Corpus(SPINE, whole=0.0, runs=ladder, described=Descriptions(), source=MAIN)
+    corpus = nav_tree.Corpus(SPINE, whole=0.0, runs=ladder, described=Descriptions(), source=MAIN)
     # A short ladder resolves, which is what says a rung is worth two levels and not some other
     # number: two runs and the turn selected on the second is four levels under the session.
-    shallow = tree.Corpus(SPINE, 0.0, ladder[:2], Descriptions(), MAIN)
-    assert len(tree.ancestry(shallow, [Ref(Kind.RUN, "a1", "a1")])) == 5
+    shallow = nav_tree.Corpus(SPINE, 0.0, ladder[:2], Descriptions(), MAIN)
+    assert len(nav_tree.ancestry(shallow, [Ref(Kind.RUN, "a1", "a1")])) == 5
     # Exactly `DEPTH` is served...
     spawning, deepest = ladder[-2]["run_id"], ladder[-1]["run_id"]
-    assert len(tree.ancestry(corpus, [Ref(Kind.TURN, spawning, "t")])) == bounds.DEPTH
+    assert len(nav_tree.ancestry(corpus, [Ref(Kind.TURN, spawning, "t")])) == bounds.DEPTH
     # ...and the run that turn spawned, one level deeper, is refused.
     with pytest.raises(ValueError, match=str(bounds.DEPTH)):
-        tree.ancestry(corpus, [Ref(Kind.RUN, deepest, deepest)])
+        nav_tree.ancestry(corpus, [Ref(Kind.RUN, deepest, deepest)])
 
 
 def test_a_size_above_its_ceiling_is_refused(

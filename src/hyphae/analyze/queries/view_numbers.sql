@@ -1,4 +1,4 @@
--- The exact numbers behind one node's tree row: where it left the model's context window, and
+-- The exact numbers behind one node's NavTree row: where it left the model's context window, and
 -- where its dollars went. What the row draws as a bar and a badge, written out (`docs/viewer.md`).
 --
 -- `$kind` names which api calls the node *is* — the one rule that differs between a session,
@@ -11,7 +11,7 @@
 -- reading the main thread; the run's own id for a run; the node's own thread otherwise. It is
 -- also what picks the calls out, for every kind but a session, which spends on every thread it spawned.
 --
--- Synthetic replies are out of the window numbers for the reason `view_tree_turns` states —
+-- Synthetic replies are out of the window numbers for the reason `view_nav_tree_turns` states —
 -- Claude Code's own placeholders report no tokens at all (`docs/schema.md`) — and in the
 -- spend, where our table prices them at nothing.
 WITH calls AS (
@@ -61,7 +61,7 @@ WITH calls AS (
     WHERE NOT s.synthetic AND s.source = $source
 ), ends AS (
     -- Where every turn of this thread left the window, so a turn can be measured against the
-    -- one before it. Un-clamped, unlike the tree's: a compaction inside a turn leaves the
+    -- one before it. Un-clamped, unlike the NavTree's: a compaction inside a turn leaves the
     -- window below where the turn before it stood, and the negative is the number to print.
     -- Read only when a turn asked, since no other kind is measured against a sibling.
     SELECT
