@@ -57,13 +57,12 @@ class Step(NamedTuple):
     climbed: bool
 
 
-class Walk:
+class Walk(NamedTuple):
     """What the two controls point at, and every query answering them."""
 
-    def __init__(self, previous: Step | None, following: Step | None, ran: Ran) -> None:
-        self.previous = previous
-        self.following = following
-        self.ran = ran
+    previous: Step | None
+    next: Step | None
+    ran: Ran
 
 
 def neighbours(
@@ -75,10 +74,10 @@ def neighbours(
     selection — the walk climbs it rather than resolving ancestors again.
     """
     reader = _Reader(connection, corpus)
-    return Walk(_previous(reader, chain), _following(reader, chain), reader.ran)
+    return Walk(_previous(reader, chain), _next(reader, chain), reader.ran)
 
 
-def _following(reader: _Reader, chain: Sequence[Node]) -> Step | None:
+def _next(reader: _Reader, chain: Sequence[Node]) -> Step | None:
     """The node read next: the following sibling, else what follows the thing this sits inside.
 
     Climbing is what closes the walk — a node at the end of its level hands on to whatever

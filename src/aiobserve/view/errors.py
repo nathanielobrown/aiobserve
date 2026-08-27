@@ -68,7 +68,7 @@ class Step(NamedTuple):
     """What the stepper points at: the failure read before this one, and the one after."""
 
     previous: Node | None
-    following: Node | None
+    next: Node | None
 
 
 def stepped(listed: Sequence[Failure], node: Node) -> Step:

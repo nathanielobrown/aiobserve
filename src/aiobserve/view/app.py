@@ -945,7 +945,7 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
                 "record": seen.record,
                 # Where the reading order goes from here, in both directions.
                 "previous": walked.previous,
-                "following": walked.following,
+                "next": walked.next,
                 # And where the session failed: how many failures it holds, which is what the
                 # way into the list says, beside the step to the next one where there is one.
                 "session_tool_errors": head[0]["tool_errors"],
