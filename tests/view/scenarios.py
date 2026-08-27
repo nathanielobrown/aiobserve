@@ -6,7 +6,7 @@ declares, and the gallery, which serves each entry as a page you can open. A reg
 `conftest` owns is a registry only pytest can import.
 """
 
-from aiobserve.view.app import QUERY_URL
+from aiobserve.view.citation import QUERY_URL
 from tests.conftest import (
     ANCESTOR,
     BASH_TOOL,

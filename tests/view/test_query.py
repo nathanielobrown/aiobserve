@@ -19,7 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from aiobserve.analyze import macros, manifest, queries
-from aiobserve.view.app import QUERY_URL
+from aiobserve.view.citation import QUERY_URL
 from aiobserve.view.highlight import Syntax, lit
 from tests.conftest import SPINE
 from tests.view.conftest import block, classed, fields, inside, plain, values

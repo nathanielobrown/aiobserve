@@ -19,7 +19,8 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from watchfiles import Change, DefaultFilter, awatch
 
-from aiobserve.view.app import STATIC, TEMPLATES
+from aiobserve.view.app import STATIC
+from aiobserve.view.templating import TEMPLATES
 
 # Where the client listens. Under `/dev/` so that one prefix names everything `--dev` adds.
 RELOAD_URL = "/dev/reload"

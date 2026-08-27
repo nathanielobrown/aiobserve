@@ -16,51 +16,55 @@ supplies only what its own kind needs (`view/nodes.py` for the vocabulary, `view
 where a node sits and what hangs under it).
 """
 
-import datetime as dt
 import socket
 import webbrowser
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable
 from dataclasses import replace
 from math import ceil
 from pathlib import Path
-from typing import Any, NamedTuple, assert_never
-from urllib.parse import urlencode
+from typing import Any, NamedTuple
 
 import duckdb
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from aiobserve.analyze import macros, manifest, queries
 from aiobserve.analyze.queries import ParamValue
-from aiobserve.enrich.prompts import Level
 from aiobserve.export.duckdb import SCHEMA_VERSION
 from aiobserve.model import MAIN_SOURCE
 from aiobserve.view import (
     bounds,
-    columns,
     errors,
+    fragments,
     highlight,
     nodes,
-    numbers,
-    render,
+    templating,
     tree,
     walk,
 )
 from aiobserve.view import format as fmt
+from aiobserve.view.citation import QUERY_URL, cited
 from aiobserve.view.columns import Shape
+from aiobserve.view.detail import Detail, detail_of, enrichment_lines
 from aiobserve.view.enrichment import (
-    GLYPH,
-    GLYPH_CLASS,
     Descriptions,
     Enrichment,
     described,
     enriched,
 )
-from aiobserve.view.labels import label
+from aiobserve.view.knobs import (
+    carried,
+    checked,
+    knobs,
+    pager,
+    preset_choices,
+    skipped,
+    sliced,
+    viewed,
+)
 from aiobserve.view.listing import (
     ARIA_SORT,
     CONTROLS,
@@ -84,13 +88,13 @@ from aiobserve.view.store import (
     Row,
     SchemaMoved,
     StoreLocked,
-    Value,
     listed,
     open_store,
     page_rows,
     paged,
     window,
 )
+from aiobserve.view.templating import Viewer
 
 # Loopback only, and a port unlikely to be taken. Fixed rather than picked at startup so a
 # link pasted into a note opens the same page tomorrow.
@@ -101,83 +105,12 @@ PORT = 8477
 # because there is nothing to wait for: the stream never ends on its own (`view/dev.py`).
 DEV_SHUTDOWN_SECONDS = 1
 
-_PACKAGE = Path(__file__).parent
-TEMPLATES = _PACKAGE / "templates"
-STATIC = _PACKAGE / "static"
+STATIC = Path(__file__).parent / "static"
 
 # Nothing loads from anywhere but this app: no CDN, no inline script, no remote font. The
 # viewer renders text a transcript wrote, so the escaping is the first defence and this is
 # the second.
 CSP = "default-src 'self'"
-
-
-# What a node URL can name, at the value a link that names none is served at: the view, and
-# the three sizes. Every href a node page mints carries whatever is *not* one of these
-# (`knobs`), so a reader who picked a view or narrowed the tree keeps it as they walk, and an
-# ordinary link stays short.
-KNOB_DEFAULTS: dict[str, int | str] = {
-    "nav": nodes.Preset.FULL,
-    "kin": bounds.KIN.default,
-    "log": bounds.LOG.default,
-    "detail": bounds.DETAIL.default,
-}
-
-
-class Detail(NamedTuple):
-    """One fat column of a node as its pane shows it: the head, and the way to the rest.
-
-    A pane never decides how much of a value it shows — the head is cut in SQL at the
-    `?detail=` the request asked for, and `cut` is what that left for the link to offer.
-    """
-
-    name: str
-    head: str
-    cut: int
-    url: str
-    # What the head is marked up as, where the record says what the value is written in — the
-    # shell a `Bash` call ran, the file a `Read` returned.
-    syntax: highlight.Syntax | None
-    # And whether what is left is the markdown someone wrote it in. A person and a model write
-    # markdown; a program writes what it writes, so a tool's arguments and its output are
-    # printed as the store holds them. No value is both, and a syntax the record named wins.
-    markdown: bool
-
-
-class EnrichmentLines(NamedTuple):
-    """The two lines an enrichment pass wrote about a node, as the pane shows them.
-
-    Each is a `Detail` like any other fat value the pane previews: the head the query cut, and
-    the fetch that brings the rest of it back into the block the head stood in. A pass writes
-    as much as it wants to, and nearly every run it describes runs past the width.
-    """
-
-    description: Detail | None
-    # None where the model saw no friction, which is most items, and where it wrote an empty
-    # line — the two are the same nothing to a pane.
-    friction: Detail | None
-
-
-# Where the SQL behind a page is read. Every citation in a footer links here, so the path is
-# written once and the route below takes the query's name from it.
-QUERY_URL = "/query"
-
-
-class Cited(NamedTuple):
-    """One query a page ran, as the footer shows it: the line to re-run, and where to read it."""
-
-    line: str
-    url: str
-
-
-def cited(name: str, bindings: Mapping[str, ParamValue]) -> Cited:
-    """What produced a page, both ways a reader follows it.
-
-    The line is what a report quotes and a shell re-runs; the URL is the same query as a page,
-    bindings and all. Both spell a binding the one way `queries.shown` does, so the link a
-    footer carries and the comment beside it cannot disagree about what was bound.
-    """
-    written = {key: queries.shown(value) for key, value in bindings.items()}
-    return Cited(queries.citation(name, bindings), f"{QUERY_URL}/{name}?{urlencode(written)}")
 
 
 class LogRow(NamedTuple):
@@ -301,112 +234,6 @@ TITLED: dict[str, Callable[[str, str, Row, tree.Corpus], nodes.Node]] = {
 }
 
 
-def knobs(nav: nodes.Preset, kin: int, log: int, detail: int) -> str:
-    """The query string every link on a node page carries: whatever is not a default."""
-    given = {
-        name: value
-        for name, value in (("nav", nav), ("kin", kin), ("log", log), ("detail", detail))
-        if value != KNOB_DEFAULTS[name]
-    }
-    return f"?{urlencode(given)}" if given else ""
-
-
-class PresetChoice(NamedTuple):
-    """One preset as the control above the tree offers it: where it goes, and whether we are
-    in it."""
-
-    preset: nodes.Preset
-    url: str
-    current: bool
-
-
-def preset_choices(
-    node: nodes.Node, nav: nodes.Preset, kin: int, log: int, detail: int
-) -> list[PresetChoice]:
-    """The node the reader is on under each preset, so switching never costs them their place."""
-    return [
-        PresetChoice(choice, f"{node.url}{knobs(choice, kin, log, detail)}", choice is nav)
-        for choice in nodes.Preset
-    ]
-
-
-def numbered(url: str, marks: str, page: int) -> str:
-    """One page of a node's children log as a URL: the node, its knobs, and the page number.
-
-    Page one is the node's own URL. A reader who pages back to the start has to land on the
-    document a link to the node serves, and it is the one the payload sweep prices.
-    """
-    if page == 1:
-        return f"{url}{marks}"
-    return f"{url}{marks}{'&' if marks else '?'}page={page}"
-
-
-class Pager(NamedTuple):
-    """A children log's place in its level, and the way to either side of it."""
-
-    # Which page of how many, in words — the label the control is read and heard by.
-    place: str
-    previous: str | None
-    following: str | None
-
-
-def pager(url: str, marks: str, page: int, pages: int) -> Pager | None:
-    """The control under a children log, or None where the level is one page long."""
-    if pages < 2:
-        return None
-    return Pager(
-        place=f"Page {page} of {pages}",
-        previous=numbered(url, marks, page - 1) if page > 1 else None,
-        following=numbered(url, marks, page + 1) if page < pages else None,
-    )
-
-
-def skipped(page: int, size: int) -> int:
-    """How many children the pages before this one held — what a numbered page binds to skip."""
-    return (page - 1) * size
-
-
-def detail_of(
-    name: str,
-    head: str | None,
-    chars: int | None,
-    url: str,
-    size: int,
-    syntax: highlight.Syntax | None = None,
-    *,
-    markdown: bool,
-) -> Detail | None:
-    """One fat column as a pane shows it, or None where the store holds nothing under it.
-
-    Nothing is a NULL or an empty string alike: a value with no characters in it has no
-    preview to show and nothing to offer the rest of, whichever of the two the column holds.
-
-    `head` arrives one character past `size`, which is how a value with more behind it is told
-    from one that ends where the pane does; `chars` is the whole length the link offers.
-    `syntax` is what the record says the value is written in, and the default is prose:
-    everything a session wrote is prose until something in the row says otherwise.
-
-    `markdown` says whether that prose is rendered as the markdown it was written in. It takes
-    no default: whether a value came from a person, a model or a program is a fact about the
-    column, and two callers of one route can read the same column either way — a subagent's
-    answer reaches a run's pane as prose and a tool's pane as the output of a program.
-    """
-    if not head:
-        return None
-    cut = (chars or 0) - size if len(head) > size else 0
-    return Detail(name, fmt.cut(head, size), cut, url, syntax, markdown)
-
-
-def sliced(items: Sequence[Row], page: int, size: int) -> Listed:
-    """One numbered page of rows already in memory, cut the way a query's OFFSET cuts one.
-
-    The unattached runs are the case: they arrive with the session's runs, which every level of
-    the tree needs anyway, so paging them is slicing rather than a second read.
-    """
-    start = skipped(page, size)
-    return Listed(list(items[start : start + size]), len(items))
-
-
 def described_node(descriptions: Descriptions, node: nodes.Node) -> Enrichment | None:
     """What an enrichment pass said about the node a pane is about, when it said anything.
 
@@ -422,46 +249,6 @@ def described_node(descriptions: Descriptions, node: nodes.Node) -> Enrichment |
     return None
 
 
-def enrichment_lines(
-    about: Enrichment | None, session_id: str, source: str
-) -> EnrichmentLines | None:
-    """What a pass wrote about the selection, each line with the way to the rest of it.
-
-    The keys are the level's own: a turn's row is keyed by the thread the page is reading, a
-    run's and a session's by the session. `source` is that thread, which is the same one the
-    descriptions were read for.
-    """
-    if about is None:
-        return None
-    match about.level:
-        case Level.turn:
-            at = f"{nodes.thread_url(session_id, source)}/turn/{about.item_id}"
-        case Level.agent_run:
-            at = nodes.run_url(session_id, about.item_id)
-        case Level.session:
-            at = nodes.session_url(about.item_id)
-        case _:
-            assert_never(about.level)
-    return EnrichmentLines(
-        description=detail_of(
-            "description",
-            about.description,
-            about.description_chars,
-            f"/fragment/description{at}",
-            queries.ENRICHMENT_CHARS,
-            markdown=False,
-        ),
-        friction=detail_of(
-            "friction",
-            about.friction,
-            about.friction_chars,
-            f"/fragment/friction{at}",
-            queries.ENRICHMENT_CHARS,
-            markdown=False,
-        ),
-    )
-
-
 def project_link(project_dir: str | None) -> str | None:
     """The session list narrowed to one project, or None when there is no list to open.
 
@@ -473,34 +260,6 @@ def project_link(project_dir: str | None) -> str | None:
         return None
     return list_url(
         DEFAULT_SORT, DEFAULT_DIRECTION, 1, bounds.SESSIONS.default, {"project": project_dir}
-    )
-
-
-def checked(size: int, ceiling: int) -> int:
-    """A page size from a query string, or a 400 — every route's sizes go through here."""
-    if not 1 <= size <= ceiling:
-        raise HTTPException(400, f"Ask for a page size between 1 and {ceiling}.")
-    return size
-
-
-def viewed(nav: str) -> nodes.Preset:
-    """The filter preset from a query string, or a 400 — every node route's `?nav=` comes here.
-
-    A 400 rather than a fallback to the full tree: a reader who typed a view the viewer does
-    not have should be told, not served a different one under the URL they asked for.
-    """
-    if nav not in set(nodes.Preset):
-        raise HTTPException(400, f"Filter the tree by one of: {', '.join(nodes.Preset)}.")
-    return nodes.Preset(nav)
-
-
-def carried(nav: str, kin: int, log: int, detail: int) -> str:
-    """The knobs a request asked for, checked and minted back into the suffix its links carry."""
-    return knobs(
-        viewed(nav),
-        checked(kin, bounds.KIN.ceiling),
-        checked(log, bounds.LOG.ceiling),
-        checked(detail, bounds.DETAIL.ceiling),
     )
 
 
@@ -527,137 +286,8 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
 
         app.include_router(dev_loop.reload_router())
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
-    templates = Jinja2Templates(directory=TEMPLATES)
-
-    def ago(value: dt.datetime | None) -> str:
-        """How long ago, against the clock at render rather than one captured at startup.
-
-        A viewer left open is a long-lived process, so the clock is read here per render:
-        one captured when the app was built would freeze every row's freshness at boot.
-        """
-        return fmt.ago(value, fmt.utcnow())
-
-    def project_path(value: str | None) -> str:
-        """A project directory, with the home of whoever is reading the page folded to `~`.
-
-        Read per render like the clock above, and for the same reason: a test says who is
-        reading, and the next page moves with it.
-        """
-        return fmt.path(value, fmt.home())
-
-    def line(value: str | None) -> str:
-        """A row's string at the width a children log prints it, marked where it was cut.
-
-        The template's half of the one-extra-character protocol: every string a log row prints
-        comes back from its query one character past this width, so a value that arrives longer
-        than the cut is a value with more behind it. What `nodes.Node.log_title` does for a
-        node's title, for the columns a row prints straight off the row.
-        """
-        return fmt.ABSENT if value is None else fmt.cut(value, queries.LOG_CHARS)
-
-    def head(value: object) -> object:
-        """A header's value as a pane prints it: a string cut and marked, anything else as is.
-
-        The same half of the protocol `line` holds, at the pane's width — every string a
-        header query previews comes back one character past this cut. Applied by
-        `_parts.html:fact` to every value that reaches it rather than at the rows that need
-        it, so a fact added beside them inherits the bound instead of printing a value whole.
-        A header's other facts are flags and already-formatted numbers, and only a string the
-        store holds can be longer than the pane: those go through as `text` leaves them.
-        """
-        if value is None:
-            return fmt.ABSENT
-        return fmt.cut(value, queries.HEADER_CHARS) if isinstance(value, str) else value
-
-    def short(value: str | None) -> str:
-        """A string at the width a row of the session list prints it, marked where it was cut.
-
-        The row's own half of the protocol, and the narrowest of the four: a row is multiplied
-        by the page, so it takes a head where the pane takes a paragraph. Every string a
-        transcript or a pass wrote in a row goes through this or `item` — the session's title,
-        its project path, and the line a pass wrote about it — and the mark is what the link
-        beside it makes good on: the whole value is on the session's page, a click away.
-
-        Takes None like the other cuts do: it stands ahead of `path` on the project column,
-        which is where a row's one nullable string is printed.
-        """
-        return fmt.ABSENT if value is None else fmt.cut(value, queries.LIST_CHARS)
-
-    def item(value: str) -> str:
-        """One member of a list on a row of the session list, marked where the query cut it.
-
-        What `member` does for a header's lists, at the width a row shows a skill or an agent
-        type. The kinds of work beside them do not come through here: their vocabulary is
-        closed (`enrich/taxonomy.py`), so `queries.TAG_CHARS` is a bound the page's arithmetic
-        needs rather than one a value reaches, and a mark there could never be true.
-        """
-        return fmt.cut(value, queries.LIST_ITEM_CHARS)
-
-    def member(value: str) -> str:
-        """One member of a header's list, marked where the query cut it.
-
-        The list half of what `head` does for a header's own strings: a list is cut twice —
-        to its first `HEADER_ITEMS` members, which the pane counts out loud, and each member
-        to `HEADER_ITEM_CHARS`, which nothing said until here.
-        """
-        return fmt.cut(value, queries.HEADER_ITEM_CHARS)
-
-    # Jinja types `env.filters` by the ones it seeds itself with, so ours widen the value.
-    templates.env.filters |= {  # pyrefly: ignore[bad-assignment]
-        "money": fmt.money,
-        "count": fmt.count,
-        "signed": fmt.signed,
-        "charge": fmt.charge,
-        "share": fmt.share,
-        "when": fmt.when,
-        "clock": fmt.clock,
-        "duration": fmt.duration,
-        "text": fmt.text,
-        "line": line,
-        "head": head,
-        "member": member,
-        "short": short,
-        "item": item,
-        "path": project_path,
-        "ago": ago,
-        # The three filters that print what a transcript wrote. Each hands back escaped
-        # markup; `view/render.py` and `view/highlight.py` are where that escaping lives, and
-        # nothing here may add `|safe`.
-        "markdown": render.markdown,
-        "lit": highlight.lit,
-        "link": render.link,
-    }
-
-    # What a page calls each field it prints. The namespace is typed by what Jinja seeds it
-    # with, which is why the assignment needs a word: a global is any callable a template names.
-    templates.env.globals["label"] = label  # pyrefly: ignore
-    # And the mark every model-written string carries, beside the class that styles it.
-    templates.env.globals["GLYPH"] = GLYPH  # pyrefly: ignore
-    templates.env.globals["GLYPH_CLASS"] = GLYPH_CLASS  # pyrefly: ignore
-    # And how long a value may be before a page prints it plain rather than marked up, which
-    # is what the line beside a plain value says.
-    templates.env.globals["HIGHLIGHT_CHARS"] = bounds.HIGHLIGHT_CHARS  # pyrefly: ignore
-    # The syntaxes a template may ask for, so that asking for one it does not mark up raises
-    # here rather than rendering a value as a line of error tokens.
-    templates.env.globals["SYNTAX"] = highlight.Syntax  # pyrefly: ignore
-    # And where an agent run reads, for the one link a template mints from a column rather than
-    # from a node: the `Task` call that started the run.
-    templates.env.globals["run_url"] = nodes.run_url  # pyrefly: ignore
-    # And the thread a page is reading, which heads every path a template writes that no node
-    # stands behind: the raw transcript, and the fetch of one archived record.
-    templates.env.globals["thread_url"] = nodes.thread_url  # pyrefly: ignore
-    # The columns each children log heads and fills, so the head and the rows cannot drift
-    # apart, and how many of them an expansion opened under a row has to span.
-    templates.env.globals["COLUMNS"] = columns.COLUMNS  # pyrefly: ignore
-    templates.env.globals["spanned"] = nodes.spanned  # pyrefly: ignore
-    # And whether this viewer was started for editing it, which `base.html` reads to decide
-    # one script tag — the only difference between a dev page and a shipped one.
-    templates.env.globals["DEV"] = dev  # pyrefly: ignore
-
-    def error(request: Request, status: int, message: str) -> Response:
-        return templates.TemplateResponse(
-            request, "error.html", {"status": status, "message": message}, status_code=status
-        )
+    viewer = Viewer(db=resolved, templates=templating.environment(dev=dev))
+    templates = viewer.templates
 
     @app.middleware("http")
     async def _policy(request: Request, call_next: Any) -> Response:
@@ -667,7 +297,7 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
 
     @app.exception_handler(StoreLocked)
     def _locked(request: Request, exception: Exception) -> Response:
-        return error(
+        return viewer.error(
             request,
             503,
             "Another process holds the trace store — an extract or an enrich is running. "
@@ -676,7 +306,7 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
 
     @app.exception_handler(SchemaMoved)
     def _moved(request: Request, exception: Exception) -> Response:
-        return error(
+        return viewer.error(
             request,
             503,
             f"The store now holds schema version {exception}, and this build reads "
@@ -687,7 +317,7 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
     def _http(request: Request, exception: Exception) -> Response:
         # Narrowing for the type checker: Starlette dispatches this handler by that class.
         assert isinstance(exception, StarletteHTTPException)  # noqa: S101
-        return error(request, exception.status_code, exception.detail)
+        return viewer.error(request, exception.status_code, exception.detail)
 
     @app.get("/")
     def projects_page(request: Request) -> Response:
@@ -1899,321 +1529,10 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
         at = Ref(kind=Kind(kind), source=None, node_id=node_id)
         return spilled(request, session_id, at, thread, depth, opened, nav, kin, log, detail)
 
-    def counted(
-        request: Request, kind: Kind, session_id: str, source: str, node_id: str
-    ) -> Response:
-        """One node's numbers, for the popover its tree row fetches.
-
-        `source` is the thread the window is read on, which is not always the thread the node
-        sits on: a session's reader is reading `main`, and its spend is every thread's. What
-        differs between the kinds is inside the query; what differs here is only the tool call,
-        which has no api calls to be measured out of.
-        """
-        if kind is Kind.TOOL:
-            keyed: dict[str, ParamValue] = {
-                "session_id": session_id,
-                "source": source,
-                "tool_call_id": node_id,
-                "item_chars": queries.HEADER_ITEM_CHARS,
-                "head_items": queries.HEADER_ITEMS,
-            }
-            with open_store(resolved) as connection:
-                rows = page_rows(connection, Fragment.TOOL_NUMBERS, **keyed)
-            if not rows:
-                raise HTTPException(404, "No tool call with that id is in this thread.")
-            return templates.TemplateResponse(
-                request,
-                "fragments/numbers_tool.html",
-                {
-                    "key": Ref(kind, source, node_id).key,
-                    "row": rows[0],
-                    "citation": queries.citation(Fragment.TOOL_NUMBERS, keyed),
-                },
-            )
-        bound: dict[str, ParamValue] = {
-            "session_id": session_id,
-            "source": source,
-            "node_id": node_id,
-            "kind": kind,
-            "model_chars": queries.MODEL_CHARS,
-        }
-        with open_store(resolved) as connection:
-            rows = page_rows(connection, Fragment.NUMBERS, **bound)
-        # The query aggregates, so it answers a row for a node that is not there as readily as
-        # for one that is — a node with no api calls under it is a real reading, and the
-        # popover prints it as the dashes it is.
-        return templates.TemplateResponse(
-            request,
-            "fragments/numbers.html",
-            {
-                "key": Ref(kind, source, node_id).key,
-                "row": rows[0],
-                "spend": numbers.spend(rows[0]["spent"]),
-                "citation": queries.citation(Fragment.NUMBERS, bound),
-            },
-        )
-
-    @app.get(f"{nodes.NUMBERS_URL}/session/{{session_id}}/thread/{{source}}/{{kind}}/{{node_id}}")
-    def node_numbers(
-        request: Request, kind: str, session_id: str, source: str, node_id: str
-    ) -> Response:
-        """The numbers behind a turn, an api call, or a tool call recorded on a thread."""
-        if kind not in nodes.NUMBERED:
-            raise HTTPException(404, "No numbers are served for that kind of node.")
-        return counted(request, Kind(kind), session_id, source, node_id)
-
-    @app.get(f"{nodes.NUMBERS_URL}/session/{{session_id}}/{Kind.RUN}/{{run_id}}")
-    def run_numbers(request: Request, session_id: str, run_id: str) -> Response:
-        """One agent run's numbers, read on the thread the run's id also names."""
-        return counted(request, Kind.RUN, session_id, run_id, run_id)
-
-    @app.get(f"{nodes.NUMBERS_URL}/session/{{session_id}}")
-    def session_numbers(request: Request, session_id: str) -> Response:
-        """A whole session's numbers: the main thread's window, and every thread's spend."""
-        return counted(request, Kind.SESSION, session_id, MAIN_SOURCE, session_id)
-
-    def whole(
-        request: Request,
-        value: Value,
-        template: str,
-        keyed: Mapping[str, ParamValue],
-        column: str,
-        detail: str | None,
-        syntax: highlight.Syntax | None = None,
-    ) -> Response:
-        """One per-value fragment: the whole value, or a 404 when nothing is stored under it.
-
-        `column` is where the query puts the value this fragment is for. A row can exist with
-        nothing under it — a `Read` has no command, a turn no prompt — and that is a 404 and
-        not an empty page: nothing on a pane links here unless there is a value to fetch, so a
-        request for one that is not there is a URL somebody typed or a link somebody kept.
-
-        `detail` is the name the pane files this value under, and the fragment replaces that
-        whole section, so it carries the name out with it — the styling that tells an ask from
-        an answer reads it. A fragment that is nobody's detail — the archived record — has none.
-
-        `syntax` is what the route knows the value is written in. A value whose language is a
-        property of the row instead — the file a `Read` returned — carries it in the query's
-        own `result_type`, so the fetch is marked up the way its preview on the pane was.
-        """
-        with open_store(resolved) as connection:
-            rows = page_rows(connection, value, **keyed)
-        if not rows or rows[0][column] is None:
-            raise HTTPException(404, "Nothing in this store is stored under that id.")
-        # Under `value`, whatever the query called it: a fragment renders the one column it is
-        # for, so a template that names it would be a second answer to which column that is.
-        row = rows[0] | {"value": rows[0][column]}
-        # The keys travel into the context as well: a fragment that links anywhere needs the
-        # session and thread it was fetched for, and they are exactly what keyed it.
-        return templates.TemplateResponse(
-            request,
-            f"fragments/{template}.html",
-            dict(keyed)
-            | {
-                "row": row,
-                "detail": detail,
-                "citation": queries.citation(value, keyed),
-                "syntax": syntax or highlight.by_suffix(row.get("result_type")),
-            },
-        )
-
-    def enrichment_line(
-        request: Request, value: Value, keyed: Mapping[str, ParamValue], field: str
-    ) -> Response:
-        """One whole line an enrichment pass wrote, or a 404 where no pass wrote one.
-
-        A pass creates the enrichment tables rather than the exporter, so a store none has
-        touched holds no such line — the same nothing a missing row is, and the same answer
-        (`view/enrichment.py`). Asked per request and not at startup, because a pass can run
-        against the store while the viewer is reading it.
-        """
-        with open_store(resolved) as connection:
-            written = enriched(connection)
-        if not written:
-            raise HTTPException(404, "No enrichment pass has written to this store.")
-        return whole(request, value, "enrichment_line", keyed, field, field)
-
-    @app.get("/fragment/description/session/{session_id}/thread/{source}/turn/{turn_id}")
-    def turn_description(request: Request, session_id: str, source: str, turn_id: str) -> Response:
-        """The whole of what a pass said one turn did."""
-        keyed = {"session_id": session_id, "source": source, "turn_id": turn_id}
-        return enrichment_line(request, Value.TURN_SAID, keyed, "description")
-
-    @app.get("/fragment/friction/session/{session_id}/thread/{source}/turn/{turn_id}")
-    def turn_friction(request: Request, session_id: str, source: str, turn_id: str) -> Response:
-        """The whole of the friction a pass saw in one turn."""
-        keyed = {"session_id": session_id, "source": source, "turn_id": turn_id}
-        return enrichment_line(request, Value.TURN_SAID, keyed, "friction")
-
-    @app.get("/fragment/description/session/{session_id}/run/{run_id}")
-    def run_description(request: Request, session_id: str, run_id: str) -> Response:
-        """The whole of what a pass said one agent run did."""
-        return enrichment_line(
-            request, Value.RUN_SAID, {"session_id": session_id, "run_id": run_id}, "description"
-        )
-
-    @app.get("/fragment/friction/session/{session_id}/run/{run_id}")
-    def run_friction(request: Request, session_id: str, run_id: str) -> Response:
-        """The whole of the friction a pass saw in one agent run."""
-        return enrichment_line(
-            request, Value.RUN_SAID, {"session_id": session_id, "run_id": run_id}, "friction"
-        )
-
-    @app.get("/fragment/description/session/{session_id}")
-    def session_description(request: Request, session_id: str) -> Response:
-        """The whole of what a pass said one session did."""
-        return enrichment_line(
-            request, Value.SESSION_SAID, {"session_id": session_id}, "description"
-        )
-
-    @app.get("/fragment/friction/session/{session_id}")
-    def session_friction(request: Request, session_id: str) -> Response:
-        """The whole of the friction a pass saw in one session."""
-        return enrichment_line(request, Value.SESSION_SAID, {"session_id": session_id}, "friction")
-
-    @app.get("/fragment/text/session/{session_id}/thread/{source}/call/{api_call_id}")
-    def call_text(request: Request, session_id: str, source: str, api_call_id: str) -> Response:
-        """What one api call said, whole."""
-        return whole(
-            request,
-            Value.CALL_TEXT,
-            "value",
-            {"session_id": session_id, "source": source, "api_call_id": api_call_id},
-            "value",
-            "text",
-        )
-
-    @app.get("/fragment/thinking/session/{session_id}/thread/{source}/call/{api_call_id}")
-    def call_thinking(request: Request, session_id: str, source: str, api_call_id: str) -> Response:
-        """What one api call thought, whole."""
-        return whole(
-            request,
-            Value.CALL_THINKING,
-            "value",
-            {"session_id": session_id, "source": source, "api_call_id": api_call_id},
-            "value",
-            "thinking",
-        )
-
-    @app.get("/fragment/record/session/{session_id}/thread/{source}/line/{line_no}")
-    def record_value(request: Request, session_id: str, source: str, line_no: int) -> Response:
-        """One raw transcript record whole, as the browser's preview was cut from."""
-        return whole(
-            request,
-            Value.RECORD,
-            "record",
-            {"session_id": session_id, "source": source, "line_no": line_no},
-            # The record itself, which the store holds NOT NULL.
-            "raw",
-            # The line a node was read from, not one of the node's own values: nothing on a
-            # pane files it under a name, and nothing swaps it into a detail.
-            None,
-        )
-
-    @app.get("/fragment/input/session/{session_id}/thread/{source}/tool/{tool_call_id}")
-    def tool_input(request: Request, session_id: str, source: str, tool_call_id: str) -> Response:
-        """What one tool call was passed, whole."""
-        return whole(
-            request,
-            Value.TOOL_INPUT,
-            "raw",
-            {"session_id": session_id, "source": source, "tool_call_id": tool_call_id},
-            "value",
-            "input",
-        )
-
-    @app.get("/fragment/result/session/{session_id}/thread/{source}/tool/{tool_call_id}")
-    def tool_result(request: Request, session_id: str, source: str, tool_call_id: str) -> Response:
-        """What one tool call returned, whole — the largest single fetch the viewer makes."""
-        return whole(
-            request,
-            Value.TOOL_RESULT,
-            "raw",
-            {
-                "session_id": session_id,
-                "source": source,
-                "tool_call_id": tool_call_id,
-                # Not a cut of the answer, which rides whole: the bound on the file suffix
-                # beside it, which is what says how the answer is marked up.
-                "head_chars": queries.HEADER_CHARS,
-            },
-            "value",
-            "result",
-        )
-
-    @app.get("/fragment/command/session/{session_id}/thread/{source}/tool/{tool_call_id}")
-    def tool_command(request: Request, session_id: str, source: str, tool_call_id: str) -> Response:
-        """What one `Bash` call ran, whole — read as the shell reads it."""
-        return whole(
-            request,
-            Value.TOOL_COMMAND,
-            "raw",
-            {"session_id": session_id, "source": source, "tool_call_id": tool_call_id},
-            "value",
-            "command",
-            highlight.Syntax.BASH,
-        )
-
-    @app.get("/fragment/prompt/session/{session_id}/thread/{source}/turn/{turn_id}")
-    def turn_prompt(request: Request, session_id: str, source: str, turn_id: str) -> Response:
-        """What one turn was asked, whole."""
-        return whole(
-            request,
-            Value.TURN_PROMPT,
-            "value",
-            {"session_id": session_id, "source": source, "turn_id": turn_id},
-            "value",
-            "prompt",
-        )
-
-    @app.get("/fragment/args/session/{session_id}/thread/{source}/turn/{turn_id}")
-    def turn_command_args(request: Request, session_id: str, source: str, turn_id: str) -> Response:
-        """What followed the slash command one turn ran, whole."""
-        return whole(
-            request,
-            Value.TURN_COMMAND_ARGS,
-            "value",
-            {"session_id": session_id, "source": source, "turn_id": turn_id},
-            "value",
-            "command_args",
-        )
-
-    @app.get("/fragment/brief/session/{session_id}/run/{run_id}")
-    def run_brief(request: Request, session_id: str, run_id: str) -> Response:
-        """The whole brief one agent run was given."""
-        return whole(
-            request,
-            Value.RUN_BRIEF,
-            "value",
-            {"session_id": session_id, "run_id": run_id},
-            "value",
-            "brief",
-        )
-
-    @app.get("/fragment/prompt/session/{session_id}/run/{run_id}")
-    def run_prompt(request: Request, session_id: str, run_id: str) -> Response:
-        """The whole of what one agent run was asked, off the call that spawned it."""
-        return whole(
-            request,
-            Value.RUN_PROMPT,
-            "value",
-            {"session_id": session_id, "run_id": run_id},
-            "value",
-            "prompt",
-        )
-
-    @app.get("/fragment/result/session/{session_id}/run/{run_id}")
-    def run_result(request: Request, session_id: str, run_id: str) -> Response:
-        """The whole of what one agent run sent back to the agent that spawned it."""
-        return whole(
-            request,
-            Value.RUN_RESULT,
-            "value",
-            {"session_id": session_id, "run_id": run_id},
-            "value",
-            "result",
-        )
-
+    # Extended rather than `include_router`: FastAPI keeps an included router nested under
+    # one opaque route object, and `tools/gen_routes.py` and the payload sweep both read
+    # `app.routes` expecting the routes themselves (`tests/view/test_dev.py` says so too).
+    app.router.routes.extend(fragments.routes(viewer))
     return app
 
 

@@ -18,9 +18,10 @@ from fastapi.testclient import TestClient
 
 from aiobserve.analyze import queries
 from aiobserve.view import bounds, nodes
-from aiobserve.view.app import build_app, numbered
+from aiobserve.view.app import build_app
 from aiobserve.view.columns import COLUMNS, Shape
 from aiobserve.view.format import ELLIPSIS
+from aiobserve.view.knobs import numbered
 from aiobserve.view.labels import LABELS, label
 from aiobserve.view.nodes import BODY_URL, LEAD_SEPARATOR
 from tests.conftest import ANCESTOR, DENSE_TURN, MAIN, SLASH_TURN, SPINE
