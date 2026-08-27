@@ -8,7 +8,7 @@ Name a report `YYYY_MM_DD_<project>_<topic>.md` — the date it was run, the pro
 
 ## What a report has to carry
 
-- **The question** it set out to answer, and why that question was worth the run
+- **The question** it set out to answer, and why that question was worth the pass
 - **The window and the corpus** — which sessions, over which dates, for which project. A finding is about the data you looked at, not about agents in general.
 - **The findings**, each with its evidence: the query, the count, the example session. A claim without a query behind it is a hypothesis; label it as one.
 - **What you could not tell** from this data, and what would settle it. An absence you cannot bound is a finding about the query, not about the world.
