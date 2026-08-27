@@ -11,16 +11,19 @@ trailing windows would go quietly empty as the corpus ages.
 import datetime as dt
 import re
 from collections import defaultdict
+from urllib.parse import parse_qs, urlsplit
 
 import duckdb
+import pytest
 from fastapi.testclient import TestClient
 
 from aiobserve.sessions import project_predicate
 from aiobserve.view import bounds
+from aiobserve.view import format as fmt
 from aiobserve.view.app import build_app
 from aiobserve.view.format import ABSENT
 from aiobserve.view.store import Page
-from tests.conftest import MYCELIA, NO_PROJECT_SESSION, SPINE
+from tests.conftest import HOME, MYCELIA, NO_PROJECT_SESSION, SPINE
 from tests.view.conftest import Planter, fields, inside, one, suggestions, values
 
 # Every session in the store beside the project it folds onto: the shortest stored directory
@@ -331,3 +334,33 @@ def test_a_column_is_headed_the_way_its_cells_are_set(client: TestClient) -> Non
     # The project, three windows and the last-active column: five of each, and the three
     # windows are the ones set right.
     assert headings == cells == [False, True, True, True, False]
+
+
+def test_a_project_directory_folds_the_readers_home_and_still_links_whole(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A project cell prints `~` for the home of whoever is reading, and nothing else does.
+
+    Every row of one person's corpus repeats the same home directory, which is column width
+    spent on a constant — and the project column is the one that squeezes the lists beside it.
+    The fold is display alone: the row's own attribute, the link the landing page mints and
+    the box that suggests a filter all carry the path the store holds, because a filter
+    matches that path and not a reader's shorthand for it.
+    """
+    monkeypatch.setattr(fmt, "home", lambda: HOME)
+    listed, landing = client.get("/sessions").text, client.get("/").text
+    folded = "~/repos/mycelia"
+    assert fields(listed, "data-session-id", SPINE)["project_dir"] == folded
+    assert fields(landing, "data-project", MYCELIA)["project_dir"] == folded
+    # The session's own page says where it ran in the same words its row does.
+    session = fields(client.get(f"/session/{SPINE}").text, "data-body", "session")
+    assert session["project_dir"] == folded
+    # What a reader clicks or types is untouched: the row is keyed by the stored path, the
+    # link filters on it, and the box offers it.
+    (link,) = set(inside(landing, "data-project", MYCELIA, "href"))
+    assert parse_qs(urlsplit(link).query)["project"] == [MYCELIA]
+    assert MYCELIA in suggestions(listed)
+    # Read from anywhere else, the same cell prints the path whole. The fold is this reader's
+    # own home and not a rule about any directory two levels under `/Users`.
+    monkeypatch.setattr(fmt, "home", lambda: f"{HOME}ody")
+    assert fields(client.get("/sessions").text, "data-session-id", SPINE)["project_dir"] == MYCELIA

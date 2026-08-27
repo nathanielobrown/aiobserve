@@ -21,6 +21,7 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
+from aiobserve.analyze import queries
 from aiobserve.extract.pricing import CONTEXT_WINDOWS
 from aiobserve.view.app import build_app
 from aiobserve.view.nodes import BAR_STEPS
@@ -32,6 +33,24 @@ Planter = Callable[..., Path]
 # An id that matches nothing, in the shape a session id has. Every "the store does not hold
 # it" leaf asks for this one, whatever kind of id the route takes.
 MISSING = "00000000-0000-0000-0000-000000000000"
+
+
+# What every list citation says about the display cut, which the viewer composes around the
+# query the same way it composes the paging: re-running the file alone answers whole values.
+CUT = (
+    f"head_chars={queries.LIST_CHARS} item_chars={queries.LIST_ITEM_CHARS}"
+    f" head_items={queries.LIST_ITEMS}"
+)
+
+
+def money(amount: float) -> str:
+    """A cost as the pages print it."""
+    return f"${amount:.2f}"
+
+
+def counted(value: int) -> str:
+    """A count as the pages print it: thousands separated."""
+    return f"{value:,}"
 
 
 def pages(store: duckdb.DuckDBPyConnection) -> list[str]:
