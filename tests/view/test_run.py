@@ -112,7 +112,7 @@ def test_an_agent_type_leads_a_runs_title_except_where_a_column_already_heads_it
     both would be saying one word twice under two headings, the second of them "Description".
     """
     (agent_type, brief) = one(
-        store, "SELECT agent_type, description FROM live_agent_runs WHERE id = ?", [BYREF_FORK]
+        store, "SELECT agent_type, brief FROM live_agent_runs WHERE id = ?", [BYREF_FORK]
     )
     assert agent_type and brief, "this fork lost the two halves this leaf reads"
     # The log names the agent once, in the column headed for it...

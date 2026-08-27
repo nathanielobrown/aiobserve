@@ -78,11 +78,11 @@ SELECT t.*, e.description, e.category, e.outcome, e.friction, e.input_hash,
 FROM live_turns t
 LEFT JOIN turn_enrichments e
   ON e.session_id = t.session_id AND e.source = t.source AND e.turn_id = t.id;
--- `agent_runs` carries a `description` and a `model` of its own — the task Claude Code
--- recorded for the run, and the model that ran it. Both keep their meaning under a name
--- that says whose they are, so `description` means the same thing in all three views.
+-- `agent_runs` carries a `model` of its own — the model that ran it — so it keeps its
+-- meaning under a name that says whose it is, and `description` means the enrichment's in
+-- all three views. The run's own brief needs no such rename: it is `brief`.
 CREATE OR REPLACE VIEW enriched_agent_runs AS
-SELECT r.* EXCLUDE (description, model), r.description AS task_description,
+SELECT r.* EXCLUDE (model),
        r.model AS agent_model, e.description, e.category, e.outcome, e.friction, e.input_hash,
        e.prompt_version, e.taxonomy_version, e.model AS enrichment_model, e.enriched_at
 FROM live_agent_runs r

@@ -1165,9 +1165,9 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
                     item
                     for item in (
                         detail_of(
-                            "description",
-                            rows[0]["description"],
-                            rows[0]["description_chars"],
+                            "brief",
+                            rows[0]["brief"],
+                            rows[0]["brief_chars"],
                             f"/fragment/brief{nodes.run_url(session_id, run_id)}",
                             detail,
                             markdown=True,
@@ -2176,7 +2176,7 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
             "value",
             {"session_id": session_id, "run_id": run_id},
             "value",
-            "description",
+            "brief",
         )
 
     @app.get("/fragment/prompt/session/{session_id}/run/{run_id}")

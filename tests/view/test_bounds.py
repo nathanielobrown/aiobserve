@@ -60,9 +60,9 @@ from tests.view.scenarios import ROUTES
 
 # The columns that hold whatever the agent read or wrote: one of them can be megabytes, and
 # none of them belongs on a page whole. `raw` is a transcript line, `result` a tool's output,
-# `input` its arguments, `text` and `thinking` a model's answer, and `description` the line a
-# run was spawned with or the one a pass wrote about an item — prose either way, and nothing
-# bounds what a caller passes the Agent tool. `agent_type` and `model` are short in every
+# `input` its arguments, `text` and `thinking` a model's answer, `brief` the line a run was
+# spawned with and `description` the one a pass wrote about an item — prose either way, and
+# nothing bounds what a caller passes the Agent tool. `agent_type` and `model` are short in every
 # session recorded so far and short by nothing: an agent definition is named by whoever writes
 # it, and a model name is a string an api request carried.
 # `prompt` is whatever was typed or pasted at a turn, and `command_args` whatever followed a
@@ -75,6 +75,7 @@ FAT = (
     "result",
     "input",
     "content",
+    "brief",
     "description",
     "agent_type",
     "model",
@@ -886,11 +887,15 @@ def test_every_page_size_in_a_viewer_query_is_a_bound_parameter(name: str) -> No
         assert limit.lstrip("$") in QUERIES[name].params
 
 
-def test_every_fat_column_is_still_a_column(store: duckdb.DuckDBPyConnection) -> None:
-    """The scan is spelled in column names, so a rename must fail here rather than pass."""
+def test_every_fat_column_is_still_a_column(enriched_store: duckdb.DuckDBPyConnection) -> None:
+    """The scan is spelled in column names, so a rename must fail here rather than pass.
+
+    Read against the described corpus rather than the bare one: `description` is a column of
+    the enrichment tables, which a store no pass has touched does not have.
+    """
     named = {
         row[0]
-        for row in store.execute(
+        for row in enriched_store.execute(
             "SELECT column_name FROM duckdb_columns() WHERE schema_name = 'main'"
         ).fetchall()
     }
@@ -1130,7 +1135,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
         # touches them: the timeline cuts each to a log line's width, and the prompt is the
         # pane's one preview as well as the row's title, which is the wider of the two.
         ("UPDATE turns SET prompt = ?, command_name = ?, command_args = ?", [fat] * 3),
-        ("UPDATE agent_runs SET agent_type = ?, model = ?, description = ?", [fat, fat, fat]),
+        ("UPDATE agent_runs SET agent_type = ?, model = ?, brief = ?", [fat, fat, fat]),
         ("UPDATE api_calls SET model = ?, text = ?, thinking = ?", [fat, fat, fat]),
         # The input parses, and says all three of the things read out of one: the two a tool row
         # reads — a log row
@@ -1744,7 +1749,7 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
             [long, long, SPINE, command_id],
         ),
         (
-            "UPDATE agent_runs SET description = ?, agent_type = ?, model = ? WHERE session_id = ?",
+            "UPDATE agent_runs SET brief = ?, agent_type = ?, model = ? WHERE session_id = ?",
             [long, long, long, SPINE],
         ),
         (
@@ -1843,7 +1848,7 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     arguments = fields(slash, "data-detail", "command_args")
     assert arguments["command_args"] == "x" * queries.DETAIL_CHARS + ELLIPSIS
     assert inside(slash, "data-detail", "command_args", "data-whole") == ["command_args"]
-    brief = fields(run, "data-detail", "description")["description"]
+    brief = fields(run, "data-detail", "brief")["brief"]
     assert brief == "x" * queries.DETAIL_CHARS + ELLIPSIS
     assert fields(call, "data-detail", "text")["text"] == "x" * queries.DETAIL_CHARS + ELLIPSIS
     # A detail the page marks up is cut the same way and says so the same way, which no other

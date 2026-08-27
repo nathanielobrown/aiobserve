@@ -482,14 +482,15 @@ def test_the_run_and_session_views_left_join_too(mutable_db: Path) -> None:
         ).fetchall() == sorted(
             [(runs[0].agent_run_id, "Read one file."), (runs[1].agent_run_id, None)]
         )
-        # ...it keeps the run's own recorded task and model under names that say whose they
-        # are, so `description` means the enrichment's in all three views...
+        # ...it keeps the run's own recorded model under a name that says whose it is, and the
+        # run's own brief needs none, so `description` means the enrichment's in all three
+        # views...
         assert {
             name
             for (name,) in store.connection.execute(
                 "SELECT column_name FROM duckdb_columns() WHERE table_name = 'enriched_agent_runs'"
             ).fetchall()
-        } >= {"task_description", "agent_model", "description", "enrichment_model"}
+        } >= {"brief", "agent_model", "description", "enrichment_model"}
         # ...and the sessions view reads coverage honestly for a corpus nothing has described.
         assert store.connection.execute(
             "SELECT count(*), count(description) FROM enriched_sessions"

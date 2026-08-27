@@ -105,7 +105,7 @@ def test_a_subagent_run_names_the_call_that_spawned_it(fixture_source: SourceFac
         # calls hold under the same id...
         tool_use_id="toolu_015dP3eMe5GZn7BzFipupZwS",
         agent_type="claude",
-        description="[redacted]",
+        brief="[redacted]",
         model="opus",
         workflow_id=None,
         spawn_depth=1,

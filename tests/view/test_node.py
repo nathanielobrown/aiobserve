@@ -597,7 +597,7 @@ def test_a_run_page_reads_the_call_that_spawned_it_for_the_ask_and_the_answer(
     # the spawning agent typed to name the run, not the instructions it gave.
     assert "<h1>The task</h1>" in prose(pane, "prompt")
     assert "<h2>Done</h2>" in prose(pane, "result")
-    assert values(pane, "data-detail") == ["description", "prompt", "result"]
+    assert values(pane, "data-detail") == ["brief", "prompt", "result"]
     # And each has a route of its own that answers with the whole value, filed under the same
     # name the preview sat under, so the fetch swaps into its own block.
     assert values(asked.text, "data-detail") == ["prompt"]
@@ -874,17 +874,17 @@ def test_every_value_a_pane_previews_is_fetchable_whole_from_its_own_url(
     # thread, so its route takes no source.
     session_id, run_id, held = one(
         store,
-        "SELECT session_id, id, length(description) FROM live_agent_runs"
-        " WHERE length(description) > 0 ORDER BY length(description) DESC LIMIT 1",
+        "SELECT session_id, id, length(brief) FROM live_agent_runs"
+        " WHERE length(brief) > 0 ORDER BY length(brief) DESC LIMIT 1",
     )
     page = client.get(f"/session/{session_id}/run/{run_id}").text
-    assert fields(page, "data-detail", "description")["description"]
+    assert fields(page, "data-detail", "brief")["brief"]
     served = client.get(f"/fragment/brief/session/{session_id}/run/{run_id}")
     assert values(served.text, "data-value") == [str(held)]
-    assert values(served.text, "data-detail") == ["description"]
+    assert values(served.text, "data-detail") == ["brief"]
     # The brief is what a run was asked to do, so it is labelled as a brief and not as a
     # description of the run — the word the enrichment pass owns.
-    assert LABELS["description"] == "Task brief"
+    assert (LABELS["brief"], LABELS["description"]) == ("Task brief", "Description")
 
 
 # The widest parent the store holds for each shape a children log takes, and the URL of the page
