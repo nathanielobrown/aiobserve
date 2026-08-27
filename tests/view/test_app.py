@@ -4,7 +4,7 @@ viewer ships itself.
 
 Every expectation is derived from the store the app is serving rather than written down, so
 a fixture added to the corpus does not silently stop being covered. The node pages
-themselves live in `test_node.py`; the tree beside them in `test_tree.py`.
+themselves live in `test_node.py`; the tree beside them in `test_tree.py` and its neighbours.
 """
 
 import datetime as dt
