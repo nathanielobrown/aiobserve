@@ -13,6 +13,7 @@ import duckdb
 from fastapi.testclient import TestClient
 
 from hyphae.analyze import queries
+from hyphae.view import nodes
 from hyphae.view.app import build_app
 from hyphae.view.format import ELLIPSIS
 from tests.conftest import (
@@ -196,7 +197,12 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # that is not JSON and out of one that is, and the command that head describes.
     reached = [value for value in printed(pane) + printed(call) + printed(asked) if "x" in value]
     assert len(reached) == 6
-    assert set(reached) == {"x" * queries.LOG_CHARS + ELLIPSIS}
+    # A whole column wide and marked as stopped there — but not a run of `x` alone: a tool the
+    # viewer names by its own field leads its title with that tool's glyph
+    # (`view/formatters.py:FORMATTERS`), and the glyph is spent out of the width like any character.
+    for value in reached:
+        assert len(value) == queries.LOG_CHARS + len(ELLIPSIS), value
+        assert value.endswith("x" + ELLIPSIS), value
     # And the pane heads the node it is about at the widest of the three, because nothing on
     # the page repeats it. Every kind, not the session alone: the NavTree built the row the pane
     # stands on and cut its words to a NavTree row's width, and a title that took the NavTree's
@@ -226,10 +232,16 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
         # The plant reached this pane at all, so a sweep finding nothing is a sweep that
         # proves nothing...
         assert filled, kind
-        # ...and everything it reached is cut to the header's width and marked there. A run's
-        # title leads with its bracketed agent type, which the plant made long too, so the cut
-        # lands inside the bracket: the same width with a `[` spent on the first character.
-        cut_at = {headed, "[" + headed[1:]} if kind == "run" else {headed}
+        # ...and everything it reached is cut to the header's width and marked there. Two
+        # kinds lead their title with something the width is spent on before the value: a
+        # run's bracketed agent type, which the plant made long too, so the cut lands inside
+        # the bracket; and a call whose answer was words, which leads with 💭 and so cuts two
+        # characters of value earlier.
+        spoken = f"{nodes.SPEECH_MARK} " + headed[len(nodes.SPEECH_MARK) + 1 :]
+        cut_at = {headed} | {
+            "run": {"[" + headed[1:]},
+            "call": {spoken},
+        }.get(kind, set())
         assert set(filled.values()) == cut_at, (kind, filled)
     # A pane reads one node, so its strings take a header's cut — and the one value the node
     # is about takes the widest of the four, with the rest of it offered as its own fetch.

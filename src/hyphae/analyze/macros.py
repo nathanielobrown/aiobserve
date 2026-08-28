@@ -112,14 +112,16 @@ coalesce(
     substr(input, 1, chars + 1))
 """
 
-# The line under a tool call's title, where the title was a description and the input also
-# carried the command it describes. NULL everywhere else, including on the calls whose title
-# is already the command's own JSON — a row does not print one value twice.
-_TOOL_RAN = """
-CREATE OR REPLACE TEMP MACRO tool_ran(input, chars) AS
-CASE WHEN tool_asked(input, 'file_path', chars) IS NULL
-      AND tool_asked(input, 'description', chars) IS NOT NULL
-     THEN tool_asked(input, 'command', chars)
+# The line under a tool call's title in a children log: what the call was *for*, where the
+# title already says what it did. A `Bash` row heads with the command it ran
+# (`view/formatters.py:FORMATTERS`), so the description that used to head it reads underneath.
+# Keyed on the input carrying a command rather than on the tool's name: what has a line under
+# it is a call whose title is the thing it ran, and NULL everywhere else — a row does not
+# print one value twice, and a row whose head is already the description prints one line.
+_TOOL_ABOUT = """
+CREATE OR REPLACE TEMP MACRO tool_about(input, chars) AS
+CASE WHEN tool_asked(input, 'command', chars) IS NOT NULL
+     THEN tool_asked(input, 'description', chars)
      END
 """
 
@@ -134,6 +136,33 @@ _CONTEXT_WINDOW = (
     + "END\n"
 )
 
+# What a tool call carried, for the tools the viewer names by their own field
+# (`view/formatters.py:FORMATTERS`) — one struct rather than a column apiece, so a query adds the
+# whole set with one expression and a formatter reads what it needs by name.
+# Extraction only: which member a tool reads is the registry's business, and keeping the
+# name list out of here is what lets a tool be renamed or added without a query changing.
+# Every string member rides the same one-past-the-width protocol as the macros above.
+# `addressed` is the caller's, not the input's: a `SendMessage` addresses an agent run by id,
+# and the name behind that id is a row of `live_agent_runs` the query joins.
+_TOOL_FIELDS = """
+CREATE OR REPLACE TEMP MACRO tool_fields(input, project_dir, addressed, chars) AS {
+    'path': tool_path(input, project_dir, chars),
+    'command': tool_asked(input, 'command', chars),
+    'description': tool_asked(input, 'description', chars),
+    'subagent_type': tool_asked(input, 'subagent_type', chars),
+    'skill': tool_asked(input, 'skill', chars),
+    'args': tool_asked(input, 'args', chars),
+    'to': tool_asked(input, 'to', chars),
+    'addressed': substr(addressed, 1, chars + 1),
+    'summary': tool_asked(input, 'summary', chars),
+    'pattern': tool_asked(input, 'pattern', chars),
+    'url': tool_asked(input, 'url', chars),
+    'query': tool_asked(input, 'query', chars),
+    'todos': CASE WHEN json_valid(input)
+                  THEN json_array_length(input, '$.todos') END
+}
+"""
+
 # The macros a query may wrap a fat column in and still be bounded: each cuts what it reads to
 # the width its caller passes. Named in public because the viewer's payload bound is held by a
 # scan of query text (`tests/view/test_bounds.py`), and a scan cannot see through a macro call
@@ -142,13 +171,14 @@ BOUNDING = {
     "tool_asked": _TOOL_ASKED,
     "tool_path": _TOOL_PATH,
     "tool_title": _TOOL_TITLE,
-    "tool_ran": _TOOL_RAN,
+    "tool_about": _TOOL_ABOUT,
+    "tool_fields": _TOOL_FIELDS,
 }
 
-# Every macro a shipped query may call, in dependency order — `tool_path`, `tool_title` and
-# `tool_ran` are written in terms of the ones above them. Installed as a set rather than per
-# query: which macros a file needs is the file's business, and a connection that holds some of
-# them is a connection where a query fails on the ones it does not.
+# Every macro a shipped query may call, in dependency order — `tool_path`, `tool_title`,
+# `tool_about` and `tool_fields` are written in terms of the ones above them. Installed as a set
+# rather than per query: which macros a file needs is the file's business, and a connection that
+# holds some of them is a connection where a query fails on the ones it does not.
 DEFINITIONS = {
     "signature_line": _SIGNATURE_LINE,
     "rebuilt_context": _REBUILT_CONTEXT,

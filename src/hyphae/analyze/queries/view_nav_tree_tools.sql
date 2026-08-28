@@ -18,6 +18,10 @@ SELECT
     -- names a tool call reads (`analyze/macros.py`).
     substr(t.name, 1, $nav_chars + 1) AS name,
     tool_title(t.input, s.project_dir, $nav_chars) AS title,
+    -- And what the input carried under the names the tools the viewer knows name their calls
+    -- by, so a `Read` row reads as a path and a `Bash` row as the command it ran
+    -- (`view/formatters.py:FORMATTERS`). Every member cut to the same width as the title above.
+    tool_fields(t.input, s.project_dir, ad.agent_type, $nav_chars) AS fields,
     -- When it ran, which is what the compactions of the same turn interleave against where
     -- the api calls are folded away and the tool calls stand under the turn.
     t.started_at,
@@ -28,6 +32,11 @@ JOIN live_api_calls c
 -- What a path in the title is read against. LEFT joined, so a tool call whose session row is
 -- missing is a row titled with an absolute path rather than a row the NavTree drops.
 LEFT JOIN sessions s ON s.id = t.session_id
+-- Who a `SendMessage` addressed, where `to` held an agent run's id rather than a name the
+-- caller typed: one lookup, LEFT so a name that matches no run comes back NULL and the row
+-- prints what was recorded (`view/formatters.py:_send_message`).
+LEFT JOIN live_agent_runs ad
+    ON ad.session_id = t.session_id AND ad.id = tool_asked(t.input, 'to', $nav_chars)
 LEFT JOIN live_turns tn
     ON tn.session_id = c.session_id AND tn.source = c.source AND tn.id = c.turn_id
 WHERE t.session_id = $session_id

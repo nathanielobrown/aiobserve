@@ -19,6 +19,10 @@ SELECT
     -- the parent's children log all read (`analyze/macros.py`) — so a reader who clicked a
     -- row lands on a page headed the way the row was.
     tool_title(t.input, s.project_dir, $head_chars) AS title,
+    -- And what the input carried under the names the tools the viewer knows name their calls
+    -- by, so a `Read` row reads as a path and a `Bash` row as the command it ran
+    -- (`view/formatters.py:FORMATTERS`). Every member cut to the same width as the title above.
+    tool_fields(t.input, s.project_dir, ad.agent_type, $head_chars) AS fields,
     t.server_side,
     t.is_error,
     t.incomplete,
@@ -68,4 +72,9 @@ LEFT JOIN live_agent_runs a
 -- What a path in the title is read against, LEFT joined for the reason the other three
 -- queries that title a tool call state.
 LEFT JOIN sessions s ON s.id = t.session_id
+-- Who a `SendMessage` addressed, where `to` held an agent run's id rather than a name the
+-- caller typed: one lookup, LEFT so a name that matches no run comes back NULL and the row
+-- prints what was recorded (`view/formatters.py:_send_message`).
+LEFT JOIN live_agent_runs ad
+    ON ad.session_id = t.session_id AND ad.id = tool_asked(t.input, 'to', $head_chars)
 WHERE t.session_id = $session_id AND t.source = $source AND t.id = $tool_call_id;
