@@ -38,6 +38,7 @@ from tests.view.conftest import (
     fields,
     icons,
     inside,
+    marked_up,
     one,
     values,
 )
@@ -524,3 +525,26 @@ def test_a_crumb_is_cut_narrower_than_every_other_place_a_title_is_read(
     assert fields(middle, "data-crumb", ended)["tool"] == (
         "📖 " + "x" * (queries.CRUMB_CHARS - 2) + ELLIPSIS
     )
+
+    # Every one of those widths is spent on what a reader sees rather than on what the line
+    # was written in. The same turns once more, with a bolded run three crumbs wide leading a
+    # tail of plain text: the crumb stops on the character it stopped on above, four asterisks
+    # earlier than a width counting them would have — and closes what it cut inside, because
+    # an unclosed `<strong>` bolds the rest of the page.
+    bold = "x" * (queries.CRUMB_CHARS + 20)
+    styled = plant(
+        (
+            "UPDATE turns SET prompt = ?, command_name = NULL, command_args = NULL"
+            " WHERE session_id = ?",
+            [f"**{bold}** {'y' * queries.NAV_CHARS}", session_id],
+        )
+    )
+    with TestClient(build_app(styled)) as planted:
+        bolded = planted.get(f"/session/{session_id}/thread/{MAIN}/turn/{turn_id}").text
+    at_crumb = values(bolded, "data-crumb")[-1]
+    assert fields(bolded, "data-crumb", at_crumb)["turn"] == crumb
+    assert marked_up(bolded, "data-crumb", at_crumb, "turn") == (
+        f"<strong>{'x' * queries.CRUMB_CHARS}</strong>{ELLIPSIS}"
+    )
+    # And the tab, which has nowhere to put markup, says the same words without any of it.
+    assert f"<title>❯ {bold} y" in bolded
