@@ -77,6 +77,8 @@ Witnessed in a real Chromium on 2026-08-28 against `mise run gallery --port 9063
 - The base band is the quietest thing on the row in both schemes, which is what it is for, and it clears the track it sits on
 - The console stayed empty
 
+The compaction badge a run's row carries is judged beside the cost badge it stands next to. Witnessed in a real Chromium on 2026-08-28 against `mise run gallery --port 8492` — never 8477, which is a live viewer — at 1400×900: it drew the alarm at full strength with paper on it in light and ink on salmon in dark, against cost badges that are washes, so the count does not read as one more number in the row's money.
+
 # A control beside the NavTree lives inside the swapped element
 
 A NavTree row swaps `#nav-tree-rows` out of band and takes `#reading-pane` out of the response, so those two elements are the whole of what a click refreshes. Anything that names the selected node — the preset control does, three links to the node under each preset — has to render inside one of them or it goes stale the moment a reader clicks a row, pointing back at the node they left.
@@ -139,6 +141,17 @@ Prose a person or a model wrote — a prompt, a run's brief, what a call said �
 A title is the other half of that: one line rather than a block, escaped by `src/hyphae/view/inline_markdown.py` and rendered by `nodes.Node`'s own cuts, never by a template. Those two modules are the only escaping a page has.
 
 Both mounts of one value use that macro: the head a pane previews, and the whole of it the fetch swaps into the same block. A value rendered one way in the preview and another in the fetch is a value a reader cannot tell has a head.
+
+A pane reads as one column of walled values. A payload's `<pre>` carries the rail already; prose carries it through `.detail.quoted`, written from the same `markdown` flag that decided the rendering — so a value cannot render as prose and read as a payload. What tells the two apart is the face they are set in, not whether they are walled: an unwalled block would read as the page's own words rather than as someone else's.
+
+What a tool was passed is marked up as JSON without asking the row — Claude Code records every tool's arguments as an object — and what it returned takes the syntax the record names, else JSON. `highlight.lit` prints a value that parses as neither as the characters the store holds, so the rule costs nothing on a result that is prose.
+
+Witnessed in a real Chromium on 2026-08-28 against `mise run gallery --port 8492` — never 8477, which is a live viewer — at 1400×900 in both colour schemes:
+
+- On a run page the brief, the prompt and the result each stood behind the quote rail, at the offset the ask block on a tool page stands at, and the enrichment above them carried none
+- On a tool page the Arguments came back as indented JSON with keys, strings and punctuation each in their own colour; the Result, which this fixture redacted to a value that parses as neither JSON nor a named syntax, printed whole and unlexed
+- The rail is quiet in both schemes — `--line`, the token the ask block already spends — and the accent rail on a Result still reads apart from it
+- The console stayed empty
 
 # A cut value goes through the filter that marks it
 
