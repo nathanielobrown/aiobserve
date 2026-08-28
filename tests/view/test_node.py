@@ -17,6 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from hyphae.analyze import queries
+from hyphae.view import format as fmt
 from hyphae.view.app import build_app
 from hyphae.view.columns import COLUMNS, Shape
 from hyphae.view.format import ELLIPSIS
@@ -25,6 +26,7 @@ from tests.conftest import (
     ANCESTOR,
     DENSE_TURN,
     FORK_ORIGIN,
+    HOME,
     MAIN,
     MYCELIA,
     NO_PROJECT_SESSION,
@@ -402,7 +404,9 @@ def test_the_citation_footer_scrolls_with_the_pane_it_cites(client: TestClient) 
     assert ids[-1] == "citation"
 
 
-def test_the_crumb_chain_leads_with_the_way_back_out_of_the_session(client: TestClient) -> None:
+def test_the_crumb_chain_leads_with_the_way_back_out_of_the_session(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Above the session crumb sit the two places a reader came from: home, and the project.
 
     Every node page hangs under one project's session list, and until now the chain started
@@ -414,6 +418,9 @@ def test_the_crumb_chain_leads_with_the_way_back_out_of_the_session(client: Test
     The form is what the list itself binds, so a link minted against a name this file made up
     would open a list filtered by nothing and still read as a link.
     """
+    # Who is reading, pinned: the fold is against the reader's own home, and the corpus was
+    # recorded under one that only exists on the machine that recorded it.
+    monkeypatch.setattr(fmt, "home", lambda: HOME)
     page = client.get(f"/session/{SPINE}").text
     # The first step is the list itself, under the house that stands for it.
     assert inside(page, "data-crumb-head", "home", "href") == ["/sessions"]
