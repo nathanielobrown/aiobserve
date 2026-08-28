@@ -16,7 +16,7 @@ The constraint that decides the shape: **naming and formatting are display conce
 
 **Tool naming, current:** `view_nav_tree_calls.sql:26` / `view_call_header.sql:42` compute `min_by(tool_title(t.input, …))` → `builders.call_node` prints it verbatim; `view_turn_calls.sql:50` `string_agg(tool_title(…))` → calls-log column; `view_numbers_tool.sql:12` → popover siblings. Only `tool_node` (`builders.py:188`) consults `formatters.FORMATTERS`.
 
-**Proposed:** those queries drop `tool_title` and ship the same fields the `tool_fields` macro (`macros.py:147`) already defines (per-row, not aggregated). One Python entry point — `formatters.name_tool(fields) -> Formatted` — runs the registry and, when no formatter matches, the shape-driven fallback ported from the `tool_title` macro (`file_path` → `description` → head of raw JSON). Every surface (tool node, api-call title, calls log, popover siblings, errors list) calls it. `tool_title` and its helper macros are deleted once no query selects them.
+**Proposed:** those queries drop `tool_title` and ship the same fields the `tool_fields` macro (`macros.py:147`) already defines (per-row, not aggregated). One Python entry point — `formatters.name_tool(fields) -> Formatted` — runs the registry and, when no formatter matches, the shape-driven fallback ported from the `tool_title` macro (`file_path` → `description` → head of raw JSON, read from a new bounded `input_head` member of `tool_fields`). Every surface (tool node, api-call title, calls log, popover siblings, errors list) calls it. `tool_title` and `tool_about` are deleted once no query selects them; `tool_path` and `tool_asked` stay as `tool_fields` internals.
 
 **Popover numbers, current:** `_nav_tree.html:65` `hx-get` → `fragments.py:33 counted` → `view_numbers.sql`, whose `$kind` CASE selects own-thread calls for runs/turns but *everything* for the session.
 
@@ -37,7 +37,7 @@ src/hyphae/view/
   numbers.py           changed: subagent-spend lines
   node_pages.py        changed: Arguments/Result syntax rule; drop session Title/Project fact rows
 src/hyphae/analyze/
-  macros.py            changed: tool_fields gains `message`; tool_title/tool_path/tool_asked/tool_about deleted after migration
+  macros.py            changed: tool_fields gains `message` and a bounded `input_head`; tool_title/tool_about deleted after migration
   queries/view_*.sql   changed: nav_tree_calls, call_header, turn_calls, numbers_tool ship fields; view_numbers subtree spend + session own-thread; compaction numbers fragment query added
 templates/
   fragments/numbers.html            changed: breakout lines
@@ -86,5 +86,5 @@ Python-tier page tests over recorded fixtures (`tests/view/`, gallery scenarios 
 
 ## Open questions
 
-- **Verify `ToolSearch.query` and `PushNotification.message` against a recorded session** before wiring the formatters — the schema-trap rule (`docs/schema.md`): confirm the argument field names in a real transcript in the store, and record the confirming session on the record model if a new field is declared
+- ~~Verify `ToolSearch.query` and `PushNotification.message` against a recorded session~~ Answered 2026-08-28: both names confirmed in the store, session `4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b` (Claude Code 2.1.221), `tests/fixtures/spine`'s own source recording — see testing_plan.md slice 0. No record model gains a field
 - Exact home for the display-vs-retrieval convention note — settle during slice 7 with `docs/documentation.md` in hand
