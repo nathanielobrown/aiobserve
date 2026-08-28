@@ -106,6 +106,8 @@ Move `overflow` down onto the rows and every click drops the reader back at the 
 
 Witnessed in a real Chromium on 2026-08-20 at a viewport where the NavTree overflows. Clicking a row that is scrolled *out* of view does move the NavTree — the browser scrolls the link into view before focusing it, which is the browser being right. A test script that clicks through a driver's "scroll into view if needed" measures that and not the swap; click a visible row by coordinates.
 
+The driver is the trap and not the language: in the TypeScript runner on 2026-08-28, at 1400×220 on a tool page, `locator.click()` on a row 24 px below the tree's foot scrolled `#nav-tree` 43 px before the click landed.
+
 # The open path clamps at the top of the NavTree
 
 A step of the open path above the selection carries `ancestor` on its `<li>`, and the stylesheet stands each depth one row further down than the depth above it, the first under the preset control. One ancestor per depth, so no two steps clamp at the same place. It is pure CSS and a ladder written out per depth, for the reason the indent ladder is: no rule reads `data-depth` as a number, and `app.CSP` forbids the inline `style` a computed offset would arrive as. `test_the_open_path_clamps_at_the_top_while_the_rows_under_it_scroll` reads the class off the served rows and the ladder off the served stylesheet; what a browser does with the two is a browser's to say.
@@ -165,6 +167,6 @@ Witnessed in a real Chromium on 2026-08-25, over a store built from the `resume_
 
 Witnessed in a real Chromium on 2026-08-25 on the gallery's own port 8478 — never 8477, which is a live viewer. The index came up with 35 rows, one per `SCENARIOS` entry; clicking the turn-node link landed on that node's page with its NavTree (17 rows) and its pane rendered, the reload script on it, and no console error.
 
-A browser check of any page here cannot use Playwright's `wait_for_function`: it evaluates a string as script, and the CSP refuses that. Wait on a selector instead.
+A browser check of any page here cannot use Playwright's `wait_for_function`: it evaluates a string as script, and the CSP refuses that. Wait on a selector instead. That is the Python harness's rule and not the header's: on 2026-08-28 the TypeScript runner's `waitForFunction` resolved against the same `default-src 'self'`, in both its function and string forms, with the console empty. `tests/e2e` still waits on selectors, because a selector says what it is waiting for.
 
 Two more traps in that harness. Playwright's sync API delivers page events only while the main thread is inside a Playwright call, so a wait loop built out of `time.sleep` sees nothing and reads as "the page never reloaded" — poll `page.title()` in the loop. And never `git checkout` a file you are editing to strip debug lines from it: the checkout took a whole uncommitted client rewrite with it, and the next hour measured the old file.
