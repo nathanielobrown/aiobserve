@@ -254,11 +254,12 @@ MEASURED_DETAIL_MARKUP = 600
 PANE_DETAILS = 3
 # And how many of those the page marks up rather than printing as the characters the store
 # holds. Three, which is a run's pane: the brief it was named by, the prompt it was given and
-# the answer it sent back, all written by a person or a model. No other kind reaches three —
-# a turn previews the prompt and what followed its slash command, an api call what it said and
-# what it thought — and the other kind of markup is a syntax the record named, which is the
-# command a `Bash` call ran or the file a `Read` returned. No call is both tools, so a tool's
-# pane marks up one of its three.
+# the answer it sent back, all written by a person or a model. A turn previews the prompt and
+# what followed its slash command, an api call what it said and what it thought. A tool's pane
+# asks for a syntax on all three — the command as shell, the arguments as JSON, and the result
+# as the file's syntax where the record names one and JSON where it does not — but a value that
+# parses as none of them prints as the characters the store holds, so what a tool's pane spends
+# is a question about the call rather than about the kind.
 DEAR_PANE_DETAILS = 3
 # What a node page carries outside its NavTree rows, its log rows and its previews: the crumbs
 # down to the selection, the node's own facts, and what a pass said about it. The session is

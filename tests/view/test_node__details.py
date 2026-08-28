@@ -19,12 +19,14 @@ from tests.conftest import ANCESTOR, DENSE_TURN, MAIN, SLASH_TURN, SPINE
 from tests.view.conftest import (
     Planter,
     block,
+    classed,
     fields,
     inside,
     one,
     plain,
     prose,
     values,
+    walled,
 )
 from tests.view.selections import (
     TURN,
@@ -71,6 +73,19 @@ def test_a_pane_previews_a_fat_value_and_offers_the_rest_as_its_own_fetch(
     fits = client.get(TURN).text
     assert "cut" not in fields(fits, "data-detail", "prompt")
     assert not inside(fits, "data-detail", "prompt", "data-whole")
+    # What a preview is marked up as is a property of the value and not of the mount it lands
+    # in. A tool call's arguments are JSON — all 49 the fixture corpus records parse — so the
+    # pane marks them up as JSON, which is what the fetch under the preview already did: a
+    # head printed flat beside a rest highlighted is the divergence this one rule closes.
+    source, tool_id = one(
+        store,
+        "SELECT source, id FROM live_tool_calls WHERE session_id = ? AND json_valid(input)"
+        ' ORDER BY source, "index" LIMIT 1',
+        [SPINE],
+    )
+    arguments = client.get(f"/session/{SPINE}/thread/{source}/tool/{tool_id}").text
+    assert walled(arguments, "input") == "code json"
+    assert classed(block(arguments, "input"))
 
 
 # A prompt in the markdown a person or an agent writes one in: a heading, a list, a link and
@@ -415,6 +430,67 @@ def test_a_read_of_a_markdown_file_shows_the_source_marked_up_and_not_rendered(
         assert "<span" not in block(served.text, "value")
 
 
+# What a tool answering in structured data returns. Planted: redaction flattened the result of
+# all 49 tool calls the fixture corpus records to `[redacted]`, so no recorded row can take
+# either arm below. Real in the shape that matters — an object with a list under a key is what
+# an MCP tool and a `TodoWrite` both hand back.
+JSON_RESULT = '{"ok": true, "rows": [1, 2, 3]}'
+
+
+# And what a tool answering in words returns, with a brace in it so that the arm below is a
+# page falling back rather than a page finding nothing to parse.
+PLAIN_RESULT = "Found 3 matches in {src}/hyphae, none in the viewer."
+
+
+def test_a_result_no_file_names_is_json_where_it_parses_and_the_stored_characters_where_it_does_not(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A tool's answer is read as JSON when it is JSON, and printed as stored when it is not.
+
+    The third arm of one rule. A result whose file the record names keeps that file's syntax
+    (the leaf above); everything else is tried as JSON, because that is what a tool that does
+    not answer in prose answers in. The fallback is what makes trying safe: a value that does
+    not parse comes back whole and unmarked rather than lexed as broken JSON, so nothing a
+    reader opened the call for is lost to a guess about what it was.
+
+    Planted on a recorded `Bash` call, which names no file: what a `Bash` call ran is beside
+    the result on the same page, so the plant also holds the two apart.
+    """
+    session_id, source, tool_id = call_to(store, "Bash")
+    at = f"/session/{session_id}/thread/{source}/tool/{tool_id}"
+    fetch = f"/fragment/result/session/{session_id}/thread/{source}/tool/{tool_id}"
+    structured = plant(
+        (
+            "UPDATE tool_calls SET result = ? WHERE session_id = ? AND source = ? AND id = ?",
+            [JSON_RESULT, session_id, source, tool_id],
+        )
+    )
+    with TestClient(build_app(structured)) as answered:
+        page = answered.get(at).text
+        # Marked up as the JSON it is, and indented for reading: the store holds one line and
+        # a reader opening a result wants the shape of it.
+        assert walled(page, "result") == "code json"
+        assert json.loads(plain(block(page, "result"))) == json.loads(JSON_RESULT)
+        assert "\n" in plain(block(page, "result"))
+        # And the fetch that replaces the preview reads the same way, off the same rule.
+        served = answered.get(fetch).text
+        assert walled(served, "value") == "code json"
+        assert classed(block(served, "value")) == classed(block(page, "result"))
+    words = plant(
+        (
+            "UPDATE tool_calls SET result = ? WHERE session_id = ? AND source = ? AND id = ?",
+            [PLAIN_RESULT, session_id, source, tool_id],
+        )
+    )
+    with TestClient(build_app(words)) as said:
+        page = said.get(at).text
+        # No class, because nothing on the page claims to know what this is — and every
+        # character of it, which is what proves the parse that failed swallowed nothing.
+        assert walled(page, "result") == ""
+        assert block(page, "result") == PLAIN_RESULT
+        assert block(said.get(fetch).text, "value") == PLAIN_RESULT
+
+
 def test_every_value_a_pane_previews_is_fetchable_whole_from_its_own_url(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
@@ -477,6 +553,13 @@ def test_every_value_a_pane_previews_is_fetchable_whole_from_its_own_url(
         # same name: what a value is styled as — the rail that tells an ask from an answer —
         # hangs off that name, and a fragment that dropped it would open unstyled.
         assert values(served.text, "data-detail") == [name], name
+        # And a value that is not prose comes back marked up the way the preview was. The
+        # fragment files it under `value` and the pane under the column's own name, so the
+        # two `<pre>` classes are what compare — one rule in `view/node_pages.py` decides
+        # both, and this is the reading that would see them part again.
+        if name in ("input", "result"):
+            assert walled(served.text, "value") == walled(page, name), name
+            assert classed(block(served.text, "value")) == classed(block(page, name)), name
     # And a run's brief, which is the one fat column that hangs off the session rather than a
     # thread, so its route takes no source.
     session_id, run_id, held = one(
