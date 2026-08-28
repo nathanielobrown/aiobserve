@@ -1,0 +1,44 @@
+# Runs the browser tier — Playwright over the gallery in a real Chromium — and sends the pages it
+# archives to Chromatic. This is the one workflow that holds a secret and the one that reaches the
+# network, because `check.yml` promises neither. What gets uploaded is the redacted fixture corpus
+# rendered as pages: the gallery builds its own store and cannot be pointed at a real one, which
+# is what makes sending these to a third party acceptable at all.
+name: e2e
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Read-only. The token below is the only credential in the file, and `tests/tools/test_workflows.py`
+# is what keeps it the only one in the directory.
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: Chromatic finds a build's baseline by walking back through the commits this
+      # one descends from, and the default one-commit checkout leaves it nothing to walk.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # Installs the tools mise.toml pins — Python, uv, node — and caches them between runs.
+      - uses: jdx/mise-action@v4
+      - run: mise run sync
+      # The npm packages and the browser. Separate from the sweep so a failure here reads as one.
+      - run: mise run e2e-deps
+      # ...and the system libraries Chromium links against, which a runner does not ship and
+      # `playwright install` alone does not fetch. Linux-only, so it stays out of `e2e-deps`.
+      - run: mise exec -- npx playwright install-deps chromium
+        working-directory: tests/e2e
+      - run: mise run e2e
+      # The upload, and the only step that needs the token. A fork's pull request is not given
+      # one, so it runs everything above and stops here rather than failing on a secret it was
+      # never going to have. A push to main carries no pull request to read, hence the first
+      # clause — and main is where a baseline every later build is measured against comes from.
+      - if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        run: mise run e2e-chromatic
+        env:
+          CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}

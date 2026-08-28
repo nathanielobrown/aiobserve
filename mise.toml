@@ -17,6 +17,10 @@ uv = "0.10.11"
 # Exact for the same reason, and doubly so pre-1.0: an unknown config key is a load error, so
 # an unplanned version change fails the run rather than quietly checking something else.
 "github:nathanielobrown/aigarden" = "0.1.4"
+# The browser tier's runtime (`tests/e2e`), and what `diagram-check` reaches `npx` through.
+# Exact for the reason above, and pinned here rather than per task so a machine with its own
+# node — nvm's comes first on a shell's PATH — still runs the version this repo says.
+node = "24.17.0"
 
 [settings]
 python.uv_venv_auto = true
@@ -97,12 +101,13 @@ arg "<dst>" help="destination path, or a directory (trailing /) to move into"
 run = 'aigarden mv "$usage_src" "$usage_dst"'
 
 [tasks.lint-shell]
-description = "Lint the Claude Code hook scripts with shellcheck"
+description = "Lint the repo's shell scripts with shellcheck"
 # The hooks run on every tool call; a syntax error there is invisible until it
-# silently stops firing. Skipped when shellcheck isn't installed.
+# silently stops firing. `tests/e2e` holds the Chromatic uploader, where a slip
+# would be seen once a month. Skipped when shellcheck isn't installed.
 run = """
 if command -v shellcheck >/dev/null; then
-  shellcheck .claude/hooks/*.sh
+  shellcheck .claude/hooks/*.sh tests/e2e/*.sh
 else
   echo 'shellcheck not installed — skipping (brew install shellcheck)'
 fi
@@ -143,6 +148,32 @@ description = "Serve the test fixtures' scenario pages in a browser, with live r
 # A port is all it takes, and the default is the process's, so the task names no number.
 usage = 'flag "--port <port>" help="listen here instead of the gallery default"'
 run = 'uv run python -m tests.gallery.serve ${usage_port:+--port "$usage_port"}'
+
+[tasks.e2e-deps]
+description = "Install the browser tier's npm packages and the Chromium Playwright drives"
+dir = "{{config_root}}/tests/e2e"
+# `npm ci` and not `install`: the lockfile decides, so a sweep never runs in a browser or a
+# runner nobody pinned. Both commands are seconds once the caches are warm, which is why `e2e`
+# depends on this rather than leaving a reader to remember it. Out of `sync` on purpose —
+# `check.yml` runs that, and its header promises a gate that needs no network.
+run = ["npm ci --no-audit --no-fund --prefer-offline", "npx playwright install chromium"]
+
+[tasks.e2e]
+description = "Run the browser tier: Playwright over the gallery in a real Chromium"
+# What a `TestClient` structurally cannot see — console errors under the CSP, and from slice 4
+# what an htmx swap does (`tests/e2e`). Playwright's own `webServer` starts and stops the
+# gallery on port 8479. Out of `check` for the same reason `mutate` is: it needs a browser.
+depends = ["e2e-deps"]
+dir = "{{config_root}}/tests/e2e"
+run = "npx playwright test"
+
+[tasks.e2e-chromatic]
+description = "Upload the browser tier's page archives to Chromatic (needs CHROMATIC_PROJECT_TOKEN)"
+# Run `mise run e2e` first: the sweep is what writes the archives this sends. Not a `depends`,
+# because then the token guard — the whole point of the script — would answer only after a
+# browser had swept fourteen pages. The token and the flags are the script's to explain.
+dir = "{{config_root}}/tests/e2e"
+run = "./chromatic-upload.sh"
 
 [tasks.mutate]
 description = "Mutation-test the source this branch changed; pass mutant globs to scope it yourself"

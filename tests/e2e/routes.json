@@ -1,0 +1,306 @@
+[
+  {
+    "route": "/",
+    "url": "/",
+    "title": "Projects",
+    "group": "Pages",
+    "note": "",
+    "fragment": false
+  },
+  {
+    "route": "/sessions",
+    "url": "/sessions",
+    "title": "Session list",
+    "group": "Pages",
+    "note": "",
+    "fragment": false
+  },
+  {
+    "route": "/session/{session_id}/errors",
+    "url": "/session/5a88789c-1da7-4f32-b631-40a7e243334b/errors",
+    "title": "Every failed tool call of a session",
+    "group": "Pages",
+    "note": "",
+    "fragment": false
+  },
+  {
+    "route": "/session/{session_id}/thread/{source}/records",
+    "url": "/session/2352492b-1437-4427-ad51-70f35c75f663/thread/main/records",
+    "title": "A thread's raw records",
+    "group": "Pages",
+    "note": "",
+    "fragment": false
+  },
+  {
+    "route": "/session/{session_id}/offload/{offload_name:path}",
+    "url": "/session/7e37bb35-4dcb-4e16-85be-55ac510c168e/offload/bosvr1kjx.txt",
+    "title": "An offload file a tool wrote",
+    "group": "Pages",
+    "note": "",
+    "fragment": false
+  },
+  {
+    "route": "/session/{session_id}",
+    "url": "/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b",
+    "title": "Session",
+    "group": "Node kinds",
+    "note": "",
+    "fragment": false
+  },
+  {
+    "route": "/session/{session_id}/thread/{source}/turn/{turn_id}",
+    "url": "/session/2352492b-1437-4427-ad51-70f35c75f663/thread/main/turn/55309e59-0fae-4ef1-9251-877e27487bda",
+    "title": "Turn",
+    "group": "Node kinds",
+    "note": "",
+    "fragment": false
+  },
+  {
+    "route": "/session/{session_id}/run/{run_id}",
+    "url": "/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b/run/ac461ef46b4bb8e32",
+    "title": "Agent run",
+    "group": "Node kinds",
+    "note": "",
+    "fragment": false
+  },
+  {
+    "route": "/session/{session_id}/thread/{source}/call/{api_call_id}",
+    "url": "/session/5a88789c-1da7-4f32-b631-40a7e243334b/thread/acbc29008a04b9702/call/msg_011CdFxfStgUUn3Q59b4RFii",
+    "title": "API call",
+    "group": "Node kinds",
+    "note": "",
+    "fragment": false
+  },
+  {
+    "route": "/session/{session_id}/thread/{source}/tool/{tool_call_id}",
+    "url": "/session/5a88789c-1da7-4f32-b631-40a7e243334b/thread/acbc29008a04b9702/tool/toolu_015wiqbosE2nUYZBYdd9urjA",
+    "title": "Tool call",
+    "group": "Node kinds",
+    "note": "",
+    "fragment": false
+  },
+  {
+    "route": "/session/{session_id}/thread/{source}/compaction/{compaction_id}",
+    "url": "/session/1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9/thread/main/compaction/459d0d29-cb67-477a-9cf1-f9bb19417c49",
+    "title": "Compaction",
+    "group": "Node kinds",
+    "note": "",
+    "fragment": false
+  },
+  {
+    "route": "/session/{session_id}/thread/{source}/unattributed",
+    "url": "/session/0a76f771-5f5b-447e-852a-664fc972ea7c/thread/main/unattributed",
+    "title": "Unattributed api calls",
+    "group": "Node kinds",
+    "note": "",
+    "fragment": false
+  },
+  {
+    "route": "/session/{session_id}/unattached",
+    "url": "/session/5a88789c-1da7-4f32-b631-40a7e243334b/unattached",
+    "title": "Unattached agent runs",
+    "group": "Node kinds",
+    "note": "",
+    "fragment": false
+  },
+  {
+    "route": "/fragment/text/session/{session_id}/thread/{source}/call/{api_call_id}",
+    "url": "/fragment/text/session/5a88789c-1da7-4f32-b631-40a7e243334b/thread/acbc29008a04b9702/call/msg_011CdFxfStgUUn3Q59b4RFii",
+    "title": "What an api call answered",
+    "group": "Value fetches",
+    "note": "",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/thinking/session/{session_id}/thread/{source}/call/{api_call_id}",
+    "url": "/fragment/thinking/session/5a88789c-1da7-4f32-b631-40a7e243334b/thread/acbc29008a04b9702/call/msg_011CdFxfStgUUn3Q59b4RFii",
+    "title": "What an api call thought",
+    "group": "Value fetches",
+    "note": "",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/input/session/{session_id}/thread/{source}/tool/{tool_call_id}",
+    "url": "/fragment/input/session/5a88789c-1da7-4f32-b631-40a7e243334b/thread/acbc29008a04b9702/tool/toolu_015wiqbosE2nUYZBYdd9urjA",
+    "title": "What a tool call was given",
+    "group": "Value fetches",
+    "note": "",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/result/session/{session_id}/thread/{source}/tool/{tool_call_id}",
+    "url": "/fragment/result/session/5a88789c-1da7-4f32-b631-40a7e243334b/thread/acbc29008a04b9702/tool/toolu_015wiqbosE2nUYZBYdd9urjA",
+    "title": "What a tool call gave back",
+    "group": "Value fetches",
+    "note": "",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/command/session/{session_id}/thread/{source}/tool/{tool_call_id}",
+    "url": "/fragment/command/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b/thread/main/tool/toolu_012pdUKAdn6qh1dYSBug3rr9",
+    "title": "The command a Bash call ran",
+    "group": "Value fetches",
+    "note": "",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/prompt/session/{session_id}/thread/{source}/turn/{turn_id}",
+    "url": "/fragment/prompt/session/2352492b-1437-4427-ad51-70f35c75f663/thread/main/turn/55309e59-0fae-4ef1-9251-877e27487bda",
+    "title": "What a turn was asked",
+    "group": "Value fetches",
+    "note": "",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/args/session/{session_id}/thread/{source}/turn/{turn_id}",
+    "url": "/fragment/args/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b/thread/main/turn/30aad8e5-21f8-486d-b9d9-e118c703a5a1",
+    "title": "What followed a turn's slash command",
+    "group": "Value fetches",
+    "note": "",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/brief/session/{session_id}/run/{run_id}",
+    "url": "/fragment/brief/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b/run/ac461ef46b4bb8e32",
+    "title": "The brief an agent run was given",
+    "group": "Value fetches",
+    "note": "",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/prompt/session/{session_id}/run/{run_id}",
+    "url": "/fragment/prompt/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b/run/ac461ef46b4bb8e32",
+    "title": "What an agent run was asked",
+    "group": "Value fetches",
+    "note": "At the run whose spawning `Agent` call the corpus holds, so this answers a value.",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/result/session/{session_id}/run/{run_id}",
+    "url": "/fragment/result/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b/run/ac461ef46b4bb8e32",
+    "title": "What an agent run reported back",
+    "group": "Value fetches",
+    "note": "At the run whose spawning `Agent` call the corpus holds, so this answers a value.",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/record/session/{session_id}/thread/{source}/line/{line_no}",
+    "url": "/fragment/record/session/2352492b-1437-4427-ad51-70f35c75f663/thread/main/line/1",
+    "title": "One raw record, whole",
+    "group": "Value fetches",
+    "note": "",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/description/session/{session_id}/thread/{source}/turn/{turn_id}",
+    "url": "/fragment/description/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b/thread/main/turn/5b848af7-f86e-4950-b474-cd98125fad24",
+    "title": "What a pass wrote about a turn",
+    "group": "Enrichment fetches",
+    "note": "At an item the fixture pass described, so this answers a value and not a 404.",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/friction/session/{session_id}/thread/{source}/turn/{turn_id}",
+    "url": "/fragment/friction/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b/thread/main/turn/5b848af7-f86e-4950-b474-cd98125fad24",
+    "title": "The friction a pass saw in a turn",
+    "group": "Enrichment fetches",
+    "note": "At an item the fixture pass described, so this answers a value and not a 404.",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/description/session/{session_id}/run/{run_id}",
+    "url": "/fragment/description/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b/run/ac461ef46b4bb8e32",
+    "title": "What a pass wrote about an agent run",
+    "group": "Enrichment fetches",
+    "note": "At an item the fixture pass described, so this answers a value and not a 404.",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/friction/session/{session_id}/run/{run_id}",
+    "url": "/fragment/friction/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b/run/ac461ef46b4bb8e32",
+    "title": "The friction a pass saw in an agent run",
+    "group": "Enrichment fetches",
+    "note": "At an item the fixture pass described, so this answers a value and not a 404.",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/description/session/{session_id}",
+    "url": "/fragment/description/session/5a88789c-1da7-4f32-b631-40a7e243334b",
+    "title": "What a pass wrote about a session",
+    "group": "Enrichment fetches",
+    "note": "At an item the fixture pass described, so this answers a value and not a 404.",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/friction/session/{session_id}",
+    "url": "/fragment/friction/session/5a88789c-1da7-4f32-b631-40a7e243334b",
+    "title": "The friction a pass saw in a session",
+    "group": "Enrichment fetches",
+    "note": "At an item the fixture pass described, so this answers a value and not a 404.",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/body/session/{session_id}/thread/{source}/{kind}/{node_id}",
+    "url": "/fragment/body/session/2352492b-1437-4427-ad51-70f35c75f663/thread/main/turn/55309e59-0fae-4ef1-9251-877e27487bda",
+    "title": "A turn's body, expanded in place",
+    "group": "Page parts",
+    "note": "",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/body/session/{session_id}/run/{run_id}",
+    "url": "/fragment/body/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b/run/ac461ef46b4bb8e32",
+    "title": "An agent run's body, expanded in place",
+    "group": "Page parts",
+    "note": "",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/kin/session/{session_id}/thread/{source}/{kind}/{node_id}",
+    "url": "/fragment/kin/session/2352492b-1437-4427-ad51-70f35c75f663/thread/main/turn/55309e59-0fae-4ef1-9251-877e27487bda?kin=1&thread=main&depth=2",
+    "title": "The NavTree rows under a turn that a window left out",
+    "group": "Page parts",
+    "note": "The `kin` window is turned down, because the default leaves nothing out here.",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/kin/session/{session_id}/{kind}/{node_id}",
+    "url": "/fragment/kin/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b?kin=1&thread=main&depth=1",
+    "title": "The NavTree rows under a session that a window left out",
+    "group": "Page parts",
+    "note": "The `kin` window is turned down, because the default leaves nothing out here.",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/numbers/session/{session_id}/thread/{source}/{kind}/{node_id}",
+    "url": "/fragment/numbers/session/2352492b-1437-4427-ad51-70f35c75f663/thread/main/turn/55309e59-0fae-4ef1-9251-877e27487bda",
+    "title": "The popover behind a turn's NavTree row",
+    "group": "Page parts",
+    "note": "",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/numbers/session/{session_id}/run/{run_id}",
+    "url": "/fragment/numbers/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b/run/ac461ef46b4bb8e32",
+    "title": "The popover behind an agent run's NavTree row",
+    "group": "Page parts",
+    "note": "",
+    "fragment": true
+  },
+  {
+    "route": "/fragment/numbers/session/{session_id}",
+    "url": "/fragment/numbers/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b",
+    "title": "The popover behind a session's NavTree row",
+    "group": "Page parts",
+    "note": "",
+    "fragment": true
+  },
+  {
+    "route": "/query/{query_name}",
+    "url": "/query/view_sessions",
+    "title": "The query behind the session list",
+    "group": "Queries",
+    "note": "",
+    "fragment": false
+  }
+]

@@ -57,7 +57,7 @@ from tests.view.conftest import (
     inside,
     one,
 )
-from tests.view.scenarios import ROUTES
+from tests.view.scenarios import SCENARIOS
 
 # What a query may wrap a fat column in and still be bounded: a fixed-width prefix of it, a
 # count of what it holds, the check that it parses, the window the model it names answers in,
@@ -478,10 +478,10 @@ def test_every_route_the_viewer_exposes_is_in_the_payload_sweep(client: TestClie
         for route in client.app.routes  # pyrefly: ignore
         if isinstance(route, APIRoute)
     }
-    assert exposed == set(ROUTES)
+    assert exposed == set(SCENARIOS)
 
 
-@pytest.mark.parametrize("path", sorted(ROUTES.values()))
+@pytest.mark.parametrize("path", sorted(scenario.url for scenario in SCENARIOS.values()))
 def test_no_route_serves_more_than_the_page_ceiling(path: str, enriched_client: TestClient) -> None:
     """Every route answers under the ceiling at the sizes its URL carries.
 

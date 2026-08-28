@@ -57,7 +57,7 @@ htmx reads all but `hx-get` off the closest ancestor carrying one, so the NavTre
 
 A fetch that is not a pane swap rides an element of its own beside the link. The popover a NavTree row fetches overrides every attribute `#nav-tree-rows` writes, and htmx walks up from whatever fetched: written on the `<li>`, those overrides would reach the link inside it and the click would stop swapping the pane. `hx-disinherit` is not the way out, because it stops the walk rather than skipping a level of it. So the trigger is a span of its own next to the link, and `hx-trigger`'s `from:closest li` keeps the row as the thing a reader points at (`_nav_tree.html`).
 
-Witnessed in a real Chromium on 2026-08-26, against `mise run gallery --port 9061` — never 8477, which is a live viewer — in both colour schemes. A served-HTML test reads the attributes; only a browser reads what they do:
+A served-HTML test reads the attributes; only a browser reads what they do. `tests/e2e/specs/htmx.spec.ts` clicks a row and reads where the pane landed, and points and tabs at a row for its popover. Witnessed by hand in a real Chromium on 2026-08-26, against `mise run gallery --port 9061` — never 8477, which is a live viewer — in both colour schemes:
 
 - Pointing at a row fetched its popover after the delay and drew it on screen at the reading pane's left edge. Pointing at the same row again fetched nothing, so `once` holds
 - The pointer moving into the popover left it open: `:hover` follows the DOM and not the layout, so it stays true inside a `position: fixed` descendant of the row
@@ -102,9 +102,11 @@ Witnessed in a real Chromium on 2026-08-27 against `mise run gallery --port 9062
 
 The NavTree keeps a reader's place across a click for one reason: `#nav-tree` carries the scrollbar and the swap replaces `#nav-tree-rows` inside it. An untouched scroller keeps its `scrollTop`, so nothing in the markup has to ask for it and `hx-preserve` is not needed.
 
-Move `overflow` down onto the rows and every click drops the reader back at the top of the session. No assertion on served HTML would see it, so the structure is pinned instead by `test_the_nav_tree_keeps_its_place_because_the_scroller_is_not_what_swaps`, which reads the served stylesheet.
+Move `overflow` down onto the rows and every click drops the reader back at the top of the session. No assertion on served HTML would see it, so the structure is pinned instead by `test_the_nav_tree_keeps_its_place_because_the_scroller_is_not_what_swaps`, which reads the served stylesheet, and by the browser leaf in `tests/e2e/specs/htmx.spec.ts` that clicks a row at a viewport where the tree overflows and reads `scrollTop` across the swap.
 
 Witnessed in a real Chromium on 2026-08-20 at a viewport where the NavTree overflows. Clicking a row that is scrolled *out* of view does move the NavTree — the browser scrolls the link into view before focusing it, which is the browser being right. A test script that clicks through a driver's "scroll into view if needed" measures that and not the swap; click a visible row by coordinates.
+
+The driver is the trap and not the language: in the TypeScript runner on 2026-08-28, at 1400×220 on a tool page, `locator.click()` on a row 24 px below the tree's foot scrolled `#nav-tree` 43 px before the click landed.
 
 # The open path clamps at the top of the NavTree
 
@@ -161,10 +163,10 @@ Witnessed in a real Chromium on 2026-08-25, over a store built from the `resume_
 
 # The gallery is the scenario list, opened
 
-`mise run gallery` (`tests/gallery/serve.py`) builds a store from the redacted fixtures, serves it under `--dev`, and lists `tests/view/scenarios.py:ROUTES` at `/gallery`. One link per entry and no others, so the page a person walks is the list the tier sweeps.
+`mise run gallery` (`tests/gallery/serve.py`) builds a store from the redacted fixtures, serves it under `--dev`, and lists `tests/view/scenarios.py:SCENARIOS` at `/gallery`. One link per entry and no others, so the page a person walks is the list the tier sweeps.
 
-Witnessed in a real Chromium on 2026-08-25 on the gallery's own port 8478 — never 8477, which is a live viewer. The index came up with 35 rows, one per `ROUTES` entry; clicking the turn-node link landed on that node's page with its NavTree (17 rows) and its pane rendered, the reload script on it, and no console error.
+Witnessed in a real Chromium on 2026-08-25 on the gallery's own port 8478 — never 8477, which is a live viewer. The index came up with 35 rows, one per `SCENARIOS` entry; clicking the turn-node link landed on that node's page with its NavTree (17 rows) and its pane rendered, the reload script on it, and no console error.
 
-A browser check of any page here cannot use Playwright's `wait_for_function`: it evaluates a string as script, and the CSP refuses that. Wait on a selector instead.
+A browser check of any page here cannot use Playwright's `wait_for_function`: it evaluates a string as script, and the CSP refuses that. Wait on a selector instead. That is the Python harness's rule and not the header's: on 2026-08-28 the TypeScript runner's `waitForFunction` resolved against the same `default-src 'self'`, in both its function and string forms, with the console empty. `tests/e2e` still waits on selectors, because a selector says what it is waiting for.
 
 Two more traps in that harness. Playwright's sync API delivers page events only while the main thread is inside a Playwright call, so a wait loop built out of `time.sleep` sees nothing and reads as "the page never reloaded" — poll `page.title()` in the loop. And never `git checkout` a file you are editing to strip debug lines from it: the checkout took a whole uncommitted client rewrite with it, and the next hour measured the old file.

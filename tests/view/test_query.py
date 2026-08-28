@@ -23,22 +23,24 @@ from hyphae.view.citation import QUERY_URL
 from hyphae.view.highlight import Syntax, lit
 from tests.conftest import SPINE
 from tests.view.conftest import block, classed, fields, inside, plain, values
-from tests.view.scenarios import ROUTES
+from tests.view.scenarios import SCENARIOS
 
 # This checkout, for the files the stylesheet gate reads: tests/view/test_query.py → the root.
 REPO = Path(__file__).resolve().parents[2]
 
 # Every page the viewer serves, one URL each, off the route map the route sweep keeps total
-# (`tests/view/scenarios.py:ROUTES`). Listing them by hand read as coverage and was not: a
+# (`tests/view/scenarios.py:SCENARIOS`). Listing them by hand read as coverage and was not: a
 # session page opens the turns level, so no page in the list ever ran a query the tools level
 # cites. What is left out cites nothing — a fragment carries no footer, and the query page is
 # where a citation goes rather than a page that makes one.
 CITING = sorted(
-    url for route, url in ROUTES.items() if not route.startswith(("/fragment/", QUERY_URL))
+    scenario.url
+    for route, scenario in SCENARIOS.items()
+    if not route.startswith(("/fragment/", QUERY_URL))
 )
 
 # The page whose citations name a library macro, off the same map.
-TOOL_PAGE = ROUTES["/session/{session_id}/thread/{source}/tool/{tool_call_id}"]
+TOOL_PAGE = SCENARIOS["/session/{session_id}/thread/{source}/tool/{tool_call_id}"].url
 
 
 def bound(line: str) -> dict[str, str]:

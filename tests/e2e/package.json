@@ -1,0 +1,10 @@
+{
+  "name": "hyphae-e2e",
+  "private": true,
+  "description": "The browser tier: Playwright over the gallery, run by `mise run e2e`",
+  "devDependencies": {
+    "@chromatic-com/playwright": "0.14.12",
+    "@playwright/test": "1.62.1",
+    "chromatic": "18.7.0"
+  }
+}
