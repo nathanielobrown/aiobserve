@@ -358,21 +358,29 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                             highlight.Syntax.BASH,
                             markdown=False,
                         ),
+                        # What a tool was passed is JSON — Claude Code records every tool's
+                        # arguments as an object — so the preview is marked up as JSON without
+                        # asking the row, which is the same syntax its own fetch reads it under.
                         detail_of(
                             "input",
                             row["input"],
                             row["input_chars"],
                             f"/fragment/input{at}",
                             detail,
+                            highlight.Syntax.JSON,
                             markdown=False,
                         ),
+                        # And what it answered is that file's syntax where the record names a
+                        # file, else JSON: a tool that does not answer in prose answers in
+                        # JSON, and `highlight.lit` prints a value that does not parse as the
+                        # characters the store holds rather than lexing it as broken JSON.
                         detail_of(
                             "result",
                             row["result_head"],
                             row["result_chars"],
                             f"/fragment/result{at}",
                             detail,
-                            highlight.by_suffix(row["result_type"]),
+                            highlight.by_suffix(row["result_type"]) or highlight.Syntax.JSON,
                             markdown=False,
                         ),
                     )

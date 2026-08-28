@@ -246,6 +246,18 @@ def block(html: str, field: str) -> str:
     return found.group(1)
 
 
+def walled(html: str, field: str) -> str:
+    """The class on one `<pre data-field="…">`: the syntax the page marked that value up in.
+
+    Empty where the block carries none, which is a value printed as the characters the store
+    holds — the fallback every unmarkable value takes, and a class-presence reading is how a
+    leaf tells the two apart without going through the spans inside.
+    """
+    found = re.search(rf'<pre data-field="{field}"(?: class="([^"]*)")?>', html)
+    assert found is not None, f"no {field} block on the page"
+    return found.group(1) or ""
+
+
 def prose(html: str, field: str) -> str:
     """The markup inside one `<div class="prose" data-field="…">`, whole.
 
