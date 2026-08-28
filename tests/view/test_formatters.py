@@ -3,7 +3,7 @@
 A unit table rather than served HTML: every fixture README redacts the strings under a tool
 `input`, so a served row can prove the registry fired but not what it read
 (`plans/viewer-polish/testing_plan.md`). The four names the corpus does record are read off
-pages in `tests/view/test_node__rows.py`; the rest are here and nowhere else.
+pages in `tests/view/test_node__titles.py`; the rest are here and nowhere else.
 
 Each case says where its input came from — a recorded fixture, this project's own store, or
 invented for a tool no recording of ours has ever called.
