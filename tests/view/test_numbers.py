@@ -312,7 +312,7 @@ def test_every_dollar_in_a_popover_is_washed_at_its_share_of_what_the_session_sp
 def test_the_row_that_stands_for_a_run_says_where_its_own_cost_came_from(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """A ⇄ row's badge is the api call that asked for the run, and its popover says so.
+    """A ⚒ row's badge is the api call that asked for the run, and its popover says so.
 
     A tool call is billed nothing of its own (`docs/schema.md`), so the badge on the one row
     that draws one is an attribution rather than a measurement — and an attribution a reader

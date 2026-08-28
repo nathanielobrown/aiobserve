@@ -140,6 +140,11 @@ PAGE_BYTES = 500_000
 # 176,935 B. What a reader gets is what a turn drove beside what it spent, without opening it.
 # The arithmetic comes to 7,233,105 B, and the 26,895 B over it is what the next thing a row
 # grows by is measured against.
+#
+# The row then grew 4 B for the context bar's third band class, which stands a turn's own growth
+# apart from the context it opened on (`view/nodes.py`): 12,868 B over 3,217 rows, spent out of
+# that slack rather than by raising the ceiling. The arithmetic now comes to 7,245,973 B, and
+# 14,027 B is left.
 NODE_BYTES = 7_260_000
 # What one expansion may weigh: a node's body opened in place, inside someone else's children
 # log. It is over `PAGE_BYTES` and declared here rather than derived against it, for the reason

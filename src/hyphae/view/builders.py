@@ -188,7 +188,7 @@ def call_node(session_id: str, source: str, row: Row, held: Ledger) -> Node:
 def tool_node(session_id: str, source: str, row: Row, held: Ledger) -> Node:
     """One tool call as a node. No cost of its own: what it took is the api call's.
 
-    Except a ⇄ row, which asked for a run and is charged what the api call holding it cost —
+    Except a ⚒ row, which asked for a run and is charged what the api call holding it cost —
     the nearest thing the store prices to what the reader is looking at. Costless wherever no
     run hangs under it, which is every other tool there is.
     """

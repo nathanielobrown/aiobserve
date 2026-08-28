@@ -239,7 +239,7 @@ NO_SPEND = Spend(own=None, total=None, share=None, total_share=None)
 def ledger(session_id: str, whole: float, runs: Sequence[Row]) -> Ledger:
     """Where each run's spend lands, walked once for a page. `view_runs.sql` holds the edges.
 
-    A run's cost is charged to every node it hangs under: the ⇄ tool call that asked for it,
+    A run's cost is charged to every node it hangs under: the ⚒ tool call that asked for it,
     the api call that made that tool call, the turn that call answers, each run above it, and
     the session. Which makes `total >= own` true by construction — a subtree's own is one of
     the numbers summed into it — and makes a level of parallel spawns sum past the call that
@@ -276,7 +276,7 @@ def _charge(under: dict[Ref, float], ref: Ref, cost: float) -> None:
 
 
 def _asked(run: Row) -> Iterator[Ref]:
-    """The nodes that asked for one run, on the thread that asked: its ⇄ call, and up from there.
+    """The nodes that asked for one run, on the thread that asked: its ⚒ call, and up from there.
 
     Nothing where the spawning call resolved to nothing — an unattached run hangs off no tool
     call, no api call and no turn, which is the whole definition of one.
