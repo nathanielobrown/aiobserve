@@ -460,7 +460,7 @@ def weighed(
 ) -> None:
     """One row's own half read against what the store holds on its thread, and what went unpriced.
 
-    The subtree half is the rollup's, and the leaves in `test_nav_tree__meters.py` weigh it: what
+    The subtree half is the rollup's, and the leaves in `test_nav_tree__badges.py` weigh it: what
     this holds is the number a row has always printed first.
     """
     (whole,) = one(store, "SELECT cost_usd FROM session_rollups WHERE session_id = ?", [session_id])
