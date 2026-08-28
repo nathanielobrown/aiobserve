@@ -455,6 +455,18 @@ li.node .badge.s7 { --cost-wash: 42%; }
 li.node .badge.s8 { --cost-wash: 48%; }
 li.node .badge.s9 { --cost-wash: 54%; }
 li.node .badge.s10 { --cost-wash: 60%; }
+/* How often a run's own thread compacted. The alarm at full strength rather than a wash of it:
+   the count has no scale to sit on — one is already the whole of what the reader needs to know,
+   that a subagent ran its window out on a transcript nobody opened — so the pill is drawn at one
+   weight and reads apart from the washed costs beside it. Paper on the alarm in both schemes,
+   which is what keeps the text legible when `--bad` lightens for a dark page. */
+li.node .compacted {
+  padding: 0 var(--space-1);
+  border-radius: 3px;
+  white-space: nowrap;
+  color: var(--paper);
+  background-color: var(--bad);
+}
 
 /* The pane. A node's facts flow rather than stacking — a pane is one node, not four clusters
    of them — and a fact reads the same on every kind's page: a dim label over the value it

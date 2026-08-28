@@ -171,4 +171,8 @@ HIGHLIGHT_CHARS = 256_000
 # Up 4 B from 1,925 for the context bar's third edge: a turn stands its growth on the context
 # the session opened on, so its row names a base as well as a fill and where its own share
 # begins (`view/nodes.py`).
+# Held at 1,929 through the marked-up titles a row now carries and the compaction badge a run's
+# row draws: the row this counts is a turn's, whose URL is the longest any node has and is
+# written three times, so what a run's row gained cannot overtake it. Re-measured rather than
+# assumed — the leaf pins this from below as well as above, so a row that shrank would red too.
 NAV_TREE_ROW_BYTES = 1929
