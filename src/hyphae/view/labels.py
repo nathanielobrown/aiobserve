@@ -89,8 +89,8 @@ LABELS: dict[str, str] = {
     "description": "Description",
     "friction": "Friction",
     # The two columns a children log prints that no query returns. `title` is what the viewer
-    # calls a node in the most readable form the record supports (`docs/viewer.md`), and `body`
-    # is the column holding the control that opens one under its row.
+    # calls a node in the most readable form the record supports (`docs/viewer-titles.md`), and
+    # `body` is the column holding the control that opens one under its row.
     "title": "Title",
     "body": "Body",
 }

@@ -408,7 +408,7 @@ class Node:
         The concept every surface reads and none of them owns — lead, words and tail joined,
         in the markdown whoever wrote it typed. The five below are this title at the width of
         the surface reading it, and they are the only cuts of it: a page that composed its own
-        would be a second answer to "what is this node called" (`docs/viewer.md`).
+        would be a second answer to "what is this node called" (`docs/viewer-titles.md`).
         """
         return self._joined(self.lead, self.words) + self.tail
 

@@ -8,6 +8,8 @@ Every node has one title: the most readable name the record supports for it. The
 
 A title names its node; it does not quote the store. It may drop the project directory off a path, join what a model wrote to what the session recorded, or lead with the kind of thing it names — and where a title looks like stored text, it is still a name standing for the value rather than reproducing it. What the store holds verbatim is under the heading: the node's own values, the archived record it was read from, and the thread's transcript. Where a record supports no readable name, the title falls back to the head of what was stored rather than inventing one.
 
+A title prints as the markdown it was written in. What a person or a model typed reaches the row as bold, italic, code or a link, and the width is spent on what a reader sees rather than on the syntax around it: a cut closes what it opened, so a stopped title never bolds the page. A link becomes an `<a>` only in the reading pane's heading, because every other surface prints its title inside a link already. The browser tab takes the same words with the markup gone, cut where the NavTree row beside it stops. Only the inline parser runs, so a heading or a fence is the characters it was typed as, and a line whose syntax the store cut through is marked from where the store stopped it rather than from how short it renders (`src/hyphae/view/inline_markdown.py`).
+
 By kind:
 
 - a **session**: what an [enrichment pass](enrichment.md) said it was, else the title Claude Code recorded, else the session id — which is what a reader pasted to arrive here
