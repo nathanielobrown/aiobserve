@@ -26,9 +26,13 @@ UPLOADER = "e2e.yml"
 SECRET = "secrets."
 
 # What keeps a fork's pull request from reaching for a token GitHub will not hand it: the head
-# repository is the fork, not this repo. A push carries no pull request to read at all, which is
-# why the guard the file carries says more than this — this is the half that has to be in it.
+# repository is the fork, not this repo.
 FORK_GUARD = "github.event.pull_request.head.repo.full_name == github.repository"
+
+# The other half, and why the two are joined by `||` rather than `&&`: a push carries no pull
+# request to read, so the clause above is false on one, and an `and` would keep the upload from
+# ever running on main — where the baseline every later build is measured against comes from.
+PUSH_CLAUSE = "github.event_name != 'pull_request'"
 
 
 def workflows() -> dict[str, str]:
@@ -80,7 +84,10 @@ def test_a_fork_runs_the_browser_tier_and_only_the_upload_stands_behind_the_guar
     assert len(guarded) == 1, f"{len(guarded)} steps in {UPLOADER} carry an `if`"
     # The guard stands on the step that names the secret, and not one step further along.
     assert SECRET in yaml.safe_dump(guarded[0].get("env", {}))
-    assert FORK_GUARD in guarded[0]["if"]
+    # The whole expression, not a substring of it: GitHub evaluates this and we cannot, so its
+    # exact text is the only evidence here — and a substring passes an `&&` that would silently
+    # skip every upload on main.
+    assert guarded[0]["if"] == f"{PUSH_CLAUSE} || {FORK_GUARD}"
     # ...and no other step reaches for the token, which would be a reach out from behind it.
     unguarded = [step for step in steps(UPLOADER) if "if" not in step]
     assert not any(SECRET in yaml.safe_dump(step.get("env", {})) for step in unguarded)
