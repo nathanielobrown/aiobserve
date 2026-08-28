@@ -72,13 +72,18 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         # The query aggregates, so it answers a row for a node that is not there as readily as
         # for one that is — a node with no api calls under it is a real reading, and the
         # popover prints it as the dashes it is.
+        whole = rows[0]["session_usd"]
         return viewer.templates.TemplateResponse(
             request,
             "fragments/numbers.html",
             {
                 "key": Ref(kind, source, node_id).key,
                 "row": rows[0],
-                "spend": numbers.spend(rows[0]["spent"]),
+                # The three lines between the window and the total, each priced and washed
+                # here rather than in the template: what a charge is made of is arithmetic
+                # (`view/numbers.py`), and the total under them takes the same ground.
+                "charges": numbers.charges(rows[0], numbers.spend(rows[0]["spent"]), whole),
+                "total_wash": numbers.wash(rows[0]["cost_usd"], whole),
                 "citation": queries.citation(Fragment.NUMBERS, bound),
             },
         )

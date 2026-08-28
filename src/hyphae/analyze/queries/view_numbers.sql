@@ -110,6 +110,10 @@ SELECT
         WHEN 'call' THEN held.added
     END AS added,
     (SELECT round(sum(s.cost_usd), 4) FROM calls s) AS cost_usd,
+    -- What the whole session spent, which every dollar here is washed against: the popover
+    -- draws the same ground the badge on the row does, and a share of anything narrower would
+    -- deepen as a reader walked down the tree (`view/nodes.py:meter`).
+    (SELECT r.cost_usd FROM session_rollups r WHERE r.session_id = $session_id) AS session_usd,
     (SELECT count(*) FILTER (s.cost_usd IS NULL) FROM calls s) AS unpriced_api_calls,
     (SELECT count(*) FROM calls s) AS api_calls,
     -- One member per model the node spent on, for the caller to price (`view/numbers.py`).
