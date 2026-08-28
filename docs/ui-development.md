@@ -10,6 +10,8 @@ mise run gallery
 
 The gallery builds a store from the redacted fixtures, serves it in dev mode, and prints its index — `/gallery` on port 8478, one past the viewer's own default, so a gallery and a viewer over your own store can be open side by side. The index lists every entry of `tests/view/scenarios.py:SCENARIOS` under a heading for its kind of page: what each one shows, and the route it stands for beside it. Click the one you are working on.
 
+Its clock is the corpus's, not the wall's: the gallery reads the present off the store it built — the newest session end in it — so how long ago a session ran says the same thing today and next month, and the trailing windows a listing page counts back hold sessions rather than nothing. Nothing turns that off, and the viewer over your own store keeps its real clock (`tests/gallery/serve.py`).
+
 `mise run gallery --port 9001` moves it, which is how a second branch's gallery opens beside the first. That flag is the only argument it takes, and neither a path nor an environment variable can reach it: session data is private, and what keeps this tool from serving the canonical store is that the process can only build its own corpus (`tests/gallery/serve.py`). That build costs well under a second, so it happens on every launch and nothing is cached.
 
 ## Save the file and watch the page

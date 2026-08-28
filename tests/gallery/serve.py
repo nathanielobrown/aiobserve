@@ -3,7 +3,8 @@
 `mise run gallery` builds a store from the redacted fixtures, serves it under `--dev`
 (`view/dev.py`), and adds an index at `INDEX` listing `tests/view/scenarios.py:SCENARIOS`. Editing
 a template or a stylesheet reloads whatever is open, so the loop is: pick a scenario, save,
-watch.
+watch. The clock is the corpus's own and never the wall's (`corpus_now`), so a page holds still
+between two launches.
 
 Test tooling, not a package feature — it imports `tests/` freely. Privacy is structural: a port
 is the only thing that reaches it from outside, so the process can serve nothing but the corpus
@@ -11,6 +12,7 @@ it builds itself.
 """
 
 import argparse
+import datetime as dt
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -18,7 +20,9 @@ import uvicorn
 from fastapi import FastAPI, Request, Response
 from starlette.templating import Jinja2Templates
 
+from hyphae.view import format as fmt
 from hyphae.view.app import DEV_SHUTDOWN_SECONDS, HOST, build_app, claim
+from hyphae.view.store import open_store
 from hyphae.view.templating import TEMPLATES
 from tests.conftest import build_enriched_store
 from tests.view.scenarios import SCENARIOS, Group, Scenario
@@ -48,8 +52,30 @@ def grouped() -> dict[Group, list[tuple[str, Scenario]]]:
     }
 
 
+def corpus_now(store: Path) -> dt.datetime:
+    """The present the gallery's pages are read against: the newest session end `store` holds.
+
+    Derived rather than written down, so a corpus recorded next month carries the clock forward
+    with it. The corpus's own present rather than a round date, because a page's trailing
+    windows are measured back from here — the wall clock leaves every one of them empty.
+    """
+    with open_store(store) as connection:
+        latest = connection.execute("SELECT max(ended_at) FROM sessions").fetchone()
+    if latest is None or latest[0] is None:
+        raise ValueError(f"no session in {store} records when it ended, so there is no clock")
+    return latest[0]
+
+
 def gallery(store: Path) -> FastAPI:
-    """The viewer over `store` in dev mode, with the scenario index mounted at `INDEX`."""
+    """The viewer over `store` in dev mode, with the scenario index mounted at `INDEX`.
+
+    Freezes this process's clock to `corpus_now(store)` first — always, with no way to ask for
+    otherwise — so two openings a week apart serve the same page. `fmt.utcnow` is the viewer's
+    one clock and the seam written for this (`view/format.py`); the setattr outlives the app it
+    is built for, so a test that builds a gallery puts the real one back.
+    """
+    frozen = corpus_now(store)
+    fmt.utcnow = lambda: frozen
     app = build_app(store, dev=True)
     # The package's templates are on the path too, so the index extends `base.html` and reads
     # as a page of the thing it indexes. `DEV` is the one global `base.html` asks for, and it
