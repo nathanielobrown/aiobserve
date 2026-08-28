@@ -294,8 +294,20 @@ class Node:
 
     @property
     def nav_tree_title(self) -> str:
-        """The title at the width of a NavTree row, a crumb, or a walk control."""
+        """The title at the width of a NavTree row, a walk control, or the browser tab."""
         return self._at(queries.NAV_CHARS, self.lead, self.words)
+
+    @property
+    def crumb_title(self) -> str:
+        """The title at the width of one crumb of the chain above the pane.
+
+        The narrowest of the four, and the only one that is not the whole of what its surface
+        could show: a chain is many nodes on one line, and the node the chain ends at is open
+        underneath it. Cut here rather than in SQL — the query behind a crumb is the NavTree's,
+        which fetched a row's width, and a second query for a narrower copy of the same string
+        would be a page cost paid for nothing (`analyze/queries.py:CRUMB_CHARS`).
+        """
+        return self._at(queries.CRUMB_CHARS, self.lead, self.words)
 
     @property
     def log_title(self) -> str:
@@ -312,7 +324,7 @@ class Node:
     def pane_title(self) -> str:
         """The title at the head of the node's own pane, where nothing repeats it.
 
-        The widest of the three, because a pane heads one node. A header query returns its
+        The widest of the four, because a pane heads one node. A header query returns its
         strings at this width or wider — a tool header's input comes back at a preview's,
         because the same pane previews it — so a title is cut here and marked where the query
         left more behind. A pane names its node from the header it read rather than from the

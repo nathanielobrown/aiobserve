@@ -31,6 +31,11 @@ SELECT
     s.id AS session_id,
     substr(s.title, 1, $head_chars + 1) AS title,
     substr(s.project_dir, 1, $head_chars + 1) AS project_dir,
+    -- The same path, whole, for the one surface that filters by it rather than printing it:
+    -- the crumb above the session opens the list narrowed to this project, and the filter
+    -- matches a path prefix, so a cut path would open a list of nothing. NULL where the whole
+    -- one is longer than the head — a link that cannot be minted is a crumb printed as text.
+    CASE WHEN length(s.project_dir) <= $head_chars THEN s.project_dir END AS project_filter,
     substr(s.git_branch, 1, $head_chars + 1) AS git_branch,
     substr(s.version, 1, $head_chars + 1) AS version,
     substr(s.entrypoint, 1, $head_chars + 1) AS entrypoint,

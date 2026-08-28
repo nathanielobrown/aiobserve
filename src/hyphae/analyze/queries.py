@@ -202,6 +202,14 @@ RECORD_PREVIEW = 160
 NAV_CHARS = 110
 NAV_CHARS_PARAM = Param(type=ParamType.INTEGER, default=NAV_CHARS)
 
+# How much of a title one crumb of a crumb chain carries. A chain is up to sixteen links laid
+# across one line above the pane (`view/bounds.py:DEPTH`), so a crumb is a place to click and
+# not a place to read: what it owes the reader is which node this is, and the node itself is
+# open underneath. Narrow enough that a chain of long titles still fits the line, wide enough
+# that a path or a prompt says which one. No cut of its own in SQL — a crumb is a node the
+# NavTree already fetched, so this cuts what that width already brought back.
+CRUMB_CHARS = 40
+
 # How much of a string one row of a children log carries — a model name, a tool name. Wider
 # than a NavTree row, which is a line, and far narrower than the pane above it, which is one
 # node read whole: a log is a dozen rows a reader picks the next node out of.

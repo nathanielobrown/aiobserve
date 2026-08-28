@@ -9,15 +9,28 @@ previews are `test_node__details.py` and the children log is `test_node__logs.py
 Which node each leaf reads is picked out of the store by `tests/view/selections.py`.
 """
 
+from urllib.parse import parse_qs, urlparse
+
 import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
+from hyphae.analyze import queries
+from hyphae.view.app import build_app
 from hyphae.view.columns import COLUMNS, Shape
+from hyphae.view.format import ELLIPSIS
 from hyphae.view.nodes import BODY_URL
-from tests.conftest import ANCESTOR, DENSE_TURN, MAIN, SPINE
+from tests.conftest import (
+    ANCESTOR,
+    DENSE_TURN,
+    MAIN,
+    MYCELIA,
+    NO_PROJECT_SESSION,
+    SPINE,
+)
 from tests.view.conftest import (
     MISSING,
+    Planter,
     fields,
     icons,
     inside,
@@ -385,3 +398,87 @@ def test_the_citation_footer_scrolls_with_the_pane_it_cites(client: TestClient) 
     ids = inside(client.get(TURN).text, "id", "reading-pane", "id")
     assert ids[0] == "reading-pane"
     assert ids[-1] == "citation"
+
+
+def test_the_crumb_chain_leads_with_the_way_back_out_of_the_session(client: TestClient) -> None:
+    """Above the session crumb sit the two places a reader came from: home, and the project.
+
+    Every node page hangs under one project's session list, and until now the chain started
+    at the session — a reader three spawns deep had a way up to the session and no way out of
+    it. The two steps are links rather than text: the first is the whole list, the second is
+    that list narrowed to this project.
+
+    The project's parameter is read off the served filter form rather than written out here.
+    The form is what the list itself binds, so a link minted against a name this file made up
+    would open a list filtered by nothing and still read as a link.
+    """
+    page = client.get(f"/session/{SPINE}").text
+    # The first step is the list itself, under the house that stands for it.
+    assert inside(page, "data-crumb-head", "home", "href") == ["/sessions"]
+    assert icons(page, "data-crumb-head", "home") == ["🏠"]
+    # The second is the project, printed the way every other surface prints a path: folded
+    # against the reader's own home directory, so the part that varies leads.
+    assert fields(page, "data-crumb-head", "project")["project_dir"] == "~/repos/mycelia"
+    (link,) = inside(page, "data-crumb-head", "project", "href")
+    # And it opens the session list narrowed to this project, by the name the form declares.
+    form = client.get("/sessions").text
+    (parameter,) = [
+        name for name in values(form, "data-filter") if name in {"project", "project_dir"}
+    ]
+    asked = parse_qs(urlparse(link).query)
+    assert urlparse(link).path == "/sessions"
+    assert asked[parameter] == [MYCELIA]
+    # The session the page is about still leads the chain of nodes under those two.
+    assert values(page, "data-crumb")[0] == f"session:{SPINE}"
+
+
+def test_a_session_with_no_project_still_leads_with_the_way_home(client: TestClient) -> None:
+    """A session the store recorded no directory for has no project list to open.
+
+    So the project step is absent rather than a link to a list filtered by nothing — which
+    would open the whole corpus under a crumb claiming to narrow it.
+    """
+    page = client.get(f"/session/{NO_PROJECT_SESSION}")
+    assert page.status_code == 200
+    assert inside(page.text, "data-crumb-head", "home", "href") == ["/sessions"]
+    assert "project" not in values(page.text, "data-crumb-head")
+
+
+def test_a_crumb_is_cut_narrower_than_every_other_place_a_title_is_read(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A crumb is a place to click, so it carries less of a title than a row does.
+
+    The chain is up to sixteen links on one line above the pane; the node it ends at is open
+    underneath. Everything else that names a node on this page — the walk controls stepping
+    along its level, the stepper to the next failure, the browser tab — is a line of its own
+    and keeps a NavTree row's width.
+    """
+    # A turn with a sibling on either side, so the walk has two controls to name and neither
+    # of them climbs out of the level to a node the plant did not reach.
+    session_id, turn_id = one(
+        store,
+        'SELECT session_id, id FROM live_turns WHERE source = ? AND "index" = 1'
+        " AND session_id IN (SELECT session_id FROM live_turns WHERE source = ?"
+        " GROUP BY 1 HAVING count(*) > 2) ORDER BY session_id LIMIT 1",
+        [MAIN, MAIN],
+    )
+    # The whole thread's turns, so the two the walk names are as long as the one it is about.
+    # The slash columns go with them: a turn that ran a command is titled by the command.
+    long = "x" * (queries.NAV_CHARS + 60)
+    path = plant(
+        (
+            "UPDATE turns SET prompt = ?, command_name = NULL, command_args = NULL"
+            " WHERE session_id = ?",
+            [long, session_id],
+        )
+    )
+    with TestClient(build_app(path)) as planted:
+        page = planted.get(f"/session/{session_id}/thread/{MAIN}/turn/{turn_id}").text
+    # The crumb stops at the crumb's own width, marked where it stopped.
+    crumb = fields(page, "data-crumb", values(page, "data-crumb")[-1])["turn"]
+    assert crumb == "x" * queries.CRUMB_CHARS + ELLIPSIS
+    # While the walk along the turn's own level, and the tab, still carry a row's width.
+    walked = [fields(page, "data-walk", where)["title"] for where in values(page, "data-walk")]
+    assert len(walked) == 2 and set(walked) == {"x" * queries.NAV_CHARS + ELLIPSIS}
+    assert f"<title>❯ {'x' * queries.NAV_CHARS}{ELLIPSIS} · hyphae</title>" in page

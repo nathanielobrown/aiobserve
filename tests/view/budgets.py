@@ -260,11 +260,15 @@ DEAR_PANE_DETAILS = 3
 # page is about, which is the whole of what the two of them cost here.
 # What a pass wrote sits here too, and each of its two lines carries the fetch that offers the
 # rest of it — a URL written twice, the way every other value a pane previews offers its own.
-# Re-measured through the app by the leaf at the bottom of this file at 20,459 B. Up to five
+# The two steps above the chain sit here too, for the reason the crumbs do not: they are once a
+# page rather than once a level. The project step is the dear one — it prints a project path
+# and links to the session list narrowed by the whole of it, so the path is paid for twice,
+# once escaped and once URL-encoded.
+# Re-measured through the app by the leaf at the bottom of this file at 21,597 B. Up to five
 # of its strings are tree titles — the page title, and the two steppers under the pane — so it
-# moves with `queries.NAV_CHARS`, and one more is the name a session was recorded under, which
-# moves with `queries.HEADER_CHARS`.
-MEASURED_NODE_CHROME = 21_000
+# moves with `queries.NAV_CHARS`, and two more are the name a session was recorded under and
+# the directory it ran in, which move with `queries.HEADER_CHARS`.
+MEASURED_NODE_CHROME = 22_200
 
 # The parameter every truncated column of a run row is cut to. Counted per query rather than
 # listed, so a fourth column added to a chip shows up in the arithmetic instead of quietly
@@ -428,8 +432,12 @@ def worst_log_row_bytes() -> int:
 
 def worst_crumb_bytes() -> int:
     """What one crumb of the chain above a node can weigh: its markup, a title of `&`, and the
-    knobs its link carries once."""
-    return MEASURED_CRUMB_MARKUP + queries.NAV_CHARS * ESCAPED_CHAR_BYTES + worst_knob_bytes()
+    knobs its link carries once.
+
+    A crumb's own width and not a row's: a chain is many nodes on one line and cuts narrower
+    than anything else that names one (`analyze/queries.py:CRUMB_CHARS`).
+    """
+    return MEASURED_CRUMB_MARKUP + queries.CRUMB_CHARS * ESCAPED_CHAR_BYTES + worst_knob_bytes()
 
 
 def worst_stored_detail_bytes() -> int:
