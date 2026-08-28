@@ -57,7 +57,7 @@ htmx reads all but `hx-get` off the closest ancestor carrying one, so the NavTre
 
 A fetch that is not a pane swap rides an element of its own beside the link. The popover a NavTree row fetches overrides every attribute `#nav-tree-rows` writes, and htmx walks up from whatever fetched: written on the `<li>`, those overrides would reach the link inside it and the click would stop swapping the pane. `hx-disinherit` is not the way out, because it stops the walk rather than skipping a level of it. So the trigger is a span of its own next to the link, and `hx-trigger`'s `from:closest li` keeps the row as the thing a reader points at (`_nav_tree.html`).
 
-Witnessed in a real Chromium on 2026-08-26, against `mise run gallery --port 9061` — never 8477, which is a live viewer — in both colour schemes. A served-HTML test reads the attributes; only a browser reads what they do:
+A served-HTML test reads the attributes; only a browser reads what they do. `tests/e2e/specs/htmx.spec.ts` clicks a row and reads where the pane landed, and points and tabs at a row for its popover. Witnessed by hand in a real Chromium on 2026-08-26, against `mise run gallery --port 9061` — never 8477, which is a live viewer — in both colour schemes:
 
 - Pointing at a row fetched its popover after the delay and drew it on screen at the reading pane's left edge. Pointing at the same row again fetched nothing, so `once` holds
 - The pointer moving into the popover left it open: `:hover` follows the DOM and not the layout, so it stays true inside a `position: fixed` descendant of the row
@@ -102,7 +102,7 @@ Witnessed in a real Chromium on 2026-08-27 against `mise run gallery --port 9062
 
 The NavTree keeps a reader's place across a click for one reason: `#nav-tree` carries the scrollbar and the swap replaces `#nav-tree-rows` inside it. An untouched scroller keeps its `scrollTop`, so nothing in the markup has to ask for it and `hx-preserve` is not needed.
 
-Move `overflow` down onto the rows and every click drops the reader back at the top of the session. No assertion on served HTML would see it, so the structure is pinned instead by `test_the_nav_tree_keeps_its_place_because_the_scroller_is_not_what_swaps`, which reads the served stylesheet.
+Move `overflow` down onto the rows and every click drops the reader back at the top of the session. No assertion on served HTML would see it, so the structure is pinned instead by `test_the_nav_tree_keeps_its_place_because_the_scroller_is_not_what_swaps`, which reads the served stylesheet, and by the browser leaf in `tests/e2e/specs/htmx.spec.ts` that clicks a row at a viewport where the tree overflows and reads `scrollTop` across the swap.
 
 Witnessed in a real Chromium on 2026-08-20 at a viewport where the NavTree overflows. Clicking a row that is scrolled *out* of view does move the NavTree — the browser scrolls the link into view before focusing it, which is the browser being right. A test script that clicks through a driver's "scroll into view if needed" measures that and not the swap; click a visible row by coordinates.
 
