@@ -11,7 +11,6 @@ LABELS: dict[str, str] = {
     # What the thread was, and where it ran.
     "session_id": "Session",
     "run_id": "Run",
-    "project_dir": "Project",
     "git_branch": "Branch",
     # Claude Code's own version string, which is what pins a schema fact (`docs/schema.md`).
     "version": "Version",
@@ -89,10 +88,6 @@ LABELS: dict[str, str] = {
     # preview rather than for a reader.
     "description": "Description",
     "friction": "Friction",
-    # What Claude Code recorded the session as, which is `title` in the store and not the
-    # `title` below: that one is the viewer's own derivation, and on a described session the
-    # two say different things. The heading shows the derivation, this row the record.
-    "recorded_title": "Title",
     # The two columns a children log prints that no query returns. `title` is what the viewer
     # calls a node in the most readable form the record supports (`docs/viewer.md`), and `body`
     # is the column holding the control that opens one under its row.

@@ -352,8 +352,10 @@ def test_a_project_directory_folds_the_readers_home_and_still_links_whole(
     folded = "~/repos/mycelia"
     assert fields(listed, "data-session-id", SPINE)["project_dir"] == folded
     assert fields(landing, "data-project", MYCELIA)["project_dir"] == folded
-    # The session's own page says where it ran in the same words its row does.
-    session = fields(client.get(f"/session/{SPINE}").text, "data-body", "session")
+    # The session's own page says where it ran in the same words its row does — in the crumb
+    # above the pane, which is the way out of the session and the one place the page names the
+    # directory now that the pane's fact row is gone.
+    session = fields(client.get(f"/session/{SPINE}").text, "data-crumb-head", "project")
     assert session["project_dir"] == folded
     # What a reader clicks or types is untouched: the row is keyed by the stored path, the
     # link filters on it, and the box offers it.

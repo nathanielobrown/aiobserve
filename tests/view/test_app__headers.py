@@ -47,10 +47,13 @@ def test_the_session_header_holds_what_the_store_says_about_it(
         " JOIN session_rollups r ON r.session_id = s.id WHERE s.id = ?",
         [SPINE],
     )
-    # The title heads the pane as what the node is called — a derivation, which on a described
-    # session is the pass's words instead — and sits under it again as the store's own column,
-    # which is the one place a reader learns what the session was recorded as.
-    assert (pane["title"], pane["recorded_title"]) == (title, title)
+    # The title heads the pane and does not repeat under it: a fact row printing the same
+    # string the heading already carries is a line a reader reads twice. The row the session
+    # ran in has gone the same way — the crumb above the pane links the project, which is a
+    # way out of the session rather than one more string in the column.
+    assert pane["title"] == title
+    assert "recorded_title" not in pane
+    assert "project_dir" not in pane
     assert pane["turns"] == str(turns)
     assert pane["agent_runs"] == str(agent_runs)
     assert pane["cost_usd"] == money(cost)

@@ -76,13 +76,14 @@ def test_a_session_page_shows_what_the_model_said_about_the_session(
     )
     # ...and the query behind it is cited like every other query the page ran.
     assert Page.ENRICHMENT.value in fields(page, "id", "citation")
-    # The pass's words head the pane once it has reached the session, which is why the name
-    # the session was recorded under has a fact row of its own: without one, the operator's
-    # own word for what they were doing would be reachable from nowhere on the page.
+    # The pass's words head the pane once it has reached the session, and they are the only
+    # name on it: the pane prints no fact row for the name the session was recorded under, so
+    # a described session heads itself with what a model said it did and nothing repeats.
     (recorded,) = one(enriched_store, "SELECT title FROM sessions WHERE id = ?", [SPINE])
     pane = fields(page, "data-body", "session")
     assert recorded and recorded != description
-    assert (pane["title"], pane["recorded_title"]) == (description, recorded)
+    assert pane["title"] == description
+    assert "recorded_title" not in pane
 
 
 def test_the_session_list_shows_what_the_model_said_about_each_session(
