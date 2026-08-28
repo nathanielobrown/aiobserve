@@ -20,6 +20,7 @@ from typing import Any, NamedTuple, override
 import duckdb
 import pytest
 from fastapi.testclient import TestClient
+from markupsafe import escape
 
 from hyphae.analyze import queries
 from hyphae.extract.pricing import CONTEXT_WINDOWS
@@ -237,8 +238,8 @@ def chipped(store: duckdb.DuckDBPyConnection) -> Chipped:
 def block(html: str, field: str) -> str:
     """The markup inside one `<pre data-field="…">`, whole.
 
-    What `fields` cannot give back: that reader stops at the first closing tag, and a block of
-    marked-up code is nothing but nested spans.
+    What `fields` cannot give back: that reader hands back the text a browser shows, and a
+    block of marked-up code is nothing but nested spans.
     """
     found = re.search(rf'<pre data-field="{field}"[^>]*>(.*?)</pre>', html, re.DOTALL)
     assert found is not None, f"no {field} block on the page"
@@ -421,6 +422,11 @@ class _Element(HTMLParser):
         self.value = value
         self.depth = 0
         self.field: str | None = None
+        # The depth the open field's own element sits at, so a tag nested inside it — a
+        # `<strong>` a title rendered, a token the highlighter marked — closes without
+        # ending the field and losing everything the element says after it.
+        self.field_depth = 0
+        self.markup: dict[str, list[str]] = {}
         self.fields: dict[str, str] = {}
         self.marking = False
         self.marks: list[str] = []
@@ -439,7 +445,11 @@ class _Element(HTMLParser):
         self.attributes.append(found)
         if (name := found.get("data-field")) is not None:
             self.field = name
+            self.field_depth = self.depth
             self.fields.setdefault(name, "")
+            self.markup.setdefault(name, [])
+        elif self.field is not None:
+            self.markup[self.field].append(self.get_starttag_text() or "")
         elif "icon" in (found.get("class") or "").split():
             self.marking = True
 
@@ -449,12 +459,20 @@ class _Element(HTMLParser):
             self.text.append(data)
         if self.field is not None:
             self.fields[self.field] += data
+            # Escaped again the way the template escaped it, so a `<` the page printed as
+            # characters reads as characters here and a flat value comes back the bytes it
+            # was served as. A leaf asking whether an element got in wants the parser's
+            # answer rather than the one a raw slice of the document would give.
+            self.markup[self.field].append(str(escape(data)))
         elif self.marking:
             self.marks.append(data)
 
     @override
     def handle_endtag(self, tag: str) -> None:
-        self.field = None
+        if self.field is not None and self.depth > self.field_depth:
+            self.markup[self.field].append(f"</{tag}>")
+        if self.depth <= self.field_depth:
+            self.field = None
         self.marking = False
         if self.depth:
             self.depth -= 1
@@ -469,6 +487,19 @@ def _element(html: str, attribute: str, value: str) -> _Element:
 def fields(html: str, attribute: str, value: str) -> dict[str, str]:
     """One element's labelled fields, keyed by `data-field` and stripped of whitespace."""
     return {name: text.strip() for name, text in _element(html, attribute, value).fields.items()}
+
+
+def marked_up(html: str, attribute: str, value: str, field: str) -> str:
+    """The markup inside one labelled field of one element, tags and all.
+
+    What `fields` reads as text — for the one value a page renders rather than prints, a title
+    written in markdown. `block` and `prose` do the same for the two fat values, by regex;
+    this one is scoped by the element around it, because a title is printed in a dozen places
+    on a page and only the pane's heading may carry a link.
+    """
+    found = _element(html, attribute, value).markup
+    assert field in found, f"no {field} field inside {attribute}={value}"
+    return "".join(found[field])
 
 
 def reads(html: str, attribute: str, value: str) -> str:
