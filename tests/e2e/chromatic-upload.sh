@@ -15,13 +15,17 @@ root=$(cd ../.. && pwd)
 
 # The npm CLI never sees `.env` — `load_dotenv` is the Python CLI's (`src/hyphae/cli.py`) — so
 # read it here. Only when the variable is *unset*: an environment that names it, empty included,
-# is a caller saying which token to use, and a file must not answer over them. Setting mise's
-# `_.file` instead would put the OTLP ingest keys beside it into every task's environment.
+# is a caller saying which token to use, and a file must not answer over them. And only this one
+# key: the OTLP ingest keys live in that file too, and this script hands its environment to a
+# third party's CLI. Reading it in a subshell is what leaves them behind — as is not setting
+# mise's `_.file`, which would put them in every task's environment instead.
 if [ -z "${CHROMATIC_PROJECT_TOKEN+set}" ] && [ -f "$root/.env" ]; then
-  set -a
-  # shellcheck source=/dev/null
-  . "$root/.env"
-  set +a
+  CHROMATIC_PROJECT_TOKEN=$(
+    # shellcheck source=/dev/null
+    . "$root/.env" >/dev/null
+    printf '%s' "${CHROMATIC_PROJECT_TOKEN:-}"
+  )
+  export CHROMATIC_PROJECT_TOKEN
 fi
 
 # Refuse here, before anything can reach the network: the failure a reader must never see is an

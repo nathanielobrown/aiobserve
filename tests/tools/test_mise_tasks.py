@@ -219,3 +219,27 @@ def test_an_emptied_token_in_the_environment_answers_over_one_in_the_env_file(
     assert refused.returncode != 0
     assert REFUSAL in refused.stderr
     assert not arguments.exists(), f"the uploader ran: {arguments.read_text()}"
+
+
+def test_the_uploader_takes_its_token_out_of_the_env_file_and_leaves_the_rest_at_home(
+    tmp_path: Path,
+) -> None:
+    """With the variable unset the token comes from `.env` — and travels there on its own.
+
+    `.env` is the Python CLI's file: the OTLP ingest keys sit in it beside the token. This is
+    the one script that hands its environment to a third party's CLI, so a key that crosses into
+    it goes somewhere it was never meant to go, and no failure ever says so.
+    """
+    # If `.env` holds the token and an ingest key beside it, and the environment names neither...
+    script = planted(tmp_path, f"{TOKEN}=a-token-from-the-file\nHONEYCOMB_API_KEY=stays-at-home\n")
+    arguments, handed = stub_npx(tmp_path)
+
+    # ...then the file answers, the uploader runs...
+    upload = subprocess.run(
+        [script], env=running(tmp_path), capture_output=True, text=True, timeout=60, check=False
+    )
+    assert upload.returncode == 0, upload.stderr
+    assert arguments.read_text().strip() == UPLOAD
+    # ...and the environment it was given holds the token it needs and nothing else off that file.
+    assert f"{TOKEN}=a-token-from-the-file" in handed.read_text()
+    assert "stays-at-home" not in handed.read_text()
