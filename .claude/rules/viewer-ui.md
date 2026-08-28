@@ -41,6 +41,8 @@ Where a title repeats — a NavTree row, a crumb, a log row, a walk control — 
 
 Every mark saying what a thing *is* — the kind of node a surface names, and the kind a children log's column is about — goes through `parts.mark(character)`, whose character comes from `nodes.GLYPHS` or a `Column` — the one place those characters are written, so a mark cannot mean one thing in a table and another in the NavTree. It is `aria-hidden` and carries no `title`: the word it stands for is already in the markup beside it (`docs/viewer.md`). The `<title>` element is the one place a mark goes in bare, because it is text and has no markup to hide it in.
 
+A tool's own glyph is not one of these marks and does not go through `parts.mark`. It stands in for the tool's name inside the title's words (`src/hyphae/view/formatters.py`), so it rides as text wherever the title does — including a children log, which heads the lead in a column of its own and would drop a mark written there.
+
 # A NavTree row is priced, not budgeted
 
 `bounds.NAV_TREE_ROW_BYTES` is measured through the app, pinned with no slack, and spent 3,217 times on the worst page. An attribute added to `_nav_tree.html` is that many bytes of page, so re-measure with `tests/view/test_bounds__node.py` rather than guessing — the pin fails first, which is the point.
@@ -65,7 +67,7 @@ Witnessed in a real Chromium on 2026-08-26, against `mise run gallery --port 906
 
 # A colour on a bar is judged on the gallery
 
-The context bar draws three grounds and three tips, and none of them is text, so no contrast ratio settles them (`src/hyphae/view/static/style.css`). What a test holds is the ramp — track palest, base band a step in, the conversation over it — and that every token is defined in both schemes. Which purple, which green, and how far the base band sits from the track are eyeballed.
+The context bar paints a track and three bands over it, and the outermost band takes its colour from the row's kind (`src/hyphae/view/static/style.css`). None of it is text, so no contrast ratio settles it. What a test holds is that the edges nest, that a run, a compaction and a maxed row each take a different tip, and that every token the bar spends is defined in both schemes. Which purple, which green, and how far the base band reads from the track are eyeballed.
 
 Witnessed in a real Chromium on 2026-08-28 against `mise run gallery --port 9063` — never 8477, which is a live viewer — in both colour schemes at 1400×900:
 

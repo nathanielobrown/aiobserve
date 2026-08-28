@@ -465,7 +465,7 @@ def _tool_spawned(corpus: Corpus, at: Ref) -> list[Row]:
 
 
 def _tool_runs(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) -> Level:
-    """What hangs under a ⇄ tool call in every preset: the run it asked for.
+    """What hangs under a ⚒ tool call in every preset: the run it asked for.
 
     The one level no preset filters. A run is nested under the tool call that spawned it, so
     this is where a run comes from wherever the tree is read; the presets differ only in how

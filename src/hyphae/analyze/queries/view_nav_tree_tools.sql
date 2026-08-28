@@ -28,7 +28,7 @@ SELECT
     -- the api calls are folded away and the tool calls stand under the turn.
     t.started_at,
     t.is_error,
-    -- What the api call holding this tool call cost. Only a ⇄ row spends it, and only here:
+    -- What the api call holding this tool call cost. Only a ⚒ row spends it, and only here:
     -- the NavTree is the one surface that draws a badge on a tool row. A call our price table
     -- could not price comes back NULL and its row wears the mark that says so, the way every
     -- other cost the viewer reports does.

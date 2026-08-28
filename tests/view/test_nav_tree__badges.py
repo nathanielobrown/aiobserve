@@ -98,7 +98,7 @@ def test_a_dual_badge_gathers_under_a_row_every_run_it_spawned(
 
     `spine` spawned a run from its main thread and that run spawned another, so every edge the
     rollup walks meets in one session: a turn gathers the runs its tool calls asked for, a run
-    gathers the runs it asked for in turn, the session gathers all of them, and the ⇄ row that
+    gathers the runs it asked for in turn, the session gathers all of them, and the ⚒ row that
     did the asking is charged what the api call holding it cost. The expectation is summed per
     thread in the test's own SQL, so a derivation that drifted in `view_runs` has nothing here
     to agree with.
@@ -134,7 +134,7 @@ def test_a_dual_badge_gathers_under_a_row_every_run_it_spawned(
         # two shares of one number, not one share drawn twice.
         assert _steps(read["total_usd"].step) == [meter(total / whole)], key
 
-    # Where each run was asked for: the thread, the ⇄ tool call, and the turn that call answers.
+    # Where each run was asked for: the thread, the ⚒ tool call, and the turn that call answers.
     spawns = {
         run_id: (source, tool_id, turn_id, cost)
         for run_id, source, tool_id, turn_id, cost in store.execute(
@@ -160,7 +160,7 @@ def test_a_dual_badge_gathers_under_a_row_every_run_it_spawned(
         [SPINE, source, turn_id],
     )
     weighs(session, f"{Kind.TURN}:{turn_id}", turn_own, turn_own + spawner)
-    # Each ⇄ row is charged what the api call holding it cost: a tool call has no spend of its
+    # Each ⚒ row is charged what the api call holding it cost: a tool call has no spend of its
     # own, and the call that asked for the run is the nearest thing the store prices.
     outer = client.get(node_url(Kind.TOOL, SPINE, source, tool_id)).text
     weighs(outer, f"{Kind.TOOL}:{tool_id}", call_cost, call_cost + spawner)
@@ -171,7 +171,7 @@ def test_a_dual_badge_gathers_under_a_row_every_run_it_spawned(
     weighs(inner, f"{Kind.TOOL}:{deep_tool}", deep_cost, deep_cost + leaf)
     weighs(inner, f"{Kind.RUN}:{SPINE_LEAF}", leaf, None)
     # Every other tool call on those two pages is what it always was: no spend of its own, no
-    # badge at all. `Bash`, `Read`, and the ⇄ row whose run the recording did not keep.
+    # badge at all. `Bash`, `Read`, and the ⚒ row whose run the recording did not keep.
     asked = {tool_id, deep_tool}
     costless = 0
     for page in (outer, inner):
@@ -188,7 +188,7 @@ def test_two_agent_rows_in_one_call_each_claim_the_whole_of_what_it_cost(
     """The overcount the design accepted, pinned so a later fix has to change this test to land.
 
     One api call can ask for several runs at once, and nothing the transcript records splits
-    what the call cost between them — so each ⇄ row under it is charged the whole of that cost
+    what the call cost between them — so each ⚒ row under it is charged the whole of that cost
     and the level sums past the call that made it. Badges are a reading aid, and a reader
     following one row down is better served by the call's own number than by a share of it
     nothing measured.
@@ -208,7 +208,7 @@ def test_two_agent_rows_in_one_call_each_claim_the_whole_of_what_it_cost(
         "SELECT source, api_call_id FROM live_tool_calls WHERE session_id = ? AND id = ?",
         [SPINE, spawn_tool],
     )
-    # The sibling ⇄ row: the same api call asked for it and the recording kept no run under it.
+    # The sibling ⚒ row: the same api call asked for it and the recording kept no run under it.
     (sibling,) = one(
         store,
         "SELECT id FROM live_tool_calls WHERE session_id = ? AND source = ? AND api_call_id = ?"
@@ -245,7 +245,7 @@ def test_two_agent_rows_in_one_call_each_claim_the_whole_of_what_it_cost(
         page = spawned.get(node_url(Kind.CALL, SPINE, source, call_id)).text
         drawn = [badges(page, f"{Kind.TOOL}:{tool}") for tool in (spawn_tool, sibling)]
         called = badges(page, f"{Kind.CALL}:{call_id}")
-        # Both ⇄ rows claim the whole of what the call cost, each gathering its own run.
+        # Both ⚒ rows claim the whole of what the call cost, each gathering its own run.
         assert [row["cost_usd"].shown for row in drawn] == [money(call_cost)] * 2
         assert [row["total_usd"].shown for row in drawn] == [money(call_cost + run_cost)] * 2
         # So the level sums past the row it hangs under: the call was billed once, and the two
