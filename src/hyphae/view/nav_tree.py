@@ -101,6 +101,9 @@ class NavTreeRow:
     node: Node
     depth: int
     selected: bool
+    # Whether this row is a step of the open path above the selection: the stylesheet clamps
+    # those at the top of the scroller, so a reader deep in a level sees what they are inside.
+    ancestor: bool
     # On a tail row, how many of `node`'s children the cap left out. Zero on a node's own row,
     # which is what tells the two apart.
     cut: int = 0
@@ -378,7 +381,7 @@ def spread(corpus: Corpus, node: Node, depth: int) -> list[NavTreeRow]:
     """
     rows: list[NavTreeRow] = []
     for run in _runs(corpus, _hanging(corpus, node.ref)):
-        rows.append(NavTreeRow(run, depth, selected=False))
+        rows.append(NavTreeRow(run, depth, selected=False, ancestor=False))
         rows.extend(spread(corpus, run, depth + 1))
     return rows
 
@@ -625,8 +628,16 @@ def nav_tree(
     ran: Ran = []
 
     def expand(node: Node, depth: int) -> None:
-        rows.append(NavTreeRow(node, depth, selected=node.key == selection))
-        if node.key not in open_keys:
+        on_path = node.key in open_keys
+        rows.append(
+            NavTreeRow(
+                node,
+                depth,
+                selected=node.key == selection,
+                ancestor=on_path and node.key != selection,
+            )
+        )
+        if not on_path:
             rows.extend(spread(corpus, node, depth + 1))
             return
         chain.append(node)
@@ -639,7 +650,14 @@ def nav_tree(
             expand(child, depth + 1)
         if shown.cut:
             rows.append(
-                NavTreeRow(node, depth + 1, selected=False, cut=len(shown.cut), opened=descends)
+                NavTreeRow(
+                    node,
+                    depth + 1,
+                    selected=False,
+                    ancestor=False,
+                    cut=len(shown.cut),
+                    opened=descends,
+                )
             )
 
     expand(root, 0)

@@ -29,6 +29,7 @@ from tests.view.conftest import (
     badges,
     fields,
     inside,
+    marked,
     one,
     rows,
     values,
@@ -121,6 +122,53 @@ def test_every_level_a_nav_tree_opens_is_indented_one_step_further_than_the_one_
     # Every level a chain can open has a rung, and no rung stands for a level nothing reaches.
     assert ladder == {depth: depth for depth in range(1, bounds.DEPTH + 1)}
     assert rendered <= set(ladder) | {0}
+
+
+def test_the_open_path_clamps_at_the_top_while_the_rows_under_it_scroll(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The steps down to the selection stay on screen, stacked under the preset control.
+
+    A working session's NavTree is longer than the column holding it, and the rows a reader
+    scrolls past are the ones saying where they are — the session, the turn that spawned the
+    run, the run. So the open path clamps: each ancestor stands where its own depth puts it,
+    one row below the step above it and the first of them below the presets, and only the
+    siblings and children scroll past them.
+
+    Pure CSS, so the markup's whole part is one class on the rows of the open path — which is
+    what this reads — and an offset per depth written out beside the indent ladder above,
+    because `app.CSP` forbids the inline style a computed one would ride on.
+    """
+    # The same deep selection the ladder above opens: a subagent's own turn, whose path runs
+    # session → turn → run → the turn itself.
+    turn_id, source = one(
+        store,
+        'SELECT id, source FROM live_turns WHERE session_id = ? AND source <> ? ORDER BY "index"'
+        " LIMIT 1",
+        [SPINE, MAIN],
+    )
+    page = client.get(f"/session/{SPINE}/thread/{source}/turn/{turn_id}").text
+    # The chain the crumbs print is the open path, and everything but its last step is an
+    # ancestor — the selection is what the reader is already reading.
+    chain = values(page, "data-crumb")
+    assert len(chain) > 2, "the recorded subagent no longer opens a path worth clamping"
+    clamped = set(chain[:-1])
+    # Every step of the path wears the class, the selection does not, and no other row does:
+    # a NavTree that clamped a sibling would stack rows the reader never opened.
+    assert {key for _, key in rows(page) if marked(page, key, "ancestor")} == clamped
+    # And each depth clamps one row further down than the one above it, under the control the
+    # presets are pinned in. Written out per level, as long as a chain can be.
+    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
+    stack = {
+        int(depth): int(rung)
+        for depth, rung in re.findall(
+            r'li\.row\.ancestor\[data-depth="(\d+)"\][^{]*\{[^}]*'
+            r"calc\(var\(--nav-tree-head\) \+ (\d+) \* var\(--nav-tree-row\)\)",
+            style,
+        )
+    }
+    assert stack == {depth: depth for depth in range(bounds.DEPTH + 1)}
+    assert re.search(r"li\.row\.ancestor\s*\{[^}]*position: sticky", style)
 
 
 def test_a_row_reads_from_the_left_and_only_its_cost_sits_at_the_right(
@@ -468,6 +516,8 @@ def test_every_row_is_named_from_the_column_its_kind_is_named_by(
     assert read == set(said)
 
 
+# What the planted run of another session was spawned as. Invented, and unlike anything the
+# corpus records, so a page that printed it could only have got it from the plant.
 def test_a_bucket_row_carries_the_totals_of_what_it_gathers(
     client: TestClient, store: duckdb.DuckDBPyConnection, plant: Planter
 ) -> None:

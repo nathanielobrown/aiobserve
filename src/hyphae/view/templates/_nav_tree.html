@@ -41,7 +41,11 @@
                 hx-push-url="false">+<span data-field="cut">{{ row.cut | count }}</span> more</button>
       </li>
     {% else %}
-      <li class="row node {{ row.node.kind }} {{ row.node.bar }}"
+      {# `ancestor` is what the stylesheet clamps: a step of the open path above the selection
+         stays at the top of the scroller while the rows under it go by. A class rather than a
+         key of its own, like the bar's — it is a thing the stylesheet paints and not a value
+         the store holds — and it rides the rows of one path, never the level around them. #}
+      <li class="row node {{ row.node.kind }} {{ row.node.bar }}{{ ' ancestor' if row.ancestor else '' }}"
           data-depth="{{ row.depth }}"
           data-nav-tree="{{ row.node.key }}"
           {%- if row.selected %} data-selected="{{ row.node.key }}" aria-current="true"{% endif %}>

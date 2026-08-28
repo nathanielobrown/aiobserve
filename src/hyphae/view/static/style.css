@@ -26,6 +26,13 @@
   /* How far one level of the NavTree sits in from the level above it. Small, because the NavTree is
      a narrow column and a session nests as far as an agent spawns. */
   --nav-tree-step: var(--space-3);
+  /* One row's height, and the height of the preset control the rows scroll under: what the
+     clamped steps of the open path stand one below another against. Both are arithmetic over
+     the tokens above — a row is one line box of the label step at the NavTree's line height,
+     and the control is one such line plus the borders on its buttons, its own padding and the
+     rule under it. */
+  --nav-tree-row: calc(var(--type-label) * 1.6);
+  --nav-tree-head: calc(var(--nav-tree-row) + var(--space-2) + 3px);
 }
 /* Dark holds the same roles at the same contrast: ink and dim stay legible on paper, and the
    accent lightens so a bar and a link read against a dark row rather than sinking into it.
@@ -173,6 +180,37 @@ li.row[data-depth="13"] > :is(a, button) { padding-left: calc(13 * var(--nav-tre
 li.row[data-depth="14"] > :is(a, button) { padding-left: calc(14 * var(--nav-tree-step)); }
 li.row[data-depth="15"] > :is(a, button) { padding-left: calc(15 * var(--nav-tree-step)); }
 li.row[data-depth="16"] > :is(a, button) { padding-left: calc(16 * var(--nav-tree-step)); }
+/* The open path, clamped. Each step of it sticks at the top of the NavTree's scroller as the
+   rows under it go by, one row further down than the step above and the first of them under
+   the preset control — so a reader deep inside a level still reads which session, which turn
+   and which run they are in. Every level a chain can open has an offset, written out for the
+   reason the ladder above is: `data-depth` is not a number a rule can read, and `app.CSP`
+   forbids the inline style that would carry one.
+   Opaque, because the rows a clamped step stands over pass beneath it, and with no `z-index`
+   of its own, which leaves it under the control the presets are pinned in and over the rows,
+   where a positioned box already stands.
+   A step stays clamped past the end of what it holds, to the foot of the list: the rows are
+   one flat `<ul>` (`_nav_tree.html`), a sticky box is released by its container, and the
+   nesting that would release each step is the nesting an out-of-band swap of the whole list
+   cannot have. Accepted — the path a reader has open is worth the rows it covers. */
+li.row.ancestor { position: sticky; background: var(--paper); }
+li.row.ancestor[data-depth="0"] { top: calc(var(--nav-tree-head) + 0 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="1"] { top: calc(var(--nav-tree-head) + 1 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="2"] { top: calc(var(--nav-tree-head) + 2 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="3"] { top: calc(var(--nav-tree-head) + 3 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="4"] { top: calc(var(--nav-tree-head) + 4 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="5"] { top: calc(var(--nav-tree-head) + 5 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="6"] { top: calc(var(--nav-tree-head) + 6 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="7"] { top: calc(var(--nav-tree-head) + 7 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="8"] { top: calc(var(--nav-tree-head) + 8 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="9"] { top: calc(var(--nav-tree-head) + 9 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="10"] { top: calc(var(--nav-tree-head) + 10 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="11"] { top: calc(var(--nav-tree-head) + 11 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="12"] { top: calc(var(--nav-tree-head) + 12 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="13"] { top: calc(var(--nav-tree-head) + 13 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="14"] { top: calc(var(--nav-tree-head) + 14 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="15"] { top: calc(var(--nav-tree-head) + 15 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="16"] { top: calc(var(--nav-tree-head) + 16 * var(--nav-tree-row)); }
 /* A row is one line: what the node is on the left, what it cost on the right, and a title too
    long for the column cut rather than wrapped. The spare width belongs to the title and to
    nothing else. Spread between the parts instead, a short title floats out into the middle of
