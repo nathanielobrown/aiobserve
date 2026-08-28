@@ -48,10 +48,15 @@ def test_turn_items_are_the_live_main_turns(fixture_db: Path) -> None:
     # answer for the other three, which is None rather than an empty string.
     assert [item.command_result for item in items] == ["[redacted]", None, None, None]
     # ...then each turn carries the api calls it drove, and each call its tool calls —
-    # turn 818588ad drove two calls, one asking for an Agent and one for a Read.
+    # turn 818588ad drove four calls, one of which asked for two tools at once.
     third = items[2]
-    assert [len(call.tool_calls) for call in third.api_calls] == [1, 1]
-    assert [call.tool_calls[0].name for call in third.api_calls] == ["Agent", "Read"]
+    assert [len(call.tool_calls) for call in third.api_calls] == [1, 2, 1, 1]
+    assert [call.tool_calls[0].name for call in third.api_calls] == [
+        "Agent",
+        "Bash",
+        "PushNotification",
+        "Read",
+    ]
     # ...and the item names itself with its own primary key, which is what a request and a
     # failure record carry.
     assert third.level is Level.turn

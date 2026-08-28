@@ -42,7 +42,7 @@ def test_the_archive_holds_every_line_of_every_file(fixture_source: SourceFactor
     # If a session spawned a subagent, which spawned one in turn, then all three files
     # are in the archive, each line under the transcript that recorded it — the main one
     # as "main", each subagent's under its bare agentId...
-    assert lines_by_source(trace) == Counter({MAIN_SOURCE: 35, SPINE_AGENT: 10, NESTED_AGENT: 6})
+    assert lines_by_source(trace) == Counter({MAIN_SOURCE: 41, SPINE_AGENT: 10, NESTED_AGENT: 6})
     # ...numbered from 1 within its own file, so a row points back at a line...
     agent = [r.line_no for r in trace.raw_records if r.source == SPINE_AGENT]
     assert agent == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]

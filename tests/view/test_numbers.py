@@ -111,8 +111,15 @@ def charged(
 CHARGES = ("cost_cached", "cost_new_input", "cost_output")
 
 
-def legend(split: CostSplit) -> dict[str, str]:
-    """The dollar beside each token count, at the precision a cost is stored to.
+# How far a printed dollar may sit from the oracle's: one unit in the last place it prints.
+# The two price the same tokens in a different order — the page sums a model's tokens and
+# prices once, the oracle prices each call and sums the dollars — so a figure that lands on a
+# tie rounds either way. `SPINE`'s output comes to exactly $0.27305 and does.
+PRINTED_PLACE = 1e-4
+
+
+def legend(split: CostSplit) -> dict[str, float]:
+    """The dollar beside each token count, before it is printed.
 
     Three charges and not the price table's four: the cache a call wrote is counted in the
     tokens on the new-input line (`view_numbers.sql`), so its dollar is charged there too. A
@@ -122,14 +129,19 @@ def legend(split: CostSplit) -> dict[str, str]:
     return dict(
         zip(
             CHARGES,
-            (
-                f"${split.cache_read:.4f}",
-                f"${split.input + split.cache_write:.4f}",
-                f"${split.output:.4f}",
-            ),
+            (split.cache_read, split.input + split.cache_write, split.output),
             strict=True,
         )
     )
+
+
+def misread(printed: dict[str, str], split: CostSplit) -> dict[str, tuple[str, str]]:
+    """The charges whose printed dollar and priced dollar disagree, printed side by side."""
+    return {
+        field: (printed[field], f"${dollars:.4f}")
+        for field, dollars in legend(split).items()
+        if abs(_money(printed[field]) - dollars) > PRINTED_PLACE
+    }
 
 
 def _money(shown: str) -> float:
@@ -168,7 +180,7 @@ def test_a_session_reads_its_window_off_the_main_thread_and_its_dollars_off_them
     # missing number prints rather than the whole of the fill dressed as a delta.
     assert printed["added"] == ABSENT
     split, stored = charged(store, SPINE)
-    assert printed | legend(split) == printed
+    assert not misread(printed, split)
     # And the three come to the total under them, which is the number the store keeps. Printed
     # to the place a cost is stored at rather than to the badge's cents: the popover is where a
     # reader adds the column up, and a column of cents would not come to a total in cents.
@@ -212,7 +224,7 @@ def test_a_turn_says_what_it_put_into_the_window_since_the_turn_before_it(
         assert printed["added"] == f"{tokens(printed, 'fill') - stood:+,}", turn_id
         stood = tokens(printed, "fill")
         split, _ = charged(store, SPINE, extra=f"AND source = '{MAIN}' {where}")
-        assert printed | legend(split) == printed, turn_id
+        assert not misread(printed, split), turn_id
     assert silent, "the spine is meant to hold a turn that never reached a model"
 
 
@@ -225,7 +237,7 @@ def test_a_run_reads_the_window_it_built_on_its_own_thread(
         assert printed | held(store, SPINE, run_id) == printed, run_id
         assert printed["added"] == f"+{printed['fill']}", run_id
         split, _ = charged(store, SPINE, extra=f"AND source = '{run_id}'")
-        assert printed | legend(split) == printed, run_id
+        assert not misread(printed, split), run_id
 
 
 def test_a_call_says_the_cache_it_read_apart_from_the_context_it_sent(
@@ -242,7 +254,7 @@ def test_a_call_says_the_cache_it_read_apart_from_the_context_it_sent(
     assert printed["added"] == f"{tokens(printed, 'fill') - tokens(printed, 'cached'):+,}"
     # One call is one model, so the dollars beside the counts are that call's own.
     split, stored = charged(store, FORK_ORIGIN, extra=where)
-    assert printed | legend(split) == printed
+    assert not misread(printed, split)
     assert printed["cost_usd"] == f"${stored:.4f}"
     # One call answered, so the line saying how many did is absent: `over 1 api call` is a
     # sentence that says nothing, and the popover is already the node's own numbers.
@@ -377,7 +389,7 @@ def test_a_cache_write_with_no_ttl_on_it_is_charged_at_the_short_rate(
         f"{Kind.CALL}:{NO_TTL_SPLIT_CALL}",
     )
     split, _ = charged(store, INVENTED_PROJECT_SESSION, extra=where)
-    assert printed | legend(split) == printed
+    assert not misread(printed, split)
     # And the write is a charge a reader can see rather than one that rounded away, which is
     # what makes the line above a reading of the fallback. It is charged on the new-input line,
     # where its tokens are counted, so what shows it was charged at all is that dollar standing
