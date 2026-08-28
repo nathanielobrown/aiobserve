@@ -7,6 +7,7 @@ those are enumerations that can rot, and this is the leaf that reads them back a
 
 import os
 import shlex
+import shutil
 import subprocess
 import tomllib
 from pathlib import Path
@@ -24,8 +25,9 @@ HTML_TASKS = ("format-html", "format-html-check")
 # directory the caller was in, so this prefix is what makes the path mean one place.
 CONFIG_ROOT = "{{config_root}}/"
 
-# What `e2e-chromatic` says when it has no token to upload with.
-REFUSAL = "CHROMATIC_PROJECT_TOKEN is missing or empty"
+# The one credential in this repo, and what `e2e-chromatic` says when it has no value for it.
+TOKEN = "CHROMATIC_PROJECT_TOKEN"
+REFUSAL = f"{TOKEN} is missing or empty"
 
 # What it runs when it has one: the Chromatic CLI over the archives `mise run e2e` wrote,
 # reporting a changed page rather than failing the job while the baselines settle.
@@ -103,6 +105,43 @@ def uploader() -> Path:
     return script
 
 
+def planted(tmp_path: Path, dotenv: str) -> Path:
+    """The uploader copied into a tree of its own, with the given `.env` at the root it reads.
+
+    The script finds `.env` two directories above itself, so the copy is what redirects it: this
+    repo's own root is never read, and the token planted below is a string in a temporary file.
+    """
+    script = tmp_path / "tests" / "e2e" / "chromatic-upload.sh"
+    script.parent.mkdir(parents=True)
+    shutil.copy(uploader(), script)
+    (tmp_path / ".env").write_text(dotenv)
+    return script
+
+
+def stub_npx(directory: Path) -> tuple[Path, Path]:
+    """An `npx` in `directory` that writes down what it was handed and the environment it got.
+
+    Put that directory first on PATH and nothing reaches the network. The two files it writes
+    are what the leaves below read; neither exists if the uploader never got that far.
+    """
+    arguments = directory / "npx-arguments"
+    handed = directory / "npx-environment"
+    stub = directory / "npx"
+    stub.write_text(f'#!/bin/sh\nprintf "%s\\n" "$*" > "{arguments}"\nenv > "{handed}"\n')
+    stub.chmod(0o755)
+    return arguments, handed
+
+
+def running(tmp_path: Path, **named: str) -> dict[str, str]:
+    """This run's environment, with `tmp_path` first on PATH and the token only if named here.
+
+    The variable is dropped unless a leaf sets it, because whether it is set at all — not what
+    it holds — is the door `.env` is read behind, and a developer's own shell may hold one.
+    """
+    inherited = {key: value for key, value in os.environ.items() if key != TOKEN}
+    return inherited | {"PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}"} | named
+
+
 def test_the_chromatic_upload_refuses_to_run_on_an_empty_token() -> None:
     """`mise run e2e-chromatic` stops and names the variable when it holds no token.
 
@@ -112,7 +151,7 @@ def test_the_chromatic_upload_refuses_to_run_on_an_empty_token() -> None:
     only worth anything if it stands in the way of the command a reader actually types.
     """
     # If the task is run with the token explicitly emptied...
-    environment = dict(os.environ) | {"CHROMATIC_PROJECT_TOKEN": ""}
+    environment = dict(os.environ) | {TOKEN: ""}
     refused = subprocess.run(
         ["mise", "run", "e2e-chromatic"],
         cwd=ROOT,
@@ -138,14 +177,8 @@ def test_the_chromatic_upload_hands_a_token_it_was_given_to_the_uploader(tmp_pat
     the head of a task's PATH.
     """
     # If `npx` is a stub that records its arguments...
-    recorded = tmp_path / "npx-arguments"
-    stub = tmp_path / "npx"
-    stub.write_text(f'#!/bin/sh\nprintf "%s\\n" "$*" > "{recorded}"\n')
-    stub.chmod(0o755)
-    environment = dict(os.environ) | {
-        "CHROMATIC_PROJECT_TOKEN": "not-a-real-token",
-        "PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}",
-    }
+    recorded, _ = stub_npx(tmp_path)
+    environment = running(tmp_path, **{TOKEN: "not-a-real-token"})
 
     # ...then the uploader runs to the end...
     upload = subprocess.run(
@@ -157,3 +190,32 @@ def test_the_chromatic_upload_hands_a_token_it_was_given_to_the_uploader(tmp_pat
     # changed page rather than failing on it. The token is not a word on that line: the CLI reads
     # it from the environment, so it stays out of any log that echoes the command.
     assert recorded.read_text().strip() == UPLOAD
+
+
+def test_an_emptied_token_in_the_environment_answers_over_one_in_the_env_file(
+    tmp_path: Path,
+) -> None:
+    """A caller who empties the variable gets the refusal even when `.env` holds a token.
+
+    The file is a fallback for an environment that says nothing, not an answer over one that
+    says something — and on a machine with no `.env`, which is this checkout and every CI
+    runner, the two read alike. So the script is copied into a tree that does have one, where a
+    version that read the file first would upload the token it found rather than refuse.
+    """
+    # If `.env` beside the script holds a token, `npx` is a stub, and the environment names the
+    # variable but empties it...
+    script = planted(tmp_path, f"{TOKEN}=a-token-from-the-file\n")
+    arguments, _ = stub_npx(tmp_path)
+
+    # ...then the caller's word wins, and nothing is handed to an uploader.
+    refused = subprocess.run(
+        [script],
+        env=running(tmp_path, **{TOKEN: ""}),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert refused.returncode != 0
+    assert REFUSAL in refused.stderr
+    assert not arguments.exists(), f"the uploader ran: {arguments.read_text()}"
