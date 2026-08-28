@@ -56,7 +56,8 @@ What each page shows and cites: `docs/viewer.md`; the routes: the modules `src/h
 - **Errors page** — every failed tool call of a session, on every thread, in order
 - **Records page** — one thread's raw records, verbatim
 - **Query page** — the SQL behind a page; every footer cites one
-- **Gallery** — recorded fixtures served as pages for UI work (`docs/ui-development.md`)
+- **Scenario** — one page of the fixture corpus by name: a URL, a title and a group, pinned in `tests/view/scenarios.py`
+- **Gallery** — the scenarios served as pages for UI work (`docs/ui-development.md`)
 
 ## Node-page anatomy
 
@@ -86,10 +87,11 @@ What each page shows and cites: `docs/viewer.md`; the routes: the modules `src/h
 
 ## Repo tooling
 
-The generators: `tools/`; how to write one and where a generated fact belongs: `docs/documentation.md`.
+The generators: `tools/`; how to write one and where a generated fact belongs: `docs/documentation.md`; the browser tier: `docs/ui-development.md`.
 
 - **Cog** — the splice `mise run cogs` performs: it runs the command a document names and pastes the output back into it
 - **Cog block** — one splice in one document: the two markers and the generated text between them
+- **Browser tier** — the Playwright specs under `tests/e2e/` that drive the gallery in a real Chromium; every other test the suite runs is the Python tier
 
 ## Qualify these words
 

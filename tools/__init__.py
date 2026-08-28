@@ -1,6 +1,6 @@
-"""The repo's own generators: the tables the docs cite, written from the code that owns them.
+"""The repo's own generators: what the code already owns, written back out for another reader.
 
-Each module here exposes `generate()` and a `main()` that prints it, and is run by an
-`aigarden:cog` block in the document that carries the table. Repo tooling rather than shipped
-code — nothing under `src/hyphae/` imports any of it.
+Each module here exposes `generate()` and a `main()`. Most print a table an `aigarden:cog` block
+splices into the document that carries it; `gen_e2e_routes` writes a file another runtime loads
+instead. Repo tooling rather than shipped code — nothing under `src/hyphae/` imports any of it.
 """

@@ -1,6 +1,6 @@
 # The UI development loop
 
-Edit a viewer template or stylesheet and see it in the browser without touching the browser. Two things make that a loop: `mise run gallery`, which serves every scenario the viewer tier pins, and `hp view --dev`, which reloads the open page when you save. What each page shows is in [the viewer guide](viewer.md); the conventions a template has to hold to are in `.claude/rules/viewer-ui.md`.
+Edit a viewer template or stylesheet and see it in the browser without touching the browser. Two things make that a loop: `mise run gallery`, which serves every scenario the viewer tier pins, and `hp view --dev`, which reloads the open page when you save. What each page shows is in [the viewer guide](viewer.md); the conventions a template has to hold to are in `.claude/rules/viewer-ui.md`. Those same pages are what the browser tier drives, which is the last section here.
 
 ## Open the scenario you are about to change
 
@@ -45,4 +45,18 @@ uv run hp view --dev
 
 ## Add a route and the gallery gains the page
 
-`SCENARIOS` has two readers: the viewer tier, which sweeps every URL in it and checks the keys against the routes the app declares, and the gallery, which lists it. A route added with no entry fails `tests/view/test_bounds.py`, and the entry that clears it is the page you can then open in the gallery. Neither side keeps a list of its own to drift.
+`SCENARIOS` has three readers: the viewer tier, which sweeps every URL in it and checks the keys against the routes the app declares; the gallery, which lists it; and `tools/gen_e2e_routes.py`, which writes it out for the browser tier. A route added with no entry fails `tests/view/test_bounds.py`, and the entry that clears it is the page you can then open in the gallery. No reader keeps a list of its own to drift.
+
+## Check the pages in a real browser
+
+```bash
+mise run e2e
+```
+
+Playwright drives a real Chromium over a gallery of its own on port 8479, started and stopped by the run, so a gallery or a viewer you already have open is left alone. The specs are TypeScript under `tests/e2e`, and `e2e` depends on `e2e-deps`, which installs the npm packages and the browser. It stays out of `mise run check` for the reason `mutate` does: it needs a browser.
+
+The tier owns only what a `TestClient` structurally cannot see — whether the console stayed empty under the viewer's `default-src 'self'`, and where an htmx swap actually landed. The Python tier goes on sweeping every scenario for 200 under budget, so nothing is proved twice. `tools/gen_e2e_routes.py` writes the scenario list out as `tests/e2e/routes.json` for a spec to read; run `uv run python -m tools.gen_e2e_routes` after adding a scenario, or the leaf that compares the checked-in file against `SCENARIOS` reds.
+
+A sweep also archives each full page — its DOM and every resource it fetched. `mise run e2e-chromatic` sends those archives to Chromatic, which renders each one in its own browser and diffs it against the project's baseline, so a font stack that differs between macOS and Linux never decides a diff. It wants `CHROMATIC_PROJECT_TOKEN` in `.env` or the environment and refuses before reaching the network without one (`tests/e2e/chromatic-upload.sh`). `.github/workflows/e2e.yml` runs the sweep and the upload on a pull request and on `main`; it is the only workflow in the repo holding a secret, and a fork's pull request runs everything but the upload rather than failing on a token it was never given.
+
+What goes up is the redacted fixture corpus rendered as pages, and nothing else can be: the gallery serves only the store it builds. That is what makes sending these pages to a third party acceptable at all.

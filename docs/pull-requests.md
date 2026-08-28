@@ -98,6 +98,6 @@ Before opening the PR, check:
 - [ ] Every behavior change has safe evidence
 - [ ] Any Mermaid block in the exact final body passed `mise run diagram-check <file>`
 
-After opening the PR, watch CI until it finishes green. CI runs `mise run check` on Linux through `.github/workflows/check.yml`, which may expose differences hidden by your machine. Poll a workflow run that can terminate: get its run ID, then run `gh run view <id> --json status` until the status is `completed`. Don't poll for the absence of pending checks; that state may never arrive.
+After opening the PR, watch CI until it finishes green. Two workflows answer: `.github/workflows/check.yml` runs `mise run check` on Linux, which may expose differences hidden by your machine, and `.github/workflows/e2e.yml` runs the browser tier and uploads its pages to Chromatic ([the UI development guide](ui-development.md)). Poll a workflow run that can terminate: get its run ID, then run `gh run view <id> --json status` until the status is `completed`. Don't poll for the absence of pending checks; that state may never arrive.
 
 Land with a fast-forward: `git switch main && git merge --ff-only <branch>`. Don't use GitHub's “Rebase and merge”; it creates new SHAs that weren't tested.
