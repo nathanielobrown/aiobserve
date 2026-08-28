@@ -21,15 +21,21 @@ from hyphae.view.app import PORT
 from hyphae.view.dev import RELOAD_URL
 from tests.conftest import build_enriched_store
 from tests.gallery import serve
-from tests.view.scenarios import SCENARIOS
+from tests.view.scenarios import SCENARIOS, Group
 from tests.view.test_dev import TAG, declared
 
 REPO = Path(__file__).resolve().parents[2]
 
-# One row of the index: the route it stands for, and where clicking it goes. Read as a pair
-# because the obligation is that the two agree — a link set alone passes with every row
-# pointing at the same page.
-LINK = re.compile(r'<a data-scenario="([^"]+)" href="([^"]+)"')
+# One row of the index: the route it stands for, where clicking it goes, the words it is named
+# by, and the route printed beside the name. Read whole because the obligation is that they
+# agree — a link set alone passes with every row pointing at the same page.
+LINK = re.compile(
+    r'<a data-scenario="([^"]+)"\s+href="([^"]+)">\s*([^<]+?)\s*</a>\s*<code>\s*([^<]+?)\s*</code>'
+)
+
+# And the heading a run of rows sits under. Split on rather than searched for: a row's group is
+# the last heading above it, which is all the page says about where the row belongs.
+HEADING = re.compile(r"<h2[^>]*>\s*([^<]+?)\s*</h2>")
 
 # The three tables an enrichment pass writes, beside the one the extractor does. Counted on
 # both sides of the builder below, because "the same store" is a claim about rows.
@@ -43,15 +49,37 @@ def gallery(enriched_db: Path) -> Iterator[TestClient]:
         yield client
 
 
+def listed(html: str) -> list[tuple[str, str, str, str, str]]:
+    """Every row of the served index in page order: heading, route, URL, title, printed route.
+
+    `re.split` on a pattern with one group yields the text before the first heading, then the
+    heading and the rows under it in pairs — so the pairing that makes a group readable is the
+    splitting, not a second walk.
+    """
+    parts = HEADING.split(html)
+    return [
+        # Read back as text: a URL with two query knobs carries `&amp;` in an attribute, and a
+        # title with an apostrophe in it carries `&#39;` on the page.
+        (heading, unescape(route), unescape(url), unescape(title), unescape(printed))
+        for heading, rows in zip(parts[1::2], parts[2::2], strict=True)
+        for route, url, title, printed in LINK.findall(rows)
+    ]
+
+
 def test_the_index_offers_one_link_per_scenario_and_nothing_else(gallery: TestClient) -> None:
     """The index is the tier's scenario list rendered, not a second registry beside it.
 
-    Route name and URL, paired and in registry order: an entry that lost its link, gained one
-    the sweep does not cover, or points somewhere other than where it is named, fails here.
+    Every row whole, under its group's heading and in registry order: an entry that lost its
+    link, gained one the sweep does not cover, is named what another row is named, or points
+    somewhere other than where it says, fails here. The headings come in `Group` order, and a
+    row prints the route it stands for beside the title a reader picks it by.
     """
-    # `unescape` because a URL with two query knobs carries `&amp;` in an attribute.
-    linked = [(route, unescape(url)) for route, url in LINK.findall(gallery.get(serve.INDEX).text)]
-    assert linked == [(route, scenario.url) for route, scenario in SCENARIOS.items()]
+    assert listed(gallery.get(serve.INDEX).text) == [
+        (group.value, route, scenario.url, scenario.title, route)
+        for group in Group
+        for route, scenario in SCENARIOS.items()
+        if scenario.group is group
+    ]
 
 
 def test_the_gallery_cannot_be_pointed_at_a_store() -> None:

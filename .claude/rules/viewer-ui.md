@@ -163,7 +163,7 @@ Witnessed in a real Chromium on 2026-08-25, over a store built from the `resume_
 
 `mise run gallery` (`tests/gallery/serve.py`) builds a store from the redacted fixtures, serves it under `--dev`, and lists `tests/view/scenarios.py:SCENARIOS` at `/gallery`. One link per entry and no others, so the page a person walks is the list the tier sweeps.
 
-Witnessed in a real Chromium on 2026-08-25 on the gallery's own port 8478 — never 8477, which is a live viewer. The index came up with 35 rows, one per `ROUTES` entry; clicking the turn-node link landed on that node's page with its NavTree (17 rows) and its pane rendered, the reload script on it, and no console error.
+Witnessed in a real Chromium on 2026-08-25 on the gallery's own port 8478 — never 8477, which is a live viewer. The index came up with 35 rows, one per `SCENARIOS` entry; clicking the turn-node link landed on that node's page with its NavTree (17 rows) and its pane rendered, the reload script on it, and no console error.
 
 A browser check of any page here cannot use Playwright's `wait_for_function`: it evaluates a string as script, and the CSP refuses that. Wait on a selector instead.
 

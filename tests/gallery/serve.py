@@ -21,7 +21,7 @@ from starlette.templating import Jinja2Templates
 from hyphae.view.app import DEV_SHUTDOWN_SECONDS, HOST, build_app, claim
 from hyphae.view.templating import TEMPLATES
 from tests.conftest import build_enriched_store
-from tests.view.scenarios import SCENARIOS
+from tests.view.scenarios import SCENARIOS, Group, Scenario
 
 # Where the index lives. Not `/`: that is the projects page and a scenario in its own right.
 INDEX = "/gallery"
@@ -32,6 +32,20 @@ INDEX = "/gallery"
 PORT = 8478
 
 _GALLERY = Path(__file__).parent
+
+
+def grouped() -> dict[Group, list[tuple[str, Scenario]]]:
+    """The scenario list under its headings: groups in `Group` order, rows in registry order.
+
+    Read here rather than in the template because Jinja's `groupby` sorts by the value it
+    groups on, and the order the headings come in is the order `Group` declares them.
+    """
+    return {
+        group: [
+            (route, scenario) for route, scenario in SCENARIOS.items() if scenario.group is group
+        ]
+        for group in Group
+    }
 
 
 def gallery(store: Path) -> FastAPI:
@@ -45,7 +59,7 @@ def gallery(store: Path) -> FastAPI:
 
     @app.get(INDEX)
     def index(request: Request) -> Response:
-        return templates.TemplateResponse(request, "index.html", {"scenarios": SCENARIOS})
+        return templates.TemplateResponse(request, "index.html", {"grouped": grouped()})
 
     return app
 
