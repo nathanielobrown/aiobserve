@@ -20,7 +20,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tests.conftest import FORK_ORIGIN, MAIN, SPINE
-from tests.view.conftest import fields, inside, kin, one, pages, plain, rows, values
+from tests.view.conftest import fields, inside, kin, one, pages, plain, under, values
 
 
 class Page:
@@ -38,14 +38,12 @@ class Page:
     def levels(self) -> list[list[str]]:
         """Each open level of the NavTree, outermost first — the level each crumb stands in.
 
-        The NavTree opens one path, so the rows at depth `d` are the whole of the level the
-        `d`-th crumb sits in and nothing else. A cap would cut one, which is why the sweep
-        checks no level was cut before reading a level off a page.
+        By containment and not by depth: a shut row stands the runs it hides one deeper than
+        itself, so a depth is no longer a level. What a crumb draws directly under it is the
+        level its own child sits in. A cap would cut one, which is why the sweep checks no
+        level was cut before reading a level off a page.
         """
-        found: dict[int, list[str]] = {}
-        for depth, key in rows(self.html):
-            found.setdefault(depth, []).append(key)
-        return [found[depth] for depth in range(len(self.chain))]
+        return [[self.chain[0]], *(under(self.html, crumb) for crumb in self.chain[:-1])]
 
     @property
     def expected(self) -> dict[str, tuple[str, bool] | None]:

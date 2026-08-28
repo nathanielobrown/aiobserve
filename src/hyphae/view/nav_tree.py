@@ -123,26 +123,30 @@ def ancestry(corpus: Corpus, trail: Sequence[Ref]) -> list[Ref]:
     `bounds.DEPTH` rather than opening a chain the response was never priced for.
     """
     whole = list(trail)
-    while (parent := _parent(corpus, whole[0])) is not None:
-        whole.insert(0, parent)
+    while above := _parents(corpus, whole[0]):
+        whole[:0] = above
         if len(whole) > bounds.DEPTH:
             raise ValueError(f"a chain deeper than {bounds.DEPTH} is not a page this serves")
     return whole
 
 
-def _parent(corpus: Corpus, ref: Ref) -> Ref | None:
-    """Where one node hangs, or None for the session, which hangs nowhere."""
+def _parents(corpus: Corpus, ref: Ref) -> list[Ref]:
+    """The steps above one node, outermost first — none for the session, which hangs nowhere.
+
+    More than one where a node hangs off rows its own header cannot name: a run sits under the
+    tool call that spawned it, under that call's api call, under the turn the call answered.
+    """
     match ref.kind:
         case Kind.SESSION:
-            return None
+            return []
         case Kind.UNATTACHED:
-            return Ref(Kind.SESSION, None, corpus.session_id)
+            return [Ref(Kind.SESSION, None, corpus.session_id)]
         # A compaction reaches here only where it happened between two turns: one that
         # happened during a turn is that turn's child, and its page seeds the turn.
         case Kind.TURN | Kind.COMPACTION | Kind.UNATTRIBUTED:
-            return _thread_parent(corpus, str(ref.source))
+            return [_thread_parent(corpus, str(ref.source))]
         case Kind.RUN:
-            return _run_parent(corpus, ref.node_id)
+            return _run_parents(corpus, ref.node_id)
         case Kind.CALL | Kind.TOOL:
             raise ValueError(f"a {ref.kind} node's header names its parent; seed the trail")
 
@@ -154,19 +158,27 @@ def _thread_parent(corpus: Corpus, source: str) -> Ref:
     return Ref(Kind.RUN, source, source)
 
 
-def _run_parent(corpus: Corpus, run_id: str) -> Ref:
-    """Where a run hangs, by the spawning edge alone — the two buckets are disjoint by it.
+def _run_parents(corpus: Corpus, run_id: str) -> list[Ref]:
+    """The rows a run hangs under, by the spawning edge alone: its turn, api call and tool call.
 
-    A resolved spawning call under a turn puts the run under that turn; one under no turn puts
-    it in that thread's unattributed bucket; no spawning call at all puts it in the session's
-    unattached bucket. A run the session does not hold is unattached for the same reason.
+    A resolved spawning call puts the run under the tool row that asked for it, under the call
+    that ran the tool, under the turn that call answered — or that thread's unattributed
+    bucket, where the call answered none. No spawning call at all puts the run in the session's
+    unattached bucket with no row in between, and a run the session does not hold reads the
+    same way. The two buckets stay disjoint by the same edge.
+
+    One resolved edge resolves all three: `view_runs` reaches the turn through the tool call
+    and its api call, so a spawn source is what says the rows above exist.
     """
     row = next((run for run in corpus.runs if run["run_id"] == run_id), None)
     if row is None or row["spawn_source"] is None:
-        return Ref(Kind.UNATTACHED, None, corpus.session_id)
-    if row["spawn_turn_id"] is None:
-        return Ref(Kind.UNATTRIBUTED, row["spawn_source"], row["spawn_source"])
-    return Ref(Kind.TURN, row["spawn_source"], row["spawn_turn_id"])
+        return [Ref(Kind.UNATTACHED, None, corpus.session_id)]
+    source = str(row["spawn_source"])
+    return [
+        home(source, row["spawn_turn_id"]),
+        Ref(Kind.CALL, source, row["spawn_call_id"]),
+        Ref(Kind.TOOL, source, row["tool_use_id"]),
+    ]
 
 
 class Standing(NamedTuple):
@@ -179,7 +191,7 @@ class Standing(NamedTuple):
 def home(source: str, turn_id: str | None) -> Ref:
     """Where an api call sits: under the turn it answers, else in its thread's bucket.
 
-    The disjointness rule at the call, which `_run_parent` reads one edge further out for the
+    The disjointness rule at the call, which `_run_parents` reads one edge further out for the
     run that call spawned. A NULL turn is a home rather than a missing one.
     """
     if turn_id is None:
@@ -284,7 +296,7 @@ def _interleave[T](
 
 def _marks(
     connection: duckdb.DuckDBPyConnection, corpus: Corpus, source: str, turn_id: str | None
-) -> tuple[list[tuple[tuple[str, Node], dt.datetime]], Ran]:
+) -> tuple[list[tuple[Node, dt.datetime]], Ran]:
     """One turn's compactions, paired with their ids the way a level's own rows are.
 
     A compaction is a child of the turn it happened during, so a turn's level holds its own —
@@ -300,10 +312,7 @@ def _marks(
     }
     rows = page_rows(connection, Page.COMPACTIONS, **keyed)
     return [
-        (
-            (row["compaction_id"], compaction_node(corpus.session_id, source, row)),
-            row["timestamp"],
-        )
+        (compaction_node(corpus.session_id, source, row), row["timestamp"])
         for row in rows
         if row["turn_id"] == turn_id
     ], [(Page.COMPACTIONS, keyed)]
@@ -326,55 +335,71 @@ def _spawned(corpus: Corpus, source: str, turn_id: str | None) -> list[Row]:
     ]
 
 
-def _hoisted(
-    corpus: Corpus, placed: Sequence[tuple[str, Node]], spawned: Sequence[Row], edge: str
-) -> list[Node]:
-    """One level's rows with each run dropped in after the row its spawning edge names.
+def _hanging(corpus: Corpus, at: Ref) -> list[Row]:
+    """The runs a closed row hides: the ones the rows under it would have led to.
 
-    `placed` pairs each row's id with its node, and `edge` is the run column naming one — the
-    api call under `full`, the tool call under `noapi`, which is what the preset leaves
-    showing. A run whose row this level does not hold still belongs to the node the level
-    hangs under, so it trails the level: dropping it would lose a run the NavTree is the only
-    way to.
+    The spawning edge and nothing else, in every preset — the same edge each cell places a run
+    by, so the copy a closed row stands and the copy an open one shows are never both drawn.
+    A session is the root of every page and a compaction the end of every path, so neither
+    hides anything.
     """
-    waiting: dict[str, list[Row]] = {}
-    for run in spawned:
-        waiting.setdefault(run[edge], []).append(run)
-    level: list[Node] = []
-    for row_id, node in placed:
-        level.append(node)
-        level.extend(_runs(corpus, waiting.pop(row_id, [])))
-    for leftover in waiting.values():
-        level.extend(_runs(corpus, leftover))
-    return level
+    match at.kind:
+        case Kind.TURN:
+            return _spawned(corpus, str(at.source), at.node_id)
+        case Kind.UNATTRIBUTED:
+            return _spawned(corpus, str(at.source), None)
+        case Kind.CALL:
+            return [
+                run
+                for run in corpus.runs
+                if run["spawn_call_id"] == at.node_id and run["spawn_source"] == at.source
+            ]
+        case Kind.TOOL:
+            return _tool_spawned(corpus, at)
+        # A run hides whatever its own thread spawned, which is what its turns would show.
+        case Kind.RUN:
+            return [run for run in corpus.runs if run["spawn_source"] == at.node_id]
+        case Kind.UNATTACHED:
+            return [run for run in corpus.runs if run["spawn_source"] is None]
+        case Kind.SESSION | Kind.COMPACTION:
+            return []
+
+
+def spread(corpus: Corpus, node: Node, depth: int) -> list[NavTreeRow]:
+    """The runs one closed row owes the reader, each under the nearest row that is showing.
+
+    A run is always visible: where every row between it and the call that spawned it is shut,
+    it renders under the deepest one that is not, and the runs under it render under it. So
+    opening a row moves a run's indent rather than bringing the run into being.
+    """
+    rows: list[NavTreeRow] = []
+    for run in _runs(corpus, _hanging(corpus, node.ref)):
+        rows.append(NavTreeRow(run, depth, selected=False))
+        rows.extend(spread(corpus, run, depth + 1))
+    return rows
 
 
 def _calls_level(
     connection: duckdb.DuckDBPyConnection, corpus: Corpus, source: str, turn_id: str | None
 ) -> Level:
-    """The api calls under one turn, its compactions among them, each run hoisted after the
-    call that spawned it.
+    """The api calls under one turn, with its compactions among them.
 
-    `turn_id` NULL is the unattributed bucket's level — the calls that answer no turn, and the
-    runs those calls spawned. One function for both because the two differ by that binding.
+    `turn_id` NULL is the unattributed bucket's level — the calls that answer no turn. One
+    function for both because the two differ by that binding. No run is here: a run hangs
+    under the tool call that spawned it, two levels down, and `spread` is what stands it
+    against a shut row.
     """
     keyed: dict[str, ParamValue] = {"session_id": corpus.session_id, "source": source}
     bound = keyed | {"turn_id": turn_id, "nav_chars": queries.NAV_CHARS}
     calls = page_rows(connection, Page.NAV_TREE_CALLS, **bound)
     marks, mark_ran = _marks(connection, corpus, source, turn_id)
-    # Each row keyed by its own id, which is what `_hoisted` reads to place a run after the
-    # call that spawned it. A compaction's id answers no spawning edge, so it just passes.
-    placed = _interleave(
+    level = _interleave(
         [
-            (
-                (row["api_call_id"], call_node(corpus.session_id, source, row, corpus.whole)),
-                row["started_at"],
-            )
+            (call_node(corpus.session_id, source, row, corpus.whole), row["started_at"])
             for row in calls
         ],
         marks,
     )
-    level = _hoisted(corpus, placed, _spawned(corpus, source, turn_id), "spawn_call_id")
     return Level(level, [(Page.NAV_TREE_CALLS, bound), *mark_ran])
 
 
@@ -388,9 +413,8 @@ def _tools_level(
     """The tool calls under one api call, or — at `api_call_id` NULL — under one turn.
 
     The second is `noapi`'s level: the api calls are folded away, so their tool calls stand
-    under the turn in call-then-tool order with each run hoisted after the tool call that
-    spawned it, and the turn's compactions interleave by time. A call's own level hoists
-    nothing and holds no compaction, because both hang off the turn.
+    under the turn in call-then-tool order and the turn's compactions interleave by time. A
+    call's own level holds no compaction, because that hangs off the turn.
     """
     bound: dict[str, ParamValue] = {
         "session_id": corpus.session_id,
@@ -402,17 +426,11 @@ def _tools_level(
     rows = page_rows(connection, Page.NAV_TREE_TOOLS, **bound)
     under = None if api_call_id is not None else turn_id
     marks, mark_ran = _marks(connection, corpus, source, under)
-    placed = _interleave(
-        [
-            ((row["tool_call_id"], tool_node(corpus.session_id, source, row)), row["started_at"])
-            for row in rows
-        ],
+    level = _interleave(
+        [(tool_node(corpus.session_id, source, row), row["started_at"]) for row in rows],
         marks,
     )
-    spawned = [] if api_call_id is not None else _spawned(corpus, source, turn_id)
-    return Level(
-        _hoisted(corpus, placed, spawned, "tool_use_id"), [(Page.NAV_TREE_TOOLS, bound), *mark_ran]
-    )
+    return Level(level, [(Page.NAV_TREE_TOOLS, bound), *mark_ran])
 
 
 def _unattached_level(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) -> Level:
@@ -428,6 +446,25 @@ def _unattached_level(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at:
 def _leaf(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) -> Level:
     """A node nothing hangs under: a tool call, and a compaction."""
     return Level([], [])
+
+
+def _tool_spawned(corpus: Corpus, at: Ref) -> list[Row]:
+    """The runs one tool call spawned, matched on the thread for the same reason as the call."""
+    return [
+        run
+        for run in corpus.runs
+        if run["tool_use_id"] == at.node_id and run["spawn_source"] == at.source
+    ]
+
+
+def _tool_runs(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) -> Level:
+    """What hangs under a ⇄ tool call in every preset: the run it asked for.
+
+    The one level no preset filters. A run is nested under the tool call that spawned it, so
+    this is where a run comes from wherever the tree is read; the presets differ only in how
+    many rows they leave standing between the two.
+    """
+    return Level(_runs(corpus, _tool_spawned(corpus, at)), [])
 
 
 # The `agents` preset's levels, which read nothing: a run is placed by an edge `view_runs`
@@ -463,16 +500,6 @@ def _agent_call(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) 
         run
         for run in corpus.runs
         if run["spawn_call_id"] == at.node_id and run["spawn_source"] == at.source
-    ]
-    return Level(_runs(corpus, placed), [])
-
-
-def _agent_tool(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) -> Level:
-    """The run one tool call spawned, matched on the thread for the same reason as the call."""
-    placed = [
-        run
-        for run in corpus.runs
-        if run["tool_use_id"] == at.node_id and run["spawn_source"] == at.source
     ]
     return Level(_runs(corpus, placed), [])
 
@@ -527,9 +554,9 @@ CHILDREN: dict[tuple[Kind, Preset], Builder] = {
     (Kind.CALL, Preset.FULL): _call_tools,
     (Kind.CALL, Preset.NO_API): _call_tools,
     (Kind.CALL, Preset.AGENTS): _agent_call,
-    (Kind.TOOL, Preset.FULL): _leaf,
-    (Kind.TOOL, Preset.NO_API): _leaf,
-    (Kind.TOOL, Preset.AGENTS): _agent_tool,
+    (Kind.TOOL, Preset.FULL): _tool_runs,
+    (Kind.TOOL, Preset.NO_API): _tool_runs,
+    (Kind.TOOL, Preset.AGENTS): _tool_runs,
     (Kind.COMPACTION, Preset.FULL): _leaf,
     (Kind.COMPACTION, Preset.NO_API): _leaf,
     (Kind.COMPACTION, Preset.AGENTS): _leaf,
@@ -593,6 +620,7 @@ def nav_tree(
     def expand(node: Node, depth: int) -> None:
         rows.append(NavTreeRow(node, depth, selected=node.key == selection))
         if node.key not in open_keys:
+            rows.extend(spread(corpus, node, depth + 1))
             return
         chain.append(node)
         at = open_keys.index(node.key) + 1

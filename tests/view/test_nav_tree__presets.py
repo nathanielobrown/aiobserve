@@ -24,6 +24,7 @@ from tests.view.conftest import (
     kin,
     one,
     rows,
+    under,
     values,
 )
 from tests.view.nav_trees import (
@@ -104,12 +105,10 @@ def mounted_kind(mount: str) -> str:
     return mount.partition("?")[0].rsplit("/", 2)[1]
 
 
-# The cells no recorded session fills, which is not the same claim as an empty cell. A tool
-# call and a compaction are leaves by the table; the bucket's `agents` cell is one the corpus
-# happens not to reach, and the planted leaf below is what reaches it.
+# The cells no recorded session fills, which is not the same claim as an empty cell. A
+# compaction is a leaf by the table; the bucket's `agents` cell is one the corpus happens not
+# to reach, and the planted leaf below is what reaches it.
 UNFILLED = {
-    (Kind.TOOL, Preset.FULL),
-    (Kind.TOOL, Preset.NO_API),
     *((Kind.COMPACTION, preset) for preset in Preset),
     (Kind.UNATTRIBUTED, Preset.AGENTS),
 }
@@ -163,7 +162,10 @@ def test_every_open_level_is_its_own_cell_or_the_full_one_that_holds_the_path(
             chain, drawn = values(html, "data-crumb"), rows(html)
             assert drawn[0] == (0, chain[0]), at
             for depth, (crumb_kind, *arguments) in enumerate(sited(at[0], chain)):
-                below = [key for at_depth, key in drawn if at_depth == depth + 1]
+                # The rows under this step of the path, by containment rather than by depth: a
+                # shut row anywhere on the page stands the runs it hides at its own depth plus
+                # one, and one of those depths is this level's.
+                below = under(html, chain[depth])
                 expected = cell(store, preset, crumb_kind, *arguments)
                 if depth + 1 < len(chain) and chain[depth + 1] not in expected:
                     expected = cell(store, Preset.FULL, crumb_kind, *arguments)
