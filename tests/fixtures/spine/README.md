@@ -83,6 +83,7 @@ are as recorded, and nothing else under `input` is:
 
 **The sensitivity call.** Each kept value was read before it was kept. They are paths inside the
 recording machine's own checkout of mycelia — a public-shaped repository layout, issue filenames and
-a directory listing — and the role words out of that repo's `.claude/agents/`. No credential, no
-customer data, and no prose anyone wrote: `prompt`, `message`, tool results and file contents stay
-`[redacted]`, because those are what an agent read and wrote.
+a directory listing — and the role words out of that repo's `.claude/agents/`. No credential and no
+customer data. The prose that is kept is the five `description` lines above, each an agent's own
+label for what it was about to do and each read before it was kept. What an agent was told or read
+back stays `[redacted]`: `prompt`, `message`, tool results and file contents.

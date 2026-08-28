@@ -686,6 +686,12 @@ def windowed(under: Sequence[Node], cap: int, open_keys: Sequence[str]) -> Windo
 
     One rule for both halves: the tail row fetches what it says it left out, and the two would
     drift apart if the fetch counted the window a second way.
+
+    A run under a cut child goes under with it, the one place "a run is always visible" stops:
+    `spread` runs on the rows a page rendered, and the tail row's `+N` counts the level's own
+    children, so nothing on the page says a run is behind the cut. The fetch stands it
+    (`view/expansions.py`), so it is a click away. Accepted at that: the widest level the
+    corpus records is 5 children, so a level of `KIN` shut rows hiding a run is unrecorded.
     """
     rescued = [node for node in under[cap:] if node.key in open_keys]
     shown = list(under[: max(cap - len(rescued), 0)])
