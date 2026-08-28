@@ -16,6 +16,7 @@ from hyphae.analyze.queries import (
     CHIP_CHARS_PARAM,
     CHUNK_CHARS,
     COMMAND_HEAD_CHARS,
+    COMPACTION_ID,
     DETAIL_CHARS_PARAM,
     DRAW_SEED,
     ENRICHMENT_CHARS,
@@ -365,6 +366,17 @@ QUERIES: dict[str, Query] = {
             "node_id": NODE_ID,
             "kind": NODE_KIND,
             "model_chars": Param(type=ParamType.INTEGER, default=MODEL_CHARS),
+        },
+    ),
+    # And the compaction, which is made of no api calls either — what it has is the window it
+    # dropped, off the boundary record itself.
+    "view_numbers_compaction": Query(
+        scope=Scope.KEYED,
+        params={
+            "session_id": SESSION_ID,
+            "source": SOURCE,
+            "compaction_id": COMPACTION_ID,
+            "chip_chars": CHIP_CHARS_PARAM,
         },
     ),
     "view_numbers_tool": Query(

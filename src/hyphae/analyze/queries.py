@@ -77,12 +77,14 @@ class Query:
 # sensible default — a timeline of "some session" is not a question anyone asked.
 SESSION_ID = Param(type=ParamType.TEXT, default=REQUIRED)
 SOURCE = Param(type=ParamType.TEXT, default=REQUIRED)
-# Which turn, which run, which api call, which tool call. Keys for the same reason, one
-# level down: a node's own query is about that node, so absence cannot stand in for its id.
+# Which turn, which run, which api call, which tool call, which compaction. Keys for the same
+# reason, one level down: a node's own query is about that node, so absence cannot stand in for
+# its id.
 TURN_ID = Param(type=ParamType.TEXT, default=REQUIRED)
 RUN_ID = Param(type=ParamType.TEXT, default=REQUIRED)
 API_CALL_ID = Param(type=ParamType.TEXT, default=REQUIRED)
 TOOL_CALL_ID = Param(type=ParamType.TEXT, default=REQUIRED)
+COMPACTION_ID = Param(type=ParamType.TEXT, default=REQUIRED)
 # And the pair a query serving every kind of node takes instead: whichever id the node carries,
 # and the word saying what kind of id it is. `view_numbers` is the one query written that way —
 # what a node's numbers are made of differs by kind, and four files answering one question are

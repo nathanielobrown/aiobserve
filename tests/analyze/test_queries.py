@@ -21,6 +21,8 @@ from hyphae.export.duckdb import TABLES
 from tests.analyze.conftest import AS_OF_WHOLE, QueryRunner
 from tests.conftest import (
     ANCESTOR,
+    COMPACTED,
+    COMPACTED_BOUNDARY,
     CONFIG_ONLY,
     DENSE_CALL,
     DENSE_CALL_TURN,
@@ -118,6 +120,12 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
         "session_id": FORK_ORIGIN,
         "source": FORK_ORIGIN_RUN,
         "tool_call_id": DENSE_TOOL,
+    },
+    # And the compaction's, at the first of `compaction/`'s two recorded boundaries.
+    "view_numbers_compaction": {
+        "session_id": COMPACTED,
+        "source": MAIN,
+        "compaction_id": COMPACTED_BOUNDARY,
     },
     # The records browser, at the corpus's densest recorded thread — 47 archived records, so
     # the default page of 100 answers with more than one row and the turn join with several.

@@ -336,10 +336,11 @@ KIN_URL = "/fragment/kin"
 # (`Node.numbers`). Its own path under a prefix, like `expansion`: a popover is about one node.
 NUMBERS_URL = "/fragment/numbers"
 
-# The kinds that have numbers to show. Everything made of api calls, plus the tool call, which
-# is made of none and prints what it gave back instead. A compaction and the two buckets are
-# absent: a bucket is a place rather than a node, and a compaction's own record is its page.
-NUMBERED = frozenset({Kind.SESSION, Kind.TURN, Kind.RUN, Kind.CALL, Kind.TOOL})
+# The kinds that have numbers to show: every kind that stands for a row of the store. Most are
+# made of api calls; the tool call prints what it gave back instead, and the compaction the
+# window it dropped. Only the two buckets are absent, because a bucket is a place rather than a
+# node and there is no row under it to count.
+NUMBERED = frozenset({Kind.SESSION, Kind.TURN, Kind.RUN, Kind.CALL, Kind.TOOL, Kind.COMPACTION})
 
 
 @dataclass(frozen=True)
