@@ -19,8 +19,11 @@ const SESSION = "/session/{session_id}";
 const TURN = "/session/{session_id}/thread/{source}/turn/{turn_id}";
 const TOOL = "/session/{session_id}/thread/{source}/tool/{tool_call_id}";
 const UNATTACHED = "/session/{session_id}/unattached";
+const COMPACTION = "/session/{session_id}/thread/{source}/compaction/{compaction_id}";
 const SESSION_NUMBERS = "/fragment/numbers/session/{session_id}";
 const RUN_NUMBERS = "/fragment/numbers/session/{session_id}/run/{run_id}";
+const COMPACTION_NUMBERS =
+  "/fragment/numbers/session/{session_id}/thread/{source}/compaction/{compaction_id}";
 
 // What the popover rides on, counted through `page.on('request')`.
 const NUMBERS = "/fragment/numbers/";
@@ -147,8 +150,8 @@ test("pointing at a row fetches its popover once and stands it at the row's top"
   });
   await page.goto(scenario(SESSION).url);
 
-  // ...and a reader points at one row of each kind that carries numbers — a session's, a turn's
-  // and an agent run's, the three routes the popover is served under...
+  // ...and a reader points at one row of each kind the session's own tree carries — a session's,
+  // a turn's and an agent run's, three of the four routes the popover is served under...
   const wanted: string[] = [];
   for (const kind of ["session", "turn", "run"]) {
     const row = page.locator(`#nav-tree li.node.${kind}`).first();
@@ -180,6 +183,22 @@ test("pointing at a row fetches its popover once and stands it at the row's top"
   expect(fetched).toEqual(wanted);
   // ...and a second one would have stood beside the first, since the swap appends.
   await expect(first.locator(".popover")).toHaveCount(1);
+
+  // A compaction's row answers the same way, on the page that opens one — the session above
+  // carries no row of that kind. It is the fourth route the popover is served under, and the
+  // one whose numbers are what a rewrite of the context freed rather than what a node spent.
+  const before = fetched.length;
+  await page.goto(scenario(COMPACTION).url);
+  // The selected row, which `static/nav-tree.js` centres in the scroller on the way in — so it
+  // stands on screen without a scroll of ours, and the fetch it carries is the scenario's own.
+  const compaction = page.locator("#nav-tree li.node.compaction[data-selected]");
+  const box = (await compaction.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  const standing = compaction.locator(".popover");
+  await expect(standing, "no popover came back for a compaction row").toBeVisible();
+  const where = (await standing.boundingBox())!;
+  expect(Math.abs(where.y - box.y), "the compaction popover missed its row").toBeLessThan(2);
+  expect(fetched.slice(before)).toEqual([scenario(COMPACTION_NUMBERS).url]);
   expect(problems, problems.join("\n  ")).toEqual([]);
 });
 
