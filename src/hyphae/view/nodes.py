@@ -160,6 +160,10 @@ class Context(NamedTuple):
     added: int | None
     # The window that call's model answers in (`extract/pricing.py:CONTEXT_WINDOWS`).
     window: int
+    # The context the session opened on: what its first main-thread call sent before a word had
+    # been said — the system prompt, the project's instructions, the tools' definitions. Only a
+    # turn carries one, because only a turn's growth is worth reading against it.
+    base: int | None = None
 
 
 @dataclass(frozen=True)
@@ -375,9 +379,13 @@ class Node:
     # other kind, whose title is all one piece.
     tail: str = ""
     # Where the node left the model's context window, or None for a node that ends on no
-    # window at all: a tool call, a compaction, a bucket, and any node whose model our table
-    # holds no window for.
+    # window at all: a tool call, a bucket, and any node whose model our table holds no
+    # window for.
     context: Context | None = None
+    # Whether the node's own thread ran its window out. Only ever True for a `Kind.RUN`: a
+    # subagent that compacted did so unasked and unseen, and the bar is where the reader who
+    # is wondering why its answer thinned out finds out (`docs/viewer.md`).
+    maxed: bool = False
 
     @property
     def icon(self) -> str:
@@ -548,16 +556,36 @@ class Node:
     def bar(self) -> str:
         """The classes this node's context bar is drawn with, or nothing where it has none.
 
-        Two of them: how full the window was when the node ended, and how much of that the node
-        itself put there. A session draws the fill alone — nothing ran before it for the tip to
-        measure against.
+        Up to three edges, each a prefix of the one outside it: where the window stood when the
+        node ended, where the node's own share of it begins, and — on a turn — where the
+        conversation begins, which is the context the session opened on. A session draws the
+        fill alone: nothing ran before it for a band to measure against.
+
+        The nesting is arithmetic here rather than paint order in the stylesheet, so a reader
+        of the markup and a reader of the page see the same bar. A turn's base runs past its
+        prior wherever the conversation is younger than the prompt it opened on — the session's
+        first turn, every time — and holding the inner edge at the outer one is what draws that
+        turn as the prompt it mostly is rather than as growth it mostly is not.
+
+        `maxed` rides beside them, and alone where a run's own thread compacted without leaving
+        a window to draw against: what it says is that the run ran out, which is a fact about
+        the thread rather than a share of anything.
         """
         if self.context is None:
-            return ""
-        drawn = f"f{_bar_step(self.context.fill, self.context.window)}"
-        if self.context.added is None:
-            return drawn
-        return f"{drawn} t{_bar_step(self.context.added, self.context.window)}"
+            return "maxed" if self.maxed else ""
+        window = self.context.window
+        fill = _bar_step(self.context.fill, window)
+        drawn = [f"f{fill}"]
+        base = min(_bar_step(self.context.base, window), fill) if self.context.base else None
+        if self.context.added is not None:
+            stood = max(self.context.fill - self.context.added, 0)
+            prior = min(_bar_step(stood, window), fill)
+            drawn.append(f"p{max(prior, base or 0)}")
+        if base is not None:
+            drawn.append(f"b{base}")
+        if self.maxed:
+            drawn.append("maxed")
+        return " ".join(drawn)
 
 
 def _bar_step(tokens: int, window: int) -> int:

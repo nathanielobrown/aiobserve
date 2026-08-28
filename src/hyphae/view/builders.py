@@ -37,7 +37,14 @@ def _context(row: Row) -> Context | None:
     held = row.get("context")
     if held is None or held["fill"] is None or held["window"] is None:
         return None
-    return Context(fill=held["fill"], added=held["added"], window=held["window"])
+    return Context(
+        fill=held["fill"],
+        added=held["added"],
+        window=held["window"],
+        # Only the query behind a turn returns one: only a turn's own growth is worth reading
+        # against the context its session opened on.
+        base=held.get("base"),
+    )
 
 
 def _share(cost: float | None, whole: float) -> float | None:
@@ -123,6 +130,8 @@ def run_node(session_id: str, row: Row, held: Ledger, described: str | None) -> 
         unpriced_api_calls=row["unpriced_api_calls"],
         enriched=described is not None,
         context=_context(row),
+        # A run that compacted ran its window out, whatever the last call it made says it held.
+        maxed=row["compactions"] > 0,
     )
 
 
@@ -222,6 +231,9 @@ def compaction_node(session_id: str, source: str, row: Row) -> Node:
         words=_words(f"compaction · {row['trigger']}"),
         spend=NO_SPEND,
         unpriced_api_calls=0,
+        # The one node whose bar reads backwards: what it freed, between the two fills it
+        # recorded, against the window of the call its thread made nearest to it.
+        context=_context(row),
     )
 
 

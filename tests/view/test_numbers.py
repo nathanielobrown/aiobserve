@@ -35,7 +35,7 @@ from tests.conftest import (
     SPINE_LEAF,
     SPINE_RUN,
 )
-from tests.view.conftest import Planter, bar, fields, inside, one, step, wired
+from tests.view.conftest import Bar, Planter, bar, fields, inside, one, step, wired
 
 # Where a node left the model's window: the last call it made that went to one. Ordered by
 # `"index"`, which is unique and ascending inside a thread.
@@ -315,10 +315,13 @@ def test_a_turn_that_compacted_says_the_window_it_gave_back(plant: Planter) -> N
     assert tokens(after, "fill") < tokens(before, "fill"), "the plant is meant to drop the window"
     assert after["added"] == f"{tokens(after, 'fill') - tokens(before, 'fill'):+,}"
     assert after["added"].startswith("-")
-    # And the row the popover opened from draws that same turn with no tip on it. This is the
-    # one place the two seams are meant to disagree: the NavTree holds the tip at the bottom of
-    # the ladder, where a tree that carried the number through would draw a step below it.
-    assert bar(page, f"{Kind.TURN}:{second}") == (step(tokens(after, "fill"), after["model"]), 0)
+    # And the row the popover opened from draws that same turn with no band of its own: the
+    # edge its growth begins at is held up at the fill, because a band has no way to run
+    # backwards. This is the one place the two seams are meant to disagree — the tree clamps
+    # where the popover prints the drop.
+    drawn = bar(page, f"{Kind.TURN}:{second}")
+    assert drawn.fill == step(tokens(after, "fill"), after["model"])
+    assert drawn.prior == drawn.fill, drawn
 
 
 def test_a_turn_is_measured_against_the_last_turn_that_answered(
@@ -374,15 +377,16 @@ def test_a_turn_is_measured_against_the_last_turn_that_answered(
     assert printed | moved == printed
     # ...and what it added is measured over the interrupted turn, back to the last answer.
     assert printed["added"] == f"{tokens(printed, 'fill') - stood:+,}"
-    assert bar(page, f"{Kind.TURN}:{last}") == (
-        step(tokens(printed, "fill"), moved["model"]),
-        step(tokens(printed, "fill") - stood, moved["model"]),
-    )
+    # The row says the same thing as an edge rather than as a delta: its growth begins where
+    # the turn that answered left the window, and never at the base band under it.
+    drawn = bar(page, f"{Kind.TURN}:{last}")
+    assert drawn.fill == step(tokens(printed, "fill"), moved["model"])
+    assert drawn.prior == max(step(stood, moved["model"]) or 0, drawn.base or 0), drawn
     # The interrupted turn itself says neither number at either seam, which is what makes the
     # delta above a step over something rather than a step from it.
     assert silent["fill"] == ABSENT
     assert silent["added"] == ABSENT
-    assert bar(page, f"{Kind.TURN}:{quiet}") == (None, None)
+    assert bar(page, f"{Kind.TURN}:{quiet}") == Bar(None, None, None)
 
 
 def test_a_model_we_hold_no_window_for_says_so_rather_than_scaling_to_a_guess(

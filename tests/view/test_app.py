@@ -177,7 +177,16 @@ def test_both_schemes_print_every_color_of_text_readably(client: TestClient) -> 
 
     light = read(head)
     schemes = {"light": light, "dark": light | read(tail)}
-    assert set(light) == {"ink", "dim", "line", "paper", "mark", "bad", "hot"}
+    # Two rosters, closed: the colours text is printed in, and the surfaces under it — the
+    # badge's warm ground and the three bands the context bar draws (`view/static/style.css`).
+    # A surface carries no text of its own, so what holds it is the eye on the gallery
+    # (`.claude/rules/viewer-ui.md`) and the ramp below, not a contrast ratio.
+    assert set(light) == {"ink", "dim", "line", "paper", "mark", "bad"} | {
+        "hot",
+        "faint",
+        "agent",
+        "free",
+    }
     for scheme, tokens in schemes.items():
         surfaces = {
             "the page": tokens["paper"],
@@ -191,6 +200,13 @@ def test_both_schemes_print_every_color_of_text_readably(client: TestClient) -> 
         for where, under in surfaces.items():
             ratio = _contrast(tokens["ink"], _over(tokens["hot"], under, BADGE))
             assert ratio >= READABLE, f"{scheme} --ink on the badge over {where}: {ratio:.2f}:1"
+        # And the context bar's three grounds are a ramp: the track palest, the base band a
+        # step in from it, the conversation over that. Each scheme runs the ramp its own way —
+        # a light page darkens toward the reader, a dark one lightens — so what is held is the
+        # order and not the direction. Two bands a reader cannot tell apart is one band.
+        ramp = [_luminance(tokens[role]) for role in ("line", "faint", "dim")]
+        assert ramp == sorted(ramp, reverse=scheme == "light"), (scheme, ramp)
+        assert len(set(ramp)) == len(ramp), (scheme, ramp)
 
 
 def test_the_stylesheet_a_browser_reads_carries_no_prose_outside_a_comment(

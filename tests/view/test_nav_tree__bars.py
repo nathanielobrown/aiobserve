@@ -1,9 +1,10 @@
 """The context bar a NavTree row draws: how full the model's window was when the node ended.
 
-Read back off the rendered row rather than computed beside it — a bar is a step of the window
-the model that answered works in, so what moves one is the data and not arithmetic written
-twice. Each leaf plants or scales what the store holds and reads back the step the row landed
-on. The other meter a row draws is the cost badge (`test_nav_tree__badges.py`).
+Read back off the rendered row rather than computed beside it — a bar is a set of nested edges
+over the window the model that answered works in, so what moves one is the data and not
+arithmetic written twice. Each leaf plants or scales what the store holds and reads back the
+step the row landed on. The other meter a row draws is the cost badge
+(`test_nav_tree__badges.py`).
 """
 
 import re
@@ -14,12 +15,25 @@ from fastapi.testclient import TestClient
 
 from hyphae.extract.pricing import CONTEXT_WINDOWS, SYNTHETIC_MODEL
 from hyphae.view.app import build_app
-from hyphae.view.nodes import BAR_STEPS, Kind
-from tests.conftest import MAIN, SPINE, SPINE_LEAF, SPINE_RUN
+from hyphae.view.nodes import (
+    BAR_STEPS,
+    Kind,
+)
+from tests.conftest import (
+    ANCESTOR,
+    COMPACTED,
+    COMPACTED_RUN,
+    MAIN,
+    SPINE,
+    SPINE_LEAF,
+    SPINE_RUN,
+)
 from tests.view.conftest import (
+    Bar,
     Planter,
     bar,
     fields,
+    marked,
     one,
     step,
     values,
@@ -40,6 +54,10 @@ class Call(NamedTuple):
     # test's own SQL rather than read off `analyze/macros.py`, so the two can disagree.
     fill: int
     added: int
+    # What the call sent before it answered: the cache it read and the input it wrote. The
+    # first main-thread call's is the context the session opened on, which is the ground every
+    # turn's growth is drawn over.
+    sent: int
 
 
 def calls(store: duckdb.DuckDBPyConnection, session_id: str) -> list[Call]:
@@ -49,11 +67,26 @@ def calls(store: duckdb.DuckDBPyConnection, session_id: str) -> list[Call]:
         for row in store.execute(
             "SELECT id, source, turn_id, model, synthetic,"
             " cache_read_tokens + cache_creation_tokens + input_tokens + output_tokens,"
-            " cache_creation_tokens + input_tokens + output_tokens"
+            " cache_creation_tokens + input_tokens + output_tokens,"
+            " cache_read_tokens + cache_creation_tokens + input_tokens"
             ' FROM live_api_calls WHERE session_id = ? ORDER BY source, "index"',
             [session_id],
         ).fetchall()
     ]
+
+
+def bands(fill: int, prior: int, base: int | None, model: str) -> Bar:
+    """The three edges a bar draws, from the tokens each band stands for.
+
+    The oracle for every bar leaf below, and the one place the nesting rule is restated: a
+    band is a prefix of the one that holds it, so an edge is held at the fill above it and at
+    the base below it. Written here rather than imported, so an implementation that let a
+    band run past its holder has nothing to agree with.
+    """
+    top = step(fill, model)
+    assert top is not None, model
+    grounded = min(step(base, model) or 0, top) if base is not None else None
+    return Bar(top, max(min(step(prior, model) or 0, top), grounded or 0), grounded)
 
 
 def test_a_row_bars_the_context_it_left_against_the_window_its_model_answers_in(
@@ -63,8 +96,8 @@ def test_a_row_bars_the_context_it_left_against_the_window_its_model_answers_in(
 
     One session, read whole rather than swept: the spine records the four kinds that end on a
     window — a session, its turns, its runs, and the calls themselves — and the two that do not.
-    What each row draws is two steps, the fill and the tip: where the window stood when the node
-    ended, and how much of that the node put there.
+    What each row draws is where the window stood when the node ended, and where inside that
+    the node's own share begins; a turn draws a third edge, the context the session opened on.
 
     The expectation is built from `live_api_calls` here rather than from the columns the page
     reads, so a derivation that drifted in the NavTree's SQL has nothing to agree with. Built from
@@ -74,22 +107,24 @@ def test_a_row_bars_the_context_it_left_against_the_window_its_model_answers_in(
     answered = [call for call in recorded if not call.synthetic]
     main = [call for call in answered if call.source == MAIN]
     page = client.get(f"/session/{SPINE}").text
-    # A session reads the window its main thread was left in, and draws no tip: nothing came
-    # before a session for it to have added anything to.
-    assert bar(page, f"{Kind.SESSION}:{SPINE}") == (step(main[-1].fill, main[-1].model), None)
+    # A session reads the window its main thread was left in, and draws that alone: nothing came
+    # before a session for it to have added anything to, and no prompt it stands its growth over.
+    assert bar(page, f"{Kind.SESSION}:{SPINE}") == Bar(
+        step(main[-1].fill, main[-1].model), None, None
+    )
     # And the call it reads is not the last one the thread made. The spine ends on an interrupt
     # Claude Code wrote itself, which reports no tokens at all (`docs/schema.md`) — so a
     # derivation that took the thread's last call would open the session on an empty window.
     ended = [call for call in recorded if call.source == MAIN][-1]
     assert ended.synthetic and ended.fill == 0
-    # Each turn draws where it left the window and what it put there: its fill, less the fill
-    # the turn before it left behind. The first turn built the whole of what it holds.
+    # Each turn draws three edges: where it left the window, where the turn before it left one —
+    # which is where its own growth begins — and the context the session opened on, which is
+    # what the first main-thread call sent before anything had been said.
     stood = 0
     for turn_id in dict.fromkeys(call.turn_id for call in main):
         last = [call for call in main if call.turn_id == turn_id][-1]
-        assert bar(page, f"{Kind.TURN}:{turn_id}") == (
-            step(last.fill, last.model),
-            step(last.fill - stood, last.model),
+        assert bar(page, f"{Kind.TURN}:{turn_id}") == bands(
+            last.fill, stood, main[0].sent, last.model
         ), turn_id
         stood = last.fill
     # The turn the interrupt answered has no bar at all: no call under it says where the window
@@ -97,32 +132,31 @@ def test_a_row_bars_the_context_it_left_against_the_window_its_model_answers_in(
     silent = {call.turn_id for call in recorded if call.synthetic} - {c.turn_id for c in main}
     assert silent
     for turn_id in silent:
-        assert bar(page, f"{Kind.TURN}:{turn_id}") == (None, None), turn_id
-    # A run reads the window of its own thread, and its tip is the whole of its fill: a run
-    # starts on an empty window and builds all of what it holds while it runs.
+        assert bar(page, f"{Kind.TURN}:{turn_id}") == Bar(None, None, None), turn_id
+    # A run reads the window of its own thread, and all of it is the run's own: a run starts on
+    # an empty window and builds what it holds while it runs. No base band — the prompt the
+    # session opened on is the main thread's, and a run's growth is measured from nothing.
     for run_id in (SPINE_RUN, SPINE_LEAF):
         ran = [call for call in answered if call.source == run_id]
-        drawn = step(ran[-1].fill, ran[-1].model)
+        drawn = bands(ran[-1].fill, 0, None, ran[-1].model)
         assert bar(client.get(f"/session/{SPINE}/run/{run_id}").text, f"{Kind.RUN}:{run_id}") == (
-            drawn,
-            drawn,
+            drawn
         ), run_id
-    # A call draws its own fill and the part of it the call itself sent — and the interrupt,
+    # A call draws its own fill and the part of it that was already there — and the interrupt,
     # which went to no model, draws nothing. Read on each call's own page, where the level of
     # calls is the one open.
     for call in (found for found in recorded if found.source == MAIN):
         row = client.get(node_url(Kind.CALL, SPINE, MAIN, call.api_call_id)).text
         drawn = (
-            (None, None)
+            Bar(None, None, None)
             if call.synthetic
-            else (step(call.fill, call.model), step(call.added, call.model))
+            else bands(call.fill, call.fill - call.added, None, call.model)
         )
         assert bar(row, f"{Kind.CALL}:{call.api_call_id}") == drawn, call.api_call_id
-        # And nothing under a call is barred: a tool call's tokens are its api call's, and a
-        # compaction is not a call at all.
+        # And nothing under a call is barred: a tool call's tokens are its api call's.
         for key in values(row, "data-nav-tree"):
-            if key.startswith((f"{Kind.TOOL}:", f"{Kind.COMPACTION}:")):
-                assert bar(row, key) == (None, None), key
+            if key.startswith(f"{Kind.TOOL}:"):
+                assert bar(row, key) == Bar(None, None, None), key
 
 
 def test_an_interrupt_and_another_threads_calls_move_no_bar_a_row_draws(
@@ -180,7 +214,7 @@ def test_an_interrupt_and_another_threads_calls_move_no_bar_a_row_draws(
         f"/session/{SPINE}/run/{SPINE_RUN}",
         f"/session/{SPINE}/run/{SPINE_LEAF}",
     ]
-    drawn: dict[str, dict[str, tuple[int | None, int | None]]] = {}
+    drawn: dict[str, dict[str, Bar]] = {}
     with TestClient(build_app(planted)) as interrupted:
         for path in paths:
             page = client.get(path).text
@@ -190,10 +224,10 @@ def test_an_interrupt_and_another_threads_calls_move_no_bar_a_row_draws(
     # And the rows the plant reached draw a bar at all: a sweep over rows that draw nothing
     # would agree with itself whatever a filter did.
     session = drawn[paths[0]]
-    assert session[f"{Kind.SESSION}:{SPINE}"][0] is not None
-    assert session[f"{Kind.TURN}:{answered}"] > (0, 0)
+    assert session[f"{Kind.SESSION}:{SPINE}"].fill is not None
+    assert session[f"{Kind.TURN}:{answered}"].fill
     for path, run_id in zip(paths[1:], (SPINE_RUN, SPINE_LEAF), strict=True):
-        assert drawn[path][f"{Kind.RUN}:{run_id}"] > (0, 0), run_id
+        assert drawn[path][f"{Kind.RUN}:{run_id}"].fill, run_id
 
 
 def test_a_model_we_hold_no_window_for_is_a_bar_the_nav_tree_does_not_draw(
@@ -209,7 +243,7 @@ def test_a_model_we_hold_no_window_for_is_a_bar_the_nav_tree_does_not_draw(
     with TestClient(build_app(path)) as unknown:
         page = unknown.get(f"/session/{SPINE}").text
         for key in values(page, "data-nav-tree"):
-            assert bar(page, key) == (None, None), key
+            assert bar(page, key) == Bar(None, None, None), key
         # The row still says what it cost: the price is what the store recorded at extraction,
         # and only the bar is the table's to answer for.
         assert fields(page, "data-nav-tree", f"{Kind.SESSION}:{SPINE}")["cost_usd"]
@@ -223,8 +257,8 @@ def test_a_context_bar_fills_linearly_and_stops_at_a_full_window(
     A recorded call fills half a window at most, so the top of the scale and the clamp above it
     are rules no fixture exercises — every bar could be drawn at twice its share and the corpus
     would agree. The tokens are planted instead, on the spine's own calls: each call is left
-    with nothing but the input it sent, which the window counts twice over — a call's whole
-    fill, and the whole of what it added — so one number is read back as both steps.
+    with nothing but the input it sent, which is the whole of what it added — so the fill is
+    read back against a band of its own that begins at nothing.
     """
     window = CONTEXT_WINDOWS[
         one(store, "SELECT model FROM live_api_calls WHERE session_id = ? LIMIT 1", [SPINE])[0]
@@ -254,49 +288,335 @@ def test_a_context_bar_fills_linearly_and_stops_at_a_full_window(
     with TestClient(build_app(path)) as scaled:
         for (fill, drawn), call_id in zip(ladder.items(), at, strict=True):
             page = scaled.get(node_url(Kind.CALL, SPINE, MAIN, str(call_id))).text
-            assert bar(page, f"{Kind.CALL}:{call_id}") == (drawn, drawn), (fill, call_id)
+            assert bar(page, f"{Kind.CALL}:{call_id}") == Bar(drawn, 0, None), (fill, call_id)
 
 
-def test_a_context_bar_is_drawn_by_two_families_of_class_one_rule_spends(
+def test_a_context_bar_is_drawn_by_three_families_of_class_one_rule_spends(
     client: TestClient,
 ) -> None:
-    """What a pair of steps is drawn as: a track, the fill, and the tip left bright on top.
+    """What three edges are drawn as: a track, the fill, and the two bands nested inside it.
 
-    The policy forbids the inline width that would carry a percentage, so the two numbers ride
-    in as classes and the stylesheet turns them back into widths. That makes the ladder a thing
+    The policy forbids the inline width that would carry a percentage, so the numbers ride in
+    as classes and the stylesheet turns them back into widths. That makes the ladder a thing
     this tier can read: every step the markup can carry has to be a width here, or a row lands
     on a class that draws nothing and the bar quietly reads as empty.
     """
     style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
     steps = list(range(BAR_STEPS + 1))
-    for family, prop in (("f", "--ctx-fill"), ("t", "--ctx-added")):
+    for family, prop in (("f", "--ctx-fill"), ("p", "--ctx-prior"), ("b", "--ctx-base")):
         widths = {
             int(step): int(width)
             for step, width in re.findall(rf"li\.node\.{family}(\d+) \{{ {prop}: (\d+)%", style)
         }
-        # Both families run the whole ladder, bottom to top: a fill of nothing is a drawn track
+        # Every family runs the whole ladder, bottom to top: a band of nothing is a drawn track
         # with nothing in it, and a full window is the bar's own end.
         assert sorted(widths) == steps, (family, sorted(widths))
         # And they are linear, evenly spaced from empty to full — the bar's whole claim is that
         # half of it is half a window.
         assert [widths[n] for n in steps] == [n * 100 // BAR_STEPS for n in steps], widths
-    # One rule spends both, layering the track under the fill under the tip. Three layers and
-    # not two, because the bright part is what is left of the fill once the part that was
-    # already there is drawn over it.
+    # One rule spends all three, layering the track under the fill under the two bands that
+    # stand inside it. Each band is a prefix drawn over the one below, so the ground a reader
+    # sees between two edges is the band the second one opens.
     ((selector, body),) = re.findall(r"(li\.node:is\([^)]*\)) > a \{([^}]*)\}", style)
-    assert "calc(var(--ctx-fill) - var(--ctx-added, 0%)) 3px" in body, body
-    assert re.search(r"var\(--ctx-fill\) 3px,\s*100% 3px", body), body
-    assert re.findall(r"var\(--(dim|mark|line)\)", body) == [
+    assert re.search(
+        r"var\(--ctx-base, 0%\) 3px,\s*var\(--ctx-prior, 0%\) 3px,"
+        r"\s*var\(--ctx-fill, 0%\) 3px,\s*100% 3px",
+        body,
+    ), body
+    # The tip's own colour is the one thing a kind may take over, so it is a property with the
+    # accent as its default rather than a colour written into the layer.
+    assert re.findall(r"var\(--(faint|dim|ctx-tip|line)", body) == [
+        "faint",
+        "faint",
         "dim",
         "dim",
-        "mark",
-        "mark",
+        "ctx-tip",
+        "ctx-tip",
         "line",
         "line",
     ], body
-    # Every fill class the markup can carry is named by that rule. A step outside it would set
-    # a width nothing reads and draw no track at all.
+    assert body.count("var(--ctx-tip, var(--mark))") == 2, body
+    # Every fill class the markup can carry is named by that rule, and so is the mark a run
+    # whose thread compacted carries: a step outside it would set a width nothing reads.
     assert sorted(int(step) for step in re.findall(r"\.f(\d+)", selector)) == steps, selector
-    # The tip alone draws nothing: a row that names what it added without naming where it left
-    # the window has no bar to put the tip in, and the fill families are what carry the track.
-    assert not re.findall(r"li\.node:is\([^)]*\.t\d+", style), style
+    assert ".maxed" in selector, selector
+    # A band alone draws nothing: a row that names where its own share begins without naming
+    # where it left the window has no bar to put the band in, and the fill carries the track.
+    assert not re.findall(r"li\.node:is\([^)]*\.[pb]\d+", style), style
+
+
+def test_a_run_a_compaction_and_a_maxed_thread_each_take_the_tip_in_a_colour_of_their_own(
+    client: TestClient,
+) -> None:
+    """The three hues beside the accent, and the one row that is drawn full whatever it holds.
+
+    A hue is keyed on the row's own kind, which the row already carries — a second class saying
+    `run` on a run would be eight bytes a row for what the markup says already. What no kind can
+    say is that a run's own thread compacted, and that is the one mark the bar mints: the window
+    it ran out of, drawn full in the alarm the rest of the viewer flags an error with.
+
+    The colours themselves are eyeballed on the gallery (`.claude/rules/viewer-ui.md`); what
+    this holds is that they are three different tokens, and that each is defined in both
+    schemes — a token a dark page leaves unset is a band that vanishes for half the readers.
+    """
+    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
+    tips = dict(re.findall(r"li\.node\.(\w+) > a \{[^}]*--ctx-tip: var\((--[\w-]+)\)", style))
+    assert tips.keys() == {"run", "compaction", "maxed"}, tips
+    # Three hues, none of them the accent a turn or a call draws its tip in.
+    assert len(set(tips.values())) == len(tips) and "--mark" not in tips.values(), tips
+    # A maxed row is the whole track: a run that filled its window says so at full width,
+    # whatever the last call of its thread happened to leave behind.
+    maxed = one_of(
+        [
+            body
+            for selector, body in re.findall(r"li\.node\.(\w+) > a \{([^}]*)\}", style)
+            if selector == "maxed"
+        ]
+    )
+    assert "--ctx-fill: 100%" in maxed and "--ctx-prior: 0%" in maxed, maxed
+    # And every token the bar spends is defined for both schemes, light and dark alike.
+    dark = one_of(re.findall(r"@media \(prefers-color-scheme: dark\) \{([^}]*)\}", style))
+    for token in {*tips.values(), "--faint", "--dim", "--mark", "--line"}:
+        assert re.search(rf"^\s*{token}: #", style, re.MULTILINE), token
+        assert f"{token}: #" in dark, (token, dark)
+
+
+def one_of[T](found: list[T]) -> T:
+    """The single match a stylesheet leaf reads, so a second one is a failure and not a pick."""
+    (only,) = found
+    return only
+
+
+def test_every_band_a_row_draws_nests_inside_the_one_that_holds_it(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """No band runs past its holder, on any row of any session the corpus records.
+
+    The bar's whole grammar in one sweep: three edges drawn as prefixes of one another, so a
+    pair out of order is a band drawn backwards — the base prompt reaching past the
+    conversation that holds it, or a node's own share starting after the window ended. A sweep
+    rather than a spot check, because the arithmetic that orders them is three clamps and each
+    one is a rule some row of some session is the only witness to.
+    """
+    sessions = [str(row[0]) for row in store.execute("SELECT id FROM sessions").fetchall()]
+    banded = 0
+    for session_id in sessions:
+        page = client.get(f"/session/{session_id}").text
+        for key in values(page, "data-nav-tree"):
+            drawn = bar(page, key)
+            if drawn.fill is None:
+                # A row with no fill draws no bar at all, so it names no band either.
+                assert drawn == Bar(None, None, None), (session_id, key)
+                continue
+            edges = [edge for edge in drawn if edge is not None]
+            assert edges == sorted(edges, reverse=True), (session_id, key, drawn)
+            assert drawn.fill <= BAR_STEPS, (session_id, key, drawn)
+            banded += len(edges)
+        # And no row carries a width of its own: the classes are the only hook there is, and a
+        # `style` attribute anywhere under a row is markup the policy would refuse to paint
+        # (`tests/view/test_app__headers.py`).
+        assert not re.findall(r'data-nav-tree="[^"]*"[^>]*style="', page), session_id
+    assert banded, "no row in the corpus drew a band"
+
+
+def test_a_turns_bar_stands_on_the_context_the_session_opened_on(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The base band: the prompt, the instructions and the tools a session begins with.
+
+    What the first main-thread call sent before a word had been said — the ground every turn's
+    growth is drawn over, so a reader sees a conversation filling the window rather than a
+    window that was already two thirds full when it started. A session constant: every turn of
+    the session draws the same edge, whatever else its own bar says.
+    """
+    opening = one(
+        store,
+        "SELECT cache_read_tokens + cache_creation_tokens + input_tokens, model"
+        " FROM live_api_calls WHERE session_id = ? AND source = ? AND NOT synthetic"
+        ' ORDER BY "index" LIMIT 1',
+        [SPINE, MAIN],
+    )
+    page = client.get(f"/session/{SPINE}").text
+    drawn = {
+        key: bar(page, key).base
+        for key in values(page, "data-nav-tree")
+        if key.startswith(f"{Kind.TURN}:") and bar(page, key).fill is not None
+    }
+    assert len(drawn) > 1, "one turn cannot show a constant"
+    # One value across the page, and it is the opening context stepped against the window.
+    assert set(drawn.values()) == {step(opening[0], opening[1])}, drawn
+    # The base is what the first call the recording holds sent, whatever was said before it.
+    # `ANCESTOR` is the session `RESUME` resumed, and its recording opens partway into a
+    # conversation — on more context than the window holds. Its turn is drawn base to tip: a
+    # bar with no room of its own. The design accepts that reading rather than an ideal one,
+    # because an inherited context is still context the turn is working inside.
+    inherited = one(
+        store,
+        "SELECT cache_read_tokens + cache_creation_tokens + input_tokens, model"
+        " FROM live_api_calls WHERE session_id = ? AND source = ? AND NOT synthetic"
+        ' ORDER BY "index" LIMIT 1',
+        [ANCESTOR, MAIN],
+    )
+    assert inherited[0] > CONTEXT_WINDOWS[inherited[1]], inherited
+    resumed = client.get(f"/session/{ANCESTOR}").text
+    turns = [
+        bar(resumed, key)
+        for key in values(resumed, "data-nav-tree")
+        if key.startswith(f"{Kind.TURN}:")
+    ]
+    assert turns, "the resumed session draws no turn"
+    for band in turns:
+        assert band.base == band.fill and band.fill, band
+
+
+def test_a_turn_that_gave_the_window_back_draws_no_band_of_its_own(
+    store: duckdb.DuckDBPyConnection, plant: Planter
+) -> None:
+    """A turn that ends on less than the turn before it opens no band, rather than a wrapped one.
+
+    A compaction inside a turn leaves the window below where the turn before it stood, and the
+    delta a bar would draw is negative. No recorded session holds one — the corpus's five
+    compactions all sit outside a turn — so the drop is planted, on the spine's own calls:
+    the first turn is left holding a window nothing after it reaches.
+
+    INVENTED token counts on recorded rows. What the calls said, cost and answered on is the
+    transcript's; only the cache the first turn read is moved, to a number the turns after it
+    cannot climb back to.
+    """
+    first, model = one(
+        store,
+        "SELECT t.id, max(c.model) FROM live_turns t JOIN live_api_calls c"
+        " ON c.session_id = t.session_id AND c.source = t.source AND c.turn_id = t.id"
+        ' WHERE t.session_id = ? AND t.source = ? GROUP BY t.id, t."index" ORDER BY t."index"'
+        " LIMIT 1",
+        [SPINE, MAIN],
+    )
+    window = CONTEXT_WINDOWS[model]
+    path = plant(
+        (
+            "UPDATE api_calls SET cache_read_tokens = ? WHERE session_id = ? AND turn_id = ?",
+            [window, SPINE, first],
+        )
+    )
+    with TestClient(build_app(path)) as given:
+        page = given.get(f"/session/{SPINE}").text
+        turns = [key for key in values(page, "data-nav-tree") if key.startswith(f"{Kind.TURN}:")]
+        # The turn that was raised is full, and every turn after it draws a bar whose own band
+        # is empty: it ends where it began, because what it added was given back before it ran.
+        assert bar(page, f"{Kind.TURN}:{first}").fill == BAR_STEPS
+        after = [bar(page, key) for key in turns if key != f"{Kind.TURN}:{first}"]
+        drawn = [drawn for drawn in after if drawn.fill is not None]
+        assert drawn, "no turn after the plant draws a bar"
+        for band in drawn:
+            assert band.prior == band.fill, band
+
+
+def compactions(
+    store: duckdb.DuckDBPyConnection, session_id: str
+) -> list[tuple[str, str, int, int, str]]:
+    """Every compaction of one session, with the model whose window the bar is drawn against.
+
+    The window comes off the thread and not the session: the nearest call of the same source at
+    or before the boundary, else the first after it. Restated in the test's own SQL, so the
+    query the page reads has something to disagree with.
+    """
+    return store.execute(
+        "SELECT k.id, k.source, k.pre_tokens, k.post_tokens,"
+        " (SELECT coalesce("
+        "     max_by(c.model, c.started_at) FILTER (c.started_at <= k.timestamp),"
+        "     min_by(c.model, c.started_at) FILTER (c.started_at > k.timestamp))"
+        "  FROM live_api_calls c WHERE c.session_id = k.session_id AND c.source = k.source"
+        "    AND NOT c.synthetic) AS model"
+        " FROM live_compactions k WHERE k.session_id = ? ORDER BY k.timestamp",
+        [session_id],
+    ).fetchall()
+
+
+def test_a_compaction_bars_what_it_freed_between_the_two_fills_it_records(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The ⊟ row's bar: dim up to where the thread was left, and green up to where it stood.
+
+    The one bar drawn from a row's own columns rather than from the calls under it — a
+    compaction records the fill either side of itself and no model, so the window it is drawn
+    against is the thread's nearest answered call. Both of the session's main-thread boundaries
+    and the one its run hit, each read on the page that opens its level.
+    """
+    recorded = compactions(store, COMPACTED)
+    assert len(recorded) == 3, recorded
+    page = client.get(f"/session/{COMPACTED}").text
+    for compaction_id, source, pre, post, model in recorded:
+        # A boundary inside a turn is that turn's child, so it is read on the turn's page; the
+        # main thread of this session recorded no prompt at all, and its two sit at the level.
+        turn_id = store.execute(
+            "SELECT t.id FROM live_turns t, live_compactions k WHERE k.id = ?"
+            " AND t.session_id = k.session_id AND t.source = k.source"
+            " AND k.timestamp >= t.started_at AND k.timestamp < t.ended_at",
+            [compaction_id],
+        ).fetchone()
+        opened = (
+            page
+            if turn_id is None
+            else client.get(node_url(Kind.TURN, COMPACTED, source, turn_id[0])).text
+        )
+        # The fill it was compacted at, and the fill it was left on: what stands between them
+        # is the context the boundary gave back, which is the band the row draws green.
+        assert bar(opened, f"{Kind.COMPACTION}:{compaction_id}") == bands(pre, post, None, model), (
+            compaction_id
+        )
+        assert fields(opened, "data-nav-tree", f"{Kind.COMPACTION}:{compaction_id}")["title"]
+    # The run's boundary is the one drawn against a window its session's main thread does not
+    # name: it answered on a model of its own (`tests/fixtures/compaction/README.md`).
+    assert {row[4] for row in recorded} == {"claude-fable-5", "claude-opus-4-8"}
+
+
+def test_a_compaction_whose_thread_names_no_window_draws_no_bar(
+    store: duckdb.DuckDBPyConnection, plant: Planter
+) -> None:
+    """A boundary on a thread that answered nothing is a row with its facts and no bar.
+
+    `compactions` records two fills and no model, so the scale comes from the thread's calls —
+    and a thread that made none, or made them on a model our table holds no window for, gives
+    the bar no denominator. Drawn at nothing it would read as a window that emptied, so it is
+    not drawn. Planted, because every recorded thread that compacted also answered: the
+    session's calls are dropped and its boundaries kept.
+    """
+    path = plant(("DELETE FROM api_calls WHERE session_id = ?", [COMPACTED]))
+    with TestClient(build_app(path)) as unpriced:
+        page = unpriced.get(f"/session/{COMPACTED}").text
+        keys = [
+            key for key in values(page, "data-nav-tree") if key.startswith(f"{Kind.COMPACTION}")
+        ]
+        assert keys, "the boundaries still stand on the page"
+        for key in keys:
+            assert bar(page, key) == Bar(None, None, None), key
+            # The row is still a row: what a compaction is, and what triggered it, are its own.
+            assert fields(page, "data-nav-tree", key)["title"]
+
+
+def test_a_run_whose_own_thread_compacted_is_drawn_full_in_the_alarm(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The one warning the NavTree draws: a subagent that ran its own window out.
+
+    A run's thread compacting is a fact about the run and not about the call that spawned it,
+    so the row says so at full width whatever its last call left behind — the reader looking
+    for why a run's answer thinned out has one place to see it.
+    """
+    page = client.get(f"/session/{COMPACTED}/run/{COMPACTED_RUN}").text
+    assert marked(page, f"{Kind.RUN}:{COMPACTED_RUN}", "maxed")
+    # The store agrees: the mark is drawn off the run's own thread having a boundary on it.
+    assert one(
+        store,
+        "SELECT count(*) FROM live_compactions WHERE session_id = ? AND source = ?",
+        [COMPACTED, COMPACTED_RUN],
+    ) == (1,)
+    # And a run whose thread held out carries no mark. Read on its own page, the way the run
+    # above is: the two rows are the same kind, drawn by the same builder.
+    spine = client.get(f"/session/{SPINE}/run/{SPINE_RUN}").text
+    assert not marked(spine, f"{Kind.RUN}:{SPINE_RUN}", "maxed")
+    assert one(
+        store,
+        "SELECT count(*) FROM live_compactions WHERE session_id = ? AND source = ?",
+        [SPINE, SPINE_RUN],
+    ) == (0,)

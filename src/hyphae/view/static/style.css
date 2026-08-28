@@ -11,7 +11,10 @@
   --paper: #fbfbfd;  /* the page */
   --mark: #2b5fd9;   /* links, the selection rail, the one accent */
   --hot: #e08a1e;    /* the ground under a cost, deepening with what the node spent */
-  --bad: #b3261e;    /* a tool call that failed, and the status on an error page */
+  --bad: #b3261e;    /* a tool call that failed, a run that ran its window out */
+  --faint: #b6b6c0;  /* the context a session opened on, under everything a turn added to it */
+  --agent: #7a45c9;  /* a run's share of its own window, so a thread reads apart from a turn */
+  --free: #1f8a4c;   /* what a compaction gave back — the one measurement that is good news */
   --type-label: 0.75rem;
   --type-body: 0.875rem;
   --type-head: 1rem;
@@ -30,7 +33,7 @@
    amber under a dark page's ink would be the one thing on the page that glares. */
 @media (prefers-color-scheme: dark) {
   :root { --ink: #e6e6ea; --dim: #9a9aa5; --line: #33333c; --paper: #17171c; --mark: #7aa2f7;
-    --bad: #ff8f85; --hot: #8a5a12; }
+    --bad: #ff8f85; --hot: #8a5a12; --faint: #4a4a56; --agent: #b794f6; --free: #5fd18a; }
 }
 /* One screen, and the masthead across the top of it. The document itself never scrolls: the
    frame is a column exactly the viewport's height, the masthead takes what it needs, and what
@@ -278,71 +281,105 @@ li.more > button:hover { background-color: color-mix(in srgb, var(--mark) 12%, t
 }
 
 /* The context bar: how full the model's context window was when the node ended, over a track
-   the row's full width, with what the node itself put there left bright at the tip. Linear, so
-   half a bar is half a window (`view/nodes.py`). Two class families carry the two numbers as
-   custom properties — a class and not an inline width, because the policy blocks a `style`
-   attribute, and two families of 21 rather than one rule for every pair of them. One rule
-   spends them: the fill drawn whole in the accent, then the part of it that was already there
-   drawn over in dim, so what stays bright is what this node added. A row that ends on no
-   window draws no track either — an empty track under a tool call would read as a window that
-   emptied, and what a tool call took is its api call's.
+   the row's full width. Linear, so half a bar is half a window (`view/nodes.py`). Three edges
+   are drawn, and each is a prefix of the one before it: where the node left the window, where
+   the growth it is answerable for begins, and — on a turn — the context the session opened on
+   before a word had been said. What the reader sees between two edges is the band the second
+   one opens, so a turn reads as prompt, conversation, and its own share at the bright tip.
+   Three class families of 21 carry the edges as custom properties, because the policy blocks
+   the `style` attribute an inline width would need. One rule spends them: the widest layer is
+   painted first and the narrower ones over it, which is what makes each band a prefix.
+   A row that ends on no window draws no track either — an empty track under a tool call would
+   read as a window that emptied, and what a tool call took is its api call's.
    Painted bottom left over the content box, because depth is padding on the row's link: a
    track over the padding box would start left of the title it measures. */
 li.node:is(.f0, .f1, .f2, .f3, .f4, .f5, .f6,
            .f7, .f8, .f9, .f10, .f11, .f12, .f13,
-           .f14, .f15, .f16, .f17, .f18, .f19, .f20) > a {
-  background-image: linear-gradient(var(--dim), var(--dim)),
-                    linear-gradient(var(--mark), var(--mark)),
+           .f14, .f15, .f16, .f17, .f18, .f19, .f20, .maxed) > a {
+  background-image: linear-gradient(var(--faint), var(--faint)),
+                    linear-gradient(var(--dim), var(--dim)),
+                    linear-gradient(var(--ctx-tip, var(--mark)), var(--ctx-tip, var(--mark))),
                     linear-gradient(var(--line), var(--line));
   background-repeat: no-repeat;
   background-position: left bottom;
-  background-size: calc(var(--ctx-fill) - var(--ctx-added, 0%)) 3px,
-                   var(--ctx-fill) 3px,
+  background-size: var(--ctx-base, 0%) 3px,
+                   var(--ctx-prior, 0%) 3px,
+                   var(--ctx-fill, 0%) 3px,
                    100% 3px;
   background-origin: content-box;
 }
+/* The tip is the one part of the bar a kind may take over, so it is a property with the accent
+   as its default: a run's own thread reads apart from the turns around it, and a compaction's
+   band is green because the space it gave back is the one measurement here that is good news.
+   `maxed` is the only mark the bar mints, because it is the only thing no kind can say — a
+   subagent that compacted did so unasked and unseen, and it is drawn full in the alarm
+   whatever the last call of its thread happened to leave behind. */
+li.node.run > a { --ctx-tip: var(--agent); }
+li.node.compaction > a { --ctx-tip: var(--free); }
+li.node.maxed > a { --ctx-tip: var(--bad); --ctx-fill: 100%; --ctx-prior: 0%; --ctx-base: 0%; }
 li.node.f0 { --ctx-fill: 0%; }
-li.node.t0 { --ctx-added: 0%; }
+li.node.p0 { --ctx-prior: 0%; }
+li.node.b0 { --ctx-base: 0%; }
 li.node.f1 { --ctx-fill: 5%; }
-li.node.t1 { --ctx-added: 5%; }
+li.node.p1 { --ctx-prior: 5%; }
+li.node.b1 { --ctx-base: 5%; }
 li.node.f2 { --ctx-fill: 10%; }
-li.node.t2 { --ctx-added: 10%; }
+li.node.p2 { --ctx-prior: 10%; }
+li.node.b2 { --ctx-base: 10%; }
 li.node.f3 { --ctx-fill: 15%; }
-li.node.t3 { --ctx-added: 15%; }
+li.node.p3 { --ctx-prior: 15%; }
+li.node.b3 { --ctx-base: 15%; }
 li.node.f4 { --ctx-fill: 20%; }
-li.node.t4 { --ctx-added: 20%; }
+li.node.p4 { --ctx-prior: 20%; }
+li.node.b4 { --ctx-base: 20%; }
 li.node.f5 { --ctx-fill: 25%; }
-li.node.t5 { --ctx-added: 25%; }
+li.node.p5 { --ctx-prior: 25%; }
+li.node.b5 { --ctx-base: 25%; }
 li.node.f6 { --ctx-fill: 30%; }
-li.node.t6 { --ctx-added: 30%; }
+li.node.p6 { --ctx-prior: 30%; }
+li.node.b6 { --ctx-base: 30%; }
 li.node.f7 { --ctx-fill: 35%; }
-li.node.t7 { --ctx-added: 35%; }
+li.node.p7 { --ctx-prior: 35%; }
+li.node.b7 { --ctx-base: 35%; }
 li.node.f8 { --ctx-fill: 40%; }
-li.node.t8 { --ctx-added: 40%; }
+li.node.p8 { --ctx-prior: 40%; }
+li.node.b8 { --ctx-base: 40%; }
 li.node.f9 { --ctx-fill: 45%; }
-li.node.t9 { --ctx-added: 45%; }
+li.node.p9 { --ctx-prior: 45%; }
+li.node.b9 { --ctx-base: 45%; }
 li.node.f10 { --ctx-fill: 50%; }
-li.node.t10 { --ctx-added: 50%; }
+li.node.p10 { --ctx-prior: 50%; }
+li.node.b10 { --ctx-base: 50%; }
 li.node.f11 { --ctx-fill: 55%; }
-li.node.t11 { --ctx-added: 55%; }
+li.node.p11 { --ctx-prior: 55%; }
+li.node.b11 { --ctx-base: 55%; }
 li.node.f12 { --ctx-fill: 60%; }
-li.node.t12 { --ctx-added: 60%; }
+li.node.p12 { --ctx-prior: 60%; }
+li.node.b12 { --ctx-base: 60%; }
 li.node.f13 { --ctx-fill: 65%; }
-li.node.t13 { --ctx-added: 65%; }
+li.node.p13 { --ctx-prior: 65%; }
+li.node.b13 { --ctx-base: 65%; }
 li.node.f14 { --ctx-fill: 70%; }
-li.node.t14 { --ctx-added: 70%; }
+li.node.p14 { --ctx-prior: 70%; }
+li.node.b14 { --ctx-base: 70%; }
 li.node.f15 { --ctx-fill: 75%; }
-li.node.t15 { --ctx-added: 75%; }
+li.node.p15 { --ctx-prior: 75%; }
+li.node.b15 { --ctx-base: 75%; }
 li.node.f16 { --ctx-fill: 80%; }
-li.node.t16 { --ctx-added: 80%; }
+li.node.p16 { --ctx-prior: 80%; }
+li.node.b16 { --ctx-base: 80%; }
 li.node.f17 { --ctx-fill: 85%; }
-li.node.t17 { --ctx-added: 85%; }
+li.node.p17 { --ctx-prior: 85%; }
+li.node.b17 { --ctx-base: 85%; }
 li.node.f18 { --ctx-fill: 90%; }
-li.node.t18 { --ctx-added: 90%; }
+li.node.p18 { --ctx-prior: 90%; }
+li.node.b18 { --ctx-base: 90%; }
 li.node.f19 { --ctx-fill: 95%; }
-li.node.t19 { --ctx-added: 95%; }
+li.node.p19 { --ctx-prior: 95%; }
+li.node.b19 { --ctx-base: 95%; }
 li.node.f20 { --ctx-fill: 100%; }
-li.node.t20 { --ctx-added: 100%; }
+li.node.p20 { --ctx-prior: 100%; }
+li.node.b20 { --ctx-base: 100%; }
 
 /* The cost badge: a node's spend on a warm ground that deepens with it. What deepens is the
    share of `--hot` the ground carries, held in a custom property a class per step sets — a
