@@ -23,6 +23,7 @@ from hyphae.view.nodes import (
     Kind,
     meter,
 )
+from hyphae.view.store import Page, open_store, page_rows
 from tests.conftest import MAIN, SPINE
 from tests.view.conftest import (
     Planter,
@@ -518,6 +519,81 @@ def test_every_row_is_named_from_the_column_its_kind_is_named_by(
 
 # What the planted run of another session was spawned as. Invented, and unlike anything the
 # corpus records, so a page that printed it could only have got it from the plant.
+COLLIDED = "planted-collision"
+
+
+def test_an_address_names_a_run_of_the_sending_session_and_no_other(
+    plant: Planter, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A `SendMessage` addresses a run by an id, and an id is one session's word.
+
+    Claude Code mints a run id per session and nothing makes one unique across a store, so
+    every lookup that turns a `to` into an agent type is scoped to the sending session. No two
+    sessions of the corpus collide — 17 hex characters rarely do — which is why the collision is
+    planted: against the corpus as recorded, a lookup matching on the id alone reads exactly
+    like one that matches on the session too.
+
+    Four queries resolve an address, one per surface a send is named on, so the plant is read
+    on all four: the NavTree row and the pane's heading on the call's own page, the row in its
+    api call's children log, and the row on the session's errors page — which the second plant
+    reaches by failing the call, the one way onto that page.
+    """
+    session_id, source, tool_id, call_id, run_id, agent_type = one(
+        store,
+        "SELECT t.session_id, t.source, t.id, t.api_call_id, a.id, a.agent_type"
+        " FROM live_tool_calls t"
+        " JOIN live_agent_runs a ON a.session_id = t.session_id"
+        "  AND a.id = json_extract_string(t.input, '$.to')"
+        " WHERE t.name = 'SendMessage' ORDER BY t.session_id, t.source, t.\"index\" LIMIT 1",
+    )
+    (elsewhere,) = one(
+        store, "SELECT id FROM sessions WHERE id <> ? ORDER BY id LIMIT 1", [str(session_id)]
+    )
+    collided = plant(
+        # The same run id under another session, spawned as something else — the row a lookup
+        # that forgot whose id it was reading would find...
+        (
+            "INSERT INTO agent_runs (SELECT * REPLACE (? AS session_id, ? AS agent_type)"
+            " FROM agent_runs WHERE session_id = ? AND id = ?)",
+            [str(elsewhere), COLLIDED, str(session_id), str(run_id)],
+        ),
+        # ...and the send failed, so the errors page has this call to name.
+        (
+            "UPDATE tool_calls SET is_error = true WHERE session_id = ? AND id = ?",
+            [str(session_id), str(tool_id)],
+        ),
+    )
+    with TestClient(build_app(collided)) as served:
+        pane = served.get(f"/session/{session_id}/thread/{source}/tool/{tool_id}").text
+        parent = served.get(f"/session/{session_id}/thread/{source}/call/{call_id}").text
+        failures = served.get(f"/session/{session_id}/errors").text
+    # Every surface still prints the run this session spawned...
+    named = f"📬 to {agent_type}"
+    assert fields(pane, "data-nav-tree", f"{Kind.TOOL}:{tool_id}")["title"].startswith(named)
+    assert fields(pane, "data-body", "tool")["title"].startswith(named)
+    assert fields(parent, "data-child", f"{Kind.TOOL}:{tool_id}")["title"].startswith(named)
+    assert fields(failures, "data-error", f"{Kind.TOOL}:{tool_id}")["title"].startswith(named)
+    # ...and the other session's word reaches none of them. Read across the whole page rather
+    # than off the row: an unscoped join matches twice, and which of the two answers a row —
+    # or whether the row is drawn twice — is the database's business and not a contract.
+    for page in (pane, parent, failures):
+        assert COLLIDED not in page
+    # The heading is the one of the four that reads its query's first row and drops the rest,
+    # so a second row it should never have had leaves nothing on the page to see. That query
+    # is read as rows instead: one call, one header.
+    with open_store(collided) as reading:
+        header = page_rows(
+            reading,
+            Page.TOOL_HEADER,
+            session_id=str(session_id),
+            source=str(source),
+            tool_call_id=str(tool_id),
+            head_chars=queries.HEADER_CHARS,
+            detail_chars=queries.DETAIL_CHARS,
+        )
+    assert len(header) == 1
+
+
 def test_a_bucket_row_carries_the_totals_of_what_it_gathers(
     client: TestClient, store: duckdb.DuckDBPyConnection, plant: Planter
 ) -> None:
