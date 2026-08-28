@@ -52,6 +52,7 @@ docs/
   enrichment.md           Enrichment describes every agent run, main turn, and session in the trace store
   viewer.md               `hp view` opens the trace store in a local browser
   viewer-bounds.md        What a viewer URL may ask for, and what the page that comes back is allowed to weigh
+  viewer-titles.md        One title names a node on every surface that prints it, and one mark says what kind of node it is
   ui-development.md       Edit a viewer template or stylesheet and see it in the browser without touching the browser
   otlp-export.md          `hp export-otlp` sends sessions from the trace store to an OTLP/HTTP backend as spans
   documentation.md        Use this guide to decide where project documentation belongs and how to keep it current

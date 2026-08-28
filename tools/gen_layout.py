@@ -79,6 +79,7 @@ ENTRIES = (
     Entry("docs/enrichment.md", Doc("docs/enrichment.md")),
     Entry("docs/viewer.md", Doc("docs/viewer.md")),
     Entry("docs/viewer-bounds.md", Doc("docs/viewer-bounds.md")),
+    Entry("docs/viewer-titles.md", Doc("docs/viewer-titles.md")),
     Entry("docs/ui-development.md", Doc("docs/ui-development.md")),
     Entry("docs/otlp-export.md", Doc("docs/otlp-export.md")),
     Entry("docs/documentation.md", Doc("docs/documentation.md")),
