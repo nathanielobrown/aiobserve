@@ -47,7 +47,7 @@ Where the 24 `/fragment/…` routes stop being proven only as strings.
 - (4) The preset control still points at the selected node after a swap, because it renders inside `#nav-tree-rows`. *Evidence:* after a row click, the three preset links' `href`s name the node just swapped in, not the one the reader left.
 - (4) A children-log row's View button opens the child's body in place without moving the reading pane, and no row inside the expansion opens another. *Evidence:* click the toggle; the expansion's body appears under its row, the pane's own title is unchanged, and the expansion's rows carry no further body toggle.
 - (4) `?detail=` fetches the rest of a value cut at 4,000 characters, in place. *Evidence:* the detail's text length before and after the fetch, asserted past the cut, on the offload or tool-result page the scenario list already pins.
-- (4) Children-log paging swaps the log alone. *Evidence:* click the `?log=` next control; the log's first row changes and the pane's title does not.
+- (4) Children-log paging turns the page. The pager is a plain link, a full navigation rather than a swap — the leaf proves the turned page, not a swap the code does not do. *Evidence:* click the `?log=` next control; the log's first row changes and the pane's title does not.
 - (4) No htmx fetch during any of the above answers other than 200. *Evidence:* a `page.on('response')` guard across the spec, failing with the URL and status.
 
 ## chromatic and CI (slice 5) — partly manual
