@@ -6,6 +6,7 @@ redaction flattened every string the corpus records, so these leaves plant the m
 read it back off a served page. The renderer's own readings are `tests/view/test_render.py`.
 """
 
+import json
 import re
 from html import unescape
 from pathlib import Path
@@ -17,6 +18,7 @@ from markupsafe import escape
 from hyphae.analyze import queries
 from hyphae.view.app import build_app
 from hyphae.view.format import ELLIPSIS
+from hyphae.view.nodes import LEAD_SEPARATOR
 from tests.conftest import MAIN
 from tests.view.conftest import Planter, marked_up, one, plain, values
 
@@ -138,7 +140,9 @@ def test_a_row_that_spent_none_of_its_width_still_says_the_query_cut_the_line(
     A width is spent on visible characters, so a prompt written in markdown reaches a row a
     third of the length the store shipped — and the row is full of nothing. The mark has to
     come from the cap instead: `view_nav_tree_turns` ships a prompt one character past a row's
-    width, so 111 characters back means more went in, whatever they render to.
+    width, so 111 characters back means more went in, whatever they render to. The cap is the
+    words' own — a width of its own for a description, and the lead in front of them is room
+    the cap has to allow for.
     """
     prompt = "**ab** " * 40
     spent = one(
@@ -178,6 +182,32 @@ def test_a_row_that_spent_none_of_its_width_still_says_the_query_cut_the_line(
     shown = plain(marked_up(read, "data-nav-tree", f"turn:{turn_id}", "title"))
     assert shown.strip() == ("ab " * 20).strip()
     assert ELLIPSIS not in shown
+
+    # And the third thing between a cap and a mark: a lead. The query cut the words alone —
+    # what stands in front of them was composed at print time and is whole — so a row whose
+    # words fill the cap exactly is marked the moment the lead is counted against it. A tool
+    # the registry does not name leads with the tool's own name, which is what plants one here.
+    words = "**ab** " * 15 + "cdefg"
+    assert len(words) == queries.NAV_CHARS, "the plant is the widest uncut string there is"
+    told, thread, tool_id = one(
+        store,
+        'SELECT session_id, source, id FROM live_tool_calls ORDER BY session_id, source, "index"'
+        " LIMIT 1",
+    )
+    led: Path = plant(
+        (
+            "UPDATE tool_calls SET name = ?, input = ? WHERE id = ?",
+            ["BashOutput", json.dumps({"description": words}), tool_id],
+        )
+    )
+    with TestClient(build_app(led)) as planted:
+        beside = planted.get(f"/session/{told}/thread/{thread}/tool/{tool_id}").text
+    lit = plain(marked_up(beside, "data-nav-tree", f"tool:{tool_id}", "title"))
+    # Sixty-three characters of a hundred-and-ten-wide row, and nothing stopped any of them:
+    # the words came back at the width the query cut at, and the thirteen in front of them
+    # were added here. A cap that counted only the words would mark this row.
+    assert lit == f"BashOutput{LEAD_SEPARATOR}" + "ab " * 15 + "cdefg"
+    assert ELLIPSIS not in lit
 
 
 def test_a_title_the_corpus_records_flat_is_served_as_the_bytes_it_always_was(

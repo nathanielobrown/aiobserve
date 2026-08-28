@@ -40,8 +40,9 @@ def test_a_tool_row_says_what_the_tool_was_asked(
     a file tool is its path, and a path inside the session's own project reads relative to it —
     the repository is the frame the reader is holding, and an absolute path spends the width of
     the column saying where the machine keeps it. A command is what ran, with what it was for
-    under it. A tool the registry does not name falls to the shape rule the store applies to
-    any input at all: a `file_path`, else a `description`, else the head of the input as stored.
+    under it — unless the title says that already, and then nothing reads under it. A tool the
+    registry does not name falls to the shape rule the store applies to any input at all: a
+    `file_path`, else a `description`, else the head of the input as stored.
 
     Derived once and read by every surface that names the call — that is the leaf below the
     edge cases here, and it is what the title convention is for.
@@ -131,6 +132,16 @@ def test_a_tool_row_says_what_the_tool_was_asked(
             "UPDATE tool_calls SET name = ?, input = ? WHERE id = ?",
             ["Bash", '{"command": "ls"}', tools[2]],
         ),
+        # An `Agent` call, whose title is the type the run was spawned as and then the brief —
+        # which is the same `description` a second line would print.
+        (
+            "UPDATE tool_calls SET name = ?, input = ? WHERE id = ?",
+            [
+                "Agent",
+                json.dumps({"subagent_type": "implementer", "description": "Close the audit nits"}),
+                tools[3],
+            ],
+        ),
     )
     with TestClient(build_app(guarded)) as planted:
         edges = planted.get(f"/session/{session_id}/thread/{source}/call/{call_id}").text
@@ -140,6 +151,12 @@ def test_a_tool_row_says_what_the_tool_was_asked(
     assert beside[tools[1]]["about"] == "Read the notes"
     assert beside[tools[2]]["title"] == "⚡ ls"
     assert "about" not in beside[tools[2]]
+    # And the row whose title already says what the call was for prints nothing under it: the
+    # brief is inside the title an `Agent` row heads with, so a second line would be the same
+    # sentence twice on one row. The `Bash` rows above are the other side of the rule — there
+    # the description says something the command does not, which is why the line exists at all.
+    assert beside[tools[3]]["title"] == "👉 [implementer] Close the audit nits"
+    assert "about" not in beside[tools[3]]
     # A session whose project the store never recorded has no frame to read a path against,
     # so the path reads absolute rather than against nothing.
     homeless = plant(
