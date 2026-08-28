@@ -9,7 +9,7 @@ from collections.abc import Sequence
 
 from hyphae.view.enrichment import Descriptions
 from hyphae.view.format import ELLIPSIS
-from hyphae.view.formatters import formatted
+from hyphae.view.formatters import Fields, name_tool
 from hyphae.view.nodes import (
     COST_PLACES,
     NO_SPEND,
@@ -62,6 +62,18 @@ def _spend(cost: float | None, ref: Ref, held: Ledger) -> Spend:
 def _words(text: str | None) -> str:
     """What a node is called, whatever the query that composed it left NULL."""
     return text or ""
+
+
+def _named(name: str, fields: Fields | None) -> tuple[str, str]:
+    """One tool call's lead and words, for the two kinds of node that print a tool's name.
+
+    Where the registry names the tool, its glyph stands in for the name and rides in the words
+    rather than the lead: a children log heads its lead in a column of its own, and a mark
+    saying which tool this is has to survive that (`Node.log_title`). Where it does not, the
+    tool's name leads the shape-driven words instead.
+    """
+    named = name_tool(name, fields or {})
+    return ("", f"{named.mark} {named.words}") if named.mark else (name, named.words)
 
 
 def session_node(header: Row, held: Ledger, described: Descriptions) -> Node:
@@ -163,21 +175,23 @@ def call_node(session_id: str, source: str, row: Row, held: Ledger) -> Node:
     tools = row.get("tools") or {}
     names: Sequence[str] = tools.get("names") or ()
     # A call that answered with tool calls and no text has nothing to quote, so it is named
-    # by what it did: the tool it called first, that call's title, and a count of the rest.
+    # by what it did: the tool it called first, that call's own name, and a count of the rest.
     # One that neither spoke nor called a tool is named by the model that answered.
     spoken = row.get("text_head")
     silent = not spoken and bool(names)
+    # Named through the same derivation the tool row under it takes, so the glyph a reader
+    # picks a `Read` out of a tree by leads here too (`_named`).
+    first = tools.get("first") or {}
+    lead, called = _named(first.get("name") or "", first.get("fields")) if silent else ("", "")
     return Node(
         kind=Kind.CALL,
         session_id=session_id,
         source=source,
         node_id=row["api_call_id"],
-        lead=names[0] if silent else "",
+        lead=lead,
         # Marked where the words are speech, including on a call that also ran tools: what
         # the model said is the one thing on the row nothing else on the page says.
-        words=_words(
-            tools.get("head") if silent else f"{SPEECH_MARK} {spoken}" if spoken else row["model"]
-        ),
+        words=_words(called if silent else f"{SPEECH_MARK} {spoken}" if spoken else row["model"]),
         tail=_tally(names[1:], TALLY_CHARS) if silent else "",
         spend=_spend(cost, Ref(Kind.CALL, source, row["api_call_id"]), held),
         unpriced_api_calls=row["unpriced_api_calls"],
@@ -192,7 +206,7 @@ def tool_node(session_id: str, source: str, row: Row, held: Ledger) -> Node:
     the nearest thing the store prices to what the reader is looking at. Costless wherever no
     run hangs under it, which is every other tool there is.
     """
-    named = formatted(row["name"], row.get("fields") or {})
+    lead, words = _named(row["name"], row.get("fields"))
     # `view_nav_tree_tools.sql` is the one query that reads the call's price, because the
     # NavTree is the one surface that draws the badge. A row that asked for nothing takes
     # neither the price nor the mark saying our table could not complete it.
@@ -205,13 +219,9 @@ def tool_node(session_id: str, source: str, row: Row, held: Ledger) -> Node:
         source=source,
         node_id=row["tool_call_id"],
         # The tool's name leads, and its title says which call of that tool this is — a page
-        # of twenty `Read` rows otherwise says twenty times that a file was read. The title is
-        # the query's (`analyze/macros.py`), so the four surfaces that name a tool call agree.
-        # Where the tool names its own calls, the glyph stands in for the name and rides in the
-        # words rather than the lead: a children log heads its lead in a column of its own, and
-        # a mark saying which tool this is has to survive that (`Node.log_title`).
-        lead="" if named else row["name"],
-        words=f"{named.mark} {named.words}" if named else _words(row.get("title")),
+        # of twenty `Read` rows otherwise says twenty times that a file was read (`_named`).
+        lead=lead,
+        words=words,
         spend=_spend(spent if asked else None, Ref(Kind.TOOL, source, row["tool_call_id"]), held),
         unpriced_api_calls=(row.get("unpriced_api_calls") or 0) if asked else 0,
         # Every query a tool node is built from selects it, and the column is NOT NULL, so a

@@ -11,7 +11,7 @@ invented for a tool no recording of ours has ever called.
 
 import pytest
 
-from hyphae.view.formatters import FORMATTERS, Formatted, formatted
+from hyphae.view.formatters import FORMATTERS, Formatted, name_tool
 
 # Every field `tool_fields` extracts, all NULL: what the store hands a formatter for a tool
 # call carrying none of them. Each case below fills in the ones its own tool recorded.
@@ -30,6 +30,7 @@ EMPTY_FIELDS: dict[str, object] = dict.fromkeys(
         "url",
         "query",
         "todos",
+        "input_head",
     )
 )
 
@@ -129,12 +130,46 @@ def test_a_named_tool_is_titled_by_the_field_the_design_gives_it(
     name: str, fields: dict[str, object], mark: str, words: str
 ) -> None:
     """Each tool the registry names reads its own field, marked with its own glyph."""
-    assert formatted(name, {**EMPTY_FIELDS, **fields}) == Formatted(mark, words)
+    assert name_tool(name, {**EMPTY_FIELDS, **fields}) == Formatted(mark, words)
 
 
-def test_a_tool_the_registry_does_not_name_is_formatted_by_nothing() -> None:
-    """An unnamed tool falls through to the shape-driven title, which is the store's own."""
-    assert formatted("StructuredOutput", {**EMPTY_FIELDS, "path": "docs/viewer.md"}) is None
+# What a call the registry has no rule for is named by: the shape of its input, checked in
+# order. Ported from the `tool_title` SQL macro, so the cases are the arms that macro
+# coalesces over — a path, else a description, else the head of the input as stored — and the
+# glyph is empty, because a shape says which tool ran to nobody. Invented inputs: the arms
+# are the subject, and the rows a fixture records take these same arms through served HTML
+# in `tests/view/test_node__titles.py`.
+FELL_THROUGH = [
+    # A path wins, and it reaches here relativized and cut already (`macros.py:tool_path`).
+    ({"path": "docs/viewer.md", "description": "Read the doc"}, "docs/viewer.md"),
+    # Else what the caller said the call was for.
+    ({"description": "Run the deep research"}, "Run the deep research"),
+    # Else the head of the input as the store holds it, which is JSON for every tool we have
+    # seen. A call carrying none of the names above still names its own row.
+    (
+        {"input_head": '{"schema": "Findings", "strict": true}'},
+        '{"schema": "Findings", "strict": true}',
+    ),
+]
+
+
+@pytest.mark.parametrize(("fields", "words"), FELL_THROUGH)
+def test_a_tool_the_registry_does_not_name_is_named_by_the_shape_of_its_input(
+    fields: dict[str, object], words: str
+) -> None:
+    """An unnamed tool takes the shape-driven title, under no glyph of its own."""
+    assert name_tool("StructuredOutput", {**EMPTY_FIELDS, **fields}) == Formatted("", words)
+
+
+def test_an_empty_field_is_a_value_the_record_carried_and_not_an_absence() -> None:
+    """The arms fall through on NULL, the way the SQL this ports from coalesces.
+
+    A description recorded as an empty string is a description: the row it names is blank,
+    and a rule that skipped it would print the input JSON under a tool whose caller said
+    the call was for nothing.
+    """
+    empty = {"description": "", "input_head": '{"description": ""}'}
+    assert name_tool("StructuredOutput", {**EMPTY_FIELDS, **empty}) == Formatted("", "")
 
 
 @pytest.mark.parametrize("name", sorted(FORMATTERS))
@@ -144,4 +179,5 @@ def test_a_named_tool_whose_field_the_record_lacks_falls_through_too(name: str) 
     A malformed input, or one whose fields are all named something else, is a row the page
     still has to draw — and the shape-driven title says more about it than a bare glyph.
     """
-    assert formatted(name, EMPTY_FIELDS) is None
+    head = '{"unexpected": 1}'
+    assert name_tool(name, {**EMPTY_FIELDS, "input_head": head}) == Formatted("", head)

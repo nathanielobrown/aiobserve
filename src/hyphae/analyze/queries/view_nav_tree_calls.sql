@@ -15,16 +15,28 @@ SELECT
     substr(c.text, 1, $nav_chars + 1) AS text_head,
     substr(c.model, 1, $nav_chars + 1) AS model,
     -- What the call went on to do, for the title of a call that answered with tool calls and
-    -- no words (`view/nodes.py:call_node`): the first call's own title, through the macro
-    -- every surface that names a tool call reads, and every call's tool name in the order it
-    -- was made. The count that follows the title is composed at the width of the surface
-    -- printing it, so what comes back here is the parts rather than the sentence.
+    -- no words (`view/builders.py:call_node`): the first tool call's name and the fields the
+    -- rules that name one read, and every call's tool name in the order it was made. The name
+    -- itself is composed in Python out of those fields, the same way the tool's own row is
+    -- named, so the two rows agree — and the count that follows it is composed at the width of
+    -- the surface printing it. What comes back here is the parts rather than the sentence.
     (
         SELECT {
-            'head': min_by(tool_title(t.input, s.project_dir, $nav_chars), t."index"),
+            'first': min_by({
+                'name': t.name,
+                'fields': tool_fields(t.input, s.project_dir, ad.agent_type, $nav_chars)
+            }, t."index"),
             'names': list(t.name ORDER BY t."index")
         }
         FROM live_tool_calls t
+        -- What a path in the fields reads against. Joined here rather than taken from the
+        -- outer row: DuckDB 1.5.5 cannot bind a struct-returning macro over a correlated
+        -- column, and answers `Need named argument for struct pack`.
+        LEFT JOIN sessions s ON s.id = t.session_id
+        -- Who a `SendMessage` addressed, resolved the way `view_nav_tree_tools` resolves it:
+        -- a title reading the run id here would deny the row one level down.
+        LEFT JOIN live_agent_runs ad
+            ON ad.session_id = t.session_id AND ad.id = tool_asked(t.input, 'to', $nav_chars)
         WHERE t.session_id = c.session_id AND t.source = c.source AND t.api_call_id = c.id
     ) AS tools,
     -- Where the call left the model's context window, how much of that it put there itself,
@@ -42,8 +54,6 @@ SELECT
     -- A NULL cost is a model our price table lacks, not a call that was free.
     (c.cost_usd IS NULL)::INTEGER AS unpriced_api_calls
 FROM live_api_calls c
--- For the project a tool call's path reads against, which is the session's, not the turn's.
-LEFT JOIN sessions s ON s.id = c.session_id
 LEFT JOIN live_turns t
     ON t.session_id = c.session_id AND t.source = c.source AND t.id = c.turn_id
 WHERE c.session_id = $session_id

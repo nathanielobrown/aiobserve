@@ -1,13 +1,15 @@
-"""How each tool the viewer knows names its own calls.
+"""How a tool call is named, wherever the viewer names one.
 
 A tool call's title is read from the input field that tells two of that tool's calls apart —
 a path for a file tool, the command for `Bash` — under a glyph that stands for the tool, so a
 NavTree row says which tool ran without spending the width on its name. The store extracts the
-fields (`analyze/macros.py:tool_fields`); this module holds the rule per name and nothing else,
-because SQL cannot dispatch on a name without a `CASE` arm per tool.
+fields (`analyze/macros.py:tool_fields`) and this module composes the name out of them: SQL
+ships fields, and the name a reader reads is Python's.
 
-`view/builders.py:tool_node` is the caller. A tool absent from `FORMATTERS` keeps the shape-driven
-title the store composes for any input at all.
+`name_tool` is the entry point and `view/builders.py` its only caller, so the surfaces that
+print a tool call — its own page, a NavTree row, a crumb, a children log, the errors list, and
+the api call above it — read one derivation. A tool absent from `FORMATTERS` is not a gap: it
+takes the shape rule below, which names a tool nobody here has heard of.
 """
 
 from collections.abc import Callable, Mapping
@@ -91,9 +93,9 @@ def _todo_write(fields: Fields) -> Formatted | None:
 
 
 # What each tool the viewer knows names its calls by (`plans/viewer-polish/design.md`). A tool
-# absent here is not a gap: its calls take the shape-driven title the store composes for any
-# tool at all (`analyze/macros.py:tool_title`), which is what a registry keyed by name cannot
-# do. So this holds the tools whose input we have read enough of to beat that default.
+# absent here is not a gap: its calls take the shape rule below, which names any input at all
+# and is what a registry keyed by name cannot do. So this holds the tools whose input we have
+# read enough of to beat that default.
 FORMATTERS: dict[str, Formatter] = {
     "Read": _one("📖", "path"),
     "Write": _one("✏️", "path"),
@@ -110,7 +112,33 @@ FORMATTERS: dict[str, Formatter] = {
 }
 
 
-def formatted(name: str, fields: Fields) -> Formatted | None:
-    """How this tool names its own calls, or None to leave the call to the store's default."""
+# What a call the registry has no rule for is named by, in the order the arms are tried: the
+# fields that say what a call was whichever tool made it. `input_head` is the head of the input
+# as the store holds it — JSON for every tool we have seen — so the last arm names a call whose
+# input carried none of the names above it.
+_SHAPE = ("path", "description", "input_head")
+
+
+def _shaped(fields: Fields) -> str:
+    """The shape-driven name: the first of `_SHAPE` the record answers.
+
+    A field the record left out falls through; one it carried empty does not. That is the
+    `coalesce` this was ported from — a caller who sent an empty description described the
+    call as nothing, and printing its raw input instead would be the viewer overruling it.
+    """
+    for key in _SHAPE:
+        value = fields.get(key)
+        if value is not None:
+            return str(value)
+    return ""
+
+
+def name_tool(name: str, fields: Fields) -> Formatted:
+    """What one tool call is called: its tool's own rule, else the shape of its input.
+
+    A `Formatted` whose `mark` is empty is the second — no glyph stands for the tool, so the
+    caller leads the row with the tool's name instead (`view/builders.py`).
+    """
     formatter = FORMATTERS.get(name)
-    return formatter(fields) if formatter else None
+    named = formatter(fields) if formatter else None
+    return named or Formatted("", _shaped(fields))

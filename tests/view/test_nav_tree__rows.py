@@ -429,16 +429,21 @@ def titled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, tuple
             continue
         titled = _shaped(given, project, queries.NAV_CHARS)
         said[f"{Kind.TOOL}:{tool_id}"] = f"{name}{LEAD_SEPARATOR}{titled}" if titled else name
-    for call_id, spoken, model, tools, given, project in store.execute(
+    for call_id, spoken, model, tools, given, project, addressed in store.execute(
         # The tool calls a call went on to make, in the order it made them: their names, and
-        # the input of the first, which is the only one whose own title is shown.
+        # the input of the first, which is the only one whose own title is shown — with the
+        # same address lookup the tool rows above take, because the first call names itself
+        # here exactly as it names itself on its own row.
         "SELECT c.id, c.text, c.model,"
         ' list(t.name ORDER BY t."index") FILTER (t.id IS NOT NULL),'
-        ' min_by(t.input, t."index"), any_value(s.project_dir)'
+        ' min_by(t.input, t."index"), any_value(s.project_dir),'
+        ' min_by(a.agent_type, t."index")'
         " FROM live_api_calls c"
         " LEFT JOIN live_tool_calls t ON t.session_id = c.session_id AND t.source = c.source"
         "  AND t.api_call_id = c.id"
         " LEFT JOIN sessions s ON s.id = c.session_id"
+        " LEFT JOIN live_agent_runs a ON a.session_id = t.session_id"
+        "  AND a.id = json_extract_string(t.input, '$.to')"
         " WHERE c.session_id = ? GROUP BY c.id, c.text, c.model",
         [session_id],
     ).fetchall():
@@ -450,10 +455,14 @@ def titled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, tuple
             # the page does not say — and marked whether or not the call also ran tools.
             said[f"{Kind.CALL}:{call_id}"] = f"💭 {spoken}"
         elif tools:
-            asked = _shaped(given, project, queries.NAV_CHARS)
-            said[f"{Kind.CALL}:{call_id}"] = (
-                f"{tools[0]}{LEAD_SEPARATOR}{asked}" if asked else tools[0]
-            )
+            # Named by the same two rules the tool row under it takes, in the same order: the
+            # tool's own rule under its glyph, else its name leading the shape of its input.
+            # One derivation for both rows is the point — a reader following a call into the
+            # tool it called must not meet a different name at the bottom.
+            if (named := _named(tools[0], given, project, addressed, queries.NAV_CHARS)) is None:
+                asked = _shaped(given, project, queries.NAV_CHARS)
+                named = f"{tools[0]}{LEAD_SEPARATOR}{asked}" if asked else tools[0]
+            said[f"{Kind.CALL}:{call_id}"] = named
             kept[f"{Kind.CALL}:{call_id}"] = _tallied(tools[1:])
         else:
             said[f"{Kind.CALL}:{call_id}"] = model
