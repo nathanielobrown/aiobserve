@@ -27,7 +27,7 @@ Every node reachable in the pane has a URL that renders the whole page cold. Not
 
 # A node's title comes off the node
 
-Print `Node.nav_tree_title`, `crumb_title`, `log_title` or `pane_title`, whichever fits the surface. Never join words in a template and never print a row's own column where a node is being named: the four are one title at four widths (`src/hyphae/view/nodes.py`), and a surface composing its own would be a second answer to what the node is called. What each kind is titled is in `docs/viewer-titles.md`.
+Print `Node.nav_tree_title`, `tab_title`, `crumb_title`, `log_title` or `pane_title`, whichever fits the surface. Never join words in a template and never print a row's own column where a node is being named: the five are one title at the width of the surface reading it, `tab_title` the text under a row's for the one surface with nowhere to put markup (`src/hyphae/view/nodes.py`), and a surface composing its own would be a second answer to what the node is called. What each kind is titled is in `docs/viewer-titles.md`.
 
 # Naming and formatting live in Python; SQL ships fields
 
