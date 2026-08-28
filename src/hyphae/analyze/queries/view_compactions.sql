@@ -23,7 +23,23 @@ SELECT
     substr(k.trigger, 1, $chip_chars) AS trigger,
     k.pre_tokens,
     k.post_tokens,
-    k.duration_ms
+    k.duration_ms,
+    -- The one bar read backwards: the fill is where the window stood before the boundary and
+    -- what it "added" is what it gave back, so the row draws the freed span between the two.
+    -- A compaction records no model, so the window comes off the thread — the nearest call of
+    -- the same source at or before it, else the first after it, through the macro the api call
+    -- and turn rows already draw against. A thread with no answered call, or a model our price
+    -- table lacks, leaves it NULL, which is a bar the NavTree does not draw.
+    {
+        'fill': k.pre_tokens,
+        'added': k.pre_tokens - k.post_tokens,
+        'window': context_window((
+            SELECT coalesce(
+                max_by(c.model, c.started_at) FILTER (c.started_at <= k.timestamp),
+                min_by(c.model, c.started_at) FILTER (c.started_at > k.timestamp))
+            FROM live_api_calls c
+            WHERE c.session_id = k.session_id AND c.source = k.source AND NOT c.synthetic))
+    } AS context
 FROM live_compactions k
 WHERE k.session_id = $session_id AND k.source = $source
 ORDER BY k.timestamp;

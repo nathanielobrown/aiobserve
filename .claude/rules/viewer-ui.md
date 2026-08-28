@@ -63,6 +63,18 @@ Witnessed in a real Chromium on 2026-08-26, against `mise run gallery --port 906
 - `Tab` onto a row's link fetched the popover the same way, so the keyboard reaches what the pointer reaches
 - The row's link still swapped the pane, and the console stayed empty
 
+# A colour on a bar is judged on the gallery
+
+The context bar draws three grounds and three tips, and none of them is text, so no contrast ratio settles them (`src/hyphae/view/static/style.css`). What a test holds is the ramp — track palest, base band a step in, the conversation over it — and that every token is defined in both schemes. Which purple, which green, and how far the base band sits from the track are eyeballed.
+
+Witnessed in a real Chromium on 2026-08-28 against `mise run gallery --port 9063` — never 8477, which is a live viewer — in both colour schemes at 1400×900:
+
+- A turn's base band read as a grey stub before its accent tip, and a run's tip read as purple beside it, so a thread is told apart from a turn at a glance
+- A compaction drew a short dim head and a long green band: the window it kept, then the window it gave back
+- The run whose own thread compacted drew the full width in the alarm, red in light and salmon in dark, and no other row on the page did
+- The base band is the quietest thing on the row in both schemes, which is what it is for, and it clears the track it sits on
+- The console stayed empty
+
 # A control beside the NavTree lives inside the swapped element
 
 A NavTree row swaps `#nav-tree-rows` out of band and takes `#reading-pane` out of the response, so those two elements are the whole of what a click refreshes. Anything that names the selected node — the preset control does, three links to the node under each preset — has to render inside one of them or it goes stale the moment a reader clicks a row, pointing back at the node they left.

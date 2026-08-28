@@ -26,6 +26,16 @@ WITH spend AS (
     FROM live_api_calls c
     WHERE c.session_id = $session_id AND c.source = $source AND NOT c.synthetic
     GROUP BY c.turn_id
+), opening AS (
+    -- The context the session opened on: what the first call of its main thread sent before a
+    -- word had been said — the system prompt, the project's instructions, the tools. A session
+    -- constant, and the ground every turn's bar stands on, so it is read off `main` whichever
+    -- thread this query is serving. Synthetic replies are out for the reason above: they
+    -- report no tokens, and one of them first would open the session on nothing.
+    SELECT min_by(
+        c.cache_read_tokens + c.cache_creation_tokens + c.input_tokens, c."index") AS base
+    FROM live_api_calls c
+    WHERE c.session_id = $session_id AND c.source = 'main' AND NOT c.synthetic
 )
 SELECT
     t."index" AS turn_index,
@@ -50,10 +60,12 @@ SELECT
         -- first turn takes the whole of the fill, which is what it built.
         'added': greatest(
             h.fill - coalesce(lag(h.fill IGNORE NULLS) OVER (ORDER BY t."index"), 0), 0),
+        'base': o.base,
         'window': h.window_tokens
     } AS context
 FROM live_turns t
 LEFT JOIN spend s ON s.turn_id = t.id
 LEFT JOIN held h ON h.turn_id = t.id
+CROSS JOIN opening o
 WHERE t.session_id = $session_id AND t.source = $source
 ORDER BY t."index";

@@ -155,7 +155,7 @@ HIGHLIGHT_CHARS = 256_000
 # `#nav-tree-rows` and inherited; the popover's cannot be, because a swap written on the row would
 # be inherited by the link inside it — so its five attributes are spelled out on every row.
 # The rest is the title, the mark saying what kind of node the row is, the spend beside it, and
-# the two classes the context bar is drawn from — a fill and a tip, eight bytes at their
+# the three classes the context bar is drawn from — one an edge, twelve bytes at their
 # widest. A store whose agent runs carry longer ids than the recorded corpus does is a
 # re-measure.
 #
@@ -168,4 +168,7 @@ HIGHLIGHT_CHARS = 256_000
 # Up 55 B from 1,870 for the dual cost badge: the wash moved off the row and onto the value it
 # washes, because a row with agent runs under it draws two of them (`_nav_tree.html`). The
 # dearest row is one that draws both, so what this counts is a second badge whole.
-NAV_TREE_ROW_BYTES = 1925
+# Up 4 B from 1,925 for the context bar's third edge: a turn stands its growth on the context
+# the session opened on, so its row names a base as well as a fill and where its own share
+# begins (`view/nodes.py`).
+NAV_TREE_ROW_BYTES = 1929

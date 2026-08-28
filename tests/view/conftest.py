@@ -290,16 +290,38 @@ def values(html: str, attribute: str) -> list[str]:
     return re.findall(rf'{attribute}="([^"]*)"', html)
 
 
-def bar(page: str, key: str) -> tuple[int | None, int | None]:
-    """The two steps a row's context bar is drawn at: how full it is, and how much it added.
+class Bar(NamedTuple):
+    """Where a row's context bar draws each of its bands, as steps of the window.
+
+    Three cumulative edges rather than three widths: the bar is a set of nested prefixes, so
+    a band is the ground between two of them and the last one is the whole of the fill. A
+    row that draws no band of a kind answers None for it — a session has nothing before it to
+    have added to, and only a turn stands its growth against the prompt the session opened on.
+    """
+
+    # How full the window was when the node ended, which is where the bar ends.
+    fill: int | None
+    # Where what the node itself added begins: everything left of it was already there.
+    prior: int | None
+    # Where the conversation begins — the context the session opened on, before a word of it.
+    base: int | None
+
+
+def bar(page: str, key: str) -> Bar:
+    """The steps a row's context bar is drawn at, read back off its classes.
 
     Shared, because the bar is where the NavTree's numbers and the popover's have to disagree:
     a turn that gave the window back draws no tip and prints a negative delta, and a leaf
     that read one seam alone could not say so.
     """
     classes = inside(page, "data-nav-tree", key, "class")[0].split()
-    steps = {name[0]: int(name[1:]) for name in classes if re.fullmatch(r"[ft]\d+", name)}
-    return steps.get("f"), steps.get("t")
+    steps = {name[0]: int(name[1:]) for name in classes if re.fullmatch(r"[fpb]\d+", name)}
+    return Bar(steps.get("f"), steps.get("p"), steps.get("b"))
+
+
+def marked(page: str, key: str, name: str) -> bool:
+    """Whether one NavTree row carries a bare class — a mark rather than a step."""
+    return name in inside(page, "data-nav-tree", key, "class")[0].split()
 
 
 class Badge(NamedTuple):

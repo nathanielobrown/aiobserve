@@ -142,7 +142,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
         ),
         # One call a turn answered in a model the window table prices, at tokens a window over
         # the turn before it, so every row that draws a context bar draws one at its widest
-        # spelling: a fill and a tip of two digits each. Cloned rather than flipped, because the
+        # spelling: three edges of two digits each. Cloned rather than flipped, because the
         # model column above is what makes an api call's the widest row of the children log, and
         # a thread that answered in a real model would print a real model there. Which model is
         # arbitrary — the bar reads the window off the table, and every window in it is spent
@@ -160,6 +160,16 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
             " FROM (SELECT DISTINCT ON (l.session_id, l.source, l.turn_id) l.*,"
             ' l."index" + 1 AS rank FROM live_api_calls l))',
             [next(iter(CONTEXT_WINDOWS))],
+        ),
+        # And the third edge, which is read off the session's opening call rather than off the
+        # turn: every thread's turns stand on what `main` sent first, so the earliest call of
+        # every main thread is filled to the window too. Planted after the clone above, which
+        # copies live rows and would otherwise carry this width into a second call.
+        (
+            'UPDATE api_calls SET input_tokens = 300000 WHERE (session_id, source, "index") IN'
+            ' (SELECT session_id, source, min("index") FROM api_calls'
+            "  WHERE source = 'main' AND NOT synthetic GROUP BY session_id, source)",
+            [],
         ),
         # And the two calls whose panes show a value in its own syntax, planted after the rest
         # so they keep the widths above and take the tool names that reach the lexers. `&;` is
@@ -224,13 +234,13 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
         # 3,217 bytes the ceiling keeps for nothing, and `NODE_BYTES` now has room to hide one.
         assert widest_row == budget if measured else widest_row <= budget, (name, widest_row)
         if measured:
-            # And the row it priced drew a context bar at its widest spelling: two classes of
-            # two digits. A corpus that answered in models the window table holds none of would
-            # price a row that draws no bar, and every barred row would be eight bytes over it.
+            # And the row it priced drew a context bar at its widest spelling: three edges of
+            # two digits each, which is the most a turn's row carries. A corpus that answered
+            # in models the window table holds none of would price a row that draws no bar, and
+            # every barred row would be twelve bytes over it.
             widest = max(found, key=lambda row: len(row.encode()))
-            assert re.search(rf'class="[^"]* f{nodes.BAR_STEPS} t{nodes.BAR_STEPS}"', widest), (
-                widest[:200]
-            )
+            top = nodes.BAR_STEPS
+            assert re.search(rf'class="[^"]* f{top} p{top} b{top}"', widest), widest[:200]
             # And it drew both halves of its cost badge, which is the widest thing the row has
             # grown: a corpus whose dearest row spawned no agent run would measure under this.
             assert widest.count('class="badge ') == 2, widest[:200]
