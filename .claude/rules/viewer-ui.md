@@ -136,6 +136,8 @@ Witnessed in a real Chromium on 2026-08-28 against `mise run gallery --port 9064
 
 Prose a person or a model wrote — a prompt, a run's brief, what a call said — shows as the Markdown it was written in, through `parts.prose`. `src/hyphae/view/render.py` owns the escaping, and no template may hand `|safe` to a value that did not come through it.
 
+A title is the other half of that: one line rather than a block, escaped by `src/hyphae/view/inline_markdown.py` and rendered by `nodes.Node`'s own cuts, never by a template. Those two modules are the only escaping a page has.
+
 Both mounts of one value use that macro: the head a pane previews, and the whole of it the fetch swaps into the same block. A value rendered one way in the preview and another in the fetch is a value a reader cannot tell has a head.
 
 # A cut value goes through the filter that marks it

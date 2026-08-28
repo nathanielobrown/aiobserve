@@ -4,7 +4,7 @@
 {% import "_parts.html" as parts %}
 {% import "_nav_tree.html" as navtree %}
 {% import "_citation.html" as frame %}
-{% block title %}{{ selection.icon }} {{ selection.nav_tree_title }} · hyphae{% endblock %}
+{% block title %}{{ selection.icon }} {{ selection.tab_title }} · hyphae{% endblock %}
 {# One node of a session, whole: the NavTree it sits in, and the pane that reads it. Both arrive
    in one response, and a click on a NavTree row re-fetches this same URL — htmx takes `#reading-pane`
    out of the response and swaps `#nav-tree-rows` out of band, so a pasted link and a click serve

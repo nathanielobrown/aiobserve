@@ -16,7 +16,10 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import NamedTuple
 
+from markupsafe import Markup
+
 from hyphae.analyze import queries
+from hyphae.view import inline_markdown
 from hyphae.view.columns import CALL_ICON, COLUMNS, RUN_ICON, TOOL_ICON, Shape
 from hyphae.view.format import cut
 from hyphae.view.store import Row
@@ -396,10 +399,10 @@ class Node:
     def title(self) -> str:
         """What this node is called: the whole of it, before any surface cuts it.
 
-        The concept every surface reads and none of them owns — lead, words and tail joined.
-        The three below are this title at the width of the surface reading it, and they are
-        the only cuts of it: a page that composed its own would be a second answer to "what is
-        this node called" (`docs/viewer.md`).
+        The concept every surface reads and none of them owns — lead, words and tail joined,
+        in the markdown whoever wrote it typed. The five below are this title at the width of
+        the surface reading it, and they are the only cuts of it: a page that composed its own
+        would be a second answer to "what is this node called" (`docs/viewer.md`).
         """
         return self._joined(self.lead, self.words) + self.tail
 
@@ -407,29 +410,50 @@ class Node:
         """The parts of a title a width is spent on, in reading order."""
         return self.separator.join(part for part in parts if part)
 
-    def _at(self, chars: int, *parts: str) -> str:
-        """`parts` at `chars`, with the tail taken out of the width rather than cut off it."""
-        return cut(self._joined(*parts), chars - len(self.tail)) + self.tail
+    def _at(self, chars: int, *parts: str, links: bool) -> Markup:
+        """`parts` rendered at `chars`, with the tail taken out of the width, not cut off it.
+
+        The width is spent on what a reader sees: a description written in markdown is rendered
+        rather than printed, so its syntax costs the surface nothing
+        (`view/inline_markdown.py`). `links` is the surface's own answer — see `pane_title`.
+        """
+        return inline_markdown.cut(self._joined(*parts), chars - len(self.tail), links=links) + (
+            self.tail
+        )
+
+    def _plain(self, chars: int, *parts: str) -> str:
+        """The same cut, as the text under it: for the surfaces that cannot carry markup."""
+        return cut(inline_markdown.strip(self._joined(*parts)), chars - len(self.tail)) + self.tail
 
     @property
-    def nav_tree_title(self) -> str:
-        """The title at the width of a NavTree row, a walk control, or the browser tab."""
-        return self._at(queries.NAV_CHARS, self.lead, self.words)
+    def nav_tree_title(self) -> Markup:
+        """The title at the width of a NavTree row, a walk control, or an errors-list row."""
+        return self._at(queries.NAV_CHARS, self.lead, self.words, links=False)
 
     @property
-    def crumb_title(self) -> str:
+    def tab_title(self) -> str:
+        """The title at a row's width with its markup gone, for the browser tab.
+
+        A `<title>` element and an attribute both print an element as characters or act on it,
+        and neither is what the words say — so the one surface with nowhere to put markup takes
+        the text under it, cut at the same place the row beside it stops.
+        """
+        return self._plain(queries.NAV_CHARS, self.lead, self.words)
+
+    @property
+    def crumb_title(self) -> Markup:
         """The title at the width of one crumb of the chain above the pane.
 
-        The narrowest of the four, and the only one that is not the whole of what its surface
+        The narrowest of the five, and the only one that is not the whole of what its surface
         could show: a chain is many nodes on one line, and the node the chain ends at is open
         underneath it. Cut here rather than in SQL — the query behind a crumb is the NavTree's,
         which fetched a row's width, and a second query for a narrower copy of the same string
         would be a page cost paid for nothing (`analyze/queries.py:CRUMB_CHARS`).
         """
-        return self._at(queries.CRUMB_CHARS, self.lead, self.words)
+        return self._at(queries.CRUMB_CHARS, self.lead, self.words, links=False)
 
     @property
-    def log_title(self) -> str:
+    def log_title(self) -> Markup:
         """The title at the width of a children log's own column.
 
         Wider than a NavTree row's because the log is a table and the column is the width of the
@@ -437,20 +461,23 @@ class Node:
         find out what it was. The words alone — a log that leads a column with a word heads
         that column with it too (`lead`).
         """
-        return self._at(queries.LOG_CHARS, self.words)
+        return self._at(queries.LOG_CHARS, self.words, links=False)
 
     @property
-    def pane_title(self) -> str:
+    def pane_title(self) -> Markup:
         """The title at the head of the node's own pane, where nothing repeats it.
 
-        The widest of the four, because a pane heads one node. A header query returns its
+        The widest of the five, because a pane heads one node. A header query returns its
         strings at this width or wider — a tool header's input comes back at a preview's,
         because the same pane previews it — so a title is cut here and marked where the query
         left more behind. A pane names its node from the header it read rather than from the
         NavTree row it stands on (`view/browse.py:TITLED`) — the NavTree cuts at a row's
         width, which would head a turn with a third of the prompt it is about.
+
+        The one surface a link in a title becomes an `<a>` on: every other one prints its
+        title inside a link already, and an `<a>` inside an `<a>` is markup a browser undoes.
         """
-        return self._at(queries.HEADER_CHARS, self.lead, self.words)
+        return self._at(queries.HEADER_CHARS, self.lead, self.words, links=True)
 
     @property
     def ref(self) -> Ref:
