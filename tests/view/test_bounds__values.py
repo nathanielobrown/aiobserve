@@ -226,8 +226,11 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
         # The plant reached this pane at all, so a sweep finding nothing is a sweep that
         # proves nothing...
         assert filled, kind
-        # ...and everything it reached is cut to the header's width and marked there.
-        assert set(filled.values()) == {headed}, (kind, filled)
+        # ...and everything it reached is cut to the header's width and marked there. A run's
+        # title leads with its bracketed agent type, which the plant made long too, so the cut
+        # lands inside the bracket: the same width with a `[` spent on the first character.
+        cut_at = {headed, "[" + headed[1:]} if kind == "run" else {headed}
+        assert set(filled.values()) == cut_at, (kind, filled)
     # A pane reads one node, so its strings take a header's cut — and the one value the node
     # is about takes the widest of the four, with the rest of it offered as its own fetch.
     assert fields(turn, "data-detail", "prompt")["prompt"] == "x" * queries.DETAIL_CHARS + ELLIPSIS

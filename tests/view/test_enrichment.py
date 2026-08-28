@@ -24,7 +24,6 @@ from hyphae.enrich.taxonomy import TAXONOMY_VERSION
 from hyphae.view.app import build_app
 from hyphae.view.enrichment import GLYPH, GLYPH_CLASS
 from hyphae.view.format import cut, when
-from hyphae.view.nodes import LEAD_SEPARATOR
 from hyphae.view.store import Page
 from tests.conftest import SPINE, SPINE_RUN
 from tests.view.conftest import Planter, fields, inside, one, pages, reads, values
@@ -438,7 +437,7 @@ def test_a_nav_tree_row_the_model_named_carries_a_bare_glyph(
     )
     page = enriched_client.get(f"/session/{SPINE}/run/{run_id}").text
     assert fields(page, "data-nav-tree", f"run:{run_id}")["title"] == cut(
-        f"{agent_type}{LEAD_SEPARATOR}{ran[run_id][0]}", queries.NAV_CHARS
+        f"[{agent_type}] {ran[run_id][0]}", queries.NAV_CHARS
     )
     assert GLYPH_CLASS in inside(page, "data-nav-tree", f"run:{run_id}", "class")
     assert not inside(page, "data-nav-tree", f"run:{run_id}", "title")

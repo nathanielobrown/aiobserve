@@ -20,6 +20,8 @@ from tests.conftest import (
     SPINE,
     SPINE_LEAF,
     SPINE_RUN,
+    TEAMMATE,
+    TEAMMATE_RUN,
 )
 from tests.view.conftest import SPAWN_OF, fields, inside, one, values
 
@@ -104,7 +106,7 @@ def test_an_agent_type_leads_a_runs_title_except_where_a_column_already_heads_it
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
     """Which agent ran is the word a reader picks a run out of a list by, so it leads the
-    title — everywhere the surface has no column to align it in.
+    title in brackets — everywhere the surface has no column to align it in.
 
     The tree, the crumbs, the pane's heading and the tab have no such column: the type is
     there only if the title carries it, and a tree of six runs named by their briefs alone
@@ -126,11 +128,20 @@ def test_an_agent_type_leads_a_runs_title_except_where_a_column_already_heads_it
     # The run's own page has no column for it, so every place that names the node leads with
     # the type and then says what it did.
     page = client.get(f"/session/{NO_PROJECT_SESSION}/run/{BYREF_FORK}").text
-    led = f"{agent_type} — {brief}"
+    # The brackets are what close the lead: a bracketed type says where it ends, so the dash
+    # a composed title otherwise carries would be a second mark saying the same thing.
+    led = f"[{agent_type}] {brief}"
     assert fields(page, "data-body", "run")["title"] == led
     assert fields(page, "data-crumb", f"run:{BYREF_FORK}")["run"] == led
     assert fields(page, "data-nav-tree", f"run:{BYREF_FORK}")["title"] == led
     assert f"<title>◎ {led} ·" in page
+    # And the same shape on a run whose type a reader would recognise, read off the row rather
+    # than off a field: what a NavTree row prints is `[architect]` and then what it did.
+    (architect,) = one(store, "SELECT agent_type FROM live_agent_runs WHERE id = ?", [TEAMMATE_RUN])
+    tree = client.get(f"/session/{TEAMMATE}/run/{TEAMMATE_RUN}").text
+    assert fields(tree, "data-nav-tree", f"run:{TEAMMATE_RUN}")["title"].startswith(
+        f"[{architect}] "
+    )
 
 
 def test_a_forks_calls_under_no_turn_are_its_own_bucket(
