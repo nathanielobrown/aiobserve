@@ -332,6 +332,27 @@ def test_the_row_that_stands_for_a_run_says_where_its_own_cost_came_from(
     assert values(plain, "data-attribution") == []
 
 
+def test_the_popovers_placement_rides_a_file_the_policy_allows(client: TestClient) -> None:
+    """Where a popover stands and where the NavTree opens are a script's, and it is a real file.
+
+    The stylesheet places the popover's left edge and can do nothing about its top, which
+    follows the row a reader is pointing at; nothing in CSS scrolls the selected row into view
+    either. Both are `static/nav-tree.js`, which is a file because `app.CSP` allows no inline
+    script — so what a served page can prove is that the page asks for it, that it arrives, and
+    that no page carries a line of script of its own.
+    """
+    answer = client.get("/static/nav-tree.js")
+    assert answer.status_code == 200
+    assert "javascript" in answer.headers["content-type"]
+    page = client.get(f"/session/{SPINE}").text
+    assert '<script src="/static/nav-tree.js"' in page
+    # Every script on the page is a `src` with an empty body, and no attribute holds a handler.
+    bodies = re.findall(r"<script[^>]*>(.*?)</script>", page, re.DOTALL)
+    assert all(not body.strip() for body in bodies)
+    assert not re.search(r"<script(?![^>]*\ssrc=)", page)
+    assert not re.search(r"\son[a-z]+=", page)
+
+
 def test_a_cache_write_with_no_ttl_on_it_is_charged_at_the_short_rate(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:

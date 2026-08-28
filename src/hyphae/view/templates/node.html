@@ -13,6 +13,9 @@
   {# The NavTree's width, which the reader sets by dragging and this browser keeps. Not a knob on
      the URL: a column width belongs to the screen and not to the node a link names. #}
   <script src="/static/nav-tree-width.js" defer></script>
+  {# Where the tree opens, and where a popover stands: the two things a row's place on the
+     screen decides, which no stylesheet can reach. #}
+  <script src="/static/nav-tree.js" defer></script>
 {% endblock %}
 {% block main %}
   <div id="browser">

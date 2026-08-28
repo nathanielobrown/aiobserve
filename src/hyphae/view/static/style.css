@@ -202,8 +202,10 @@ li.row[data-selected] > a { font-weight: 600; color: var(--ink);
    here, and the grip and the two gutters beside it are what separate the two columns.
    The popover is a descendant of its row, so `:hover` on the row holds while the pointer is
    inside the popover itself, and `:focus-within` holds once a click lands on it — which is
-   what makes the numbers selectable without a pin to hold them open. */
-.popover { display: none; position: fixed; bottom: var(--space-3); z-index: 2;
+   what makes the numbers selectable without a pin to hold them open.
+   The `top` here is only where one stands before a script has placed it: `static/nav-tree.js`
+   aligns it with the row the reader reached, which a stylesheet cannot find. */
+.popover { display: none; position: fixed; top: var(--space-3); z-index: 2;
   left: calc(var(--nav-tree-width, 24rem) + var(--grip-width) + var(--space-3) * 2);
   max-width: 32rem;
   padding: var(--space-2); background: var(--paper); color: var(--ink);

@@ -8,7 +8,7 @@ paths:
 
 # Viewer UI
 
-The viewer is server-rendered Jinja with two scripts on a shipped page: vendored htmx, and `src/hyphae/view/static/nav-tree-width.js` for the one thing a reader sets that no URL carries. A third, `src/hyphae/view/static/dev-reload.js`, rides `hp view --dev` alone (below). These are the conventions a template has to hold to; what each page shows is in `docs/viewer.md`, and how to edit one with the page open in front of you — and the two traps in the formatter that owns their layout — is in `docs/ui-development.md`.
+The viewer is server-rendered Jinja with three scripts on a shipped page: vendored htmx, `src/hyphae/view/static/nav-tree-width.js` for the one thing a reader sets that no URL carries, and `src/hyphae/view/static/nav-tree.js` for the two things a row's place on the screen decides. A fourth, `src/hyphae/view/static/dev-reload.js`, rides `hp view --dev` alone (below). These are the conventions a template has to hold to; what each page shows is in `docs/viewer.md`, and how to edit one with the page open in front of you — and the two traps in the formatter that owns their layout — is in `docs/ui-development.md`.
 
 # One body, two mounts
 
@@ -103,6 +103,19 @@ The NavTree keeps a reader's place across a click for one reason: `#nav-tree` ca
 Move `overflow` down onto the rows and every click drops the reader back at the top of the session. No assertion on served HTML would see it, so the structure is pinned instead by `test_the_nav_tree_keeps_its_place_because_the_scroller_is_not_what_swaps`, which reads the served stylesheet.
 
 Witnessed in a real Chromium on 2026-08-20 at a viewport where the NavTree overflows. Clicking a row that is scrolled *out* of view does move the NavTree — the browser scrolls the link into view before focusing it, which is the browser being right. A test script that clicks through a driver's "scroll into view if needed" measures that and not the swap; click a visible row by coordinates.
+
+# A row's place on the screen is the script's, not the stylesheet's
+
+`src/hyphae/view/static/nav-tree.js` does the two things a rule cannot: it tops each shown popover at the row it belongs to, and it centres the selected row in the NavTree on load. The popover's left edge stays the stylesheet's — a fixed offset past the tree's width — so a popover never moves sideways, and the script writes `top` alone. Near the foot of the window it clamps, standing the numbers inside the viewport rather than under it.
+
+Place on `mouseover`, `focusin`, `htmx:afterSwap` — htmx fetches the numbers a moment after the pointer lands — and on the tree's own `scroll`, so a popover that is up rides the rows under it.
+
+Witnessed in a real Chromium on 2026-08-28 against `mise run gallery --port 9064` — never 8477, which is a live viewer — in both colour schemes:
+
+- At 1400x220 on a tool page, where the tree overflows: it opened at `scrollTop` 43 with the selected row's centre 5 px off the tree's own. Hovering a row stood the popover 0.1 px under its top; wheeling the tree 43 px up carried the popover along with the row, to the lowest place the window left it
+- At 1400x300 a row at 244 px took a popover standing at 129, its foot 7.7 px off the bottom of the window — the clamp, not the row
+- At 1000x560 the ⚒ row that spawned a run carried the attribution line under its counts, and the ◎ rows drew model, context, the three charges and their washes, with `over 2 api calls` where the node was more than one call
+- The console stayed empty throughout
 
 # A rendered value goes through one macro
 
