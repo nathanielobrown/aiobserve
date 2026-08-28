@@ -60,6 +60,9 @@ dev = [
   # A dev-group dependency deliberately: the shipped viewer never imports it, so `--dev` in a
   # checkout without these deps fails at startup rather than serving a loop that never fires.
   "watchfiles>=1.0",
+  # Reads `.github/workflows/*.yml` back as data (`tests/tools/test_workflows.py`), where a
+  # secret and a fork guard have to stay where they are. Tests only: nothing shipped parses YAML.
+  "pyyaml>=6.0",
 ]
 
 [tool.ruff]
