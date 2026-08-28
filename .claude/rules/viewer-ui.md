@@ -106,6 +106,17 @@ Move `overflow` down onto the rows and every click drops the reader back at the 
 
 Witnessed in a real Chromium on 2026-08-20 at a viewport where the NavTree overflows. Clicking a row that is scrolled *out* of view does move the NavTree — the browser scrolls the link into view before focusing it, which is the browser being right. A test script that clicks through a driver's "scroll into view if needed" measures that and not the swap; click a visible row by coordinates.
 
+# The open path clamps at the top of the NavTree
+
+A step of the open path above the selection carries `ancestor` on its `<li>`, and the stylesheet stands each depth one row further down than the depth above it, the first under the preset control. One ancestor per depth, so no two steps clamp at the same place. It is pure CSS and a ladder written out per depth, for the reason the indent ladder is: no rule reads `data-depth` as a number, and `app.CSP` forbids the inline `style` a computed offset would arrive as. `test_the_open_path_clamps_at_the_top_while_the_rows_under_it_scroll` reads the class off the served rows and the ladder off the served stylesheet; what a browser does with the two is a browser's to say.
+
+Witnessed in a real Chromium on 2026-08-28 against `mise run gallery --port 9065` — never 8477, which is a live viewer — in both colour schemes:
+
+- At 1400x170 on a tool call five levels down, where the tree overflows: the session, the bucket, the run, the turn and the api call stood at 67, 87, 106, 125 and 144 px, one row apart under the preset control, while a wheel moved every tool row under them 20 px up and behind them
+- They held those places at the end of the scroll, which is the limit the stylesheet accepts: one flat list releases nothing, so a step stays clamped past the end of its own subtree
+- Each clamped row painted over the rows passing beneath it, and none reached over the preset control, which carries the `z-index` they are left without
+- The console stayed empty
+
 # A row's place on the screen is the script's, not the stylesheet's
 
 `src/hyphae/view/static/nav-tree.js` does the two things a rule cannot: it tops each shown popover at the row it belongs to, and it centres the selected row in the NavTree on load. The popover's left edge stays the stylesheet's — a fixed offset past the tree's width — so a popover never moves sideways, and the script writes `top` alone. Near the foot of the window it clamps, standing the numbers inside the viewport rather than under it.

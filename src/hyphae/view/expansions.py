@@ -326,12 +326,14 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
             "fragments/kin.html",
             {
                 # Each row shut, and under it whatever a shut row stands: the runs it hides
-                # come back with it, the way the page's own rows carry them.
+                # come back with it, the way the page's own rows carry them. None of them is a
+                # step of the open path — the cap keeps the child the path descends through
+                # inside the window, and this fetch is what it left out.
                 "rows": [
                     row
                     for node in nav_tree.windowed(level.nodes, cap, [opened]).cut
                     for row in [
-                        nav_tree.NavTreeRow(node, depth, selected=False),
+                        nav_tree.NavTreeRow(node, depth, selected=False, ancestor=False),
                         *nav_tree.spread(corpus, node, depth + 1),
                     ]
                 ],
