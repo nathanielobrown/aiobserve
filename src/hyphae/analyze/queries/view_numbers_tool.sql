@@ -4,12 +4,17 @@
 -- A tool call reports no usage of its own — its tokens are its api call's (`docs/schema.md`) —
 -- so there is no window and no price to print. What the store does hold is the size of the
 -- result, which is the honest proxy for what the call put in front of the model, and the other
--- calls it was made alongside. Titles through `tool_title` (`analyze/macros.py`), so the
--- siblings read the way the same calls read everywhere else.
+-- calls it was made alongside. What comes back per sibling is the fields it is named by
+-- (`analyze/macros.py:tool_fields`); the words are composed in Python
+-- (`view/builders.py:tool_titles`), so the siblings read the way the same calls read everywhere
+-- else.
 WITH beside AS (
-    SELECT coalesce(list(o.title ORDER BY o."index"), []) AS titles
+    SELECT coalesce(list(o.named ORDER BY o."index"), []) AS named
     FROM (
-        SELECT o."index", tool_title(o.input, s.project_dir, $item_chars) AS title
+        SELECT o."index", {
+            'name': o.name,
+            'fields': tool_fields(o.input, s.project_dir, ad.agent_type, $item_chars)
+        } AS named
         FROM live_tool_calls t
         JOIN live_tool_calls o
           ON o.session_id = t.session_id
@@ -17,6 +22,9 @@ WITH beside AS (
          AND o.api_call_id = t.api_call_id
          AND o.id <> t.id
         LEFT JOIN sessions s ON s.id = t.session_id
+        -- Who a `SendMessage` addressed, resolved the way the sibling's own row resolves it.
+        LEFT JOIN live_agent_runs ad
+            ON ad.session_id = o.session_id AND ad.id = tool_asked(o.input, 'to', $item_chars)
         WHERE t.session_id = $session_id AND t.source = $source AND t.id = $tool_call_id
     ) o
 )
@@ -29,8 +37,8 @@ SELECT
     t.offload_file,
     -- Bound like a header's lists: an api call can make a thousand tool calls, and a popover
     -- is not a level to page through — so it names the first few and says how many it left.
-    list_slice(beside.titles, 1, $head_items) AS siblings,
-    greatest(len(beside.titles) - $head_items, 0) AS siblings_cut,
+    list_slice(beside.named, 1, $head_items) AS siblings,
+    greatest(len(beside.named) - $head_items, 0) AS siblings_cut,
     -- Whether a run hangs under this call, which is the one tool row the NavTree badges: it is
     -- charged what the api call holding it cost, and the popover is where that attribution is
     -- said in words (`view/builders.py:tool_node`). The spawning edge and not the tool's name,

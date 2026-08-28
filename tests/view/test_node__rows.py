@@ -15,6 +15,11 @@ from fastapi.testclient import TestClient
 from hyphae.analyze import queries
 from hyphae.view.app import build_app
 from hyphae.view.format import ELLIPSIS
+from tests.conftest import (
+    MAIN,
+    SEARCH_TOOL,
+    SPINE,
+)
 from tests.view.conftest import (
     Planter,
     fields,
@@ -152,7 +157,7 @@ def test_a_tool_row_says_what_the_tool_was_asked(
 
 
 def test_a_call_row_says_what_the_call_said_and_which_tools_it_called(
-    plant: Planter, store: duckdb.DuckDBPyConnection
+    client: TestClient, plant: Planter, store: duckdb.DuckDBPyConnection
 ) -> None:
     """A turn's calls log carries each call's own words and the tools that call went on to make.
 
@@ -237,9 +242,30 @@ def test_a_call_row_says_what_the_call_said_and_which_tools_it_called(
     # What the call said stands in the row beside the model that said it...
     assert row["text"] == said
     # ...and the tools it called are named, in the order it called them and no others: what
-    # the re-indexed call asked for last comes last, under the count of them.
-    assert row["tool_titles"] == "Read the tree, src/hyphae/view/app.py"
+    # the re-indexed call asked for last comes last, under the count of them. Each is named by
+    # its own tool's rule, glyph and all, so the words here and the words on the tool's own row
+    # are one derivation (`view/formatters.py`) — the `Bash` row says what ran rather than what
+    # the caller said it was for.
+    assert row["tool_titles"] == "⚡ git status, 📖 src/hyphae/view/app.py"
     assert row["tool_calls"] == str(held)
+
+    # The same column over the recording rather than a plant, because a plant can only show
+    # what this test dressed: `SPINE` holds one api call that asked for two different tools at
+    # once, and each is named under its own tool's glyph rather than the first one's
+    # (`tests/fixtures/spine/README.md`).
+    recorded_turn, recorded_call = one(
+        store,
+        "SELECT c.turn_id, c.id FROM live_api_calls c JOIN live_tool_calls t"
+        "  ON t.session_id = c.session_id AND t.source = c.source AND t.api_call_id = c.id"
+        " WHERE t.id = ?",
+        [SEARCH_TOOL],
+    )
+    served = client.get(f"/session/{SPINE}/thread/{MAIN}/turn/{recorded_turn}").text
+    named = fields(served, "data-child", f"call:{recorded_call}")["tool_titles"]
+    # The command it ran leads, because that is the order it asked in, and the search reads as
+    # what was searched for — the field the registry names a `ToolSearch` call by.
+    assert named.startswith("⚡ ls -la ")
+    assert named.endswith(", 🧰 select:PushNotification")
 
     # Both are cut to the column's width and marked where they were cut, like every other
     # string a row of a hundred prints: a call that talked for a page and called forty tools
@@ -258,7 +284,7 @@ def test_a_call_row_says_what_the_call_said_and_which_tools_it_called(
         wide = planted.get(f"/session/{session_id}/thread/{source}/turn/{turn_id}").text
     cut = fields(wide, "data-child", f"call:{call_id}")
     assert cut["text"] == long_said[: queries.LOG_CHARS] + ELLIPSIS
-    assert cut["tool_titles"] == long_path[: queries.LOG_CHARS] + ELLIPSIS
+    assert cut["tool_titles"] == f"📖 {long_path}"[: queries.LOG_CHARS] + ELLIPSIS
 
     # A call that answered with tool calls and no text prints nothing rather than the dash a
     # missing value takes: `api_calls.text` is NOT NULL, so a call that said nothing holds the

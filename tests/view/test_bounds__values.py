@@ -150,8 +150,11 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
         ),
         ("UPDATE tool_calls SET input = ?, name = ? WHERE session_id = ?", [long, long, ANCESTOR]),
         (
+            # The two strings a command row prints have to differ: the sub-line under a row's
+            # title is what the call was *for*, and a description the title already says is
+            # dropped rather than printed twice (`view/builders.py:tool_about`).
             "UPDATE tool_calls SET name = ?, input = ? WHERE id = ?",
-            ["Bash", json.dumps({"description": long, "command": long}), asked_id],
+            ["Bash", json.dumps({"description": "for " + long, "command": long}), asked_id],
         ),
     )
     with TestClient(build_app(path)) as planted:

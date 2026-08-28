@@ -2,10 +2,10 @@
 -- Ordered by "index", unique and ascending within a (session, source); `$skipped` is how
 -- many tool calls the pages before this one held, and 0 asks for the first page.
 --
--- A row carries the tool call's title, because a name alone tells no two calls of one tool
--- apart: a page of twenty `Read` rows says twenty times that a file was read. What a tool call
--- is titled is `tool_title` (`analyze/macros.py`), shared with the three other surfaces that
--- name one, and `tool_about` is what a call whose title says what it ran was for.
+-- A row carries the fields the tool call is named by, because a name alone tells no two calls
+-- of one tool apart: a page of twenty `Read` rows says twenty times that a file was read. The
+-- words are composed in Python (`view/formatters.py`), the derivation every other surface that
+-- names a tool call reads.
 WITH page AS (
     SELECT
         t."index" AS tool_index,
@@ -25,13 +25,11 @@ WITH page AS (
         -- page divides it by its own size to say which page of how many this is, which is what
         -- keeps a cap from looking like a call that simply made fewer tool calls.
         count(*) OVER () AS matched_tool_calls,
-        -- Cut at the width of the column that prints them, one character past it.
-        tool_title(t.input, s.project_dir, $log_chars) AS title,
-        -- And what the input carried under the names the tools the viewer knows name their calls
+        -- What the input carried under the names the tools the viewer knows name their calls
         -- by, so a `Read` row reads as a path and a `Bash` row as the command it ran
-        -- (`view/formatters.py:FORMATTERS`). Every member cut to the same width as the title above.
-        tool_fields(t.input, s.project_dir, ad.agent_type, $log_chars) AS fields,
-        tool_about(t.input, $log_chars) AS about
+        -- (`view/formatters.py:FORMATTERS`). Every member cut at the width of the column that
+        -- prints it, one character past it.
+        tool_fields(t.input, s.project_dir, ad.agent_type, $log_chars) AS fields
     FROM live_tool_calls t
     LEFT JOIN sessions s ON s.id = t.session_id
     -- Who a `SendMessage` addressed, where `to` held an agent run's id rather than a name the
@@ -57,8 +55,6 @@ SELECT
     input_chars,
     result_chars,
     matched_tool_calls,
-    title,
-    fields,
-    about
+    fields
 FROM page
 ORDER BY tool_index;

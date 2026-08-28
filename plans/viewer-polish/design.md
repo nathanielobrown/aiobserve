@@ -69,6 +69,8 @@ Python-tier page tests over recorded fixtures (`tests/view/`, gallery scenarios 
 
 ## Decisions
 
+- **The calls-log sub-line is composed in Python, not dropped** — `tool_about` printed a `Bash` row's description whenever a command was present; `builders.tool_about` prints a description the row's own title does not already say. The rule generalizes to every tool and keeps the old macro's promise that a row never prints one value twice
+- **`view_turn_calls` ships every tool's fields, not a head slice** — a struct per tool costs little (absent members are NULL) and slicing to `$head_items` would silently drop tools the aggregated column used to name
 - **Python owns naming; SQL ships fields** — rejected porting emoji into the SQL macro (string-building misery) and patching only the two call queries (leaves three naming systems)
 - **Inline markdown everywhere visible, links clickable only outside existing links** — rejected reading-pane-only (NavTree is where labels are read) and strip-everywhere (loses the formatting asked for)
 - **Popover base lines are own-thread for every kind, session included** — rejected keeping the session inclusive (perpetuates the inconsistency); the total-spend line is what matches the session-list cost column

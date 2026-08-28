@@ -15,10 +15,6 @@ SELECT
     t.api_call_id,
     n.id AS turn_id,
     substr(t.name, 1, $head_chars + 1) AS name,
-    -- What the pane heads the call with, by the derivation the NavTree row, the errors list and
-    -- the parent's children log all read (`analyze/macros.py`) — so a reader who clicked a
-    -- row lands on a page headed the way the row was.
-    tool_title(t.input, s.project_dir, $head_chars) AS title,
     -- And what the input carried under the names the tools the viewer knows name their calls
     -- by, so a `Read` row reads as a path and a `Bash` row as the command it ran
     -- (`view/formatters.py:FORMATTERS`). Every member cut to the same width as the title above.

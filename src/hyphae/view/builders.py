@@ -12,6 +12,7 @@ from hyphae.view.format import ELLIPSIS
 from hyphae.view.formatters import Fields, name_tool
 from hyphae.view.nodes import (
     COST_PLACES,
+    LEAD_SEPARATOR,
     NO_SPEND,
     SPEECH_MARK,
     TALLY_CHARS,
@@ -74,6 +75,33 @@ def _named(name: str, fields: Fields | None) -> tuple[str, str]:
     """
     named = name_tool(name, fields or {})
     return ("", f"{named.mark} {named.words}") if named.mark else (name, named.words)
+
+
+def tool_titles(called: Sequence[Row]) -> list[str]:
+    """A list of tool calls named one at a time, for the surfaces that print them on one line.
+
+    An api call's row in a children log says which tools it called, and a tool call's popover
+    says what was asked for beside it. Both are lists of the rows the tools log holds, so both
+    are named through `_named` — the lead and the words joined the way `Node.title` joins them,
+    because a list of tool calls that read differently from the rows it stands for would be a
+    second answer to what a call is called.
+    """
+    return [
+        LEAD_SEPARATOR.join(part for part in _named(one["name"], one["fields"]) if part)
+        for one in called
+    ]
+
+
+def tool_about(name: str, fields: Fields | None) -> str:
+    """The line under a tool call's title in a children log: what the call was *for*.
+
+    A `Bash` row heads with the command it ran, so the description the caller wrote reads
+    underneath it. Empty where the record carried no description, and where the title is
+    already that description: a row does not print one value twice.
+    """
+    held = fields or {}
+    said = str(held.get("description") or "")
+    return said if said and said not in _named(name, held)[1] else ""
 
 
 def session_node(header: Row, held: Ledger, described: Descriptions) -> Node:

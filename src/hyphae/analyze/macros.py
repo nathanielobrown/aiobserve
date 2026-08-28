@@ -96,35 +96,6 @@ CASE WHEN starts_with(tool_asked(input, 'file_path', chars + length(project_dir)
      ELSE tool_asked(input, 'file_path', chars) END
 """
 
-# What a tool call is called, in the most readable form the record supports — the derivation
-# behind every surface that names one (`docs/viewer.md`). Which part of the input the title
-# comes from is decided by the input and not by a list of tool names, so a tool nobody here
-# has heard of still names itself:
-#   * a `file_path` is the path, relativized by `tool_path` above
-#   * else a `description` — what the caller said the call was for, which is what `Bash` and
-#     `Agent` put there
-#   * else the head of the input as it was stored, which is JSON for every tool we have seen
-_TOOL_TITLE = """
-CREATE OR REPLACE TEMP MACRO tool_title(input, project_dir, chars) AS
-coalesce(
-    tool_path(input, project_dir, chars),
-    tool_asked(input, 'description', chars),
-    substr(input, 1, chars + 1))
-"""
-
-# The line under a tool call's title in a children log: what the call was *for*, where the
-# title already says what it did. A `Bash` row heads with the command it ran
-# (`view/formatters.py:FORMATTERS`), so the description that used to head it reads underneath.
-# Keyed on the input carrying a command rather than on the tool's name: what has a line under
-# it is a call whose title is the thing it ran, and NULL everywhere else — a row does not
-# print one value twice, and a row whose head is already the description prints one line.
-_TOOL_ABOUT = """
-CREATE OR REPLACE TEMP MACRO tool_about(input, chars) AS
-CASE WHEN tool_asked(input, 'command', chars) IS NOT NULL
-     THEN tool_asked(input, 'description', chars)
-     END
-"""
-
 # The window each model answers in, written out of the table `extract/pricing.py` keeps beside
 # its prices. Generated rather than bound as a parameter so a query names a model and gets a
 # number, with the constant still defined in one place — and so `SETUP` hands a reader the
@@ -146,6 +117,9 @@ _CONTEXT_WINDOW = (
 # and the name behind that id is a row of `live_agent_runs` the query joins.
 # `input_head` is the last member because it is the last resort: the input as recorded, for a
 # tool no rule names and whose input carried nothing any rule reads.
+# `query` and `message` were read off session `4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b` (Claude
+# Code 2.1.221), which is what `ToolSearch` and `PushNotification` name their calls by
+# (`view/formatters.py`) and the recording `tests/fixtures/spine` is cut from.
 _TOOL_FIELDS = """
 CREATE OR REPLACE TEMP MACRO tool_fields(input, project_dir, addressed, chars) AS {
     'path': tool_path(input, project_dir, chars),
@@ -160,6 +134,7 @@ CREATE OR REPLACE TEMP MACRO tool_fields(input, project_dir, addressed, chars) A
     'pattern': tool_asked(input, 'pattern', chars),
     'url': tool_asked(input, 'url', chars),
     'query': tool_asked(input, 'query', chars),
+    'message': tool_asked(input, 'message', chars),
     'todos': CASE WHEN json_valid(input)
                   THEN json_array_length(input, '$.todos') END,
     'input_head': substr(input, 1, chars + 1)
@@ -173,15 +148,13 @@ CREATE OR REPLACE TEMP MACRO tool_fields(input, project_dir, addressed, chars) A
 BOUNDING = {
     "tool_asked": _TOOL_ASKED,
     "tool_path": _TOOL_PATH,
-    "tool_title": _TOOL_TITLE,
-    "tool_about": _TOOL_ABOUT,
     "tool_fields": _TOOL_FIELDS,
 }
 
-# Every macro a shipped query may call, in dependency order — `tool_path`, `tool_title`,
-# `tool_about` and `tool_fields` are written in terms of the ones above them. Installed as a set
-# rather than per query: which macros a file needs is the file's business, and a connection that
-# holds some of them is a connection where a query fails on the ones it does not.
+# Every macro a shipped query may call, in dependency order — `tool_path` and `tool_fields` are
+# written in terms of the ones above them. Installed as a set rather than per query: which
+# macros a file needs is the file's business, and a connection that holds some of them is a
+# connection where a query fails on the ones it does not.
 DEFINITIONS = {
     "signature_line": _SIGNATURE_LINE,
     "rebuilt_context": _REBUILT_CONTEXT,

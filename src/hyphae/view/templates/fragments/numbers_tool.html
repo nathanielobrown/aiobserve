@@ -36,8 +36,9 @@
     <p class="beside" data-attribution="spawn_call">its own cost is the api call that spawned this run</p>
   {%- endif %}
   {# What the same api call asked for beside this one, named the way every other surface names
-     a tool call. Parallel work is the reading a row alone cannot give: a call that took a
-     minute took it beside these. #}
-  <p class="beside">{% if row.siblings %}with <span data-field="siblings">{{ row.siblings | join(", ") }}</span>{{ parts.more(row.siblings_cut) }}{% else %}
+     a tool call — the words composed in Python out of the fields the query shipped
+     (`view/builders.py:tool_titles`). Parallel work is the reading a row alone cannot give: a
+     call that took a minute took it beside these. #}
+  <p class="beside">{% if siblings %}with <span data-field="siblings">{{ siblings | join(", ") }}</span>{{ parts.more(row.siblings_cut) }}{% else %}
   the only tool call its api call made{% endif %}</p>
 </div>

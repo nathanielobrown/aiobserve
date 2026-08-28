@@ -108,6 +108,11 @@ FORMATTERS: dict[str, Formatter] = {
     "Glob": _one("🗂", "pattern"),
     "WebFetch": _one("🌐", "url"),
     "WebSearch": _one("🔍", "query"),
+    # The two names read off session `4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b` (Claude Code
+    # 2.1.221): a tool search carries `query`, a notification `message`
+    # (`analyze/macros.py:tool_fields`).
+    "ToolSearch": _one("🧰", "query"),
+    "PushNotification": _one("🔔", "message"),
     "TodoWrite": _todo_write,
 }
 

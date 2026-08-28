@@ -9,11 +9,12 @@
 -- `text` is previewed here and fetched whole one value at a time (`view_call_text`); the
 -- tool rows under a call are their own query (`view_call_tools`), capped the same way.
 --
--- A row names the tool calls it made as well as counting them, through `tool_title`
--- (`analyze/macros.py`) — the derivation the tools log's own rows read, so a call's row and
--- the log inside it name one tool the same way. The list is cut whole rather than per title:
--- what a reader gets is the first tools of a call that made forty, marked where the column
--- ran out, rather than forty stubs.
+-- A row names the tool calls it made as well as counting them: what comes back is the fields
+-- each of them is named by (`analyze/macros.py:tool_fields`) and the words are composed in
+-- Python (`view/builders.py:tool_titles`), the same derivation the tools log's own rows read,
+-- so a call's row and the log inside it name one tool the same way. Every tool comes back and
+-- the composed line is cut whole where it is printed: what a reader gets is the first tools of
+-- a call that made forty, marked where the column ran out, rather than forty stubs.
 SELECT
     c."index" AS call_index,
     c.id AS api_call_id,
@@ -47,17 +48,25 @@ SELECT
         WHERE t.session_id = c.session_id AND t.source = c.source AND t.api_call_id = c.id
     ) AS tool_calls,
     (
-        SELECT substr(string_agg(tool_title(t.input, s.project_dir, $log_chars), ', '
-                                 ORDER BY t."index"), 1, $log_chars + 1)
+        SELECT list({
+            'name': t.name,
+            'fields': tool_fields(t.input, s.project_dir, ad.agent_type, $log_chars)
+        } ORDER BY t."index")
         FROM live_tool_calls t
+        -- What a path in the fields reads against. Joined here rather than taken from the
+        -- outer row: DuckDB 1.5.5 cannot bind a struct-returning macro over a correlated
+        -- column, and answers `Need named argument for struct pack`.
+        LEFT JOIN sessions s ON s.id = t.session_id
+        -- Who a `SendMessage` addressed, resolved the way `view_call_tools` resolves it: a
+        -- name reading the run id here would name the call differently from its own row.
+        LEFT JOIN live_agent_runs ad
+            ON ad.session_id = t.session_id AND ad.id = tool_asked(t.input, 'to', $log_chars)
         WHERE t.session_id = c.session_id AND t.source = c.source AND t.api_call_id = c.id
-    ) AS tool_titles,
+    ) AS called_tools,
     -- How many calls the turn holds in all, counted before the LIMIT bites, so the page
     -- knows how many pages there are without a second query.
     count(*) OVER () AS matched_api_calls
 FROM live_api_calls c
--- For the project a tool call's path reads against, which is the session's and not the turn's.
-LEFT JOIN sessions s ON s.id = c.session_id
 LEFT JOIN live_turns t
     ON t.session_id = c.session_id AND t.source = c.source AND t.id = c.turn_id
 WHERE c.session_id = $session_id

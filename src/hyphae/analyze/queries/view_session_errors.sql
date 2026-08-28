@@ -13,11 +13,9 @@
 SELECT
     t.source,
     t.id AS tool_call_id,
-    -- What the tool was called, and its title — which is what tells two failures of one tool
-    -- apart in the width of a row. Titled by the derivation every other surface that names a
-    -- tool call reads (`analyze/macros.py`).
+    -- What the tool was called, beside the fields its title is composed out of — which is what
+    -- tells two failures of one tool apart in the width of a row (`view/formatters.py`).
     substr(t.name, 1, $nav_chars + 1) AS name,
-    tool_title(t.input, s.project_dir, $nav_chars) AS title,
     -- And what the input carried under the names the tools the viewer knows name their calls
     -- by, so a `Read` row reads as a path and a `Bash` row as the command it ran
     -- (`view/formatters.py:FORMATTERS`). Every member cut to the same width as the title above.

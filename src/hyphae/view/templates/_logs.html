@@ -19,7 +19,8 @@
 {%- endmacro %}
 {# The one wide column of a row: what the child is called, linking to the child's own page.
    `second` is the line under it, in lower hierarchy — what the first line left out, which
-   today is what a Bash tool call was for, under the command the row heads with.
+   today is what a tool call was for where its title already says what it did
+   (`view/builders.py:tool_about`).
 
    The swap is written out per row rather than hoisted onto the table: the button in the last
    column is an `hx-get` of its own that must not swap the pane, so a hoisted attribute would
@@ -89,7 +90,7 @@
                 {{ what(item.node, suffix, 'model', item.row.model | line) }}
                 {{ cell('text', item.row.text_head | line, 'said') }}
                 {{ cell('tool_calls', item.row.tool_calls | count, 'number') }}
-                {{ cell('tool_titles', item.row.tool_titles | line, 'called') }}
+                {{ cell('tool_titles', item.called | line, 'called') }}
                 {{ cell('text_chars', item.row.text_chars | count, 'number') }}
                 {{ cell('cost_usd', item.node.cost_usd | money, 'number') }}
               {%- elif shape == 'tools' %}
@@ -100,7 +101,7 @@
                    where the record says nothing: a dash under a command is a line of nothing
                    where the second line means "and this is what it was for". #}
                 {{ what(item.node, suffix, 'title', item.node.log_title,
-                  item.row.about | line if item.row.about else '') }}
+                  item.about | line if item.about else '') }}
                 {{ cell('is_error', ('error' if item.row.is_error else none) | text) }}
                 {{ cell('result_chars', item.row.result_chars | count, 'number') }}
               {%- elif shape == 'runs' %}

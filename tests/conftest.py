@@ -84,6 +84,11 @@ DENSE_TOOL = "toolu_015wiqbosE2nUYZBYdd9urjA"
 # command is read out of a `Bash` call's arguments, and every other tool has none, so a route
 # that serves one has nothing to serve for any other call.
 BASH_TOOL = "toolu_012pdUKAdn6qh1dYSBug3rr9"
+# `SPINE`'s one api call that asked for two different tools in the same breath: a tool search
+# beside a `Bash` command. A list of tool calls named row by row reads differently from one
+# named by whatever its first row was, and this pair is what tells the two apart.
+SEARCH_TOOL = "toolu_01CcyHEsu4XugVyeSfS3U8hT"
+SEARCH_BASH_TOOL = "toolu_013mFHM2jYQ6khnnZDCHq5Ua"
 # `SPINE`'s main-thread turn typed as a slash command — `/night-run`, with arguments recorded
 # after it — which is the one shape that fills the two command columns.
 SLASH_TURN = "30aad8e5-21f8-486d-b9d9-e118c703a5a1"

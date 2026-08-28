@@ -307,10 +307,10 @@ def test_a_row_pairs_its_depth_with_the_key_in_the_same_tag() -> None:
 def _shaped(given: str | None, project: str | None, chars: int) -> str:
     """What a tool call the viewer knows no rule for is called, restated from its input.
 
-    The point of restating it is that this oracle must not read the derivation it checks
-    (`analyze/macros.py:tool_title`): a shared implementation would agree with itself whatever
-    it said. Each field is cut before it is chosen, the way the SQL cuts it, so a path longer
-    than the column loses its repository prefix off an already-bounded head.
+    Restated rather than imported (`view/formatters.py`): an oracle sharing the implementation
+    would agree with itself whatever it said. Each field is cut before it is chosen, the way
+    the query cuts it, so a path longer than the column loses its repository prefix off an
+    already-bounded head.
 
     Every input the corpus holds is a JSON object of strings; a fixture holding anything else
     reads as no title here and goes red rather than passing quietly.
@@ -339,11 +339,17 @@ def _shaped(given: str | None, project: str | None, chars: int) -> str:
 
 
 # The tools the fixture corpus records that the viewer names by their own field, restated from
-# `plans/viewer-polish/design.md` rather than read off `view/formatters.py:FORMATTERS` — an oracle
-# that imported the registry would agree with whatever the registry said. The leaf below
-# asserts which registered names this corpus exercises, so a name added to the design without
-# a recorded call is a rule this sweep never sees rather than one it silently blesses.
-_MARKS = {"Read": "📖", "Bash": "⚡", "Agent": "👉", "SendMessage": "📬"}
+# `plans/viewer-polish/design.md` rather than read off `view/formatters.py:FORMATTERS`. The leaf
+# below asserts which registered names this corpus exercises, so a name added to the design
+# without a recorded call is a rule this sweep never sees rather than one it silently blesses.
+_MARKS = {
+    "Read": "📖",
+    "Bash": "⚡",
+    "Agent": "👉",
+    "SendMessage": "📬",
+    "ToolSearch": "🧰",
+    "PushNotification": "🔔",
+}
 
 
 def _named(
@@ -378,6 +384,11 @@ def _named(
             who = (addressed or "")[: chars + 1] or head("to")
             summary = head("summary")
             words = "" if not who else f"to {who}: {summary}" if summary else f"to {who}"
+        # What was searched for, and what the notification said: the one field each carries.
+        case "ToolSearch":
+            words = head("query")
+        case "PushNotification":
+            words = head("message")
         case _:
             return None
     return f"{_MARKS[name]} {words}" if words else None
