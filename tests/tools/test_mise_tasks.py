@@ -27,6 +27,10 @@ CONFIG_ROOT = "{{config_root}}/"
 # What `e2e-chromatic` says when it has no token to upload with.
 REFUSAL = "CHROMATIC_PROJECT_TOKEN is missing or empty"
 
+# What it runs when it has one: the Chromatic CLI over the archives `mise run e2e` wrote,
+# reporting a changed page rather than failing the job while the baselines settle.
+UPLOAD = "chromatic --playwright --exit-zero-on-changes"
+
 
 def tasks() -> dict[str, dict]:
     """Every task `mise.toml` declares, as data."""
@@ -88,13 +92,28 @@ def test_every_task_that_runs_outside_the_root_names_a_directory_the_tree_holds(
         assert directory.is_dir(), f"`{name}` runs in `{spelling}`, which the tree does not hold"
 
 
-def chromatic(token: str | None) -> subprocess.CompletedProcess[str]:
-    """`mise run e2e-chromatic` with the token set to `token`, or unset when that is `None`."""
-    environment = dict(os.environ)
-    environment.pop("CHROMATIC_PROJECT_TOKEN", None)
-    if token is not None:
-        environment["CHROMATIC_PROJECT_TOKEN"] = token
-    return subprocess.run(
+def uploader() -> Path:
+    """The script `e2e-chromatic` runs, resolved through the task rather than typed twice here."""
+    task = tasks()["e2e-chromatic"]
+    directory = ROOT / task["dir"].removeprefix(CONFIG_ROOT)
+    script = (directory / task["run"]).resolve()
+    assert script.is_file(), (
+        f"`e2e-chromatic` runs `{task['run']}`, which {directory} does not hold"
+    )
+    return script
+
+
+def test_the_chromatic_upload_refuses_to_run_on_an_empty_token() -> None:
+    """`mise run e2e-chromatic` stops and names the variable when it holds no token.
+
+    The upload is the one thing in this repo that carries a credential to a third party, so the
+    failure a reader must never see is a run that starts, reaches the network, and then says it
+    was not authorized. The whole task is run here, not the script alone, because the guard is
+    only worth anything if it stands in the way of the command a reader actually types.
+    """
+    # If the task is run with the token explicitly emptied...
+    environment = dict(os.environ) | {"CHROMATIC_PROJECT_TOKEN": ""}
+    refused = subprocess.run(
         ["mise", "run", "e2e-chromatic"],
         cwd=ROOT,
         env=environment,
@@ -103,22 +122,38 @@ def chromatic(token: str | None) -> subprocess.CompletedProcess[str]:
         timeout=60,
         check=False,
     )
-
-
-def test_the_chromatic_upload_refuses_to_run_on_an_empty_token() -> None:
-    """`mise run e2e-chromatic` stops and names the variable when it holds no token.
-
-    The upload is the one thing in this repo that carries a credential to a third party, so the
-    failure a reader must never see is a run that starts, reaches the network, and then says it
-    was not authorized.
-    """
-    # If the task is run with the token explicitly emptied...
-    empty = chromatic("")
-    # ...then it refuses, and says which variable it wanted. The phrase and not the bare name:
+    # ...then it stops, and says which variable it wanted. The phrase and not the bare name:
     # mise echoes the script it is about to run, so the name is in that output either way.
-    assert empty.returncode != 0
-    assert REFUSAL in empty.stderr
-    # ...and a run that was given one gets past that guard, so the refusal is about the token
-    # rather than a task that stops whatever it is handed.
-    held = chromatic("not-a-real-token")
-    assert REFUSAL not in held.stderr
+    assert refused.returncode != 0
+    assert REFUSAL in refused.stderr
+
+
+def test_the_chromatic_upload_hands_a_token_it_was_given_to_the_uploader(tmp_path: Path) -> None:
+    """Given a token, the script gets past the guard and runs the CLI with the flags we chose.
+
+    Nothing reaches Chromatic: the `npx` first on this run's PATH is a stub that writes down the
+    command it was handed and exits. That stub is also what makes the refusal above about the
+    token rather than about a script that stops whatever it is handed — and running the file
+    directly is the only way to put a stub in front of it, since mise puts the node it pins at
+    the head of a task's PATH.
+    """
+    # If `npx` is a stub that records its arguments...
+    recorded = tmp_path / "npx-arguments"
+    stub = tmp_path / "npx"
+    stub.write_text(f'#!/bin/sh\nprintf "%s\\n" "$*" > "{recorded}"\n')
+    stub.chmod(0o755)
+    environment = dict(os.environ) | {
+        "CHROMATIC_PROJECT_TOKEN": "not-a-real-token",
+        "PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}",
+    }
+
+    # ...then the uploader runs to the end...
+    upload = subprocess.run(
+        [uploader()], env=environment, capture_output=True, text=True, timeout=60, check=False
+    )
+    assert upload.returncode == 0, upload.stderr
+    assert REFUSAL not in upload.stderr
+    # ...and what it asked for is the Chromatic CLI, reading the sweep's archives and reporting a
+    # changed page rather than failing on it. The token is not a word on that line: the CLI reads
+    # it from the environment, so it stays out of any log that echoes the command.
+    assert recorded.read_text().strip() == UPLOAD

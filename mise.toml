@@ -101,12 +101,13 @@ arg "<dst>" help="destination path, or a directory (trailing /) to move into"
 run = 'aigarden mv "$usage_src" "$usage_dst"'
 
 [tasks.lint-shell]
-description = "Lint the Claude Code hook scripts with shellcheck"
+description = "Lint the repo's shell scripts with shellcheck"
 # The hooks run on every tool call; a syntax error there is invisible until it
-# silently stops firing. Skipped when shellcheck isn't installed.
+# silently stops firing. `tests/e2e` holds the Chromatic uploader, where a slip
+# would be seen once a month. Skipped when shellcheck isn't installed.
 run = """
 if command -v shellcheck >/dev/null; then
-  shellcheck .claude/hooks/*.sh
+  shellcheck .claude/hooks/*.sh tests/e2e/*.sh
 else
   echo 'shellcheck not installed — skipping (brew install shellcheck)'
 fi
@@ -168,28 +169,11 @@ run = "npx playwright test"
 
 [tasks.e2e-chromatic]
 description = "Upload the browser tier's page archives to Chromatic (needs CHROMATIC_PROJECT_TOKEN)"
+# Run `mise run e2e` first: the sweep is what writes the archives this sends. Not a `depends`,
+# because then the token guard — the whole point of the script — would answer only after a
+# browser had swept fourteen pages. The token and the flags are the script's to explain.
 dir = "{{config_root}}/tests/e2e"
-# The token is a credential and the npm CLI never sees `.env` — `load_dotenv` is the Python
-# CLI's (`src/hyphae/cli.py`). So this task reads it itself, and refuses before anything can
-# reach the network. Setting mise's `_.file` instead would put the OTLP ingest keys beside it
-# into the environment of every task in this file.
-#
-# The file is read only when the variable is *unset*: an environment that names it, empty
-# included, is a caller saying which token to use, and a file must not answer over them.
-run = """
-if [ -z "${CHROMATIC_PROJECT_TOKEN+set}" ] && [ -f "$MISE_CONFIG_ROOT/.env" ]; then
-  set -a
-  . "$MISE_CONFIG_ROOT/.env"
-  set +a
-fi
-if [ -z "${CHROMATIC_PROJECT_TOKEN:-}" ]; then
-  echo 'e2e-chromatic: CHROMATIC_PROJECT_TOKEN is missing or empty.' >&2
-  echo '               Put it in .env or the environment — nothing is uploaded without it.' >&2
-  exit 1
-fi
-echo 'e2e-chromatic: the upload lands in slice 5; the token is read and nothing is sent.' >&2
-exit 1
-"""
+run = "./chromatic-upload.sh"
 
 [tasks.mutate]
 description = "Mutation-test the source this branch changed; pass mutant globs to scope it yourself"
