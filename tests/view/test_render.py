@@ -4,9 +4,17 @@ Every input here is invented markup, and it has to be — redaction flattens eve
 the fixture corpus, so no recorded session can carry a payload. These are the inner of the
 two escaping layers the design names; the outer one is the planted-sentinel route test in
 `tests/view/test_app.py`, which sees what a template does after `render.py` is done.
+
+Two renderers are pinned here, because they answer the same escaping questions: `render.py`,
+which turns a fat value into a block of prose, and `inline_markdown.py`, which turns one line
+into a title. The second one reaches further — a NavTree row, a crumb, the browser tab — so
+every pin below is taken twice.
 """
 
-from hyphae.view import render
+from markupsafe import escape
+
+from hyphae.view import inline_markdown, render
+from hyphae.view.format import ELLIPSIS
 from tests.view.conftest import plain
 
 
@@ -116,3 +124,131 @@ def test_an_absent_value_renders_to_nothing() -> None:
     """A NULL column reaches the template as None, and an empty block beats a crash."""
     assert render.markdown(None) == ""
     assert render.link(None) == ""
+
+
+def test_html_in_a_title_arrives_as_text_too() -> None:
+    """`render.py`'s first pin, on the renderer that reaches a NavTree row.
+
+    A title is composed into a link, a crumb and a browser tab, so an element escaping here
+    lands in markup the block renderer never touches. Passthrough is off in the inline parser
+    for the same one constructor argument, and nothing else in the suite would notice.
+    """
+    rendered = inline_markdown.render("<script>alert(1)</script> ran", links=True)
+    # The markup is text in the title...
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in rendered
+    # ...and no part of it is an element the browser would run.
+    assert "<script" not in rendered
+
+
+def test_an_inline_attribute_cannot_ride_into_a_title_either() -> None:
+    """An `onerror` handler in a description is characters, wherever the description prints."""
+    rendered = inline_markdown.render("a run of <img src=x onerror=alert(1)> work", links=True)
+    assert "<img" not in rendered
+    assert "onerror=alert(1)&gt;" in rendered
+
+
+def test_image_syntax_in_a_title_fetches_nothing() -> None:
+    """`![](host)` in a title renders the placeholder the pane's prose renders.
+
+    The second, independent hole: an `<img src>` is a request the browser makes on load, and a
+    NavTree draws thousands of rows. One placeholder wording for both renderers, so a reader
+    meets the same thing in a row and in the paragraph the row opens.
+    """
+    rendered = inline_markdown.render("![pixel](https://evil.test/px?d=1)", links=True)
+    assert "<img" not in rendered
+    assert 'src="' not in rendered
+    assert 'href="' not in rendered
+    assert "[image: pixel — https://evil.test/px?d=1]" in plain(rendered)
+
+
+def test_only_an_http_url_becomes_a_link_and_only_where_the_surface_carries_one() -> None:
+    """A link is an `<a>` in the pane's heading and text everywhere else.
+
+    Every other surface that names a node prints the title inside a link already — a NavTree
+    row, a crumb, the walk, the error stepper — and an `<a>` inside an `<a>` is markup the
+    browser takes apart into something neither element meant. So the caller says whether this
+    surface may carry one, and the scheme says whether this URL may be followed.
+    """
+    written = "see [PR #18](https://github.test/pr/18) for it"
+    linked = inline_markdown.render(written, links=True)
+    assert 'href="https://github.test/pr/18"' in linked
+    assert "PR #18</a>" in linked
+    # The same words, on a surface that is already a link: the text stands and the anchor does
+    # not, so the row still reads and nothing nests.
+    flat = inline_markdown.render(written, links=False)
+    assert "href" not in flat and "<a" not in flat
+    assert plain(flat) == "see PR #18 for it"
+    # A scheme that runs or reads something local never reaches an `href`, on either surface,
+    # while the words the transcript wrote still print.
+    for url in ("javascript:alert(1)", "data:text/html,<script>alert(1)</script>", "file:///etc"):
+        shown = inline_markdown.render(f"[go]({url})", links=True)
+        assert "href" not in shown, url
+        assert "<script>" not in shown, url
+        assert "go" in plain(shown), url
+
+
+def test_no_block_element_escapes_into_a_title() -> None:
+    """A heading, a list and a fence are the characters they were typed as.
+
+    Only the inline parser runs, so there is no rule that could open a `<p>` or a `<pre>`
+    inside a line — which is what keeps a description a pass wrote in paragraphs from
+    breaking the one line a NavTree row is.
+    """
+    written = "# Heading\n- one\n- two\n\n```py\nx = 1\n```"
+    rendered = inline_markdown.render(written, links=True)
+    for element in ("<h", "<ul>", "<li>", "<p>", "<pre>", "<ol>", "<blockquote>"):
+        assert element not in rendered, element
+    # The heading's own `#` survives as typing, and the fence's contents as a code run.
+    assert "# Heading" in plain(rendered)
+    assert "x = 1" in plain(rendered)
+
+
+def test_a_title_renders_the_four_things_a_line_may_say() -> None:
+    """Bold, italic, code and a link — and nothing else the vocabulary could grow."""
+    rendered = inline_markdown.render(
+        "**bold** *italic* `code` [link](https://x.test/)", links=True
+    )
+    assert "<strong>bold</strong>" in rendered
+    assert "<em>italic</em>" in rendered
+    assert "<code>code</code>" in rendered
+    assert '<a href="https://x.test/">link</a>' in rendered
+
+
+def test_a_title_with_no_markdown_in_it_is_what_it_was() -> None:
+    """The renderer is a no-op on flat text, escaping included.
+
+    Every title the fixture corpus records is flat — redaction saw to that — so this is the
+    ordinary case, and the bytes it serves are what the page served before markdown was
+    rendered at all. `markupsafe` does the escaping for that reason: markdown-it spells a
+    quote `&quot;` where every other value on the page spells it `&#34;`, and a NavTree row
+    is measured in bytes (`view/bounds.py`).
+    """
+    for flat in ('{"name": "deep-research"}', "⚡ rm -rf .mutants", "a & b < c > d 'e'"):
+        assert inline_markdown.render(flat, links=False) == str(escape(flat)), flat
+    # noqa: the `strip` under test is this module's own, not `str.strip`.
+    assert inline_markdown.strip("⚡ rm -rf .mutants") == "⚡ rm -rf .mutants"  # noqa: B005
+
+
+def test_a_title_is_cut_by_what_a_reader_sees_not_by_what_it_is_written_in() -> None:
+    """A width is spent on visible characters, so markdown syntax never eats the budget.
+
+    The cut lands inside the markup and closes it, because a surface's width is a promise
+    about the line it draws and an unclosed `<strong>` would bold the rest of the page.
+    """
+    written = f"**{'x' * 20}**"
+    assert inline_markdown.cut(written, 8, links=False) == f"<strong>{'x' * 8}</strong>{ELLIPSIS}"
+    # The same string without its syntax, cut to the same width, shows the same characters.
+    assert plain(inline_markdown.cut(written, 8, links=False)) == "x" * 8 + ELLIPSIS
+    assert plain(inline_markdown.cut("x" * 20, 8, links=False)) == "x" * 8 + ELLIPSIS
+    # A line that fits carries no mark, and the four syntax characters are not counted.
+    assert inline_markdown.cut(written, 20, links=False) == f"<strong>{'x' * 20}</strong>"
+    # `strip` measures the same thing the cut spends, which is what lets the browser tab and
+    # the row it names stop at the same word.
+    assert len(inline_markdown.strip(written)) == 20
+
+
+def test_an_absent_title_renders_to_nothing() -> None:
+    """A NULL column reaches a title as None, and an empty line beats a crash."""
+    assert inline_markdown.render(None, links=True) == ""
+    assert inline_markdown.cut(None, 10, links=False) == ""
+    assert inline_markdown.strip(None) == ""
