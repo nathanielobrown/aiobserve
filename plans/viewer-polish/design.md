@@ -50,7 +50,7 @@ static/                             changed: badge + quote-border CSS
 
 - `formatters.name_tool(name, fields) -> Formatted(mark, words)` — the only place a tool call is named; `fields` is the `tool_fields` column set, `name` the dispatch key (not a `tool_fields` member). An empty `mark` means the caller leads with the tool's name
 - `inline_markdown.render(text, *, links) -> Markup`, `cut(text, size, *, links, source_cap) -> Markup` and `strip(text) -> str` — bold/italic/code/links only, no block elements; every surface answers `links` explicitly (no default); links become `<a>` only where the surface is not already inside a link (reading-pane `<h1>`; NavTree rows, crumbs, walk, stepper render link text styled but not clickable); `<title>` and attributes use `strip`
-- `view_numbers.sql` output gains `subtree_cost_usd`; base lines mean own-thread for every kind including session
+- `view_numbers.sql` output gains `subtree_usd`; base lines mean own-thread for every kind including session
 - Width cuts (`Node.nav_tree_title` etc.) measure the *plain* text so markdown syntax never eats the budget
 
 ## Chosen test seam
@@ -65,7 +65,7 @@ Python-tier page tests over recorded fixtures (`tests/view/`, gallery scenarios 
 4. **Popover breakout** — session own-thread semantics + subtree spend lines. Verify: numbers-fragment test on a fixture with subagents; zero-subagent node shows no breakout
 5. **Compactions** — run-row red badge (count already in `view_runs.sql:32`) + compaction popover. Verify: fragment test + bounds re-measure
 6. **Reading pane** — Arguments/Result JSON rule, quote borders on prompt/brief/said/thought/run result, drop session Title/Project facts, keep Task brief. Verify: tool-page and run-page template tests
-7. **Docs** — the display-vs-retrieval convention in the AI guidance (likely `docs/ui-development.md` + a line in `CLAUDE.md`'s pointer chain); CONTEXT.md terms for any coined name (e.g. *compaction badge*); `docs/viewer.md` popover paragraph; `doc-sync` before the PR
+7. **Docs** — the display-vs-retrieval convention in the AI guidance (see the answered question below); CONTEXT.md terms for any coined name (e.g. *compaction badge*); `docs/viewer.md` popover paragraph; `doc-sync` before the PR
 
 ## Decisions
 
@@ -76,7 +76,7 @@ Python-tier page tests over recorded fixtures (`tests/view/`, gallery scenarios 
 - **Popover base lines are own-thread for every kind, session included** — rejected keeping the session inclusive (perpetuates the inconsistency); the total-spend line is what matches the session-list cost column
 - **Compaction badge on run rows only** — rejected turn/session badges: main-thread compactions are already visible as interleaved ⊟ nodes
 - **Full compaction popover, not a `title` attribute** — consistency with every other row
-- **Quote border on prose only** — tool payloads keep code styling; rejected bordering all details (border would mean "any detail")
+- **Quote border on prose only** — tool payloads keep code styling; rejected bordering all details (border would mean "any detail"). **As built,** prose takes the same rail a payload `<pre>` already carries, so the pane holds one column of walled values and prose and payload are told apart by the face they are set in; rejected a rail in a second token or weight, which would have made the border itself a distinction to learn
 - **Cut marks are source-aware** — a query ships `width + 1` raw characters (the existing cut protocol), so `inline_markdown.cut` takes that cap: it marks when it spends its visible budget *or* the raw string exceeds `source_cap`, and drops a trailing markdown run the source cut broke rather than printing its delimiters as text. Rejected marking on raw length alone (false mark on a complete title whose syntax outruns a narrow crumb) and cutting on rendered length in SQL (costly; moves every width)
 - **Keep Task brief** (reverses the original ask) — enriched runs title themselves from the enrichment description, so the brief is not a duplicate
 
@@ -90,4 +90,4 @@ Python-tier page tests over recorded fixtures (`tests/view/`, gallery scenarios 
 ## Open questions
 
 - ~~Verify `ToolSearch.query` and `PushNotification.message` against a recorded session~~ Answered 2026-08-28: both names confirmed in the store, session `4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b` (Claude Code 2.1.221), `tests/fixtures/spine`'s own source recording — see testing_plan.md slice 0. No record model gains a field
-- Exact home for the display-vs-retrieval convention note — settle during slice 7 with `docs/documentation.md` in hand
+- ~~Exact home for the display-vs-retrieval convention note~~ Answered 2026-08-28: `.claude/rules/viewer-ui.md`, whose `paths` now cover the view's Python and its `view_*.sql` queries — `docs/documentation.md` puts a convention for a set of files under `.claude/rules/`, and the front matter is what puts it in front of the author about to break it
