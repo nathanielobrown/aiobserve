@@ -21,7 +21,7 @@ from hyphae.view.app import PORT
 from hyphae.view.dev import RELOAD_URL
 from tests.conftest import build_enriched_store
 from tests.gallery import serve
-from tests.view.scenarios import ROUTES
+from tests.view.scenarios import SCENARIOS
 from tests.view.test_dev import TAG, declared
 
 REPO = Path(__file__).resolve().parents[2]
@@ -51,7 +51,7 @@ def test_the_index_offers_one_link_per_scenario_and_nothing_else(gallery: TestCl
     """
     # `unescape` because a URL with two query knobs carries `&amp;` in an attribute.
     linked = [(route, unescape(url)) for route, url in LINK.findall(gallery.get(serve.INDEX).text)]
-    assert linked == list(ROUTES.items())
+    assert linked == [(route, scenario.url) for route, scenario in SCENARIOS.items()]
 
 
 def test_the_gallery_cannot_be_pointed_at_a_store() -> None:
@@ -90,8 +90,8 @@ def test_the_gallery_is_a_dev_viewer(gallery: TestClient) -> None:
 
 def test_the_index_does_not_displace_a_scenario(gallery: TestClient) -> None:
     """`/` is the projects page and a scenario of its own, so the index lives beside it."""
-    assert serve.INDEX not in ROUTES.values()
-    assert declared(gallery) == set(ROUTES) | {RELOAD_URL, serve.INDEX}
+    assert serve.INDEX not in {scenario.url for scenario in SCENARIOS.values()}
+    assert declared(gallery) == set(SCENARIOS) | {RELOAD_URL, serve.INDEX}
 
 
 def test_the_store_the_gallery_builds_holds_what_the_fixture_store_holds(

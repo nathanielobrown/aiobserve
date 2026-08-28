@@ -35,7 +35,7 @@ from watchfiles import Change, awatch
 import hyphae.view
 from hyphae.view.app import CSP, HOST, STATIC, build_app, claim
 from hyphae.view.dev import RELOAD_URL, Event, Rendered, event_for, reload_router
-from tests.view.scenarios import ROUTES
+from tests.view.scenarios import SCENARIOS
 
 # The one line `base.html` adds under `--dev`, whole: the newline and the indent included, so
 # that a prod page is a dev page with this string taken out and nothing else changed.
@@ -163,7 +163,7 @@ def test_the_change_sets_watchfiles_yields_are_the_shape_the_invented_ones_assum
 # --- What the dev app serves that the shipped one does not ------------------------------
 
 
-@pytest.mark.parametrize("path", sorted(ROUTES.values()))
+@pytest.mark.parametrize("path", sorted(scenario.url for scenario in SCENARIOS.values()))
 def test_a_dev_page_is_a_prod_page_plus_the_one_script_tag(
     path: str, enriched_client: TestClient, dev_client: TestClient
 ) -> None:
@@ -191,11 +191,11 @@ def test_the_shipped_viewer_declares_no_route_under_dev(
 ) -> None:
     """`--dev` adds the reload stream and nothing else; without it the route is not there.
 
-    The two halves together are what keeps `ROUTES` meaning "everything the shipped viewer
+    The two halves together are what keeps `SCENARIOS` meaning "everything the shipped viewer
     serves" — the completeness leaf in `test_bounds.py` never has to list a dev route.
     """
-    assert declared(client) == set(ROUTES)
-    assert declared(dev_client) == set(ROUTES) | {RELOAD_URL}
+    assert declared(client) == set(SCENARIOS)
+    assert declared(dev_client) == set(SCENARIOS) | {RELOAD_URL}
     assert client.get(RELOAD_URL).status_code == 404
 
 

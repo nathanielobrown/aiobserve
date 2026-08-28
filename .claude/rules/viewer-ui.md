@@ -161,7 +161,7 @@ Witnessed in a real Chromium on 2026-08-25, over a store built from the `resume_
 
 # The gallery is the scenario list, opened
 
-`mise run gallery` (`tests/gallery/serve.py`) builds a store from the redacted fixtures, serves it under `--dev`, and lists `tests/view/scenarios.py:ROUTES` at `/gallery`. One link per entry and no others, so the page a person walks is the list the tier sweeps.
+`mise run gallery` (`tests/gallery/serve.py`) builds a store from the redacted fixtures, serves it under `--dev`, and lists `tests/view/scenarios.py:SCENARIOS` at `/gallery`. One link per entry and no others, so the page a person walks is the list the tier sweeps.
 
 Witnessed in a real Chromium on 2026-08-25 on the gallery's own port 8478 — never 8477, which is a live viewer. The index came up with 35 rows, one per `ROUTES` entry; clicking the turn-node link landed on that node's page with its NavTree (17 rows) and its pane rendered, the reload script on it, and no console error.
 

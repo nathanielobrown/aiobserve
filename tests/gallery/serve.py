@@ -1,7 +1,7 @@
 """The gallery: every scenario the viewer tier pins, as a page you can open and edit against.
 
 `mise run gallery` builds a store from the redacted fixtures, serves it under `--dev`
-(`view/dev.py`), and adds an index at `INDEX` listing `tests/view/scenarios.py:ROUTES`. Editing
+(`view/dev.py`), and adds an index at `INDEX` listing `tests/view/scenarios.py:SCENARIOS`. Editing
 a template or a stylesheet reloads whatever is open, so the loop is: pick a scenario, save,
 watch.
 
@@ -21,7 +21,7 @@ from starlette.templating import Jinja2Templates
 from hyphae.view.app import DEV_SHUTDOWN_SECONDS, HOST, build_app, claim
 from hyphae.view.templating import TEMPLATES
 from tests.conftest import build_enriched_store
-from tests.view.scenarios import ROUTES
+from tests.view.scenarios import SCENARIOS
 
 # Where the index lives. Not `/`: that is the projects page and a scenario in its own right.
 INDEX = "/gallery"
@@ -45,7 +45,7 @@ def gallery(store: Path) -> FastAPI:
 
     @app.get(INDEX)
     def index(request: Request) -> Response:
-        return templates.TemplateResponse(request, "index.html", {"routes": ROUTES})
+        return templates.TemplateResponse(request, "index.html", {"scenarios": SCENARIOS})
 
     return app
 

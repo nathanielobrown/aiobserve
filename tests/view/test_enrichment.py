@@ -27,7 +27,7 @@ from hyphae.view.format import cut, when
 from hyphae.view.store import Page
 from tests.conftest import SPINE, SPINE_RUN
 from tests.view.conftest import Planter, fields, inside, one, pages, reads, values
-from tests.view.scenarios import ROUTES
+from tests.view.scenarios import SCENARIOS
 
 # Every enrichment table, and the statement that empties one — the second absent-safety case.
 EMPTIED = tuple((f"DELETE FROM {spec.table}", ()) for spec in LEVELS.values())
@@ -35,8 +35,8 @@ EMPTIED = tuple((f"DELETE FROM {spec.table}", ()) for spec in LEVELS.values())
 # The fetches behind what a pass wrote, read off the route sweep rather than listed, so a
 # fourth level's pair lands in the absence check with the rest.
 ENRICHMENT_URLS = tuple(
-    url
-    for path, url in ROUTES.items()
+    scenario.url
+    for path, scenario in SCENARIOS.items()
     if path.startswith(("/fragment/description/", "/fragment/friction/"))
 )
 

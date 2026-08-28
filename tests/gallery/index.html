@@ -2,8 +2,8 @@
 {% block title %}Gallery — hyphae{% endblock %}
 {% block main %}
   <h1>Scenarios</h1>
-  {# One row per entry of `tests/view/scenarios.py:ROUTES`: the route a page stands for, and the
-     one real URL the tier sweeps it at. Nothing is listed here that the tests do not cover. #}
+  {# One row per entry of `tests/view/scenarios.py:SCENARIOS`: the route a page stands for, and
+     the one real URL the tier sweeps it at. Nothing is listed here that the tests do not cover. #}
   <table id="scenarios">
     <thead>
       <tr>
@@ -12,10 +12,12 @@
       </tr>
     </thead>
     <tbody>
-      {% for route, url in routes.items() %}
+      {% for route, scenario in scenarios.items() %}
         <tr>
           <td><code>{{ route }}</code></td>
-          <td><a data-scenario="{{ route }}" href="{{ url }}">{{ url }}</a></td>
+          <td>
+            <a data-scenario="{{ route }}" href="{{ scenario.url }}">{{ scenario.url }}</a>
+          </td>
         </tr>
       {% endfor %}
     </tbody>

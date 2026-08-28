@@ -8,7 +8,7 @@ Edit a viewer template or stylesheet and see it in the browser without touching 
 mise run gallery
 ```
 
-The gallery builds a store from the redacted fixtures, serves it in dev mode, and prints its index — `/gallery` on port 8478, one past the viewer's own default, so a gallery and a viewer over your own store can be open side by side. The index is a row per entry of `tests/view/scenarios.py:ROUTES`: the route a page stands for, and one real URL that renders it. Click the one you are working on.
+The gallery builds a store from the redacted fixtures, serves it in dev mode, and prints its index — `/gallery` on port 8478, one past the viewer's own default, so a gallery and a viewer over your own store can be open side by side. The index is a row per entry of `tests/view/scenarios.py:SCENARIOS`: the route a page stands for, and one real URL that renders it. Click the one you are working on.
 
 `mise run gallery --port 9001` moves it, which is how a second branch's gallery opens beside the first. That flag is the only argument it takes, and neither a path nor an environment variable can reach it: session data is private, and what keeps this tool from serving the canonical store is that the process can only build its own corpus (`tests/gallery/serve.py`). That build costs well under a second, so it happens on every launch and nothing is cached.
 
@@ -43,4 +43,4 @@ uv run hp view --dev
 
 ## Add a route and the gallery gains the page
 
-`ROUTES` has two readers: the viewer tier, which sweeps every URL in it and checks the keys against the routes the app declares, and the gallery, which lists it. A route added with no entry fails `tests/view/test_bounds.py`, and the entry that clears it is the page you can then open in the gallery. Neither side keeps a list of its own to drift.
+`SCENARIOS` has two readers: the viewer tier, which sweeps every URL in it and checks the keys against the routes the app declares, and the gallery, which lists it. A route added with no entry fails `tests/view/test_bounds.py`, and the entry that clears it is the page you can then open in the gallery. Neither side keeps a list of its own to drift.
