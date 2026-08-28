@@ -48,8 +48,8 @@ static/                             changed: badge + quote-border CSS
 
 ## Key contracts
 
-- `formatters.name_tool(fields: Mapping) -> Formatted(mark, words)` — the only place a tool call is named; input is the `tool_fields` column set
-- `inline_markdown.render(text) -> Markup` and `inline_markdown.strip(text) -> str` — bold/italic/code/links only, no block elements; links become `<a>` only where the surface is not already inside a link (reading-pane `<h1>`; NavTree rows, crumbs, walk, stepper render link text styled but not clickable); `<title>` and attributes use `strip`
+- `formatters.name_tool(name, fields) -> Formatted(mark, words)` — the only place a tool call is named; `fields` is the `tool_fields` column set, `name` the dispatch key (not a `tool_fields` member). An empty `mark` means the caller leads with the tool's name
+- `inline_markdown.render(text, *, links) -> Markup`, `cut(text, size, *, links, source_cap) -> Markup` and `strip(text) -> str` — bold/italic/code/links only, no block elements; every surface answers `links` explicitly (no default); links become `<a>` only where the surface is not already inside a link (reading-pane `<h1>`; NavTree rows, crumbs, walk, stepper render link text styled but not clickable); `<title>` and attributes use `strip`
 - `view_numbers.sql` output gains `subtree_cost_usd`; base lines mean own-thread for every kind including session
 - Width cuts (`Node.nav_tree_title` etc.) measure the *plain* text so markdown syntax never eats the budget
 
@@ -77,6 +77,7 @@ Python-tier page tests over recorded fixtures (`tests/view/`, gallery scenarios 
 - **Compaction badge on run rows only** — rejected turn/session badges: main-thread compactions are already visible as interleaved ⊟ nodes
 - **Full compaction popover, not a `title` attribute** — consistency with every other row
 - **Quote border on prose only** — tool payloads keep code styling; rejected bordering all details (border would mean "any detail")
+- **Cut marks are source-aware** — a query ships `width + 1` raw characters (the existing cut protocol), so `inline_markdown.cut` takes that cap: it marks when it spends its visible budget *or* the raw string exceeds `source_cap`, and drops a trailing markdown run the source cut broke rather than printing its delimiters as text. Rejected marking on raw length alone (false mark on a complete title whose syntax outruns a narrow crumb) and cutting on rendered length in SQL (costly; moves every width)
 - **Keep Task brief** (reverses the original ask) — enriched runs title themselves from the enrichment description, so the brief is not a duplicate
 
 ## Out of scope
