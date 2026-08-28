@@ -4,6 +4,10 @@ A row's badge prints one number, and one number cannot say whether a phase spent
 reading a cache or writing one. The split is the four charges `extract/pricing.py` already
 computes, summed across the models the node used.
 
+Every line here is the node's own thread, whatever kind of node it is. What the agent runs
+below it spent stands apart, in the two lines `breakout` composes: one reading under one label
+is what a session popover used to be, and the runs are most of a spend when there are any.
+
 Composed here rather than in SQL because the rates are Python's: a phase can mix models — a
 session runs Haiku sub-agents under an Opus main thread — so one row of summed tokens times
 one price would charge them all at whichever rate won. `view_numbers.sql` groups the node's
@@ -14,7 +18,7 @@ from collections.abc import Sequence
 from typing import NamedTuple
 
 from hyphae.extract.pricing import CostSplit, TokenUsage, split_cost
-from hyphae.view.nodes import meter
+from hyphae.view.nodes import COST_PLACES, meter
 from hyphae.view.store import Row
 
 
@@ -37,6 +41,35 @@ class Charge(NamedTuple):
 # What the popover calls each line, beside the name its two numbers are labelled with: the
 # store's own column less its `_tokens`, and that same name under a `cost_` for the dollar.
 _LINES = (("cache read", "cached"), ("new input", "new_input"), ("output", "output"))
+
+
+class Breakout(NamedTuple):
+    """The two lines under the total, on a node with agent runs hanging below it.
+
+    What the node's own thread spent is the column above; this is what the runs it asked for
+    spent, and the two together. Absent where no run hangs there — see `breakout`.
+    """
+
+    # What the runs below the node spent, and what that is with the node's own added back.
+    subagents: float
+    total: float
+    # The ground each is drawn on, the badge's own, as every other dollar here takes it.
+    subagents_wash: str
+    total_wash: str
+
+
+def breakout(own: float | None, under: float | None, whole: float | None) -> Breakout | None:
+    """The subagent and total lines, or None where nothing hangs under the node.
+
+    None rather than a pair of zeroes: a subagent charge of nothing and a total repeating the
+    figure above it are two ways of saying what the node already said, and a reader who sees
+    the lines on every row stops reading them. Rounded back to where a cost is stored so the
+    sum of two four-decimal figures is one too (`view/nodes.py:COST_PLACES`).
+    """
+    if not under:
+        return None
+    total = round((own or 0) + under, COST_PLACES)
+    return Breakout(under, total, wash(under, whole), wash(total, whole))
 
 
 def charges(row: Row, split: CostSplit | None, whole: float | None) -> list[Charge]:

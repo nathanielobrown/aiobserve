@@ -14,7 +14,7 @@ Three rules shape everything below.
 - **unit (inline markdown)** — `tests/view/test_render.py`, beside the block renderer's safety pins, since the two share every escaping question
 - **served HTML (NavTree)** — `tests/view/test_nav_tree*.py` over the session-scoped `client` fixture; rows read by `rows`/`fields`/`inside`/`values`
 - **served HTML (node page)** — `tests/view/test_node*.py`, `test_walk.py`, `test_errors.py`, `test_run.py`
-- **served HTML (fragments)** — `tests/view/test_numbers.py` over the `/fragment/numbers/…` routes, expectations priced from `live_api_calls` in the test's own SQL as that file already does
+- **served HTML (fragments)** — `tests/view/test_numbers.py` and `tests/view/test_numbers__spend.py` over the `/fragment/numbers/…` routes, expectations priced from `live_api_calls` in the test's own SQL as those files already do
 - **bounds and budgets** — `tests/view/test_bounds*.py` against `tests/view/budgets.py` and `src/hyphae/view/bounds.py`
 - **fixture evidence (extract tier)** — a redacted excerpt proves the fields the viewer's queries then read
 - **browser tier** — `tests/e2e/specs/htmx.spec.ts` under `mise run e2e`
@@ -64,7 +64,7 @@ Three rules shape everything below.
 - **A node's total-spend line equals what its own NavTree badge already prints.** *Evidence:* on `spine`, for the session row and for a turn that spawned a run, the popover's total equals the `total` half of the dual badge for the same key — the expectation computed once, through the `SPAWNS` SQL in `tests/view/conftest.py` that `test_a_dual_badge_gathers_under_a_row_every_run_it_spawned` (`test_nav_tree__badges.py:94`) already uses. Bolded: two surfaces are now drawing the same rollup from different queries, and only comparing them catches a divergence.
 - Own plus subagent spend equals total, on every node of every fixture session that has both. *Evidence:* a sweep over the `/fragment/numbers/…` routes reachable from `pages()` asserting the arithmetic to cent precision, beside the existing column-sum leaf `test_the_popovers_two_columns_come_to_the_totals_under_them` (`test_numbers.py:252`).
 - **A node with no subagent spend under it shows no breakout at all.** *Evidence:* the popover for a run on `MODEL_ONLY`'s session, and for a `call:` node on `spine` whose api call spawned nothing, carries neither the subagent-spend nor the total-spend field — asserted by the absence of the two `data-field` names, not by a string search. Bolded: the design's rule is conditional emission, and a template that always renders the lines would pass every leaf above.
-- Each breakout dollar takes the badge's own wash. *Evidence:* `test_every_dollar_in_a_popover_is_washed_at_its_share_of_what_the_session_spent` (`test_numbers.py:293`) extended to the two new fields, comparing against `nodes.meter` by name.
+- Each breakout dollar takes the badge's own wash. *Evidence:* `test_every_dollar_in_a_popover_is_washed_at_its_share_of_what_the_session_spent` (`test_numbers__spend.py`) extended to the two new fields, comparing against `nodes.meter` by name.
 - Every popover route still answers 200 and stays inside its budget. *Evidence:* the `pages()` route sweep and `test_a_served_page_stays_under_its_ceiling` (`test_bounds.py:446`) with the fragment budget in `tests/view/budgets.py` re-derived, its comment naming the two lines that added the bytes.
 
 ## Slice 5 — compactions

@@ -10,8 +10,9 @@ nothing to agree with. The spend is priced one call at a time, which is the read
 cannot take: it groups a node's tokens by model and prices each group once, and that is the
 same arithmetic only if the group's cache write splits the way every call in it did.
 
-What those calls were charged is `test_numbers__spend.py`, which reads back through the
-helpers below.
+The dollars that cross a thread boundary — what the agent runs under a node spent, and the
+total the two come to — are `test_numbers__spend.py`, which reads back through the helpers
+below.
 """
 
 import re
@@ -165,27 +166,43 @@ def tokens(printed: dict[str, str], field: str) -> int:
     return int(printed[field].replace(",", ""))
 
 
-def test_a_session_reads_its_window_off_the_main_thread_and_its_dollars_off_them_all(
+def test_a_session_reads_its_window_and_its_dollars_off_the_thread_a_reader_is_on(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """A session's two summaries are measured over different sets of calls, and say so.
+    """A session popover is the main thread's, and the runs it spawned stand under it.
 
-    The window is the main thread's, because that is the thread a reader of the session is in
-    — a run holds one of its own. The spend is every thread's, because the session paid for
-    the runs it spawned. The popover is where those two scopes stop looking like one number.
+    Both summaries are one thread's: the window because that is the thread a reader of the
+    session is in — a run holds one of its own — and now the dollars too. They used to be
+    every thread's, which made the session the one node whose three charges answered a
+    different question from the three on the row under it. What the subagents cost is the
+    line below instead, where a reader can see it is a different set of calls.
     """
     printed = popover(client, f"/session/{SPINE}", f"{Kind.SESSION}:{SPINE}")
     assert printed | held(store, SPINE, MAIN) == printed
     # Nothing came before a session for it to have added to, so the figure is the dash a
     # missing number prints rather than the whole of the fill dressed as a delta.
     assert printed["added"] == ABSENT
-    split, stored = charged(store, SPINE)
+    # The three charges price the main thread's calls and nothing else, which on a session
+    # that ran subagents is strictly less than what the session spent.
+    split, main = charged(store, SPINE, extra=f"AND source = '{MAIN}'")
+    (whole,) = one(store, "SELECT cost_usd FROM session_rollups WHERE session_id = ?", [SPINE])
+    assert main < whole, "the reversal is only visible on a session with subagents"
     assert not misread(printed, split)
-    # And the three come to the total under them, which is the number the store keeps. Printed
-    # to the place a cost is stored at rather than to the badge's cents: the popover is where a
-    # reader adds the column up, and a column of cents would not come to a total in cents.
-    assert printed["cost_usd"] == f"${stored:.4f}"
-    assert round(split.total, 4) == round(stored, 4)
+    # And they come to the total under them, which is now the main thread's own. Printed to the
+    # place a cost is stored at rather than to the badge's cents: the popover is where a reader
+    # adds the column up, and a column of cents would not come to a total in cents.
+    assert printed["cost_usd"] == f"${main:.4f}"
+    assert round(split.total, 4) == round(main, 4)
+    # What left the column is the breakout line under it — every thread but the main one —
+    # and the two of them come back to what the store says the session spent.
+    (under,) = one(
+        store,
+        "SELECT round(sum(cost_usd), 4) FROM live_api_calls WHERE session_id = ? AND source <> ?",
+        [SPINE, MAIN],
+    )
+    assert printed["cost_subagents"] == f"${under:.4f}"
+    assert amount(printed["cost_total"]) == round(main + under, 4)
+    assert round(amount(printed["cost_total"]), 2) == round(whole, 2)
 
 
 def test_a_turn_says_what_it_put_into_the_window_since_the_turn_before_it(
