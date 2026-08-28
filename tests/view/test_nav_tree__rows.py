@@ -26,6 +26,7 @@ from hyphae.view.nodes import (
 from tests.conftest import MAIN, SPINE
 from tests.view.conftest import (
     Planter,
+    badges,
     fields,
     inside,
     one,
@@ -510,8 +511,8 @@ def test_a_bucket_row_carries_the_totals_of_what_it_gathers(
         )
         opened = client.get(f"/session/{session_id}/unattached").text
         for run_id, (spent, _) in zip(loose, totals, strict=True):
-            drawn = inside(opened, "data-nav-tree", f"run:{run_id}", "class")[0].split()
-            assert meter(spent / whole if whole else None) in drawn, run_id
+            drawn = badges(opened, f"run:{run_id}")["cost_usd"]
+            assert meter(spent / whole if whole else None) in drawn.step.split(), run_id
         gathered = gathered or (str(session_id), loose)
     # Both buckets are read above rather than one of them: they are built by different code
     # over different rows, and only one of them can span threads.

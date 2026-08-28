@@ -25,6 +25,7 @@ from hyphae.view.app import build_app
 from hyphae.view.enrichment import Descriptions
 from hyphae.view.nodes import (
     KIN_URL,
+    NO_LEDGER,
     Kind,
     Preset,
     Ref,
@@ -242,9 +243,14 @@ def test_a_run_renders_under_the_tool_call_that_spawned_it(
     assert under(html, f"tool:{spawn.spawn_tool_id}") == [f"run:{spawn.run_id}"]
     drawn = [key for _, key in rows(html)]
     assert drawn.count(f"run:{spawn.run_id}") == 1
-    # And the row carries the node's title and its cost, and nothing naming that call: the
-    # place is the whole of what says where the run came from.
-    assert set(fields(html, "data-nav-tree", f"run:{spawn.run_id}")) == {"title", "cost_usd"}
+    # And the row carries the node's title and its two costs — its own thread and the subtree
+    # under it — and nothing naming that call: the place is the whole of what says where the
+    # run came from.
+    assert set(fields(html, "data-nav-tree", f"run:{spawn.run_id}")) == {
+        "title",
+        "cost_usd",
+        "total_usd",
+    }
 
 
 def test_a_run_whose_rows_above_are_shut_stands_under_the_nearest_one_showing(
@@ -518,10 +524,12 @@ def test_a_chain_is_resolved_to_the_depth_the_page_prices_and_no_deeper(
         # prices stands, and the run under that tool call is what falls past it.
         for step in range(bounds.DEPTH // rung - 1)
     ]
-    corpus = nav_tree.Corpus(SPINE, whole=0.0, runs=ladder, described=Descriptions(), source=MAIN)
+    corpus = nav_tree.Corpus(
+        SPINE, held=NO_LEDGER, runs=ladder, described=Descriptions(), source=MAIN
+    )
     # A short ladder resolves, which is what says a rung is worth four levels and not some
     # other number: one run is the session, a turn, a call, a tool call and the run itself.
-    shallow = nav_tree.Corpus(SPINE, 0.0, ladder[:2], Descriptions(), MAIN)
+    shallow = nav_tree.Corpus(SPINE, NO_LEDGER, ladder[:2], Descriptions(), MAIN)
     assert len(nav_tree.ancestry(shallow, [Ref(Kind.RUN, "a0", "a0")])) == 1 + rung
     assert len(nav_tree.ancestry(shallow, [Ref(Kind.RUN, "a1", "a1")])) == 1 + 2 * rung
     # Exactly `DEPTH` is served — a tool call of the deepest thread, seeded by its own page the
@@ -537,7 +545,7 @@ def test_a_chain_is_resolved_to_the_depth_the_page_prices_and_no_deeper(
     past = [*ladder, {**ladder[-1], "run_id": "past", "spawn_source": deepest}]
     with pytest.raises(ValueError, match=str(bounds.DEPTH)):
         nav_tree.ancestry(
-            nav_tree.Corpus(SPINE, 0.0, past, Descriptions(), MAIN),
+            nav_tree.Corpus(SPINE, NO_LEDGER, past, Descriptions(), MAIN),
             [Ref(Kind.RUN, "past", "past")],
         )
 

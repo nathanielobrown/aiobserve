@@ -33,7 +33,7 @@ from hyphae.view.nodes import (
 from tests.conftest import MAIN, SPINE
 from tests.view.conftest import (
     SPAWNS,
-    fields,
+    badges,
     inside,
     one,
     values,
@@ -458,14 +458,19 @@ def weighed(
     cost: float,
     unpriced: int,
 ) -> None:
-    """One row read against what the store holds under it: its spend, and what went unpriced."""
+    """One row's own half read against what the store holds on its thread, and what went unpriced.
+
+    The subtree half is the rollup's, and the leaves in `test_nav_tree__meters.py` weigh it: what
+    this holds is the number a row has always printed first.
+    """
     (whole,) = one(store, "SELECT cost_usd FROM session_rollups WHERE session_id = ?", [session_id])
-    row = fields(page, "data-nav-tree", key)
-    assert row["cost_usd"] == money(cost), key
-    # The bar is that spend against the session, not against the row's parent or its own
-    # children — and a session with nothing to take a share of draws every row at nothing.
+    own = badges(page, key)["cost_usd"]
+    assert own.shown == money(cost), key
+    # The wash is that spend against the session, not against the row's parent or its own
+    # children — and a session with nothing to take a share of draws every row at nothing. It
+    # rides on the value it washes rather than on the row, because the row draws two of them.
     share = cost / whole if whole else None
-    assert meter(share) in inside(page, "data-nav-tree", key, "class")[0].split(), key
+    assert meter(share) in own.step.split(), key
     # A `title` inside the row is the mark on a total our price table could not complete —
     # there where some call under the row went unpriced, and nowhere else.
     marks = inside(page, "data-nav-tree", key, "title")

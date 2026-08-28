@@ -302,6 +302,29 @@ def bar(page: str, key: str) -> tuple[int | None, int | None]:
     return steps.get("f"), steps.get("t")
 
 
+class Badge(NamedTuple):
+    """One half of a row's cost badge: what it printed, and the step its wash is drawn at."""
+
+    shown: str
+    step: str
+
+
+def badges(page: str, key: str) -> dict[str, Badge]:
+    """A row's cost badge, half by half, keyed by the field each half carries.
+
+    `cost_usd` is what the node's own thread spent and `total_usd` what its whole subtree did,
+    so a row printing one number answers with one entry. Each half wears its own step class,
+    which is the whole reason this reads the two together: a pair drawn at one depth is a pair
+    that took its share against the same number twice.
+    """
+    shown = fields(page, "data-nav-tree", key)
+    return {
+        name: Badge(shown[name], tag.get("class") or "")
+        for tag in _element(page, "data-nav-tree", key).attributes
+        if (name := tag.get("data-field")) in ("cost_usd", "total_usd")
+    }
+
+
 def step(tokens: int | None, model: str) -> int | None:
     """Which step of the bar a token count lands on, in the model's own window.
 

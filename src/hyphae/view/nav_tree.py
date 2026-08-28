@@ -37,6 +37,7 @@ from hyphae.view.builders import (
 from hyphae.view.enrichment import Descriptions
 from hyphae.view.nodes import (
     Kind,
+    Ledger,
     Node,
     Preset,
     Ref,
@@ -65,8 +66,9 @@ class Corpus:
     """
 
     session_id: str
-    # What the session spent, the basis every share on the NavTree is a share of.
-    whole: float
+    # What the session spent and where its agent runs charged it: the basis every share on the
+    # NavTree is a share of, and the subtree totals the dual badge draws.
+    held: Ledger
     runs: list[Row]
     described: Descriptions
     # The thread the enrichment was read for.
@@ -250,7 +252,7 @@ def _thread_level(
                     corpus.session_id,
                     source,
                     row,
-                    corpus.whole,
+                    corpus.held,
                     corpus.turn_text(source, row["turn_id"]),
                 ),
                 row["started_at"],
@@ -264,11 +266,11 @@ def _thread_level(
         ],
     )
     if standing is not None:
-        placed.append(unattributed_node(corpus.session_id, source, standing.row, corpus.whole))
+        placed.append(unattributed_node(corpus.session_id, source, standing.row, corpus.held))
     if unattached:
         loose_runs = [run for run in corpus.runs if run["spawn_source"] is None]
         if loose_runs:
-            placed.append(unattached_node(corpus.session_id, loose_runs, corpus.whole))
+            placed.append(unattached_node(corpus.session_id, loose_runs, corpus.held))
     return Level(
         placed, [(Page.NAV_TREE_TURNS, listed), (Page.COMPACTIONS, chipped), (timeline, bound)]
     )
@@ -323,7 +325,7 @@ def _marks(
 def _runs(corpus: Corpus, rows: Iterable[Row]) -> list[Node]:
     """A run row per node, described by whatever the enrichment pass called it."""
     return [
-        run_node(corpus.session_id, row, corpus.whole, corpus.run_text(row["run_id"]))
+        run_node(corpus.session_id, row, corpus.held, corpus.run_text(row["run_id"]))
         for row in rows
     ]
 
@@ -397,7 +399,7 @@ def _calls_level(
     marks, mark_ran = _marks(connection, corpus, source, turn_id)
     level = _interleave(
         [
-            (call_node(corpus.session_id, source, row, corpus.whole), row["started_at"])
+            (call_node(corpus.session_id, source, row, corpus.held), row["started_at"])
             for row in calls
         ],
         marks,
@@ -429,7 +431,10 @@ def _tools_level(
     under = None if api_call_id is not None else turn_id
     marks, mark_ran = _marks(connection, corpus, source, under)
     level = _interleave(
-        [(tool_node(corpus.session_id, source, row), row["started_at"]) for row in rows],
+        [
+            (tool_node(corpus.session_id, source, row, corpus.held), row["started_at"])
+            for row in rows
+        ],
         marks,
     )
     return Level(level, [(Page.NAV_TREE_TOOLS, bound), *mark_ran])
@@ -438,7 +443,7 @@ def _tools_level(
 def _unattached_level(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) -> Level:
     """The runs nothing placed. Already read with the session's runs, so this reads nothing."""
     nodes = [
-        run_node(corpus.session_id, run, corpus.whole, corpus.run_text(run["run_id"]))
+        run_node(corpus.session_id, run, corpus.held, corpus.run_text(run["run_id"]))
         for run in corpus.runs
         if run["spawn_source"] is None
     ]
@@ -476,7 +481,7 @@ def _agent_session(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Re
     placed = _runs(corpus, [run for run in corpus.runs if run["spawn_source"] == MAIN_SOURCE])
     loose = [run for run in corpus.runs if run["spawn_source"] is None]
     if loose:
-        placed.append(unattached_node(corpus.session_id, loose, corpus.whole))
+        placed.append(unattached_node(corpus.session_id, loose, corpus.held))
     return Level(placed, [])
 
 

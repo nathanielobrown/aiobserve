@@ -132,9 +132,15 @@ PAGE_BYTES = 500_000
 # 32,298 B over it is what the next thing a row grows by is measured against.
 #
 # The row then grew 4 B when its key attribute became `data-nav-tree`, which over 3,217 rows
-# is 12,868 B. The arithmetic comes to 7,060,570 B, and the 19,430 B over it is what the next
-# thing a row grows by is measured against.
-NODE_BYTES = 7_080_000
+# is 12,868 B.
+#
+# Raised again from 7,080,000 for the dual cost badge: a row with agent runs under it draws two
+# numbers rather than one, and the wash moved off the row onto the value it washes, so each half
+# carries a step class of its own. The dearest row draws both, which is 55 B, and over 3,217 rows
+# 176,935 B. What a reader gets is what a turn drove beside what it spent, without opening it.
+# The arithmetic comes to 7,233,105 B, and the 26,895 B over it is what the next thing a row
+# grows by is measured against.
+NODE_BYTES = 7_260_000
 # What one expansion may weigh: a node's body opened in place, inside someone else's children
 # log. It is over `PAGE_BYTES` and declared here rather than derived against it, for the reason
 # `bounds.OPENED_RECORD_CHARS` draws the same line the other way — a reader clicked. An

@@ -41,7 +41,7 @@
                 hx-push-url="false">+<span data-field="cut">{{ row.cut | count }}</span> more</button>
       </li>
     {% else %}
-      <li class="row node {{ row.node.kind }} {{ row.node.meter }} {{ row.node.bar }}"
+      <li class="row node {{ row.node.kind }} {{ row.node.bar }}"
           data-depth="{{ row.depth }}"
           data-nav-tree="{{ row.node.key }}"
           {%- if row.selected %} data-selected="{{ row.node.key }}" aria-current="true"{% endif %}>
@@ -77,7 +77,12 @@
             <span data-field="is_error">error</span>
           {%- endif %}
           {%- if row.node.cost_usd is not none %}
-            <span class="secondary"><span data-field="cost_usd">{{ row.node.cost_usd | money }}</span>
+            {# What the row spent, and — where a run hangs under it — what its whole subtree did.
+               Two badges rather than one number because the two answer different questions: a turn
+               that spawned four agents cost little itself and drove a lot. Each wears its own step
+               class, so the deeper ground is the bigger share whichever half carries it. #}
+            <span class="secondary">{{ parts.badge(row.node.meter, "cost_usd", row.node.cost_usd) }}
+              {%- if row.node.total_usd is not none %}/{{ parts.badge(row.node.total_meter, "total_usd", row.node.total_usd) }}{% endif %}
             {{- parts.unpriced(row.node.unpriced_api_calls) }}</span>
           {%- endif %}
         </a>

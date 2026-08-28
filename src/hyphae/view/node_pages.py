@@ -273,7 +273,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 trail=[nav_tree.home(source, row["turn_id"]), Ref(Kind.CALL, source, api_call_id)],
                 shape=Shape.TOOLS,
                 rows=[
-                    LogRow(builders.tool_node(session_id, source, item), item)
+                    LogRow(builders.tool_node(session_id, source, item, nodes.NO_LEDGER), item)
                     for item in called.rows
                 ],
                 total=called.total,

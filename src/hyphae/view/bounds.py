@@ -165,4 +165,7 @@ HIGHLIGHT_CHARS = 256_000
 # reader nothing — what it buys is one formatter over the templates and an editor that agrees
 # with `check`.
 # Up 4 B from 1,866 when the row's key attribute became `data-nav-tree`.
-NAV_TREE_ROW_BYTES = 1870
+# Up 55 B from 1,870 for the dual cost badge: the wash moved off the row and onto the value it
+# washes, because a row with agent runs under it draws two of them (`_nav_tree.html`). The
+# dearest row is one that draws both, so what this counts is a second badge whole.
+NAV_TREE_ROW_BYTES = 1925

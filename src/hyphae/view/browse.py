@@ -86,14 +86,16 @@ Reader = Callable[[duckdb.DuckDBPyConnection, nav_tree.Corpus, Row], Seen]
 # compaction is named by its trigger, and a bucket is named by the viewer.
 TITLED: dict[str, Callable[[str, str, Row, nav_tree.Corpus], nodes.Node]] = {
     Kind.TURN: lambda session_id, source, row, corpus: builders.turn_node(
-        session_id, source, row, corpus.whole, corpus.turn_text(source, row["turn_id"])
+        session_id, source, row, corpus.held, corpus.turn_text(source, row["turn_id"])
     ),
     Kind.CALL: lambda session_id, source, row, corpus: builders.call_node(
-        session_id, source, row, corpus.whole
+        session_id, source, row, corpus.held
     ),
-    Kind.TOOL: lambda session_id, source, row, _: builders.tool_node(session_id, source, row),
+    Kind.TOOL: lambda session_id, source, row, corpus: builders.tool_node(
+        session_id, source, row, corpus.held
+    ),
     Kind.RUN: lambda session_id, _, row, corpus: builders.run_node(
-        session_id, row, corpus.whole, corpus.run_text(row["run_id"])
+        session_id, row, corpus.held, corpus.run_text(row["run_id"])
     ),
 }
 
@@ -170,10 +172,13 @@ def browse(
         # The session's runs whole, once: a run is placed by the call that spawned it
         # rather than by the thread it ran on, so any level of the NavTree may need any of
         # them, and both buckets are defined against the same set.
+        runs = page_rows(connection, Page.RUNS, **runs_bound)
         corpus = nav_tree.Corpus(
             session_id=session_id,
-            whole=head[0]["cost_usd"] or 0,
-            runs=page_rows(connection, Page.RUNS, **runs_bound),
+            # The rollup once per page: every row the NavTree draws reads its subtree total
+            # out of this one climb over the runs.
+            held=nodes.ledger(session_id, head[0]["cost_usd"] or 0, runs),
+            runs=runs,
             described=described(connection, session_id, source),
             source=source,
         )
@@ -181,7 +186,7 @@ def browse(
         built = nav_tree.nav_tree(
             connection,
             corpus,
-            builders.session_node(head[0], corpus.described),
+            builders.session_node(head[0], corpus.held, corpus.described),
             nav_tree.ancestry(corpus, seen.trail),
             preset,
             kin,
@@ -275,7 +280,7 @@ def turn_log(corpus: nav_tree.Corpus, source: str, rows: list[Row]) -> list[LogR
                 corpus.session_id,
                 source,
                 row,
-                corpus.whole,
+                corpus.held,
                 corpus.turn_text(source, row["turn_id"]),
             ),
             row,
@@ -307,7 +312,7 @@ def call_log(
     }
     calls = listed(page_rows(connection, Fragment.TURN_CALLS, **bound), "matched_api_calls")
     rows = [
-        LogRow(builders.call_node(corpus.session_id, source, row, corpus.whole), row)
+        LogRow(builders.call_node(corpus.session_id, source, row, corpus.held), row)
         for row in calls.rows
     ]
     return calls, rows, [(Fragment.TURN_CALLS, bound)]
@@ -317,7 +322,7 @@ def run_log(corpus: nav_tree.Corpus, rows: list[Row]) -> list[LogRow]:
     """A list of agent runs as a children log reads it: a row per run."""
     return [
         LogRow(
-            builders.run_node(corpus.session_id, row, corpus.whole, corpus.run_text(row["run_id"])),
+            builders.run_node(corpus.session_id, row, corpus.held, corpus.run_text(row["run_id"])),
             row,
         )
         for row in rows

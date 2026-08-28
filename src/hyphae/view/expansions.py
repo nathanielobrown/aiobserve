@@ -77,7 +77,9 @@ BODIES: dict[str, Body] = {
     Kind.TURN: Body(
         Page.TURN_HEADER,
         "turn_id",
-        lambda session_id, source, row, text: builders.turn_node(session_id, source, row, 0, text),
+        lambda session_id, source, row, text: builders.turn_node(
+            session_id, source, row, nodes.NO_LEDGER, text
+        ),
         Shape.CALLS,
         "api_calls",
         described=True,
@@ -86,16 +88,26 @@ BODIES: dict[str, Body] = {
     Kind.CALL: Body(
         Page.CALL_HEADER,
         "api_call_id",
-        lambda session_id, source, row, _: builders.call_node(session_id, source, row, 0),
+        lambda session_id, source, row, _: builders.call_node(
+            session_id, source, row, nodes.NO_LEDGER
+        ),
         Shape.TOOLS,
         "tool_calls",
         described=False,
-        listed=Listing(Fragment.CALL_TOOLS, "page_tools", builders.tool_node),
+        listed=Listing(
+            Fragment.CALL_TOOLS,
+            "page_tools",
+            lambda session_id, source, row: builders.tool_node(
+                session_id, source, row, nodes.NO_LEDGER
+            ),
+        ),
     ),
     Kind.TOOL: Body(
         Page.TOOL_HEADER,
         "tool_call_id",
-        lambda session_id, source, row, _: builders.tool_node(session_id, source, row),
+        lambda session_id, source, row, _: builders.tool_node(
+            session_id, source, row, nodes.NO_LEDGER
+        ),
         Shape.NONE,
         None,
         described=False,
@@ -244,7 +256,9 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
             ran.append((Page.ENRICHMENT, keyed))
         return expanded(
             request,
-            builders.run_node(session_id, rows[0], 0, row.description if row else None),
+            builders.run_node(
+                session_id, rows[0], nodes.NO_LEDGER, row.description if row else None
+            ),
             rows[0],
             Shape.TURNS,
             rows[0]["turns"],
@@ -298,10 +312,11 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
             )
             if not head:
                 raise HTTPException(404, "No session with that id is in this store.")
+            runs = page_rows(connection, Page.RUNS, **keyed, chip_chars=queries.NAV_CHARS)
             corpus = nav_tree.Corpus(
                 session_id=session_id,
-                whole=head[0]["cost_usd"] or 0,
-                runs=page_rows(connection, Page.RUNS, **keyed, chip_chars=queries.NAV_CHARS),
+                held=nodes.ledger(session_id, head[0]["cost_usd"] or 0, runs),
+                runs=runs,
                 described=described(connection, session_id, thread),
                 source=thread,
             )

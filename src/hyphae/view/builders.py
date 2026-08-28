@@ -11,13 +11,18 @@ from hyphae.view.enrichment import Descriptions
 from hyphae.view.format import ELLIPSIS
 from hyphae.view.formatters import formatted
 from hyphae.view.nodes import (
+    COST_PLACES,
+    NO_SPEND,
     SPEECH_MARK,
     TALLY_CHARS,
     UNATTACHED_TITLE,
     UNATTRIBUTED_TITLE,
     Context,
     Kind,
+    Ledger,
     Node,
+    Ref,
+    Spend,
 )
 from hyphae.view.store import Row
 
@@ -40,14 +45,27 @@ def _share(cost: float | None, whole: float) -> float | None:
     return cost / whole if cost is not None and whole else None
 
 
+def _spend(cost: float | None, ref: Ref, held: Ledger) -> Spend:
+    """One node's badge: what it cost, and — where runs hang under it — what they cost with it."""
+    under = held.below(ref)
+    total = round(cost + under, COST_PLACES) if cost is not None and under else None
+    return Spend(cost, total, _share(cost, held.whole), _share(total, held.whole))
+
+
 def _words(text: str | None) -> str:
     """What a node is called, whatever the query that composed it left NULL."""
     return text or ""
 
 
-def session_node(header: Row, described: Descriptions) -> Node:
-    """The root of every NavTree: the session everything under it was recorded in."""
-    cost = header["cost_usd"] or 0
+def session_node(header: Row, held: Ledger, described: Descriptions) -> Node:
+    """The root of every NavTree: the session everything under it was recorded in.
+
+    The one node whose halves are read the other way round. What a session spent is the whole
+    of its subtree — there is nothing above it to gather it — so its own half is that less
+    every run under it, which is its main thread.
+    """
+    whole = header["cost_usd"] or 0
+    under = held.below(Ref(Kind.SESSION, None, header["session_id"]))
     return Node(
         kind=Kind.SESSION,
         session_id=header["session_id"],
@@ -60,34 +78,35 @@ def session_node(header: Row, described: Descriptions) -> Node:
             or header["title"]
             or header["session_id"]
         ),
-        cost_usd=cost,
+        spend=Spend(
+            own=(main := round(whole - under, COST_PLACES)),
+            total=whole if under else None,
+            share=_share(main, held.whole),
+            total_share=1.0 if under and whole else None,
+        ),
         unpriced_api_calls=header["unpriced_api_calls"],
-        share=1.0 if cost else None,
         enriched=described.session is not None,
         context=_context(header),
     )
 
 
-def turn_node(session_id: str, source: str, row: Row, whole: float, described: str | None) -> Node:
+def turn_node(session_id: str, source: str, row: Row, held: Ledger, described: str | None) -> Node:
     """One turn as a node, from a NavTree row, a timeline row, or the turn's own header."""
-    cost = row["cost_usd"]
     return Node(
         kind=Kind.TURN,
         session_id=session_id,
         source=source,
         node_id=row["turn_id"],
         words=_words(described or _turn_title(row)),
-        cost_usd=cost,
+        spend=_spend(row["cost_usd"], Ref(Kind.TURN, source, row["turn_id"]), held),
         unpriced_api_calls=row["unpriced_api_calls"],
-        share=_share(cost, whole),
         enriched=described is not None,
         context=_context(row),
     )
 
 
-def run_node(session_id: str, row: Row, whole: float, described: str | None) -> Node:
+def run_node(session_id: str, row: Row, held: Ledger, described: str | None) -> Node:
     """One agent run as a node, hoisted to wherever its spawning call sits."""
-    cost = row["cost_usd"]
     return Node(
         kind=Kind.RUN,
         session_id=session_id,
@@ -100,9 +119,8 @@ def run_node(session_id: str, row: Row, whole: float, described: str | None) -> 
         lead=f"[{row['agent_type']}]" if row["agent_type"] else "",
         separator=" ",
         words=_words(described or row["brief"]),
-        cost_usd=cost,
+        spend=_spend(row["cost_usd"], Ref(Kind.RUN, row["run_id"], row["run_id"]), held),
         unpriced_api_calls=row["unpriced_api_calls"],
-        share=_share(cost, whole),
         enriched=described is not None,
         context=_context(row),
     )
@@ -127,7 +145,7 @@ def _tally(names: Sequence[str], chars: int) -> str:
     return tallied
 
 
-def call_node(session_id: str, source: str, row: Row, whole: float) -> Node:
+def call_node(session_id: str, source: str, row: Row, held: Ledger) -> Node:
     """One api call as a node: what it said, else the tools it called, else the model."""
     cost = row["cost_usd"] or 0
     # What the call went on to do, where the query that read it fetched that: the tool names
@@ -152,16 +170,26 @@ def call_node(session_id: str, source: str, row: Row, whole: float) -> Node:
             tools.get("head") if silent else f"{SPEECH_MARK} {spoken}" if spoken else row["model"]
         ),
         tail=_tally(names[1:], TALLY_CHARS) if silent else "",
-        cost_usd=cost,
+        spend=_spend(cost, Ref(Kind.CALL, source, row["api_call_id"]), held),
         unpriced_api_calls=row["unpriced_api_calls"],
-        share=_share(cost, whole),
         context=_context(row),
     )
 
 
-def tool_node(session_id: str, source: str, row: Row) -> Node:
-    """One tool call as a node. No cost of its own: what it took is the api call's."""
+def tool_node(session_id: str, source: str, row: Row, held: Ledger) -> Node:
+    """One tool call as a node. No cost of its own: what it took is the api call's.
+
+    Except a ⇄ row, which asked for a run and is charged what the api call holding it cost —
+    the nearest thing the store prices to what the reader is looking at. Costless wherever no
+    run hangs under it, which is every other tool there is.
+    """
     named = formatted(row["name"], row.get("fields") or {})
+    # `view_nav_tree_tools.sql` is the one query that reads the call's price, because the
+    # NavTree is the one surface that draws the badge. A row that asked for nothing takes
+    # neither the price nor the mark saying our table could not complete it.
+    asked = held.below(Ref(Kind.TOOL, source, row["tool_call_id"]))
+    spent = row.get("call_cost_usd") or 0
+
     return Node(
         kind=Kind.TOOL,
         session_id=session_id,
@@ -175,9 +203,8 @@ def tool_node(session_id: str, source: str, row: Row) -> Node:
         # a mark saying which tool this is has to survive that (`Node.log_title`).
         lead="" if named else row["name"],
         words=f"{named.mark} {named.words}" if named else _words(row.get("title")),
-        cost_usd=None,
-        unpriced_api_calls=0,
-        share=None,
+        spend=_spend(spent if asked else None, Ref(Kind.TOOL, source, row["tool_call_id"]), held),
+        unpriced_api_calls=(row.get("unpriced_api_calls") or 0) if asked else 0,
         # Every query a tool node is built from selects it, and the column is NOT NULL, so a
         # row arriving without it is a query that forgot rather than a call that may have
         # failed (`export/duckdb.py`).
@@ -193,43 +220,41 @@ def compaction_node(session_id: str, source: str, row: Row) -> Node:
         source=source,
         node_id=row["compaction_id"],
         words=_words(f"compaction · {row['trigger']}"),
-        cost_usd=None,
+        spend=NO_SPEND,
         unpriced_api_calls=0,
-        share=None,
     )
 
 
-def unattributed_node(session_id: str, source: str, row: Row, whole: float) -> Node:
+def unattributed_node(session_id: str, source: str, row: Row, held: Ledger) -> Node:
     """One thread's calls that answer no turn, as the timeline's own cursorless row reads them."""
-    cost = row["cost_usd"]
     return Node(
         kind=Kind.UNATTRIBUTED,
         session_id=session_id,
         source=source,
         node_id=source,
         words=UNATTRIBUTED_TITLE,
-        cost_usd=cost,
+        spend=_spend(row["cost_usd"], Ref(Kind.UNATTRIBUTED, source, source), held),
         unpriced_api_calls=row["unpriced_api_calls"],
-        share=_share(cost, whole),
     )
 
 
-def unattached_node(session_id: str, rows: list[Row], whole: float) -> Node:
+def unattached_node(session_id: str, rows: list[Row], held: Ledger) -> Node:
     """The session's runs no spawning call resolved, gathered under one node.
 
     Spans every thread rather than sitting on one: what makes a run unattached is that nothing
-    says which thread spawned it, so the bucket hangs off the session.
+    says which thread spawned it, so the bucket hangs off the session. One number and not two:
+    its own is already the sum of the runs it gathers, so a subtree half over the same rows
+    would say the same thing twice.
     """
-    cost = sum(row["cost_usd"] for row in rows)
+    cost = round(sum(row["cost_usd"] for row in rows), COST_PLACES)
     return Node(
         kind=Kind.UNATTACHED,
         session_id=session_id,
         source=None,
         node_id=session_id,
         words=UNATTACHED_TITLE,
-        cost_usd=cost,
+        spend=Spend(cost, None, _share(cost, held.whole), None),
         unpriced_api_calls=sum(row["unpriced_api_calls"] for row in rows),
-        share=_share(cost, whole),
     )
 
 

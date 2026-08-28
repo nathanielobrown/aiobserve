@@ -231,6 +231,9 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
             assert re.search(rf'class="[^"]* f{nodes.BAR_STEPS} t{nodes.BAR_STEPS}"', widest), (
                 widest[:200]
             )
+            # And it drew both halves of its cost badge, which is the widest thing the row has
+            # grown: a corpus whose dearest row spawned no agent run would measure under this.
+            assert widest.count('class="badge ') == 2, widest[:200]
     # A preview is priced by whether the page marked it up, which is the whole of the
     # difference between the two budgets: an element a token against an escape a character.
     # Marked up two ways — the syntax a record named, and the markdown a session wrote — and
