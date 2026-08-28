@@ -9,6 +9,9 @@ the columns the page reads, so a derivation that drifted between the bar and the
 nothing to agree with. The spend is priced one call at a time, which is the reading the page
 cannot take: it groups a node's tokens by model and prices each group once, and that is the
 same arithmetic only if the group's cache write splits the way every call in it did.
+
+What those calls were charged is `test_numbers__spend.py`, which reads back through the
+helpers below.
 """
 
 import re
@@ -20,16 +23,14 @@ from fastapi.testclient import TestClient
 from hyphae.extract.pricing import CONTEXT_WINDOWS, CostSplit, TokenUsage, split_cost
 from hyphae.view.app import build_app
 from hyphae.view.format import ABSENT
-from hyphae.view.nodes import NUMBERS_URL, Kind, meter
+from hyphae.view.nodes import NUMBERS_URL, Kind
 from tests.conftest import (
     ANCESTOR,
     DENSE_CALL,
     DENSE_TOOL,
     FORK_ORIGIN,
     FORK_ORIGIN_RUN,
-    INVENTED_PROJECT_SESSION,
     MAIN,
-    NO_TTL_SPLIT_CALL,
     SEARCH_BASH_TOOL,
     SEARCH_TOOL,
     SPINE,
@@ -44,8 +45,6 @@ from tests.view.conftest import (
     inside,
     one,
     step,
-    values,
-    washes,
     wired,
 )
 
@@ -141,11 +140,11 @@ def misread(printed: dict[str, str], split: CostSplit) -> dict[str, tuple[str, s
     return {
         field: (printed[field], f"${dollars:.4f}")
         for field, dollars in legend(split).items()
-        if abs(_money(printed[field]) - dollars) > PRINTED_PLACE
+        if abs(amount(printed[field]) - dollars) > PRINTED_PLACE
     }
 
 
-def _money(shown: str) -> float:
+def amount(shown: str) -> float:
     """A printed dollar figure read back as the number it is."""
     return float(shown.removeprefix("$"))
 
@@ -292,8 +291,8 @@ def test_the_popovers_two_columns_come_to_the_totals_under_them(
     )
     # The dollars: to the cent, because each is rounded before it is printed and the total is
     # rounded off the store's own sum rather than off these three.
-    dollars = [_money(printed[name]) for name in CHARGES]
-    assert round(sum(dollars), 2) == round(_money(printed["cost_usd"]), 2)
+    dollars = [amount(printed[name]) for name in CHARGES]
+    assert round(sum(dollars), 2) == round(amount(printed["cost_usd"]), 2)
     # And the line that says the dollars cover more calls than the counts do.
     (made,) = one(
         store,
@@ -301,48 +300,6 @@ def test_the_popovers_two_columns_come_to_the_totals_under_them(
         [SPINE, MAIN, turn_id],
     )
     assert printed["api_calls"] == f"{made:,}"
-
-
-def test_every_dollar_in_a_popover_is_washed_at_its_share_of_what_the_session_spent(
-    client: TestClient, store: duckdb.DuckDBPyConnection
-) -> None:
-    """The dollars carry the badge's own ground, so a glance reads the same scale in both places.
-
-    `nodes.meter` by name rather than the ladder restated: the wash behind a NavTree row's badge
-    and the wash behind these four are one function of one share — what the value is of what the
-    whole session spent — and a second implementation here would agree with itself and with
-    nothing on the page.
-    """
-    (whole,) = one(store, "SELECT cost_usd FROM session_rollups WHERE session_id = ?", [SPINE])
-    key = f"{Kind.SESSION}:{SPINE}"
-    served = popped(client, f"/session/{SPINE}")
-    printed = fields(served, "data-popover", key)
-    drawn = washes(served, "data-popover", key)
-    for name in (*CHARGES, "cost_usd"):
-        assert drawn[name].split() == ["badge", meter(_money(printed[name]) / whole)], name
-
-
-def test_the_row_that_stands_for_a_run_says_where_its_own_cost_came_from(
-    client: TestClient, store: duckdb.DuckDBPyConnection
-) -> None:
-    """A ⚒ row's badge is the api call that asked for the run, and its popover says so.
-
-    A tool call is billed nothing of its own (`docs/schema.md`), so the badge on the one row
-    that draws one is an attribution rather than a measurement — and an attribution a reader
-    cannot see is a number they will read as the tool's own.
-    """
-    spawn_tool, source = one(
-        store,
-        "SELECT a.tool_use_id, t.source FROM live_agent_runs a"
-        " JOIN live_tool_calls t ON t.session_id = a.session_id AND t.id = a.tool_use_id"
-        " WHERE a.session_id = ? AND a.id = ?",
-        [SPINE, SPINE_RUN],
-    )
-    served = popped(client, f"/session/{SPINE}/thread/{source}/tool/{spawn_tool}")
-    assert values(served, "data-attribution") == ["spawn_call"]
-    # And no other tool row claims one: nothing else on the page is charged a call's cost.
-    plain = popped(client, f"/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}")
-    assert values(plain, "data-attribution") == []
 
 
 def test_the_popovers_placement_rides_a_file_the_policy_allows(client: TestClient) -> None:
@@ -364,39 +321,6 @@ def test_the_popovers_placement_rides_a_file_the_policy_allows(client: TestClien
     assert all(not body.strip() for body in bodies)
     assert not re.search(r"<script(?![^>]*\ssrc=)", page)
     assert not re.search(r"\son[a-z]+=", page)
-
-
-def test_a_cache_write_with_no_ttl_on_it_is_charged_at_the_short_rate(
-    client: TestClient, store: duckdb.DuckDBPyConnection
-) -> None:
-    """A reply that reported no TTL split still pays for the cache it wrote.
-
-    The columns say "no split reported" with NULLs rather than zeroes, so a group summing them
-    would charge that write at nothing (`tests/fixtures/invented/README.md`). The popover
-    prices a node one model-group at a time, and the group has to fall back to the whole write
-    at the 5-minute rate — the same fallback `extract/pricing.py` applies to a single call.
-    """
-    where = f"AND id = '{NO_TTL_SPLIT_CALL}'"
-    creation, five, hour = one(
-        store,
-        "SELECT cache_creation_tokens, cache_5m_tokens, cache_1h_tokens FROM live_api_calls"
-        f" WHERE session_id = ? {where}",
-        [INVENTED_PROJECT_SESSION],
-    )
-    assert creation and five is None and hour is None, "the corpus's one untimed cache write"
-    printed = popover(
-        client,
-        f"/session/{INVENTED_PROJECT_SESSION}/thread/{MAIN}/call/{NO_TTL_SPLIT_CALL}",
-        f"{Kind.CALL}:{NO_TTL_SPLIT_CALL}",
-    )
-    split, _ = charged(store, INVENTED_PROJECT_SESSION, extra=where)
-    assert not misread(printed, split)
-    # And the write is a charge a reader can see rather than one that rounded away, which is
-    # what makes the line above a reading of the fallback. It is charged on the new-input line,
-    # where its tokens are counted, so what shows it was charged at all is that dollar standing
-    # above what the call's own input came to.
-    assert split.cache_write > 0
-    assert _money(printed["cost_new_input"]) > split.input
 
 
 def test_a_tool_call_says_what_it_gave_back_and_what_was_asked_beside_it(
