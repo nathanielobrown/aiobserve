@@ -19,7 +19,7 @@
 {%- endmacro %}
 {# The one wide column of a row: what the child is called, linking to the child's own page.
    `second` is the line under it, in lower hierarchy — what the first line left out, which
-   today is the command a Bash tool call ran under the description it ran under.
+   today is what a Bash tool call was for, under the command the row heads with.
 
    The swap is written out per row rather than hoisted onto the table: the button in the last
    column is an `hx-get` of its own that must not swap the pane, so a hoisted attribute would
@@ -34,7 +34,7 @@
        hx-select="#reading-pane"
        hx-select-oob="#nav-tree-rows"
        hx-push-url="true">{{ parts.glyph(node) }}<span data-field="{{ field }}">{{ words }}</span></a>
-    {%- if second %}<span class="secondary" data-field="command">{{ second }}</span>{% endif %}
+    {%- if second %}<span class="secondary" data-field="about">{{ second }}</span>{% endif %}
   </td>
 {%- endmacro %}
 {# The child's body, opened in place: one body, two mounts. It arrives on click, one request,
@@ -95,12 +95,12 @@
               {%- elif shape == 'tools' %}
                 {{ cell('tool_index', item.row.tool_index | count, 'number') }}
                 {{ cell('name', item.row.name | line) }}
-                {#- The title alone, with the name already in its own column beside it. The command
-                   reads through the same cut, and is left out rather than dashed where the tool ran
-                   none: a dash under a description is a line of nothing where the second line means
-                   "and this is what it ran". #}
+                {#- The title alone, with the name already in its own column beside it. What the
+                   call was for reads through the same cut, and is left out rather than dashed
+                   where the record says nothing: a dash under a command is a line of nothing
+                   where the second line means "and this is what it was for". #}
                 {{ what(item.node, suffix, 'title', item.node.log_title,
-                  item.row.command | line if item.row.command else '') }}
+                  item.row.about | line if item.row.about else '') }}
                 {{ cell('is_error', ('error' if item.row.is_error else none) | text) }}
                 {{ cell('result_chars', item.row.result_chars | count, 'number') }}
               {%- elif shape == 'runs' %}

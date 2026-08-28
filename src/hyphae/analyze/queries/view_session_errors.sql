@@ -18,6 +18,10 @@ SELECT
     -- tool call reads (`analyze/macros.py`).
     substr(t.name, 1, $nav_chars + 1) AS name,
     tool_title(t.input, s.project_dir, $nav_chars) AS title,
+    -- And what the input carried under the names the tools the viewer knows name their calls
+    -- by, so a `Read` row reads as a path and a `Bash` row as the command it ran
+    -- (`view/formatters.py:FORMATTERS`). Every member cut to the same width as the title above.
+    tool_fields(t.input, s.project_dir, ad.agent_type, $nav_chars) AS fields,
     -- Constant true under this filter, and selected anyway: a tool node carries the flag
     -- wherever it is built from, so every query behind one answers the same columns.
     t.is_error,
@@ -29,6 +33,11 @@ FROM live_tool_calls t
 -- What a path in the title is read against. LEFT joined, so a tool call whose session row is
 -- missing is a row titled with an absolute path rather than a failure the list drops.
 LEFT JOIN sessions s ON s.id = t.session_id
+-- Who a `SendMessage` addressed, where `to` held an agent run's id rather than a name the
+-- caller typed: one lookup, LEFT so a name that matches no run comes back NULL and the row
+-- prints what was recorded (`view/formatters.py:_send_message`).
+LEFT JOIN live_agent_runs ad
+    ON ad.session_id = t.session_id AND ad.id = tool_asked(t.input, 'to', $nav_chars)
 WHERE t.session_id = $session_id
   AND t.is_error
 ORDER BY t.started_at, t.source, t."index", t.id

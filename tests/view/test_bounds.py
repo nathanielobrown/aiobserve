@@ -65,7 +65,15 @@ from tests.view.scenarios import ROUTES
 # Anything else puts the whole value on the page. Read at any depth —
 # `substr(coalesce(json_extract_string(input, …), …), 1, $n)` is a cut of whatever it wraps, so
 # what a bounding call opens is exempt to its close.
-BOUNDING = ("substr", "length", "json_valid", "context_window", *macros.BOUNDING)
+BOUNDING = (
+    "substr",
+    "length",
+    "json_valid",
+    # A count of a JSON array is a number however long the array is.
+    "json_array_length",
+    "context_window",
+    *macros.BOUNDING,
+)
 
 
 def _named(sql: str) -> Iterator[str]:
@@ -121,6 +129,8 @@ def test_the_fat_column_scan_catches_one() -> None:
     )
     # ...and the check that a value parses hands back a flag rather than the value.
     assert unbounded("SELECT json_valid(t.input) AS ok FROM tools t") == set()
+    # As does a count of how many items a value holds, whatever each of them weighs.
+    assert unbounded("SELECT json_array_length(t.input, '$.todos') AS n FROM tools t") == set()
     # The window lookup is the same kind of read: a model goes in and a number comes back.
     assert unbounded("SELECT context_window(c.model) AS window FROM api_calls c") == set()
     assert unbounded("SELECT c.model AS model FROM api_calls c") == {"model"}
@@ -152,6 +162,16 @@ def test_every_macro_the_scan_trusts_cuts_the_value_it_reads() -> None:
         assert unbounded(body) == set(), name
 
 
+# What `tool_fields` extracts, read off the macro's own body rather than listed here: `path`
+# comes from `file_path` and `todos` answers a number, so the leaf below asks for those two by
+# name and feeds every other member a saturating value under its own key.
+_FIELD_KEYS = tuple(
+    key
+    for key in re.findall(r"'(\w+)':", macros.BOUNDING["tool_fields"])
+    if key not in ("path", "todos")
+)
+
+
 def test_every_macro_the_scan_trusts_answers_one_character_past_the_width() -> None:
     """Each bounding macro is run at three widths and asked how much it gives back.
 
@@ -160,6 +180,9 @@ def test_every_macro_the_scan_trusts_answers_one_character_past_the_width() -> N
     width serves a silently truncated value, and one that saturates over it serves a fat
     column). Every arm gets a value far past the widest width, so each answer is a saturation
     rather than a whole value that happened to fit.
+
+    The struct's keys are read off the macro's own body rather than listed again: the leaf
+    is that *every* member cuts, so a member added without a cut has to fail here.
 
     The paths are invented: the shape — inside the project, outside it, no project at all —
     is the whole point, and no recorded session carries all three at these lengths.
@@ -181,7 +204,7 @@ def test_every_macro_the_scan_trusts_answers_one_character_past_the_width() -> N
         assert len(answer("tool_title(?, ?, ?)", inside, project, chars)) == chars + 1
         assert len(answer("tool_title(?, ?, ?)", described, project, chars)) == chars + 1
         assert len(answer("tool_title(?, ?, ?)", stored_whole, project, chars)) == chars + 1
-        assert len(answer("tool_ran(?, ?)", described, chars)) == chars + 1
+        assert len(answer("tool_about(?, ?)", described, chars)) == chars + 1
         # The relativized path is the arm that spends width on a prefix it then throws away:
         # what comes back is the tail, and it is as long as any other arm's.
         relative = answer("tool_path(?, ?, ?)", inside, project, chars)
@@ -191,6 +214,19 @@ def test_every_macro_the_scan_trusts_answers_one_character_past_the_width() -> N
         # both take the absolute arm — still at the width, still marked.
         assert len(answer("tool_path(?, ?, ?)", outside, project, chars)) == chars + 1
         assert len(answer("tool_path(?, ?, ?)", inside, None, chars)) == chars + 1
+        # And the struct the tool formatters read: every string member of it is a cut of its
+        # own, so one member left whole would serve a fat column through a bounded-looking
+        # call. Asked with a saturating value under every name it extracts.
+        fat = "f" * 400
+        fields = json.dumps(dict.fromkeys(_FIELD_KEYS, fat) | {"file_path": f"{project}/{fat}"})
+        answered = connection.execute(
+            "SELECT tool_fields(?, ?, ?, ?)", [fields, project, fat, chars]
+        ).fetchall()[0][0]
+        # `todos` is a count and answers a number, which is why it is asked for by name here.
+        assert sorted(answered) == sorted([*_FIELD_KEYS, "path", "todos"]), answered
+        for member, value in answered.items():
+            if member != "todos":
+                assert len(value) == chars + 1, member
 
 
 @pytest.mark.parametrize("name", sorted(Page) + sorted(Fragment))

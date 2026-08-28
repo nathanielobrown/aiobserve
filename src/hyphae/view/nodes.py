@@ -19,6 +19,7 @@ from hyphae.analyze import queries
 from hyphae.view.columns import CALL_ICON, COLUMNS, RUN_ICON, TOOL_ICON, Shape
 from hyphae.view.enrichment import Descriptions
 from hyphae.view.format import ELLIPSIS, cut
+from hyphae.view.formatters import formatted
 from hyphae.view.store import Row
 
 # How a cost badge is drawn: the steps it has, and how many decades of share they cover. A
@@ -44,6 +45,11 @@ UNATTACHED_TITLE = "runs attached to no turn"
 # its agent type buries the one word a reader picks a run by. A lead that brackets itself says
 # where it ends without a dash, and takes `Node.separator` to a space (`run_node`).
 LEAD_SEPARATOR = " — "
+
+# What marks an api call's title as the model's own words rather than a description of what
+# the call did (`call_node`). The one glyph a reader can scan a thread for: it says this row is
+# something the model said, whether or not the call went on to run tools.
+SPEECH_MARK = "💭"
 
 # The most of an api call's title the count of its tool calls may take (`call_node`). Half the
 # narrowest width any surface cuts a title to, so the tool the reader picks the row out by
@@ -556,14 +562,19 @@ def call_node(session_id: str, source: str, row: Row, whole: float) -> Node:
     # A call that answered with tool calls and no text has nothing to quote, so it is named
     # by what it did: the tool it called first, that call's title, and a count of the rest.
     # One that neither spoke nor called a tool is named by the model that answered.
-    silent = not row.get("text_head") and bool(names)
+    spoken = row.get("text_head")
+    silent = not spoken and bool(names)
     return Node(
         kind=Kind.CALL,
         session_id=session_id,
         source=source,
         node_id=row["api_call_id"],
         lead=names[0] if silent else "",
-        words=_words(tools.get("head") if silent else row.get("text_head") or row["model"]),
+        # Marked where the words are speech, including on a call that also ran tools: what
+        # the model said is the one thing on the row nothing else on the page says.
+        words=_words(
+            tools.get("head") if silent else f"{SPEECH_MARK} {spoken}" if spoken else row["model"]
+        ),
         tail=_tally(names[1:], TALLY_CHARS) if silent else "",
         cost_usd=cost,
         unpriced_api_calls=row["unpriced_api_calls"],
@@ -574,6 +585,7 @@ def call_node(session_id: str, source: str, row: Row, whole: float) -> Node:
 
 def tool_node(session_id: str, source: str, row: Row) -> Node:
     """One tool call as a node. No cost of its own: what it took is the api call's."""
+    named = formatted(row["name"], row.get("fields") or {})
     return Node(
         kind=Kind.TOOL,
         session_id=session_id,
@@ -582,8 +594,11 @@ def tool_node(session_id: str, source: str, row: Row) -> Node:
         # The tool's name leads, and its title says which call of that tool this is — a page
         # of twenty `Read` rows otherwise says twenty times that a file was read. The title is
         # the query's (`analyze/macros.py`), so the four surfaces that name a tool call agree.
-        lead=row["name"],
-        words=_words(row.get("title")),
+        # Where the tool names its own calls, the glyph stands in for the name and rides in the
+        # words rather than the lead: a children log heads its lead in a column of its own, and
+        # a mark saying which tool this is has to survive that (`Node.log_title`).
+        lead="" if named else row["name"],
+        words=f"{named.mark} {named.words}" if named else _words(row.get("title")),
         cost_usd=None,
         unpriced_api_calls=0,
         share=None,

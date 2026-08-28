@@ -254,8 +254,8 @@ def test_a_row_pairs_its_depth_with_the_key_in_the_same_tag() -> None:
     assert rows(tail) == []
 
 
-def _titled(given: str | None, project: str | None, chars: int) -> str:
-    """What a tool call is called, restated in Python from the input the store holds.
+def _shaped(given: str | None, project: str | None, chars: int) -> str:
+    """What a tool call the viewer knows no rule for is called, restated from its input.
 
     The point of restating it is that this oracle must not read the derivation it checks
     (`analyze/macros.py:tool_title`): a shared implementation would agree with itself whatever
@@ -288,6 +288,51 @@ def _titled(given: str | None, project: str | None, chars: int) -> str:
     return (given or "")[: chars + 1]
 
 
+# The tools the fixture corpus records that the viewer names by their own field, restated from
+# `plans/viewer-polish/design.md` rather than read off `view/formatters.py:FORMATTERS` — an oracle
+# that imported the registry would agree with whatever the registry said. The leaf below
+# asserts which registered names this corpus exercises, so a name added to the design without
+# a recorded call is a rule this sweep never sees rather than one it silently blesses.
+_MARKS = {"Read": "📖", "Bash": "⚡", "Agent": "👉", "SendMessage": "📬"}
+
+
+def _named(
+    name: str, given: str | None, project: str | None, addressed: str | None, chars: int
+) -> str | None:
+    """What a tool that names its own calls is called, or None where it carried nothing to
+    name it by and falls back to the shape rule above."""
+    try:
+        asked = json.loads(given) if given is not None else None
+    except json.JSONDecodeError:
+        asked = None
+    fields = asked if isinstance(asked, dict) else {}
+
+    def head(key: str) -> str:
+        value = fields.get(key)
+        return value[: chars + 1] if isinstance(value, str) else ""
+
+    match name:
+        # A path, read against the project the way the shape rule reads one.
+        case "Read":
+            words = _shaped(given, project, chars) if head("file_path") else ""
+        # What ran, and only its first line: the row is one line and a heredoc is a screenful.
+        case "Bash":
+            words = head("command").split("\n", 1)[0]
+        # The definition the run was spawned as, in brackets, then the brief it was given.
+        case "Agent":
+            kind, said = head("subagent_type"), head("description")
+            words = f"[{kind}] {said}".strip() if kind else said
+        # Who it went to and what it said. `to` holds a run id or a name the caller typed, and
+        # `addressed` is the agent type the id resolved to where the session holds that run.
+        case "SendMessage":
+            who = (addressed or "")[: chars + 1] or head("to")
+            summary = head("summary")
+            words = "" if not who else f"to {who}: {summary}" if summary else f"to {who}"
+        case _:
+            return None
+    return f"{_MARKS[name]} {words}" if words else None
+
+
 def _tallied(names: Sequence[str]) -> str:
     """The count of each tool after the first, restated from the tool names the store holds.
 
@@ -315,14 +360,24 @@ def titled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, tuple
     # What must still be there after the cut, per row, empty for every title that is all one
     # piece. Only an api call named by its tool calls carries one.
     kept: dict[str, str] = {}
-    for tool_id, name, given, project in store.execute(
-        "SELECT t.id, t.name, t.input, s.project_dir FROM live_tool_calls t"
-        " LEFT JOIN sessions s ON s.id = t.session_id WHERE t.session_id = ?",
+    for tool_id, name, given, project, addressed in store.execute(
+        "SELECT t.id, t.name, t.input, s.project_dir, a.agent_type FROM live_tool_calls t"
+        " LEFT JOIN sessions s ON s.id = t.session_id"
+        # The one lookup a title reaches outside its own row for: a `SendMessage` addressed by
+        # an agent run's id reads as that run's type.
+        " LEFT JOIN live_agent_runs a ON a.session_id = t.session_id"
+        "  AND a.id = json_extract_string(t.input, '$.to')"
+        " WHERE t.session_id = ?",
         [session_id],
     ).fetchall():
-        # The tool it called, always first — which tool this was is what a reader picks a call
-        # out of a tree by — and after it the title, which tells two `Read` rows apart.
-        titled = _titled(given, project, queries.NAV_CHARS)
+        # A tool the viewer knows names its own calls, under the glyph that stands for it and
+        # with no name beside it — the glyph is what a reader picks the call out of a tree by.
+        # Any other tool leads with its name, and after it the title that tells two `Read`
+        # rows apart.
+        if (named := _named(name, given, project, addressed, queries.NAV_CHARS)) is not None:
+            said[f"{Kind.TOOL}:{tool_id}"] = named
+            continue
+        titled = _shaped(given, project, queries.NAV_CHARS)
         said[f"{Kind.TOOL}:{tool_id}"] = f"{name}{LEAD_SEPARATOR}{titled}" if titled else name
     for call_id, spoken, model, tools, given, project in store.execute(
         # The tool calls a call went on to make, in the order it made them: their names, and
@@ -341,9 +396,11 @@ def titled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, tuple
         # first and that call's own title, then how many of each tool followed. A call that
         # neither spoke nor called a tool is named by the model that was asked.
         if spoken:
-            said[f"{Kind.CALL}:{call_id}"] = spoken
+            # Marked as the model's own words, which is the one thing on the row the rest of
+            # the page does not say — and marked whether or not the call also ran tools.
+            said[f"{Kind.CALL}:{call_id}"] = f"💭 {spoken}"
         elif tools:
-            asked = _titled(given, project, queries.NAV_CHARS)
+            asked = _shaped(given, project, queries.NAV_CHARS)
             said[f"{Kind.CALL}:{call_id}"] = (
                 f"{tools[0]}{LEAD_SEPARATOR}{asked}" if asked else tools[0]
             )

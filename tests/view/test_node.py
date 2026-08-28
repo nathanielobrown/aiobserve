@@ -9,6 +9,7 @@ previews are `test_node__details.py` and the children log is `test_node__logs.py
 Which node each leaf reads is picked out of the store by `tests/view/selections.py`.
 """
 
+import json
 from urllib.parse import parse_qs, urlparse
 
 import duckdb
@@ -23,6 +24,7 @@ from hyphae.view.nodes import BODY_URL
 from tests.conftest import (
     ANCESTOR,
     DENSE_TURN,
+    FORK_ORIGIN,
     MAIN,
     MYCELIA,
     NO_PROJECT_SESSION,
@@ -482,3 +484,36 @@ def test_a_crumb_is_cut_narrower_than_every_other_place_a_title_is_read(
     walked = [fields(page, "data-walk", where)["title"] for where in values(page, "data-walk")]
     assert len(walked) == 2 and set(walked) == {"x" * queries.NAV_CHARS + ELLIPSIS}
     assert f"<title>❯ {'x' * queries.NAV_CHARS}{ELLIPSIS} · hyphae</title>" in page
+
+    # The error stepper is the fourth of them, and it steps between failures rather than along
+    # a level — so it is read on a page that stands on one. Every tool call of a recorded
+    # session is failed and given a path too long for any width, which puts a failure on either
+    # side of the one the pane reads. The glyph the registry leads a `Read` with is spent out
+    # of both widths, so neither string is a bare run of `x`.
+    stepped = plant(
+        (
+            "UPDATE tool_calls SET is_error = true, name = 'Read', input = ? WHERE session_id = ?",
+            [json.dumps({"file_path": long}), FORK_ORIGIN],
+        )
+    )
+    failures = store.execute(
+        'SELECT source, id FROM live_tool_calls WHERE session_id = ? ORDER BY source, "index"',
+        [FORK_ORIGIN],
+    ).fetchall()
+    with TestClient(build_app(stepped)) as planted:
+        pages = [
+            planted.get(f"/session/{FORK_ORIGIN}/thread/{source}/tool/{tool_id}").text
+            for source, tool_id in failures
+        ]
+    # A failure with one on either side of it, so the stepper names two.
+    middle = next(page for page in pages if {"previous", "next"} <= set(values(page, "data-step")))
+    read = "📖 " + "x" * (queries.NAV_CHARS - 2) + ELLIPSIS
+    assert [fields(middle, "data-step", where)["title"] for where in ("previous", "next")] == [
+        read,
+        read,
+    ]
+    # While the crumb naming the same node on the same page stops seventy characters earlier.
+    ended = values(middle, "data-crumb")[-1]
+    assert fields(middle, "data-crumb", ended)["tool"] == (
+        "📖 " + "x" * (queries.CRUMB_CHARS - 2) + ELLIPSIS
+    )

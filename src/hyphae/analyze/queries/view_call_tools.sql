@@ -5,7 +5,7 @@
 -- A row carries the tool call's title, because a name alone tells no two calls of one tool
 -- apart: a page of twenty `Read` rows says twenty times that a file was read. What a tool call
 -- is titled is `tool_title` (`analyze/macros.py`), shared with the three other surfaces that
--- name one, and `tool_ran` is the command a title that is a description describes.
+-- name one, and `tool_about` is what a call whose title says what it ran was for.
 WITH page AS (
     SELECT
         t."index" AS tool_index,
@@ -27,9 +27,18 @@ WITH page AS (
         count(*) OVER () AS matched_tool_calls,
         -- Cut at the width of the column that prints them, one character past it.
         tool_title(t.input, s.project_dir, $log_chars) AS title,
-        tool_ran(t.input, $log_chars) AS command
+        -- And what the input carried under the names the tools the viewer knows name their calls
+        -- by, so a `Read` row reads as a path and a `Bash` row as the command it ran
+        -- (`view/formatters.py:FORMATTERS`). Every member cut to the same width as the title above.
+        tool_fields(t.input, s.project_dir, ad.agent_type, $log_chars) AS fields,
+        tool_about(t.input, $log_chars) AS about
     FROM live_tool_calls t
     LEFT JOIN sessions s ON s.id = t.session_id
+    -- Who a `SendMessage` addressed, where `to` held an agent run's id rather than a name the
+    -- caller typed: one lookup, LEFT so a name that matches no run comes back NULL and the row
+    -- prints what was recorded (`view/formatters.py:_send_message`).
+    LEFT JOIN live_agent_runs ad
+        ON ad.session_id = t.session_id AND ad.id = tool_asked(t.input, 'to', $log_chars)
     WHERE t.session_id = $session_id
       AND t.source = $source
       AND t.api_call_id = $api_call_id
@@ -49,6 +58,7 @@ SELECT
     result_chars,
     matched_tool_calls,
     title,
-    command
+    fields,
+    about
 FROM page
 ORDER BY tool_index;
