@@ -1,3 +1,4 @@
+import { test as archived } from "@chromatic-com/playwright";
 import { expect, test } from "@playwright/test";
 import { fullPages, SCENARIOS } from "./scenarios";
 import { watch } from "./watch";
@@ -8,6 +9,13 @@ import { watch } from "./watch";
  * 200 under budget through a `TestClient`, so nothing here re-proves that; what a `TestClient`
  * has no eye for is an inline `<style>` or `<script>` the CSP refuses, a script that throws, and
  * anything else the console carries.
+ *
+ * `archived` is that same `test` carrying Chromatic's automatic fixture: at the end of each test
+ * it records the page's DOM and every resource the page fetched, and writes both under
+ * `test-results/chromatic-archives/`. Writing is all it does — `mise run e2e-chromatic` is what
+ * sends that directory anywhere, so this file stays offline. The sweep is the only place the
+ * fixture is used, which is what holds a build to one snapshot per full page: an htmx leaf drives
+ * a fragment into a page that is already archived here.
  */
 
 // What the sweep below actually visited, read back by the `afterAll` at the foot of the file.
@@ -23,11 +31,11 @@ test("the route file carries full pages for the sweep to visit", () => {
   expect(fullPages.length).toBeLessThan(SCENARIOS.length);
 });
 
-test.describe("every full page loads with nothing in the console", () => {
+archived.describe("every full page loads with nothing in the console", () => {
   for (const scenario of fullPages) {
-    // Named by the scenario's title, which is the gallery's link text and, from slice 5, the
-    // name of the page's Chromatic snapshot.
-    test(scenario.title, async ({ page }) => {
+    // Named by the scenario's title, which is the gallery's link text and the name Chromatic
+    // files the page's snapshot under.
+    archived(scenario.title, async ({ page }) => {
       // If everything the page complains about is collected as it loads...
       const problems = await watch(page);
 
@@ -45,7 +53,7 @@ test.describe("every full page loads with nothing in the console", () => {
     });
   }
 
-  test.afterAll(() => {
+  archived.afterAll(() => {
     // The sweep visited every full page the file carries and no other: a count on its own would
     // pass a run that opened one page fourteen times.
     expect(visited).toEqual(new Set(fullPages.map((scenario) => scenario.url)));
