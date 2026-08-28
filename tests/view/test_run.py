@@ -58,18 +58,20 @@ def test_a_run_page_is_that_runs_own_thread(
 def test_a_nested_run_breadcrumbs_through_every_run_above_it(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """A run two levels down names the whole chain of turns and runs that reached it.
+    """A run two levels down names the whole chain of rows that reached it.
 
     `SPINE_LEAF` was spawned from a turn of `SPINE_RUN`'s thread, which was itself spawned
-    from a turn of `main` — so the trail alternates, and the turn in each step is the one on
-    the *spawning call's own thread*. The expectation reads that join out of the store rather
-    than pinning the ids, so a re-recorded fixture moves it.
+    from a turn of `main` — so the trail repeats, and each step is the rows a run hangs under:
+    the turn on the *spawning call's own thread*, that api call, and the tool call that asked
+    for the run. The expectation reads that join out of the store rather than pinning the
+    ids, so a re-recorded fixture moves it.
     """
     trail = [f"session:{SPINE}"]
     for run_id in (SPINE_RUN, SPINE_LEAF):
-        _, _, turn_id, _ = one(store, SPAWN_OF, [run_id])
+        _, _, turn_id, call_id = one(store, SPAWN_OF, [run_id])
         assert turn_id is not None, f"{run_id} no longer resolves a spawning turn"
-        trail += [f"turn:{turn_id}", f"run:{run_id}"]
+        (tool_id,) = one(store, "SELECT tool_use_id FROM live_agent_runs WHERE id = ?", [run_id])
+        trail += [f"turn:{turn_id}", f"call:{call_id}", f"tool:{tool_id}", f"run:{run_id}"]
     page = client.get(f"/session/{SPINE}/run/{SPINE_LEAF}").text
     assert values(page, "data-crumb") == trail
     # Every step of the trail is a link a reader can follow back up.

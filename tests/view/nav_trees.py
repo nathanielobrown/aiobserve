@@ -4,8 +4,8 @@
 reads back as a list in document order, and `data-more` marks a row standing for children the
 cap left out. The levels here are built out of the store the way the design orders one, in the
 test's own SQL: turns with compactions dropped in by time, then the thread's unattributed
-bucket, then — under the session alone — the runs nothing placed. A level of api calls hoists
-each run after the call that spawned it. Reading the order back out of the store rather than
+bucket, then — under the session alone — the runs nothing placed. A run hangs under the tool
+call that spawned it, in every preset. Reading the order back out of the store rather than
 pinning it means a re-recorded fixture moves the expectation instead of reddening the tier.
 
 `cell` is the design's kind x preset table written out — every cell in full, including the ones
@@ -141,11 +141,11 @@ def turn_marks(
 def turn_level(
     store: duckdb.DuckDBPyConnection, session_id: str, source: str, turn_id: str | None
 ) -> list[str]:
-    """The api calls under one turn and the compactions among them, each run hoisted after the
-    call that spawned it.
+    """The api calls under one turn and the compactions among them.
 
     `turn_id` None is the unattributed bucket's own level, which reads the same way: the calls
-    that answer no turn, and the runs those calls spawned.
+    that answer no turn. No run is here — a run hangs off its own spawning tool call, which is
+    two levels further down.
     """
     calls = store.execute(
         "SELECT c.id, c.started_at FROM live_api_calls c"
@@ -155,22 +155,10 @@ def turn_level(
         ' ORDER BY c."index"',
         [session_id, source, turn_id],
     ).fetchall()
-    hoisted: dict[str, list[str]] = {}
-    for run_id, spawn_source, spawn_turn, spawn_call in spawned(store, session_id):
-        if spawn_source == source and spawn_turn == turn_id:
-            hoisted.setdefault(str(spawn_call), []).append(f"run:{run_id}")
-    placed: list[str] = []
-    for key in dropped_in(
+    return dropped_in(
         [(f"call:{call_id}", started) for call_id, started in calls],
         turn_marks(store, session_id, source, turn_id),
-    ):
-        placed.append(key)
-        placed += hoisted.pop(key.removeprefix("call:"), [])
-    # A run whose spawning call this level does not hold still belongs to the turn the edge
-    # resolved to, so it trails the level rather than being dropped.
-    for leftover in hoisted.values():
-        placed += leftover
-    return placed
+    )
 
 
 def open_turn(store: duckdb.DuckDBPyConnection) -> str:
@@ -232,13 +220,12 @@ def call_tools(
 def tool_level(
     store: duckdb.DuckDBPyConnection, session_id: str, source: str, turn_id: str | None
 ) -> list[str]:
-    """`noapi`'s level under a turn: its calls' tool calls and its compactions, with the runs
-    hoisted among them.
+    """`noapi`'s level under a turn: its calls' tool calls and its compactions.
 
-    The api calls are hidden, so their tool calls rise to the turn in call-then-tool order and
-    a run follows the tool call that spawned it rather than the api call that held it. A
-    compaction hangs off the turn whichever preset the reader is in, so it drops in by time here
-    too. `turn_id` None is the unattributed bucket's level, which reads the same way.
+    The api calls are hidden, so their tool calls rise to the turn in call-then-tool order. A
+    compaction hangs off the turn whichever preset the reader is in, so it drops in by time
+    here too. `turn_id` None is the unattributed bucket's level, which reads the same way. A
+    run is not here either: it hangs under the tool call that spawned it, one level deeper.
     """
     tools = store.execute(
         "SELECT tc.id, tc.started_at FROM live_tool_calls tc"
@@ -250,22 +237,10 @@ def tool_level(
         ' ORDER BY c."index", tc."index"',
         [session_id, source, turn_id],
     ).fetchall()
-    hoisted: dict[str | None, list[str]] = {}
-    for edge in edges(store, session_id):
-        if edge.spawn_source == source and edge.spawn_turn_id == turn_id:
-            hoisted.setdefault(edge.spawn_tool_id, []).append(f"run:{edge.run_id}")
-    placed: list[str] = []
-    for key in dropped_in(
+    return dropped_in(
         [(f"tool:{tool_id}", started) for tool_id, started in tools],
         turn_marks(store, session_id, source, turn_id),
-    ):
-        placed.append(key)
-        placed += hoisted.pop(key.removeprefix("tool:"), [])
-    # A run whose spawning tool call this level does not hold still belongs to the turn the
-    # edge resolved to, exactly as it does when the api calls are showing.
-    for leftover in hoisted.values():
-        placed += leftover
-    return placed
+    )
 
 
 def runs_where(
@@ -273,6 +248,60 @@ def runs_where(
 ) -> list[str]:
     """The session's runs one edge places under one node, in the order they started."""
     return [f"run:{edge.run_id}" for edge in edges(store, session_id) if holds(edge)]
+
+
+def hanging(store: duckdb.DuckDBPyConnection, session_id: str, source: str, key: str) -> list[str]:
+    """The runs one shut row stands, and the runs under those, as the NavTree draws them.
+
+    A run is always visible: where the rows between it and its spawning call are shut, it
+    renders under the deepest one showing. So the expectation for any row a page draws closed
+    is the row and then this, by the spawning edge — the same edge the cells place a run by.
+    """
+    kind, _, node_id = key.partition(":")
+    match kind:
+        case "turn":
+            spawned = runs_where(
+                store,
+                session_id,
+                lambda edge: edge.spawn_source == source and edge.spawn_turn_id == node_id,
+            )
+        case "unattributed":
+            spawned = runs_where(
+                store,
+                session_id,
+                lambda edge: edge.spawn_source == node_id and edge.spawn_turn_id is None,
+            )
+        case "call":
+            spawned = runs_where(
+                store,
+                session_id,
+                lambda edge: edge.spawn_source == source and edge.spawn_call_id == node_id,
+            )
+        case "tool":
+            spawned = runs_where(
+                store,
+                session_id,
+                lambda edge: edge.spawn_source == source and edge.spawn_tool_id == node_id,
+            )
+        # A run stands whatever its own thread spawned, which is what its turns would show.
+        case "run":
+            spawned = runs_where(store, session_id, lambda edge: edge.spawn_source == node_id)
+        case "unattached":
+            spawned = runs_where(store, session_id, lambda edge: edge.spawn_source is None)
+        case _:
+            return []
+    return [
+        key
+        for run in spawned
+        for key in [run, *hanging(store, session_id, run.removeprefix("run:"), run)]
+    ]
+
+
+def shut(
+    store: duckdb.DuckDBPyConnection, session_id: str, source: str, level: Sequence[str]
+) -> list[str]:
+    """One level as a page draws it with every row of it closed: each row, then what it hides."""
+    return [key for row in level for key in [row, *hanging(store, session_id, source, row)]]
 
 
 def cell(
@@ -320,12 +349,10 @@ def cell(
             return runs_where(store, session_id, lambda edge: edge.spawn_call_id == node_id)
         case Kind.CALL, _:
             return call_tools(store, session_id, source, node_id)
-        # A tool call is a leaf until `agents`, where the run it spawned is the one child the
-        # preset has left to hang under it.
-        case Kind.TOOL, Preset.AGENTS:
-            return runs_where(store, session_id, lambda edge: edge.spawn_tool_id == node_id)
+        # A tool call holds the run it spawned, in every preset: that is where a run lives now,
+        # and the preset only decides how many rows stand between the two.
         case Kind.TOOL, _:
-            return []
+            return runs_where(store, session_id, lambda edge: edge.spawn_tool_id == node_id)
         case Kind.COMPACTION, _:
             return []
         case Kind.UNATTACHED, _:

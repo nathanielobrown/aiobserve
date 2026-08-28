@@ -38,13 +38,18 @@ from tests.view.conftest import (
     kin,
     one,
     rows,
+    under,
     values,
     wired,
 )
 from tests.view.nav_trees import (
+    call_tools,
     cell,
+    edges,
+    hanging,
     mounts,
     open_turn,
+    shut,
     spilled,
     thread_level,
     turn_level,
@@ -66,7 +71,8 @@ def test_every_sessions_own_page_opens_the_level_its_thread_holds(
     seen: set[str] = set()
     for session_id in sessions:
         html = client.get(f"/session/{session_id}").text
-        expected = [f"session:{session_id}", *thread_level(store, session_id, MAIN)]
+        level = thread_level(store, session_id, MAIN)
+        expected = [f"session:{session_id}", *shut(store, session_id, MAIN, level)]
         assert values(html, "data-nav-tree") == expected, session_id
         seen |= {key.split(":")[0] for key in expected}
     # And the sweep really did reach every rule above, so a corpus that lost its compactions
@@ -102,7 +108,7 @@ def test_a_compaction_hangs_off_the_turn_whose_span_covers_it(
         "     AND o.source = t.source AND t.ended_at >= o.started_at AND t.ended_at < o.ended_at)"
         ' ORDER BY k.session_id, k.source, t."index" LIMIT 1',
     )
-    for moment, under, above in (
+    for moment, hangs, above in (
         # The instant before the turn starts is nobody's turn, so the compaction stands beside
         # the turns and above the one that started after it...
         (started - dt.timedelta(seconds=1), False, True),
@@ -125,7 +131,7 @@ def test_a_compaction_hangs_off_the_turn_whose_span_covers_it(
         at, turn_at = keys.index(f"compaction:{compaction_id}"), keys.index(f"turn:{turn_id}")
         # A child of the turn is one level deeper than it; a sibling shares its depth, and its
         # side of the turn says which way the time comparison went.
-        assert (placed[at][0] == placed[turn_at][0] + 1) is under, (moment, placed)
+        assert (placed[at][0] == placed[turn_at][0] + 1) is hangs, (moment, placed)
         assert (at < turn_at) is above, (moment, placed)
 
 
@@ -196,45 +202,100 @@ def test_the_nav_tree_opens_the_selections_path_and_leaves_the_rest_shut(
     """One open path: the chain down to the selection, expanded, and no other subtree.
 
     The chain here is the session and the turn under it, so the rows are the session, its
-    thread's whole level, and — under the selected turn alone — the calls it made with the run
-    it spawned hoisted among them. A tree that expanded a sibling would show that sibling's
-    calls too, which is the difference this reads: the rows are compared as a whole list, in
-    order, not searched for.
+    thread's whole level, and — under the selected turn alone — the calls it made. A tree that
+    expanded a sibling would show that sibling's calls too, which is the difference this reads:
+    the rows are compared as a whole list, in order, not searched for. Every row that is not
+    the selection stands whatever runs it hides, which is the one thing a shut row still draws.
     """
     selection = open_turn(store)
     html = client.get(url(selection)).text
     expected: list[str] = [f"session:{SPINE}"]
     for key in thread_level(store, SPINE, MAIN):
         expected.append(key)
-        # The selection is the one node whose children render — every other row is a row.
+        # The selection is the one node whose children render — every other row is a row and
+        # the runs standing under it.
         if key == f"turn:{selection}":
-            expected += turn_level(store, SPINE, MAIN, selection)
+            expected += shut(store, SPINE, MAIN, turn_level(store, SPINE, MAIN, selection))
+        else:
+            expected += hanging(store, SPINE, MAIN, key)
     assert values(html, "data-nav-tree") == expected
     # And the NavTree says which row the pane is about, once.
     assert values(html, "data-selected") == [f"turn:{selection}"]
 
 
-def test_a_run_hoists_after_the_call_that_spawned_it(
+def test_a_run_renders_under_the_tool_call_that_spawned_it(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """A run renders inside the turn it belongs to, right after its spawning call.
+    """A run hangs off the tool call that asked for it, wherever the tree is read.
 
-    A run is a child of the turn and not of the api call — it has a thread of its own, and the
-    call is only where it was asked for — so where it came from is said by the place it renders
-    in rather than by a note on the row. Read here at the level, where the neighbour on either
-    side is the whole point.
+    The spawning tool call is where the run came from, so it is the row the run renders under —
+    a place a reader can point at, rather than a note on the row saying which call to look for.
+    Read on the spawning api call's own page, where its tool calls are the level and the run
+    stands one deeper than the one that spawned it.
     """
-    run_id, source, turn_id, call_id = one(store, SPAWNS + " LIMIT 1", [SPINE])
-    assert turn_id is not None, "the recorded run this reads is placed under a turn"
-    html = client.get(url(str(turn_id))).text
-    level = turn_level(store, SPINE, str(source), str(turn_id))
-    at = level.index(f"run:{run_id}")
-    # The run sits immediately after the call that spawned it, and the level renders as read.
-    assert level[at - 1] == f"call:{call_id}"
-    assert [key for key in values(html, "data-nav-tree") if key in level] == level
+    spawn = next(edge for edge in edges(store, SPINE) if edge.spawn_tool_id)
+    page = f"/session/{SPINE}/thread/{spawn.spawn_source}/call/{spawn.spawn_call_id}"
+    html = client.get(page).text
+    # The call's own level is its tool calls, and none of them is the run...
+    assert kin(html) == call_tools(store, SPINE, str(spawn.spawn_source), str(spawn.spawn_call_id))
+    # ...which stands under the one tool call that spawned it, and under nothing else.
+    assert under(html, f"tool:{spawn.spawn_tool_id}") == [f"run:{spawn.run_id}"]
+    drawn = [key for _, key in rows(html)]
+    assert drawn.count(f"run:{spawn.run_id}") == 1
     # And the row carries the node's title and its cost, and nothing naming that call: the
     # place is the whole of what says where the run came from.
-    assert set(fields(html, "data-nav-tree", f"run:{run_id}")) == {"title", "cost_usd"}
+    assert set(fields(html, "data-nav-tree", f"run:{spawn.run_id}")) == {"title", "cost_usd"}
+
+
+def test_a_run_whose_rows_above_are_shut_stands_under_the_nearest_one_showing(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A run is always visible: the same run read at three shut ancestors, in three presets.
+
+    This is the rule the hoisting machinery was replaced by. A run nests under its spawning
+    tool call, and a nesting that only rendered when every row above it was open would hide a
+    run behind a row a reader has no reason to click. So each shut row stands the runs it
+    hides, and opening one moves a run's indent rather than bringing it into being.
+    """
+    spawn = next(edge for edge in edges(store, SPINE) if edge.spawn_turn_id)
+    source, run = str(spawn.spawn_source), f"run:{spawn.run_id}"
+    # A shut api call, on the turn's own page: the run stands under the call, with no tool row
+    # between the two — the row it nests under is not on the page at all.
+    turn = client.get(f"/session/{SPINE}/thread/{source}/turn/{spawn.spawn_turn_id}").text
+    assert run in under(turn, f"call:{spawn.spawn_call_id}")
+    assert f"tool:{spawn.spawn_tool_id}" not in [key for _, key in rows(turn)]
+    # A shut turn, under `noapi`, where neither the call nor the tool call is a row: the run
+    # stands under the turn, on the session's own page.
+    folded = client.get(f"/session/{SPINE}", params={"nav": Preset.NO_API}).text
+    assert run in under(folded, f"turn:{spawn.spawn_turn_id}")
+    # And under `agents`, where the run is the session's own child.
+    agents = client.get(f"/session/{SPINE}", params={"nav": Preset.AGENTS}).text
+    assert run in under(agents, f"session:{SPINE}")
+
+
+@pytest.mark.parametrize("preset", list(Preset))
+def test_every_run_of_a_session_is_on_its_page_under_every_preset(
+    client: TestClient, store: duckdb.DuckDBPyConnection, preset: Preset
+) -> None:
+    """No preset loses a run, over every session the corpus holds.
+
+    The NavTree is the only way to a run's page, so a rule that placed one under a row the
+    session page never draws would take that run out of the viewer. Swept rather than spotted:
+    a run is placed by an edge that resolves to any of five kinds of row, and a session page is
+    where a reader starts.
+    """
+    for (session_id,) in store.execute("SELECT id FROM sessions").fetchall():
+        html = client.get(f"/session/{session_id}", params={"nav": preset}).text
+        drawn = [key for _, key in rows(html) if key.startswith(f"{Kind.RUN}:")]
+        held = {
+            f"{Kind.RUN}:{run_id}"
+            for (run_id,) in store.execute(
+                "SELECT id FROM live_agent_runs WHERE session_id = ?", [session_id]
+            ).fetchall()
+        }
+        assert set(drawn) == held, session_id
+        # Each of them once: a run drawn twice is one placed by two edges at the same time.
+        assert len(drawn) == len(held), session_id
 
 
 def test_a_bucket_home_is_decided_by_the_spawning_edge(
@@ -243,8 +304,8 @@ def test_a_bucket_home_is_decided_by_the_spawning_edge(
     """The two buckets are disjoint by one edge: which of the two is a run's home, and why.
 
     A spawning call that resolves but sits under no turn of its thread puts the run in that
-    thread's *unattributed* bucket, hoisted after the call as usual. Only a run whose spawning
-    call resolves to nothing at all is *unattached*. The corpus records the second and not the
+    thread's *unattributed* bucket, under that call as usual. Only a run whose spawning call
+    resolves to nothing at all is *unattached*. The corpus records the second and not the
     first, so the first is planted: one recorded run's spawning call loses its turn, and the
     run has to move one bucket and not the other.
     """
@@ -257,14 +318,16 @@ def test_a_bucket_home_is_decided_by_the_spawning_edge(
         ),
     )
     with TestClient(build_app(path)) as moved:
-        # The run is gone from the turn it used to hang under...
-        assert f"run:{run_id}" not in values(moved.get(url(str(turn_id))).text, "data-nav-tree")
-        # ...and is in the thread's unattributed bucket, still after its spawning call.
+        # The run is gone from the turn it used to hang under — it stands on that page under
+        # the bucket instead, which is the row the moved call is now part of...
+        home = moved.get(url(str(turn_id))).text
+        assert f"run:{run_id}" not in under(home, f"turn:{turn_id}")
+        assert f"run:{run_id}" in under(home, f"unattributed:{source}")
+        # ...and is in the thread's unattributed bucket, standing under its spawning call.
         bucket_url = f"/session/{SPINE}/thread/{source}/unattributed"
         bucket = moved.get(bucket_url)
         assert bucket.status_code == 200
-        keys = values(bucket.text, "data-nav-tree")
-        assert keys[keys.index(f"call:{call_id}") + 1] == f"run:{run_id}"
+        assert f"run:{run_id}" in under(bucket.text, f"call:{call_id}")
         # The unattached bucket, which is the other home, does not also hold it.
         loose = moved.get(f"/session/{SPINE}/unattached")
         assert f"run:{run_id}" not in values(loose.text, "data-nav-tree")
@@ -274,19 +337,25 @@ def test_a_bucket_home_is_decided_by_the_spawning_edge(
         # the trail would look for the run under a bucket the session's NavTree does not hold.
         own = moved.get(f"/session/{SPINE}/run/{run_id}")
         assert own.status_code == 200
+        spawn_tool = one(
+            store, "SELECT tool_use_id FROM live_agent_runs WHERE id = ?", [str(run_id)]
+        )[0]
         assert values(own.text, "data-crumb") == [
             f"session:{SPINE}",
             f"unattributed:{source}",
+            f"call:{call_id}",
+            f"tool:{spawn_tool}",
             f"run:{run_id}",
         ]
-        # And the bucket's three cells all place it, which is the shape no recorded session
-        # has: a run under a thread's bucket, read under each preset in turn.
+        # And the bucket draws it under each preset, which is the shape no recorded session
+        # has: a run under a thread's bucket, with the rows between them shut or folded away.
         planted = duckdb.connect(str(path), read_only=True)
         for preset in Preset:
             html = moved.get(bucket_url, params={"nav": preset}).text
-            expected = cell(planted, preset, Kind.UNATTRIBUTED, SPINE, str(source), str(source))
-            assert f"run:{run_id}" in expected, preset
-            assert kin(html) == expected, preset
+            assert kin(html) == cell(
+                planted, preset, Kind.UNATTRIBUTED, SPINE, str(source), str(source)
+            ), preset
+            assert f"run:{run_id}" in [key for _, key in rows(html)], preset
         planted.close()
 
 
@@ -303,8 +372,8 @@ def test_the_kin_cap_cuts_the_children_but_never_the_open_path(
     """
     selection = open_turn(store)
     html = client.get(url(selection), params={"kin": 1}).text
-    level, under = thread_level(store, SPINE, MAIN), turn_level(store, SPINE, MAIN, selection)
-    assert len(level) > 2 and len(under) > 1, "the cap has to have something to cut"
+    level, beneath = thread_level(store, SPINE, MAIN), turn_level(store, SPINE, MAIN, selection)
+    assert len(level) > 2 and len(beneath) > 1, "the cap has to have something to cut"
     # The cap admits one child, and the path through the selection takes that slot rather than
     # being kept past it: the rescue rides inside the cap. A level of `kin + 1` children is a
     # page the byte arithmetic never priced, and the sibling the reader loses is one the tail
@@ -317,8 +386,8 @@ def test_the_kin_cap_cuts_the_children_but_never_the_open_path(
     assert inside(html, "data-more", f"session:{SPINE}", "href") == []
     # And the level under the selection takes the same cap, where no rescue is owed: one child
     # of the several the turn has, and a tail for the rest.
-    assert [key for key in values(html, "data-nav-tree") if key in under] == [under[0]]
-    assert fields(html, "data-more", f"turn:{selection}")["cut"] == str(len(under) - 1)
+    assert [key for key in values(html, "data-nav-tree") if key in beneath] == [beneath[0]]
+    assert fields(html, "data-more", f"turn:{selection}")["cut"] == str(len(beneath) - 1)
     # And no level on the page exceeds the cap, anywhere. `worst_node_bytes()` prices
     # `DEPTH * (KIN + 1)` rows on exactly this, so it is pinned here rather than left to a
     # reading of `_kin`.
@@ -343,7 +412,7 @@ def test_a_tail_row_stands_the_rest_of_its_level_where_it_stands(
     """
     selection = open_turn(store)
     page = client.get(url(selection), params={"kin": 1}).text
-    level, under = thread_level(store, SPINE, MAIN), turn_level(store, SPINE, MAIN, selection)
+    level, beneath = thread_level(store, SPINE, MAIN), turn_level(store, SPINE, MAIN, selection)
     tails = dict(wired(page, "data-more"))
     fetch, below = tails[f"session:{SPINE}"], tails[f"turn:{selection}"]
     # The whole of what the row does, inheritance and all...
@@ -376,7 +445,7 @@ def test_a_tail_row_stands_the_rest_of_its_level_where_it_stands(
         below["hx-get"]
         == f"{KIN_URL}/session/{SPINE}/thread/{MAIN}/turn/{selection}?kin=1&thread={MAIN}&depth=2"
     )
-    assert rows(client.get(below["hx-get"]).text) == [(2, key) for key in under[1:]]
+    assert rows(client.get(below["hx-get"]).text) == [(2, key) for key in beneath[1:]]
     # The depth is the one thing a level cannot say for itself, and the NavTree's arithmetic
     # prices `DEPTH` of them: rows claiming to stand outside the NavTree a page draws are rows
     # no page ever asked for.
@@ -429,32 +498,48 @@ def test_a_chain_is_resolved_to_the_depth_the_page_prices_and_no_deeper(
     The response's bound is arithmetic over the depth and the per-level cap, so a deeper chain
     is not a bigger page — it is a page whose size was never computed. Read at the boundary
     from both sides, because a bound that refused at `DEPTH` would silently cost the deepest
-    page the arithmetic paid for. The corpus reaches five levels, so the shape is built rather
-    than recorded: a ladder of runs, each spawned from a turn of the one above it.
+    page the arithmetic paid for. The corpus's deepest nesting is three runs, so the shape is
+    built rather than recorded: a ladder of runs, each spawned from a turn of the one above it.
+
+    A rung is four levels now that a run hangs off the tool call that spawned it — the run, and
+    the turn, api call and tool call above it — which is what sizes the ladder here.
     """
-    assert bounds.DEPTH % 2 == 0, "a turn lands on an even depth; an odd one would select a run"
-    # Every rung is two levels — a run and the turn that spawned it — so the ladder is sized to
-    # straddle the bound with its last two rungs: a turn on the second-deepest thread stands
-    # exactly `DEPTH` under the session, and the run that turn spawned stands one deeper.
+    assert bounds.DEPTH % 4 == 0, "the rung arithmetic below is written for a multiple of four"
+    rung = 4
     ladder = [
         {
             "run_id": f"a{step}",
             "spawn_source": f"a{step - 1}" if step else MAIN_SOURCE,
             "spawn_turn_id": f"t{step}",
+            "spawn_call_id": f"c{step}",
+            "tool_use_id": f"u{step}",
         }
-        for step in range(bounds.DEPTH // 2)
+        # One rung short of the bound: the ladder ends where the deepest tool call the page
+        # prices stands, and the run under that tool call is what falls past it.
+        for step in range(bounds.DEPTH // rung - 1)
     ]
     corpus = nav_tree.Corpus(SPINE, whole=0.0, runs=ladder, described=Descriptions(), source=MAIN)
-    # A short ladder resolves, which is what says a rung is worth two levels and not some other
-    # number: two runs and the turn selected on the second is four levels under the session.
+    # A short ladder resolves, which is what says a rung is worth four levels and not some
+    # other number: one run is the session, a turn, a call, a tool call and the run itself.
     shallow = nav_tree.Corpus(SPINE, 0.0, ladder[:2], Descriptions(), MAIN)
-    assert len(nav_tree.ancestry(shallow, [Ref(Kind.RUN, "a1", "a1")])) == 5
-    # Exactly `DEPTH` is served...
-    spawning, deepest = ladder[-2]["run_id"], ladder[-1]["run_id"]
-    assert len(nav_tree.ancestry(corpus, [Ref(Kind.TURN, spawning, "t")])) == bounds.DEPTH
-    # ...and the run that turn spawned, one level deeper, is refused.
+    assert len(nav_tree.ancestry(shallow, [Ref(Kind.RUN, "a0", "a0")])) == 1 + rung
+    assert len(nav_tree.ancestry(shallow, [Ref(Kind.RUN, "a1", "a1")])) == 1 + 2 * rung
+    # Exactly `DEPTH` is served — a tool call of the deepest thread, seeded by its own page the
+    # way `ancestry` takes one, standing where the run it spawned would hang...
+    deepest = ladder[-1]["run_id"]
+    tool = [
+        Ref(Kind.TURN, deepest, "t"),
+        Ref(Kind.CALL, deepest, "c"),
+        Ref(Kind.TOOL, deepest, "u"),
+    ]
+    assert len(nav_tree.ancestry(corpus, tool)) == bounds.DEPTH
+    # ...and one rung past the ladder, which is the run that tool call spawned, is refused.
+    past = [*ladder, {**ladder[-1], "run_id": "past", "spawn_source": deepest}]
     with pytest.raises(ValueError, match=str(bounds.DEPTH)):
-        nav_tree.ancestry(corpus, [Ref(Kind.RUN, deepest, deepest)])
+        nav_tree.ancestry(
+            nav_tree.Corpus(SPINE, 0.0, past, Descriptions(), MAIN),
+            [Ref(Kind.RUN, "past", "past")],
+        )
 
 
 def test_a_size_above_its_ceiling_is_refused(

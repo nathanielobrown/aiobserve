@@ -329,14 +329,28 @@ def rows(html: str) -> list[tuple[int, str]]:
     return [(int(depth), key) for depth, key in _ROW.findall(html)]
 
 
-def kin(html: str) -> list[str]:
-    """The children the NavTree opened under the selection, as node keys in document order.
+def under(html: str, key: str) -> list[str]:
+    """The rows the NavTree draws directly under one row, as node keys in document order.
 
-    The rows one level below the open chain, which is what the crumbs count. Everything else
-    on the NavTree is an ancestor, an ancestor's sibling, or a tail row.
+    Containment rather than depth: a run renders under its nearest visible ancestor, so a
+    closed row anywhere on the page stands runs at whatever depth it sits at plus one. What
+    belongs to a row is the run of rows deeper than it, up to the next one at its own depth.
     """
-    depth = len(values(html, "data-crumb"))
-    return [key for at, key in rows(html) if at == depth]
+    drawn = rows(html)
+    at = next(index for index, (_, drawn_key) in enumerate(drawn) if drawn_key == key)
+    depth = drawn[at][0]
+    kin: list[str] = []
+    for row_depth, row_key in drawn[at + 1 :]:
+        if row_depth <= depth:
+            break
+        if row_depth == depth + 1:
+            kin.append(row_key)
+    return kin
+
+
+def kin(html: str) -> list[str]:
+    """The children the NavTree opened under the selection, as node keys in document order."""
+    return under(html, values(html, "data-selected")[0])
 
 
 class _Element(HTMLParser):
