@@ -363,11 +363,10 @@ def titled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, tuple
         "SELECT id, brief, agent_type FROM live_agent_runs WHERE session_id = ?",
         [session_id],
     ).fetchall():
-        # The definition it ran, always first — which agent this was is what a reader picks a
-        # run out of a tree by — and after it the brief it was given, where one was recorded.
-        said[f"{Kind.RUN}:{run_id}"] = (
-            f"{agent_type}{LEAD_SEPARATOR}{brief}" if brief else agent_type
-        )
+        # The definition it ran, always first and in brackets — which agent this was is what a
+        # reader picks a run out of a tree by — and after it the brief it was given, where one
+        # was recorded. The brackets close the lead, so no dash stands between the two.
+        said[f"{Kind.RUN}:{run_id}"] = f"[{agent_type}] {brief}" if brief else f"[{agent_type}]"
     return {key: (value, kept.get(key, "")) for key, value in said.items()}
 
 

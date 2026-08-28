@@ -41,7 +41,8 @@ UNATTACHED_TITLE = "runs attached to no turn"
 
 # What stands between a node's lead and its words (`Node.title`). A composed title is one whose
 # halves neither identify alone — a tree of six `Explore` runs says nothing, and a brief without
-# its agent type buries the one word a reader picks a run by.
+# its agent type buries the one word a reader picks a run by. A lead that brackets itself says
+# where it ends without a dash, and takes `Node.separator` to a space (`run_node`).
 LEAD_SEPARATOR = " — "
 
 # The most of an api call's title the count of its tool calls may take (`call_node`). Half the
@@ -246,6 +247,10 @@ class Node:
     # leads `title` but not `log_title`, because a children log heads it in a column of its
     # own — a row that carried both would print the same word twice.
     lead: str = ""
+    # What goes between the lead and the words. A dash by default: two halves of a composed
+    # title need something saying which is which, and a lead already closed by a bracket does
+    # not.
+    separator: str = LEAD_SEPARATOR
     # Whether any of the words are the model's rather than the session's, which is what the
     # glyph beside the title marks. Three kinds can be: a session, a turn and a run.
     enriched: bool = False
@@ -281,7 +286,7 @@ class Node:
 
     def _joined(self, *parts: str) -> str:
         """The parts of a title a width is spent on, in reading order."""
-        return LEAD_SEPARATOR.join(part for part in parts if part)
+        return self.separator.join(part for part in parts if part)
 
     def _at(self, chars: int, *parts: str) -> str:
         """`parts` at `chars`, with the tail taken out of the width rather than cut off it."""
@@ -495,9 +500,11 @@ def run_node(session_id: str, row: Row, whole: float, described: str | None) -> 
         # A run's id is the source its own rows carry.
         source=row["run_id"],
         node_id=row["run_id"],
-        # Which agent ran leads the name wherever no column heads it (`Node.lead`), and after
-        # it what the pass said the run did, else the brief it was given, else nothing.
-        lead=row["agent_type"],
+        # Which agent ran leads the name wherever no column heads it (`Node.lead`), bracketed
+        # so a tree of runs reads as a column of types — and after it what the pass said the
+        # run did, else the brief it was given, else nothing.
+        lead=f"[{row['agent_type']}]" if row["agent_type"] else "",
+        separator=" ",
         words=_words(described or row["brief"]),
         cost_usd=cost,
         unpriced_api_calls=row["unpriced_api_calls"],
