@@ -25,7 +25,7 @@ Every node reachable in the pane has a URL that renders the whole page cold. Not
 
 # A node's title comes off the node
 
-Print `Node.nav_tree_title`, `crumb_title`, `log_title` or `pane_title`, whichever fits the surface. Never join words in a template and never print a row's own column where a node is being named: the four are one title at four widths (`src/hyphae/view/nodes.py`), and a surface composing its own would be a second answer to what the node is called. What each kind is titled is in `docs/viewer.md`.
+Print `Node.nav_tree_title`, `crumb_title`, `log_title` or `pane_title`, whichever fits the surface. Never join words in a template and never print a row's own column where a node is being named: the four are one title at four widths (`src/hyphae/view/nodes.py`), and a surface composing its own would be a second answer to what the node is called. What each kind is titled is in `docs/viewer-titles.md`.
 
 # Tooltips are native `title` attributes
 
@@ -39,7 +39,7 @@ A `title` is worth its bytes where the mark on screen is smaller than what it me
 
 Where a title repeats — a NavTree row, a crumb, a log row, a walk control — the glyph goes bare. The pane carries the one that says what the mark means: `parts.summary` hangs `Described.provenance` off it as a `title`, naming the model, when it ran, the prompt and taxonomy versions, and whether the row is stale. A `title` on every repeat would be the same sentence 400 times in one page's markup.
 
-Every mark saying what a thing *is* — the kind of node a surface names, and the kind a children log's column is about — goes through `parts.mark(character)`, whose character comes from `nodes.GLYPHS` or a `Column` — the one place those characters are written, so a mark cannot mean one thing in a table and another in the NavTree. It is `aria-hidden` and carries no `title`: the word it stands for is already in the markup beside it (`docs/viewer.md`). The `<title>` element is the one place a mark goes in bare, because it is text and has no markup to hide it in.
+Every mark saying what a thing *is* — the kind of node a surface names, and the kind a children log's column is about — goes through `parts.mark(character)`, whose character comes from `nodes.GLYPHS` or a `Column` — the one place those characters are written, so a mark cannot mean one thing in a table and another in the NavTree. It is `aria-hidden` and carries no `title`: the word it stands for is already in the markup beside it (`docs/viewer-titles.md`). The `<title>` element is the one place a mark goes in bare, because it is text and has no markup to hide it in.
 
 A tool's own glyph is not one of these marks and does not go through `parts.mark`. It stands in for the tool's name inside the title's words (`src/hyphae/view/formatters.py`), so it rides as text wherever the title does — including a children log, which heads the lead in a column of its own and would drop a mark written there.
 
