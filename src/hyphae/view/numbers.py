@@ -11,9 +11,62 @@ tokens by model instead, and each group is priced once.
 """
 
 from collections.abc import Sequence
+from typing import NamedTuple
 
 from hyphae.extract.pricing import CostSplit, TokenUsage, split_cost
+from hyphae.view.nodes import meter
 from hyphae.view.store import Row
+
+
+class Charge(NamedTuple):
+    """One line of the popover: a count of tokens, and what those tokens cost."""
+
+    # What the popover calls the line, and the fields its two numbers are labelled with.
+    label: str
+    field: str
+    cost_field: str
+    tokens: int | None
+    # None where our price table holds no rate for the model the node answered on. The count
+    # beside it still prints: a reading we have no price for is not a reading we do not have.
+    cost: float | None
+    # The step class the dollar's ground is drawn at — the badge's own, so the popover and the
+    # row it opened from wash one number the same way.
+    wash: str
+
+
+# What the popover calls each line, beside the name its two numbers are labelled with: the
+# store's own column less its `_tokens`, and that same name under a `cost_` for the dollar.
+_LINES = (("cache read", "cached"), ("new input", "new_input"), ("output", "output"))
+
+
+def charges(row: Row, split: CostSplit | None, whole: float | None) -> list[Charge]:
+    """The three lines the popover prints between the window and the total.
+
+    The counts come off the node's last answering call and add up to the window it left; the
+    dollars are every call the node made and add up to the total under them. The cache a call
+    wrote rides on the new-input line rather than on one of its own, because that is where its
+    tokens are counted (`view_numbers.sql`) — a fourth dollar would leave a column of charges
+    coming to nothing the reader can see.
+    """
+    priced: tuple[float | None, ...] = (
+        (split.cache_read, split.input + split.cache_write, split.output)
+        if split is not None
+        else (None, None, None)
+    )
+    return [
+        Charge(label, field, f"cost_{field}", row[f"{field}_tokens"], cost, wash(cost, whole))
+        for (label, field), cost in zip(_LINES, priced, strict=True)
+    ]
+
+
+def wash(cost: float | None, whole: float | None) -> str:
+    """The ground one dollar figure is drawn on: its share of what the session spent.
+
+    The badge's own ladder (`view/nodes.py:meter`), so a number in a popover and the same
+    number on the row behind it are washed at one depth. A session that spent nothing, or a
+    dollar we have none of, takes no share and draws no ground.
+    """
+    return meter(cost / whole if cost and whole else None)
 
 
 def spend(groups: Sequence[Row]) -> CostSplit | None:

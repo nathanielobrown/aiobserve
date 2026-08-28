@@ -29,6 +29,12 @@
       </div>
     {%- endif %}
   </dl>
+  {# Where the badge on a ⇄ row comes from. A tool call is billed nothing of its own, so the one
+     tool row that draws a cost draws an attribution rather than a measurement — and a reader
+     who cannot see that reads it as what the tool spent (`view/builders.py:tool_node`). #}
+  {%- if row.spawned_run %}
+    <p class="beside" data-attribution="spawn_call">its own cost is the api call that spawned this run</p>
+  {%- endif %}
   {# What the same api call asked for beside this one, named the way every other surface names
      a tool call. Parallel work is the reading a row alone cannot give: a call that took a
      minute took it beside these. #}

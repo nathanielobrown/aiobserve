@@ -213,11 +213,17 @@ li.row[data-selected] > a { font-weight: 600; color: var(--ink);
 li.node:hover .popover, li.node:focus-within .popover { display: block; }
 .popover dl { display: grid; grid-template-columns: auto auto; gap: 0 var(--space-2);
   margin: 0 0 var(--space-1); }
+/* The counts and their dollars: three columns, and no gap between them, so the rule over the
+   total below runs unbroken across all three. The room between the columns is the cells' own
+   padding instead. */
+.popover dl.charges { grid-template-columns: auto auto auto; gap: 0; }
+.popover .charges dd { padding-left: var(--space-2); }
+.popover .charges .sum > * { border-top: 1px solid var(--line); padding-top: 2px; }
 .popover dl > div { display: contents; }
 .popover dt { color: var(--dim); }
 .popover dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
-.popover .total, .popover .beside { margin: 0; color: var(--dim); }
-.popover .total [data-field="cost_usd"] { color: var(--ink); font-weight: 600; }
+.popover .beside { margin: 0; color: var(--dim); }
+.popover .sum [data-field="cost_usd"] { color: var(--ink); font-weight: 600; }
 /* The trigger itself draws nothing: it is a mount for the popover and a listener on the row. */
 .peek { display: contents; }
 

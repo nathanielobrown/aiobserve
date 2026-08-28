@@ -21,7 +21,7 @@ from hyphae.analyze import macros
 from hyphae.extract.pricing import CONTEXT_WINDOWS, CostSplit, TokenUsage, split_cost
 from hyphae.view.app import build_app
 from hyphae.view.format import ABSENT
-from hyphae.view.nodes import NUMBERS_URL, Kind
+from hyphae.view.nodes import NUMBERS_URL, Kind, meter
 from tests.conftest import (
     ANCESTOR,
     DENSE_CALL,
@@ -35,7 +35,18 @@ from tests.conftest import (
     SPINE_LEAF,
     SPINE_RUN,
 )
-from tests.view.conftest import Bar, Planter, bar, fields, inside, one, step, wired
+from tests.view.conftest import (
+    Bar,
+    Planter,
+    bar,
+    fields,
+    inside,
+    one,
+    step,
+    values,
+    washes,
+    wired,
+)
 
 # Where a node left the model's window: the last call it made that went to one. Ordered by
 # `"index"`, which is unique and ascending inside a thread.
@@ -53,11 +64,16 @@ CHARGED = (
 )
 
 
-def popover(client: TestClient, path: str, key: str) -> dict[str, str]:
-    """One row's popover, read back as its labelled fields."""
+def popped(client: TestClient, path: str) -> str:
+    """One row's popover, as it was served."""
     answer = client.get(f"{NUMBERS_URL}{path}")
     assert answer.status_code == 200, answer.text
-    return fields(answer.text, "data-popover", key)
+    return answer.text
+
+
+def popover(client: TestClient, path: str, key: str) -> dict[str, str]:
+    """One row's popover, read back as its labelled fields."""
+    return fields(popped(client, path), "data-popover", key)
 
 
 def held(
@@ -91,14 +107,34 @@ def charged(
     return split, stored
 
 
+# The dollars the popover prints beside its token counts, in the order they stand.
+CHARGES = ("cost_cached", "cost_new_input", "cost_output")
+
+
 def legend(split: CostSplit) -> dict[str, str]:
-    """The four charges as the popover prints them, at the precision a cost is stored to."""
-    return {
-        "cost_input": f"${split.input:.4f}",
-        "cost_cache_read": f"${split.cache_read:.4f}",
-        "cost_cache_write": f"${split.cache_write:.4f}",
-        "cost_output": f"${split.output:.4f}",
-    }
+    """The dollar beside each token count, at the precision a cost is stored to.
+
+    Three charges and not the price table's four: the cache a call wrote is counted in the
+    tokens on the new-input line (`view_numbers.sql`), so its dollar is charged there too. A
+    row of its own would leave a column of dollars that does not come to the total under it,
+    which is the one arithmetic a reader can do in their head.
+    """
+    return dict(
+        zip(
+            CHARGES,
+            (
+                f"${split.cache_read:.4f}",
+                f"${split.input + split.cache_write:.4f}",
+                f"${split.output:.4f}",
+            ),
+            strict=True,
+        )
+    )
+
+
+def _money(shown: str) -> float:
+    """A printed dollar figure read back as the number it is."""
+    return float(shown.removeprefix("$"))
 
 
 def reached(store: duckdb.DuckDBPyConnection, session_id: str, source: str, turn_id: str) -> bool:
@@ -133,8 +169,10 @@ def test_a_session_reads_its_window_off_the_main_thread_and_its_dollars_off_them
     assert printed["added"] == ABSENT
     split, stored = charged(store, SPINE)
     assert printed | legend(split) == printed
-    # And the four come to the total the badge prints, which is the number the store keeps.
-    assert printed["cost_usd"] == f"${stored:.2f}"
+    # And the three come to the total under them, which is the number the store keeps. Printed
+    # to the place a cost is stored at rather than to the badge's cents: the popover is where a
+    # reader adds the column up, and a column of cents would not come to a total in cents.
+    assert printed["cost_usd"] == f"${stored:.4f}"
     assert round(split.total, 4) == round(stored, 4)
 
 
@@ -202,10 +240,96 @@ def test_a_call_says_the_cache_it_read_apart_from_the_context_it_sent(
     )
     assert printed | held(store, FORK_ORIGIN, FORK_ORIGIN_RUN, extra=where) == printed
     assert printed["added"] == f"{tokens(printed, 'fill') - tokens(printed, 'cached'):+,}"
-    # One call is one model, so the legend is that call's own four charges.
+    # One call is one model, so the dollars beside the counts are that call's own.
     split, stored = charged(store, FORK_ORIGIN, extra=where)
     assert printed | legend(split) == printed
-    assert printed["cost_usd"] == f"${stored:.2f}"
+    assert printed["cost_usd"] == f"${stored:.4f}"
+    # One call answered, so the line saying how many did is absent: `over 1 api call` is a
+    # sentence that says nothing, and the popover is already the node's own numbers.
+    assert "api_calls" not in printed
+
+
+def test_the_popovers_two_columns_come_to_the_totals_under_them(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """Both columns add up, which is what makes the block one reading rather than five numbers.
+
+    The counts are the node's last answering call and come to the window it left; the dollars
+    are every call the node made and come to the total under them. That is why the cache a call
+    wrote is charged on the new-input line rather than on one of its own: its tokens are counted
+    there, and a fourth dollar would leave a column that sums to nothing a reader can see.
+
+    Over a turn that answered more than once, so the two columns are read over different sets
+    of calls — which is what the line under them says out loud.
+    """
+    turn_id, answered = one(
+        store,
+        "SELECT turn_id, count(*) FROM live_api_calls"
+        " WHERE session_id = ? AND source = ? AND NOT synthetic"
+        ' GROUP BY turn_id ORDER BY count(*) DESC, min("index") LIMIT 1',
+        [SPINE, MAIN],
+    )
+    assert answered > 1, "the columns are read over different sets only where several answered"
+    printed = popover(
+        client, f"/session/{SPINE}/thread/{MAIN}/turn/{turn_id}", f"{Kind.TURN}:{turn_id}"
+    )
+    # The counts: the cache the last call read, what it sent, and what it said back.
+    assert sum(tokens(printed, name) for name in ("cached", "new_input", "output")) == tokens(
+        printed, "fill"
+    )
+    # The dollars: to the cent, because each is rounded before it is printed and the total is
+    # rounded off the store's own sum rather than off these three.
+    dollars = [_money(printed[name]) for name in CHARGES]
+    assert round(sum(dollars), 2) == round(_money(printed["cost_usd"]), 2)
+    # And the line that says the dollars cover more calls than the counts do.
+    (made,) = one(
+        store,
+        "SELECT count(*) FROM live_api_calls WHERE session_id = ? AND source = ? AND turn_id = ?",
+        [SPINE, MAIN, turn_id],
+    )
+    assert printed["api_calls"] == f"{made:,}"
+
+
+def test_every_dollar_in_a_popover_is_washed_at_its_share_of_what_the_session_spent(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The dollars carry the badge's own ground, so a glance reads the same scale in both places.
+
+    `nodes.meter` by name rather than the ladder restated: the wash behind a NavTree row's badge
+    and the wash behind these four are one function of one share — what the value is of what the
+    whole session spent — and a second implementation here would agree with itself and with
+    nothing on the page.
+    """
+    (whole,) = one(store, "SELECT cost_usd FROM session_rollups WHERE session_id = ?", [SPINE])
+    key = f"{Kind.SESSION}:{SPINE}"
+    served = popped(client, f"/session/{SPINE}")
+    printed = fields(served, "data-popover", key)
+    drawn = washes(served, "data-popover", key)
+    for name in (*CHARGES, "cost_usd"):
+        assert drawn[name].split() == ["badge", meter(_money(printed[name]) / whole)], name
+
+
+def test_the_row_that_stands_for_a_run_says_where_its_own_cost_came_from(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A ⇄ row's badge is the api call that asked for the run, and its popover says so.
+
+    A tool call is billed nothing of its own (`docs/schema.md`), so the badge on the one row
+    that draws one is an attribution rather than a measurement — and an attribution a reader
+    cannot see is a number they will read as the tool's own.
+    """
+    spawn_tool, source = one(
+        store,
+        "SELECT a.tool_use_id, t.source FROM live_agent_runs a"
+        " JOIN live_tool_calls t ON t.session_id = a.session_id AND t.id = a.tool_use_id"
+        " WHERE a.session_id = ? AND a.id = ?",
+        [SPINE, SPINE_RUN],
+    )
+    served = popped(client, f"/session/{SPINE}/thread/{source}/tool/{spawn_tool}")
+    assert values(served, "data-attribution") == ["spawn_call"]
+    # And no other tool row claims one: nothing else on the page is charged a call's cost.
+    plain = popped(client, f"/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}")
+    assert values(plain, "data-attribution") == []
 
 
 def test_a_cache_write_with_no_ttl_on_it_is_charged_at_the_short_rate(
@@ -234,8 +358,11 @@ def test_a_cache_write_with_no_ttl_on_it_is_charged_at_the_short_rate(
     split, _ = charged(store, INVENTED_PROJECT_SESSION, extra=where)
     assert printed | legend(split) == printed
     # And the write is a charge a reader can see rather than one that rounded away, which is
-    # what makes the line above a reading of the fallback.
-    assert printed["cost_cache_write"] != "$0.0000"
+    # what makes the line above a reading of the fallback. It is charged on the new-input line,
+    # where its tokens are counted, so what shows it was charged at all is that dollar standing
+    # above what the call's own input came to.
+    assert split.cache_write > 0
+    assert _money(printed["cost_new_input"]) > split.input
 
 
 def test_a_tool_call_says_what_it_gave_back_and_what_was_asked_beside_it(
@@ -412,7 +539,7 @@ def test_a_model_we_hold_no_window_for_says_so_rather_than_scaling_to_a_guess(
     assert int(printed["fill"].replace(",", "")) > 0
     # A model our price table lacks shows no legend rather than four zeroes, and the count of
     # what went unpriced is what says why.
-    assert "cost_input" not in printed
+    assert [name for name in CHARGES if name in printed] == []
     assert printed["unpriced_api_calls"] == printed["api_calls"]
 
 

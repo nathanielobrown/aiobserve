@@ -30,7 +30,15 @@ SELECT
     -- Bound like a header's lists: an api call can make a thousand tool calls, and a popover
     -- is not a level to page through — so it names the first few and says how many it left.
     list_slice(beside.titles, 1, $head_items) AS siblings,
-    greatest(len(beside.titles) - $head_items, 0) AS siblings_cut
+    greatest(len(beside.titles) - $head_items, 0) AS siblings_cut,
+    -- Whether a run hangs under this call, which is the one tool row the NavTree badges: it is
+    -- charged what the api call holding it cost, and the popover is where that attribution is
+    -- said in words (`view/builders.py:tool_node`). The spawning edge and not the tool's name,
+    -- because the edge is what the badge itself is drawn from.
+    EXISTS (
+        SELECT 1 FROM live_agent_runs a
+        WHERE a.session_id = t.session_id AND a.tool_use_id = t.id
+    ) AS spawned_run
 FROM live_tool_calls t
 CROSS JOIN beside
 WHERE t.session_id = $session_id AND t.source = $source AND t.id = $tool_call_id;

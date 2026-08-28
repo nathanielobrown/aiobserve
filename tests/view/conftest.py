@@ -331,6 +331,20 @@ class Badge(NamedTuple):
     step: str
 
 
+def washes(html: str, attribute: str, value: str) -> dict[str, str]:
+    """Every labelled value inside one element, keyed by field, with the classes it wears.
+
+    A wash is a class per step of a share (`view/nodes.py:meter`), and it rides on the value
+    it washes rather than on what holds it: a NavTree row draws two of them and a popover
+    four, so the element is never what says which share a step stands for.
+    """
+    return {
+        name: tag.get("class") or ""
+        for tag in _element(html, attribute, value).attributes
+        if (name := tag.get("data-field")) is not None
+    }
+
+
 def badges(page: str, key: str) -> dict[str, Badge]:
     """A row's cost badge, half by half, keyed by the field each half carries.
 
@@ -341,9 +355,9 @@ def badges(page: str, key: str) -> dict[str, Badge]:
     """
     shown = fields(page, "data-nav-tree", key)
     return {
-        name: Badge(shown[name], tag.get("class") or "")
-        for tag in _element(page, "data-nav-tree", key).attributes
-        if (name := tag.get("data-field")) in ("cost_usd", "total_usd")
+        name: Badge(shown[name], step)
+        for name, step in washes(page, "data-nav-tree", key).items()
+        if name in ("cost_usd", "total_usd")
     }
 
 
