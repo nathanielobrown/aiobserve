@@ -34,8 +34,21 @@ from hyphae.view.format import ELLIPSIS
 _MARKDOWN = MarkdownIt("commonmark", {"html": False, "linkify": False})
 
 # The schemes a rendered URL may carry into an `href`. Everything else a transcript can write
-# there — `javascript:`, `data:`, `file:` — is shown as text instead.
-_LINK_SCHEMES = ("http://", "https://")
+# there — `javascript:`, `data:`, `file:` — is shown as text instead. `view/inline_markdown.py`
+# reads it too: one answer to where a browser may be pointed.
+LINK_SCHEMES = ("http://", "https://")
+
+# The class an image placeholder wears, so the stylesheet paints one thing wherever it lands.
+IMAGE_CLASS = "image"
+
+
+def image_text(alt: str, src: str) -> str:
+    """What an image shows here instead of fetching: its alt text and its URL, in words.
+
+    Written once because both renderers print it — a title and the paragraph that title opens —
+    and a reader meeting two wordings would read them as two different things.
+    """
+    return f"[image: {alt or 'untitled'} — {src}]"
 
 
 def _image(
@@ -51,10 +64,8 @@ def _image(
     to the link rule instead, which puts the transcript's host straight back in an `href`.
     """
     token = tokens[index]
-    return (
-        f'<span class="image">[image: {escape(token.content or "untitled")}'
-        f" — {escape(token.attrGet('src') or '')}]</span>"
-    )
+    shown = image_text(token.content, str(token.attrGet("src") or ""))
+    return f'<span class="{IMAGE_CLASS}">{escape(shown)}</span>'
 
 
 def _fence(
@@ -102,6 +113,6 @@ def link(url: str | None) -> Markup:
     """
     if not url:
         return Markup()
-    if not url.lower().startswith(_LINK_SCHEMES) or url.endswith(ELLIPSIS):
+    if not url.lower().startswith(LINK_SCHEMES) or url.endswith(ELLIPSIS):
         return escape(url)
     return Markup(f'<a href="{escape(url)}">{escape(url)}</a>')  # noqa: S704 — escaped above
