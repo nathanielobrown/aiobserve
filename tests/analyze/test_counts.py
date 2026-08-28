@@ -58,9 +58,9 @@ GUARDRAIL_HEAD = "This agent is isolated in the worktree /repo/.claude/worktrees
 GUARDRAIL_TAIL = ", but this command wanted to write outside it"
 # The one group they have to collapse into: the sentence, with the path standing for itself.
 GUARDRAIL_SIGNATURE = f"This agent is isolated in the worktree <path>{GUARDRAIL_TAIL}"
-# What the plant costs: every corpus `Bash` call — 5 calls over 4 sessions and 5 threads, one
-# apiece in `SPINE`'s two threads, `CONFIG_ONLY`, the architect run and `parallel_tools`'s auditor.
-GUARDRAIL_ERRORS = 5
+# What the plant costs: every corpus `Bash` call — 6 over 4 sessions and 5 threads: two in `SPINE`'s
+# main, one apiece in its run, `CONFIG_ONLY`, the architect run and `parallel_tools`'s auditor.
+GUARDRAIL_ERRORS = 6
 GUARDRAIL_SESSIONS = 4
 GUARDRAIL_THREADS = 5
 
@@ -111,10 +111,10 @@ ARCHITECT_RELOAD_TOKENS = 89_383
 # The silence its rebuild followed: 6,035 seconds, an hour and forty minutes — shorter than the two
 # main-thread waits below, which is what puts the corpus's idle reloads either side of a bound.
 ARCHITECT_IDLE_SECONDS = 6_035
-# `SPINE`'s main thread went 23,773 seconds — 6h36m — between two calls and rebuilt 94,194
+# `SPINE`'s main thread went 23,276 seconds — 6h27m — between two calls and rebuilt 94,194
 # tokens on the far side, so its gap is what a rebound `$idle_seconds` can be walked past.
 SPINE_RELOAD_TOKENS = 94_194
-SPINE_IDLE_SECONDS = 23_773
+SPINE_IDLE_SECONDS = 23_276
 # `COMPACTED`'s main thread is the third, and the only one whose rebuild followed a
 # compaction: 21,648 seconds of silence over a boundary, 36,465 tokens on the far side.
 COMPACTED_RELOAD_TOKENS = 36_465
@@ -126,10 +126,10 @@ COMPACTED_IDLE_SECONDS = 21_648
 # would fall out of the table.
 SHORTEST_IDLE_SECONDS = 302
 REQUEST_MEASURED_IDLE_SECONDS = 319
-# How many silences over that floor the recorded corpus holds: eight in main threads, two in
+# How many silences over that floor the recorded corpus holds: nine in main threads, two in
 # agent runs. The raw table holds two more — `corpus_api_calls` hides a resumed thread's
 # replayed rows, and a gap between two of them is not the corpus's to count.
-RECORDED_IDLE_GAPS = 10
+RECORDED_IDLE_GAPS = 11
 
 
 def test_error_signatures_counts_one_signature_over_many_bodies(

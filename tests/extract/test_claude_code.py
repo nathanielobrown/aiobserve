@@ -130,7 +130,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
         ),
     ]
 
-    # ...the ten assistant records collapse into the four messages they belong to...
+    # ...the thirteen assistant records collapse into the six messages they belong to...
     assert [call for call in trace.api_calls if call.source == MAIN_SOURCE] == [
         ApiCall(
             id="msg_011CdmMjFXDofyYSMxYtXa5n",
@@ -194,12 +194,68 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             thinking="",
             replayed=False,
         ),
+        # ...one that asked for two tools at once, a `Bash` and a `ToolSearch`, which is why
+        # this excerpt carries it: the calls log and the tool popover both need a call whose
+        # tools are siblings...
+        ApiCall(
+            id="msg_011CdmUSN7CEFrApaViphdwb",
+            session_id=SPINE,
+            source="main",
+            turn_id="818588ad-3849-48fe-a546-573163768e04",
+            index=2,
+            model="claude-fable-5",
+            fallback_from=None,
+            effort="high",
+            stop_reason="tool_use",
+            attribution_skill=None,
+            request_id="req_011CdmUSH9nYjBWjJMdPE2s6",
+            started_at=at("2026-08-06T12:12:31.903"),
+            ended_at=at("2026-08-06T12:12:31.946"),
+            input_tokens=2,
+            output_tokens=335,
+            cache_read_tokens=88758,
+            cache_creation_tokens=1101,
+            cache_5m_tokens=0,
+            cache_1h_tokens=1101,
+            cost_usd=0.127548,
+            synthetic=False,
+            text="",
+            thinking="",
+            replayed=False,
+        ),
+        # ...one that sent a notification and nothing else...
+        ApiCall(
+            id="msg_011CdmUTLXigDcVRN67fErbT",
+            session_id=SPINE,
+            source="main",
+            turn_id="818588ad-3849-48fe-a546-573163768e04",
+            index=3,
+            model="claude-fable-5",
+            fallback_from=None,
+            effort="high",
+            stop_reason="tool_use",
+            attribution_skill=None,
+            request_id="req_011CdmUTJMFEfCSxd89Q4jpL",
+            started_at=at("2026-08-06T12:12:42.148"),
+            ended_at=at("2026-08-06T12:12:42.148"),
+            input_tokens=2,
+            output_tokens=153,
+            cache_read_tokens=91282,
+            cache_creation_tokens=667,
+            cache_5m_tokens=0,
+            cache_1h_tokens=667,
+            cost_usd=0.112292,
+            synthetic=False,
+            text="",
+            thinking="",
+            replayed=False,
+        ),
         ApiCall(
             id="msg_011Cdmz3NQtuzwN3cqYvvkuN",
             session_id=SPINE,
             source="main",
             turn_id="818588ad-3849-48fe-a546-573163768e04",
-            index=2,
+            index=4,
             model="claude-fable-5",
             fallback_from=None,
             effort="high",
@@ -228,7 +284,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             session_id=SPINE,
             source="main",
             turn_id="8cdceb31-385c-42d4-9dae-137958b09b88",
-            index=3,
+            index=5,
             model="<synthetic>",
             fallback_from=None,
             effort=None,
@@ -256,7 +312,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
     assert trace.pr_links == [
         PrLink(
             session_id=SPINE,
-            line_no=33,
+            line_no=39,
             pr_number=656,
             pr_url="fixture-pr-url-1",
             pr_repository="fixture-pr-repo-1",
@@ -264,7 +320,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
         ),
         PrLink(
             session_id=SPINE,
-            line_no=34,
+            line_no=40,
             pr_number=656,
             pr_url="fixture-pr-url-1",
             pr_repository="fixture-pr-repo-1",
@@ -274,7 +330,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
 
     # ...while every line of the transcript survives in the archive, whatever it was —
     # beside the lines of the subagent it spawned, which carry their own source.
-    assert len([r for r in trace.raw_records if r.source == MAIN_SOURCE]) == 35
+    assert len([r for r in trace.raw_records if r.source == MAIN_SOURCE]) == 41
     assert trace.extractor == "claude_code"
 
 
@@ -287,15 +343,15 @@ def test_a_message_split_across_records_merges_into_one_call(fixture_source: Sou
     """
     trace = ClaudeCodeExtractor().extract(fixture_source("spine", SPINE))
 
-    # If the file holds ten assistant records under four message ids...
+    # If the file holds thirteen assistant records under six message ids...
     assert (
         len([r for r in trace.raw_records if r.type == "assistant" and r.source == MAIN_SOURCE])
-        == 10
+        == 13
     )
-    # ...then four API calls come back, each spanning from the record it answers to its
+    # ...then six API calls come back, each spanning from the record it answers to its
     # last chunk, with the thinking and the text it was split across both present.
     main = [call for call in trace.api_calls if call.source == MAIN_SOURCE]
-    assert len(main) == 4
+    assert len(main) == 6
     merged = main[0]
     assert (merged.started_at, merged.ended_at) == (
         at("2026-08-06T10:44:27.629"),

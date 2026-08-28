@@ -79,7 +79,7 @@ def test_the_spine_becomes_a_span_per_live_row(fixture_trace: TraceFactory) -> N
     """A session's turns, model calls, tools and subagent runs become spans with the design's
     names, kinds and parents."""
     # If the deepest recorded session is shaped — four main turns and one turn inside each of
-    # its two subagent runs, seven model calls between them, nine tool calls of which two
+    # its two subagent runs, nine model calls between them, twelve tool calls of which two
     # spawned the runs...
     trace = fixture_trace("spine", SPINE)
     # ...then the spans are the root and one per live row, each hanging off the row that drove
@@ -96,6 +96,8 @@ def test_the_spine_becomes_a_span_per_live_row(fixture_trace: TraceFactory) -> N
         ("chat claude-fable-5", CLIENT, "turn main#1"),
         ("chat claude-fable-5", CLIENT, "turn main#2"),
         ("chat claude-fable-5", CLIENT, "turn main#2"),
+        ("chat claude-fable-5", CLIENT, "turn main#2"),
+        ("chat claude-fable-5", CLIENT, "turn main#2"),
         # The placeholder reply Claude Code wrote itself keeps its recorded model name.
         ("chat <synthetic>", CLIENT, "turn main#3"),
         ("chat claude-opus-5", CLIENT, f"turn {SPINE_RUN}#0"),
@@ -104,7 +106,11 @@ def test_the_spine_becomes_a_span_per_live_row(fixture_trace: TraceFactory) -> N
         ("execute_tool Bash", INTERNAL, "chat main#0"),
         ("execute_tool Read", INTERNAL, "chat main#0"),
         ("execute_tool Read", INTERNAL, "chat main#0"),
-        ("execute_tool Read", INTERNAL, "chat main#2"),
+        # One reply asked for two tools at once, so both hang off the same call...
+        ("execute_tool Bash", INTERNAL, "chat main#2"),
+        ("execute_tool ToolSearch", INTERNAL, "chat main#2"),
+        ("execute_tool PushNotification", INTERNAL, "chat main#3"),
+        ("execute_tool Read", INTERNAL, "chat main#4"),
         ("execute_tool Bash", INTERNAL, f"chat {SPINE_RUN}#0"),
         # A third `Agent` call that no recorded run answers stays a plain tool call.
         ("execute_tool Agent", INTERNAL, f"chat {SPINE_RUN}#1"),

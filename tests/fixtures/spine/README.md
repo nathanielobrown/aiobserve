@@ -1,11 +1,11 @@
 # `spine/` — the slice-1 whole-object fixture
 
 Redacted excerpt of `4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b.jsonl`, **Claude Code 2.1.221**, from
-`~/.claude/projects/-Users-nob-repos-mycelia/`. 35 records, drawn from lines 1–3, 5–7, 9, 16, 19–24,
-123, 126, 140, 513, 531, 780–781 and 895–900 of the original. Order is the original's, except that
-780–781 — the `Agent` call that spawned the subagent below, and its result — sit inside the last turn
-so the spawning call and the delegated work stay in one excerpt, and the two `pr-link` records sit at
-the end.
+`~/.claude/projects/-Users-nob-repos-mycelia/`. 41 records, drawn from lines 1–3, 5–7, 9, 16, 19–24,
+123, 126, 140, 513, 531, 780–781, 860–863, 877–878 and 895–900 of the original. Order is the
+original's, except that 780–781 — the `Agent` call that spawned the subagent below, and its result —
+sit inside the last turn so the spawning call and the delegated work stay in one excerpt, and the two
+`pr-link` records sit at the end.
 
 Eight records are **borrowed** from other sessions because 4208c1bd contains no instance of the shape.
 Their `sessionId`/`session_id` were rewritten to the host session so the file parses as one session;
@@ -35,6 +35,10 @@ written:
 - a plain-string prompt and a block-content prompt — the two turn-opening shapes
 - `msg_011CdmToQdxciYnDo9M2d7HN` and the `tool_result` answering it — the `Agent` call
   `toolu_015dP3eMe5GZn7BzFipupZwS`, which the subagent's `meta.json` names as what spawned it
+- `msg_011CdmUSN7CEFrApaViphdwb` — one reply asking for two tools at once, a `Bash` and a
+  `ToolSearch`, answered out of order. It is the corpus's only api call with sibling tool calls the
+  viewer names differently, which is what the calls log and the tool popover's sibling list read
+- `msg_011CdmUTLXigDcVRN67fErbT` — a lone `PushNotification`, the only recorded call to it
 - two `custom-title`/`agent-name` pairs and a trailing `ai-title` — the last operator rename names the
   session, and a generated title after it does not
 - the `<synthetic>` reply — priced at a stated zero rather than left unpriced. Its 2026-07-06
@@ -62,28 +66,35 @@ subagent back to the `toolUseId` that spawned it, which agent runs read.
 Every string outside a small keep-list of structural fields is `[redacted]`. Kept: record and message
 types, uuids, timestamps, session ids, `version`, `model`, `stop_reason`, `requestId`, `effort`,
 `attributionSkill`, usage numbers, tool names and tool_use ids, the slash-command *names*,
-`prNumber`, and the five tool-input fields below. `gitBranch`, `slug`, the two title fields, `agentName`, `prUrl` and `prRepository` are
+`prNumber`, and the seven tool-input fields below. `gitBranch`, `slug`, the two title fields, `agentName`, `prUrl` and `prRepository` are
 pseudonymised to `fixture-<kind>-N`, preserving which records shared a value. No prompt text, tool
 output, or thinking survives — including dictionary *keys*, since a file-history snapshot keys its
 map by absolute path.
 
-### The five tool-input fields the titles read
+### The seven tool-input fields the titles read
 
 The viewer titles a tool call from a named field per tool (`src/hyphae/view/formatters.py:FORMATTERS`),
-so a fixture with every input blanked can only prove that the page prints `[redacted]`. These five
-are as recorded, and nothing else under `input` is:
+so a fixture with every input blanked can only prove that the page prints `[redacted]`. Six of these
+seven are as recorded, and nothing else under `input` is:
 
-| Tool | Field | What the nine calls hold |
+| Tool | Field | What the twelve calls hold |
 | --- | --- | --- |
 | `Read` | `file_path` | four paths in `/Users/nob/repos/mycelia`, three of them issue files |
-| `Bash` | `command` | `date; ls …/issues/` and an `ls … \| head -60` of the same directory |
-| `Bash` | `description` | the two labels those commands were given — kept because the row must show the *command* and not this |
+| `Bash` | `command` | `date; ls …/issues/`, an `ls … \| head -60` of the same directory, and an `ls -la` of three named handoff files |
+| `Bash` | `description` | the three labels those commands were given — kept because the row must show the *command* and not this |
 | `Agent` | `description` | three task lines: `Grill doc: needs-design pair`, `Research 0149 multi-instance pg0`, `Research 0155 data-edge semantics` |
 | `Agent` | `subagent_type` | `claude` and `Explore` |
+| `ToolSearch` | `query` | `select:PushNotification` |
+| `PushNotification` | `message` | **invented** — see below |
 
 **The sensitivity call.** Each kept value was read before it was kept. They are paths inside the
-recording machine's own checkout of mycelia — a public-shaped repository layout, issue filenames and
-a directory listing — and the role words out of that repo's `.claude/agents/`. No credential and no
-customer data. The prose that is kept is the five `description` lines above, each an agent's own
-label for what it was about to do and each read before it was kept. What an agent was told or read
-back stays `[redacted]`: `prompt`, `message`, tool results and file contents.
+recording machine's own checkout of mycelia — a public-shaped repository layout, issue and handoff
+filenames and two directory listings — and the role words out of that repo's `.claude/agents/`. No
+credential and no customer data. The prose that is kept is the six `description` lines above, each an
+agent's own label for what it was about to do and each read before it was kept. What an agent was
+told or read back stays `[redacted]`: `prompt`, tool results and file contents.
+
+**The one invented value.** The recorded `PushNotification.message` is an agent's own prose about
+private work, so it is not kept and not blanked either: blanking it would leave the notification
+formatter with nothing to name a call from. It is replaced with an invented sentence of the same
+shape, and it is the only string in this fixture that is neither as recorded nor `[redacted]`.

@@ -208,8 +208,9 @@ def test_only_a_session_is_told_it_is_reading_other_readers_descriptions() -> No
 
 def test_a_plain_main_turn_renders_its_prompt_then_its_calls(fixture_db: Path) -> None:
     """A turn renders as the prompt, then each response and the tool calls it asked for."""
-    # If `spine/`'s third main turn drove two api calls — one asking for a subagent, one
-    # reading a file that the session ended before answering...
+    # If `spine/`'s third main turn drove four api calls — one asking for a subagent, one
+    # asking for two tools at once, one notifying, and one reading a file that the session
+    # ended before answering...
     with EnrichmentStore(fixture_db) as store:
         rendered = render_turn(turn(store, SPINE, "818588ad"))
     # ...then the whole prompt is this, with every field's presence, order and label visible:
@@ -224,6 +225,16 @@ def test_a_plain_main_turn_renders_its_prompt_then_its_calls(fixture_db: Path) -
         "## Response\n"
         '- Agent (input 115 chars, result 10 chars) {"description": "Grill doc: needs-design '
         'pair", "prompt": "[redacted]", "subagent_type": "claude", "model": "opus"}\n'
+        "\n"
+        "## Response\n"
+        '- Bash (input 234 chars, result 10 chars) {"command": "ls -la /Users/nob/repos/mycelia'
+        "/handoffs/grilling_2026_08_07_*.md /Users/nob/repos/mycelia/hand[+126 chars]\n"
+        '- ToolSearch (input 54 chars, result 0 chars) {"query": "select:PushNotification", '
+        '"max_results": 1}\n'
+        "\n"
+        "## Response\n"
+        '- PushNotification (input 111 chars, result 10 chars) {"message": "Invented for this '
+        'fixture: the run finished and the report is written up", "status": "[redacted]"}\n'
         "\n"
         "## Response\n"
         "[redacted]\n"
@@ -475,8 +486,8 @@ def test_a_session_renders_its_metrics_then_what_it_did(mutable_db: Path) -> Non
         "## Metrics\n"
         "branch fixture-branch-1\n"
         "wall 30d 23h, active 3m 39s\n"
-        "tokens 11 in, 5,091 out, 115,575 cache read, 143,029 cache write\n"
-        "cost $2.83\n"
+        "tokens 15 in, 5,579 out, 295,615 cache read, 144,797 cache write\n"
+        "cost $3.07\n"
         "\n"
         "## Work\n"
         # The turn recorded a month before the other three comes first: children are in

@@ -190,7 +190,7 @@ def test_a_session_caught_mid_write_heals_on_the_next_refresh(
     # ...and once Claude Code has finished the line, the next refresh takes the session whole.
     corpus.add("spine", SPINE)
     assert refresh(corpus.project, extractor=extractor, exporter=exporter).extracted == [SPINE]
-    assert archived() == 35
+    assert archived() == 41
 
 
 def test_a_new_subagent_file_re_extracts_its_session(corpus: Corpus, exporter: DuckDbExporter):
