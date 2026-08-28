@@ -1,4 +1,4 @@
-"""What a node of a session is: its kind, its URL, and how a row becomes one.
+"""What a node of a session is: its kind, its URL, and what it spent.
 
 Everything a session records is a node — the session, its turns, the runs it spawned, the api
 calls those turns made, the tool calls those calls made, the compactions between them, and the
@@ -6,10 +6,12 @@ two buckets that hold what attaches to nothing. Each has a page of its own, so e
 title, one URL and one share of the spend, minted here and nowhere else: a NavTree row, a crumb
 and a pane all read the same node.
 
-`view/nav_tree.py` builds the levels out of these; this module is the vocabulary they are built in.
+`view/builders.py` turns a store row into one and `view/nav_tree.py` builds the levels out of
+them; this module is the vocabulary they are built in.
 """
 
 import math
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import NamedTuple
@@ -17,6 +19,7 @@ from typing import NamedTuple
 from hyphae.analyze import queries
 from hyphae.view.columns import CALL_ICON, COLUMNS, RUN_ICON, TOOL_ICON, Shape
 from hyphae.view.format import cut
+from hyphae.view.store import Row
 
 # How a cost badge is drawn: the steps it has, and how many decades of share they cover. A
 # session's cheapest turn and its dearest are three orders of magnitude apart, so the scale is
@@ -179,6 +182,114 @@ class Ref:
         return f"{self.kind}:{self.node_id}"
 
 
+@dataclass(frozen=True)
+class Ledger:
+    """What one session spent, and what the runs under each of its nodes cost.
+
+    Read once per page (`view/browse.py`) and handed to every node built for it: a badge's
+    first half is what the node's own thread spent, its second that plus what `under` holds
+    for the node, and both are washed against `whole`. A node absent from `under` has no run
+    below it and draws one number.
+    """
+
+    # What the session spent, the basis every share on the page is a share of.
+    whole: float
+    # Run cost by the node it hangs under, keyed by the ref that node mints for itself.
+    under: Mapping[Ref, float]
+
+    def below(self, ref: Ref) -> float:
+        """What the runs under one node cost, or nothing where none hang there."""
+        return self.under.get(ref, 0)
+
+
+# What a surface with no page to roll up hands a node: a crumb, a pane heading, an error list,
+# a children log of tool calls. Each draws no badge, so a node built for one has an empty
+# ledger rather than a share of something it never read.
+NO_LEDGER = Ledger(whole=0, under={})
+
+
+class Spend(NamedTuple):
+    """The two halves of a node's cost badge, and the share each is washed at."""
+
+    # What the node's own thread spent. None where it has no spend of its own — a tool call
+    # that asked for nothing, a compaction.
+    own: float | None
+    # That plus every run under it, or None where no run hangs there: a second half repeating
+    # the first says the same thing twice, and a reader reads that as two measurements.
+    total: float | None
+    share: float | None
+    total_share: float | None
+
+
+# Where a cost is rounded back to. Every one the store hands out is already at four decimals
+# (`view_runs.sql`), so a sum or a difference of them is put back at the same place: a main
+# thread that spent nothing is then exactly nothing rather than a float residue that draws a
+# badge at the bottom step.
+COST_PLACES = 4
+
+# What a node with no spend of its own carries: a compaction, and a tool call that asked for
+# nothing.
+NO_SPEND = Spend(own=None, total=None, share=None, total_share=None)
+
+
+def ledger(session_id: str, whole: float, runs: Sequence[Row]) -> Ledger:
+    """Where each run's spend lands, walked once for a page. `view_runs.sql` holds the edges.
+
+    A run's cost is charged to every node it hangs under: the ⇄ tool call that asked for it,
+    the api call that made that tool call, the turn that call answers, each run above it, and
+    the session. Which makes `total >= own` true by construction — a subtree's own is one of
+    the numbers summed into it — and makes a level of parallel spawns sum past the call that
+    made them, because one api call is the nearest priced thing to each of them (`docs/viewer.md`).
+
+    The unattached bucket is left out on purpose: its own is already the sum of the loose runs
+    it gathers, so a second total over the same rows would say the same thing twice.
+    """
+    held = {run["run_id"]: run for run in runs}
+    under: dict[Ref, float] = {}
+    for run in runs:
+        own = run["cost_usd"]
+        # Every run is under the session, whether or not the transcript placed it anywhere else.
+        _charge(under, Ref(Kind.SESSION, None, session_id), own)
+        at: Row | None = run
+        climbed: set[str] = set()
+        while at is not None and at["run_id"] not in climbed:
+            climbed.add(at["run_id"])
+            for ref in _asked(at):
+                _charge(under, ref, own)
+            # Up to the run this one hangs under: the parent the transcript names, else the
+            # thread the spawning call was made from, which is a run's id wherever it is not
+            # the session's own. A run already climbed ends the walk rather than looping.
+            above = at["parent_agent_id"] if at["parent_agent_id"] in held else at["spawn_source"]
+            at = held.get(above) if above is not None else None
+            if at is not None:
+                _charge(under, Ref(Kind.RUN, at["run_id"], at["run_id"]), own)
+    return Ledger(whole=whole, under=under)
+
+
+def _charge(under: dict[Ref, float], ref: Ref, cost: float) -> None:
+    """Add one run's spend to what hangs under a node."""
+    under[ref] = under.get(ref, 0) + cost
+
+
+def _asked(run: Row) -> Iterator[Ref]:
+    """The nodes that asked for one run, on the thread that asked: its ⇄ call, and up from there.
+
+    Nothing where the spawning call resolved to nothing — an unattached run hangs off no tool
+    call, no api call and no turn, which is the whole definition of one.
+    """
+    source = run["spawn_source"]
+    if source is None:
+        return
+    yield Ref(Kind.TOOL, source, run["tool_use_id"])
+    yield Ref(Kind.CALL, source, run["spawn_call_id"])
+    # The turn that call answers, or — where it answers none — that thread's own bucket.
+    turn_id = run["spawn_turn_id"]
+    if turn_id is None:
+        yield Ref(Kind.UNATTRIBUTED, source, source)
+    else:
+        yield Ref(Kind.TURN, source, turn_id)
+
+
 # Every path the viewer serves is built from the three below, and they obey one rule: an id is
 # never written next to another id — a word saying what kind of id it is always comes first
 # (`docs/viewer.md`). `tests/view/test_app.py` holds every route to it.
@@ -237,13 +348,11 @@ class Node:
     # back one character past the width it was cut to, so a name that fills a row is one the
     # reader can tell was stopped (`view/format.py:cut`).
     words: str
-    # What it cost, and how many calls under it our price table could not price: a total
-    # missing calls is not what the node cost, so the two always travel together. None where
-    # the node has no spend of its own — a tool call's cost is the api call's.
-    cost_usd: float | None
+    # What it cost and what everything under it did, with the share each is washed at
+    # (`_spend`), beside how many calls under it our price table could not price: a total
+    # missing calls is not what the node cost, so the two always travel together.
+    spend: Spend
     unpriced_api_calls: int
-    # Its share of what the session spent, or None when there is no share to draw.
-    share: float | None
     # A word that goes before the words wherever nothing else says it: the agent type a run
     # ran under, the tool a call invoked. Empty for every kind whose words stand alone. It
     # leads `title` but not `log_title`, because a children log heads it in a column of its
@@ -412,9 +521,28 @@ class Node:
         return f"{KIN_URL}{self.thread}/{self.kind}/{self.node_id}"
 
     @property
+    def cost_usd(self) -> float | None:
+        """What this node's own thread spent — the first half of its badge, and every log's."""
+        return self.spend.own
+
+    @property
+    def total_usd(self) -> float | None:
+        """What its whole subtree spent, or None where no run hangs under it."""
+        return self.spend.total
+
+    @property
     def meter(self) -> str:
-        """The step class this node's cost badge is drawn with, or nothing to draw."""
-        return meter(self.share) if self.cost_usd is not None else ""
+        """The step class the first half of this node's cost badge is drawn with."""
+        return meter(self.spend.share) if self.spend.own is not None else ""
+
+    @property
+    def total_meter(self) -> str:
+        """The step class the second half is drawn with, or nothing where there is no second.
+
+        Its own share and not the first's: two halves of one badge are two shares of what the
+        session spent, and drawing them at one depth would say a subtree cost what its root did.
+        """
+        return meter(self.spend.total_share) if self.spend.total is not None else ""
 
     @property
     def bar(self) -> str:

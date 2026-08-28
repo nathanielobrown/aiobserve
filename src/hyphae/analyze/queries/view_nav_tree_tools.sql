@@ -6,8 +6,10 @@
 -- join, not by `c.turn_id IS NULL`: a fork replays its parent's turn (`view_nav_tree_calls`).
 -- Thin like `view_nav_tree_turns` and `view_nav_tree_calls`, and unlimited for the same reason — the
 -- cap lives in the composition (`view/nav_tree.py`), where it has to keep the row the open path
--- goes through. A tool call costs nothing of its own: what an api call spent is the api
--- call's, so a tool row carries no cost column and wears no cost badge.
+-- goes through. A tool call costs nothing of its own: what an api call spent is the api call's.
+-- The one exception is a row that asked for an agent run, which is charged what the call
+-- holding it cost — so this query alone returns that price, and every other surface builds a
+-- costless tool node (`view/builders.py:tool_node`).
 SELECT
     -- Where the call that made it sits in the thread, which is what orders a hoisted level.
     c."index" AS call_index,
@@ -25,7 +27,13 @@ SELECT
     -- When it ran, which is what the compactions of the same turn interleave against where
     -- the api calls are folded away and the tool calls stand under the turn.
     t.started_at,
-    t.is_error
+    t.is_error,
+    -- What the api call holding this tool call cost. Only a ⇄ row spends it, and only here:
+    -- the NavTree is the one surface that draws a badge on a tool row. A call our price table
+    -- could not price comes back NULL and its row wears the mark that says so, the way every
+    -- other cost the viewer reports does.
+    round(c.cost_usd, 4) AS call_cost_usd,
+    (c.cost_usd IS NULL)::int AS unpriced_api_calls
 FROM live_tool_calls t
 JOIN live_api_calls c
     ON c.session_id = t.session_id AND c.source = t.source AND c.id = t.api_call_id

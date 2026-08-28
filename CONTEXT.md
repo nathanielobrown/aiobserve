@@ -67,7 +67,7 @@ What each page shows and cites: `docs/viewer.md`; the routes: the modules `src/h
 - **NavTree** — the left column: the one open path through the session (never "sidebar")
 - **Presets** — the NavTree's depth choices and the control above it that picks one: full, no api calls, agents only (`?nav=`)
 - **Knob** — one of the four things a node-page URL may name: the preset and the three sizes; every link a page mints carries the ones that are not defaults (`docs/viewer-bounds.md`)
-- **Cost badge** — the warm ground behind a NavTree row's dollar value, deepening with the row's share of what the session spent
+- **Cost badge** — the warm ground behind a NavTree row's dollar value, deepening with the row's share of what the session spent; a row with agent runs under it draws two, `$own/$total`
 - **Context bar** — the line under a NavTree row: how full the model's context window was when the node ended, with what the node added left bright at the tip
 - **Popover** — the numbers behind one NavTree row, fetched when a reader points at it or tabs to it: what the badge and the bar draw, written out
 - **Pane** — any major region of a page; the node page splits into two: the NavTree and the reading pane

@@ -351,25 +351,27 @@ li.node.t20 { --ctx-added: 100%; }
    (`view/nodes.py`), so each is a tenth of the scale and not a tenth of a session. A badged
    value prints in ink: the ground takes back some of the contrast a dim second line spends,
    and this is the number the reader came for. `s0` — a row that spent nothing — is left with
-   no ground and its dim, because a wash at the bottom of the scale reads as a measurement. */
-li.node [data-field="cost_usd"] {
+   no ground and its dim, because a wash at the bottom of the scale reads as a measurement.
+   The step rides on the badge and not on the row, because a row that spawned a run draws two:
+   what it spent itself and what its subtree did, each at its own depth. */
+li.node .badge {
   padding: 0 var(--space-1);
   border-radius: 3px;
   background-color: color-mix(in srgb, var(--hot) var(--cost-wash, 0%), transparent);
 }
-li.node:is(.s1, .s2, .s3, .s4, .s5, .s6, .s7, .s8, .s9, .s10) [data-field="cost_usd"] {
+li.node .badge:is(.s1, .s2, .s3, .s4, .s5, .s6, .s7, .s8, .s9, .s10) {
   color: var(--ink);
 }
-li.node.s1 [data-field="cost_usd"] { --cost-wash: 6%; }
-li.node.s2 [data-field="cost_usd"] { --cost-wash: 12%; }
-li.node.s3 [data-field="cost_usd"] { --cost-wash: 18%; }
-li.node.s4 [data-field="cost_usd"] { --cost-wash: 24%; }
-li.node.s5 [data-field="cost_usd"] { --cost-wash: 30%; }
-li.node.s6 [data-field="cost_usd"] { --cost-wash: 36%; }
-li.node.s7 [data-field="cost_usd"] { --cost-wash: 42%; }
-li.node.s8 [data-field="cost_usd"] { --cost-wash: 48%; }
-li.node.s9 [data-field="cost_usd"] { --cost-wash: 54%; }
-li.node.s10 [data-field="cost_usd"] { --cost-wash: 60%; }
+li.node .badge.s1 { --cost-wash: 6%; }
+li.node .badge.s2 { --cost-wash: 12%; }
+li.node .badge.s3 { --cost-wash: 18%; }
+li.node .badge.s4 { --cost-wash: 24%; }
+li.node .badge.s5 { --cost-wash: 30%; }
+li.node .badge.s6 { --cost-wash: 36%; }
+li.node .badge.s7 { --cost-wash: 42%; }
+li.node .badge.s8 { --cost-wash: 48%; }
+li.node .badge.s9 { --cost-wash: 54%; }
+li.node .badge.s10 { --cost-wash: 60%; }
 
 /* The pane. A node's facts flow rather than stacking — a pane is one node, not four clusters
    of them — and a fact reads the same on every kind's page: a dim label over the value it

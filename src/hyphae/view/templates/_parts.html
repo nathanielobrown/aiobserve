@@ -23,6 +23,14 @@
 {% macro unpriced(calls) -%}
   {% if calls %}<sup title="{{ calls | count }} call(s) at a model our price table lacks">*</sup>{% endif %}
 {%- endmacro %}
+{# One half of a NavTree row's cost: the number, and the step class standing for its share of
+   what the session spent. Written once because a row with agent runs under it draws two of them,
+   its own spend and its subtree's, and each takes the step its own share earns. On one line so
+   the row it lands in stays one line: this is the markup the ceiling in `view/bounds.py` is
+   measured over. #}
+{% macro badge(step, field, value) -%}
+  <span class="badge {{ step }}" data-field="{{ field }}">{{ value | money }}</span>
+{%- endmacro %}
 {# The mark saying what a thing is: what kind of node a row, a crumb or a heading names, and
    what a children log's column counts. `aria-hidden` and no `title`: the mark stands for a word
    the markup around it already carries — the NavTree row's class, the crumb's field name, the

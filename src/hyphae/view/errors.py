@@ -26,7 +26,7 @@ from hyphae.analyze.queries import ParamValue
 from hyphae.view import bounds
 from hyphae.view.builders import tool_node
 from hyphae.view.nav_tree import Ran
-from hyphae.view.nodes import Node
+from hyphae.view.nodes import NO_LEDGER, Node
 from hyphae.view.store import Page, page_rows
 
 
@@ -58,7 +58,10 @@ def failures(connection: duckdb.DuckDBPyConnection, session_id: str) -> Failures
         "errors": bounds.ERRORS.default,
     }
     rows = page_rows(connection, Page.SESSION_ERRORS, **bound)
-    listed = [Failure(tool_node(session_id, row["source"], row), row["started_at"]) for row in rows]
+    listed = [
+        Failure(tool_node(session_id, row["source"], row, NO_LEDGER), row["started_at"])
+        for row in rows
+    ]
     # Counted by the query before its LIMIT bit, so a page that cut some says how many rather
     # than reading as the whole list.
     cut = rows[0]["matched_errors"] - len(rows) if rows else 0
