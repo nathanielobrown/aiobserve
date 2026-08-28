@@ -17,16 +17,14 @@
 {% else %}{{ bucket(node) }}{% endif %}
   </section>
 {% endmacro %}
-{# The session everything else was recorded in: where it ran, and what it came to. #}
+{# The session everything else was recorded in: where it ran, and what it came to.
+
+   Neither the name it was recorded under nor the directory it ran in is a fact row: the
+   heading above already prints the one, and the crumb above that links the other — a fact
+   column is for what nothing else on the page says. #}
 {% macro session(row) %}
   <dl class="facts">
     {{ parts.fact('session_id', row.session_id) }}
-    {#- The name the record carries, which the heading above shows only until a pass describes
-       the session and its words take that place. #}
-    {{ parts.fact('recorded_title', row.title | head) }}
-    {#- Cut before the home folds, not after: `~` shortens what the query cut, and a mark
-       applied to the folded value would be a mark the folding had already talked out of. #}
-    {{ parts.fact('project_dir', row.project_dir | head | path) }}
     {{ parts.fact('git_branch', row.git_branch) }}
     {{ parts.fact('version', row.version) }}
     {{ parts.fact('entrypoint', row.entrypoint) }}

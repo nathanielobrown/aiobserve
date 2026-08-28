@@ -276,10 +276,9 @@ DEAR_PANE_DETAILS = 3
 # page rather than once a level. The project step is the dear one — it prints a project path
 # and links to the session list narrowed by the whole of it, so the path is paid for twice,
 # once escaped and once URL-encoded.
-# Re-measured through the app by the leaf at the bottom of this file at 21,597 B. Up to five
-# of its strings are tree titles — the page title, and the two steppers under the pane — so it
-# moves with `queries.NAV_CHARS`, and two more are the name a session was recorded under and
-# the directory it ran in, which move with `queries.HEADER_CHARS`.
+# Re-measured through the app by `test_bounds__node.py` at 20,513 B. Up to five of its strings
+# are tree titles — the page title, and the two steppers under the pane — so it moves with
+# `queries.NAV_CHARS`.
 MEASURED_NODE_CHROME = 22_200
 
 # The parameter every truncated column of a run row is cut to. Counted per query rather than
