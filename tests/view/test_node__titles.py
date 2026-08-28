@@ -148,13 +148,15 @@ def test_one_tool_call_is_titled_the_same_way_wherever_it_is_named(
 # The tools the fixture corpus records under a name the registry knows, each with the glyph
 # that leads its rows and the input field its title is read from. Restated from
 # `plans/viewer-polish/design.md` rather than read off `view/formatters.py:FORMATTERS`, which is the
-# thing under test. The eight names not here have no recorded call to serve, and the leaf below
+# thing under test. The six names not here have no recorded call to serve, and the leaf below
 # says so out loud.
 RECORDED_FORMATTERS = {
     "Read": ("📖", "file_path"),
     "Bash": ("⚡", "command"),
     "Agent": ("👉", "subagent_type"),
     "SendMessage": ("📬", "to"),
+    "ToolSearch": ("🧰", "query"),
+    "PushNotification": ("🔔", "message"),
 }
 
 
@@ -201,8 +203,8 @@ def test_every_registered_tool_the_corpus_records_agrees_across_its_surfaces(
             (given,) = one(store, "SELECT input FROM live_tool_calls WHERE id = ?", [tool_id])
             assert project == MYCELIA and f"{project}/" in given
             assert whole == f"{glyph} {json.loads(given)[field][len(project) + 1 :]}"
-    # Which of the registry's names this corpus records: the four above and no others. The
-    # rest are proven by the unit table in `test_format.py` alone, over inputs no fixture
+    # Which of the registry's names this corpus records: the six above and no others. The
+    # rest are proven by the unit table in `test_formatters.py` alone, over inputs no fixture
     # holds — so a fixture that gains a `Grep` call reds this line rather than going unread.
     recorded = {
         name for (name,) in store.execute("SELECT DISTINCT name FROM live_tool_calls").fetchall()

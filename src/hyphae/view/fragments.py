@@ -18,7 +18,7 @@ from starlette.routing import BaseRoute
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.model import MAIN_SOURCE
-from hyphae.view import highlight, nodes, numbers
+from hyphae.view import builders, highlight, nodes, numbers
 from hyphae.view.enrichment import enriched
 from hyphae.view.nodes import Kind, Ref
 from hyphae.view.store import Fragment, Value, open_store, page_rows
@@ -57,6 +57,10 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 {
                     "key": Ref(kind, source, node_id).key,
                     "row": rows[0],
+                    # The calls asked for beside this one, named here rather than in the query:
+                    # what a tool call is called is Python's (`view/formatters.py`), and the
+                    # query ships the fields each name is composed out of.
+                    "siblings": builders.tool_titles(rows[0]["siblings"]),
                     "citation": queries.citation(Fragment.TOOL_NUMBERS, keyed),
                 },
             )

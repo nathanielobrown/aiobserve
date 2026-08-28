@@ -192,19 +192,13 @@ def test_every_macro_the_scan_trusts_answers_one_character_past_the_width() -> N
     project = "/Users/planted/repos/hyphae"
     inside = json.dumps({"file_path": f"{project}/src/{'v' * 400}.py"})
     outside = json.dumps({"file_path": f"/opt/homebrew/{'v' * 400}.py"})
-    described = json.dumps({"description": "d" * 400, "command": "c" * 400})
-    stored_whole = f"not json at all {'v' * 400}"
 
     def answer(expression: str, *params: object) -> str:
         return connection.execute(f"SELECT {expression}", list(params)).fetchall()[0][0]
 
     for chars in (10, 60, 300):
-        # A field read straight, and the three arms `tool_title` coalesces over.
+        # A field read straight.
         assert len(answer("tool_asked(?, 'file_path', ?)", inside, chars)) == chars + 1
-        assert len(answer("tool_title(?, ?, ?)", inside, project, chars)) == chars + 1
-        assert len(answer("tool_title(?, ?, ?)", described, project, chars)) == chars + 1
-        assert len(answer("tool_title(?, ?, ?)", stored_whole, project, chars)) == chars + 1
-        assert len(answer("tool_about(?, ?)", described, chars)) == chars + 1
         # The relativized path is the arm that spends width on a prefix it then throws away:
         # what comes back is the tail, and it is as long as any other arm's.
         relative = answer("tool_path(?, ?, ?)", inside, project, chars)

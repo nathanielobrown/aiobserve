@@ -2,7 +2,7 @@
 
 A unit table rather than served HTML: every fixture README redacts the strings under a tool
 `input`, so a served row can prove the registry fired but not what it read
-(`plans/viewer-polish/testing_plan.md`). The four names the corpus does record are read off
+(`plans/viewer-polish/testing_plan.md`). The six names the corpus does record are read off
 pages in `tests/view/test_node__titles.py`; the rest are here and nowhere else.
 
 Each case says where its input came from — a recorded fixture, this project's own store, or
@@ -29,6 +29,7 @@ EMPTY_FIELDS: dict[str, object] = dict.fromkeys(
         "pattern",
         "url",
         "query",
+        "message",
         "todos",
         "input_head",
     )
@@ -37,15 +38,18 @@ EMPTY_FIELDS: dict[str, object] = dict.fromkeys(
 
 # What the store hands a formatter, per tool: the fields `analyze/macros.py:tool_fields`
 # extracts, with everything the tool did not carry NULL. Written out as one table because
-# twelve small rules are where a registry drifts from the design that specified it
+# fourteen small rules are where a registry drifts from the design that specified it
 # (`plans/viewer-polish/design.md`, the formatter table).
 #
-# Every value here but three is lifted from a recorded session: `Read`, `Bash`, `Agent` and
-# `SendMessage` from the fixtures (`tests/fixtures/spine`, `tests/fixtures/parallel_tools`),
-# the rest from this project's own sessions in the canonical store, which is where the field
-# names came from too. `Grep`, `Glob` and `TodoWrite` have no row anywhere in that store, so
-# those three cases are **invented** and the fields they read are the ones those tools
-# document rather than ones a recording proved.
+# Every value here but four is lifted from a recorded session: `Read`, `Bash`, `Agent`,
+# `SendMessage` and `ToolSearch` from the fixtures (`tests/fixtures/spine`,
+# `tests/fixtures/parallel_tools`), the rest from this project's own sessions in the canonical
+# store, which is where the field names came from too. `Grep`, `Glob` and `TodoWrite` have no
+# row anywhere in that store, so those three cases are **invented** and the fields they read
+# are the ones those tools document rather than ones a recording proved. The fourth is the
+# `PushNotification` message: what the session recorded is an agent's prose about private work,
+# replaced in the fixture by an invented sentence of the same shape
+# (`tests/fixtures/spine/README.md`), and this row reads the replacement.
 FORMATTED = [
     # `spine`'s three main-thread reads, relativized against the session's project already:
     # what the formatter gets is the path the macro cut, not the path the record held.
@@ -118,6 +122,17 @@ FORMATTED = [
         "🔍",
         "mutmut 3 pyproject.toml config paths_to_mutate 2026",
     ),
+    # The two tools slice 2 added, both confirmed against session `4208c1bd` before they were
+    # written down (`plans/viewer-polish/design.md`). A tool search reads the query it ran, not
+    # the `max_results` beside it: what tells two searches apart is what was searched for.
+    ("ToolSearch", {"query": "select:PushNotification"}, "🧰", "select:PushNotification"),
+    # And a notification reads the message it sent — the only thing it carries besides a status.
+    (
+        "PushNotification",
+        {"message": "Invented for this fixture: the run finished and the report is written up"},
+        "🔔",
+        "Invented for this fixture: the run finished and the report is written up",
+    ),
     # A todo list is the one row named by a count: the items are the model's own plan, and a
     # row of the first one says less than how many there are. Invented, like the two above.
     ("TodoWrite", {"todos": 3}, "☑️", "3 todos"),
@@ -134,9 +149,8 @@ def test_a_named_tool_is_titled_by_the_field_the_design_gives_it(
 
 
 # What a call the registry has no rule for is named by: the shape of its input, checked in
-# order. Ported from the `tool_title` SQL macro, so the cases are the arms that macro
-# coalesces over — a path, else a description, else the head of the input as stored — and the
-# glyph is empty, because a shape says which tool ran to nobody. Invented inputs: the arms
+# order — a path, else a description, else the head of the input as stored — and the glyph is
+# empty, because a shape says which tool ran to nobody. Invented inputs: the arms
 # are the subject, and the rows a fixture records take these same arms through served HTML
 # in `tests/view/test_node__titles.py`.
 FELL_THROUGH = [

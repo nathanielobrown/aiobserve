@@ -44,10 +44,26 @@ from hyphae.view.templating import Viewer
 
 
 class LogRow(NamedTuple):
-    """One row of a pane's children log: the node it links to, beside the row it reads."""
+    """One row of a pane's children log: the node it links to, beside the row it reads.
+
+    The two strings below are the row's, not the store's: naming a tool call is Python's
+    (`view/formatters.py`), so the query ships the fields and the row composes the words. Both
+    answer nothing on the shapes that print neither, which is what lets every builder here
+    hand back a row of two.
+    """
 
     node: nodes.Node
     row: Row
+
+    @property
+    def called(self) -> str:
+        """The tools an api call went on to call, named the way their own rows name them."""
+        return ", ".join(builders.tool_titles(self.row.get("called_tools") or ()))
+
+    @property
+    def about(self) -> str:
+        """What a tool call was for, where its title already says what it did."""
+        return builders.tool_about(self.row.get("name") or "", self.row.get("fields"))
 
 
 class Seen(NamedTuple):

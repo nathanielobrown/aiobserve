@@ -17,7 +17,6 @@ from pathlib import Path
 import duckdb
 from fastapi.testclient import TestClient
 
-from hyphae.analyze import macros
 from hyphae.extract.pricing import CONTEXT_WINDOWS, CostSplit, TokenUsage, split_cost
 from hyphae.view.app import build_app
 from hyphae.view.format import ABSENT
@@ -31,6 +30,8 @@ from tests.conftest import (
     INVENTED_PROJECT_SESSION,
     MAIN,
     NO_TTL_SPLIT_CALL,
+    SEARCH_BASH_TOOL,
+    SEARCH_TOOL,
     SPINE,
     SPINE_LEAF,
     SPINE_RUN,
@@ -399,7 +400,7 @@ def test_a_cache_write_with_no_ttl_on_it_is_charged_at_the_short_rate(
 
 
 def test_a_tool_call_says_what_it_gave_back_and_what_was_asked_beside_it(
-    client: TestClient, corpus_db: Path
+    client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
     """A tool call carries no usage, so its popover is a size and the company it kept.
 
@@ -411,7 +412,6 @@ def test_a_tool_call_says_what_it_gave_back_and_what_was_asked_beside_it(
         f"/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}",
         f"{Kind.TOOL}:{DENSE_TOOL}",
     )
-    store = _named(corpus_db)
     result_chars, api_call_id = one(
         store,
         "SELECT length(result), api_call_id FROM live_tool_calls"
@@ -421,12 +421,14 @@ def test_a_tool_call_says_what_it_gave_back_and_what_was_asked_beside_it(
     assert printed["result_chars"] == f"{result_chars:,}"
     # And none of the numbers a tool call has no business printing.
     assert not {"fill", "window", "cost_usd"} & set(printed)
-    # The other tool calls the same api call made, named the way every other surface names one.
+    # The other tool calls the same api call made, named the way every other surface names one:
+    # the glyph that stands for the tool, then the field that tells two of its calls apart.
+    # Restated here rather than read through the registry — an oracle that imported it would
+    # agree with whatever it said. Every sibling of this one is a `Read`.
     beside = [
-        title
-        for (title,) in store.execute(
-            "SELECT tool_title(t.input, s.project_dir, 60) FROM live_tool_calls t"
-            " LEFT JOIN sessions s ON s.id = t.session_id"
+        f"📖 {path}"
+        for (path,) in store.execute(
+            "SELECT json_extract_string(t.input, '$.file_path') FROM live_tool_calls t"
             " WHERE t.session_id = ? AND t.source = ? AND t.api_call_id = ? AND t.id <> ?"
             ' ORDER BY t."index"',
             [FORK_ORIGIN, FORK_ORIGIN_RUN, api_call_id, DENSE_TOOL],
@@ -437,6 +439,24 @@ def test_a_tool_call_says_what_it_gave_back_and_what_was_asked_beside_it(
     # these titles to one word, so anything less than an exact match would pass on a popover
     # that named the wrong calls.
     assert printed["siblings"] == ", ".join(beside[:5])
+
+    # And the one recorded api call that asked for two different tools at once, which is what
+    # says the list is named per row rather than by whatever the first row was: `SPINE`'s tool
+    # search was made beside a `Bash` call, so each of the two popovers names the other under
+    # its own glyph (`tests/fixtures/spine/README.md`).
+    searched = popover(
+        client,
+        f"/session/{SPINE}/thread/{MAIN}/tool/{SEARCH_TOOL}",
+        f"{Kind.TOOL}:{SEARCH_TOOL}",
+    )
+    # A long command arrives at the width a header's list is read at, so it is a head.
+    assert searched["siblings"].startswith("⚡ ls -la ")
+    ran = popover(
+        client,
+        f"/session/{SPINE}/thread/{MAIN}/tool/{SEARCH_BASH_TOOL}",
+        f"{Kind.TOOL}:{SEARCH_BASH_TOOL}",
+    )
+    assert ran["siblings"] == "🧰 select:PushNotification"
 
 
 def test_a_turn_that_compacted_says_the_window_it_gave_back(plant: Planter) -> None:
@@ -661,19 +681,6 @@ def test_a_popover_is_hidden_until_its_row_is_pointed_at_or_tabbed_into(
     ]
     assert shown, "nothing shows the popover"
     assert all(":hover" in selector and ":focus-within" in selector for selector in shown), shown
-
-
-def _named(db_path: Path) -> duckdb.DuckDBPyConnection:
-    """A read-only connection carrying the query library's macros.
-
-    For the one expectation that names a tool call: how a call is titled is a rule the library
-    owns and every surface reads through (`analyze/macros.py`), so citing it is what makes the
-    claim "named the way every other surface names one" checkable. Its own connection rather
-    than the shared `store`, so a test that forgets to install them still fails.
-    """
-    connection = duckdb.connect(str(db_path), read_only=True)
-    macros.install(connection)
-    return connection
 
 
 def _turns(db_path: Path, session_id: str, source: str) -> list[str]:
