@@ -4,11 +4,13 @@ paths:
   - "src/hyphae/view/templates/**/*.html"
   - "src/hyphae/view/static/*.css"
   - "src/hyphae/view/static/*.js"
+  - "src/hyphae/view/*.py"
+  - "src/hyphae/analyze/queries/view_*.sql"
 ---
 
 # Viewer UI
 
-The viewer is server-rendered Jinja with three scripts on a shipped page: vendored htmx, `src/hyphae/view/static/nav-tree-width.js` for the one thing a reader sets that no URL carries, and `src/hyphae/view/static/nav-tree.js` for the two things a row's place on the screen decides. A fourth, `src/hyphae/view/static/dev-reload.js`, rides `hp view --dev` alone (below). These are the conventions a template has to hold to; what each page shows is in `docs/viewer.md`, and how to edit one with the page open in front of you — and the two traps in the formatter that owns their layout — is in `docs/ui-development.md`.
+The viewer is server-rendered Jinja with three scripts on a shipped page: vendored htmx, `src/hyphae/view/static/nav-tree-width.js` for the one thing a reader sets that no URL carries, and `src/hyphae/view/static/nav-tree.js` for the two things a row's place on the screen decides. A fourth, `src/hyphae/view/static/dev-reload.js`, rides `hp view --dev` alone (below). These are the conventions the viewer's own files hold to; what each page shows is in `docs/viewer.md`, and how to edit one with the page open in front of you — and the two traps in the formatter that owns their layout — is in `docs/ui-development.md`.
 
 # One body, two mounts
 
@@ -26,6 +28,12 @@ Every node reachable in the pane has a URL that renders the whole page cold. Not
 # A node's title comes off the node
 
 Print `Node.nav_tree_title`, `crumb_title`, `log_title` or `pane_title`, whichever fits the surface. Never join words in a template and never print a row's own column where a node is being named: the four are one title at four widths (`src/hyphae/view/nodes.py`), and a surface composing its own would be a second answer to what the node is called. What each kind is titled is in `docs/viewer-titles.md`.
+
+# Naming and formatting live in Python; SQL ships fields
+
+A query hands the page the fields a name is read off, and Python composes what the reader sees. `formatters.name_tool` is the only place a tool call is named, `src/hyphae/view/nodes.py` the only place a node is, and `src/hyphae/view/numbers.py` the only place a dollar is split — so a fact printed on two surfaces was derived once.
+
+A `view_*.sql` that builds a string is a second naming system, and the two drift apart in the direction nobody is looking: SQL cannot dispatch on a tool's name without a `CASE` arm per tool, so the tool nobody wrote an arm for goes unnamed rather than falling back. What SQL owns instead is the reading a page cannot afford: a fat column is cut to the width its caller asked for before it leaves the store (`src/hyphae/analyze/macros.py`).
 
 # Tooltips are native `title` attributes
 
