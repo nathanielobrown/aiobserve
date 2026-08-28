@@ -271,15 +271,18 @@ def _titled(given: str | None, project: str | None, chars: int) -> str:
         asked = None
     fields = asked if isinstance(asked, dict) else {}
 
-    def head(key: str) -> str | None:
+    def head(key: str, room: int = 0) -> str | None:
         value = fields.get(key)
-        return value[: chars + 1] if isinstance(value, str) else None
+        return value[: chars + 1 + room] if isinstance(value, str) else None
 
-    path = head("file_path")
+    # A path is read with the project directory on top of the width, because the prefix comes
+    # off before the cut: what the column shows is a whole width of the part that tells two
+    # paths apart. A path the project does not contain takes the plain width instead.
+    path = head("file_path", room=len(project) + 1 if project else 0)
     if path is not None:
         if project and path.startswith(f"{project}/"):
-            path = path[len(project) + 1 :]
-        return path
+            return path[len(project) + 1 :]
+        return path[: chars + 1]
     if (described := head("description")) is not None:
         return described
     return (given or "")[: chars + 1]

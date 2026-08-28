@@ -61,8 +61,28 @@ subagent back to the `toolUseId` that spawned it, which agent runs read.
 
 Every string outside a small keep-list of structural fields is `[redacted]`. Kept: record and message
 types, uuids, timestamps, session ids, `version`, `model`, `stop_reason`, `requestId`, `effort`,
-`attributionSkill`, usage numbers, tool names and tool_use ids, the slash-command *names*, and
-`prNumber`. `gitBranch`, `slug`, the two title fields, `agentName`, `prUrl` and `prRepository` are
+`attributionSkill`, usage numbers, tool names and tool_use ids, the slash-command *names*,
+`prNumber`, and the five tool-input fields below. `gitBranch`, `slug`, the two title fields, `agentName`, `prUrl` and `prRepository` are
 pseudonymised to `fixture-<kind>-N`, preserving which records shared a value. No prompt text, tool
-input, tool output, thinking, or file path survives — including dictionary *keys*, since a
-file-history snapshot keys its map by absolute path.
+output, or thinking survives — including dictionary *keys*, since a file-history snapshot keys its
+map by absolute path.
+
+### The five tool-input fields the titles read
+
+The viewer titles a tool call from a named field per tool (`src/hyphae/view/nodes.py:FORMATTERS`),
+so a fixture with every input blanked can only prove that the page prints `[redacted]`. These five
+are as recorded, and nothing else under `input` is:
+
+| Tool | Field | What the nine calls hold |
+| --- | --- | --- |
+| `Read` | `file_path` | four paths in `/Users/nob/repos/mycelia`, three of them issue files |
+| `Bash` | `command` | `date; ls …/issues/` and an `ls … \| head -60` of the same directory |
+| `Bash` | `description` | the two labels those commands were given — kept because the row must show the *command* and not this |
+| `Agent` | `description` | three task lines: `Grill doc: needs-design pair`, `Research 0149 multi-instance pg0`, `Research 0155 data-edge semantics` |
+| `Agent` | `subagent_type` | `claude` and `Explore` |
+
+**The sensitivity call.** Each kept value was read before it was kept. They are paths inside the
+recording machine's own checkout of mycelia — a public-shaped repository layout, issue filenames and
+a directory listing — and the role words out of that repo's `.claude/agents/`. No credential, no
+customer data, and no prose anyone wrote: `prompt`, `message`, tool results and file contents stay
+`[redacted]`, because those are what an agent read and wrote.
