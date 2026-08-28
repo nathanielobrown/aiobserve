@@ -280,6 +280,14 @@
     "fragment": true
   },
   {
+    "route": "/fragment/numbers/session/{session_id}/thread/{source}/compaction/{compaction_id}",
+    "url": "/fragment/numbers/session/1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9/thread/main/compaction/459d0d29-cb67-477a-9cf1-f9bb19417c49",
+    "title": "The popover behind a compaction's NavTree row",
+    "group": "Page parts",
+    "note": "",
+    "fragment": true
+  },
+  {
     "route": "/fragment/numbers/session/{session_id}/run/{run_id}",
     "url": "/fragment/numbers/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b/run/ac461ef46b4bb8e32",
     "title": "The popover behind an agent run's NavTree row",

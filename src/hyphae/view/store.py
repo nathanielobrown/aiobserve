@@ -87,9 +87,10 @@ class Fragment(StrEnum):
     CALL_TOOLS = "view_call_tools"
     # The numbers behind one NavTree row, fetched when a reader points at it: what the row draws
     # as a bar and a badge, written out. One query for every kind made of api calls, and one
-    # for the tool call, which is made of none.
+    # apiece for the two kinds made of none — the tool call and the compaction.
     NUMBERS = "view_numbers"
     TOOL_NUMBERS = "view_numbers_tool"
+    COMPACTION_NUMBERS = "view_numbers_compaction"
 
 
 class Value(StrEnum):

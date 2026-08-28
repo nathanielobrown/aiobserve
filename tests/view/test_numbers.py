@@ -570,13 +570,15 @@ def test_a_row_fetches_its_numbers_when_a_pointer_arrives_and_when_a_key_does(
     # A pane's own selectors would take the popover apart, so both are unset.
     assert fetched[key]["hx-select"] == "unset"
     assert fetched[key]["hx-select-oob"] == "unset"
-    # And only the kinds that have numbers carry one.
+    # And only the kinds that have numbers carry one — every kind that stands for a row of the
+    # store, which is all of them but the two buckets.
     assert {row.split(":")[0] for row in fetched} <= {
         Kind.SESSION,
         Kind.TURN,
         Kind.RUN,
         Kind.CALL,
         Kind.TOOL,
+        Kind.COMPACTION,
     }
     # The link a row is still a link: it swaps the pane out of `#nav-tree-rows`'s own wiring, and
     # nothing the popover wrote reached it.
@@ -585,11 +587,15 @@ def test_a_row_fetches_its_numbers_when_a_pointer_arrives_and_when_a_key_does(
 
 
 def test_a_kind_with_no_numbers_is_a_route_that_answers_nothing(client: TestClient) -> None:
-    """A compaction and the two buckets have nothing to print, so the route 404s rather than
-    serving an empty popover for them."""
+    """A bucket has nothing to print, so the route 404s rather than serving an empty popover.
+
+    A bucket is a place rather than a node — it stands for no row of the store — so there is
+    nothing to count under it. Every kind that does stand for a row now carries a popover, the
+    compaction included: what it shows is `tests/view/test_numbers__compaction.py`.
+    """
     for path in (
-        f"/session/{ANCESTOR}/thread/{MAIN}/{Kind.COMPACTION}/nothing",
         f"/session/{ANCESTOR}/thread/{MAIN}/{Kind.UNATTRIBUTED}/{MAIN}",
+        f"/session/{ANCESTOR}/thread/{MAIN}/{Kind.UNATTACHED}/{ANCESTOR}",
     ):
         assert client.get(f"{NUMBERS_URL}{path}").status_code == 404
 

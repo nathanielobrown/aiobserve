@@ -252,11 +252,17 @@ SCENARIOS: dict[str, Scenario] = {
         note=SPILLED,
     ),
     # And the numbers behind a NavTree row, which every row of the NavTree fetches when a
-    # reader points at it. Three shapes: the session and the run carry their ids where a
-    # thread goes, and everything recorded on a thread shares the third.
+    # reader points at it. Four shapes: the session and the run carry their ids where a thread
+    # goes, the compaction has a route of its own because it shares no column with the kinds
+    # made of api calls, and everything else recorded on a thread shares the fourth.
     "/fragment/numbers/session/{session_id}/thread/{source}/{kind}/{node_id}": Scenario(
         f"/fragment/numbers/session/{ANCESTOR}/thread/main/turn/{DENSE_TURN}",
         "The popover behind a turn's NavTree row",
+        Group.PARTS,
+    ),
+    "/fragment/numbers/session/{session_id}/thread/{source}/compaction/{compaction_id}": Scenario(
+        f"/fragment/numbers/session/{COMPACTED}/thread/main/compaction/{COMPACTED_BOUNDARY}",
+        "The popover behind a compaction's NavTree row",
         Group.PARTS,
     ),
     "/fragment/numbers/session/{session_id}/run/{run_id}": Scenario(

@@ -96,6 +96,40 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         )
 
     @router.get(
+        f"{nodes.NUMBERS_URL}/session/{{session_id}}/thread/{{source}}"
+        f"/{Kind.COMPACTION}/{{compaction_id}}"
+    )
+    def compaction_numbers(
+        request: Request, session_id: str, source: str, compaction_id: str
+    ) -> Response:
+        """One compaction's numbers: the window it dropped, and the word recorded for why.
+
+        Its own route rather than a branch of `counted`, because a compaction shares nothing
+        with the kinds made of api calls — no window to stand on, no model, no dollar. It must
+        stay above the route below it, whose `{kind}` matches this path too: which of the two
+        answers is decided by the order they are registered in.
+        """
+        keyed: dict[str, ParamValue] = {
+            "session_id": session_id,
+            "source": source,
+            "compaction_id": compaction_id,
+            "chip_chars": queries.CHIP_CHARS,
+        }
+        with open_store(viewer.db) as connection:
+            rows = page_rows(connection, Fragment.COMPACTION_NUMBERS, **keyed)
+        if not rows:
+            raise HTTPException(404, "No compaction with that id is on this thread.")
+        return viewer.templates.TemplateResponse(
+            request,
+            "fragments/numbers_compaction.html",
+            {
+                "key": Ref(Kind.COMPACTION, source, compaction_id).key,
+                "row": rows[0],
+                "citation": queries.citation(Fragment.COMPACTION_NUMBERS, keyed),
+            },
+        )
+
+    @router.get(
         f"{nodes.NUMBERS_URL}/session/{{session_id}}/thread/{{source}}/{{kind}}/{{node_id}}"
     )
     def node_numbers(
