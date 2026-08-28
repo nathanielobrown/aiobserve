@@ -1,0 +1,8 @@
+{
+  "name": "hyphae-e2e",
+  "private": true,
+  "description": "The browser tier: Playwright over the gallery, run by `mise run e2e`",
+  "devDependencies": {
+    "@playwright/test": "1.62.1"
+  }
+}

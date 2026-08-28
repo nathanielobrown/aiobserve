@@ -37,4 +37,10 @@ mutants/
 # contains whatever the agent read. Committed reports live in reports/.
 /data/
 
+# The browser tier's installed packages and what a run of it leaves behind. `mise run e2e-deps`
+# puts the first back from the committed lockfile; the rest is a failed sweep's traces.
+tests/e2e/node_modules/
+tests/e2e/test-results/
+tests/e2e/playwright-report/
+
 .DS_Store
