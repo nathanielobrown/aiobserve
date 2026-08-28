@@ -410,16 +410,34 @@ class Node:
         """The parts of a title a width is spent on, in reading order."""
         return self.separator.join(part for part in parts if part)
 
-    def _at(self, chars: int, *parts: str, links: bool) -> Markup:
+    def _at(self, chars: int, *parts: str, links: bool, source_cap: int) -> Markup:
         """`parts` rendered at `chars`, with the tail taken out of the width, not cut off it.
 
         The width is spent on what a reader sees: a description written in markdown is rendered
         rather than printed, so its syntax costs the surface nothing
-        (`view/inline_markdown.py`). `links` is the surface's own answer — see `pane_title`.
+        (`view/inline_markdown.py`). Which is why `source_cap` comes too — the width the query
+        cut the words at is then the only thing that knows a line with room to spare was still
+        stopped. `links` is the surface's own answer — see `pane_title`.
         """
-        return inline_markdown.cut(self._joined(*parts), chars - len(self.tail), links=links) + (
-            self.tail
-        )
+        joined = self._joined(*parts)
+        # The cap is the query's, and the query cut the words: whatever the join puts in front
+        # of them was composed here and is whole, so it is room the cap has to allow for.
+        return inline_markdown.cut(
+            joined,
+            chars - len(self.tail),
+            links=links,
+            source_cap=source_cap + len(joined) - len(self.words),
+        ) + (self.tail)
+
+    def _cut_at(self, chars: int) -> int:
+        """The width the query behind the words cut them at, for a surface that reads `chars`.
+
+        Every query composing a title cuts it to the width of the surface it was read for —
+        except a description, which a pass wrote and `view_enrichment` cuts at a width of its
+        own, wherever it is printed. A cap read off the surface instead would mark a described
+        row that nothing had stopped.
+        """
+        return queries.ENRICHMENT_CHARS if self.enriched else chars
 
     def _plain(self, chars: int, *parts: str) -> str:
         """The same cut, as the text under it: for the surfaces that cannot carry markup."""
@@ -428,7 +446,13 @@ class Node:
     @property
     def nav_tree_title(self) -> Markup:
         """The title at the width of a NavTree row, a walk control, or an errors-list row."""
-        return self._at(queries.NAV_CHARS, self.lead, self.words, links=False)
+        return self._at(
+            queries.NAV_CHARS,
+            self.lead,
+            self.words,
+            links=False,
+            source_cap=self._cut_at(queries.NAV_CHARS),
+        )
 
     @property
     def tab_title(self) -> str:
@@ -450,7 +474,15 @@ class Node:
         which fetched a row's width, and a second query for a narrower copy of the same string
         would be a page cost paid for nothing (`analyze/queries.py:CRUMB_CHARS`).
         """
-        return self._at(queries.CRUMB_CHARS, self.lead, self.words, links=False)
+        # Cut to a crumb's width against a NavTree row's cap, because the row's query is where
+        # the words came from: what stopped them is that cut, not the narrower one here.
+        return self._at(
+            queries.CRUMB_CHARS,
+            self.lead,
+            self.words,
+            links=False,
+            source_cap=self._cut_at(queries.NAV_CHARS),
+        )
 
     @property
     def log_title(self) -> Markup:
@@ -461,7 +493,9 @@ class Node:
         find out what it was. The words alone — a log that leads a column with a word heads
         that column with it too (`lead`).
         """
-        return self._at(queries.LOG_CHARS, self.words, links=False)
+        return self._at(
+            queries.LOG_CHARS, self.words, links=False, source_cap=self._cut_at(queries.LOG_CHARS)
+        )
 
     @property
     def pane_title(self) -> Markup:
@@ -477,7 +511,16 @@ class Node:
         The one surface a link in a title becomes an `<a>` on: every other one prints its
         title inside a link already, and an `<a>` inside an `<a>` is markup a browser undoes.
         """
-        return self._at(queries.HEADER_CHARS, self.lead, self.words, links=True)
+        # The cap is a preview's rather than this width, because a header query returns its
+        # strings at this width *or wider*: the pane cannot tell where such a string was cut,
+        # so its own budget is the only cut it may mark.
+        return self._at(
+            queries.HEADER_CHARS,
+            self.lead,
+            self.words,
+            links=True,
+            source_cap=self._cut_at(queries.DETAIL_CHARS),
+        )
 
     @property
     def ref(self) -> Ref:

@@ -13,6 +13,7 @@ every pin below is taken twice.
 
 from markupsafe import escape
 
+from hyphae.analyze import queries
 from hyphae.view import inline_markdown, render
 from hyphae.view.format import ELLIPSIS
 from tests.view.conftest import plain
@@ -236,19 +237,83 @@ def test_a_title_is_cut_by_what_a_reader_sees_not_by_what_it_is_written_in() -> 
     about the line it draws and an unclosed `<strong>` would bold the rest of the page.
     """
     written = f"**{'x' * 20}**"
-    assert inline_markdown.cut(written, 8, links=False) == f"<strong>{'x' * 8}</strong>{ELLIPSIS}"
+    # A cap the raw string is inside, so the width is the only thing cutting here.
+    whole = len(written)
+    assert (
+        inline_markdown.cut(written, 8, links=False, source_cap=whole)
+        == f"<strong>{'x' * 8}</strong>{ELLIPSIS}"
+    )
     # The same string without its syntax, cut to the same width, shows the same characters.
-    assert plain(inline_markdown.cut(written, 8, links=False)) == "x" * 8 + ELLIPSIS
-    assert plain(inline_markdown.cut("x" * 20, 8, links=False)) == "x" * 8 + ELLIPSIS
+    assert (
+        plain(inline_markdown.cut(written, 8, links=False, source_cap=whole)) == "x" * 8 + ELLIPSIS
+    )
+    assert plain(inline_markdown.cut("x" * 20, 8, links=False, source_cap=20)) == "x" * 8 + ELLIPSIS
     # A line that fits carries no mark, and the four syntax characters are not counted.
-    assert inline_markdown.cut(written, 20, links=False) == f"<strong>{'x' * 20}</strong>"
+    assert (
+        inline_markdown.cut(written, 20, links=False, source_cap=whole)
+        == f"<strong>{'x' * 20}</strong>"
+    )
     # `strip` measures the same thing the cut spends, which is what lets the browser tab and
     # the row it names stop at the same word.
     assert len(inline_markdown.strip(written)) == 20
 
 
+def test_a_title_the_query_cut_is_marked_however_short_its_markup_renders() -> None:
+    """A width the renderer did not spend is not a line with nothing behind it.
+
+    Every query composing a title cuts it one character past the width it was read for, so a
+    raw string longer than that cap is one the store stopped. The syntax it was written in is
+    not counted on the way in — measured: 280 characters of `**ab** ` reach the NavTree as the
+    111 the query ships, render to 47 visible characters, and used to print with nothing at all
+    saying the other 169 were dropped.
+    """
+    written = "**ab** " * 40
+    stored = written[: queries.NAV_CHARS + 1]
+    shown = inline_markdown.cut(
+        stored, queries.NAV_CHARS, links=False, source_cap=queries.NAV_CHARS
+    )
+    # The row is a third of its own width and still says the session wrote more.
+    assert len(plain(shown)) < queries.NAV_CHARS
+    assert plain(shown).endswith(ELLIPSIS)
+
+    # And the other side of the rule: a line the query did not cut carries no mark, however
+    # much of its raw length is syntax. A crumb is the narrowest surface there is and the cap
+    # behind it is a NavTree row's, so marking on raw length alone would stop a title here
+    # that nothing stopped.
+    complete = "**bold** `code` *and* `more` and **more**"
+    assert len(complete) > queries.CRUMB_CHARS
+    crumb = inline_markdown.cut(
+        complete, queries.CRUMB_CHARS, links=False, source_cap=queries.NAV_CHARS
+    )
+    assert plain(crumb) == "bold code and more and more"
+
+
+def test_a_markdown_run_the_query_cut_in_half_is_dropped_rather_than_printed() -> None:
+    """The store's cut lands mid-line, and half a `**` run is not something a session wrote.
+
+    Markdown-it hands an unclosed run back as the characters it was typed as, so the asterisks
+    print — and nothing at print time can recover the closing pair the query never shipped. The
+    mark says the line stopped; the delimiters would say the session typed them.
+    """
+    cut = inline_markdown.cut("**ab** **cd", 40, links=False, source_cap=10)
+    assert cut == f"<strong>ab</strong>{ELLIPSIS}"
+    # The same for the two other runs a cut can break: a backtick and a link's bracket.
+    assert (
+        plain(inline_markdown.cut("read `sr", 40, links=False, source_cap=7)) == f"read{ELLIPSIS}"
+    )
+    opened = inline_markdown.cut("see [PR #18](https://x.te", 40, links=True, source_cap=24)
+    assert plain(opened) == f"see{ELLIPSIS}"
+    # A run the cut did not break keeps its characters, and the mark alone says the line
+    # stopped. One `*` or `_` is never read as a broken run: the corpus is paths and commands,
+    # and `handoff_2` losing its tail to close an emphasis nobody opened is the worse trade.
+    for typed, cap in (("2 * 3 * 4", 8), ("ls handoffs/handoff_2", 20), ("rm -rf *.mutants", 15)):
+        assert plain(inline_markdown.cut(typed, 40, links=False, source_cap=cap)) == (
+            typed + ELLIPSIS
+        ), typed
+
+
 def test_an_absent_title_renders_to_nothing() -> None:
     """A NULL column reaches a title as None, and an empty line beats a crash."""
     assert inline_markdown.render(None, links=True) == ""
-    assert inline_markdown.cut(None, 10, links=False) == ""
+    assert inline_markdown.cut(None, 10, links=False, source_cap=10) == ""
     assert inline_markdown.strip(None) == ""

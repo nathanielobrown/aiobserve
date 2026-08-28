@@ -14,9 +14,11 @@ import duckdb
 from fastapi.testclient import TestClient
 from markupsafe import escape
 
+from hyphae.analyze import queries
 from hyphae.view.app import build_app
+from hyphae.view.format import ELLIPSIS
 from tests.conftest import MAIN
-from tests.view.conftest import Planter, marked_up, one, plain
+from tests.view.conftest import Planter, marked_up, one, plain, values
 
 # Every place a page labels a title, and what a flat one holds: one run of text with no
 # element in it. Both built from the same opening tag, so a count and a capture of the same
@@ -123,6 +125,59 @@ def test_no_block_element_a_pass_wrote_escapes_into_a_navtree_row(
         assert element not in row, element
     # The heading's own `#` and the list's dashes survive as the typing they are.
     assert "# Heading" in plain(row) and "- one" in plain(row)
+
+
+def test_a_row_that_spent_none_of_its_width_still_says_the_query_cut_the_line(
+    plant: Planter,
+    store: duckdb.DuckDBPyConnection,
+    enriched_plant: Planter,
+    enriched_store: duckdb.DuckDBPyConnection,
+) -> None:
+    """What says a title was stopped is the width its own query cut at, not the row's.
+
+    A width is spent on visible characters, so a prompt written in markdown reaches a row a
+    third of the length the store shipped — and the row is full of nothing. The mark has to
+    come from the cap instead: `view_nav_tree_turns` ships a prompt one character past a row's
+    width, so 111 characters back means more went in, whatever they render to.
+    """
+    prompt = "**ab** " * 40
+    spent = one(
+        store,
+        "SELECT session_id FROM live_turns WHERE source = ? GROUP BY 1"
+        " ORDER BY count(*) DESC, 1 LIMIT 1",
+        [MAIN],
+    )[0]
+    path: Path = plant(
+        (
+            "UPDATE turns SET prompt = ?, command_name = NULL, command_args = NULL"
+            " WHERE session_id = ?",
+            [prompt, spent],
+        )
+    )
+    with TestClient(build_app(path)) as planted:
+        page = planted.get(f"/session/{spent}").text
+    turn = next(key for key in values(page, "data-nav-tree") if key.startswith("turn:"))
+    row = plain(marked_up(page, "data-nav-tree", turn, "title"))
+    # Half a row wide and still marked: the syntax the rest of the prompt was written in is
+    # what the query's cut spent, and only the query knows it spent it.
+    assert len(row) < queries.NAV_CHARS // 2
+    assert row.endswith(ELLIPSIS)
+
+    # A description is cut by `view_enrichment` at a width of its own, wider than any row —
+    # so the same markup, short enough that nothing cut it, carries no mark on the same
+    # surface. A cap read off the row instead would stop a line nothing stopped.
+    described = "**ab** " * 20
+    session_id, turn_id = one(
+        enriched_store,
+        "SELECT session_id, id FROM live_turns WHERE source = ? ORDER BY session_id LIMIT 1",
+        [MAIN],
+    )
+    whole: Path = enriched_plant(("UPDATE turn_enrichments SET description = ?", [described]))
+    with TestClient(build_app(whole)) as planted:
+        read = planted.get(f"/session/{session_id}/thread/{MAIN}/turn/{turn_id}").text
+    shown = plain(marked_up(read, "data-nav-tree", f"turn:{turn_id}", "title"))
+    assert shown.strip() == ("ab " * 20).strip()
+    assert ELLIPSIS not in shown
 
 
 def test_a_title_the_corpus_records_flat_is_served_as_the_bytes_it_always_was(

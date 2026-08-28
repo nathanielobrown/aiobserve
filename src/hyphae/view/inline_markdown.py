@@ -16,7 +16,9 @@ Four rules, three of them `view/render.py`'s own:
   says the surface can carry one. Every surface but the pane's heading prints its title inside
   a link already, and an `<a>` inside an `<a>` is markup a browser takes apart
 - A **width is spent on what a reader sees**. `cut` counts visible characters and closes what
-  it cut inside, so `**` never eats a row's budget and a stopped title never bolds the page
+  it cut inside, so `**` never eats a row's budget and a stopped title never bolds the page.
+  Which is why it is also told the width the *query* cut at: a line whose syntax the store cut
+  through renders short, and only that cap says the reader is looking at part of it
 
 Escaping is `markupsafe`'s and not markdown-it's, so a line with no markdown in it serves the
 bytes the page served before this module existed: markdown-it spells a quote `&quot;` where
@@ -55,14 +57,18 @@ def render(text: str | None, *, links: bool) -> Markup:
     return _line(text, links=links, size=None).markup
 
 
-def cut(text: str | None, size: int, *, links: bool) -> Markup:
+def cut(text: str | None, size: int, *, links: bool, source_cap: int) -> Markup:
     """One line as markup, at `size` visible characters, marked where the rest was left.
 
-    The one-extra-character protocol every cut on a page rides (`view/format.py:cut`), counted
-    on what a reader sees: the syntax a line is written in costs the reader nothing, so it
-    costs the width nothing. A cut landing inside a `<strong>` closes it before the mark.
+    Two cuts can stop a line and the mark stands for either. `size` is the surface's, spent on
+    what a reader sees: the syntax a line is written in costs the reader nothing, so it costs
+    the width nothing, and a cut landing inside a `<strong>` closes it before the mark.
+    `source_cap` is the *query's* — every one of them ships a character past the width it cut
+    at (`view/format.py:cut`), so a raw string longer than the cap is one the store stopped,
+    however short it renders. The run that cut broke goes with it: half a `**` is delimiters
+    the page would print as typing, and nothing here can recover the half the query kept.
     """
-    return _line(text, links=links, size=size).markup
+    return _line(text, links=links, size=size, source_cap=source_cap).markup
 
 
 def strip(text: str | None) -> str:
@@ -85,7 +91,9 @@ def _anchor(url: str, *, links: bool) -> str:
     return f'<a href="{escape(url)}">'
 
 
-def _line(text: str | None, *, links: bool, size: int | None) -> _Line:
+def _line(
+    text: str | None, *, links: bool, size: int | None, source_cap: int | None = None
+) -> _Line:
     """The walk every entry point above shares: one pass over the line's inline tokens.
 
     Both halves come out of the same walk so they cannot disagree — a width measured on one
@@ -93,13 +101,20 @@ def _line(text: str | None, *, links: bool, size: int | None) -> _Line:
     """
     if not text:
         return _Line(Markup(), "")
+    tokens = list(_INLINE.parseInline(text, {})[0].children or ())
+    # A raw string past the cap is one the query cut, and its cut landed wherever it landed:
+    # the run it broke has no closing delimiter, so markdown-it hands it back as the characters
+    # it was typed as. Only the last token can hold that run — everything before it closed.
+    source_cut = source_cap is not None and len(text) > source_cap
+    if source_cut and tokens and tokens[-1].type == "text":
+        tokens[-1].content = _unbroken(tokens[-1].content)
     written: list[str] = []
     seen: list[str] = []
     # What is open at the cursor, innermost last: a cut has to close all of it.
     owed: list[str] = []
     room = size
     stopped = False
-    for token in _INLINE.parseInline(text, {})[0].children or ():
+    for token in tokens:
         whole = True
         match token.type:
             case "text":
@@ -134,12 +149,65 @@ def _line(text: str | None, *, links: bool, size: int | None) -> _Line:
             stopped = True
             break
     # The mark goes outside what it cut, so a stopped title reads as the page stopping it
-    # rather than as a word the session wrote.
-    mark = ELLIPSIS if stopped else ""
+    # rather than as a word the session wrote. Either cut earns it.
+    mark = ELLIPSIS if stopped or source_cut else ""
     tail = "".join(reversed(owed)) + mark
     # Every run in `written` is either one of this module's own literals or a value `_write`
     # escaped on the way in, which is what makes the join safe to declare as markup.
     return _Line(Markup("".join(written) + tail), "".join(seen) + mark)  # noqa: S704
+
+
+# What a markdown run opens with. One of these surviving in a *text* token is one markdown-it
+# could not pair, which after a query's cut is where that cut landed.
+_OPENERS = "*_`["
+
+
+def _unbroken(shown: str) -> str:
+    """`shown` up to the run a cut left open, or the whole of it where none is open.
+
+    Read from the right, because the broken run is the last one: everything before it paired.
+    """
+    at = len(shown) - 1
+    while at >= 0:
+        if (char := shown[at]) not in _OPENERS:
+            at -= 1
+            continue
+        # The whole run, so `**` goes at once rather than one star at a time.
+        start = at
+        while start and shown[start - 1] == char:
+            start -= 1
+        if _opens(shown, start, at):
+            return shown[:start].rstrip()
+        at = start - 1
+    return shown
+
+
+def _opens(shown: str, start: int, end: int) -> bool:
+    """Whether the run of one character between `start` and `end` is one a cut left open.
+
+    Narrow on purpose. A title is mostly paths and commands, and dropping the tail of one to
+    close a run nobody opened costs a reader more than a stray delimiter does — so an emphasis
+    run counts at two characters and up, never the `*` of `*.tmp` or the `_` of `handoff_2`.
+    """
+    char = shown[start]
+    after = shown[end + 1 : end + 2]
+    if char in "*_":
+        return end > start and bool(after) and not after.isspace()
+    if char == "`":
+        return "`" not in shown[end + 1 :]
+    return _dangling(shown, start)
+
+
+def _dangling(shown: str, at: int) -> bool:
+    """Whether the bracket at `at` opens a link the cut took the end off.
+
+    A bracket the line closes is typing — `[WIP] rewrite` is a title — unless the `](` after it
+    opened a URL that never closes, which is a link the query stopped in the middle of.
+    """
+    closed = shown.find("]", at)
+    if closed == -1:
+        return True
+    return shown[closed + 1 : closed + 2] == "(" and ")" not in shown[closed:]
 
 
 def _write(
