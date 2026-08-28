@@ -493,6 +493,12 @@ li.node .compacted {
    reader scrolling one needs to know which. The rail says it: the ask is walled in the rule
    color like every other value, the answer in the accent. */
 .detail[data-detail="result"] pre { border-left-color: var(--mark); }
+/* And the words a person or a model wrote are walled as the quotation they are: someone
+   else's writing set inside our page. The same rail the blocks above carry, so a pane reads
+   as one column of quoted values whether the value is prose or a payload. The wall goes on
+   the prose and not on the section, because the section holds the label naming it too. */
+.detail.quoted .prose { border-left: 2px solid var(--line); padding-left: var(--space-2);
+  margin: var(--space-1) 0; }
 /* The pull requests a session's commands touched — a list a reader follows off the page. */
 ul.prs { margin: var(--space-2) 0; padding: 0; list-style: none; overflow-wrap: anywhere; }
 /* The way down to the bytes: the thread's transcript, and the one line this node was read

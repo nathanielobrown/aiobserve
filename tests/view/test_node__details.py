@@ -253,6 +253,67 @@ def test_a_run_nobody_asked_in_words_shows_no_ask_and_serves_none(
         assert client.get(f"/fragment/prompt{run}").status_code == 404, named
 
 
+def test_the_pane_walls_what_a_session_wrote_as_a_quote_and_leaves_a_payload_as_code(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """Prose a person or a model wrote is walled like a quotation; a program's bytes are not.
+
+    Where the wall is drawn is the stylesheet's; which values get one is the server's, and a
+    class is the whole of what a served page can say about it. So the reading is a partition
+    over three panes rather than a hit on one detail: every value on each page is either
+    walled or not, and a fourth detail added on either side lands here instead of passing by
+    not being named.
+
+    The three panes between them carry all five prose values the viewer previews — a run's
+    brief, the ask it was given and the answer it sent back, and what an api call said and
+    thought — beside a tool call's three, which are what a program was passed and what it
+    handed back. The rule is the same one that decides whether a value renders as markdown:
+    a value is prose or it is a payload, and no value is both.
+    """
+    spawned_session, spawned_run = one(
+        store,
+        "SELECT a.session_id, a.id FROM live_agent_runs a JOIN live_tool_calls t"
+        " ON t.session_id = a.session_id AND t.id = a.tool_use_id AND t.source <> a.id"
+        " WHERE json_extract_string(t.input, '$.prompt') IS NOT NULL AND t.result IS NOT NULL"
+        " ORDER BY 1, 2 LIMIT 1",
+    )
+    said_session, said_source, said_call = one(
+        store,
+        "SELECT session_id, source, id FROM live_api_calls WHERE length(text) > 0"
+        " AND length(thinking) > 0 ORDER BY 1, 2, 3 LIMIT 1",
+    )
+    ran_session, ran_source, ran_tool = call_to(store, "Bash")
+    for named, url, quoted in (
+        (
+            "a run's pane",
+            f"/session/{spawned_session}/run/{spawned_run}",
+            {"brief", "prompt", "result"},
+        ),
+        (
+            "an api call's pane",
+            f"/session/{said_session}/thread/{said_source}/call/{said_call}",
+            {"text", "thinking"},
+        ),
+        (
+            "a tool call's pane",
+            f"/session/{ran_session}/thread/{ran_source}/tool/{ran_tool}",
+            set(),
+        ),
+    ):
+        page = client.get(url).text
+        shown = set(values(page, "data-detail"))
+        walls = {
+            name
+            for name in shown
+            if "quoted" in inside(page, "data-detail", name, "class")[0].split()
+        }
+        # The page shows what the partition is about — an empty pane would satisfy any rule —
+        # and every value on it falls on the side its author put it.
+        assert shown, named
+        assert walls == quoted & shown, named
+        assert quoted <= shown, named
+
+
 # A shell command with something for a lexer to find in it: a builtin, an operator, a quoted
 # string and a pipe. Planted rather than recorded — redaction flattened every command the
 # fixture corpus holds to `[redacted]` — and real in the sense that matters here: it is a line
