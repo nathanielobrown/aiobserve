@@ -136,14 +136,16 @@ _CONTEXT_WINDOW = (
     + "END\n"
 )
 
-# What a tool call carried, for the tools the viewer names by their own field
-# (`view/formatters.py:FORMATTERS`) — one struct rather than a column apiece, so a query adds the
-# whole set with one expression and a formatter reads what it needs by name.
+# What a tool call carried, for the rules that name one (`view/formatters.py`) — one struct
+# rather than a column apiece, so a query adds the whole set with one expression and a
+# formatter reads what it needs by name.
 # Extraction only: which member a tool reads is the registry's business, and keeping the
 # name list out of here is what lets a tool be renamed or added without a query changing.
 # Every string member rides the same one-past-the-width protocol as the macros above.
 # `addressed` is the caller's, not the input's: a `SendMessage` addresses an agent run by id,
 # and the name behind that id is a row of `live_agent_runs` the query joins.
+# `input_head` is the last member because it is the last resort: the input as recorded, for a
+# tool no rule names and whose input carried nothing any rule reads.
 _TOOL_FIELDS = """
 CREATE OR REPLACE TEMP MACRO tool_fields(input, project_dir, addressed, chars) AS {
     'path': tool_path(input, project_dir, chars),
@@ -159,7 +161,8 @@ CREATE OR REPLACE TEMP MACRO tool_fields(input, project_dir, addressed, chars) A
     'url': tool_asked(input, 'url', chars),
     'query': tool_asked(input, 'query', chars),
     'todos': CASE WHEN json_valid(input)
-                  THEN json_array_length(input, '$.todos') END
+                  THEN json_array_length(input, '$.todos') END,
+    'input_head': substr(input, 1, chars + 1)
 }
 """
 

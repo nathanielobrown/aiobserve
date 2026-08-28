@@ -33,21 +33,31 @@ SELECT
         WHERE t.session_id = c.session_id AND t.source = c.source AND t.api_call_id = c.id
     ) AS tool_calls,
     -- What the call went on to do, for the title of a call that answered with tool calls and
-    -- no words (`view/nodes.py:call_node`): the first call's own title, through the macro
-    -- every surface that names a tool call reads, and every call's tool name in the order it
-    -- was made. The count that follows the title is composed at the width of the surface
-    -- printing it, so what comes back here is the parts rather than the sentence.
+    -- no words (`view/builders.py:call_node`): the first tool call's name and the fields the
+    -- rules that name one read, and every call's tool name in the order it was made. The name
+    -- itself is composed in Python out of those fields, the same way the tool's own row is
+    -- named, so the two rows agree — and the count that follows it is composed at the width of
+    -- the surface printing it. What comes back here is the parts rather than the sentence.
     (
         SELECT {
-            'head': min_by(tool_title(t.input, s.project_dir, $head_chars), t."index"),
+            'first': min_by({
+                'name': t.name,
+                'fields': tool_fields(t.input, s.project_dir, ad.agent_type, $head_chars)
+            }, t."index"),
             'names': list(t.name ORDER BY t."index")
         }
         FROM live_tool_calls t
+        -- What a path in the fields reads against. Joined here rather than taken from the
+        -- outer row: DuckDB 1.5.5 cannot bind a struct-returning macro over a correlated
+        -- column, and answers `Need named argument for struct pack`.
+        LEFT JOIN sessions s ON s.id = t.session_id
+        -- Who a `SendMessage` addressed, resolved the way `view_tool_header` resolves it: a
+        -- title reading the run id here would deny the page one level down.
+        LEFT JOIN live_agent_runs ad
+            ON ad.session_id = t.session_id AND ad.id = tool_asked(t.input, 'to', $head_chars)
         WHERE t.session_id = c.session_id AND t.source = c.source AND t.api_call_id = c.id
     ) AS tools
 FROM live_api_calls c
--- For the project a tool call's path reads against, which is the session's, not the turn's.
-LEFT JOIN sessions s ON s.id = c.session_id
 LEFT JOIN live_turns t
     ON t.session_id = c.session_id AND t.source = c.source AND t.id = c.turn_id
 WHERE c.session_id = $session_id AND c.source = $source AND c.id = $api_call_id;
