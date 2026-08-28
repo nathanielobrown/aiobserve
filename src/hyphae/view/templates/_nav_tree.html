@@ -80,6 +80,15 @@
                alarm rule paints both and a test reads either the same way. #}
             <span data-field="is_error">error</span>
           {%- endif %}
+          {%- if row.node.compactions %}
+            {# How often this run's own thread ran its window out. Drawn on a run's row alone, because
+               a compaction of the thread the reader is on is already a ⊟ row of the tree and this one
+               is not: a subagent compacts unasked, on a transcript nobody opened. The count rides the
+               labelled span and the word beside it does not, the way every other number on a row is
+               carried — and the pill is absent rather than zero, since a run that never compacted has
+               nothing to say. #}
+            <span class="compacted"><span data-field="compactions">{{ row.node.compactions | count }}</span>{{ " " }}compaction{{ "" if row.node.compactions == 1 else "s" }}</span>
+          {%- endif %}
           {%- if row.node.cost_usd is not none %}
             {# What the row spent, and — where a run hangs under it — what its whole subtree did.
                Two badges rather than one number because the two answer different questions: a turn

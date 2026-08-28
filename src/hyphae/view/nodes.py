@@ -389,6 +389,11 @@ class Node:
     # subagent that compacted did so unasked and unseen, and the bar is where the reader who
     # is wondering why its answer thinned out finds out (`docs/viewer.md`).
     maxed: bool = False
+    # How often it happened, which is the same fact counted rather than flagged. Zero for every
+    # other kind and for a run whose thread never compacted, and zero draws no badge at all: a
+    # main-thread compaction is already a ⊟ row of the tree, so a run's row is the one place
+    # the count is the only way to see it.
+    compactions: int = 0
 
     @property
     def icon(self) -> str:

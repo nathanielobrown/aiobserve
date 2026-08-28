@@ -170,8 +170,11 @@ def run_node(session_id: str, row: Row, held: Ledger, described: str | None) -> 
         unpriced_api_calls=row["unpriced_api_calls"],
         enriched=described is not None,
         context=_context(row),
-        # A run that compacted ran its window out, whatever the last call it made says it held.
+        # A run that compacted ran its window out, whatever the last call it made says it held —
+        # and how often it did is what the row's badge says, since a run's own compactions are
+        # recorded on a thread the reader is not looking at.
         maxed=row["compactions"] > 0,
+        compactions=row["compactions"],
     )
 
 

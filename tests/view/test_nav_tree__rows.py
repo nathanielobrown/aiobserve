@@ -16,14 +16,16 @@ from fastapi.testclient import TestClient
 from hyphae.model import MAIN_SOURCE
 from hyphae.view import bounds
 from hyphae.view.app import build_app
-from hyphae.view.nodes import meter
-from tests.conftest import MAIN, SPINE
+from hyphae.view.nodes import Kind, meter
+from tests.conftest import COMPACTED, COMPACTED_RUN, MAIN, SPINE, SPINE_RUN
 from tests.view.conftest import (
     Planter,
     badges,
+    fields,
     inside,
     marked,
     one,
+    reads,
     rows,
     values,
     wired,
@@ -292,6 +294,47 @@ def test_a_row_pairs_its_depth_with_the_key_in_the_same_tag() -> None:
     # part them on its own, whatever the pattern says about tag boundaries.
     tail = '<li class="row more" data-depth="1" data-more="session:s"><a data-nav-tree="turn:b">'
     assert rows(tail) == []
+
+
+def test_a_run_row_says_how_often_its_own_thread_compacted(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A run that ran its window out says so on its row; one that never did says nothing.
+
+    The badge is the only thing on a run's row that comes off another table entirely — every
+    other value a row carries is the run's own column — so it is read back against
+    `live_compactions` in the test's own SQL rather than against what `view_runs` computed.
+
+    One run in the corpus is in this shape and one is the whole of the reading: `compaction/`'s
+    `general-purpose` run is the only recorded `compact_boundary` outside a `main` thread
+    (`tests/fixtures/compaction/README.md`). The absent half is what makes it a badge and not a
+    field — a row with nothing to say draws no pill at all — and `spine/`'s run is read for it.
+    """
+    compacted = f"{Kind.RUN}:{COMPACTED_RUN}"
+    (count,) = one(
+        store,
+        "SELECT count(*) FROM live_compactions WHERE session_id = ? AND source = ?",
+        [COMPACTED, COMPACTED_RUN],
+    )
+    assert count, "the fixture run's own thread compacted"
+    page = client.get(f"/session/{COMPACTED}/run/{COMPACTED_RUN}").text
+    assert compacted in values(page, "data-nav-tree")
+    # The count alone in the labelled span, the way every other number on a row is carried:
+    # the word beside it is prose the markup around the value owns.
+    assert fields(page, "data-nav-tree", compacted)["compactions"] == str(count)
+    assert f"{count} compaction" in reads(page, "data-nav-tree", compacted)
+    # And the run whose thread never compacted carries no such field — not a zero, which
+    # would draw a pill saying nothing happened.
+    spine = f"{Kind.RUN}:{SPINE_RUN}"
+    (none,) = one(
+        store,
+        "SELECT count(*) FROM live_compactions WHERE session_id = ? AND source = ?",
+        [SPINE, SPINE_RUN],
+    )
+    assert none == 0
+    quiet = client.get(f"/session/{SPINE}/run/{SPINE_RUN}").text
+    assert spine in values(quiet, "data-nav-tree")
+    assert "compactions" not in fields(quiet, "data-nav-tree", spine)
 
 
 def test_a_bucket_row_carries_the_totals_of_what_it_gathers(
