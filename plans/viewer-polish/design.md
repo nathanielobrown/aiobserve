@@ -16,7 +16,7 @@ The constraint that decides the shape: **naming and formatting are display conce
 
 **Tool naming, current:** `view_nav_tree_calls.sql:26` / `view_call_header.sql:42` compute `min_by(tool_title(t.input, …))` → `builders.call_node` prints it verbatim; `view_turn_calls.sql:50` `string_agg(tool_title(…))` → calls-log column; `view_numbers_tool.sql:12` → popover siblings. Only `tool_node` (`builders.py:188`) consults `formatters.FORMATTERS`.
 
-**Proposed:** those queries drop `tool_title` and ship the same fields the `tool_fields` macro (`macros.py:147`) already defines (per-row, not aggregated). One Python entry point — `formatters.name_tool(fields) -> Formatted` — runs the registry and, when no formatter matches, the shape-driven fallback ported from the `tool_title` macro (`file_path` → `description` → head of raw JSON, read from a new bounded `input_head` member of `tool_fields`). Every surface (tool node, api-call title, calls log, popover siblings, errors list) calls it. `tool_title` and `tool_about` are deleted once no query selects them; `tool_path` and `tool_asked` stay as `tool_fields` internals.
+**Proposed:** those queries drop `tool_title` and ship the same fields the `tool_fields` macro (`macros.py:147`) already defines (per-row, not aggregated). One Python entry point — `formatters.name_tool(name, fields) -> Formatted` — runs the registry and, when no formatter matches, the shape-driven fallback ported from the `tool_title` macro (`file_path` → `description` → head of raw JSON, read from a new bounded `input_head` member of `tool_fields`). Every surface (tool node, api-call title, calls log, popover siblings, errors list) calls it. `tool_title` and `tool_about` are deleted once no query selects them; `tool_path` and `tool_asked` stay as `tool_fields` internals.
 
 **Popover numbers, current:** `_nav_tree.html:65` `hx-get` → `fragments.py:33 counted` → `view_numbers.sql`, whose `$kind` CASE selects own-thread calls for runs/turns but *everything* for the session.
 
@@ -44,6 +44,8 @@ templates/
   fragments/numbers_compaction.html added
   _nav_tree.html / _parts.html      changed: compaction badge (red pill, "N compaction(s)"); title spans render inline markdown; quote-border class on prose details
 static/                             changed: badge + quote-border CSS
+docs/
+  viewer-titles.md                  added as built: what each kind of node is titled and what each mark means, lifted out of viewer.md
 ```
 
 ## Key contracts
@@ -65,7 +67,7 @@ Python-tier page tests over recorded fixtures (`tests/view/`, gallery scenarios 
 4. **Popover breakout** — session own-thread semantics + subtree spend lines. Verify: numbers-fragment test on a fixture with subagents; zero-subagent node shows no breakout
 5. **Compactions** — run-row red badge (count already in `view_runs.sql:32`) + compaction popover. Verify: fragment test + bounds re-measure
 6. **Reading pane** — Arguments/Result JSON rule, quote borders on prompt/brief/said/thought/run result, drop session Title/Project facts, keep Task brief. Verify: tool-page and run-page template tests
-7. **Docs** — the display-vs-retrieval convention in the AI guidance (see the answered question below); CONTEXT.md terms for any coined name (e.g. *compaction badge*); `docs/viewer.md` popover paragraph; `doc-sync` before the PR
+7. **Docs** — the display-vs-retrieval convention in the AI guidance (see the answered question below); CONTEXT.md terms for any coined name (e.g. *compaction badge*); `docs/viewer.md` popover paragraph; `doc-sync` before the PR. **As built,** titles left `docs/viewer.md` for `docs/viewer-titles.md`: naming one node per kind, the fallbacks behind it and what each mark means is a fact of its own, and it had grown into a third of a document whose subject is what each page shows
 
 ## Decisions
 
