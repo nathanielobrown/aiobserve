@@ -48,8 +48,19 @@
       <nav class="crumbs"
            data-crumbs="{{ selection.kind }}"
            aria-label="Where this node sits">
+        {#- The way out of the session, above the nodes inside it: the whole list, then the
+           list narrowed to this project. Neither is a node, so neither carries a node's
+           marks or a knob suffix — a click on either leaves the session. #}
+        <a data-crumb-head="home" href="{{ list_url }}">{{ parts.mark("🏠") }}</a>
+        {%- if project_dir %}
+          {%- if project_url %}
+            <a data-crumb-head="project" href="{{ project_url }}"><span data-field="project_dir">{{ project_dir | path }}</span></a>
+          {%- else %}
+            <span data-crumb-head="project"><span data-field="project_dir">{{ project_dir | path }}</span></span>
+          {%- endif %}
+        {%- endif %}
         {% for step in chain %}
-          <a data-crumb="{{ step.key }}" href="{{ step.url }}{{ suffix }}">{{ parts.mark(step.icon) }} {{ parts.glyph(step) }}<span data-field="{{ step.kind }}">{{ step.nav_tree_title }}</span></a>
+          <a data-crumb="{{ step.key }}" href="{{ step.url }}{{ suffix }}">{{ parts.mark(step.icon) }} {{ parts.glyph(step) }}<span data-field="{{ step.kind }}">{{ step.crumb_title }}</span></a>
         {% endfor %}
       </nav>
       {{ body.body(selection, header, suffix) }}

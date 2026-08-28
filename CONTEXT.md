@@ -73,7 +73,7 @@ What each page shows and cites: `docs/viewer.md`; the routes: the modules `src/h
 - **Pane** — any major region of a page; the node page splits into two: the NavTree and the reading pane
 - **Reading pane** — the right column, reading one node whole
 - **Body** — one node's rendered content: title, facts, enrichment, details; the reading pane holds one, an expansion another
-- **Crumb chain** — the ancestors leading the reading pane, down to the node
+- **Crumb chain** — the line above the reading pane: the way out of the session — home, then the project — then every ancestor down to the node
 - **Facts** — the labelled store fields under the title; the label registry is `src/hyphae/view/labels.py`
 - **Enrichment block** — what a pass wrote about the node: description, tags, friction, behind the `✨` glyph
 - **Detail** — a fat value the reading pane previews, cut at 4,000 characters with the rest a fetch away (`?detail=`)

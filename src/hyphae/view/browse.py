@@ -17,7 +17,7 @@ from fastapi.responses import Response
 
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
-from hyphae.view import bounds, errors, nav_tree, nodes, walk
+from hyphae.view import bounds, errors, listing, nav_tree, nodes, walk
 from hyphae.view.citation import cited
 from hyphae.view.columns import Shape
 from hyphae.view.detail import Detail, enrichment_lines
@@ -232,6 +232,12 @@ def browse(
             "selection": selection,
             "preset_choices": preset_choices(selection, preset, kin, log, detail),
             "chain": built.chain,
+            # Where the chain starts: the whole session list, and this session's project.
+            # The project is a step out of the session rather than a node of it, so it stands
+            # above the chain rather than in it — a session is still the outermost node.
+            "list_url": listing.LIST_URL,
+            "project_dir": head[0]["project_dir"],
+            "project_url": listing.project_link(head[0]["project_filter"]),
             "rows": built.rows,
             "header": seen.header,
             "enrichment": about,
