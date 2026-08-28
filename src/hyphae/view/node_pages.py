@@ -14,7 +14,7 @@ from starlette.routing import BaseRoute
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.model import MAIN_SOURCE
-from hyphae.view import bounds, highlight, nav_tree, nodes
+from hyphae.view import bounds, builders, highlight, nav_tree, nodes
 from hyphae.view.browse import (
     LogRow,
     Seen,
@@ -273,7 +273,8 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 trail=[nav_tree.home(source, row["turn_id"]), Ref(Kind.CALL, source, api_call_id)],
                 shape=Shape.TOOLS,
                 rows=[
-                    LogRow(nodes.tool_node(session_id, source, item), item) for item in called.rows
+                    LogRow(builders.tool_node(session_id, source, item), item)
+                    for item in called.rows
                 ],
                 total=called.total,
                 details=[

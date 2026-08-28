@@ -6,7 +6,7 @@ NavTree row says which tool ran without spending the width on its name. The stor
 fields (`analyze/macros.py:tool_fields`); this module holds the rule per name and nothing else,
 because SQL cannot dispatch on a name without a `CASE` arm per tool.
 
-`view/nodes.py:tool_node` is the caller. A tool absent from `FORMATTERS` keeps the shape-driven
+`view/builders.py:tool_node` is the caller. A tool absent from `FORMATTERS` keeps the shape-driven
 title the store composes for any input at all.
 """
 

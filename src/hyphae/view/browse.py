@@ -17,7 +17,7 @@ from fastapi.responses import Response
 
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
-from hyphae.view import bounds, errors, listing, nav_tree, nodes, walk
+from hyphae.view import bounds, builders, errors, listing, nav_tree, nodes, walk
 from hyphae.view.citation import cited
 from hyphae.view.columns import Shape
 from hyphae.view.detail import Detail, enrichment_lines
@@ -85,14 +85,14 @@ Reader = Callable[[duckdb.DuckDBPyConnection, nav_tree.Corpus, Row], Seen]
 # are the ones no cut reaches: a session's node is read from its own header already, a
 # compaction is named by its trigger, and a bucket is named by the viewer.
 TITLED: dict[str, Callable[[str, str, Row, nav_tree.Corpus], nodes.Node]] = {
-    Kind.TURN: lambda session_id, source, row, corpus: nodes.turn_node(
+    Kind.TURN: lambda session_id, source, row, corpus: builders.turn_node(
         session_id, source, row, corpus.whole, corpus.turn_text(source, row["turn_id"])
     ),
-    Kind.CALL: lambda session_id, source, row, corpus: nodes.call_node(
+    Kind.CALL: lambda session_id, source, row, corpus: builders.call_node(
         session_id, source, row, corpus.whole
     ),
-    Kind.TOOL: lambda session_id, source, row, _: nodes.tool_node(session_id, source, row),
-    Kind.RUN: lambda session_id, _, row, corpus: nodes.run_node(
+    Kind.TOOL: lambda session_id, source, row, _: builders.tool_node(session_id, source, row),
+    Kind.RUN: lambda session_id, _, row, corpus: builders.run_node(
         session_id, row, corpus.whole, corpus.run_text(row["run_id"])
     ),
 }
@@ -181,7 +181,7 @@ def browse(
         built = nav_tree.nav_tree(
             connection,
             corpus,
-            nodes.session_node(head[0], corpus.described),
+            builders.session_node(head[0], corpus.described),
             nav_tree.ancestry(corpus, seen.trail),
             preset,
             kin,
@@ -271,7 +271,7 @@ def turn_log(corpus: nav_tree.Corpus, source: str, rows: list[Row]) -> list[LogR
     """A page of one thread's timeline as a children log reads it: a row per turn."""
     return [
         LogRow(
-            nodes.turn_node(
+            builders.turn_node(
                 corpus.session_id,
                 source,
                 row,
@@ -307,7 +307,7 @@ def call_log(
     }
     calls = listed(page_rows(connection, Fragment.TURN_CALLS, **bound), "matched_api_calls")
     rows = [
-        LogRow(nodes.call_node(corpus.session_id, source, row, corpus.whole), row)
+        LogRow(builders.call_node(corpus.session_id, source, row, corpus.whole), row)
         for row in calls.rows
     ]
     return calls, rows, [(Fragment.TURN_CALLS, bound)]
@@ -317,7 +317,7 @@ def run_log(corpus: nav_tree.Corpus, rows: list[Row]) -> list[LogRow]:
     """A list of agent runs as a children log reads it: a row per run."""
     return [
         LogRow(
-            nodes.run_node(corpus.session_id, row, corpus.whole, corpus.run_text(row["run_id"])),
+            builders.run_node(corpus.session_id, row, corpus.whole, corpus.run_text(row["run_id"])),
             row,
         )
         for row in rows

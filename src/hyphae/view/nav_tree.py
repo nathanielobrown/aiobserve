@@ -25,12 +25,7 @@ from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.model import MAIN_SOURCE
 from hyphae.view import bounds
-from hyphae.view.enrichment import Descriptions
-from hyphae.view.nodes import (
-    Kind,
-    Node,
-    Preset,
-    Ref,
+from hyphae.view.builders import (
     call_node,
     compaction_node,
     run_node,
@@ -38,6 +33,13 @@ from hyphae.view.nodes import (
     turn_node,
     unattached_node,
     unattributed_node,
+)
+from hyphae.view.enrichment import Descriptions
+from hyphae.view.nodes import (
+    Kind,
+    Node,
+    Preset,
+    Ref,
 )
 from hyphae.view.store import (
     TURN_CURSOR,
