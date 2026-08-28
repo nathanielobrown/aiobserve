@@ -222,12 +222,13 @@ def test_a_plain_main_turn_renders_its_prompt_then_its_calls(fixture_db: Path) -
         "[redacted]\n"
         "\n"
         "## Response\n"
-        '- Agent (input 101 chars, result 10 chars) {"description": "[redacted]", '
-        '"prompt": "[redacted]", "subagent_type": "[redacted]", "model": "opus"}\n'
+        '- Agent (input 115 chars, result 10 chars) {"description": "Grill doc: needs-design '
+        'pair", "prompt": "[redacted]", "subagent_type": "claude", "model": "opus"}\n'
         "\n"
         "## Response\n"
         "[redacted]\n"
-        '- Read (input 27 chars, unanswered) {"file_path": "[redacted]"}\n'
+        '- Read (input 130 chars, unanswered) {"file_path": "/Users/nob/repos/mycelia/.claude'
+        "/worktrees/wk-triage/issues/0069-sub-workflow-durable-identit[+22 chars]\n"
         "\n"
         "## Ended: tool_use"
     )
@@ -433,9 +434,9 @@ def test_a_spawned_run_renders_as_its_description(mutable_db: Path) -> None:
     # ...then the spawning line carries what the child did, which is how a parent describes
     # work it never saw the text of.
     assert (
-        '- Agent (input 112 chars, result 10 chars) {"description": "[redacted]", '
-        '"subagent_type": "[redacted]", "run_in_background": false, "prompt": "[redacted]"}'
-        " | subagent: Read one file and reported back." in rendered
+        '- Agent (input 131 chars, result 10 chars) {"description": "Research 0149 '
+        'multi-instance pg0", "subagent_type": "Explore", "run_in_background": false, '
+        "[+23 chars] | subagent: Read one file and reported back." in rendered
     )
 
 
@@ -450,8 +451,9 @@ def test_a_spawning_call_with_no_run_renders_plainly(mutable_db: Path) -> None:
     # crash: exactly one of the two `Agent` lines carries a child.
     assert rendered.count(" | subagent: ") == 1
     assert rendered.endswith(
-        '- Agent (input 112 chars, result 10 chars) {"description": "[redacted]", '
-        '"subagent_type": "[redacted]", "run_in_background": false, "prompt": "[redacted]"}\n'
+        '- Agent (input 132 chars, result 10 chars) {"description": "Research 0155 '
+        'data-edge semantics", "subagent_type": "Explore", "run_in_background": false,'
+        "[+24 chars]\n"
         "\n"
         "## Ended: not recorded"
     )

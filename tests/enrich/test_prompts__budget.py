@@ -170,11 +170,11 @@ def test_input_hash_reads_the_rendered_content_and_nothing_else(mutable_db: Path
 def test_an_over_budget_turn_drops_the_middle_of_its_work(fixture_db: Path) -> None:
     """Past its budget a turn drops the middle of its call sequence and says how much went."""
     # If `spine/`'s longest turn — three tool calls under one response — is rendered at a
-    # budget of 240 characters, two thirds of the 346 it needs (injected, because redaction
+    # budget of 300 characters, two thirds of the 463 it needs (injected, because redaction
     # leaves no fixture within two orders of magnitude of the real 30K)...
     with EnrichmentStore(fixture_db) as store:
         item = turn(store, SPINE, "30aad8e5")
-        elided = render_turn(item, dataclasses.replace(TURN_BUDGETS, total=240))
+        elided = render_turn(item, dataclasses.replace(TURN_BUDGETS, total=300))
     # ...then the render fits, and what it kept is the prompt, the start of the work and the
     # last thing the turn did — the two ends a description is written from. The middle went,
     # and the gap counts itself rather than reading as the whole sequence. The `Ended:` line
@@ -191,11 +191,12 @@ def test_an_over_budget_turn_drops_the_middle_of_its_work(fixture_db: Path) -> N
         "## Response\n"
         "[redacted]\n"
         "[… 2 of 8 lines elided …]\n"
-        '- Read (input 27 chars, unanswered) {"file_path": "[redacted]"}\n'
+        "- Read (input 58 chars, unanswered) "
+        '{"file_path": "/Users/nob/repos/mycelia/issues/README.md"}\n'
         "\n"
         "## Ended: tool_use"
     )
-    assert len(elided) <= 240
+    assert len(elided) <= 300
 
 
 def test_each_instruction_is_capped_on_its_own(fixture_db: Path) -> None:
@@ -228,8 +229,9 @@ def test_an_over_budget_run_drops_the_middle_of_its_work(fixture_db: Path) -> No
         "## Response\n"
         "[redacted]\n"
         "[… 4 of 10 lines elided …]\n"
-        '- Agent (input 112 chars, result 10 chars) {"description": "[redacted]", '
-        '"subagent_type": "[redacted]", "run_in_background": false, "prompt": "[redacted]"}\n'
+        '- Agent (input 132 chars, result 10 chars) {"description": "Research 0155 '
+        'data-edge semantics", "subagent_type": "Explore", "run_in_background": false,'
+        "[+24 chars]\n"
         "\n"
         "## Ended: not recorded"
     )
