@@ -1,138 +1,90 @@
-# Design: viewer polish — layout, NavTree, formatters, badges, bars
+# Viewer polish: one naming system, richer popovers, a readable reading pane
 
-A batch of viewer changes Nathaniel specified and refined in `viewer_polish_questions.md` (this directory — the decision history with his answers). Every choice below is settled there; this file is the build order and the contracts.
+Decisions were settled in [questions.md](questions.md); this design says what to build. File:line references were verified 2026-08-28 — re-verify at implementation.
 
 ## Problem
 
-The node page scrolls at the page level, tool-call rows print raw JSON, subagent runs float beside the tool call that spawned them, cost badges hide what a node caused, and context bars can't show growth against the base prompt or explain a compaction. Each fix is small; together they touch the layout, the title pipeline, the NavTree assembly, and three queries — so they land as one branch with the seams below.
+Three problems, one iteration:
 
-## Decisions
+1. **Tool-call naming is split across two systems.** The Python formatter registry (`src/hyphae/view/formatters.py`) holds the emoji + argument extraction, but api-call titles, the calls-log `tool_titles` column, and the tool popover's sibling list name tool calls through the SQL macro `tool_title` (`src/hyphae/analyze/macros.py:107`) and never see the formatters. Per-tool improvements silently diverge — the emoji regression on api-call titles is the symptom.
+2. **The popover and NavTree hide structure.** Run/turn popovers show own-thread spend while the session popover includes subagents; nothing breaks subagent spend out. Compacted runs show no count, and compaction nodes have no popover at all.
+3. **The reading pane misformats payloads and prose.** The Arguments preview always takes the bare `<pre>` path (`templates/_parts.html:164-170`); Result is highlighted only for `Read`. Agent-authored prose has no visual "quote" identity, and titles print markdown syntax as raw asterisks.
 
-Each was grilled; the alternative and reasoning live in the questions file under the number given.
-
-- **Layout (—)** masthead fixed, `#browser` fills the viewport, NavTree and reading pane each own their scroll; no page scrollbar. Narrow ≤900px keeps its block flow (page scroll acceptable there)
-- **Footer (Q1)** `footer#citation` moves inside the reading pane's scroller, not a fixed strip
-- **Crumbs (—)** new `CRUMB_CHARS = 40` cut for crumbs only; walk, stepper, tab title keep 110. Chain gains a head: `🏠 / ~/repos/hyphae / ❖ <session> / …` — 🏠 links to the session list, the home-relativized project path to that project's filtered session list
-- **Sticky ancestors (—)** the open path's ancestor rows clamp at the top of the NavTree scroller, VS Code style, via CSS `position: sticky` with per-depth offsets below the sticky preset control. No depth cap
-- **Popover content (Q2)** the mock below; new-input's dollar = input + cache-write cost so columns sum; `over N api calls` only when N > 1. Per-dollar washes reuse the badge meter (log share of session whole)
-- **Popover position (Q3)** top aligns to the hovered row, left stays at the NavTree's right edge — plain JS (Firefox is the daily browser), repositioning on hover and on NavTree scroll
-- **Formatters (Q4)** per-tool, name-driven leads with the shape-driven title as fallback for unknown tools; table below. Reverses the docs/viewer.md "never name-driven" rule — rewrite it
-- **💭 (Q5)** any api-call row whose words are model speech gets 💭, including calls that also ran tools
-- **Run bars (Q6)** distinct hue from turns; a run whose thread compacted renders a full-width red bar — the "maxed its window" warning. `compactions` already keys by `source`, so "its thread compacted" is one predicate; what is missing is a fixture, cut below
-- **Turn bars (Q7, Q10)** three bands: base prompt (dim) / prior conversation (mid) / this turn's delta (bright). Base = the session's first main-thread api call's input-side tokens (cache read + new input); caveats accepted (first prompt rides along; resumed sessions inherit a fat base)
-- **Compaction (Q9)** the ⊟ row gets a bar: dim up to the post-compaction fill, **green** band from there to the pre-compaction fill — freed context is good. Turn deltas stay clamped at 0
-- **The ⊟ bar's window (—)** `compactions` records `pre_tokens` and `post_tokens` and no model, so the denominator comes from the thread: `context_window(model)` of the last non-synthetic api call of the same `session_id` and `source` at or before the boundary's timestamp, falling back to the first one after it. Same macro the api-call and turn rows already draw against (`analyze/macros.py`), so three levels of one bar cannot disagree. A thread with no api call, or a model the price table lacks, answers NULL — **and a NULL window is a bar the viewer does not draw**, which is the rule `view_nav_tree_calls.sql` already follows rather than a new degrade
-- **Dual cost badge (Q8, Q11)** `$own/$total` (each half its own wash) on any row whose subtree holds run cost: turns, runs, the session (`$main/$whole`), and the ⇄ Agent tool row, whose *own* is its invoking api call's cost with the popover naming that attribution ("the api call that spawned this run"). Parallel spawns each claim the full call cost — accepted; badges are a reading aid. Rows without subtree run cost keep a single number; non-Agent tool rows stay costless
-- **Nesting (Q12, Q13 + clarification)** ◎ runs move under their ⇄ Agent tool call, and one rule replaces the hoisting machinery: **a run is always visible, naturally nested under its nearest visible ancestor row.** Closed api call → run directly beneath it, no tool row; open the api call and the tool row appears with the run one level deeper. Closed turn in no-api-calls → runs dangle beneath it. Indent shifts on open are fine
-- **Run lead (—)** `[implementer]` replaces `implementer —`
-- **Scroll restore (—)** on load, a static JS file scrolls `[data-selected]` into view, `block: "center"` (CSP forbids inline)
-- **One title everywhere (—)** emoji leads flow to crumbs, pane heading, logs — the doctrine holds
-
-### Popover mock
-
-```
-model                claude-fable-5
-context used      60,384 / 200,000
-cache read          59,643  $0.0596
-new input              446  $0.0089
-output                 295  $0.0147
-──────────────────────────────────
-total added           +741  $0.0832
-over 3 api calls
-```
-
-### Formatter table
-
-Row shows `⇄ <below>`; unlisted tools keep today's `Name - <shape-driven title>`. All paths relativized.
-
-| Tool | Row reads | Source |
-|---|---|---|
-| Read | `📖 src/hyphae/view/nodes.py` | file_path |
-| Write | `✏️ docs/viewer.md` | file_path |
-| Edit | `📝 src/hyphae/view/nodes.py` | file_path |
-| Bash | `⚡ cd /Users/N…` | first line of `command` (not `description`) |
-| Agent | `👉 [implementer] Survey viewer facts` | subagent_type + `description` field |
-| Skill | `📕 writing` | skill, then args if present |
-| SendMessage | `📬 to auditor: Request the doc-sync report` | `to` looked up in the session's `agent_runs.id` → that run's `agent_type`; anything else printed as recorded, cut to the head width |
-| Grep | `🔎 pattern` | |
-| Glob | `🗂 pattern` | |
-| WebFetch | `🌐 url` | |
-| WebSearch | `🔍 query` | |
-| TodoWrite | `☑️ 3 todos` | item count |
+The constraint that decides the shape: **naming and formatting are display concerns and live in Python; SQL ships fields.** Record this convention in the AI guidance (see Slices).
 
 ## Call paths, current → proposed
 
-- **Titles.** Now: SQL macro `tool_title` (`src/hyphae/analyze/macros.py:107`) builds shape-driven words; `tool_node` (`src/hyphae/view/nodes.py:556`) sets `lead = name`. Proposed: the macro (or the nav-tree queries) additionally extracts the per-tool fields above; a Python formatter registry in `nodes.py` maps name → emoji lead + words, resolves SendMessage's `to` against `Corpus.runs` (already in memory per page, `browse.py:176`), and falls back to the shape-driven title. `run_node:489` emits `[type]`; `call_node:529` emits 💭 when words are speech
-- **NavTree.** Now: `_hoisted` (`src/hyphae/view/nav_tree.py:329-349`) splices runs beside their spawn call; `_tools_level:412` suppresses nesting; `CHILDREN:514-539` maps kind × preset. Proposed: hoisting deleted; `CHILDREN` gains the always-visible-run rule (runs render under their nearest visible ancestor in every preset); `(Kind.TOOL, FULL/NO_API)` nests the run like `_agent_tool:470` already does for AGENTS
-- **Bars.** Now: `view_nav_tree_turns.sql` returns `fill`/`added`; `Node.bar` (`nodes.py:400`) emits `fN tN`. Proposed: the query also returns the session base (first main api call, cache read + new input); `view_compactions.sql` returns each boundary's pre/post fill beside the window it drew in, joined off the thread's nearest call; `bar` emits a third band class; run rows a hue class plus red-full when their thread compacted; ⊟ rows a green freed band
-- **Badges.** Now: a node's `cost_usd` is its own thread only; tool rows carry none. Proposed: one subtree-cost rollup (runs attach to turns via spawn tool_use, to runs via `parent_agent_id`), computed once per page and read by badge and popover; `Node.meter` renders per half
-- **Layout.** Now: `#nav-tree` alone scrolls (`style.css:118`), the document scrolls the rest. Proposed: `#browser` fills the viewport under a fixed masthead; `#reading-pane` gets `overflow: auto` with the footer as its last child. The "scroller stays outside the swapped element" rule (`.claude/rules/viewer-ui.md`) still holds — `#nav-tree` scrolls, `#nav-tree-rows` swaps
+**Tool naming, current:** `view_nav_tree_calls.sql:26` / `view_call_header.sql:42` compute `min_by(tool_title(t.input, …))` → `builders.call_node` prints it verbatim; `view_turn_calls.sql:50` `string_agg(tool_title(…))` → calls-log column; `view_numbers_tool.sql:12` → popover siblings. Only `tool_node` (`builders.py:188`) consults `formatters.FORMATTERS`.
+
+**Proposed:** those queries drop `tool_title` and ship the same fields the `tool_fields` macro (`macros.py:147`) already defines (per-row, not aggregated). One Python entry point — `formatters.name_tool(fields) -> Formatted` — runs the registry and, when no formatter matches, the shape-driven fallback ported from the `tool_title` macro (`file_path` → `description` → head of raw JSON). Every surface (tool node, api-call title, calls log, popover siblings, errors list) calls it. `tool_title` and its helper macros are deleted once no query selects them.
+
+**Popover numbers, current:** `_nav_tree.html:65` `hx-get` → `fragments.py:33 counted` → `view_numbers.sql`, whose `$kind` CASE selects own-thread calls for runs/turns but *everything* for the session.
+
+**Proposed:** the session case becomes own-thread (`source = 'main'`) like every other kind; the query gains a subtree-spend aggregate (cost of runs hanging under the node, from the same run data `view_runs.sql` exposes). `view/numbers.py` adds the two lines when subtree spend > 0; `fragments/numbers.html` renders them per the mockup in questions.md Q3. Compaction rows join the popover mechanism: `Kind.COMPACTION` enters `NUMBERED` (`nodes.py:337`), a small fragment shows context before → after, freed, trigger (fields already in `view_compactions.sql`).
+
+**Detail rendering, current:** `node_pages.py:361-377` builds Arguments with no syntax (bare `<pre>`), Result with suffix syntax for `Read` only; the pretty JSON path exists only in `fragments/raw.html`.
+
+**Proposed:** one rule in `detail.py`/`node_pages.py`: Arguments always get `Syntax.JSON`; Result gets suffix syntax when known, else JSON-parse-then-plain (the highlighter's `_readable` already falls back for non-JSON). The pane preview and the fetch fragment share the same `parts.code` path.
 
 ## File-tree diff
 
 ```
 src/hyphae/view/
-  nodes.py                 formatters, 💭, [brackets], CRUMB_CHARS cut, dual meter, third band
-  nav_tree.py              hoisting out; always-visible-run rule; CHILDREN table
-  browse.py                subtree-cost rollup beside Corpus
-  fragments.py             popover layout data, attribution line
-  templates/node.html      crumb head (🏠, project), footer into reading pane, scripts block
-  templates/_nav_tree.html dual badge spans, band classes, sticky-ancestor hooks
-  templates/fragments/numbers*.html   new popover layout
-  static/style.css         viewport layout, sticky ancestors, bands, hues, washes
-  static/nav-tree.js       NEW: scroll-into-view + popover alignment (CSP-clean)
+  formatters.py        changed: name_tool() entry point; ported fallback; ToolSearch 🧰 (query), PushNotification 🔔 (message)
+  inline_markdown.py   added: render (inline subset, no block elements) + strip; both autoescape-safe
+  builders.py          changed: call_node / tool_node / bucket titles via name_tool; run rows carry compaction count
+  nodes.py             changed: COMPACTION into NUMBERED; nav_tree_title/crumb/pane cuts operate on plain text, render at print
+  numbers.py           changed: subagent-spend lines
+  node_pages.py        changed: Arguments/Result syntax rule; drop session Title/Project fact rows
 src/hyphae/analyze/
-  macros.py, queries/view_nav_tree_*.sql, view_numbers*.sql, view_runs.sql   per-tool fields, base, compaction fills, rollup inputs
-tests/fixtures/          parallel_tools (keep `to`, add addressed runs), compaction (add the calls around each boundary), NEW dir for the compacted run
-tests/view/               nav_trees.py cell table, meters, numbers, node tests; budgets re-measured
-docs/viewer.md            titles rule rewrite; badges, bars, nesting
-CONTEXT.md                Cost badge, Context bar, Crumb chain definitions
+  macros.py            changed: tool_fields gains `message`; tool_title/tool_path/tool_asked/tool_about deleted after migration
+  queries/view_*.sql   changed: nav_tree_calls, call_header, turn_calls, numbers_tool ship fields; view_numbers subtree spend + session own-thread; compaction numbers fragment query added
+templates/
+  fragments/numbers.html            changed: breakout lines
+  fragments/numbers_compaction.html added
+  _nav_tree.html / _parts.html      changed: compaction badge (red pill, "N compaction(s)"); title spans render inline markdown; quote-border class on prose details
+static/                             changed: badge + quote-border CSS
 ```
 
 ## Key contracts
 
-- `CRUMB_CHARS = 40` beside the other cuts in `analyze/queries.py`
-- Formatter registry: `dict[str, Formatter]` where a `Formatter` gets the tool's extracted fields (+ `Corpus.runs` for SendMessage) and returns `(lead, words)`; missing name → today's path untouched
-- SendMessage's `to` is **one lookup and one fallback**. The recorded field holds two populations: an opaque run id (`a1cdace9d02e123ce`) and a teammate name already fit to print (`architect`, `team-lead`, `main`). An id in `Corpus.runs` prints its `agent_type`; everything else prints `to` as recorded. A second arm matching `to` against `agent_type` would return the same word the fallback already prints, so there isn't one
-- The ⊟ bar's denominator: `{'pre': …, 'post': …, 'window': …}` off `view_compactions.sql`, `window` from the thread's nearest non-synthetic api call by timestamp. NULL window → no bar, no invented scale
-- Subtree cost: one function, `node → (own_usd, total_usd)`, `total ≥ own`, computed from store rows already on the page; the Agent tool row's `own` is its invoking api call's `cost_usd`
-- Bar classes stay pure CSS hooks (`fN tN` + new base/hue/freed classes) — no inline styles (CSP)
-- `bounds.NAV_TREE_ROW_BYTES` (1870, no slack) and the byte budgets in `tests/view/budgets.py` are re-measured, not loosened blindly
+- `formatters.name_tool(fields: Mapping) -> Formatted(mark, words)` — the only place a tool call is named; input is the `tool_fields` column set
+- `inline_markdown.render(text) -> Markup` and `inline_markdown.strip(text) -> str` — bold/italic/code/links only, no block elements; links become `<a>` only where the surface is not already inside a link (reading-pane `<h1>`; NavTree rows, crumbs, walk, stepper render link text styled but not clickable); `<title>` and attributes use `strip`
+- `view_numbers.sql` output gains `subtree_cost_usd`; base lines mean own-thread for every kind including session
+- Width cuts (`Node.nav_tree_title` etc.) measure the *plain* text so markdown syntax never eats the budget
 
-## Test seam
+## Chosen test seam
 
-Unchanged: served-HTML assertions through `TestClient` over redacted fixtures, values read from `data-` attributes; `tests/view/nav_trees.py` holds the expected kind × preset table. Visual-only changes (sticky clamp, bands, popover alignment) get their class/structure asserted in HTML and their look checked on `mise run gallery`.
-
-Three behaviours reach past what the corpus records, so slice 0 cuts their evidence first. Every count below was read off the local store on 2026-08-27; the implementer re-runs the query rather than trusting the number.
-
-- **`tests/fixtures/parallel_tools` — keep `to`.** Its three `SendMessage` calls address two runs — `general-purpose` and `auditor`, by id — but the README's tightening blanks every string under `input`, so the served page can only prove the fallback. Loosen that rule to keep `to`, and add each addressed run's opening records and `meta.json` so the id has a row to resolve against. **The sensitivity call, stated in the README:** a run id is an opaque token Claude Code minted for one session — no path, no prompt, no credential, and meaningless outside a transcript the store already keeps whole; an `agent_type` is a role word out of the repo's own `.claude/agents/`. `summary`, `message` and every other string under `input` stay redacted, because those are prose an agent wrote
-- **`tests/fixtures/compaction` — add the calls around each boundary.** Four records today and zero api calls, so its session names no model and the bar has no denominator. Re-cut from the same recording (`1de7cf38-…jsonl`, CC 2.1.198, still on disk) to add the last assistant record before each `compact_boundary` and the first after — proving the nearest-prior-call rule and the rebuild in the same excerpt. That session answered on several models, which is why the window is a per-thread lookup and not a session average
-- **A run whose own thread compacted.** No excerpt has one; the store holds 1,124 (`SELECT count(*) FROM compactions WHERE source <> 'main'`). Cut it from `compaction/`'s own session: run `a003de2a5c1985f71`, agent_type `general-purpose`, one `auto` boundary at 240,349 → 16,918, with the priced call either side. A run of a session already in the corpus rather than the smaller `6eea741c-…` this design first named, because that session sits outside the fixture corpus's 28-day span: adding it moves the window every analyze constant is measured against, for evidence a subagent file in an existing directory carries just as well. Keying by file stem (`tests/conftest.py:build_store`) is no obstacle — a subagent transcript lands under its session's directory, not beside it
-
-Every model in `CONTEXT_WINDOWS` is 200,000 today, so no served value can tell the per-thread window apart from a session-wide one. The rule is chosen for meaning; what the tests can hold is the arithmetic against 200,000 and the no-bar degrade.
+Python-tier page tests over recorded fixtures (`tests/view/`, gallery scenarios in `tests/view/scenarios.py`), asserting `data-field` contents — the existing seam. Bounds tests (`tests/view/test_bounds__node.py`) re-measure `NAV_TREE_ROW_BYTES` after the badge and markdown spans. The browser tier (`mise run e2e`) covers popover fetch behavior.
 
 ## Slices
 
-Each lands green on `mise run check`; named tests are the proof.
+1. **Naming core** — `name_tool()` with ported fallback; `view_nav_tree_calls` / `view_call_header` ship fields; api-call titles get emoji. Verify: existing title tests + a new assertion that an api-call NavTree row shows the tool glyph
+2. **Naming everywhere** — calls log and popover siblings through `name_tool`; delete `tool_title` macros; add ToolSearch + PushNotification (add `message` to `tool_fields`). Verify: calls-log and sibling assertions on a fixture containing both tools
+3. **Inline markdown** — module + wiring into title surfaces and `<title>` strip; links clickable in `<h1>` only. Verify: fixture with `**bold**` and a link in an enrichment description
+4. **Popover breakout** — session own-thread semantics + subtree spend lines. Verify: numbers-fragment test on a fixture with subagents; zero-subagent node shows no breakout
+5. **Compactions** — run-row red badge (count already in `view_runs.sql:32`) + compaction popover. Verify: fragment test + bounds re-measure
+6. **Reading pane** — Arguments/Result JSON rule, quote borders on prompt/brief/said/thought/run result, drop session Title/Project facts, keep Task brief. Verify: tool-page and run-page template tests
+7. **Docs** — the display-vs-retrieval convention in the AI guidance (likely `docs/ui-development.md` + a line in `CLAUDE.md`'s pointer chain); CONTEXT.md terms for any coined name (e.g. *compaction badge*); `docs/viewer.md` popover paragraph; `doc-sync` before the PR
 
-0. **Fixture cuts.** The three excerpts under §Test seam, redacted and committed before any query reads them. Proof: `mise run check` green on the re-cut corpus, and one store query per cut — a `SendMessage` row whose `input.to` equals an `agent_runs.id` of its session, a `compactions` row whose thread holds a priced api call, and a row where `source <> 'main'`
-1. **Layout + footer.** Viewport-filling panes, footer moved. Proof: existing scroller-position test still passes; gallery pages show no document scrollbar
-2. **Nesting rework.** Hoisting out, always-visible runs, `[brackets]`. Proof: `test_nav_tree*` against the updated `cell` table
-3. **Formatters + 💭 + crumb head + 40-char cut.** Proof: row/crumb title assertions per tool in `test_nav_tree__rows` / `test_node`
-4. **Cost rollup + dual badges.** Proof: `test_nav_tree__meters` on both halves' classes and values
-5. **Bars: three bands, run hue, red-full, green ⊟.** Proof: meter/band class assertions; compaction fixture
-6. **Popover: content, washes, JS alignment + scroll-into-view.** Proof: `test_numbers`; alignment eyeballed in gallery
-7. **Docs + budgets.** viewer.md rewrite, CONTEXT.md terms, budget re-measure. Proof: `mise run check` freshness and bounds tests
+## Decisions
+
+- **Python owns naming; SQL ships fields** — rejected porting emoji into the SQL macro (string-building misery) and patching only the two call queries (leaves three naming systems)
+- **Inline markdown everywhere visible, links clickable only outside existing links** — rejected reading-pane-only (NavTree is where labels are read) and strip-everywhere (loses the formatting asked for)
+- **Popover base lines are own-thread for every kind, session included** — rejected keeping the session inclusive (perpetuates the inconsistency); the total-spend line is what matches the session-list cost column
+- **Compaction badge on run rows only** — rejected turn/session badges: main-thread compactions are already visible as interleaved ⊟ nodes
+- **Full compaction popover, not a `title` attribute** — consistency with every other row
+- **Quote border on prose only** — tool payloads keep code styling; rejected bordering all details (border would mean "any detail")
+- **Keep Task brief** (reverses the original ask) — enriched runs title themselves from the enrichment description, so the brief is not a duplicate
 
 ## Out of scope
 
-- Reading-pane bodies, logs, details — untouched
-- Popovers for ⊟ and bucket rows — still absent
-- A sticky-ancestor depth cap — deferred until deep sessions demand one
-- Preventing subagent auto-compaction — the red bar only surfaces it
-- Touch/mobile beyond the existing ≤900px block layout
+- Per-turn compaction counts and badges (no query exists; the tree already shows main-thread compactions)
+- Markdown in detail *values* beyond what already renders as prose
+- Any change to the cost badge or context bar
+- Redacting or changing what the store keeps
 
 ## Open questions
 
-- The session list's project-filter URL parameter for the project crumb — read it off the filter form at implementation
-- Hue tokens (run bar, green freed band, red full) need dark-mode variants — pick at implementation
+- **Verify `ToolSearch.query` and `PushNotification.message` against a recorded session** before wiring the formatters — the schema-trap rule (`docs/schema.md`): confirm the argument field names in a real transcript in the store, and record the confirming session on the record model if a new field is declared
+- Exact home for the display-vs-retrieval convention note — settle during slice 7 with `docs/documentation.md` in hand
