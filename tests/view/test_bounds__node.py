@@ -50,7 +50,10 @@ PRICED_ROWS = {
     # from the chrome because it renders only where the level runs past one page, so a page
     # that happens to hold every child of its node would otherwise weigh it at nothing.
     "pager": r'<nav class="pager".*?</nav>',
-    "detail": r'<section class="detail".*?</section>',
+    # The class carries the wall a quoted value wears as well as the name of the part, so the
+    # match reads the whole attribute: a pattern pinned to `detail"` would stop pricing a prose
+    # preview the moment one was walled.
+    "detail": r'<section class="detail[^"]*".*?</section>',
 }
 
 

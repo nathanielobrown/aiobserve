@@ -3,9 +3,10 @@
 
    It replaces the whole section the pane previewed it in, so it arrives as one: the name the
    pane filed the value under is what the styling reads, and the value itself goes through the
-   macro the pane's own preview goes through. #}
+   macro the pane's own preview goes through. Walled the same way too — every value this route
+   serves is prose, which is what the preview it swaps out was quoted for. #}
 {% import "_parts.html" as parts %}
-<div class="value detail"
+<div class="value detail quoted"
      data-detail="{{ detail }}"
      data-value="{{ (row.value or '') | length }}"
      data-query="{{ citation }}">{{ parts.prose(detail, row.value) }}</div>
