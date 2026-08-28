@@ -15,9 +15,10 @@ declare global {
   }
 }
 
-// What a fetch this tier drives goes to. Scoped rather than every response, because a browser
-// asks for `/favicon.ico` on its own and that 404 is the server having nothing to say.
-const FRAGMENT = "/fragment/";
+// The header htmx puts on every fetch it makes. Scoped to that rather than every response,
+// because a browser asks for `/favicon.ico` on its own and that 404 is the server having nothing
+// to say — and to that rather than to `/fragment/`, because a pane swap fetches a page URL.
+const HTMX_REQUEST = "hx-request";
 
 export async function watch(page: Page): Promise<string[]> {
   const problems: string[] = [];
@@ -32,8 +33,8 @@ export async function watch(page: Page): Promise<string[]> {
   // Every htmx fetch a spec sets off, held to 200: a swap that lands the right markup in the
   // right place after a 404 is a swap of an error page.
   page.on("response", (response) => {
-    if (response.url().includes(FRAGMENT) && response.status() !== 200) {
-      problems.push(`fragment ${response.status()}: ${response.url()}`);
+    if (response.request().headers()[HTMX_REQUEST] && response.status() !== 200) {
+      problems.push(`htmx ${response.status()}: ${response.url()}`);
     }
   });
   // What the CSP refused, which the browser reports to the document rather than over the
