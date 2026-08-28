@@ -1,14 +1,17 @@
-"""A popover's dollars: what the node's own calls were charged, at the ground they are drawn on.
+"""A popover's dollars: what the node's own calls were charged, and what the runs under it spent.
 
 The other half of `test_numbers.py`, reading the same fetched fragment through the same
-helpers. A dollar is a derivation where a count is a column: it is priced from tokens a model
-at a time, summed, and then washed against what the whole session spent — so a leaf here is
-mostly one derivation put beside another.
+helpers. A dollar is priced from tokens and then summed twice — once over the node's own
+calls, once over every thread hanging below it — and that second sum is drawn a second time by
+the NavTree's dual badge, so most of what these leaves do is put two derivations beside each
+other. Where nothing hangs below a node the two breakout lines are not drawn at all, and the
+absence is pinned here as well.
 """
 
 import duckdb
 from fastapi.testclient import TestClient
 
+from hyphae.view.format import ABSENT
 from hyphae.view.nodes import Kind, meter
 from tests.conftest import (
     DENSE_TOOL,
@@ -16,12 +19,149 @@ from tests.conftest import (
     FORK_ORIGIN_RUN,
     INVENTED_PROJECT_SESSION,
     MAIN,
+    MODEL_ONLY,
     NO_TTL_SPLIT_CALL,
     SPINE,
+    SPINE_LEAF,
     SPINE_RUN,
 )
-from tests.view.conftest import fields, one, values, washes
+from tests.view.conftest import SPAWNS, badges, fields, money, one, pages, values, washes
 from tests.view.test_numbers import CHARGES, amount, charged, misread, popover, popped
+
+# The fields of the breakout, which only a node with agent runs below it draws: the two lines
+# and the share printed on the first of them.
+BREAKOUT = frozenset({"subagent_share", "cost_subagents", "cost_total"})
+
+
+def test_a_nodes_total_spend_is_the_number_its_own_navtree_badge_already_draws(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """One rollup, two queries: the badge sums it in Python and the popover sums it in SQL.
+
+    A dual badge is summed over `view_runs`'s rows as a page is built (`view/nodes.py:ledger`);
+    the popover's total spend is summed inside `view_numbers` when a reader points at the row.
+    Both answer what this node and everything under it cost, and nothing but a comparison
+    catches the day they stop agreeing.
+
+    On `spine`, where both edges the rollup walks exist: the session gathers every run, and the
+    turn that asked for the outer run gathers it and the run that one asked for in turn. Which
+    turn that is comes from the shared spawn join rather than from a pinned id.
+    """
+    hung = {
+        turn_id
+        for _, source, turn_id, _ in store.execute(SPAWNS, [SPINE]).fetchall()
+        if source == MAIN and turn_id is not None
+    }
+    assert hung, "no run of the spine hangs on a turn of its main thread"
+    page = client.get(f"/session/{SPINE}").text
+    read = {f"{Kind.SESSION}:{SPINE}": f"/session/{SPINE}"} | {
+        f"{Kind.TURN}:{turn_id}": f"/session/{SPINE}/thread/{MAIN}/turn/{turn_id}"
+        for turn_id in hung
+    }
+    for key, path in read.items():
+        printed = popover(client, path, key)
+        # Compared as the badge prints it: the popover carries four places and the badge two,
+        # and the badge's is the figure a reader actually reads off the row.
+        assert money(amount(printed["cost_total"])) == badges(page, key)["total_usd"].shown, key
+
+
+def test_a_node_with_no_runs_under_it_breaks_nothing_out(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The breakout is drawn where there is something to break out, and nowhere else.
+
+    A subagent line of nothing and a total repeating the figure above it are two ways of saying
+    what the node already said — and a reader who meets them on every row stops reading them.
+    Three shapes of nothing: a run that ended the chain, an api call that asked for no run, and
+    a turn of a session that spent nothing at all.
+    """
+    # An api call of the spine that spawned no run: the tool calls under it asked for none.
+    quiet_call, quiet_source = one(
+        store,
+        "SELECT c.id, c.source FROM live_api_calls c"
+        " WHERE c.session_id = ? AND c.id NOT IN ("
+        "   SELECT tc.api_call_id FROM live_tool_calls tc"
+        "   JOIN live_agent_runs a ON a.session_id = tc.session_id AND a.tool_use_id = tc.id"
+        "   WHERE tc.session_id = ?)"
+        ' ORDER BY c.source, c."index" LIMIT 1',
+        [SPINE, SPINE],
+    )
+    quiet_turn = one(store, "SELECT id FROM live_turns WHERE session_id = ? LIMIT 1", [MODEL_ONLY])[
+        0
+    ]
+    for path, key in (
+        (f"/session/{SPINE}/run/{SPINE_LEAF}", f"{Kind.RUN}:{SPINE_LEAF}"),
+        (
+            f"/session/{SPINE}/thread/{quiet_source}/call/{quiet_call}",
+            f"{Kind.CALL}:{quiet_call}",
+        ),
+        (
+            f"/session/{MODEL_ONLY}/thread/{MAIN}/turn/{quiet_turn}",
+            f"{Kind.TURN}:{quiet_turn}",
+        ),
+    ):
+        # By the names the fields carry rather than by a string search: a template that always
+        # rendered the lines and left them empty would pass any reading of the text.
+        assert not BREAKOUT & popover(client, path, key).keys(), path
+    # And the absence is worth something only because the same corpus draws the lines: the
+    # session those three nodes sit in has runs under it, and its own popover carries all three.
+    assert popover(client, f"/session/{SPINE}", f"{Kind.SESSION}:{SPINE}").keys() >= BREAKOUT
+
+
+def test_own_and_subagent_spend_come_to_the_total_wherever_the_breakout_is_drawn(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The one arithmetic a reader does in their head, over every node that offers it.
+
+    Two of the three numbers are read out of different sets of calls — the node's own thread,
+    and every thread hanging below it — so a run counted in neither, or in both, shows up here
+    and nowhere else. To the cent, which is the precision the badge beside them prints at.
+
+    Swept over every popover route the corpus reaches, narrowed to the sessions that recorded
+    an agent run: a session with none has nothing to break out, and a sweep over it would
+    measure the skip.
+    """
+    spawned = {
+        session_id
+        for (session_id,) in store.execute(
+            "SELECT DISTINCT session_id FROM live_agent_runs"
+        ).fetchall()
+    }
+    drawn = 0
+    for path, key in _numbered(pages(store)):
+        if path.split("/")[2] not in spawned:
+            continue
+        printed = popover(client, path, key)
+        if not BREAKOUT & printed.keys():
+            continue
+        drawn += 1
+        # A node whose own calls our price table could not price still gathers what the runs
+        # below it spent: its own half is the dash, and nothing, and the total is theirs.
+        own = 0.0 if printed["cost_usd"] == ABSENT else amount(printed["cost_usd"])
+        assert round(own + amount(printed["cost_subagents"]), 2) == round(
+            amount(printed["cost_total"]), 2
+        ), path
+    assert drawn, "no node of the corpus draws the breakout"
+
+
+def _numbered(urls: list[str]) -> list[tuple[str, str]]:
+    """Every node URL whose popover `view_numbers` answers, beside the key it answers under.
+
+    A tool call is left out because a fragment of its own answers for it, and a compaction
+    because no row fetches numbers for one. Both are the routes `fragments.py` binds, read off
+    the same list of pages the rest of the sweeps walk (`tests/view/conftest.py:pages`).
+    """
+    read: list[tuple[str, str]] = []
+    for url in urls:
+        parts = url.strip("/").split("/")
+        match parts:
+            case ["session", session_id]:
+                read.append((url, f"{Kind.SESSION}:{session_id}"))
+            case ["session", _, "run", run_id]:
+                read.append((url, f"{Kind.RUN}:{run_id}"))
+            case ["session", _, "thread", _, ("turn" | "call") as kind, node_id]:
+                read.append((url, f"{kind}:{node_id}"))
+    return read
 
 
 def test_every_dollar_in_a_popover_is_washed_at_its_share_of_what_the_session_spent(
@@ -39,7 +179,10 @@ def test_every_dollar_in_a_popover_is_washed_at_its_share_of_what_the_session_sp
     served = popped(client, f"/session/{SPINE}")
     printed = fields(served, "data-popover", key)
     drawn = washes(served, "data-popover", key)
-    for name in (*CHARGES, "cost_usd"):
+    # The two breakout dollars beside the four: `spine` ran subagents, so its session popover
+    # draws them, and a line washed at a share of anything narrower would deepen as a reader
+    # walked down the tree.
+    for name in (*CHARGES, "cost_usd", "cost_subagents", "cost_total"):
         assert drawn[name].split() == ["badge", meter(amount(printed[name]) / whole)], name
 
 

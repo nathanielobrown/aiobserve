@@ -9,12 +9,14 @@
 --
 -- `$source` is the thread the node's window stands on: `main` for a session, whose reader is
 -- reading the main thread; the run's own id for a run; the node's own thread otherwise. It is
--- also what picks the calls out, for every kind but a session, which spends on every thread it spawned.
+-- also what picks the calls out, for every kind alike — a session included. What the threads it
+-- spawned cost is `subtree_usd` below, which the popover prints as its own line rather than
+-- summing into the three a turn spends on its own calls (`view/numbers.py`).
 --
 -- Synthetic replies are out of the window numbers for the reason `view_nav_tree_turns` states —
 -- Claude Code's own placeholders report no tokens at all (`docs/schema.md`) — and in the
 -- spend, where our table prices them at nothing.
-WITH calls AS (
+WITH RECURSIVE calls AS (
     -- The calls this node is, and the per-call numbers everything below reads. The model is
     -- cut here and looked up here, so no row past this one carries the column whole — and it
     -- is renamed as it is cut, because the payload scan that holds the bound reads query text
@@ -38,11 +40,14 @@ WITH calls AS (
         c.cost_usd
     FROM live_api_calls c
     WHERE c.session_id = $session_id
+      AND c.source = $source
       AND CASE $kind
+            -- A session and a run are each the whole of the thread `$source` names: the main
+            -- thread for one, its own for the other.
             WHEN 'session' THEN true
-            WHEN 'run' THEN c.source = $source
-            WHEN 'turn' THEN c.source = $source AND c.turn_id = $node_id
-            WHEN 'call' THEN c.source = $source AND c.id = $node_id
+            WHEN 'run' THEN true
+            WHEN 'turn' THEN c.turn_id = $node_id
+            WHEN 'call' THEN c.id = $node_id
             ELSE error('view_numbers: no such node kind: ' || $kind)
           END
 ), held AS (
@@ -58,7 +63,7 @@ WITH calls AS (
         max_by(s.input_tokens + s.cache_creation_tokens, s."index") AS new_input_tokens,
         max_by(s.output_tokens, s."index") AS output_tokens
     FROM calls s
-    WHERE NOT s.synthetic AND s.source = $source
+    WHERE NOT s.synthetic
 ), ends AS (
     -- Where every turn of this thread left the window, so a turn can be measured against the
     -- one before it. Un-clamped, unlike the NavTree's: a compaction inside a turn leaves the
@@ -91,6 +96,47 @@ WITH calls AS (
         sum(coalesce(s.cache_1h_tokens, 0)) AS cache_1h_tokens
     FROM calls s
     GROUP BY s.model_name
+), runs AS (
+    -- Every agent run of the session, what its own thread spent, and the node it hangs under.
+    -- The spawn join is `view_runs`'s, restated here for the same reason `enrich/store.py`
+    -- restates it: this query answers one node and that one answers a page of rows, and a
+    -- popover that reached through the other would deny the row it opened from on its own
+    -- schedule. `above` is what the NavTree's ledger climbs (`view/nodes.py:ledger`) — the
+    -- parent the transcript names where the session holds it, else the thread the spawning
+    -- call was made from, which is a run's id wherever it is not the main one.
+    SELECT
+        a.id,
+        CASE WHEN a.parent_agent_id IN
+                (SELECT p.id FROM live_agent_runs p WHERE p.session_id = a.session_id)
+             THEN a.parent_agent_id ELSE c.source END AS above,
+        c.source AS spawn_source,
+        c.id AS spawn_call_id,
+        st.id AS spawn_turn_id,
+        (SELECT coalesce(round(sum(k.cost_usd), 4), 0) FROM live_api_calls k
+            WHERE k.session_id = a.session_id AND k.source = a.id) AS cost_usd
+    FROM live_agent_runs a
+    LEFT JOIN live_tool_calls tc
+        ON tc.session_id = a.session_id AND tc.id = a.tool_use_id AND tc.source <> a.id
+    LEFT JOIN live_api_calls c
+        ON c.session_id = a.session_id AND c.source = tc.source AND c.id = tc.api_call_id
+    LEFT JOIN live_turns st
+        ON st.session_id = c.session_id AND st.source = c.source AND st.id = c.turn_id
+    WHERE a.session_id = $session_id
+), under AS (
+    -- The runs hanging below this node: the ones it asked for, then the ones those asked for,
+    -- all the way down. `UNION` and not `UNION ALL` is the cycle guard — a transcript naming a
+    -- parent that names it back stops producing new rows rather than recursing forever.
+    -- A session gathers every run in it, placed or not: a run whose spawning call resolved to
+    -- nothing still ran, and the session still paid for it.
+    SELECT r.id, r.cost_usd FROM runs r
+    WHERE CASE $kind
+            WHEN 'session' THEN true
+            WHEN 'run' THEN r.above = $node_id
+            WHEN 'turn' THEN r.spawn_source = $source AND r.spawn_turn_id = $node_id
+            WHEN 'call' THEN r.spawn_source = $source AND r.spawn_call_id = $node_id
+          END
+    UNION
+    SELECT r.id, r.cost_usd FROM runs r JOIN under u ON r.above = u.id
 )
 SELECT
     held.model_name AS model,
@@ -110,6 +156,11 @@ SELECT
         WHEN 'call' THEN held.added
     END AS added,
     (SELECT round(sum(s.cost_usd), 4) FROM calls s) AS cost_usd,
+    -- What the runs below this node spent, which the popover prints under the node's own and
+    -- adds to it. Zero where nothing hangs there, and the popover then prints neither line:
+    -- a subagent charge of nothing and a total repeating the figure above it are two ways of
+    -- saying what the node already said.
+    (SELECT round(coalesce(sum(u.cost_usd), 0), 4) FROM under u) AS subtree_usd,
     -- What the whole session spent, which every dollar here is washed against: the popover
     -- draws the same ground the badge on the row does, and a share of anything narrower would
     -- deepen as a reader walked down the tree (`view/nodes.py:meter`).

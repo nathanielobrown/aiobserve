@@ -88,6 +88,9 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 # (`view/numbers.py`), and the total under them takes the same ground.
                 "charges": numbers.charges(rows[0], numbers.spend(rows[0]["spent"]), whole),
                 "total_wash": numbers.wash(rows[0]["cost_usd"], whole),
+                # And the two lines under them, where agent runs hang below this node: None
+                # where none does, which is what keeps the breakout off every other row.
+                "breakout": numbers.breakout(rows[0]["cost_usd"], rows[0]["subtree_usd"], whole),
                 "citation": queries.citation(Fragment.NUMBERS, bound),
             },
         )

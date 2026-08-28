@@ -58,6 +58,33 @@
         {{ row.cost_usd | charge }}
       </dd>
     </div>
+    {# What the agent runs below this node spent, and the two together. Drawn only where runs
+       hang there: on every other row the first line would be nothing and the second would
+       repeat the one above it (`view/numbers.py`). The share is the subagents' of the total,
+       printed where a charge line prints its tokens — it is what a reader is after, and a
+       token count for threads they are not reading is not. #}
+    {%- if breakout %}
+      <div class="sum">
+        <dt>subagent spend</dt>
+        <dd data-field="subagent_share">
+          {{ breakout.subagents | share(breakout.total) }}
+        </dd>
+        <dd class="badge {{ breakout.subagents_wash }}"
+            data-field="cost_subagents">
+          {{ breakout.subagents | charge }}
+        </dd>
+      </div>
+      <div class="sum">
+        <dt>total spend</dt>
+        {# Empty, and still drawn: the middle column is where the rule over a sum runs, and a
+           cell left out would break it. There is no share to print — the total is the whole. #}
+        <dd>
+        </dd>
+        <dd class="badge {{ breakout.total_wash }}" data-field="cost_total">
+          {{ breakout.total | charge }}
+        </dd>
+      </div>
+    {%- endif %}
   </dl>
   {# How many calls the dollars cover, where they cover more than the counts above do. Absent at
      one call, which is every api-call row: `over 1 api call` says nothing a reader asked. #}
