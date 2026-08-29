@@ -1,0 +1,137 @@
+# Design: convert the viewer from Jinja to htpy
+
+One PR converts `src/hyphae/view/` from Jinja templates to [htpy](https://htpy.dev) components. The two goals that drive every choice below: **type safety** (pyrefly checks what a template never could) and **composability** (the macro layer becomes typed Python functions that compose). Facts here were verified against the repo on 2026-08-29 and against htpy 26.5.1 in a scratch install; treat file:line references as the source of truth at implementation time.
+
+## Problem
+
+The viewer's render layer is 23 Jinja templates (1,416 lines) that pyrefly cannot see: a misspelled field renders empty, a component's inputs are an untyped context dict of ~24 keys (`browse.py:249`), and reuse runs through 5 macro libraries with string-dispatch (`_node_body.html`, `_logs.html`). htpy makes each component a typed Python function — the same checker that owns the view-models owns the markup — and makes composition ordinary function calls. The constraint that shapes the design: emitted bytes are a pinned numeric contract (`tests/view/budgets.py`, `bounds.py`), and escaping is a security contract over private transcripts.
+
+## Call paths, current → proposed
+
+Current: route (`browse.py:148`, `listing.py`, `pages.py`, `fragments.py`, `expansions.py`) → builds context dict → `viewer.templates.TemplateResponse(request, name, ctx)` (14 sites, handoff §1) → Jinja env (`templating.py:29`) with 17 filters + 8 globals → HTML.
+
+Proposed: route → builds **typed view-models** (mostly the ones that already exist: `nodes.Node`, `Detail`, `Pager`, `PresetChoice`, plus new per-kind row types) → calls a component function in `view/components/` → `HTMLResponse(str(element))` via one helper. No Jinja env, no filter/global registry, no `Request` anywhere past the route body. `Viewer` (`templating.py:165`) becomes `Viewer(db: Path, dev: bool)`; its `error()` renders `components.pages.error_page(status, message)` with no `request` argument.
+
+The two genuine `request.query_params` reads stay in their routes and cross the seam as plain data: `pages.py:92` passes `bindings: dict[str, str]`, `listing.py:333/336` already reduces to `filters`/`given` before rendering. `knobs.py` keeps its `HTTPException` — it is request validation, not rendering, and correctly lives framework-side.
+
+## File-tree diff
+
+```
+src/hyphae/view/
+  templates/            deleted (all 23 files)
+  templating.py         deleted
+  viewer.py             new — Viewer(db, dev), error(), html(element) -> HTMLResponse
+  cuts.py               new — line/head/short/item/member/ago/project_path as module functions
+  components/           new package (framework-free by construction; pinned by test)
+    layout.py           ex base.html: page(*, tab_title, scripts, main, footer, dev)
+    parts.py            ex _parts.html — stacked, unpriced, badge, mark, glyph, counted,
+                        more, tags, summary, enrichment_line, prose, code, fact, detail
+    node_body.py        ex _node_body.html — body(node, row, suffix) + per-kind functions
+    logs.py             ex _logs.html — log(...), cell, what, opener
+    nav_tree.py         ex _nav_tree.html — presets, lines; PANE_SWAP attrs defined once
+    citation.py         ex _citation.html
+    node_page.py        ex node.html
+    listing.py          ex projects.html + sessions.html (its local heading/pager macros)
+    pages.py            ex records/query/offload/errors/error.html
+    fragments.py        ex fragments/*.html (body, kin, numbers ×3, record, value, raw,
+                        enrichment_line)
+tests/gallery/index.html  deleted — becomes a component beside serve.py, calling layout.page
+pyproject.toml          - jinja2, - djlint pin, - [tool.djlint]; + htpy, + markupsafe
+                        (markupsafe is imported directly by render.py and today rides in on
+                        jinja2 — declare it)
+mise.toml               - format-html, - format-html-check (and their check/check-fast edges)
+.vscode/settings.json   - the djLint block (nothing formats .html because none remain tracked)
+```
+
+Changed (the rewires, so no import goes stale mid-branch): `app.py` and the five route modules plus `browse.py`/`node_pages.py` import `Viewer` from `templating.py` today — slice 1 re-points all seven at `view/viewer.py`; `view/dev.py:23` imports `TEMPLATES` from `templating.py` and defaults `watch_paths=(TEMPLATES, STATIC)` — slice 6 rewrites it (STATIC-only watch), which is what lets slice 7 delete `templating.py` cleanly; the `hp view` CLI path and `app.py:serve` change for the reload launch (slice 6); `tests/gallery/serve.py` gains the app factory (slice 6).
+
+## Key contracts
+
+**Component.** A plain function, keyword-only args, returning `htpy.Renderable`, every parameter precisely typed. The machine-checkable floor: keyword-only signatures and a type denylist — no `Any`, `Row`, `Request`, `Response`, or bare `dict` parameter — enforced by an AST scan over `components/` signatures. "Precisely" beyond that floor (`Kind` where a `str` would typecheck) is a review obligation written into `viewer-ui.md`, because pyrefly cannot know which string is a kind. Two enforcement tests replace source-scraping: (1) a **subprocess** probe — `python -c "import hyphae.view.components, sys; assert 'fastapi' not in sys.modules and 'starlette' not in sys.modules"` — because in-process the suite's conftest has already imported `fastapi` before any test runs, making a `sys.modules` assert vacuous; (2) `Markup(` appears nowhere in `components/` source — components consume `Markup`, never construct it.
+
+**Typed rows.** Today raw DuckDB `Row`s reach templates (`browse.py:46 LogRow.row`, the per-kind fact lists in `_node_body.html`). Each per-kind body and each per-shape log row gets a `NamedTuple` in its component's module (e.g. `SessionFacts`, `TurnLogRow`), built by the existing `Reader`/builder at the route side. This is where the type-safety goal is cashed: the fields a body prints are checked names, and a query column rename fails at construction, not as a blank `<dd>`. `numbers.py`, `detail.py`, `knobs.py`, `nodes.py` already hand over typed values and pass through unchanged.
+
+**Dispatch.** `_node_body.html`'s string-elif becomes `match node.kind` over `nodes.Kind` with `assert_never` — exhaustiveness moves from a rendering convention ("a kind with no arm renders a heading and nothing") to a type error. Same for `_logs.html`'s shape branches over `columns.Shape`.
+
+**Composability wins** (name them so the reviewer can check the goal landed): the six pane-swap htmx attributes, today written in three places (`node.html:29-34`, the walk nav, `_logs.html:what` per row), become one `PANE_SWAP: dict[str, str]` spread into elements (htpy accepts dict attrs) — and the two other swap vocabularies get named dicts of their own (the tail-row button's unset-overrides, `_nav_tree.html:35-41`, and the popover trigger's overrides); the three `numbers_*.html` popover shells become one `popover(key, citation)` wrapper; the citations list duplicated between `_citation.html` and `fragments/body.html` becomes one function; `sessions.html`'s local macros join `components/listing.py`.
+
+**Filters and globals.** The registry (`templating.py:111-160`) dissolves into imports. The 9 pass-through filters are already functions on `fmt`/`render`/`highlight`. The 7 closures move to `view/cuts.py` as module functions — they were closures only because Jinja registers once at env build; a module function that calls `fmt.utcnow()`/`fmt.home()` *per call* keeps the per-render read, so the gallery's `fmt.utcnow` freeze (`tests/gallery/serve.py:78`) still lands — though under dev reload the freeze must run inside the app factory (see the dev-loop section). The 8 globals become imports; `DEV` becomes `layout.page(dev=...)`, threaded from `viewer.dev` — the one place `base.html` read it. The dev-script-tag line must keep a prod page byte-identical to a dev page minus that line (`tests/view/test_dev.py` reads both at once).
+
+**Escaping.** htpy escapes every `str` child and every attribute value — attributes are escaped *even when wrapped in `Markup`* (verified in the scratch install). `Markup` is honored only as a child. New contract statement for `viewer-ui.md`: *htpy escapes everything; `Markup` is the only opt-out, is honored only in element children, and is produced only by `render.py`, `highlight.py`, `inline_markdown.py`, and `nodes.Node`'s title properties — no component may construct one.* The existing producers interoperate as-is: pass their `Markup` straight in as children. The attribute position is where htpy's behavior inverts the contract — a `Markup` passed as an attribute is silently escaped, so the failure mode is double-escaped visible text no committed reader sees. Three-layer guard: (1) the text-bearing attributes components write are **enumerated** in `viewer-ui.md` — `title=` (provenance and tooltips), `data-*` values, `aria-*` labels, the htmx-config `content=` — and each takes plain `str`; the view-model layer already types the split (`Node.tab_title` is `str` for exactly this reason, while the Markup titles are children-only); (2) a static-scan test pins today's zero: no attribute kwarg in `components/` names a Markup producer (`nav_tree_title`, `crumb_title`, `markdown(`, `lit(`, `link(`) — the same grep the design audit ran over the templates, now committed; (3) the residual — a novel producer routed to an attribute — is review's, named as such in `viewer-ui.md`.
+
+**Bytes.** htpy emits zero inter-element whitespace, so every reader-visible space must be an explicit `" "` child. That subsumes the `{{ " " }}` rule *and adds its converse*: the spaces Jinja emitted as literal template text (between `mark` and `glyph` in crumbs, walk buttons, NavTree rows; before unit words) must each become an explicit child or the page reads `0errors`. The audit of these is the top fidelity risk (below). Re-measurement plan: only `NAV_TREE_ROW_BYTES` (equality pin, `test_bounds__node.py`) and `SESSIONS`' from-below pin fail on their own when bytes move; the other measured constants and the scenario sweep are one-sided `<=`, so slices stay green through shrinkage — which is what lets both engines coexist mid-branch. To make the slice-7 re-pin something a test reds on rather than a checklist item, the `test_bounds*` leaves gain an **exact-pin mode**: under `HYPHAE_PIN_EXACT=1` every `measured <= MEASURED_*` comparison also asserts equality, so slice 7 runs the suite once in that mode and tightens until green — a small durable feature every future byte-moving change reuses. The derived figures quoted in `docs/viewer-bounds.md:66,72` sit in prose today, where the freshness check cannot see them; they move inside a **cog block** generated from `bounds.py`/`tests/view/budgets.py`, so `cogs-check` reds when the constants move. Each slice still re-runs its `test_bounds*` leaves and re-pins any equality constant it moved. Budgets: `PAGE_BYTES = 500_000` stays (it is a reader-facing choice, not a measurement); `NODE_BYTES`/`EXPANSION_BYTES` are measured ceilings and shrink to the new measurement, no slack; derived ceilings re-derive — `bounds.SESSIONS` is pinned from both sides against the dearest row, so with smaller rows the ceiling *must* rise (it fell 103→97 when djLint's bytes landed; this is the same movement in reverse). `docs/viewer-bounds.md`'s numbers follow.
+
+## The framework seam, and the PR split
+
+The conversion *is* the decoupling: there is no `Depends` and no `url_for` anywhere today (handoff §3), and `Request` reaches rendering only as `TemplateResponse`'s first argument — which the conversion deletes. After it, routes are plain typed functions that end in `viewer.html(component(...))`. So the recommendation is **one PR and no stacked DI PR**: there is nothing left to inject. The seam a later PR could use, noted per the brief: `knobs.py` raising framework-free `ValueError` subclasses mapped to 400s by an exception handler would make the knob layer importable without FastAPI — not worth it now, since knobs never enter `components/`.
+
+## The four scraping tests and the djLint regime
+
+1. `test_app.py:355-383` (no remote src/href, no `style=`, no `htmx-indicator`) → re-assert over **served HTML** inside the existing scenario sweep — stronger than source-scraping ever was. Its two halves move at different slices: the served htmx-config check adapts to htpy's attribute quoting when `/` converts (slice 3); the template scan survives until the templates go (slice 7).
+2. `test_app__headers.py:104-115` (labels ↔ uses) → same regex, re-pointed at `components/*.py` source (`(?:fact|label)\(\s*['"]...`); the render-side half already crashes via `labels.label`'s `KeyError`.
+3. `test_app__filters.py:175-195` (every registered filter used) → deleted with the registry it policed; an unused function in `cuts.py` is ordinary dead code, out of a rendering test's scope.
+4. `test_mise_tasks.py:15-78` `HTML_TASKS` block → deleted with the tasks. After the conversion `git ls-files '*.html'` is empty (today: 23 templates + `tests/gallery/index.html`), so nothing needs an HTML formatter; Ruff formats components like any Python.
+
+## Dev loop
+
+Jinja's edit-and-request loop dies with the templates; a component edit is a Python edit. Settle it by moving `.py` restarts into the loop rather than accepting manual restarts: under `--dev` (and in the gallery) run uvicorn with `reload=True` over the view package via an app-factory import string, the store path and port carried in environment variables set by `serve()`/`serve.py` before `uvicorn.run`. Reload means the worker is a **subprocess that re-imports the factory**, so anything done once in the parent is lost there — in particular the gallery's clock: **the gallery's factory owns the freeze**, re-running `gallery(store-from-env)` (which sets `fmt.utcnow` inside, `tests/gallery/serve.py:70-78`) on every worker import. That is what keeps Chromatic deterministic — `tests/e2e/playwright.config.ts` launches `mise run gallery` as its webServer — with or without reload; if the extra watcher ever flakes CI, that webServer command is the one place to disable it. The SSE watcher (`dev.py`) stays for `.css` (in-place sheet swap, scroll kept) and `.js`; `.html` leaves `RENDERED`. A `.py` save restarts the server and the SSE client's *reconnect* reloads the open page — behavior already witnessed at ~3 s (`viewer-ui.md` §dev). Loop cost: 0.2 s for CSS, seconds for a component edit. Rejected: manual restarts (guts the documented loop), hot-module tricks like jurigged (magic in a tool whose value is being boring).
+
+## Chosen test seam
+
+Unchanged, deliberately: the suite reads **served HTML through `data-*` attributes** (`tests/view/conftest.py`) and never template internals, so nearly every existing test is the conversion's regression harness as-is. The byte pins bound growth; Chromatic (`mise run e2e-chromatic`) is the visual oracle for the **14 full-page scenarios of the 39** in `SCENARIOS` — the 25 fragment scenarios have no visual tier, today or after. Every archived snapshot will diff on whitespace collapse, and reviewing that baseline is a human step.
+
+**Visible-space durability is an accepted gap, stated in writing.** After merge, a deleted `" "` child is caught by nothing committed: the `data-*` readers see `0errors` and `0 errors` the same, the byte pins are one-sided, and the repo rejects golden HTML on purpose. Rejected fixes: a committed normalized-text digest per scenario (fails on every wording change — the exact brittleness `conftest.py` names) and per-fragment Chromatic (25 unstyled partial baselines, re-reviewed on every copy edit). What makes the gap acceptable is that the space-deleting *actor* is gone: a Jinja space was literal template whitespace a formatter could reflow — the reason `{{ " " }}` existed — while an htpy space is an explicit `" "` child, code Ruff never reflows, deleted only by an edit a reviewer sees. That is the same protection every chrome *word* has (nothing catches a deleted "compactions" either). The rule and the gap go into `viewer-ui.md` in so many words; the conversion itself — the one moment of mass spacing risk — is covered by the branch-time harness (open question 2).
+
+The new committed tests: the two `components/` purity pins, the attribute-position static scan, and a **subprocess leaf for the reload clock** (planner's O2, adopted): import the gallery app factory in a fresh interpreter with the store env vars set and assert `fmt.utcnow() == corpus_now(store)` — the existing gallery leaves call `gallery(store)` in-process and would pass identically if the worker lost the freeze.
+
+## Slices (one PR, each commit green — re-pin the budgets a slice moved inside it)
+
+1. **Seam + representative page**: htpy dep; `view/viewer.py` (`Viewer` grows `dev`, keeps `templates` until slice 7; all seven importers re-pointed); `components/layout.py`; convert `error.html` + `query.html` (proves layout, escaping, `HTMLResponse`, and one `query_params`-as-dict seam). Amend `tests/view/test_dev.py` in this slice: its `TAG` constant pins the dev script tag *with Jinja's newline and indent* and sweeps every scenario against it, so from the first converted scenario one spelling cannot span both engines — the test strips whichever of the two spellings a page carries until slice 7 re-pins it to htpy's bare tag alone. Verified by the existing query/error page tests, the scenario sweep, and a synthetic render bench (the real worst page doesn't convert until slice 5; the audit's scratch bench puts a 7.5 MB, 3,217-row tree at ~220 ms via `str()`).
+2. `cuts.py` + `components/parts.py` + `citation.py`; convert `offload`/`records`/`errors` pages.
+3. `components/listing.py`: projects + sessions pages (second `query_params` seam; the derived-ceiling machinery untouched until 7). `/` converts here, so this slice also fixes the served half of `test_app.py:355-383`: its htmx-config regex assumes Jinja's single-quoted attribute; htpy emits a double-quoted, `&quot;`-escaped one, so the check becomes double-quote + `html.unescape` before `json.loads`.
+4. `components/logs.py` + `node_body.py` with typed rows; convert `fragments/body.html` + `expansions.py`'s body routes — "one body, two mounts" now one *function*, two mounts, proven by the existing expansion tests before the node page moves. `expansions.py:324`'s kin route stays Jinja here: `kin.html` renders NavTree rows, whose component lands in slice 5.
+5. `components/nav_tree.py` + `node_page.py` + remaining fragments (numbers ×3, kin — closing slice 4's holdover — record/value/raw/enrichment_line); `browse.py` hands typed rows; re-pin `NAV_TREE_ROW_BYTES` (its equality pin reds in this slice). The big slice; splittable fragments-first.
+6. Gallery index component — deleting `tests/gallery/index.html` **and trimming it from the `format-html`/`format-html-check` paths in `mise.toml` in the same commit** (djLint exits 2 on a missing path, so leaving the task naming it reds `check`); dev-loop change (uvicorn reload with the gallery factory owning the freeze, `RENDERED` loses `.html`, `dev.py` stops importing `TEMPLATES`), with the subprocess clock leaf landing beside the factory it tests.
+7. Deletion and regime: `templates/`, `templating.py`, jinja2/djlint/`[tool.djlint]`/the format-html tasks/.vscode; re-point the template halves of scraping tests 1–2, delete 3–4; re-pin `test_dev.py` to the bare tag; re-derive `bounds.SESSIONS` and re-pin every `MEASURED_*` constant in `budgets.py` (the last byte-moving act, so the final pin lands last): run the suite under `HYPHAE_PIN_EXACT=1` and tighten until green, then regenerate `viewer-bounds.md`'s new cog block; docs pass (below); `CONTEXT.md` gains **Component**.
+
+Mid-branch coexistence: both render paths live side by side — `Viewer` carries the Jinja env until slice 7, converted routes simply stop using it. No shims.
+
+## Docs to change in the same PR (a doc-writer executes)
+
+- `.claude/rules/viewer-ui.md` — reframe "server-rendered Jinja" → htpy; `paths:` globs `templates/**/*.html` → `view/components/**/*.py`; "one macro in `_node_body.html`" → one function; `|safe` rule → the Markup-construction rule above; `{{ " " }}` trap → explicit-`" "`-child rule, with the accepted post-merge gap stated beside it; the enumerated text-bearing attributes and the Markup-producer rule; the typing review rule above the denylist floor; djLint trap paragraphs deleted; `parts.glyph`/`counted mark=false` references re-pointed
+- `docs/ui-development.md` — new reload story (uvicorn reload + SSE reconnect); §"A formatter owns the layout" deleted; Ruff named as the components' formatter
+- `docs/viewer.md:5` — governing-rule pointer survives; sweep for `templates/` mentions
+- `docs/viewer-bounds.md` — re-measured numbers (`:72`'s "97 rows at 5 KB" both move), and the derived figures at `:66,72` move inside a cog block so freshness polices them
+- `CLAUDE.md` tooling line — drop the djLint clause; `mise run cogs` for the Layout tree if glosses moved
+- `pyproject.toml` dependency comments — htpy gets one stating the escaping contract, as jinja2's does today
+
+## Decisions
+
+- **htpy over Jinja kept / over a JSX-ish DSL**: typed, composable, escaping-by-default, `Markup`-compatible — chosen; keeping Jinja for "hot" templates rejected (two render systems, and the type-safety goal loses the biggest surface)
+- **`HTMLResponse(str(element))` over `htpy.starlette.HtpyResponse`/streaming**: a mid-render exception must be a 500, never a truncated 200 (fail fast); pages are bounded ≤ `NODE_BYTES` so buffering costs nothing. Rejected: streaming
+- **Per-kind/per-shape NamedTuples over passing `Row` through**: cashes the type-safety goal where the fields live; rejected `Row` pass-through (no checkable names) and a grand unified view-model (kinds genuinely differ)
+- **`match`/`assert_never` over a `dict[Kind, Callable]` registry**: exhaustiveness at typecheck time, not KeyError at render time
+- **Module functions in `cuts.py` over keeping closures**: per-call `fmt.utcnow()` read preserves the gallery's frozen clock with zero indirection; rejected an htpy `Context` for the clock (globals-through-context for one value the module seam already serves)
+- **`dev` as a `page()` parameter over htpy `Context`**: one caller-visible bool beats implicit tree state; rejected Context
+- **One PR, no stacked DI PR**: the decoupling falls out of deleting `TemplateResponse`; rejected the two-PR split as sequencing nothing
+- **Ceilings re-derive (SESSIONS rises), measured budgets shrink to measurement, `PAGE_BYTES` holds**: forced by the both-sides pin; rejected freezing 97 (would fail its own pin)
+- **uvicorn reload for dev over manual restarts** (above); the gallery app factory owns the clock freeze, since a reload worker re-imports it in a subprocess
+- **`test_dev.py` accepts both tag spellings mid-branch over emitting a fake `"\n    "` child**: the pin should describe what the page really serves, not preserve Jinja's bytes by imitation; re-pinned to the bare tag at slice 7
+- **Visible-space durability: accepted gap over committed digests or per-fragment Chromatic**: the actor that deleted spaces (a formatter reflowing template whitespace) no longer exists, and both fixes buy brittleness the house seam deliberately refuses
+- **`HYPHAE_PIN_EXACT=1` equality mode over converting the one-sided pins to equality**: everyday edits keep the one-sidedness `bounds.py`'s docstring chose on purpose; byte-moving changes get a mode that reds
+- **`viewer-bounds.md` figures into a cog block over cutting them**: the numbers explain the ceilings, and `cogs-check` already polices generated blocks
+- **Component modules shadow same-named `view/` modules** (`listing`, `pages`, `fragments`, `citation`, `nav_tree`): the per-template mapping stays legible; the price, accepted deliberately, is that import sites always use the `components.` prefix. Rejected: prefixed names like `listing_components.py` (noise on every definition to spare a prefix on every import)
+
+## Out of scope
+
+- Broader FastAPI DI improvements (none needed; seam noted above)
+- Any visual or behavioral change beyond whitespace collapse and the re-derived ceilings — same markup structure, same `data-*` vocabulary, same htmx wiring, same URLs
+- Typing the listing/records `Row`s beyond what their components print (they convert, but no store-schema modeling pass)
+- Redacting or changing what pages show; `tests/e2e` specs unchanged (routes and behavior identical)
+
+## Open questions
+
+1. **Chromatic baseline**: all 14 full-page snapshots will diff on whitespace collapse; accepting the new baseline is a manual review in the Chromatic UI — Nathaniel's call on when/who. The 25 fragment scenarios have no baseline to review
+2. **The both-engines diff harness**: a branch-local script, never committed, that renders every one of the 39 scenarios under both engines and diffs text content with whitespace normalized to single spaces. The reference engine is a **pinned git worktree** at the commit before slice 1, serving the Jinja gallery on a second port — which is what keeps the comparison alive through slice 7's deletion of the in-branch engine, so the harness runs from slice 5 through the branch's last commit. Worth its throwaway cost? I lean yes: with the post-merge gap accepted above, this harness is the conversion's one exhaustive spacing check
+
+(Render performance, previously open, is settled: a scratch bench of a 7.5 MB, 3,217-row NavTree-shaped tree renders via `str()` in ~220 ms — no gate needed; slice 1 keeps a synthetic bench only as a sanity check.)
