@@ -16,6 +16,7 @@ from hyphae.view.browse import (
     header_bound,
 )
 from hyphae.view.citation import QUERY_URL, cited
+from hyphae.view.components import pages as components
 from hyphae.view.knobs import (
     checked,
 )
@@ -77,20 +78,22 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         """
         if query_name not in manifest.QUERIES:
             raise HTTPException(404, "No query by that name ships with this build.")
-        return viewer.templates.TemplateResponse(
-            request,
-            "query.html",
-            # Whatever the citation carried, printed back rather than bound to anything: this
-            # page runs no query, so a binding here is a fact about the page that sent you.
-            {
-                "name": query_name,
-                "sql": queries.load(query_name),
+        statement = queries.load(query_name)
+        return viewer.html(
+            components.query_page(
+                name=query_name,
+                sql=statement,
                 # What a shell has to run first, where the statement calls a library macro:
                 # both consumers install these, and a reader pasting the statement alone has
                 # no way to find out why the catalog does not know the name.
-                "macros": macros.needed_by(queries.load(query_name)),
-                "bindings": dict(request.query_params),
-            },
+                macro_setup=macros.needed_by(statement),
+                # Whatever the citation carried, printed back rather than bound to anything:
+                # this page runs no query, so a binding here is a fact about the page that
+                # sent you. It is the one place a request's own text reaches rendering, and it
+                # crosses the seam as plain data rather than as the request.
+                bindings=dict(request.query_params),
+                dev=viewer.dev,
+            )
         )
 
     @router.get("/session/{session_id}/thread/{source}/records")

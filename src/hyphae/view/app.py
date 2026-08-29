@@ -82,7 +82,7 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
 
         app.include_router(dev_loop.reload_router())
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
-    viewer = Viewer(db=resolved, templates=templating.environment(dev=dev))
+    viewer = Viewer(db=resolved, dev=dev, templates=templating.environment(dev=dev))
 
     @app.middleware("http")
     async def _policy(request: Request, call_next: Any) -> Response:
@@ -93,7 +93,6 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
     @app.exception_handler(StoreLocked)
     def _locked(request: Request, exception: Exception) -> Response:
         return viewer.error(
-            request,
             503,
             "Another process holds the trace store — an extract or an enrich is running. "
             "The page will load once it finishes.",
@@ -102,7 +101,6 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
     @app.exception_handler(SchemaMoved)
     def _moved(request: Request, exception: Exception) -> Response:
         return viewer.error(
-            request,
             503,
             f"The store now holds schema version {exception}, and this build reads "
             f"{SCHEMA_VERSION}. Restart the viewer.",
@@ -112,7 +110,7 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
     def _http(request: Request, exception: Exception) -> Response:
         # Narrowing for the type checker: Starlette dispatches this handler by that class.
         assert isinstance(exception, StarletteHTTPException)  # noqa: S101
-        return viewer.error(request, exception.status_code, exception.detail)
+        return viewer.error(exception.status_code, exception.detail)
 
     # Extended rather than `include_router`: FastAPI keeps an included router nested under
     # one opaque route object, and `tools/gen_routes.py` and the payload sweep both read

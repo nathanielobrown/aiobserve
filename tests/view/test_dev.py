@@ -37,9 +37,23 @@ from hyphae.view.app import CSP, HOST, STATIC, build_app, claim
 from hyphae.view.dev import RELOAD_URL, Event, Rendered, event_for, reload_router
 from tests.view.scenarios import SCENARIOS
 
-# The one line `base.html` adds under `--dev`, whole: the newline and the indent included, so
-# that a prod page is a dev page with this string taken out and nothing else changed.
-TAG = b'\n    <script src="/static/dev-reload.js" defer></script>'
+# The one line a page adds under `--dev`, whole, in each of the two spellings a page can carry
+# while the conversion to htpy runs: Jinja wrote the tag on its own indented line, and htpy
+# writes no whitespace between elements at all. Either way a prod page is the dev page with that
+# string taken out and nothing else changed. The Jinja spelling goes when the last template does
+# (`plans/htpy-viewer/design.md`).
+JINJA_TAG = b'\n    <script src="/static/dev-reload.js" defer></script>'
+HTPY_TAG = b'<script src="/static/dev-reload.js" defer></script>'
+
+
+def dev_tag(page: bytes) -> bytes:
+    """The dev script tag as `page` spells it, for the sweeps that read a mixed corpus.
+
+    The longer spelling is tried first, because htpy's tag is the tail of Jinja's and would
+    match a Jinja page too. A page carrying neither — a fragment — answers with htpy's, which
+    is then found nowhere on it.
+    """
+    return JINJA_TAG if JINJA_TAG in page else HTPY_TAG
 
 
 @pytest.fixture(scope="module")
@@ -170,17 +184,19 @@ def test_a_dev_page_is_a_prod_page_plus_the_one_script_tag(
     """`--dev` changes one line of every page and nothing else, and no prod page mentions it.
 
     One comparison for both halves of the promise: that the dev loop reaches every page, and
-    that a viewer built without it serves exactly what it served before. The fragments are the
-    reason the tag is matched rather than counted — they extend no base and come back identical
-    outright.
+    that a viewer built without it serves exactly what it served before. Mid-conversion the
+    corpus is mixed — some of these pages are htpy and the rest are still Jinja — so the sweep
+    reads the spelling off the page rather than assuming one.
     """
     dev = dev_client.get(path)
     prod = enriched_client.get(path)
     assert dev.status_code == 200 and prod.status_code == 200, path
+    tag = dev_tag(dev.content)
     # Taking the tag out of the dev page leaves the prod page, byte for byte...
-    assert dev.content.replace(TAG, b"") == prod.content, path
-    # ...it lands once on a page that extends `base.html` and not at all on a fragment...
-    assert dev.content.count(TAG) == (0 if path.startswith("/fragment/") else 1), path
+    assert dev.content.replace(tag, b"") == prod.content, path
+    # ...it lands once on a whole page and not at all on a fragment, which stands inside no
+    # frame and comes back identical outright...
+    assert dev.content.count(tag) == (0 if path.startswith("/fragment/") else 1), path
     # ...and the shipped viewer names neither the client script nor the route it listens on.
     assert b"dev-reload" not in prod.content, path
     assert b"/dev/" not in prod.content, path

@@ -26,7 +26,7 @@ from hyphae.view.dev import RELOAD_URL
 from tests.conftest import build_enriched_store
 from tests.gallery import serve
 from tests.view.scenarios import SCENARIOS, Group
-from tests.view.test_dev import TAG, declared
+from tests.view.test_dev import declared, dev_tag
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -132,8 +132,8 @@ def test_the_gallery_is_a_dev_viewer(gallery: TestClient) -> None:
     What the stream then does is pinned in `tests/view/test_dev.py` over the same router; the
     obligation here is only that the gallery is the app that carries it.
     """
-    assert gallery.get(serve.INDEX).content.count(TAG) == 1
-    assert gallery.get("/").content.count(TAG) == 1
+    for page in (gallery.get(serve.INDEX).content, gallery.get("/").content):
+        assert page.count(dev_tag(page)) == 1
     assert RELOAD_URL in declared(gallery)
 
 
