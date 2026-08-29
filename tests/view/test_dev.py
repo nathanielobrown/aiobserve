@@ -17,6 +17,7 @@ that shape against what the invented ones assume.
 """
 
 import asyncio
+import inspect
 import signal
 import socket
 import subprocess
@@ -34,7 +35,7 @@ from watchfiles import Change, awatch
 
 import hyphae.view
 from hyphae.view.app import CSP, HOST, STATIC, build_app, claim
-from hyphae.view.dev import RELOAD_URL, Event, Rendered, event_for, reload_router
+from hyphae.view.dev import RELOAD_URL, RENDERED, Event, Rendered, event_for, reload_router
 from tests.view.scenarios import SCENARIOS
 
 # The one line a page adds under `--dev`, whole. A prod page is the dev page with this string
@@ -114,6 +115,21 @@ def test_the_watcher_is_told_to_report_only_what_the_viewer_renders_from(
 ) -> None:
     """The filter the stream watches under, read directly: suffix, and watchfiles' own noise."""
     assert Rendered()(Change.modified, path) is watched
+
+
+def test_the_stream_watches_the_static_directory_and_nothing_a_page_is_written_in() -> None:
+    """What `--dev` watches when its caller names nothing, and the suffixes it reports on.
+
+    A page is Python now, so a saved component is a restart the process manager performs, not a
+    message on this stream (`docs/ui-development.md`). The default is what decides that: widened
+    to the package, every component save would put a reload on the wire for the worker that is
+    already going away. Both halves are read off the source rather than off a run, because the
+    default a caller never passes is exactly what no served page can show.
+    """
+    assert inspect.signature(reload_router).parameters["watch_paths"].default == (STATIC,)
+    # And the one suffix that left: a template was a thing a page was rendered from, and a save
+    # of one was a reload. Nothing is rendered from disk now but the stylesheet and the script.
+    assert ".html" not in RENDERED
 
 
 # Drives the real watcher over a real directory: a debounce window of wall clock, and the only

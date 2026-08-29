@@ -108,16 +108,22 @@ def test_every_fact_a_header_asks_for_has_a_label() -> None:
     """
     asked = {
         name
-        for path in Path(components.__file__).parent.glob("*.py")
+        for path in Path(components.__file__).parent.rglob("*.py")
         for name in re.findall(
             r"""(?:fact|label)(?:led)?\(\s*(?:name=)?["']([a-z_]+)""", path.read_text()
         )
     }
     previewed = {
         name
-        for path in Path(view_app.__file__).parent.glob("*.py")
+        for path in Path(view_app.__file__).parent.rglob("*.py")
         for name in re.findall(r'detail_of\(\s*"([a-z_]+)"', path.read_text())
     }
+    # Both scans walk the package rather than one directory of it, and both have to find
+    # something: a scan that matched nothing would agree with the registry by saying nothing,
+    # so a `detail_of` call that moved under `components/` — where the first glob used not to
+    # reach — would drop out of the check instead of reding it.
+    assert asked, "no component asks for a label, so the registry has no subject"
+    assert previewed, "no pane previews a value, so half this check has no subject"
     headed = {column.field for shape in view_columns.COLUMNS.values() for column in shape}
     assert asked | previewed | headed == set(LABELS)
 

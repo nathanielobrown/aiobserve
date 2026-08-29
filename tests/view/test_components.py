@@ -100,6 +100,12 @@ SWAPS = {
     "OPEN_SWAP": logs.OPEN_SWAP,
 }
 
+# The three of those attributes that mean the pane swap and nothing else — what to select out of
+# the response, what to swap out of band with it, and whether the URL follows. A widget that
+# replaces itself names `hx-target` and `hx-swap` on its own and is right to; naming one of
+# these is a second pane swap written by hand.
+PANE_ONLY = ("hx-select", "hx-select-oob", "hx-push-url")
+
 # The one line `--dev` adds to a page. Bare, because htpy writes no whitespace between elements.
 DEV_TAG = '<script src="/static/dev-reload.js" defer></script>'
 
@@ -310,12 +316,19 @@ def test_an_attribute_is_escaped_even_when_its_value_is_already_markup() -> None
 
 
 def test_each_swap_attribute_a_component_writes_belongs_to_a_named_vocabulary() -> None:
-    """No component spells a swap attribute of its own: it names one of the sets above.
+    """A swap vocabulary is spelled where it is defined and nowhere else.
 
     The composability the conversion was for, made checkable. `hx-select-oob` was written
     verbatim in three templates, and a page whose tree swapped while its pane did not is a
     reader looking at two nodes at once. Counted rather than grepped for absence: an attribute
     two vocabularies share is written twice on purpose, and the count says which.
+
+    What this reads is the quoted spelling, so it is a check on the vocabularies rather than on
+    every element: a component may still write `hx_swap=` as a keyword, and five self-replacing
+    widgets do. The behavioural guard for the pane is
+    `test_nav_tree__rows.py:test_every_link_that_swaps_the_pane_lands_the_pane_in_the_pane`,
+    which resolves inheritance over every link that swaps it. The keyword half checked here is
+    the narrow one that cannot be right: an ad-hoc `hx_push_url=` or `hx_select_oob=`.
     """
     source = "".join(path.read_text() for path in SOURCES)
     holding = Counter(name for swap in SWAPS.values() for name in swap)
@@ -327,6 +340,11 @@ def test_each_swap_attribute_a_component_writes_belongs_to_a_named_vocabulary() 
     # pages actually carry rather than a dead constant nothing reads.
     for named in SWAPS:
         assert f"**{named}" in source, named
+    # ...and no component reaches the pane's own three by their keyword spelling, which is the
+    # one way past the count above: `hx_push_url=False` on a widget is a link the reader's
+    # history loses, written where nothing says it is a swap.
+    for name in PANE_ONLY:
+        assert source.count(f"{name.replace('-', '_')}=") == 0, name
 
 
 # --- The frame a page is served in --------------------------------------------------------
