@@ -241,9 +241,15 @@ def _record(*, row: RecordRow, thread: str, opened: int | None) -> Html:
     return htpy.li(id=f"L{row.line_no}", data_record=row.line_no)[
         [
             htpy.span(".line")[row.line_no],
+            # Spaces, one per gap: the row is no flex line and only `.line` carries a margin
+            # (`view/static/style.css`), so these are what hold the five values apart.
+            " ",
             htpy.span(".type", data_field="type")[row.type],
+            " ",
             htpy.span(data_field="timestamp")[fmt.clock(row.timestamp)],
+            " ",
             htpy.span[[htpy.span(data_field="raw_chars")[fmt.count(row.raw_chars)], " chars"]],
+            " ",
             htpy.code(data_field="raw_head")[row.raw_head],
             htpy.details(
                 ".whole",
