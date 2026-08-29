@@ -13,6 +13,7 @@ from urllib.parse import urlencode
 from fastapi import HTTPException
 
 from hyphae.view import bounds, nodes
+from hyphae.view.components.logs import Pager
 from hyphae.view.store import Listed, Row
 
 # What a node URL can name, at the value a link that names none is served at: the view, and
@@ -93,15 +94,6 @@ def numbered(url: str, marks: str, page: int) -> str:
     if page == 1:
         return f"{url}{marks}"
     return f"{url}{marks}{'&' if marks else '?'}page={page}"
-
-
-class Pager(NamedTuple):
-    """A children log's place in its level, and the way to either side of it."""
-
-    # Which page of how many, in words — the label the control is read and heard by.
-    place: str
-    previous: str | None
-    next: str | None
 
 
 def pager(url: str, marks: str, page: int, pages: int) -> Pager | None:

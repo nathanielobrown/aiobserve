@@ -81,6 +81,15 @@ def text(value: str | None) -> str:
     return ABSENT if value is None else value
 
 
+def flag(value: bool) -> str:
+    """A boolean column as a cell, in the words the pane has always printed it in.
+
+    Its own function because htpy renders `True` as nothing at all — a flag handed straight to
+    an element is an empty `<dd>` under a label saying a fact is there.
+    """
+    return str(value)
+
+
 def path(value: str | None, home: str) -> str:
     """A directory as a cell, with the reader's own home folded to `~`.
 

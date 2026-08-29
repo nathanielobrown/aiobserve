@@ -20,6 +20,7 @@ import re
 import subprocess
 import sys
 import tomllib
+from collections import Counter
 from pathlib import Path
 
 import htpy
@@ -29,7 +30,7 @@ from markupsafe import Markup
 import hyphae.view
 import hyphae.view.components
 from hyphae.analyze import queries
-from hyphae.view.components import layout, parts
+from hyphae.view.components import layout, logs, parts
 from hyphae.view.highlight import Syntax, lit
 
 COMPONENTS = Path(hyphae.view.components.__file__).parent
@@ -88,6 +89,12 @@ import sys
 import hyphae.view.app
 sys.stdout.write(",".join(sorted({"fastapi", "starlette"} & set(sys.modules))))
 """
+
+# The htmx swap vocabularies the package names, keyed by the constant that holds each. A swap
+# is a handful of attributes that only mean anything together, so each set is written once and
+# spread into the elements that take it — `hx-get` is in none of them, because the URL is the
+# element's own.
+SWAPS = {"PANE_SWAP": logs.PANE_SWAP, "OPEN_SWAP": logs.OPEN_SWAP}
 
 # The one line `--dev` adds to a page. Bare, because htpy writes no whitespace between elements.
 DEV_TAG = '<script src="/static/dev-reload.js" defer></script>'
@@ -293,6 +300,29 @@ def test_an_attribute_is_escaped_even_when_its_value_is_already_markup() -> None
     served = str(parts.code(value="SELECT 1", syntax=Syntax.SQL, field=Markup("<b>&</b>")))
     assert 'data-field="&lt;b&gt;&amp;&lt;/b&gt;"' in served
     assert "<b>&</b>" not in served
+
+
+# --- The htmx vocabularies, each written once ----------------------------------------------
+
+
+def test_each_swap_attribute_a_component_writes_belongs_to_a_named_vocabulary() -> None:
+    """No component spells a swap attribute of its own: it names one of the sets above.
+
+    The composability the conversion was for, made checkable. `hx-select-oob` was written
+    verbatim in three templates, and a page whose tree swapped while its pane did not is a
+    reader looking at two nodes at once. Counted rather than grepped for absence: an attribute
+    two vocabularies share is written twice on purpose, and the count says which.
+    """
+    source = "".join(path.read_text() for path in SOURCES)
+    holding = Counter(name for swap in SWAPS.values() for name in swap)
+    assert holding, "the package names no swap vocabulary"
+    # Each attribute appears exactly as often as there are vocabularies holding it...
+    for name, times in holding.items():
+        assert source.count(f'"{name}"') == times, name
+    # ...and every vocabulary is spread into an element, so the counts above are what the
+    # pages actually carry rather than a dead constant nothing reads.
+    for named in SWAPS:
+        assert f"**{named}" in source, named
 
 
 # --- The frame a page is served in --------------------------------------------------------
