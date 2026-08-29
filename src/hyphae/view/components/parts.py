@@ -170,13 +170,18 @@ def tags(*, category: str, outcome: str, stale: bool) -> Html:
     a prompt or taxonomy version this build has moved past, which is a reason to re-run a pass
     and not a reason to distrust the words.
     """
-    return htpy.fragment[
-        [
-            htpy.span(".tag", data_field="category")[category],
-            htpy.span(".tag", data_field="outcome")[outcome],
-            htpy.span(".tag.stale", data_field="stale")["stale"] if stale else None,
-        ]
+    pills = [
+        htpy.span(".tag", data_field="category")[category],
+        htpy.span(".tag", data_field="outcome")[outcome],
     ]
+    if stale:
+        pills.append(htpy.span(".tag.stale", data_field="stale")["stale"])
+    # A space between pills. Their margins hold the boxes apart for a reader who sees the row;
+    # this is what holds the words apart for one who hears it.
+    spaced: list[Html | str] = []
+    for pill in pills:
+        spaced.extend((" ", pill) if spaced else (pill,))
+    return htpy.fragment[spaced]
 
 
 def summary(*, enrichment: Enrichment, lines: EnrichmentLines) -> Html:

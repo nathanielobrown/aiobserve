@@ -114,6 +114,11 @@ def test_the_session_list_shows_what_the_model_said_about_each_session(
         # ...each described row showing a head of what the pass wrote, and both its tags...
         assert row["description"] == description[: queries.LIST_CHARS]
         assert (row["category"], row["outcome"]) == (category, outcome)
+        # ...with a space before the first pill. A tag carries a right margin and no left one,
+        # so without it the pill's border touches the last word of the description.
+        assert reads(listing, "data-enrichment", session_id) == " ".join(
+            f"{row['description']} {row['category']} {row['outcome']}".split()
+        )
     # ...and a session the pass never reached carrying nothing at all beside it.
     assert values(listing, "data-enrichment") == described
     # The query behind that is cited like every other query the page ran.

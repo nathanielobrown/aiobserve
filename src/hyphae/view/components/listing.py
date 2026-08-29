@@ -487,6 +487,9 @@ def _described(*, session_id: str, said: Described | None) -> Html | None:
     return htpy.span(".enrichment.secondary", data_enrichment=session_id)[
         [
             htpy.span(data_field="description")[cuts.short(said.description)],
+            # A tag is a pill with a right margin and no left one, so this space is what keeps
+            # the first one's border off the last word of the description.
+            " ",
             parts.tags(category=said.category, outcome=said.outcome, stale=False),
         ]
     ]
