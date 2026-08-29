@@ -9,10 +9,10 @@ response.
 from dataclasses import dataclass
 from pathlib import Path
 
-import htpy
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
+from hyphae.view.components import Html
 from hyphae.view.components import pages as components
 
 
@@ -25,7 +25,7 @@ class Viewer:
     # The Jinja environment the templates still left over render through. Goes away with them.
     templates: Jinja2Templates
 
-    def html(self, element: htpy.Renderable, *, status: int = 200) -> HTMLResponse:
+    def html(self, element: Html, *, status: int = 200) -> HTMLResponse:
         """One rendered page, as a response.
 
         Rendered whole before the response exists, deliberately: a stream would flush a 200 and

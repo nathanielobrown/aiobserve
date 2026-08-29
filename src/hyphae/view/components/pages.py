@@ -6,11 +6,11 @@ inside the node frame (`docs/viewer.md`).
 
 import htpy
 
-from hyphae.view.components import layout, parts
+from hyphae.view.components import Html, layout, parts
 from hyphae.view.highlight import Syntax
 
 
-def error_page(*, status: int, message: str, dev: bool) -> htpy.Renderable:
+def error_page(*, status: int, message: str, dev: bool) -> Html:
     """What every failure the app catches is answered with — a status, a sentence, a way back.
 
     The message never repeats what was asked for: a request is untrusted text like any other.
@@ -32,7 +32,7 @@ def error_page(*, status: int, message: str, dev: bool) -> htpy.Renderable:
 
 def query_page(
     *, name: str, sql: str, macro_setup: str, bindings: dict[str, str], dev: bool
-) -> htpy.Renderable:
+) -> Html:
     """One library query as the page that cited it links to.
 
     The SQL this build ships, under the bindings that page ran it with. Nothing is executed
@@ -56,7 +56,7 @@ def query_page(
     )
 
 
-def _bindings(bindings: dict[str, str]) -> htpy.Renderable:
+def _bindings(bindings: dict[str, str]) -> Html:
     """What the citing page bound the statement to, or a line saying it bound nothing."""
     if not bindings:
         return htpy.p(".plain")["Cited with no bindings."]
@@ -68,7 +68,7 @@ def _bindings(bindings: dict[str, str]) -> htpy.Renderable:
     ]
 
 
-def _setup(macro_setup: str) -> htpy.Renderable | None:
+def _setup(macro_setup: str) -> Html | None:
     """The definitions the statement calls, above it — and nothing where it calls none.
 
     Both consumers install these before they run anything, so a reader who pastes the statement

@@ -4,9 +4,10 @@ import htpy
 
 from hyphae.view import bounds, highlight
 from hyphae.view import format as fmt
+from hyphae.view.components import Html
 
 
-def code(*, value: str, syntax: highlight.Syntax, field: str) -> htpy.Renderable:
+def code(*, value: str, syntax: highlight.Syntax, field: str) -> Html:
     """One value in the syntax it was written in — a tool's arguments, a record, a query file.
 
     Marked up by class rather than by inline colour, because the policy in `app.CSP` allows no

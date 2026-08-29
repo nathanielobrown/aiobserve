@@ -42,8 +42,8 @@ REPO = Path(__file__).resolve().parents[2]
 NARROWED = "src/hyphae/view/components/**"
 UNCHECKED = {"bad-index": False}
 
-# Every module that defines components. `__init__.py` is the package's docstring and nothing
-# else, so it is scanned for markup but never asked for a signature.
+# Every module that defines components. `__init__.py` holds the package's rules and the one
+# type they are written in, so it is scanned for markup but never asked for a signature.
 MODULES = sorted(path for path in COMPONENTS.rglob("*.py") if path.name != "__init__.py")
 SOURCES = sorted(COMPONENTS.rglob("*.py"))
 
@@ -64,6 +64,11 @@ DENIED = ("Any", "Row", "Request", "Response")
 # And the annotation it may not be, whole. `dict[str, str]` says what is in it and is fine;
 # bare `dict` is `Any` spelt differently.
 BARE = "dict"
+
+# What a component hands back: markup, or nothing where the thing it draws is absent. The
+# concrete union rather than htpy's `Renderable` protocol, which pyrefly cannot match an
+# `Element` against — `components/__init__.py` says why.
+RETURNS = ("Html", "Html | None")
 
 # Import every module of the package in a fresh interpreter and report which web frameworks
 # came in with them. The walk rather than a written list, so a component that lands next year
@@ -211,7 +216,7 @@ def test_every_component_clears_the_signature_floor(module: Path) -> None:
             assert not named & set(DENIED), f"{where}({argument.arg}: {written})"
         # ...and what comes back is markup rather than a string the caller has to trust.
         assert function.returns is not None, where
-        assert ast.unparse(function.returns) == "htpy.Renderable", where
+        assert ast.unparse(function.returns) in RETURNS, where
 
 
 # --- Where markup may and may not go ------------------------------------------------------

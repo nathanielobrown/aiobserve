@@ -2,6 +2,8 @@
 
 import htpy
 
+from hyphae.view.components import Html
+
 # The dev reload client, which `hp view --dev` alone puts on a page: it listens on
 # `/dev/reload` and reloads when a stylesheet or a component is saved (`view/dev.py`). Built
 # once because a prod page is this page with that one element taken out, which is how
@@ -12,11 +14,11 @@ _DEV_SCRIPT = htpy.script(src="/static/dev-reload.js", defer=True)
 def page(
     *,
     tab_title: str,
-    scripts: htpy.Renderable | None,
-    main: htpy.Renderable,
-    footer: htpy.Renderable | None,
+    scripts: Html | None,
+    main: Html,
+    footer: Html | None,
     dev: bool,
-) -> htpy.Renderable:
+) -> Html:
     """One whole document: `tab_title` in the tab, `main` under the masthead, `footer` last.
 
     `scripts` is what a page needs beyond htmx — only the node page has any. `footer` is the
