@@ -181,7 +181,7 @@ ban-relative-imports = "all"
 # around it. Markdown is excluded above, so this reaches docstrings only.
 docstring-code-format = true
 
-# The viewer's templates and `tests/gallery/index.html` — `mise run format-html` writes what
+# The viewer's remaining templates — `mise run format-html` writes what
 # `format-html-check` gates and VS Code runs on save. Formatter only: djLint's linter wants
 # `{{ url_for() }}` for every internal link, and this viewer builds its URLs in
 # `src/hyphae/view/nodes.py` on purpose.
@@ -301,6 +301,20 @@ untyped-import = false
 # each one as a `def` — a change to how the code reads, decided by a rule about inference.
 # The containers these lambdas sit in are annotated, which is where the shape is stated.
 implicit-any-lambda = false
+
+# The gallery index is the one page composed outside `components/`, so it meets the same
+# recursive-alias bug, for the same reason and with the same expiry as the block two below.
+# A file matches one sub-config — the first — so this sits ahead of `tests/**` and restates
+# what that block turns off; keep the four in step with it.
+[[tool.pyrefly.sub-config]]
+matches = "tests/gallery/**"
+
+[tool.pyrefly.sub-config.errors]
+bad-index = false
+implicit-any-empty-container = false
+implicit-any-type-argument = false
+implicit-any-parameter = false
+unannotated-return = false
 
 # Tests, where an empty literal is usually a case rather than a container that outlives the
 # line: `({}, {"thread": MAIN})` says "no arguments, then these" and annotating it says less.

@@ -16,14 +16,15 @@ import datetime as dt
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import htpy
 import uvicorn
-from fastapi import FastAPI, Request, Response
-from starlette.templating import Jinja2Templates
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 
 from hyphae.view import format as fmt
 from hyphae.view.app import DEV_SHUTDOWN_SECONDS, HOST, build_app, claim
+from hyphae.view.components import Html, layout
 from hyphae.view.store import open_store
-from hyphae.view.templating import TEMPLATES
 from tests.conftest import build_enriched_store
 from tests.view.scenarios import SCENARIOS, Group, Scenario
 
@@ -35,14 +36,12 @@ INDEX = "/gallery"
 # and a second gallery beside it — one per branch you are comparing — takes `--port`.
 PORT = 8478
 
-_GALLERY = Path(__file__).parent
-
 
 def grouped() -> dict[Group, list[tuple[str, Scenario]]]:
     """The scenario list under its headings: groups in `Group` order, rows in registry order.
 
-    Read here rather than in the template because Jinja's `groupby` sorts by the value it
-    groups on, and the order the headings come in is the order `Group` declares them.
+    The headings come in the order `Group` declares them and the rows in registry order, so
+    a reader who learns where a scenario sits finds it in the same place tomorrow.
     """
     return {
         group: [
@@ -77,17 +76,51 @@ def gallery(store: Path) -> FastAPI:
     frozen = corpus_now(store)
     fmt.utcnow = lambda: frozen
     app = build_app(store, dev=True)
-    # The package's templates are on the path too, so the index extends `base.html` and reads
-    # as a page of the thing it indexes. `DEV` is the one global `base.html` asks for, and it
-    # is true by construction here.
-    templates = Jinja2Templates(directory=[_GALLERY, TEMPLATES])
-    templates.env.globals["DEV"] = True  # pyrefly: ignore
 
     @app.get(INDEX)
-    def index(request: Request) -> Response:
-        return templates.TemplateResponse(request, "index.html", {"grouped": grouped()})
+    def index() -> HTMLResponse:
+        return HTMLResponse(str(index_page()))
 
     return app
+
+
+def index_page() -> Html:
+    """The scenario list, rendered through the viewer's own layout.
+
+    A page of the thing it indexes: the same masthead and the same stylesheet as every scenario
+    it links to, so the index is read in the frame the pages under it are read in. `dev` is
+    true by construction — the gallery is the viewer under `--dev`.
+    """
+    # One link per entry of `tests/view/scenarios.py:SCENARIOS`, under the heading its group
+    # names: what the page shows, and the route it stands for beside it. Nothing is listed here
+    # that the tests do not cover.
+    listing = [
+        [
+            htpy.h2[group],
+            htpy.ul[
+                [
+                    htpy.li[
+                        [
+                            htpy.a(data_scenario=route, href=scenario.url)[scenario.title],
+                            # The one gap a reader has to see on this page: an `li` is no flex
+                            # row, so this space is what holds the name apart from the route.
+                            " ",
+                            htpy.code[route],
+                        ]
+                    ]
+                    for route, scenario in rows
+                ]
+            ],
+        ]
+        for group, rows in grouped().items()
+    ]
+    return layout.page(
+        tab_title="Gallery — hyphae",
+        scripts=None,
+        main=htpy.fragment[[htpy.h1["Scenarios"], listing]],
+        footer=None,
+        dev=True,
+    )
 
 
 def parser() -> argparse.ArgumentParser:
