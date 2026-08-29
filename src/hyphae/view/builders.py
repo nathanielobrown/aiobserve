@@ -12,7 +12,7 @@ read by name (`view/components/`).
 from collections.abc import Sequence
 
 from hyphae.view.columns import Shape
-from hyphae.view.components import logs, node_body, numbers
+from hyphae.view.components import logs, node_body, numbers, values
 from hyphae.view.enrichment import Descriptions
 from hyphae.view.format import ELLIPSIS
 from hyphae.view.formatters import Fields, name_tool
@@ -522,4 +522,17 @@ def compaction_numbers(row: Row) -> numbers.Compaction:
         post_tokens=row["post_tokens"],
         freed=row["freed"],
         trigger=row["trigger"],
+    )
+
+
+def record_value(row: Row, citation: str) -> values.Record:
+    """One archived record as its fragment prints it, off `Value.RECORD`'s row."""
+    return values.Record(
+        line_no=row["line_no"],
+        type=row["type"],
+        uuid=row["uuid"],
+        timestamp=row["timestamp"],
+        raw_chars=row["raw_chars"],
+        raw=row["raw"],
+        citation=citation,
     )
