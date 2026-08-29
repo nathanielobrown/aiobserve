@@ -3,7 +3,7 @@
 Obligations for `plans/htpy-viewer/design.md`. Written 2026-08-29 and revised against the design's
 resolution of this plan's six findings; every repo fact below was read this session and carries its
 file:line, but treat those as hypotheses to re-check at implementation time. Obligation ids are
-stable, not positional — O46 and O47 were added later and sit in the level they belong to.
+stable, not positional — O46–O48 were added later and sit in the level they belong to.
 
 Most of this change is a refactor, so most of the suite is already the harness. The plan's centre
 of gravity is therefore **what must pass untouched** (level 4) plus the handful of new contracts
@@ -22,9 +22,10 @@ accepted gap at the end.
 The suite's conftest builds `TestClient`s, so `fastapi` sits in `sys.modules` before any test
 runs. These two leaves exist because the thing they check is destroyed by the pytest process.
 
-- **O1. Importing `hyphae.view.components` pulls in no web framework.** *Evidence:*
-  `subprocess.run([sys.executable, "-c", "import hyphae.view.components, sys; ..."], timeout=…)`
-  returning 0, **plus a negative control in the same leaf**: the identical probe over
+- **O1. Importing `hyphae.view.components` pulls in no web framework.** *Evidence:* a subprocess that
+  walks `pkgutil.walk_packages` over `components/` and imports every module — so one added later
+  is covered without anyone remembering — asserting `fastapi`/`starlette` absent from
+  `sys.modules`, **plus a negative control in the same leaf**: the identical probe over
   `hyphae.view.app` reports `fastapi` present. Without the control a typo in the module name
   passes silently, and this is the only leaf standing behind the design's central structural claim.
 - **O2. The gallery's frozen clock survives a reload worker.** Under `reload=True` uvicorn
@@ -54,8 +55,9 @@ No app, no HTTP, no store. This is the level the conversion creates; it did not 
   scan over `components/**/*.py` — for each public function, every parameter is keyword-only, no
   parameter annotation names `Any`, `Row`, `Request`, `Response` or a bare `dict`, and the return
   annotation is `htpy.Renderable`. An AST scan rather than `inspect`, so the check reads the source
-  the reviewer reads and needs no import. A non-vacuity assertion that the scan found more than
-  twenty functions. "Precise" above the floor — a `Kind` where a `str` would typecheck — is
+  the reviewer reads and needs no import. The non-vacuity floor is per-module — every module in
+  `components/` defines at least one public component — rather than a package-wide count, which
+  would be false until the conversion finishes. "Precise" above the floor — a `Kind` where a `str` would typecheck — is
   review's, written into `viewer-ui.md` by O47.
 - **O6. A reader-visible space between two elements is an explicit `" "` child.** htpy emits zero
   inter-element whitespace, so every space Jinja wrote as literal template text must be restored
@@ -86,9 +88,10 @@ The regime checks. Each replaces something the conversion deletes; none may be v
   kwarg names `nav_tree_title`, `crumb_title`, `markdown(`, `lit(` or `link(` — today's zero,
   pinned; the same grep the design audit ran over `templates/`, now committed. The text-bearing
   attributes the scan governs are enumerated in `viewer-ui.md` by O47 (`title=`, `data-*` values,
-  `aria-*` labels, the htmx-config `content=`), each taking plain `str`. A companion assertion that
-  the producer names still match something *somewhere* in `components/` (as children), so a
-  renamed producer cannot empty the scan silently.
+  `aria-*` labels, the htmx-config `content=`), each taking plain `str`. A companion assertion that at
+  least one producer name still matches *somewhere* in `components/` (as children) — some, not
+  all five, because a producer arrives with the component that consumes it — so a renamed
+  producer cannot empty the scan silently.
 - **O47. The rules the tests cannot carry are written down where a reviewer meets them.** Three
   obligations here are review's, not a leaf's, and a review rule nobody wrote down is not a
   control. *Evidence:* the `.claude/rules/viewer-ui.md` diff carries all four in so many words —
@@ -102,10 +105,19 @@ The regime checks. Each replaces something the conversion deletes; none may be v
   non-zero number of names.** Note the `previewed` half globs `Path(view_app.__file__).parent
   .glob("*.py")`, which is *not* recursive; it must become recursive or a `detail_of` call that
   moves into `components/` drops silently out of the check.
-- **O11. Nothing in the view package needs a type-checker escape.** The type-safety goal's own
-  measurement. *Evidence:* `mise run typecheck` green, and `git diff` shows no
-  `# pyrefly: ignore` added anywhere under `src/hyphae/view/` or `tests/`; the one that exists
-  today (`tests/gallery/serve.py:78`, on the Jinja `env.globals` assignment) is deleted by slice 6.
+- **O11. The view package needs no per-line escape, and exactly one scoped narrowing.** The
+  type-safety goal's own measurement, revised on contact: pyrefly cannot decide htpy's recursive
+  `Node` alias, so `bad-index` is off over `components/**` by sub-config (design §Checker scope).
+  *Evidence:* `mise run typecheck` green; `git diff` shows no `# pyrefly: ignore` added anywhere
+  under `src/hyphae/view/` or `tests/` (the one that exists today, `tests/gallery/serve.py:78`,
+  is deleted by slice 6); and the only `[[tool.pyrefly.sub-config]]` in `pyproject.toml` is the
+  `components/**` `bad-index` one, carried with its canary (O48).
+- **O48. The sub-config outlives its reason by at most one red.** *Evidence:* a leaf that runs
+  `pyrefly check` over a minimal two-element htpy nesting under a config with no sub-config,
+  asserting `bad-index` is reported (0.1 s, verified 1.2.0). The day a release decides recursive
+  aliases this reds, and its message says to delete the sub-config and re-run `typecheck`. Until
+  then the rule's bug class stays red-able at runtime: htpy raises `TypeError` at render for an
+  invalid child, and O7 plus the scenario sweep render every component.
 - **O12. Each swap vocabulary is written once.** The composability goal's checkable artifact:
   `hx-select-oob` today appears verbatim in three places. *Evidence:* a count of each swap
   attribute's literal occurrences in `components/**` — one per named dict (`PANE_SWAP`, the
@@ -150,7 +162,7 @@ obligations are mostly "passes unchanged"; that is the point.
   all 39 scenario responses rather than 23 template files, which is strictly more than the source
   scan saw, and O21 is what proves 39 is everything.
 - **O21. The htmx-config meta parses under htpy's quoting.** htpy emits a double-quoted,
-  `&quot;`-escaped attribute; the current regex assumes single quotes and its `(config,) =`
+  `&#34;`-escaped attribute; the current regex assumes single quotes and its `(config,) =`
   unpack raises. *Evidence:* the amended regex plus `html.unescape` before `json.loads`, asserting
   `includeIndicatorStyles is False`. **Lands at slice 3, when `/` converts — not slice 7.**
 - **O22. The sweep covers the routes the app has.** *Evidence:*
