@@ -534,8 +534,8 @@ def reads(html: str, attribute: str, value: str) -> str:
 
     The one reader here that can see a space between two values: `fields` strips each one and
     `plain` keeps the markup's own indentation, so neither can tell `0 errors` from `0errors`.
-    That is the difference a formatter is free to make of a literal space, and the two the
-    templates hold with an expression are pinned through this (`_parts.html`).
+    That is the difference a component's own children make, and the spaces written as children
+    rather than left between two elements are pinned through this (`view/components/parts.py`).
     """
     return " ".join("".join(_element(html, attribute, value).text).split())
 

@@ -46,8 +46,8 @@ HEADING = re.compile(r"<h2[^>]*>\s*([^<]+?)\s*</h2>")
 COUNTED = ("sessions", "session_enrichments", "agent_run_enrichments", "turn_enrichments")
 
 # How long ago something happened, as a page prints it. The one cell on any page whose text is
-# a reading of the clock rather than of the store — `sessions.html` and `projects.html` are the
-# only templates that reach the `ago` filter.
+# a reading of the clock rather than of the store — the session list and the projects page are
+# the only pages that print one.
 AGO = re.compile(r'<span data-field="ago"[^>]*>\s*([^<]*?)\s*</span>')
 
 # The pages a frozen clock has to hold still: the two that print ages, and a node page, which
