@@ -60,22 +60,27 @@ def stacked(
     secondary_field: str,
     secondary: str,
     unit: str | None,
-    mark: Html | None,
+    primary_mark: Html | None,
+    secondary_mark: Html | None,
 ) -> Html:
     """One two-line cell: the value a reader scans a column for, and the texture under it.
 
-    Both halves are labelled, so a test reads either without matching prose. The unit word sits
-    outside the labelled span — what a reader sees is a number and a word, what a `data-field`
-    carries is the value the store holds — and `mark` rides the primary line, for the mark a
-    cost cell hangs off its total.
+    Both halves are labelled, so a test reads either without matching prose, and the unit word
+    sits outside the labelled span — what a reader sees is a number and a word, what a
+    `data-field` carries is the value the store holds.
+
+    A mark hangs off whichever line owns what it qualifies, which is why there are two slots:
+    the session list stacks output tokens under a cost and marks the cost, the projects landing
+    stacks a cost under a count and marks the cost again.
     """
     return htpy.fragment[
         [
             htpy.span(data_field=field, class_="primary")[primary],
-            mark,
+            primary_mark,
             htpy.span(".secondary")[
                 [
                     htpy.span(data_field=secondary_field)[secondary],
+                    secondary_mark,
                     # The space before the unit is a child of its own: htpy emits none between
                     # elements, and this one is the difference between `0 errors` and `0errors`.
                     [" ", unit] if unit else None,

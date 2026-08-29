@@ -63,7 +63,8 @@ def test_a_stacked_cell_holds_one_space_between_its_secondary_and_the_unit_word(
             secondary_field="tool_errors",
             secondary="3",
             unit="errors",
-            mark=None,
+            primary_mark=None,
+            secondary_mark=None,
         )
     )
     # The unit is outside the labelled span, and one space stands between the two...
@@ -84,7 +85,8 @@ def test_a_stacked_cell_with_no_unit_ends_at_its_number() -> None:
             secondary_field="last_active",
             secondary="2026-03-01 09:00",
             unit=None,
-            mark=None,
+            primary_mark=None,
+            secondary_mark=None,
         )
     )
     assert served.endswith("09:00</span></span>")
@@ -267,3 +269,28 @@ def test_a_cost_badge_carries_its_share_as_a_class_and_its_money_as_the_field() 
     served = str(parts.badge(step="warm-3", field="cost_usd", value=1.25))
     assert values(served, "class") == ["badge warm-3"]
     assert plain(served) == "$1.25"
+
+
+def test_a_stacked_cell_hangs_each_mark_off_the_line_that_owns_what_it_qualifies() -> None:
+    """Two slots, because the two lists stack the value a mark belongs to at different heights.
+
+    The session list stacks output tokens under a cost and marks the cost; the projects landing
+    stacks a cost under a session count and marks the cost again. One slot would put the mark
+    on the wrong number for one of them.
+    """
+    served = str(
+        parts.stacked(
+            field="cost_usd",
+            primary="$3.10",
+            secondary_field="output_tokens",
+            secondary="900",
+            unit="out",
+            primary_mark=parts.unpriced(calls=2),
+            secondary_mark=parts.mark(character="◆"),
+        )
+    )
+    # The first mark closes the primary line before the secondary span opens...
+    marked = '<sup title="2 call(s) at a model our price table lacks">*</sup>'
+    assert f"$3.10</span>{marked}<span" in served
+    # ...and the second sits inside the secondary span, between its number and the unit word.
+    assert '>900</span><span class="icon" aria-hidden="true">◆</span> out</span>' in served
