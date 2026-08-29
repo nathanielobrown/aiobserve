@@ -57,9 +57,9 @@ def test_planted_markup_arrives_inert(plant: Planter) -> None:
     """Text from a transcript is escaped everywhere it lands on a page or a fragment.
 
     The sentinels are invented — no redacted fixture carries markup — and each lands on a
-    real row, so this checks the template chain rather than a hand-built page. `render.py`'s
-    own leaves cannot stand in for this one: a template that piped a value through `|safe`
-    would bypass them entirely, and only a rendered response shows it.
+    real row, so this checks the whole chain rather than a hand-built page. The component
+    leaves cannot stand in for this one: a component that wrapped a value in `Markup` would
+    bypass them entirely, and only a served response shows it.
     """
     sentinel = "<script>alert('planted')</script>"
     path = plant(

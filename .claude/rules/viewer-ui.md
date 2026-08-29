@@ -190,7 +190,7 @@ Elements are written `htpy.div[...]`, never `from htpy import div`: the prefix i
 
 A string its query cut arrives one character past the width it is printed at, and the filter that prints it cuts it back and marks where the rest was left behind (`src/hyphae/view/format.py:cut`): `line` for a children log's row, `head` and `member` for a header, `short` and `item` for a row of the session list. Print such a value bare and a reader cannot tell a name that ended from one that was stopped. A title arrives marked already, at whichever of the four widths `src/hyphae/view/nodes.py` cut it to.
 
-A closed vocabulary is the one thing cut without a mark: a taxonomy value is bound at `queries.TAG_CHARS` because a page whose size is arithmetic needs every width named, not because any member reaches it (`src/hyphae/enrich/taxonomy.py`). `parts.counted` takes `mark=False` for those, and a mark there would claim a name went on when nothing was left behind.
+A closed vocabulary is the one thing cut without a mark: a taxonomy value is bound at `queries.TAG_CHARS` because a page whose size is arithmetic needs every width named, not because any member reaches it (`src/hyphae/enrich/taxonomy.py`). `parts.counted` takes `mark_cuts=False` for those, and a mark there would claim a name went on when nothing was left behind.
 
 A mark is three bytes on every row of the page that carries it, so adding one to a column of the session list moves `bounds.SESSIONS` — the ceiling is derived from the dearest row, and the pin in `tests/view/test_bounds.py` holds it from both sides against what `tests/view/budgets.py` measured that row at.
 
@@ -202,19 +202,19 @@ A rendered value goes in a `<span data-field="…">`, and a repeated thing gets 
 
 `hp view --dev` puts `src/hyphae/view/static/dev-reload.js` on every page, serves `/dev/reload`, and runs the server under uvicorn's reloader. The stream sends one message per debounced save under the static files (`src/hyphae/view/dev.py`): a stylesheet-only save swaps the sheets in place, and the client script saved beside one reloads the page. A component is Python, so a save there restarts the server instead — the stream drops with the old worker and the client reloads on the reconnect, onto what the new one serves. Nothing else on the page triggers either.
 
-Witnessed in a real Chromium on 2026-08-25, over a store built from the `resume_pair` and `spine` fixtures on port 8491, and again on 2026-08-26 against `mise run gallery` on 8478 — never 8477, which is a live viewer. In the second run, on an open node page scrolled down the pane:
+Witnessed in a real Chromium on 2026-08-29 against `mise run gallery --port 8478` — never 8477, which is a live viewer — on an open turn page:
 
-- Saving `style.css` re-fetched both stylesheets at a fresh URL inside 0.2s, with no document request: the colour changed and the scroll position held
-- Stopping the gallery and starting it again reloaded the page once, 3.1s after the new server answered, at the URL it was on. The exit logged `Cancel 1 running task(s)`, which is `DEV_SHUTDOWN_SECONDS` hanging up on the open stream rather than waiting on it forever
-- The console carried nothing but the dropped stream the restart caused: the loop runs under the same `default-src 'self'` as the pages it reloads
+- Saving `style.css` re-fetched both stylesheets 109ms later, with no document request and no page load: the sheets swap in place
+- Touching a component reloaded the page once, 4.4s after the save, at the URL it was on. That is uvicorn stopping the old worker and starting a new one, so a component save is the same restart a reader watches the page follow
+- The console carried one error and it was the dropped stream the restart caused, `ERR_INCOMPLETE_CHUNKED_ENCODING`: the loop runs under the same `default-src 'self'` as the pages it reloads
 
-Those runs were made against Jinja, which re-rendered an edited template on the next request; a third bullet recording that save is gone with the engine. What replaced it is the second bullet above: uvicorn stops the old worker and starts a new one, so a component save is the restart a reader was already watching the page follow.
+The earlier runs of 2026-08-25 and 2026-08-26 were made against Jinja, which re-rendered an edited template on the next request. That bullet is gone with the engine; the second one above is what replaced it.
 
 # The gallery is the scenario list, opened
 
 `mise run gallery` (`tests/gallery/serve.py`) builds a store from the redacted fixtures, serves it under `--dev`, and lists `tests/view/scenarios.py:SCENARIOS` at `/gallery`. One link per entry and no others, so the page a person walks is the list the tier sweeps.
 
-Witnessed in a real Chromium on 2026-08-25 on the gallery's own port 8478 — never 8477, which is a live viewer. The index came up with 35 rows, one per `SCENARIOS` entry; clicking the turn-node link landed on that node's page with its NavTree (17 rows) and its pane rendered, the reload script on it, and no console error.
+Witnessed in a real Chromium on 2026-08-29 on the gallery's own port 8478 — never 8477, which is a live viewer. The index came up with 39 rows, one per `SCENARIOS` entry, and one link above them that is not a scenario; clicking the turn-node link landed on that node's page with its NavTree and its pane rendered, the reload script on it, and no console error.
 
 A browser check of any page here cannot use Playwright's `wait_for_function`: it evaluates a string as script, and the CSP refuses that. Wait on a selector instead. That is the Python harness's rule and not the header's: on 2026-08-28 the TypeScript runner's `waitForFunction` resolved against the same `default-src 'self'`, in both its function and string forms, with the console empty. `tests/e2e` still waits on selectors, because a selector says what it is waiting for.
 
