@@ -11,16 +11,19 @@ gap, because `0 errors` and `0errors` are the same string to every `data-*` read
 """
 
 import datetime as dt
+import re
 
 import htpy
 import pytest
 
 from hyphae.analyze import queries
 from hyphae.enrich.prompts import PROMPT_VERSION, Level
-from hyphae.view.components import parts
+from hyphae.view.citation import cited
+from hyphae.view.components import citation, parts
 from hyphae.view.detail import Detail, EnrichmentLines
 from hyphae.view.enrichment import GLYPH, TAXONOMY_VERSION, Enrichment
 from hyphae.view.highlight import Syntax
+from tests.conftest import SPINE
 from tests.view.conftest import block, classed, plain, prose, values, walled
 
 
@@ -317,3 +320,33 @@ def test_a_stacked_cell_hangs_each_mark_off_the_line_that_owns_what_it_qualifies
     assert f"$3.10</span>{marked}<span" in served
     # ...and the second sits inside the secondary span, between its number and the unit word.
     assert '>900</span><span class="icon" aria-hidden="true">◆</span> out</span>' in served
+
+
+# --- The two mounts of a page's provenance --------------------------------------------------
+
+
+def test_a_footer_and_a_fragments_list_cite_a_query_the_same_way() -> None:
+    """What produced a page is written once and mounted twice: folded, and open.
+
+    A page's footer folds it away — it is provenance, not content — while an element swapped
+    into someone else's page has no footer to end and stands its lines open. The `<li>` used to
+    be written in both templates, which is two answers to one question, so the leaf is that the
+    two mounts carry the same lines.
+    """
+    ran = {
+        "session": cited("view_session_header", {"session_id": SPINE, "head_chars": 80}),
+        "runs": cited("view_runs", {"session_id": SPINE}),
+    }
+    folded = str(citation.footer(citations=ran))
+    open_lines = str(citation.listed(citations=ran))
+    lines = re.findall(r"<li>.*?</li>", folded)
+    # Two queries in, two lines out, and the same two either way...
+    assert len(lines) == len(ran)
+    assert lines == re.findall(r"<li>.*?</li>", open_lines)
+    # ...with the fold the only thing that differs between the mounts...
+    assert "what produced this page" in folded
+    assert "what produced this page" not in open_lines
+    # ...and a page that ran no query carrying no footer at all, where the open mount is part
+    # of the element it was swapped in with and always has its count to show.
+    assert citation.footer(citations={}) is None
+    assert 'data-citations="0"' in str(citation.listed(citations={}))

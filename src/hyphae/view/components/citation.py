@@ -23,14 +23,24 @@ def footer(*, citations: Mapping[str, Cited]) -> Html | None:
         return None
     return htpy.footer(id="citation")[
         htpy.details(data_citations=len(citations))[
-            [
-                htpy.summary["what produced this page"],
-                htpy.ul[
-                    [
-                        htpy.li[htpy.a(data_field=name, href=ran.url)[htpy.code[ran.line]]]
-                        for name, ran in citations.items()
-                    ]
-                ],
-            ]
+            [htpy.summary["what produced this page"], htpy.ul[_lines(citations)]]
         ]
+    ]
+
+
+def listed(*, citations: Mapping[str, Cited]) -> Html:
+    """The same lines on a fragment, unfolded: what one swapped-in element ran.
+
+    A fragment has no footer to end and nothing to fold away from — it is a handful of lines
+    inside somebody else's page — so the provenance stands open. The lines are `footer`'s, so
+    the two mounts cannot cite one query two ways.
+    """
+    return htpy.ul(".citations", data_citations=len(citations))[_lines(citations)]
+
+
+def _lines(citations: Mapping[str, Cited]) -> list[Html]:
+    """One line per query: the statement, linking to the page that prints its SQL."""
+    return [
+        htpy.li[htpy.a(data_field=name, href=ran.url)[htpy.code[ran.line]]]
+        for name, ran in citations.items()
     ]
