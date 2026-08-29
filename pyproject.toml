@@ -11,6 +11,12 @@ dependencies = [
   "fastapi>=0.115", # the trace viewer's routes, and the test client the viewer tier drives
   "uvicorn>=0.34", # serves the viewer on localhost; nothing here is deployed
   "jinja2>=3.1", # the viewer's templates, autoescaping every value a transcript wrote
+  # The viewer's components: markup as typed Python functions, which pyrefly checks and a
+  # template cannot be. It escapes every string child and every attribute value — an attribute
+  # even when the value is already a `Markup`, which is why no component writes markup into one
+  # (`.claude/rules/viewer-ui.md`). A floor at 26.5 because that is the release the escaping
+  # behaviour was read off and pinned in `tests/view/test_components.py`.
+  "htpy>=26.5",
   # Renders a transcript's markdown with HTML passthrough and the image rule off — see
   # `view/render.py`, which is the only place the reader is configured.
   "markdown-it-py>=3.0",
@@ -309,3 +315,23 @@ implicit-any-parameter = false
 # This lifts the rule off the whole tree, fixtures included — but a fixture's return type is
 # what the tests taking it read, and every fixture here annotates one already.
 unannotated-return = false
+
+# The viewer's components, where one error kind is off and everything else pyrefly does stays on.
+[[tool.pyrefly.sub-config]]
+matches = "src/hyphae/view/components/**"
+
+[tool.pyrefly.sub-config.errors]
+# htpy's child parameter is a recursive type alias — `Node` names itself inside `Iterable`,
+# `Callable`, `AsyncIterable` and `Awaitable` — and pyrefly cannot decide it, so *every* element
+# written as a child of another element reds: `htpy.nav[htpy.a(href="/")["x"]]` is the whole
+# repro, on 1.2.0 and on 1.3.0.dev3 alike, at `default` severity as well as `strict`. Turning the
+# kind off here rather than per line, because it is not a line: it is the package's one idiom.
+#
+# What it costs is bounded — the only subscripts under `components/` are htpy's child brackets,
+# and a bad child still fails loudly at render, where htpy raises `TypeError` and the suite
+# renders every component. Everywhere the type-safety goal is actually cashed — signatures,
+# typed rows, `match`/`assert_never` — pyrefly is untouched.
+#
+# Delete this block when pyrefly can decide the alias. `tests/view/test_components.py` holds a
+# canary that reds on the release that makes it possible, so nobody has to remember.
+bad-index = false

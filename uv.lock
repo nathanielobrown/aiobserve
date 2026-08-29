@@ -283,6 +283,18 @@ wheels = [
 ]
 
 [[package]]
+name = "htpy"
+version = "26.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "markupsafe" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d3/18/48b0fe5f7b23c8bb0b45b09c306f511417fee74afc49a0765178d6dcbac2/htpy-26.5.1.tar.gz", hash = "sha256:43a365c1fc670094da781b923883019339cec031397d61d5fe5f8e2f2278b63e", size = 292049, upload-time = "2026-05-22T08:31:31.387Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e7/68/ad12d6519ccc48852ebb1effbe5a160ff21d7b48c484d0dae6fd173f6d22/htpy-26.5.1-py3-none-any.whl", hash = "sha256:148566db9d720c897baa5832e2a496954ce317ab06ef49a103b44f8a15322c3b", size = 21428, upload-time = "2026-05-22T08:31:30.153Z" },
+]
+
+[[package]]
 name = "httpcore"
 version = "1.0.9"
 source = { registry = "https://pypi.org/simple" }
@@ -317,6 +329,7 @@ source = { editable = "." }
 dependencies = [
     { name = "duckdb" },
     { name = "fastapi" },
+    { name = "htpy" },
     { name = "httpx" },
     { name = "jinja2" },
     { name = "markdown-it-py" },
@@ -345,6 +358,7 @@ dev = [
 requires-dist = [
     { name = "duckdb", specifier = ">=1.5.5" },
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "htpy", specifier = ">=26.5" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "jinja2", specifier = ">=3.1" },
     { name = "markdown-it-py", specifier = ">=3.0" },
