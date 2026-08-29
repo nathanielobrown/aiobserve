@@ -12,7 +12,7 @@ read by name (`view/components/`).
 from collections.abc import Sequence
 
 from hyphae.view.columns import Shape
-from hyphae.view.components import logs, node_body
+from hyphae.view.components import logs, node_body, numbers
 from hyphae.view.enrichment import Descriptions
 from hyphae.view.format import ELLIPSIS
 from hyphae.view.formatters import Fields, name_tool
@@ -484,3 +484,42 @@ def logged(shape: Shape, node: Node, row: Row) -> logs.Logged:
             )
         case Shape.NONE:
             raise ValueError("A log of no shape lists no rows.")
+
+
+def window_numbers(row: Row) -> numbers.Window:
+    """A popover's readings for a node made of api calls, off the row `view_numbers` answered."""
+    return numbers.Window(
+        model=row["model"],
+        fill=row["fill"],
+        window_tokens=row["window_tokens"],
+        added=row["added"],
+        cost_usd=row["cost_usd"],
+        api_calls=row["api_calls"],
+        unpriced_api_calls=row["unpriced_api_calls"],
+    )
+
+
+def tool_numbers(row: Row) -> numbers.Tool:
+    """A popover's readings for one tool call, off the row `view_numbers_tool` answered.
+
+    The siblings are named here rather than in the query: what a tool call is called is
+    Python's (`view/formatters.py`), and the query ships the fields each name is composed of.
+    """
+    return numbers.Tool(
+        input_chars=row["input_chars"],
+        result_chars=row["result_chars"],
+        offload_file=row["offload_file"],
+        spawned_run=row["spawned_run"],
+        siblings=tool_titles(row["siblings"]),
+        siblings_cut=row["siblings_cut"],
+    )
+
+
+def compaction_numbers(row: Row) -> numbers.Compaction:
+    """A popover's readings for one compaction, off `view_numbers_compaction`'s row."""
+    return numbers.Compaction(
+        pre_tokens=row["pre_tokens"],
+        post_tokens=row["post_tokens"],
+        freed=row["freed"],
+        trigger=row["trigger"],
+    )

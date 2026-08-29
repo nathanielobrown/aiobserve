@@ -18,9 +18,11 @@ from starlette.routing import BaseRoute
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.model import MAIN_SOURCE
-from hyphae.view import builders, highlight, nodes, numbers
+from hyphae.view import builders, highlight, nodes
+from hyphae.view.components import numbers
 from hyphae.view.enrichment import enriched
 from hyphae.view.nodes import Kind, Ref
+from hyphae.view.numbers import breakout, charges, spend, wash
 from hyphae.view.store import Fragment, Value, open_store, page_rows
 from hyphae.view.viewer import Viewer
 
@@ -51,18 +53,12 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 rows = page_rows(connection, Fragment.TOOL_NUMBERS, **keyed)
             if not rows:
                 raise HTTPException(404, "No tool call with that id is in this thread.")
-            return viewer.templates.TemplateResponse(
-                request,
-                "fragments/numbers_tool.html",
-                {
-                    "key": Ref(kind, source, node_id).key,
-                    "row": rows[0],
-                    # The calls asked for beside this one, named here rather than in the query:
-                    # what a tool call is called is Python's (`view/formatters.py`), and the
-                    # query ships the fields each name is composed out of.
-                    "siblings": builders.tool_titles(rows[0]["siblings"]),
-                    "citation": queries.citation(Fragment.TOOL_NUMBERS, keyed),
-                },
+            return viewer.html(
+                numbers.tool(
+                    key=Ref(kind, source, node_id).key,
+                    citation=queries.citation(Fragment.TOOL_NUMBERS, keyed),
+                    node=builders.tool_numbers(rows[0]),
+                )
             )
         bound: dict[str, ParamValue] = {
             "session_id": session_id,
@@ -77,22 +73,20 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         # for one that is — a node with no api calls under it is a real reading, and the
         # popover prints it as the dashes it is.
         whole = rows[0]["session_usd"]
-        return viewer.templates.TemplateResponse(
-            request,
-            "fragments/numbers.html",
-            {
-                "key": Ref(kind, source, node_id).key,
-                "row": rows[0],
+        return viewer.html(
+            numbers.popover(
+                key=Ref(kind, source, node_id).key,
+                citation=queries.citation(Fragment.NUMBERS, bound),
+                node=builders.window_numbers(rows[0]),
                 # The three lines between the window and the total, each priced and washed
-                # here rather than in the template: what a charge is made of is arithmetic
+                # here rather than in the component: what a charge is made of is arithmetic
                 # (`view/numbers.py`), and the total under them takes the same ground.
-                "charges": numbers.charges(rows[0], numbers.spend(rows[0]["spent"]), whole),
-                "total_wash": numbers.wash(rows[0]["cost_usd"], whole),
+                charges=charges(rows[0], spend(rows[0]["spent"]), whole),
+                total_wash=wash(rows[0]["cost_usd"], whole),
                 # And the two lines under them, where agent runs hang below this node: None
                 # where none does, which is what keeps the breakout off every other row.
-                "breakout": numbers.breakout(rows[0]["cost_usd"], rows[0]["subtree_usd"], whole),
-                "citation": queries.citation(Fragment.NUMBERS, bound),
-            },
+                breakout=breakout(rows[0]["cost_usd"], rows[0]["subtree_usd"], whole),
+            )
         )
 
     @router.get(
@@ -119,14 +113,12 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
             rows = page_rows(connection, Fragment.COMPACTION_NUMBERS, **keyed)
         if not rows:
             raise HTTPException(404, "No compaction with that id is on this thread.")
-        return viewer.templates.TemplateResponse(
-            request,
-            "fragments/numbers_compaction.html",
-            {
-                "key": Ref(Kind.COMPACTION, source, compaction_id).key,
-                "row": rows[0],
-                "citation": queries.citation(Fragment.COMPACTION_NUMBERS, keyed),
-            },
+        return viewer.html(
+            numbers.compaction(
+                key=Ref(Kind.COMPACTION, source, compaction_id).key,
+                citation=queries.citation(Fragment.COMPACTION_NUMBERS, keyed),
+                node=builders.compaction_numbers(rows[0]),
+            )
         )
 
     @router.get(
