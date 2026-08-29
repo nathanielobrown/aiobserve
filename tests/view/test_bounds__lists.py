@@ -31,6 +31,7 @@ from tests.view.budgets import (
     MEASURED_LIST_CHROME,
     MEASURED_PROJECTS_CHROME,
     PAGE_BYTES,
+    fits,
     worst_error_row_bytes,
     worst_project_row_bytes,
     worst_session_row_bytes,
@@ -136,7 +137,7 @@ def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     # with the row the arithmetic counts separately stripped out.
     chrome = re.sub(r"<tr data-session-id=.*?</tr>", "", one_row, flags=re.DOTALL)
     assert not values(chrome, "data-session-id") and 'id="sessions"' in chrome
-    assert len(chrome.encode()) <= MEASURED_LIST_CHROME
+    assert fits(measured=len(chrome.encode()), budget=MEASURED_LIST_CHROME), len(chrome.encode())
     # The plant reached every cap, which is what makes those two numbers a worst case: each
     # string cut to its head, the skills cut to their first names and saying how many were
     # left, and the filter box offering as many projects as it has room for. Read off the row
@@ -223,7 +224,9 @@ def test_a_projects_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     # rows the arithmetic counts separately stripped out...
     chrome = re.sub(r"<tr data-project=.*?</tr>", "", page, flags=re.DOTALL)
     assert not values(chrome, "data-project") and 'id="projects"' in chrome
-    assert len(chrome.encode()) <= MEASURED_PROJECTS_CHROME
+    assert fits(measured=len(chrome.encode()), budget=MEASURED_PROJECTS_CHROME), len(
+        chrome.encode()
+    )
     # ...and one row costs no more than its markup and the two copies of its path.
     row_bytes = (len(page.encode()) - len(chrome.encode())) / bounds.PROJECTS.ceiling
     assert row_bytes <= worst_project_row_bytes()
@@ -276,7 +279,7 @@ def test_an_errors_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     # rows the arithmetic counts separately stripped out...
     chrome = re.sub(r"<li data-error=.*?</li>", "", page, flags=re.DOTALL)
     assert not values(chrome, "data-error") and 'id="errors"' in chrome
-    assert len(chrome.encode()) <= MEASURED_ERRORS_CHROME
+    assert fits(measured=len(chrome.encode()), budget=MEASURED_ERRORS_CHROME), len(chrome.encode())
     # ...and one row costs no more than its markup and the title it carries.
     row_bytes = (len(page.encode()) - len(chrome.encode())) / bounds.ERRORS.ceiling
     assert row_bytes <= worst_error_row_bytes()

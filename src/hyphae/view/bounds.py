@@ -91,11 +91,12 @@ CHUNK = Bound(default=queries.CHUNK_CHARS, ceiling=60_000)
 # character of a title or a path can escape to five bytes — so the two are the same number.
 # Cut from 125 when the row grew the columns that say what a session's subagents and its turns
 # were, from 110 when the row's markup was priced at the dearest row a list holds rather than at
-# whichever one sorted second, from 104 when every string a transcript wrote in a row began
-# saying where it was cut, and from 103 when the templates went under a formatter: the
-# indentation djLint writes between a row's cells is bytes on every row of every page. A row
-# that costs more is a row a page holds fewer of.
-SESSIONS = Bound(default=97, ceiling=97)
+# whichever one sorted second, and from 104 when every string a transcript wrote in a row began
+# saying where it was cut. Raised to 113 when the pages became htpy components: nothing is
+# written between two elements now, so a row costs its markup and its content and none of the
+# whitespace a template's own shape used to leave between a row's cells. A row that costs more
+# is a row a page holds fewer of.
+SESSIONS = Bound(default=113, ceiling=113)
 # The landing page, which a corpus grows the way it grows sessions — one row per project it
 # holds, worktrees folded in. Not a size a URL carries: a reader picks a project rather than
 # paging through them, so the page shows the most recently active `PROJECTS` and says how many

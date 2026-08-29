@@ -24,6 +24,8 @@ from tests.view.budgets import (
     MEASURED_NODE_CHROME,
     MEASURED_PAGER_BYTES,
     PANE_DETAILS,
+    exact_pins,
+    fits,
     worst_crumb_bytes,
     worst_expansion_bytes,
     worst_log_row_bytes,
@@ -222,21 +224,23 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     # The list and the two pages that are not nodes come back too; only a node page splits.
     split = [priced(page) for page in served if 'id="nav-tree-rows"' in page]
     # A crumb, a NavTree row, a log row and a preview each weigh what the arithmetic budgets...
-    for name, budget, measured in (
+    for name, budget, exact in (
         ("crumb", worst_crumb_bytes(), False),
         ("nav_tree", bounds.NAV_TREE_ROW_BYTES, True),
         ("log", worst_log_row_bytes(), False),
-        ("pager", MEASURED_PAGER_BYTES, False),
+        ("pager", MEASURED_PAGER_BYTES, exact_pins()),
     ):
         found = [row for _, rows in split for row in rows[name]]
         assert found, name
         widest_row = max(len(row.encode()) for row in found)
-        # Three of the four are arithmetic over a cap, so a row that comes in under is a cap
-        # with room left in it. The NavTree row is measured rather than budgeted, and the NavTree is
-        # four fifths of the page, so it is held from below as well: a byte of slack there is
-        # 3,217 bytes the ceiling keeps for nothing, and `NODE_BYTES` now has room to hide one.
-        assert widest_row == budget if measured else widest_row <= budget, (name, widest_row)
-        if measured:
+        # A crumb and a log row are arithmetic over a cap, so a row that comes in under is a cap
+        # with room left in it and the budget is only ever a ceiling. The other two are
+        # measurements of the row itself. The NavTree's is held from below always — the NavTree is
+        # four fifths of the page, so a byte of slack there is 3,217 bytes the ceiling keeps for
+        # nothing, and `NODE_BYTES` now has room to hide one — and the pager's under the exact-pin
+        # mode, with every other measured pin.
+        assert widest_row == budget if exact else widest_row <= budget, (name, widest_row)
+        if name == "nav_tree":
             # And the row it priced drew a context bar at its widest spelling: three edges of
             # two digits each, which is the most a turn's row carries. A corpus that answered
             # in models the window table holds none of would price a row that draws no bar, and
@@ -271,7 +275,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     )
     # ...and what the page carries whatever it holds fits the allowance the ceiling gives it.
     widest = max((chrome for chrome, _ in split), key=lambda page: len(page.encode()))
-    assert len(widest.encode()) <= MEASURED_NODE_CHROME
+    assert fits(measured=len(widest.encode()), budget=MEASURED_NODE_CHROME), len(widest.encode())
     # The plant reached the caps, which is what makes those numbers a worst case: each header
     # string cut to its head, each list cut to its first members and saying how many it left,
     # every tree title cut to a nav width, and every preview offering the rest of itself.
@@ -387,9 +391,9 @@ def test_an_expansion_weighs_a_body_and_the_one_page_of_rows_it_lists(
         assert other.status_code == 200
         assert not re.findall(PRICED_ROWS["log"], other.text, flags=re.DOTALL), "it listed a level"
         bodies.append(other.text)
-    assert max(len(body.encode()) for body in bodies) <= MEASURED_EXPANSION_CHROME, [
-        len(body.encode()) for body in bodies
-    ]
+    assert fits(
+        measured=max(len(body.encode()) for body in bodies), budget=MEASURED_EXPANSION_CHROME
+    ), [len(body.encode()) for body in bodies]
     # A turn's body is the one whose title a pass can have written, so the described store is
     # what makes that title the widest it gets rather than the prompt's own head.
     assert fields(bodies[-2], "data-body", "turn")["title"].startswith("&" * queries.TAG_CHARS)

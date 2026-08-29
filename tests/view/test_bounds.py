@@ -36,6 +36,7 @@ from tests.conftest import (
 )
 from tests.view.budgets import (
     ESCAPED_CHAR_BYTES,
+    EXACT_PIN,
     EXPANSION_BYTES,
     FAT,
     MARKED_CHAR_BYTES,
@@ -44,6 +45,8 @@ from tests.view.budgets import (
     MEASURED_PROJECTS_CHROME,
     NODE_BYTES,
     PAGE_BYTES,
+    exact_pins,
+    fits,
     worst_error_row_bytes,
     worst_expansion_bytes,
     worst_node_bytes,
@@ -392,6 +395,32 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
         "OPENED_RECORD_CHARS",
         "NAV_TREE_ROW_BYTES",
     }
+
+
+def test_a_pin_a_page_no_longer_reaches_passes_the_everyday_run_and_reds_the_exact_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The mode that turns re-pinning into something a run reds on rather than a step to remember.
+
+    Every measured pin above is read as a ceiling, which is what lets an everyday change make a
+    page smaller without re-pinning the page — and is also how a constant quietly stops
+    describing what it measured. A change that moves bytes on purpose runs the suite under
+    `HYPHAE_PIN_EXACT=1`, where the same pin has to be the measurement, and re-pins whatever the
+    run names. That is the run the conversion to components made against every constant in
+    `budgets.py`.
+    """
+    # A page that came in 100 B under its pin. The everyday run has nothing to say about it...
+    monkeypatch.delenv(EXACT_PIN, raising=False)
+    assert not exact_pins()
+    assert fits(measured=8_896, budget=8_996)
+    # ...and the exact run reds on it, naming both numbers through the leaf that called it.
+    monkeypatch.setenv(EXACT_PIN, "1")
+    assert exact_pins()
+    assert not fits(measured=8_896, budget=8_996)
+    # The pin that run would write instead is the measurement, and it passes both ways.
+    assert fits(measured=8_896, budget=8_896)
+    monkeypatch.delenv(EXACT_PIN)
+    assert fits(measured=8_896, budget=8_896)
 
 
 def limits(sql: str) -> list[str]:
