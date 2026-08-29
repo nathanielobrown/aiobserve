@@ -22,7 +22,7 @@ from hyphae.view.app import build_app
 from hyphae.view.columns import COLUMNS, Shape
 from hyphae.view.format import ELLIPSIS
 from hyphae.view.labels import label
-from hyphae.view.nodes import BODY_URL
+from hyphae.view.nodes import BODY_URL, Kind
 from tests.conftest import (
     ANCESTOR,
     DENSE_TURN,
@@ -42,6 +42,7 @@ from tests.view.conftest import (
     inside,
     marked_up,
     one,
+    pages,
     reads,
     values,
 )
@@ -578,3 +579,29 @@ def test_a_crumb_is_cut_narrower_than_every_other_place_a_title_is_read(
     )
     # And the tab, which has nowhere to put markup, says the same words without any of it.
     assert f"<title>❯ {bold} y" in bolded
+
+
+def test_every_kind_renders_a_body_and_every_shape_a_log(
+    client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """The match over a node's kind and the one over its log's shape each answer for every member.
+
+    The runtime half of what `assert_never` promises the checker: a kind added to `nodes.Kind`
+    with no arm behind it renders no body, and a shape added to `columns.Shape` lists no rows.
+    Read off the two enums rather than a written list, so a member added later is covered here
+    without anyone remembering to add it — and swept over every page the store can serve, so
+    what answers for a member is a real render of a real node rather than a hand-built one.
+    """
+    bodies: set[str] = set()
+    logged: set[str] = set()
+    for url in pages(store):
+        served = client.get(url).text
+        bodies.update(values(served, "data-body"))
+        logged.update(values(served, "data-log"))
+    assert {kind.value for kind in Kind} <= bodies, sorted({k.value for k in Kind} - bodies)
+    # Every shape but one. `Shape.NONE` is the absence itself — a node with nothing under it
+    # has no log — so it is the one member whose arm renders nothing, and it is checked that
+    # way rather than left out.
+    listed = {shape.value for shape in Shape} - {Shape.NONE.value}
+    assert listed <= logged, sorted(listed - logged)
+    assert Shape.NONE.value not in logged
