@@ -16,11 +16,10 @@ from starlette.routing import BaseRoute
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.view import bounds, builders, nav_tree, nodes
-from hyphae.view.browse import (
-    LogRow,
-)
 from hyphae.view.citation import cited
 from hyphae.view.columns import Shape
+from hyphae.view.components import node_body
+from hyphae.view.components.logs import Logged
 from hyphae.view.enrichment import described
 from hyphae.view.knobs import (
     carried,
@@ -121,40 +120,36 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
     router = APIRouter()
 
     def expanded(
-        request: Request,
         node: nodes.Node,
         row: Row,
         shape: Shape,
         children: int | None,
         marks: str,
         ran: nav_tree.Ran,
-        under: list[LogRow],
+        under: list[Logged],
     ) -> Response:
         """One node's body alone, the way an expansion in someone else's log mounts it.
 
-        The same macro the full view's pane renders through, so the two cannot drift apart;
+        The same component the full view's pane renders through, so the two cannot drift apart;
         where the page has the crumbs and prev/next, this has the way to the node's own page.
         `under` is the level the expansion lists, empty for every kind that stops at the count.
         `marks` is the knobs the page around the expansion was read under, which every link out
         of here carries on.
         """
-        return viewer.templates.TemplateResponse(
-            request,
-            "fragments/body.html",
-            {
-                "node": node,
-                "row": row,
-                "shape": shape,
-                "children": children,
-                "under": under,
-                "suffix": marks,
-                "citations": {named.value: cited(named, bound) for named, bound in ran},
-            },
+        return viewer.html(
+            node_body.expansion(
+                node=node,
+                facts=builders.node_facts(node, row),
+                suffix=marks,
+                shape=shape,
+                children=children,
+                rows=under,
+                citations={named.value: cited(named, bound) for named, bound in ran},
+            )
         )
 
     @router.get(f"{nodes.BODY_URL}/session/{{session_id}}/thread/{{source}}/{{kind}}/{{node_id}}")
-    def node_body(
-        request: Request,
+    def thread_body(
         kind: str,
         session_id: str,
         source: str,
@@ -200,7 +195,9 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 raise HTTPException(404, "No node with that id is in this thread.")
             under = (
                 [
-                    LogRow(shaped.listed.build(session_id, source, item), item)
+                    builders.logged(
+                        shaped.shape, shaped.listed.build(session_id, source, item), item
+                    )
                     for item in page_rows(connection, shaped.listed.query, **level)
                 ]
                 if shaped.listed is not None
@@ -216,7 +213,6 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         if describes is not None and describes.queried:
             ran.append((Page.ENRICHMENT, keyed))
         return expanded(
-            request,
             shaped.build(session_id, source, rows[0], told.description if told else None),
             rows[0],
             shaped.shape,
@@ -228,7 +224,6 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
 
     @router.get(f"{nodes.BODY_URL}/session/{{session_id}}/{Kind.RUN}/{{run_id}}")
     def run_body(
-        request: Request,
         session_id: str,
         run_id: str,
         nav: str = nodes.Preset.FULL,
@@ -255,7 +250,6 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         if describes.queried:
             ran.append((Page.ENRICHMENT, keyed))
         return expanded(
-            request,
             builders.run_node(
                 session_id, rows[0], nodes.NO_LEDGER, row.description if row else None
             ),

@@ -17,7 +17,7 @@ The viewer is server-rendered Jinja with three scripts on a shipped page: vendor
 A node's body is one macro in `_node_body.html`, mounted twice:
 
 - Its **full view**, `node.html`, wraps the body with the NavTree, the crumbs above it, its enrichment, its previewed values, its children log, and prev/next
-- Its **expansion**, `src/hyphae/view/templates/fragments/body.html`, is the body alone — opened in a log row while the reader stays on the parent
+- Its **expansion**, `src/hyphae/view/components/node_body.py`'s `expansion`, is the body alone — opened in a log row while the reader stays on the parent
 
 Render a node's facts in the body macro and nowhere else. A pane and a NavTree row that disagree tell a reader two stories about one node.
 

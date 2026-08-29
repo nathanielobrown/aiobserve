@@ -21,6 +21,7 @@ from hyphae.view import format as fmt
 from hyphae.view.app import build_app
 from hyphae.view.columns import COLUMNS, Shape
 from hyphae.view.format import ELLIPSIS
+from hyphae.view.labels import label
 from hyphae.view.nodes import BODY_URL
 from tests.conftest import (
     ANCESTOR,
@@ -36,10 +37,12 @@ from tests.view.conftest import (
     MISSING,
     Planter,
     fields,
+    headings,
     icons,
     inside,
     marked_up,
     one,
+    reads,
     values,
 )
 from tests.view.selections import (
@@ -218,9 +221,14 @@ def test_a_slash_turn_leads_with_the_command_it_ran(
     assert not values(client.get(TURN).text, "data-command")
 
 
-# What column of a node's own facts counts the children its expansion links to instead of
-# listing. A kind absent from here has none — a tool call ends the NavTree.
-CHILDREN = {"turn": "api_calls", "call": "tool_calls", "run": "turns"}
+# What an expansion says is under the node instead of listing it: the column of the node's own
+# facts that counts them, and the word the count is read with. A kind absent from here has no
+# level under it at all — a tool call ends the NavTree.
+CHILDREN = {
+    "turn": ("api_calls", "calls"),
+    "call": ("tool_calls", "tools"),
+    "run": ("turns", "turns"),
+}
 
 
 @pytest.mark.parametrize("named", ["client", "enriched_client"])
@@ -259,6 +267,13 @@ def test_a_log_row_expands_to_the_body_its_own_page_wraps(
             assert fields(served.text, "data-body", child) == fields(
                 client.get(own).text, "data-body", child
             ), mount
+            # It leads with the kind's mark, one space, and the node's own title. Read through
+            # `reads` because that is the one reader here that can see the gap: `fields` strips
+            # it, and a heading that ran the mark into the title would pass every other leaf.
+            titled = " ".join(fields(served.text, "data-body", child)["title"].split())
+            assert reads(served.text, "data-body", child).startswith(f"{MARKS[child]} {titled}"), (
+                mount
+            )
             # And it is only the body: everything the full view wraps it in is absent. A
             # call's expansion is the one that lists a level under it — the tools it called,
             # which is what the leaf below reads.
@@ -275,11 +290,15 @@ def test_a_log_row_expands_to_the_body_its_own_page_wraps(
             assert link == own, mount
             counted = fields(served.text, "data-children", child)
             if child in CHILDREN and not called:
+                column, shaped = CHILDREN[child]
+                assert counted["children"] == fields(served.text, "data-body", child)[column], mount
+                # And it reads as one line — the count, a space, and what is being counted.
                 assert (
-                    counted["children"] == fields(served.text, "data-body", child)[CHILDREN[child]]
+                    reads(served.text, "data-children", child) == f"{counted['children']} {shaped}"
                 ), mount
             else:
                 assert "children" not in counted, mount
+                assert reads(served.text, "data-children", child) == "its own page", mount
             opened.add(child)
     # Every kind a log lists was opened: a shape the sweep never reached is a mount nothing
     # proved serves.
@@ -324,6 +343,13 @@ def test_a_call_opened_in_its_turn_lists_the_tools_it_called(
     # Headed like the log on the page, less the column the opener lives in...
     named = [column.field for column in COLUMNS[Shape.TOOLS] if column.field != "body"]
     assert inside(opened, "data-columns", "tools", "data-column") == named
+    # ...mark, space and word alike: the gap between a column's mark and its heading is a
+    # `" "` somebody wrote, so it is read back here rather than assumed.
+    assert headings(opened) == {
+        column.field: f"{column.icon} {label(column.field)}"
+        for column in COLUMNS[Shape.TOOLS]
+        if column.field != "body"
+    }
     for row in rows:
         assert inside(opened, "data-child", row, "data-column") == named, row
     # ...because no row in an expansion opens another one.
@@ -333,6 +359,10 @@ def test_a_call_opened_in_its_turn_lists_the_tools_it_called(
     assert (
         fields(opened, "data-log", "tools")["children"]
         == fields(page, "data-child", key)["tool_calls"]
+    )
+    # Which reads as one line above the table: the count, a space, and the level it counts.
+    assert reads(opened, "data-log", "tools").startswith(
+        f"{fields(opened, 'data-log', 'tools')['children']} tools"
     )
 
 

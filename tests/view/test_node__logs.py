@@ -17,10 +17,10 @@ from hyphae.view.labels import label
 from hyphae.view.nodes import BODY_URL
 from tests.view.conftest import (
     fields,
+    headings,
     icons,
     inside,
     one,
-    plain,
     values,
 )
 from tests.view.selections import (
@@ -199,20 +199,6 @@ def test_the_page_the_log_opens_at_is_the_url_with_no_page_on_it(client: TestCli
     assert numbered(TURN, "?log=1", 1) == f"{TURN}?log=1"
     assert numbered(TURN, "", 3) == f"{TURN}?page=3"
     assert numbered(TURN, "?log=1", 3) == f"{TURN}?log=1&page=3"
-
-
-def headings(html: str) -> dict[str, str]:
-    """What each column of a children log heads itself with, keyed by the column it heads.
-
-    Whitespace collapsed the way a browser collapses it, so the heading a reader sees is what
-    the assertion reads and the template stays free to break a long line.
-    """
-    return {
-        column: " ".join(plain(inner).split())
-        for column, inner in re.findall(
-            r'<th [^>]*data-column="([^"]*)"[^>]*>(.*?)</th>', html, flags=re.DOTALL
-        )
-    }
 
 
 @pytest.mark.parametrize("parent", list(LEVELS))

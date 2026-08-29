@@ -278,6 +278,21 @@ def classed(html: str) -> set[str]:
     return {name for found in re.findall(r'class="([^"]*)"', html) for name in found.split()}
 
 
+def headings(html: str) -> dict[str, str]:
+    """What each column of a children log heads itself with, keyed by the column it heads.
+
+    Whitespace collapsed the way a browser collapses it, so the heading a reader sees is what
+    the assertion reads: the mark, one space, and the word the label registry gives the column.
+    Read by two files — the log on a page, and the log an expansion mounts.
+    """
+    return {
+        column: " ".join(plain(inner).split())
+        for column, inner in re.findall(
+            r'<th [^>]*data-column="([^"]*)"[^>]*>(.*?)</th>', html, flags=re.DOTALL
+        )
+    }
+
+
 def plain(html: str) -> str:
     """What a browser shows of a run of markup: the tags dropped, the escapes undone.
 
