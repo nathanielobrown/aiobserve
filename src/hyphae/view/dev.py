@@ -1,9 +1,13 @@
 """The dev loop's server half: a file watcher behind a server-sent-event stream.
 
 `build_app(db_path, dev=True)` mounts `reload_router` and includes the client script that
-listens on it; nothing else imports this module. That is deliberate — watchfiles is a dev-group
-dependency, so an installed viewer never imports it and `--dev` in a checkout without the dev
-group fails at startup rather than serving a loop that never fires.
+listens on it. This is the half of the loop a restart cannot serve: a `.py` save is uvicorn's
+own reloader to notice (`view/app.py:serve`), and what is left here is the two static files a
+running server can serve differently without one.
+
+Nothing else imports this module, deliberately — watchfiles is a dev-group dependency, so an
+installed viewer never imports it and `--dev` in a checkout without the dev group fails at
+startup rather than serving a loop that never fires.
 
 Server-sent events rather than a WebSocket because `CSP` allows a same-origin GET already, and
 because `EventSource` retries a dropped connection on its own. The reconnect carries no
@@ -20,7 +24,6 @@ from fastapi.responses import StreamingResponse
 from watchfiles import Change, DefaultFilter, awatch
 
 from hyphae.view.app import STATIC
-from hyphae.view.templating import TEMPLATES
 
 # Where the client listens. Under `/dev/` so that one prefix names everything `--dev` adds.
 RELOAD_URL = "/dev/reload"
@@ -28,10 +31,11 @@ RELOAD_URL = "/dev/reload"
 # What a stylesheet is called, which is the whole of the classification below.
 STYLESHEET = ".css"
 
-# What a running viewer can serve differently without being restarted. A `.py` edit is not
-# here on purpose: the reloader uvicorn would need takes an import string, and the loop this
-# serves needs no restart at all (`plans/ui-dev-loop/design.md`).
-RENDERED = frozenset({".html", STYLESHEET, ".js"})
+# What a running viewer can serve differently without being restarted: the two static files
+# a browser fetches for itself. Markup is no longer among them — a page is Python now
+# (`view/components/`), and a Python edit restarts the server rather than reaching the browser
+# through this stream.
+RENDERED = frozenset({STYLESHEET, ".js"})
 
 
 class Rendered(DefaultFilter):
@@ -59,15 +63,15 @@ class Event(StrEnum):
 def event_for(changes: set[tuple[Change, str]]) -> Event:
     """What one debounced watchfiles change set asks the browser to do.
 
-    CSS only when *every* path in the set is a stylesheet: a template saved alongside one is a
-    page event, or the edit that needs a render is the one the fast path swallows.
+    CSS only when *every* path in the set is a stylesheet: the client script saved alongside
+    one is a page event, or the edit that needs a load is the one the fast path swallows.
     """
     if not changes:
         raise ValueError("watchfiles yielded an empty change set, which it does not do")
     return Event.CSS if all(path.endswith(STYLESHEET) for _, path in changes) else Event.PAGE
 
 
-def reload_router(watch_paths: Sequence[Path] = (TEMPLATES, STATIC)) -> APIRouter:
+def reload_router(watch_paths: Sequence[Path] = (STATIC,)) -> APIRouter:
     """The reload stream, watching `watch_paths` for edits.
 
     The paths are an argument so a test can point a router at a temporary directory rather

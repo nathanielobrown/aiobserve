@@ -2,9 +2,9 @@
 
 `mise run gallery` builds a store from the redacted fixtures, serves it under `--dev`
 (`view/dev.py`), and adds an index at `INDEX` listing `tests/view/scenarios.py:SCENARIOS`. Editing
-a template or a stylesheet reloads whatever is open, so the loop is: pick a scenario, save,
-watch. The clock is the corpus's own and never the wall's (`corpus_now`), so a page holds still
-between two launches.
+a component or a stylesheet reaches whatever is open — a stylesheet through the reload stream, a
+component through a restart — so the loop is: pick a scenario, save, watch. The clock is the
+corpus's own and never the wall's (`corpus_now`), so a page holds still between two launches.
 
 Test tooling, not a package feature — it imports `tests/` freely. Privacy is structural: a port
 is the only thing that reaches it from outside, so the process can serve nothing but the corpus
@@ -13,8 +13,10 @@ it builds itself.
 
 import argparse
 import datetime as dt
+import os
+import shutil
 from pathlib import Path
-from tempfile import TemporaryDirectory
+from tempfile import gettempdir
 
 import htpy
 import uvicorn
@@ -136,23 +138,64 @@ def parser() -> argparse.ArgumentParser:
     return parse
 
 
+def scratch_dir(owner: int) -> Path:
+    """Where a gallery keeps its store: one directory, named after the process that started it.
+
+    A reload worker is a fresh interpreter that can be told nothing — it takes no argument and
+    reads nothing from outside itself — so it derives this the way its parent does, from the pid
+    the two already share. Named rather than made fresh so a hundred saves reuse one directory
+    instead of leaving a hundred behind.
+    """
+    return Path(gettempdir()) / f"hyphae-gallery-{owner}"
+
+
+def dev_gallery() -> FastAPI:
+    """The gallery as a reload worker builds it, which is the only way it is ever built.
+
+    A page is Python now, so a save restarts the server and uvicorn re-imports this module and
+    calls this. Everything the app needs is made here rather than handed in: the store from the
+    redacted fixtures, and the clock frozen off it. That is what keeps the privacy claim
+    structural — there is no parameter to point somewhere else, and the half second a rebuild
+    costs is the price of not having one.
+    """
+    scratch = scratch_dir(os.getppid())
+    scratch.mkdir(exist_ok=True)
+    store = scratch / "traces.duckdb"
+    # Rebuilt rather than reused: a fixture edited between two saves should reach the page, and
+    # the builder writes a new store rather than opening one.
+    store.unlink(missing_ok=True)
+    build_enriched_store(store, corpus=None)
+    return gallery(store)
+
+
 def main() -> None:
-    """Build the fixture store, serve it, and hold until interrupted."""
+    """Serve the gallery until interrupted, restarting it on every Python save it renders from.
+
+    The parent of the loop: it holds the port and the scratch directory, and the worker under it
+    holds the app. `__name__` is `"__main__"` here — the module is run with `-m` — so the worker
+    is named the way an importer would name it, off the package this file sits in.
+    """
     port = parser().parse_args().port
-    with TemporaryDirectory() as scratch:
-        store = Path(scratch) / "traces.duckdb"
-        build_enriched_store(store, corpus=None)
-        claim(port, "Pass --port to use another.")
-        print(f"hyphae gallery: http://{HOST}:{port}{INDEX}")  # noqa: T201 — the URL to open
-        # The same shutdown cap `--dev` takes: the reload stream has no last chunk, so a
-        # graceful exit that waited for it would never return (`view/app.py`).
+    claim(port, "Pass --port to use another.")
+    print(f"hyphae gallery: http://{HOST}:{port}{INDEX}")  # noqa: T201 — the URL to open
+    try:
         uvicorn.run(
-            gallery(store),
+            f"{__package__}.{Path(__file__).stem}:{dev_gallery.__name__}",
+            factory=True,
+            reload=True,
+            # The viewer's own package and this tier: a component, a scenario and this file are
+            # what a reader edits here, and nothing else should cost them a rebuild.
+            reload_dirs=[str(Path(fmt.__file__).parent), str(Path(__file__).parents[1])],
             host=HOST,
             port=port,
             log_level="warning",
+            # The same shutdown cap `--dev` takes: the reload stream has no last chunk, so a
+            # graceful exit that waited for it would never return (`view/app.py`).
             timeout_graceful_shutdown=DEV_SHUTDOWN_SECONDS,
         )
+    finally:
+        # The workers named their scratch after this process, so this is the one that clears it.
+        shutil.rmtree(scratch_dir(os.getpid()), ignore_errors=True)
 
 
 if __name__ == "__main__":

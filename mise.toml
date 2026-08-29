@@ -142,7 +142,7 @@ run = "uv run pytest"
 [tasks.gallery]
 description = "Serve the test fixtures' scenario pages in a browser, with live reload"
 # The UI development loop: every scenario `tests/view/scenarios.py` pins, as a page you can
-# edit a template against and watch reload on save (`tests/gallery/serve.py`). Run as a module
+# edit a component against and watch reload on save (`tests/gallery/serve.py`). Run as a module
 # so `tests.conftest` imports the way it does under pytest. It builds its own store from the
 # redacted fixtures and reads no environment — pointing it at private data is not possible.
 # A port is all it takes, and the default is the process's, so the task names no number.

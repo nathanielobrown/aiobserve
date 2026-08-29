@@ -15,6 +15,7 @@ included as routers — an included router arrives as one opaque object that no 
 `app.routes` can see through.
 """
 
+import os
 import socket
 import webbrowser
 from pathlib import Path
@@ -52,6 +53,11 @@ PORT = 8477
 DEV_SHUTDOWN_SECONDS = 1
 
 STATIC = Path(__file__).parent / "static"
+
+# Where a reload worker reads the store from. `serve` sets it before uvicorn forks; a worker is
+# a fresh interpreter that re-imports this module, so a path closed over in the parent is gone
+# by the time the app is built. Read in exactly one place, below.
+DEV_STORE = "HYPHAE_VIEW_DB"
 
 # Nothing loads from anywhere but this app: no CDN, no inline script, no remote font. The
 # viewer renders text a transcript wrote, so the escaping is the first defence and this is
@@ -142,25 +148,48 @@ def claim(port: int, remedy: str) -> None:
             ) from error
 
 
+def dev_app() -> FastAPI:
+    """The dev viewer, built in whichever process imports this — the reload worker's entry.
+
+    uvicorn re-imports the factory on every restart, so the store arrives in the environment
+    rather than in a closure. A worker started without one refuses here instead of serving an
+    empty viewer that answers every page with a 503.
+    """
+    named = os.environ.get(DEV_STORE, "")
+    if not named:
+        raise RuntimeError(f"{DEV_STORE} is unset or empty, so a reload worker has no store")
+    return build_app(Path(named), dev=True)
+
+
 def serve(db_path: Path, port: int, *, open_browser: bool, dev: bool) -> None:
     """Run the viewer until interrupted, refusing a port something else already holds.
 
-    `dev` adds the reload loop (`view/dev.py`) and caps the exit below; it has no default
-    because the two viewers are different things and the caller knows which it wants.
+    `dev` adds the reload loop (`view/dev.py`) and restarts the server on a Python edit; it has
+    no default because the two viewers are different things and the caller knows which it wants.
     """
-    app = build_app(db_path, dev=dev)
     claim(port, "Pass --port to use another.")
     url = f"http://{HOST}:{port}/"
     print(f"hp view: {db_path} at {url}")  # noqa: T201 — the URL the person needs
     if open_browser:
         webbrowser.open(url)
-    # uvicorn's graceful exit waits for every in-flight response, and a reload stream has no
-    # last chunk — so Ctrl-C on a dev viewer with a browser listening would never return.
-    # Capped only under `--dev`: the shipped viewer keeps uvicorn's own default of waiting.
+    if not dev:
+        uvicorn.run(build_app(db_path, dev=False), host=HOST, port=port, log_level="warning")
+        return
+    # A page is Python now, so the dev loop is a restart: uvicorn watches the package and
+    # re-imports `dev_app` on every save. That takes an import string rather than an app, which
+    # is what the environment variable above is for. The browser follows on its own — the
+    # reload stream drops when the worker does, and the client reloads on the reconnect
+    # (`view/static/dev-reload.js`).
+    os.environ[DEV_STORE] = str(db_path)
     uvicorn.run(
-        app,
+        f"{__name__}:{dev_app.__name__}",
+        factory=True,
+        reload=True,
+        reload_dirs=[str(Path(__file__).parent)],
         host=HOST,
         port=port,
         log_level="warning",
-        timeout_graceful_shutdown=DEV_SHUTDOWN_SECONDS if dev else None,
+        # uvicorn's graceful exit waits for every in-flight response, and a reload stream has
+        # no last chunk — so Ctrl-C with a browser listening would never return.
+        timeout_graceful_shutdown=DEV_SHUTDOWN_SECONDS,
     )

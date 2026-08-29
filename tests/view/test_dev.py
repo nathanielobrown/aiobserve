@@ -77,9 +77,9 @@ def dev_client(enriched_db: Path) -> Iterator[TestClient]:
         # recording of one exists. The slow leaf below checks the shape.
         # If every path in the set is a stylesheet the page can keep its state...
         (("static/style.css", "static/pygments.css"), Event.CSS),
-        # ...but one template beside a stylesheet is a page event, or a template edit is the
-        # thing the CSS fast path silently swallows...
-        (("static/style.css", "templates/node.html"), Event.PAGE),
+        # ...but the client script beside a stylesheet is a page event, because a set the fast
+        # path takes is a set whose script edit never reaches the browser...
+        (("static/style.css", "static/dev-reload.js"), Event.PAGE),
         # ...and the client script itself only takes effect on a load.
         (("static/dev-reload.js",), Event.PAGE),
     ],
@@ -110,15 +110,17 @@ def test_a_change_set_with_nothing_in_it_is_a_broken_assumption_rather_than_an_e
     [
         # What the viewer renders from, which is what a save should reach the browser through...
         ("/w/style.css", True),
-        ("/w/node.html", True),
         ("/w/dev-reload.js", True),
+        # ...a page, which is Python now: uvicorn restarts the server on that save, and a
+        # message from here would race the restart it is a symptom of...
+        ("/w/node_pages.py", False),
         # ...the directory macOS reports beside a saved file, which has no suffix and would
         # read as a page event if it got through...
         ("/w", False),
         # ...a file under a watched directory the viewer does not render...
         ("/w/README.md", False),
         # ...and what watchfiles' own filter drops, which this one still defers to.
-        ("/w/__pycache__/node.html", False),
+        ("/w/__pycache__/style.css", False),
     ],
 )
 def test_the_watcher_is_told_to_report_only_what_the_viewer_renders_from(
@@ -239,7 +241,7 @@ def test_the_reload_stream_answers_as_an_event_stream_under_the_same_policy(
     assert streamed.headers["content-security-policy"] == CSP
 
 
-@pytest.mark.parametrize(("name", "expected"), [("style.css", b"css"), ("node.html", b"page")])
+@pytest.mark.parametrize(("name", "expected"), [("style.css", b"css"), ("dev-reload.js", b"page")])
 def test_a_file_saved_under_a_watched_path_becomes_one_message_on_the_stream(
     tmp_path: Path, name: str, expected: bytes
 ) -> None:
