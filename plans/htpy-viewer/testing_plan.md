@@ -35,7 +35,11 @@ runs. These two leaves exist because the thing they check is destroyed by the py
   `timeout=`. The subprocess import is exactly what a reload worker does, so it proves the factory
   owns the freeze without launching uvicorn. The existing in-process leaves
   (`tests/gallery/test_serve.py:165,191`) call `gallery(store)` directly and would pass identically
-  if the worker lost it. **Lands at slice 6, beside the factory it tests.**
+  if the worker lost it. **Lands at slice 6, beside the factory it tests.** **As built,** the leaf
+  drives `dev_gallery()`, a factory that names its own pid-scoped scratch store, rather than
+  reading the store from environment variables: the child needs no inherited environment, so
+  nothing about the parent's can make the leaf pass. `hp view --dev` keeps the env var
+  (`view/app.py`), which is what the design chose for it (d8aba55, `docs/ui-development.md`).
 
 ## 2. Unit — a component called directly: typed view-models in, `Html` out
 
@@ -105,14 +109,22 @@ The regime checks. Each replaces something the conversion deletes; none may be v
   and `COLUMNS`, equal to `set(LABELS)` — **plus a new guard that the components scan found a
   non-zero number of names.** Note the `previewed` half globs `Path(view_app.__file__).parent
   .glob("*.py")`, which is *not* recursive; it must become recursive or a `detail_of` call that
-  moves into `components/` drops silently out of the check.
+  moves into `components/` drops silently out of the check. **As built,** both halves walk
+  `rglob("*.py")` and both carry a non-empty guard, so neither can pass over an empty scan
+  (38ecba2).
 - **O11. The view package needs no per-line escape, and exactly one scoped narrowing.** The
   type-safety goal's own measurement, revised on contact: pyrefly cannot decide htpy's recursive
   `Node` alias, so `bad-index` is off over `components/**` by sub-config (design §Checker scope).
   *Evidence:* `mise run typecheck` green; `git diff` shows no `# pyrefly: ignore` added anywhere
   under `src/hyphae/view/` or `tests/` (the one that exists today, `tests/gallery/serve.py:78`,
   is deleted by slice 6); and the only `[[tool.pyrefly.sub-config]]` in `pyproject.toml` is the
-  `components/**` `bad-index` one, carried with its canary (O48).
+  `components/**` `bad-index` one, carried with its canary (O48). **As built, the narrowing is
+  taken twice, not once:** the gallery index page is composed outside the package and nests htpy
+  the same way, so `tests/gallery/**` turns `bad-index` off too (a656c38), ahead of the existing
+  `tests/**` block it restates. Both are what the committed pin holds: it asserts the set of
+  sub-configs excused from `bad-index` is exactly those two, so a third — a component composed
+  somewhere a component should not be — reds. No shipped code outside `components/**` is excused,
+  which is the claim the design was making.
 - **O48. The sub-config outlives its reason by at most one red.** *Evidence:* a leaf that runs
   `pyrefly check` over a minimal two-element htpy nesting under a config with no sub-config,
   asserting `bad-index` is reported (0.1 s, verified 1.2.0). The day a release decides recursive
@@ -122,7 +134,14 @@ The regime checks. Each replaces something the conversion deletes; none may be v
 - **O12. Each swap vocabulary is written once.** The composability goal's checkable artifact:
   `hx-select-oob` today appears verbatim in three places. *Evidence:* a count of each swap
   attribute's literal occurrences in `components/**` — one per named dict (`PANE_SWAP`, the
-  tail-row unsets, the popover overrides) and no more.
+  tail-row unsets, the popover overrides) and no more. **As built,** the count reaches quoted
+  spellings only, which is what a dict key is; five self-replacing widgets legitimately pass
+  `hx_target=`/`hx_swap=` as keywords and are not swap vocabularies. The leaf says so, and adds
+  the half that is checkable there: the three pane-only attributes (`hx-select`,
+  `hx-select-oob`, `hx-push-url`) appear in no keyword spelling at all. The behavioural guard is
+  `test_nav_tree__rows.py::test_every_link_that_swaps_the_pane_lands_the_pane_in_the_pane`, which
+  resolves inheritance over every pane-swapping link; an ad-hoc vocabulary on a widget that swaps
+  only itself is the residual no leaf sees.
 - **O13. The djLint regime leaves no residue.** *Evidence:* `git ls-files '*.html'` returns
   nothing; `jinja2`, `djlint` and `[tool.djlint]` are absent from `pyproject.toml`; `format-html`
   and `format-html-check` are absent from `mise.toml` including the `check`/`check-fast` edges;
@@ -154,7 +173,8 @@ obligations are mostly "passes unchanged"; that is the point.
   `test_app__safety.py:test_planted_markup_arrives_inert` green with no assertion changed, across
   all fifteen responses it plants into. Its docstring's `|safe` sentence is reworded to the
   Markup-construction rule; the sentinels are invented, as its own comment already says, because
-  no redacted fixture carries markup.
+  no redacted fixture carries markup. **As built,** the rewording landed a slice late (6d7fa5c),
+  after the slice-7 audit found `|safe` still in the docstring.
 - **O16. The pane swap resolves to the same six attributes on the same elements.** *Evidence:*
   `tests/view/test_nav_tree__rows.py:64-70` green unchanged, read through `conftest.wired()`,
   which resolves inheritance the way htmx does.
@@ -185,7 +205,8 @@ obligations are mostly "passes unchanged"; that is the point.
   accept either spelling, slice 7 re-pins it to htpy's bare tag and deletes the dual branch.
 - **O24. The dev watcher stops classifying `.html`.** *Evidence:* the `event_for` parametrization
   amended so `.html` is no longer in `RENDERED`, and `reload_router`'s `watch_paths` default
-  asserted to be `(STATIC,)`. The import of `TEMPLATES` going away is enforced by slice 7 deleting
+  asserted to be `(STATIC,)`. **As built,** that default assertion landed a slice late (38ecba2),
+  in one leaf beside the `RENDERED` claim it belongs with. The import of `TEMPLATES` going away is enforced by slice 7 deleting
   `templating.py`.
 - **O25. A mid-render failure is a 500, never a truncated 200.** The stated reason for choosing
   `HTMLResponse(str(element))` over streaming; nothing tests it today because Jinja never offered
@@ -222,7 +243,11 @@ slice-7 re-pin a discipline rather than a test.
   each `measured <= MEASURED_*` leaf in `test_bounds*.py` also asserts equality, demonstrated by a
   leaf that inflates one constant and shows the mode reds where the default run passes. And its
   use — the slice-7 commit message or PR body records `HYPHAE_PIN_EXACT=1 mise run test` green,
-  with the tightened constants in that commit's diff. Everyday runs keep the one-sidedness
+  with the tightened constants in that commit's diff. **As built,** the mode covers the direct
+  `MEASURED_*` pins and the derivations with no rounding fudge inside them (e720932): a
+  derivation that rounds up on purpose — the log row's +2 B per string — can only ever be a
+  ceiling, so holding it from both sides would pin the fudge rather than the measurement. The
+  row table in `test_bounds__node.py` names which of the four is which. Everyday runs keep the one-sidedness
   `bounds.py`'s docstring chose on purpose.
 - **O32. The reader-facing budgets are unmoved and the measured ceilings shrink to measurement.**
   *Evidence:* the diff shows `PAGE_BYTES = 500_000` untouched, and `NODE_BYTES` /
@@ -235,7 +260,12 @@ slice-7 re-pin a discipline rather than a test.
   freshness check cannot see them. *Evidence:* a generator under `tools/` deriving each figure from
   `bounds.py` and `tests/view/budgets.py`; the figures inside a cog block; and
   `mise run cogs-check` reddening on a deliberately stale block. The prose around the numbers —
-  which explains what each ceiling bought — stays outside the block.
+  which explains what each ceiling bought — stays outside the block. **As built,** the generator
+  is `tools/gen_bounds.py` and the figures land in two blocks, not one (4b587b5). The
+  per-feature ledger that derives each worst-case row stays where it was, in `budgets.py`'s
+  comments beside the arithmetic: a doc that reprinted it would be a second place to keep it
+  true. What the doc prints is the totals, and each total is now a callable the generator
+  invokes.
 
 ## 6. Branch-local scratch — the both-engines text diff harness
 
