@@ -12,6 +12,7 @@ gap, because `0 errors` and `0errors` are the same string to every `data-*` read
 
 import datetime as dt
 
+import htpy
 import pytest
 
 from hyphae.analyze import queries
@@ -140,6 +141,28 @@ def test_a_fact_prints_the_dash_the_viewer_prints_for_a_column_the_store_left_nu
     """A header names its fields whether or not the session filled them."""
     served = str(parts.fact(name="git_branch", value=None, cut=True))
     assert '<dd data-field="git_branch">—</dd>' in served
+
+
+def test_a_fact_reads_its_label_off_its_value_with_a_space_between_them() -> None:
+    """`Cost $1.48`, never `Cost$1.48` — the one gap the stylesheet is not the only thing holding.
+
+    A `<dt>` and the `<dd>` beside it are two elements, so htpy writes nothing between them and
+    a reader whose stylesheet never arrived meets the label welded to the number
+    (`tests/view/test_app__headers.py` reads the same gap off a served header).
+    """
+    assert plain(str(parts.fact(name="cost_usd", value="$1.48", cut=True))) == "Cost $1.48"
+
+
+def test_a_fact_whose_value_is_composed_carries_the_markup_the_caller_built() -> None:
+    """The mount for a value no formatter makes: a list, and the count of what its query cut.
+
+    The `<dl>` shape is the same one `fact` writes — one place decides what a labelled fact
+    looks like — and what changes is that the caller hands markup rather than a string. What a
+    body composes through it is `test_node_body.py`'s business.
+    """
+    served = str(parts.labelled(name="skills", value=htpy.span["commit, pr"]))
+    assert plain(served) == "Skills commit, pr"
+    assert '<dd data-field="skills"><span>commit, pr</span></dd>' in served
 
 
 def test_a_fact_that_opts_out_of_the_cut_keeps_the_count_of_what_its_query_left() -> None:

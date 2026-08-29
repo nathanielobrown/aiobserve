@@ -265,8 +265,26 @@ def fact(*, name: str, value: object, cut: bool) -> Html:
     joined list already bounded by its query loses the count of what it left rather than a tail
     of its last member.
     """
-    shown = cuts.head(value) if cut else fmt.text(value if isinstance(value, str) else None)
-    return htpy.div[[htpy.dt[label(name)], htpy.dd(data_field=name)[shown]]]
+    printed = cuts.head(value) if cut else fmt.text(value if isinstance(value, str) else None)
+    return _pair(name, printed)
+
+
+def labelled(*, name: str, value: Html) -> Html:
+    """One labelled fact whose value the caller composed, for the ones no formatter makes.
+
+    A list and the count of what its query cut, today. The `<dl>` shape is `fact`'s, so one
+    place decides what a labelled fact looks like whichever of the two wrote it.
+    """
+    return _pair(name, value)
+
+
+def _pair(name: str, value: object) -> Html:
+    """The `<dt>`/`<dd>` pair both mounts write, with the space a reader needs between them.
+
+    htpy writes nothing between two elements, so without the `" "` a reader whose stylesheet
+    never arrived meets `Cost$1.48` (`tests/view/test_app__headers.py`).
+    """
+    return htpy.div[[htpy.dt[label(name)], " ", htpy.dd(data_field=name)[value]]]
 
 
 def detail(*, item: Detail) -> Html:
