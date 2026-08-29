@@ -37,7 +37,7 @@ runs. These two leaves exist because the thing they check is destroyed by the py
   (`tests/gallery/test_serve.py:165,191`) call `gallery(store)` directly and would pass identically
   if the worker lost it. **Lands at slice 6, beside the factory it tests.**
 
-## 2. Unit — a component called directly: typed view-models in, `htpy.Renderable` out
+## 2. Unit — a component called directly: typed view-models in, `Html` out
 
 No app, no HTTP, no store. This is the level the conversion creates; it did not exist under Jinja.
 
@@ -54,7 +54,8 @@ No app, no HTTP, no store. This is the level the conversion creates; it did not 
 - **O5. Every public component clears the machine-checkable signature floor.** *Evidence:* an AST
   scan over `components/**/*.py` — for each public function, every parameter is keyword-only, no
   parameter annotation names `Any`, `Row`, `Request`, `Response` or a bare `dict`, and the return
-  annotation is `htpy.Renderable`. An AST scan rather than `inspect`, so the check reads the source
+  annotation is `Html` or `Html | None` — the concrete union the design's Component contract names,
+  which is also what keeps `bad-return` checked inside the package `bad-index` is off over. An AST scan rather than `inspect`, so the check reads the source
   the reviewer reads and needs no import. The non-vacuity floor is per-module — every module in
   `components/` defines at least one public component — rather than a package-wide count, which
   would be false until the conversion finishes. "Precise" above the floor — a `Kind` where a `str` would typecheck — is
