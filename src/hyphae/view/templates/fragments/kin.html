@@ -1,6 +1,0 @@
-{% import "_nav_tree.html" as navtree %}
-{#- The children one level's window left out, as the rows they would have been. They replace
-   the tail row that fetched them, so they arrive with no wrapper of their own: inside the
-   list that row was in, each inherits the NavTree's swap from `#nav-tree-rows` like every other
-   row. -#}
-{{ navtree.lines(rows, suffix, thread) }}

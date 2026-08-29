@@ -8,16 +8,13 @@ reaches DuckDB only as a binding, and an unknown key or an unparseable value is 
 import re
 
 import duckdb
-import jinja2
 import pytest
 from fastapi.testclient import TestClient
 
-from hyphae.view import templating
 from hyphae.view.listing import (
     FILTERS,
     LIST_KEYS,
 )
-from hyphae.view.templating import TEMPLATES
 from tests.conftest import (
     MYCELIA,
 )
@@ -169,25 +166,3 @@ def test_a_filter_rides_the_links_and_the_citation(client: TestClient) -> None:
         "-- queries/view_sessions.sql sort=cost_usd direction=desc limit=1 offset=0"
         f" {CUT} skill=grill-me"
     )
-
-
-def test_every_filter_the_app_registers_is_one_a_template_names() -> None:
-    """A filter is registered so a template can name it, so every registration has a caller.
-
-    The formatters themselves are Python one page or another calls directly; what this closes
-    is the Jinja registry, where a filter nothing names is a name in the environment of every
-    render for no reader. Read off a built environment and the templates rather than listed
-    here — off the environment and not the source that writes it, so a filter registered
-    anywhere in the package lands in this check.
-    """
-    # Against stock Jinja, so what is left is our own: `Jinja2Templates` adds no filter of its
-    # own over an autoescaping environment.
-    stock = set(jinja2.Environment(autoescape=True).filters)
-    registered = set(templating.environment(dev=False).env.filters) - stock
-    assert len(registered) > 5, "the built environment holds none of ours, so this sees nothing"
-    named = {
-        name
-        for path in TEMPLATES.rglob("*.html")
-        for name in re.findall(r"\|\s*(\w+)", path.read_text())
-    }
-    assert not registered - named

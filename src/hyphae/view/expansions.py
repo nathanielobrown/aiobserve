@@ -15,17 +15,19 @@ from starlette.routing import BaseRoute
 
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
-from hyphae.view import bounds, builders, nav_tree, nodes
+from hyphae.view import bounds, builders, nodes
 from hyphae.view.citation import cited
 from hyphae.view.columns import Shape
-from hyphae.view.components import node_body
+from hyphae.view.components import nav_tree, node_body
 from hyphae.view.components.logs import Logged
+from hyphae.view.components.nav_tree import NavTreeRow
 from hyphae.view.enrichment import described
 from hyphae.view.knobs import (
     carried,
     checked,
     viewed,
 )
+from hyphae.view.nav_tree import Corpus, Ran, children, spread, windowed
 from hyphae.view.nodes import Kind, Ref
 from hyphae.view.store import (
     Fragment,
@@ -125,7 +127,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         shape: Shape,
         children: int | None,
         marks: str,
-        ran: nav_tree.Ran,
+        ran: Ran,
         under: list[Logged],
     ) -> Response:
         """One node's body alone, the way an expansion in someone else's log mounts it.
@@ -207,7 +209,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
             # log row that opened this expansion has it.
             describes = described(connection, session_id, source) if shaped.described else None
         told = describes.turns.get(node_id) if describes else None
-        ran: nav_tree.Ran = [(shaped.page, bound)]
+        ran: Ran = [(shaped.page, bound)]
         if shaped.listed is not None:
             ran.append((shaped.listed.query, level))
         if describes is not None and describes.queried:
@@ -246,7 +248,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
             # A run's id is the thread its own rows carry, so it is what the pass keyed on too.
             describes = described(connection, session_id, run_id)
         row = describes.runs.get(run_id)
-        ran: nav_tree.Ran = [(Page.RUN_HEADER, bound)]
+        ran: Ran = [(Page.RUN_HEADER, bound)]
         if describes.queried:
             ran.append((Page.ENRICHMENT, keyed))
         return expanded(
@@ -307,33 +309,34 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
             if not head:
                 raise HTTPException(404, "No session with that id is in this store.")
             runs = page_rows(connection, Page.RUNS, **keyed, chip_chars=queries.NAV_CHARS)
-            corpus = nav_tree.Corpus(
+            corpus = Corpus(
                 session_id=session_id,
                 held=nodes.ledger(session_id, head[0]["cost_usd"] or 0, runs),
                 runs=runs,
                 described=described(connection, session_id, thread),
                 source=thread,
             )
-            level = nav_tree.children(connection, corpus, at, preset, opened or None)
-        return viewer.templates.TemplateResponse(
-            request,
-            "fragments/kin.html",
-            {
-                # Each row shut, and under it whatever a shut row stands: the runs it hides
-                # come back with it, the way the page's own rows carry them. None of them is a
-                # step of the open path — the cap keeps the child the path descends through
-                # inside the window, and this fetch is what it left out.
-                "rows": [
+            level = children(connection, corpus, at, preset, opened or None)
+        # Each row shut, and under it whatever a shut row stands: the runs it hides come back
+        # with it, the way the page's own rows carry them. None of them is a step of the open
+        # path — the cap keeps the child the path descends through inside the window, and this
+        # fetch is what it left out.
+        #
+        # They arrive with no wrapper of their own: inside the list the tail row was in, each
+        # inherits the NavTree's swap from `#nav-tree-rows` like every other row.
+        return viewer.html(
+            nav_tree.lines(
+                rows=[
                     row
-                    for node in nav_tree.windowed(level.nodes, cap, [opened]).cut
+                    for node in windowed(level.nodes, cap, [opened]).cut
                     for row in [
-                        nav_tree.NavTreeRow(node, depth, selected=False, ancestor=False),
-                        *nav_tree.spread(corpus, node, depth + 1),
+                        NavTreeRow(node, depth, selected=False, ancestor=False),
+                        *spread(corpus, node, depth + 1),
                     ]
                 ],
-                "thread": thread,
-                "suffix": carried(nav, kin, log, detail),
-            },
+                suffix=carried(nav, kin, log, detail),
+                thread=thread,
+            )
         )
 
     @router.get(f"{nodes.KIN_URL}/session/{{session_id}}/thread/{{source}}/{{kind}}/{{node_id}}")

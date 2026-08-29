@@ -25,6 +25,7 @@ from hyphae.view import cuts
 from hyphae.view import format as fmt
 from hyphae.view.columns import COLUMNS, Column, Shape
 from hyphae.view.components import Html, parts
+from hyphae.view.components.nav_tree import PANE_SWAP
 from hyphae.view.labels import label
 from hyphae.view.nodes import Node
 
@@ -95,20 +96,9 @@ class LoggedRun(NamedTuple):
 # dispatch below has an arm per shape and a fifth kind of row is a type error at the call site.
 type Logged = LoggedTurn | LoggedCall | LoggedTool | LoggedRun
 
-# What a click on a row's wide column does: swap the reading pane, and the NavTree beside it,
-# for the child's own. Written once here and read by every surface that links a node into the
-# pane — the log row below, and the NavTree row. `hx-get` is not in it: the URL is the row's.
-#
-# Per row rather than hoisted onto the table, because the button in the last column is an
-# `hx-get` of its own that must not swap the pane: a hoisted attribute would have to be undone
-# on it, which is a line per row either way.
-PANE_SWAP = {
-    "hx-target": "#reading-pane",
-    "hx-swap": "outerHTML",
-    "hx-select": "#reading-pane",
-    "hx-select-oob": "#nav-tree-rows",
-    "hx-push-url": "true",
-}
+# Spread per row rather than hoisted onto the table, because the button in the last column is an
+# `hx-get` of its own that must not swap the pane: a hoisted attribute would have to be undone on
+# it, which is a line per row either way.
 
 # And what the View button does instead: fetch the child's body and stand it under this row.
 # The second swap vocabulary, named for the same reason as the first — an attribute spelt in

@@ -16,7 +16,6 @@ from hyphae.analyze.queries import ParamValue
 from hyphae.model import MAIN_SOURCE
 from hyphae.view import bounds, builders, highlight, nav_tree, nodes
 from hyphae.view.browse import (
-    LogRow,
     Seen,
     browse,
     call_log,
@@ -273,7 +272,11 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 trail=[nav_tree.home(source, row["turn_id"]), Ref(Kind.CALL, source, api_call_id)],
                 shape=Shape.TOOLS,
                 rows=[
-                    LogRow(builders.tool_node(session_id, source, item, nodes.NO_LEDGER), item)
+                    builders.logged(
+                        Shape.TOOLS,
+                        builders.tool_node(session_id, source, item, nodes.NO_LEDGER),
+                        item,
+                    )
                     for item in called.rows
                 ],
                 total=called.total,

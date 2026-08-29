@@ -30,7 +30,7 @@ from markupsafe import Markup
 import hyphae.view
 import hyphae.view.components
 from hyphae.analyze import queries
-from hyphae.view.components import layout, logs, parts
+from hyphae.view.components import layout, logs, nav_tree, parts
 from hyphae.view.highlight import Syntax, lit
 
 COMPONENTS = Path(hyphae.view.components.__file__).parent
@@ -94,7 +94,11 @@ sys.stdout.write(",".join(sorted({"fastapi", "starlette"} & set(sys.modules))))
 # is a handful of attributes that only mean anything together, so each set is written once and
 # spread into the elements that take it — `hx-get` is in none of them, because the URL is the
 # element's own.
-SWAPS = {"PANE_SWAP": logs.PANE_SWAP, "OPEN_SWAP": logs.OPEN_SWAP}
+SWAPS = {
+    "PANE_SWAP": nav_tree.PANE_SWAP,
+    "UNSET_SWAP": nav_tree.UNSET_SWAP,
+    "OPEN_SWAP": logs.OPEN_SWAP,
+}
 
 # The one line `--dev` adds to a page. Bare, because htpy writes no whitespace between elements.
 DEV_TAG = '<script src="/static/dev-reload.js" defer></script>'

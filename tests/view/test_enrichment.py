@@ -378,6 +378,12 @@ def test_an_item_described_under_an_older_prompt_is_marked_stale(
     # The turn described under the older prompt version is tagged...
     stale_page = enriched_client.get(f"/session/{session_id}/thread/main/turn/{turn_id}").text
     assert fields(stale_page, "data-enrichment", turn_id).get("stale") == "stale"
+    # Three pills read as three words. Their margins hold the boxes apart on screen; the spaces
+    # are what hold them apart for a reader who hears the block instead.
+    said = fields(stale_page, "data-enrichment", turn_id)
+    assert f"{said['category']} {said['outcome']} stale" in reads(
+        stale_page, "data-enrichment", turn_id
+    )
     # ...and one described under the current one is not, so the tag is telling them apart.
     fresh_page = enriched_client.get(f"/session/{fresh[0]}/thread/main/turn/{fresh[1]}").text
     assert "stale" not in fields(fresh_page, "data-enrichment", fresh[1])

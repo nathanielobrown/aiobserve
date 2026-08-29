@@ -7,13 +7,13 @@ here too: a page number is the one knob a children log adds to that suffix.
 """
 
 from collections.abc import Sequence
-from typing import NamedTuple
 from urllib.parse import urlencode
 
 from fastapi import HTTPException
 
 from hyphae.view import bounds, nodes
 from hyphae.view.components.logs import Pager
+from hyphae.view.components.nav_tree import PresetChoice
 from hyphae.view.store import Listed, Row
 
 # What a node URL can name, at the value a link that names none is served at: the view, and
@@ -64,15 +64,6 @@ def carried(nav: str, kin: int, log: int, detail: int) -> str:
         checked(log, bounds.LOG.ceiling),
         checked(detail, bounds.DETAIL.ceiling),
     )
-
-
-class PresetChoice(NamedTuple):
-    """One preset as the control above the NavTree offers it: where it goes, and whether we are
-    in it."""
-
-    preset: nodes.Preset
-    url: str
-    current: bool
 
 
 def preset_choices(

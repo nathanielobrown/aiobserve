@@ -67,8 +67,10 @@ def test_every_template_in_the_tree_is_one_the_formatter_walks(task: str) -> Non
         ["git", "ls-files", "*.html"], cwd=ROOT, capture_output=True, text=True, check=True
     ).stdout.split()
     # The tree holds templates to begin with, so a `git ls-files` that came back empty — a
-    # renamed extension, a broken checkout — cannot pass this by having nothing to say.
-    assert len(tracked) > 10
+    # renamed extension, a broken checkout — cannot pass this by having nothing to say. Bare
+    # non-emptiness rather than a count: the conversion to components is retiring the templates
+    # one page at a time, and a floor would red on the way down for no fault of the task's.
+    assert tracked
     for name in tracked:
         template = ROOT / name
         assert any(template == path or path in template.parents for path in listed), (

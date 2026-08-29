@@ -20,6 +20,8 @@ from hyphae.analyze.queries import ParamValue
 from hyphae.view import bounds, builders, errors, listing, nav_tree, nodes, walk
 from hyphae.view.citation import cited
 from hyphae.view.columns import Shape
+from hyphae.view.components import node_page
+from hyphae.view.components.logs import Logged
 from hyphae.view.detail import Detail, enrichment_lines
 from hyphae.view.enrichment import Descriptions, Enrichment, described
 from hyphae.view.knobs import (
@@ -43,29 +45,6 @@ from hyphae.view.store import (
 from hyphae.view.viewer import Viewer
 
 
-class LogRow(NamedTuple):
-    """One row of a pane's children log: the node it links to, beside the row it reads.
-
-    The two strings below are the row's, not the store's: naming a tool call is Python's
-    (`view/formatters.py`), so the query ships the fields and the row composes the words. Both
-    answer nothing on the shapes that print neither, which is what lets every builder here
-    hand back a row of two.
-    """
-
-    node: nodes.Node
-    row: Row
-
-    @property
-    def called(self) -> str:
-        """The tools an api call went on to call, named the way their own rows name them."""
-        return ", ".join(builders.tool_titles(self.row.get("called_tools") or ()))
-
-    @property
-    def about(self) -> str:
-        """What a tool call was for, where its title already says what it did."""
-        return builders.tool_about(self.row.get("name") or "", self.row.get("fields"))
-
-
 class Seen(NamedTuple):
     """What one node's own reads answered, whatever kind of node it is.
 
@@ -77,7 +56,7 @@ class Seen(NamedTuple):
     header: Row
     trail: list[Ref]
     shape: Shape
-    rows: list[LogRow]
+    rows: list[Logged]
     # How many children the level holds in all, which is more than the page shows whenever
     # the level runs past `?log=`: the heading counts the level, and the pager divides it.
     total: int
@@ -246,52 +225,57 @@ def browse(
         ran.extend(failed.ran)
     marks = knobs(preset, kin, log, detail)
     about = described_node(corpus.described, selection)
-    return viewer.templates.TemplateResponse(
-        request,
-        "node.html",
-        {
-            "selection": selection,
-            "preset_choices": preset_choices(selection, preset, kin, log, detail),
-            "chain": built.chain,
-            # Where the chain starts: the whole session list, and this session's project.
-            # The project is a step out of the session rather than a node of it, so it stands
-            # above the chain rather than in it — a session is still the outermost node.
-            "list_url": listing.LIST_URL,
-            "project_dir": head[0]["project_dir"],
-            "project_url": listing.project_link(head[0]["project_filter"]),
-            "rows": built.rows,
-            "header": seen.header,
-            "enrichment": about,
-            "lines": enrichment_lines(about, session_id, source),
-            "details": seen.details,
-            # The bytes behind the node: the thread's transcript, and — for a turn — the
-            # one line it was read from.
-            "source": source,
-            "record": seen.record,
+    said = enrichment_lines(about, session_id, source)
+    return viewer.html(
+        node_page.page(
+            selection=selection,
+            choices=preset_choices(selection, preset, kin, log, detail),
+            rows=built.rows,
+            # The thread the enrichment was read for, which is what a tail row's fetch carries.
+            thread=source,
+            # Where the chain starts: the whole session list, and this session's project. The
+            # project is a step out of the session rather than a node of it, so it stands above
+            # the chain rather than in it — a session is still the outermost node.
+            trail=node_page.Trail(
+                list_url=listing.LIST_URL,
+                project_dir=head[0]["project_dir"],
+                project_url=listing.project_link(head[0]["project_filter"]),
+            ),
+            chain=built.chain,
+            facts=builders.node_facts(selection, seen.header),
+            said=node_page.Said(about, said) if about and said else None,
+            details=seen.details,
+            # The bytes behind the node: the thread's transcript, and — for a turn — the one
+            # line it was read from.
+            archived=node_page.Archived(
+                thread_url=nodes.thread_url(session_id, source), line_no=seen.record
+            ),
             # Where the reading order goes from here, in both directions.
-            "previous": walked.previous,
-            "next": walked.next,
-            # And where the session failed: how many failures it holds, which is what the
-            # way into the list says, beside the step to the next one where there is one.
-            "session_tool_errors": head[0]["tool_errors"],
-            "step": errors.stepped(failed.listed, selection) if failed else None,
-            "shape": seen.shape,
-            "log": seen.rows,
-            # The level's own size, and where in it this page sits — the heading counts
-            # the first, the control under the log reads the second.
-            "total": seen.total,
-            "pager": pager(selection.url, marks, page, ceil(seen.total / log)),
+            walked_previous=walked.previous,
+            walked_next=walked.next,
+            # And where the session failed: how many failures it holds, which is what the way
+            # into the list says, beside the step to the next one where there is one.
+            tool_errors=head[0]["tool_errors"],
+            failures=errors.stepped(failed.listed, selection) if failed else None,
+            shape=seen.shape,
+            log_rows=seen.rows,
+            # The level's own size, and where in it this page sits — the heading counts the
+            # first, the control under the log reads the second.
+            total=seen.total,
+            pager=pager(selection.url, marks, page, ceil(seen.total / log)),
             # What every href on the page carries, so a click serves the URL it displays.
-            "suffix": marks,
-            "citations": {named.value: cited(named, bound) for named, bound in ran},
-        },
+            suffix=marks,
+            citations={named.value: cited(named, bound) for named, bound in ran},
+            dev=viewer.dev,
+        )
     )
 
 
-def turn_log(corpus: nav_tree.Corpus, source: str, rows: list[Row]) -> list[LogRow]:
+def turn_log(corpus: nav_tree.Corpus, source: str, rows: list[Row]) -> list[Logged]:
     """A page of one thread's timeline as a children log reads it: a row per turn."""
     return [
-        LogRow(
+        builders.logged(
+            Shape.TURNS,
             builders.turn_node(
                 corpus.session_id,
                 source,
@@ -312,7 +296,7 @@ def call_log(
     turn_id: str | None,
     page: int,
     log: int,
-) -> tuple[Listed, list[LogRow], nav_tree.Ran]:
+) -> tuple[Listed, list[Logged], nav_tree.Ran]:
     """One page of the api calls under a turn — or, at `turn_id` NULL, under a bucket.
 
     One function for both because the two differ by that binding alone, which is the same
@@ -328,16 +312,19 @@ def call_log(
     }
     calls = listed(page_rows(connection, Fragment.TURN_CALLS, **bound), "matched_api_calls")
     rows = [
-        LogRow(builders.call_node(corpus.session_id, source, row, corpus.held), row)
+        builders.logged(
+            Shape.CALLS, builders.call_node(corpus.session_id, source, row, corpus.held), row
+        )
         for row in calls.rows
     ]
     return calls, rows, [(Fragment.TURN_CALLS, bound)]
 
 
-def run_log(corpus: nav_tree.Corpus, rows: list[Row]) -> list[LogRow]:
+def run_log(corpus: nav_tree.Corpus, rows: list[Row]) -> list[Logged]:
     """A list of agent runs as a children log reads it: a row per run."""
     return [
-        LogRow(
+        builders.logged(
+            Shape.RUNS,
             builders.run_node(corpus.session_id, row, corpus.held, corpus.run_text(row["run_id"])),
             row,
         )
