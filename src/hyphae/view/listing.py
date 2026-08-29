@@ -29,6 +29,9 @@ from hyphae.sessions import project_predicate
 from hyphae.view import bounds
 from hyphae.view import format as fmt
 from hyphae.view.citation import cited
+from hyphae.view.components import listing as components
+from hyphae.view.components.listing import LIST_URL, Control
+from hyphae.view.components.parts import Count
 from hyphae.view.enrichment import enriched
 from hyphae.view.store import (
     Page,
@@ -38,11 +41,6 @@ from hyphae.view.store import (
     page_rows,
 )
 from hyphae.view.viewer import Viewer
-
-# Where the list is served. Named here because the route and every link the list mints have
-# to agree: `/` is the projects landing, and a link that still points there drops the sort and
-# the filters this module composed. The templates write it out like any other route.
-LIST_URL = "/sessions"
 
 # What the session list can be sorted by: a column of `view_sessions`, mapped to its header
 # label. A closed dictionary, and the only place a request's `sort` value is ever looked up —
@@ -102,16 +100,6 @@ CONTROLS: dict[queries.ParamType, str] = {
     queries.ParamType.DATE: "date",
     queries.ParamType.INTEGER: "number",
 }
-
-
-class Control(NamedTuple):
-    """One filter as the form renders it."""
-
-    key: str
-    # The HTML input type, from `CONTROLS`.
-    type: str
-    # What this request asked for, so the form comes back holding what was typed into it.
-    value: str
 
 
 # The two orderings a reader can ask for, as the SQL keyword each one puts in the ORDER BY.
@@ -275,12 +263,68 @@ def project_link(project_dir: str | None) -> str | None:
     )
 
 
+def _project_row(row: Row) -> components.ProjectRow:
+    """One store row as the row the landing page prints.
+
+    The link is minted through the list's own builder, so a project opens the list the way the
+    list links to itself, and off `project_filter` rather than the path the row shows: the
+    filter matches a whole path, and a cut one matches nothing.
+    """
+    return components.ProjectRow(
+        project_dir=row["project_dir"],
+        link=project_link(row["project_filter"]),
+        recent_sessions=row["recent_sessions"],
+        recent_cost=row["recent_cost"],
+        recent_unpriced=row["recent_unpriced"],
+        window_sessions=row["window_sessions"],
+        window_cost=row["window_cost"],
+        window_unpriced=row["window_unpriced"],
+        sessions=row["sessions"],
+        cost_usd=row["cost_usd"],
+        unpriced_api_calls=row["unpriced_api_calls"],
+        last_active=row["last_active"],
+    )
+
+
+def _session_row(row: Row) -> components.SessionRow:
+    """One store row as the row the session list prints.
+
+    The three lists arrive as DuckDB lists and are NULL where the session has none, so each is
+    coalesced here — the component prints what it is handed. The enrichment columns are absent
+    entirely over a store with no pass to join, which is why they are read with `get`.
+    """
+    said = row.get("description")
+    return components.SessionRow(
+        session_id=row["session_id"],
+        started_at=row["started_at"],
+        title=row["title"],
+        project_dir=row["project_dir"],
+        turns=row["turns"],
+        api_calls=row["api_calls"],
+        tool_calls=row["tool_calls"],
+        compactions=row["compactions"],
+        tool_errors=row["tool_errors"],
+        cost_usd=row["cost_usd"],
+        output_tokens=row["output_tokens"],
+        unpriced_api_calls=row["unpriced_api_calls"],
+        wall_ms=row["wall_ms"],
+        active_ms=row["active_ms"],
+        agent_types=[Count(kind["name"], kind["runs"]) for kind in row["agent_types"] or []],
+        agent_types_cut=row["agent_types_cut"],
+        skills=row["skills"] or [],
+        skills_cut=row["skills_cut"],
+        work=[Count(kind["name"], kind["turns"]) for kind in row.get("work") or []],
+        work_cut=row.get("work_cut", 0),
+        described=components.Described(said, row["category"], row["outcome"]) if said else None,
+    )
+
+
 def routes(viewer: Viewer) -> list[BaseRoute]:
     """The store's two lists as pages, bound to one viewer, in registration order."""
     router = APIRouter()
 
     @router.get("/")
-    def projects_page(request: Request) -> Response:
+    def projects_page() -> Response:
         """Every project the store holds sessions for, most recently active first."""
         # The clock both trailing windows are measured back from, read here and bound like
         # any other parameter. The query reads no clock of its own: a page counting "the last
@@ -295,21 +339,19 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         }
         with open_store(viewer.db) as connection:
             rows = page_rows(connection, Page.PROJECT_ROLLUPS, **bound)
-        return viewer.templates.TemplateResponse(
-            request,
-            "projects.html",
-            {
-                # Each row beside the list of its own sessions, minted through the list's own
-                # link builder so a project opens the list the way the list links to itself.
-                "projects": [row | {"link": project_link(row["project_filter"])} for row in rows],
+        return viewer.html(
+            components.projects_page(
+                rows=[_project_row(row) for row in rows],
+                # The bindings the two window headings print, so a heading and its column read
+                # the same numbers — the citation below carries them too.
+                recent_days=queries.PAGE_RECENT_DAYS,
+                window_days=queries.PAGE_WINDOW_DAYS,
                 # What the page cut, which the query counted before its LIMIT: a landing page
                 # that silently dropped projects would be a corpus a reader cannot see.
-                "cut": (rows[0]["matched_projects"] - len(rows)) if rows else 0,
-                # The bindings, for the two window headings — a heading and its column read
-                # the same numbers, and the citation below carries them too.
-                "bound": bound,
-                "citations": {Page.PROJECT_ROLLUPS.value: cited(Page.PROJECT_ROLLUPS, bound)},
-            },
+                cut=(rows[0]["matched_projects"] - len(rows)) if rows else 0,
+                citations={Page.PROJECT_ROLLUPS.value: cited(Page.PROJECT_ROLLUPS, bound)},
+                dev=viewer.dev,
+            )
         )
 
     @router.get(LIST_URL)
@@ -355,32 +397,35 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
             key: list_url(key, flipped if key == sort else DEFAULT_DIRECTION, 1, size, given)
             for key in SORTS
         }
-        return viewer.templates.TemplateResponse(
-            request,
-            "sessions.html",
-            {
-                "sessions": rows,
+        return viewer.html(
+            components.sessions_page(
+                rows=[_session_row(row) for row in rows],
+                # One heading per sortable column, in `SORTS` order, each carrying the link
+                # that re-sorts by it.
+                headings=[
+                    components.Heading(key, label, links[key]) for key, label in SORTS.items()
+                ],
+                sort=sort,
+                direction=direction,
+                # The same ordering in ARIA's vocabulary, for the heading that marks it: the
+                # form and the links carry the query string's word, the mark carries ARIA's.
+                aria_direction=ARIA_SORT[direction],
+                # One input per filter, in `FILTERS` order, carrying what this request asked.
+                controls=[
+                    Control(key, CONTROLS[spec.type], given[key]) for key, spec in FILTERS.items()
+                ],
+                projects=[row["project_dir"] for row in projects],
+                pages=components.Pages(
+                    first=(page - 1) * size + 1,
+                    shown=len(rows),
+                    previous=list_url(sort, direction, page - 1, size, given) if page > 1 else None,
+                    next=list_url(sort, direction, page + 1, size, given) if more else None,
+                ),
                 # Whether the store holds an enrichment pass's answers at all, which decides
                 # whether the list carries a work column: an empty one over a store no pass
                 # has touched is a claim the store cannot support.
-                "described": describes,
-                "sorts": SORTS,
-                "sort": sort,
-                "direction": direction,
-                # The same ordering in ARIA's vocabulary, for the heading that marks it: the
-                # form and the links carry the query string's word, the mark carries ARIA's.
-                "aria_direction": ARIA_SORT[direction],
-                "links": links,
-                # One input per filter, in `FILTERS` order, carrying what this request asked.
-                "controls": [
-                    Control(key, CONTROLS[spec.type], given[key]) for key, spec in FILTERS.items()
-                ],
-                "projects": [row["project_dir"] for row in projects],
-                "page": page,
-                "first": (page - 1) * size + 1,
-                "previous": list_url(sort, direction, page - 1, size, given) if page > 1 else None,
-                "next": list_url(sort, direction, page + 1, size, given) if more else None,
-                "citations": {
+                describes=describes,
+                citations={
                     Page.SESSIONS.value: cited(
                         Page.SESSIONS,
                         {
@@ -415,7 +460,8 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                         else {}
                     ),
                 },
-            },
+                dev=viewer.dev,
+            )
         )
 
     return router.routes

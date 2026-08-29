@@ -90,12 +90,13 @@ def stacked(
     ]
 
 
-def unpriced(*, calls: int) -> Html | None:
+def unpriced(*, calls: int | None) -> Html | None:
     """The mark a cost carries when our price table priced none of some calls under it.
 
     A total missing calls is not what was spent, and the page has to say so. Outside the
     labelled span either way — a `data-field` carries the number the store holds and nothing
-    else — and written once because both pages that print a cost hang it off one.
+    else — and written once because both pages that print a cost hang it off one. No calls and
+    no count are the same mark: a window the store summed nothing over priced nothing wrong.
     """
     if not calls:
         return None

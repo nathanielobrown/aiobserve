@@ -40,6 +40,7 @@ from tests.view.conftest import (
     money,
     one,
     pages,
+    plain,
     reads,
     values,
 )
@@ -445,6 +446,12 @@ def test_the_pager_counts_a_store_deeper_than_a_page_with_separators(
     # A page deep into the list says which rows of it these are, both ends grouped in threes.
     assert first > 1_000, "the plant no longer reaches past a thousand rows"
     assert fields(page, "data-pager", "top")["range"] == f"Sessions {first:,}–{last:,}"
+    # And it reads as three phrases. The `data-*` above cannot see that: the three controls are
+    # inline and no rule in the stylesheet holds them apart, so the spaces between them are
+    # children the page writes on purpose, and a page that dropped them would say
+    # `← newer pageSessions 1,021–1,040older page →` and still pass every assertion above.
+    (nav,) = re.findall(r'<nav class="pager" data-pager="top".*?</nav>', page)
+    assert plain(nav) == f"← newer page Sessions {first:,}–{last:,} older page →"
 
 
 @pytest.mark.parametrize("parameters", [{"page": 0}, {"page": -1}, {"size": 0}, {"size": 100_000}])

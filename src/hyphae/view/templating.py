@@ -39,10 +39,8 @@ def environment(*, dev: bool) -> Jinja2Templates:
         "line": cuts.line,
         "head": cuts.head,
         "member": cuts.member,
-        "short": cuts.short,
         "item": cuts.item,
         "path": cuts.project_path,
-        "ago": cuts.ago,
         # The three filters that print what a transcript wrote. Each hands back escaped
         # markup; `view/render.py` and `view/highlight.py` are where that escaping lives, and
         # nothing here may add `|safe`.

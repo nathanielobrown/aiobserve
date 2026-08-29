@@ -12,6 +12,7 @@ above a node is `test_app__headers.py`, and what a page does with untrusted text
 them in `test_nav_tree.py`, each with its neighbours.
 """
 
+import html
 import json
 import re
 from collections import defaultdict
@@ -378,8 +379,11 @@ def test_every_asset_a_page_asks_for_is_one_the_viewer_ships(client: TestClient)
     # Clean templates are not enough: htmx writes a `<style>` block of its own for the
     # indicator class as it loads, which the policy blocks and the browser reports on every
     # page. This meta is what stops it writing one — htmx merges the config before it paints.
-    (config,) = re.findall(r"<meta name=\"htmx-config\" content='([^']*)'>", page)
-    assert json.loads(config)["includeIndicatorStyles"] is False
+    # Read back through htpy's escaping: it quotes every attribute with `"` and escapes the
+    # JSON's own quotes to `&#34;`, so what the browser parses is the config and what the
+    # source holds is not.
+    (config,) = re.findall(r'<meta name="htmx-config" content="([^"]*)">', page)
+    assert json.loads(html.unescape(config))["includeIndicatorStyles"] is False
 
 
 def test_serving_the_store_leaves_it_read_only(corpus_db: Path, client: TestClient) -> None:
