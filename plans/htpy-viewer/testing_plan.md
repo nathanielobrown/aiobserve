@@ -135,6 +135,16 @@ The regime checks. Each replaces something the conversion deletes; none may be v
   `test_dev.py`, `test_app.py`, `test_app__headers.py`, `test_app__filters.py` (deleted),
   `budgets.py`, `test_bounds*.py` — and no other file under `tests/view/` gains a line.
 
+  As built, seven more were amended, every one of them for the space obligation: a `data-*`
+  reader strips the gap between two inline elements, so a leaf that could not see a lost space
+  gained a `reads` assertion beside the one it already made. `test_app__list.py` (the pager's
+  three phrases), `test_enrichment.py` (the pills), `test_node.py` (an expansion's heading:
+  mark, space, title), `test_records.py`, and `conftest.py`, which is where `headings` moved
+  once a second file read it. `test_node__logs.py` lost that helper. `test_lifecycle.py` is the
+  one amendment that is not about spaces: it gained the leaf for a component that raises
+  halfway down a page, which is why `Viewer.html` renders whole before the response exists.
+  No leaf keyed to a `data-*` attribute changed what it asserts.
+
 ## 4. Integration — served HTML through `TestClient`, over the recorded fixture store
 
 Where the existing suite lives (`tests/view/conftest.py` readers, all keyed to `data-*`). These
