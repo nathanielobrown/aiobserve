@@ -1,8 +1,9 @@
-"""What the two bounds tables have to hold: the viewer's own numbers, and all of them.
+"""What the four bounds tables have to hold: the viewer's own numbers, and all of them.
 
-The bounds prose is the viewer's payload contract, so a table that drifts from `bounds.py` is
-worse than no table at all. Every leaf here reads the live module — none of them spells a
-number, and the coverage leaf makes a new bound impossible to leave undocumented by accident.
+The bounds prose is the viewer's payload contract, so a table that drifts from `bounds.py` or
+from the page arithmetic is worse than no table at all. Every leaf here reads the live modules
+— none of them spells a number, and the coverage leaf makes a new bound impossible to leave
+undocumented by accident.
 """
 
 import pytest
@@ -10,6 +11,7 @@ import pytest
 from hyphae.view import bounds, nodes
 from hyphae.view.knobs import KNOB_DEFAULTS
 from tests.tools.conftest import cells, numbers
+from tests.view import budgets
 from tools import gen_bounds
 
 TABLES = list(gen_bounds.Table)
@@ -43,6 +45,25 @@ def test_the_generated_table_prints_no_number_of_its_own(table: gen_bounds.Table
     # so a subject or a header that grew a number is caught as well.
     every = {gen_bounds.valued(name) for name in gen_bounds.cited()}
     assert set(numbers(gen_bounds.generate(table))) <= every
+
+
+def test_every_page_the_table_prints_fits_under_the_ceiling_beside_it() -> None:
+    # The reading the page table exists to give: each worst case is under what that page is
+    # allowed. `tests/view/test_bounds.py` is what enforces it — this pins that the table says
+    # so, since a row printing its two numbers the other way round would read as a page over
+    # its ceiling and still be cited correctly.
+    for row in gen_bounds.rows(gen_bounds.Table.PAGES):
+        worst, ceiling = numbers(row.says)
+        assert worst < ceiling, f"`{row.subject}` prints {worst} against {ceiling}"
+
+
+def test_the_node_table_accounts_for_every_byte_the_node_page_is_allowed() -> None:
+    # The node table is a decomposition, so it has to close: every part, plus the spare the
+    # ceiling leaves over the arithmetic, is the ceiling. A part added to `worst_node_bytes`
+    # and left out of the table would fall short here rather than quietly under-describe the
+    # dearest page the viewer serves.
+    parts = [numbers(row.says)[-1] for row in gen_bounds.rows(gen_bounds.Table.NODE)]
+    assert sum(parts) == budgets.NODE_BYTES
 
 
 def test_every_bound_is_cited_by_a_table_or_named_as_uncited() -> None:

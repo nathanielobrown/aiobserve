@@ -52,7 +52,7 @@ Full-value requests are the declared exception. Each returns one whole value —
 <!-- aigarden:cog sh "uv run python -m tools.gen_bounds bounds" -->
 | Surface | Default and limit |
 | --- | --- |
-| Session list | 97 sessions; each long string is cut to 100 characters, skills and agent types to 4 20-character names, and work to 3 |
+| Session list | 113 sessions; each long string is cut to 100 characters, skills and agent types to 4 20-character names, and work to 3 |
 | Projects | 100 projects; the path is cut to 100 characters |
 | A session's errors | 100 failed tool calls; each title is cut to 110 characters |
 | NavTree | 200 children per open level, 16 levels deep, each title cut to 110 characters |
@@ -63,12 +63,41 @@ Full-value requests are the declared exception. Each returns one whole value —
 | Syntax highlighting | 256,000 characters, above which the value prints as stored |
 <!-- aigarden:end -->
 
-The worst node page comes to 7,245,973 bytes of the 7,260,000 a node page is allowed — its own budget rather than the 500,000 every other page is weighed against, because the NavTree is a window a reader widens in place and not a page. The NavTree is what multiplies: an open path is `1 + 16 × (200 + 1)` = 3,217 rows, and a row is pinned at 1,929 bytes, which is 6,205,593 of the page, six sevenths of it. The rest is 16 crumbs at 580 bytes, 100 log rows at 6,465, a pager at 600, three previewed values at 120,600 each, and 22,200 of chrome. The 14,027 spare is the rounding every ceiling here carries. The kind mark on a row is 49 bytes of it — 45 of markup around a 3-byte character, and the space after it — which over 3,217 rows is 157,633, the second cost badge a row with runs under it draws is 55 more, 176,935, the context bar's three classes are 12 bytes at their widest, 38,604, and the popover trigger is 362, which is 1,164,554; `NODE_BYTES` in `tests/view/budgets.py` records what each raise of the ceiling bought. A preview the page marks up is priced at 30 bytes a character against the five an escaped one costs — an element around every token — and that price holds whether the markup is the syntax the record named or the Markdown a session wrote. A run's is the first reading pane whose three previews are all rendered, which is why the arithmetic charges three. A log row is the dearest thing on the page after the NavTree: it prints up to three of the store's own strings at 300 characters each, which is what a reader gets for reading a level without opening it. An api call's is the widest row there is — the model that answered, the head of what it said, and the tools it went on to call. `NAV_TREE_ROW_BYTES` is measured through the app rather than budgeted, at a title of nothing but `&` and the longest query string a link can carry, and pinned with no slack in either direction: a byte of slack there is 3,217 bytes of page, and the room above is spoken for. Nearly all of a row is its URL, written three times: the `href` a reader follows, the `hx-get` htmx fetches, and the popover's own path under a prefix. What the click does with its response is written once on `#nav-tree-rows` and inherited; what the popover does with its own cannot be, because htmx walks up from the element that fetched, and a swap written on the row would be taken by the link inside it — so its five attributes are spelled out on every row, and a store whose agent runs carry longer ids than the recorded corpus does is a re-measure.
+Each page is weighed against its ceiling at the widest response its route can be asked for — every size at the top of its range, and every string at the width the query cuts it to — rather than at the widest page this corpus happens to hold.
 
-An expansion carries a ceiling of its own, 660,000 bytes. A click fetches it, like the full-value requests exempted above, but what comes back is a page of rows rather than one value: an api call's body opened in a log row lists the tools it called, at the `?log=` the reader is already reading under, and comes to 655,000. `tests/view/budgets.py` declares the number rather than deriving it from the 500,000, because a page of rows nobody counted is what a click can afford to hide.
+<!-- aigarden:cog sh "uv run python -m tools.gen_bounds pages" -->
+| Page | Worst case, in bytes |
+| --- | --- |
+| Node page | 6,484,296 of the 6,500,000 it is allowed |
+| Expansion | 621,164 of 625,000 |
+| Session list | 498,625 of 500,000 |
+| Projects | 301,225 of 500,000 |
+| A session's errors | 96,278 of 500,000 |
+| Raw records | 288,000 of 500,000 |
+<!-- aigarden:end -->
 
-A session's errors list grows the way the corpus pages do — nothing about a session caps how often its tools fail — so it is bounded the same way and projects to 108 KB: 3.2 KB of chrome plus 100 rows at 1,050 bytes, of which 550 is a title of nothing but `&`.
+The node page is weighed against a budget of its own rather than the 500,000 the rest share, because the NavTree is a window a reader widens in place and not a page. This is what fills it:
 
-The session list is bound independently of corpus size. Its filter box offers the 10 busiest project paths that fit its bound, whole or not at all; a cut path would filter by a directory nobody named. The projects page cuts a long path the same way and leaves that row unlinked. The same rule keeps row filtering correct: the viewer filters whole titles, paths, and skill lists, then cuts only the rows it renders. The worst-case list projects to 499 KB: 10.5 KB of page chrome plus 97 rows at 5 KB each.
+<!-- aigarden:cog sh "uv run python -m tools.gen_bounds node" -->
+| Part of the node page | What it comes to, in bytes |
+| --- | --- |
+| NavTree | 3,217 rows at 1,703: 5,478,551 |
+| Children log | 100 rows at 6,165: 616,500 |
+| Previewed values | 3 rendered at 120,550: 361,650 |
+| Crumbs | 16 at 580: 9,280 |
+| Pager | 565 |
+| Chrome | 17,750 |
+| Spare | 15,704 |
+<!-- aigarden:end -->
+
+The NavTree is what multiplies: an open path is a row for the root and one for every child of every level it descends through, and those rows are most of the page. `NAV_TREE_ROW_BYTES` is measured through the app rather than budgeted, at a title of nothing but `&` and the longest query string a link can carry, and pinned with no slack in either direction — a byte of slack there is a byte on every row of the widest page, and the room above is spoken for. Nearly all of a row is its URL, written three times: the `href` a reader follows, the `hx-get` htmx fetches, and the popover's own path under a prefix. What the click does with its response is written once on `#nav-tree-rows` and inherited; what the popover does with its own cannot be, because htmx walks up from the element that fetched, and a swap written on the row would be taken by the link inside it — so its five attributes are spelled out on every row, and a store whose agent runs carry longer ids than the recorded corpus does is a re-measure. `NODE_BYTES` in `tests/view/budgets.py` records what each raise of the ceiling bought, and the spare in the table above is what the next thing a row grows by will be measured against.
+
+A preview the page marks up is priced at 30 bytes a character against the five an escaped one costs — an element around every token — and that price holds whether the markup is the syntax the record named or the Markdown a session wrote. A run's is the first reading pane whose three previews are all rendered, which is why the arithmetic charges three. A log row is the dearest thing on the page after the NavTree: it prints up to three of the store's own strings at the width the log query cuts them to, which is what a reader gets for reading a level without opening it. An api call's is the widest row there is — the model that answered, the head of what it said, and the tools it went on to call.
+
+An expansion carries a ceiling of its own. A click fetches it, like the full-value requests exempted above, but what comes back is a page of rows rather than one value: an api call's body opened in a log row lists the tools it called, at the `?log=` the reader is already reading under. `tests/view/budgets.py` declares that ceiling rather than deriving it from the 500,000, because a page of rows nobody counted is what a click can afford to hide.
+
+A session's errors list grows the way the corpus pages do — nothing about a session caps how often its tools fail — so it is bounded the same way. More than half of one of its rows is a title of nothing but `&`.
+
+The session list is bound independently of corpus size. Its filter box offers the 10 busiest project paths that fit its bound, whole or not at all; a cut path would filter by a directory nobody named. The projects page cuts a long path the same way and leaves that row unlinked. The same rule keeps row filtering correct: the viewer filters whole titles, paths, and skill lists, then cuts only the rows it renders. `bounds.SESSIONS` is the most rows that fit rather than merely a number that does: the suite holds it from below as well, so a row that grew has to move it instead of eating the slack.
 
 A session header does not have a reader-controlled size, so its query cuts every string, skill list and PR list. The description and friction line beside them come from the enrichment query and are cut at its own wider width. `tests/view/budgets.py` measures these fixed costs, `tests/view/test_bounds.py` weighs every route the viewer exposes against its own ceiling, and `tests/view/test_bounds__node.py` sweeps the node pages twice — once at the defaults, where the NavTree holds a row of every kind there is, and once at the knobs that make every link on the page longest.

@@ -501,6 +501,39 @@ def worst_rendered_detail_bytes() -> int:
     return MEASURED_DETAIL_MARKUP + bounds.DETAIL.ceiling * MARKED_CHAR_BYTES
 
 
+def nav_tree_rows() -> int:
+    """How many rows the NavTree of one node page holds: the root, and every level at its window.
+
+    `KIN` children per level is the whole of it: `nav_tree.windowed` keeps the child the path
+    descends through *inside* the window rather than past it, and `test_nav_tree.py` pins that. A
+    rescue that added a row would put a level at `KIN + 1` and the page below 16 rows over what
+    it prices.
+    """
+    return 1 + bounds.DEPTH * (bounds.KIN.ceiling + 1)
+
+
+def worst_nav_tree_bytes() -> int:
+    """What the NavTree of one node page can weigh — five sixths of the page it opens."""
+    return nav_tree_rows() * bounds.NAV_TREE_ROW_BYTES
+
+
+def worst_crumbs_bytes() -> int:
+    """What the chain above the reading pane can weigh: a crumb a level, all the way down."""
+    return bounds.DEPTH * worst_crumb_bytes()
+
+
+def worst_log_bytes() -> int:
+    """What one page of a children log can weigh, on a node page or inside an expansion."""
+    return bounds.LOG.ceiling * worst_log_row_bytes()
+
+
+def worst_details_bytes() -> int:
+    """What the values one reading pane previews can weigh, each priced by how it is printed."""
+    return (PANE_DETAILS - DEAR_PANE_DETAILS) * worst_stored_detail_bytes() + (
+        DEAR_PANE_DETAILS * worst_rendered_detail_bytes()
+    )
+
+
 def worst_node_bytes() -> int:
     """The largest node page any sizes a URL can carry produce.
 
@@ -513,21 +546,14 @@ def worst_node_bytes() -> int:
     The sizes' own defaults spend it, and each of the three knobs only goes down from there —
     but a knob a reader turns down writes itself into every link on the page, so the rows are
     priced with the longest query string one can carry rather than with none.
-
-    `KIN` children per level is the whole of it: `nav_tree.windowed` keeps the child the path
-    descends through *inside* the window rather than past it, and `test_nav_tree.py` pins that. A
-    rescue that added a row would put a level at `KIN + 1` and this page 16 rows over what it
-    prices.
     """
-    nav_tree_rows = 1 + bounds.DEPTH * (bounds.KIN.ceiling + 1)
     return (
         MEASURED_NODE_CHROME
-        + bounds.DEPTH * worst_crumb_bytes()
-        + nav_tree_rows * bounds.NAV_TREE_ROW_BYTES
-        + bounds.LOG.ceiling * worst_log_row_bytes()
+        + worst_crumbs_bytes()
+        + worst_nav_tree_bytes()
+        + worst_log_bytes()
         + MEASURED_PAGER_BYTES
-        + (PANE_DETAILS - DEAR_PANE_DETAILS) * worst_stored_detail_bytes()
-        + DEAR_PANE_DETAILS * worst_rendered_detail_bytes()
+        + worst_details_bytes()
     )
 
 
@@ -540,7 +566,32 @@ def worst_expansion_bytes() -> int:
     body, and the cap that bounds the log on a page is what bounds it here. `EXPANSION_BYTES`
     is what this is checked against.
     """
-    return MEASURED_EXPANSION_CHROME + bounds.LOG.ceiling * worst_log_row_bytes()
+    return MEASURED_EXPANSION_CHROME + worst_log_bytes()
+
+
+def worst_session_list_bytes() -> int:
+    """What a full page of the session list can weigh: its chrome, and a ceiling of dear rows."""
+    return MEASURED_LIST_CHROME + bounds.SESSIONS.ceiling * worst_session_row_bytes()
+
+
+def worst_projects_page_bytes() -> int:
+    """The same for the landing page, whose rows are paths someone named."""
+    return MEASURED_PROJECTS_CHROME + bounds.PROJECTS.ceiling * worst_project_row_bytes()
+
+
+def worst_errors_page_bytes() -> int:
+    """The same for a session's errors, which grows with how often its tools failed."""
+    return MEASURED_ERRORS_CHROME + bounds.ERRORS.ceiling * worst_error_row_bytes()
+
+
+def worst_records_page_bytes() -> int:
+    """The same for the records browser, which is rows of previews and nothing else."""
+    return bounds.RECORDS.ceiling * worst_record_bytes()
+
+
+def node_spare() -> int:
+    """What `NODE_BYTES` leaves over the arithmetic: the rounding every ceiling here carries."""
+    return NODE_BYTES - worst_node_bytes()
 
 
 def worst_record_bytes() -> int:

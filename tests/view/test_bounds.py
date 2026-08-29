@@ -40,18 +40,17 @@ from tests.view.budgets import (
     EXPANSION_BYTES,
     FAT,
     MARKED_CHAR_BYTES,
-    MEASURED_ERRORS_CHROME,
     MEASURED_LIST_CHROME,
-    MEASURED_PROJECTS_CHROME,
     NODE_BYTES,
     PAGE_BYTES,
     exact_pins,
     fits,
-    worst_error_row_bytes,
+    worst_errors_page_bytes,
     worst_expansion_bytes,
     worst_node_bytes,
-    worst_project_row_bytes,
-    worst_record_bytes,
+    worst_projects_page_bytes,
+    worst_records_page_bytes,
+    worst_session_list_bytes,
     worst_session_row_bytes,
 )
 from tests.view.conftest import (
@@ -326,7 +325,7 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     assert QUERIES["view_session_errors"].params["errors"].default == 100
     # Every ceiling is projected at the largest page a URL can ask for, because a size is
     # something a reader types.
-    assert bounds.RECORDS.ceiling * worst_record_bytes() < PAGE_BYTES
+    assert worst_records_page_bytes() < PAGE_BYTES
     # And the record that page opens for a reader who did not click it, which is priced as a
     # page rather than as the per-value fetch it goes to: every character its own token, plus
     # the indentation a JSON record gains, which is whitespace and written out bare.
@@ -335,7 +334,7 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     # The list is the page a corpus grows, so its ceiling is the widest page a URL can ask for
     # plus the chrome that rides every page — both bound by construction now, not by how long
     # the titles this corpus happens to hold are.
-    assert MEASURED_LIST_CHROME + bounds.SESSIONS.ceiling * worst_session_row_bytes() < PAGE_BYTES
+    assert worst_session_list_bytes() < PAGE_BYTES
     # And it is the most rows that fit, not merely some number that does: the ceiling is
     # derived from the row's cost, so a row that grew has to move it rather than eat the slack
     # silently. The two together are what make `bounds.SESSIONS` a measurement — an upper bound
@@ -347,13 +346,11 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     )
     # The landing page grows the same way — a project per repository the corpus records — and
     # its ceiling is not a size a URL carries: a reader picks a project rather than paging.
-    assert (
-        MEASURED_PROJECTS_CHROME + bounds.PROJECTS.ceiling * worst_project_row_bytes() < PAGE_BYTES
-    )
+    assert worst_projects_page_bytes() < PAGE_BYTES
     # And a session's errors list, which grows the way both of those do — nothing about a
     # session caps how often its tools fail — and is not a size a URL carries either: a reader
     # jumps to a failure rather than paging through them.
-    assert MEASURED_ERRORS_CHROME + bounds.ERRORS.ceiling * worst_error_row_bytes() < PAGE_BYTES
+    assert worst_errors_page_bytes() < PAGE_BYTES
     # And the node page, the one page every node URL serves: the NavTree a reader walks down the
     # left, and the pane beside it. Its three sizes are each their own ceiling, so this is the
     # widest response any node URL can be asked for.
