@@ -41,6 +41,8 @@ REPO = Path(__file__).resolve().parents[2]
 
 # The one path pyrefly is allowed to check less of, and the one kind it may stop checking there.
 NARROWED = "src/hyphae/view/components/**"
+# The one page composed outside the package: the gallery index, which nests htpy the same way.
+GALLERY = "tests/gallery/**"
 UNCHECKED = {"bad-index": False}
 
 # Every module that defines components. `__init__.py` holds the package's rules and the one
@@ -399,6 +401,10 @@ def test_the_only_check_this_package_is_excused_is_the_one_htpy_forces() -> None
     assert scoped[NARROWED] == UNCHECKED
     # ...and no other narrowing reaches shipped code at all.
     assert [matched for matched in scoped if matched.startswith("src/")] == [NARROWED]
+    # htpy's bug reaches one page written outside the package too, and that is the whole list:
+    # a third path excused for it is a component composed somewhere a component should not be.
+    excused = {matched for matched, errors in scoped.items() if errors.get("bad-index") is False}
+    assert excused == {NARROWED, GALLERY}
     # A per-line escape would be the other way to buy the same quiet, and none is taken.
     assert [path.name for path in SOURCES if "pyrefly: ignore" in path.read_text()] == []
 
