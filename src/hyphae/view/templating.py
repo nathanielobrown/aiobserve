@@ -1,20 +1,14 @@
-"""The Jinja environment every page renders through, and what a route needs to render one.
+"""The Jinja environment every page still renders through.
 
 `environment(dev=…)` is the whole registry: the filters that cut a value to the width its
 surface prints it at, and the globals a template names without being handed them. A filter here
 is the render-time half of a query's one-extra-character protocol — the query returns a string
 one character past the cut, and the filter marks it (`docs/viewer.md`).
-
-`Viewer` is what a route module is built with: the store to read and the environment to render
-through, the only two things every route needs.
 """
 
 import datetime as dt
-from dataclasses import dataclass
 from pathlib import Path
 
-from fastapi import Request
-from fastapi.responses import Response
 from fastapi.templating import Jinja2Templates
 
 from hyphae.analyze import queries
@@ -160,21 +154,3 @@ def environment(*, dev: bool) -> Jinja2Templates:
     templates.env.globals["DEV"] = dev  # pyrefly: ignore
 
     return templates
-
-
-@dataclass(frozen=True)
-class Viewer:
-    """What every route is built with: the store it reads, and the environment it renders in.
-
-    One per app. A route module takes it as its factory's argument rather than reaching into
-    `request.app.state`, so a route body stays a plain typed function of what it needs.
-    """
-
-    db: Path
-    templates: Jinja2Templates
-
-    def error(self, request: Request, status: int, message: str) -> Response:
-        """The error page, which is what every handler in `build_app` answers with."""
-        return self.templates.TemplateResponse(
-            request, "error.html", {"status": status, "message": message}, status_code=status
-        )

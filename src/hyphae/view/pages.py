@@ -25,7 +25,7 @@ from hyphae.view.store import (
     page_rows,
     paged,
 )
-from hyphae.view.templating import Viewer
+from hyphae.view.viewer import Viewer
 
 
 def routes(viewer: Viewer) -> list[BaseRoute]:

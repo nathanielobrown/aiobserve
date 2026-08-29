@@ -40,7 +40,7 @@ from hyphae.view.store import (
     StoreLocked,
     open_store,
 )
-from hyphae.view.templating import Viewer
+from hyphae.view.viewer import Viewer
 
 # Loopback only, and a port unlikely to be taken. Fixed rather than picked at startup so a
 # link pasted into a note opens the same page tomorrow.

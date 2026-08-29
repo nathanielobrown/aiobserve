@@ -37,7 +37,7 @@ from hyphae.view.store import (
     open_store,
     page_rows,
 )
-from hyphae.view.templating import Viewer
+from hyphae.view.viewer import Viewer
 
 # Where the list is served. Named here because the route and every link the list mints have
 # to agree: `/` is the projects landing, and a link that still points there drops the sort and

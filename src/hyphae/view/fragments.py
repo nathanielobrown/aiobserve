@@ -22,7 +22,7 @@ from hyphae.view import builders, highlight, nodes, numbers
 from hyphae.view.enrichment import enriched
 from hyphae.view.nodes import Kind, Ref
 from hyphae.view.store import Fragment, Value, open_store, page_rows
-from hyphae.view.templating import Viewer
+from hyphae.view.viewer import Viewer
 
 
 def routes(viewer: Viewer) -> list[BaseRoute]:

@@ -35,7 +35,7 @@ from hyphae.view.store import (
     open_store,
     page_rows,
 )
-from hyphae.view.templating import Viewer
+from hyphae.view.viewer import Viewer
 
 
 class Listing(NamedTuple):
