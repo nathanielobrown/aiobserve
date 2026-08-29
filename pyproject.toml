@@ -10,7 +10,6 @@ dependencies = [
   "python-dotenv>=1.1", # reads the OTLP backends' ingest keys out of .env, which is gitignored
   "fastapi>=0.115", # the trace viewer's routes, and the test client the viewer tier drives
   "uvicorn>=0.34", # serves the viewer on localhost; nothing here is deployed
-  "jinja2>=3.1", # the viewer's templates, autoescaping every value a transcript wrote
   # The viewer's components: markup as typed Python functions, which pyrefly checks and a
   # template cannot be. It escapes every string child and every attribute value — an attribute
   # even when the value is already a `Markup`, which is why no component writes markup into one
@@ -20,7 +19,8 @@ dependencies = [
   # Renders a transcript's markdown with HTML passthrough and the image rule off — see
   # `view/render.py`, which is the only place the reader is configured.
   "markdown-it-py>=3.0",
-  # Jinja's escaping, used directly: `view/render.py` returns HTML it has escaped itself.
+  # `Markup`, the one opt-out from htpy's escaping: `view/render.py` returns HTML it escaped
+  # itself, and htpy passes a `Markup` child through untouched.
   "markupsafe>=3.0",
   # The OTLP wire types only — `TracesData` and `ExportTraceServiceResponse`. Deliberately
   # not `opentelemetry-sdk`: its BatchSpanProcessor queue drops spans silently, and its
@@ -54,15 +54,10 @@ dev = [
   # Exact, not a floor: a ruff release adds rules to the groups selected below, so an upgrade
   # is a change to what the gate demands. It lands when someone bumps this line.
   "ruff==0.16.1",
-  # The viewer's HTML formatter — `mise run format-html`, and the binary VS Code runs on save
-  # (`.vscode/settings.json`). Exact for ruff's reason and one more: it reflows markup no test
-  # here pins byte for byte, so a release's output lands when someone bumps this line and
-  # re-reads the pages.
-  "djlint==1.44.2",
   # Mutation testing — `mise run mutate`. Answers what a green suite cannot: whether a leaf
   # would notice the code being wrong. Outside `check`, because it costs a test run per mutant.
   "mutmut>=3.7",
-  # Watches the templates and the stylesheets behind `hp view --dev` (`view/dev.py`).
+  # Watches the stylesheets behind `hp view --dev` (`view/dev.py`).
   # A dev-group dependency deliberately: the shipped viewer never imports it, so `--dev` in a
   # checkout without these deps fails at startup rather than serving a loop that never fires.
   "watchfiles>=1.0",
@@ -180,22 +175,6 @@ ban-relative-imports = "all"
 # style reads as if it were quoted from somewhere else; this keeps it looking like the module
 # around it. Markdown is excluded above, so this reaches docstrings only.
 docstring-code-format = true
-
-# The viewer's remaining templates — `mise run format-html` writes what
-# `format-html-check` gates and VS Code runs on save. Formatter only: djLint's linter wants
-# `{{ url_for() }}` for every internal link, and this viewer builds its URLs in
-# `src/hyphae/view/nodes.py` on purpose.
-[tool.djlint]
-# Jinja, not HTML: this is what makes `{% %}` a tag djLint indents rather than text it reflows,
-# and what keeps `{%- -%}` intact.
-profile = "jinja"
-# Two, not djLint's four. The templates and the stylesheet beside them are written at two, and
-# a NavTree row nested six deep would otherwise start past column 24.
-indent = 2
-# Everything else stays default. An unknown key here is ignored silently, unlike `aigarden.toml`
-# and `mise.toml`, so a typo turns a setting off and says nothing. djLint also reads an
-# `.editorconfig` if one appears; this repo has none, and an `[*.html]` section added later must
-# agree with `indent` above or this block stops deciding.
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

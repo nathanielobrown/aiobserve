@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 
 from hyphae.view.components import Html
 from hyphae.view.components import pages as components
@@ -18,12 +17,10 @@ from hyphae.view.components import pages as components
 
 @dataclass(frozen=True)
 class Viewer:
-    """The store every route reads, the frame it renders through, and whether `--dev` is on."""
+    """The store every route reads, and whether `--dev` is on."""
 
     db: Path
     dev: bool
-    # The Jinja environment the templates still left over render through. Goes away with them.
-    templates: Jinja2Templates
 
     def html(self, element: Html, *, status: int = 200) -> HTMLResponse:
         """One rendered page, as a response.

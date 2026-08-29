@@ -1,6 +1,6 @@
 # The UI development loop
 
-Edit a viewer template or stylesheet and see it in the browser without touching the browser. Two things make that a loop: `mise run gallery`, which serves every scenario the viewer tier pins, and `hp view --dev`, which reloads the open page when you save. What each page shows is in [the viewer guide](viewer.md); the conventions a template has to hold to are in `.claude/rules/viewer-ui.md`. Those same pages are what the browser tier drives, which is the last section here.
+Edit a viewer component or stylesheet and see it in the browser without touching the browser. Two things make that a loop: `mise run gallery`, which serves every scenario the viewer tier pins, and `hp view --dev`, which reloads the open page when you save. What each page shows is in [the viewer guide](viewer.md); the conventions a component has to hold to are in `.claude/rules/viewer-ui.md`. Those same pages are what the browser tier drives, which is the last section here.
 
 ## Open the scenario you are about to change
 
@@ -16,24 +16,13 @@ Its clock is the corpus's, not the wall's: the gallery reads the present off the
 
 ## Save the file and watch the page
 
-Jinja re-renders an edited template on the next request, so all the loop adds is the request. Save a template and the open page reloads; save a stylesheet and the page swaps its sheets in place, keeping the scroll and everything else a reload would cost; restart the server and the page reloads once, on the reconnect, onto whatever the new server serves. `.claude/rules/viewer-ui.md` records what a real Chromium did with each of the three.
+A page is Python, so a save is one of two things. Save a stylesheet and the page swaps its sheets in place, keeping the scroll and everything else a reload would cost — that is the reload stream, and it costs about 0.2 s. Save a component and uvicorn restarts the server under you; the stream drops with the old worker and the open page reloads on the reconnect, a few seconds later, onto what the new one serves. Both the gallery and `hp view --dev` run that way. `.claude/rules/viewer-ui.md` records what a real Chromium did with each.
 
 A reload costs a reader nothing here because every state but NavTree width rides the URL: the page comes back at the node, the view and the knobs it was on. That is why the loop needs no hot module replacement and no DOM morphing.
 
-Python edits are the exception. Nothing watches them — restart the gallery or the viewer by hand, and the open page will follow.
+A restart rebuilds what the process built at startup, which for the gallery means its store — under a second, from the redacted fixtures, into a directory named after the gallery you started.
 
-## A formatter owns the layout
-
-```bash
-mise run format-html
-```
-
-djLint writes every template's indentation and attribute layout, and `[tool.djlint]` in `pyproject.toml` decides how. `mise run check-fast` formats them for you and `mise run check` fails on a file that is not formatted. VS Code formats on save through that same binary and that same block, so an editor's output is the check's output; `.vscode/settings.json` carries only what that parity needs.
-
-Two things to know before you edit a template:
-
-- **The whitespace it writes is bytes on the page.** Jinja renders the newline and the indent the formatter puts between a row's cells, and a NavTree row is spent 3,217 times on the worst page (`.claude/rules/viewer-ui.md`). A space a reader has to see is written `{{ " " }}`, because a literal one sits where djLint reflows (`src/hyphae/view/templates/_parts.html`)
-- **Never write a raw tag inside a `{# … #}` comment.** djLint reads the opening tag as the real thing and leaves the rest of the file unindented. Name the element in words instead (`src/hyphae/view/templates/base.html`)
+Ruff formats a component like any other Python, so there is no second formatter and no layout to keep. One thing to know before you edit one: **the whitespace on the page is only what you wrote.** htpy writes nothing between two elements, so a space a reader has to see is an explicit `" "` child — and nothing catches one that is deleted (`.claude/rules/viewer-ui.md`).
 
 ## Run the same loop over your own store
 
@@ -41,7 +30,7 @@ Two things to know before you edit a template:
 uv run hp view --dev
 ```
 
-`--dev` mounts the reload stream and puts its client on every page, and changes nothing else: a shipped page is a dev page minus one script tag. The watcher's dependency lives in the dev group, so an installed viewer never carries it and `--dev` in a checkout without it fails at startup rather than serving a loop that never fires. Run `mise run sync` if it does.
+`--dev` mounts the reload stream, puts its client on every page, and runs the server under uvicorn's reloader. It changes nothing else: a shipped page is a dev page minus one script tag. The watcher's dependency lives in the dev group, so an installed viewer never carries it and `--dev` in a checkout without it fails at startup rather than serving a loop that never fires. Run `mise run sync` if it does.
 
 ## Add a route and the gallery gains the page
 

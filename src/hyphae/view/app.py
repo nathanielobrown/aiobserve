@@ -1,9 +1,9 @@
 """The viewer itself: what `build_app` assembles over a trace store, and what `serve` runs.
 
-`build_app(db_path)` returns a FastAPI app over one store. It builds the Jinja environment
-(`view/templating.py`), mounts the statics, answers a locked or moved store with a page rather
-than a stack trace, and registers each route module in turn — the two lists, the node pages,
-the pages that are not a node's, the expansions, and the fragments.
+`build_app(db_path)` returns a FastAPI app over one store. It mounts the statics, answers a
+locked or moved store with a page rather than a stack trace, and registers each route module in
+turn — the two lists, the node pages, the pages that are not a node's, the expansions, and the
+fragments.
 
 Nothing the viewer serves writes: every request opens its own read-only connection
 (`view/store.py`), checks the store's schema version, renders, and closes. That is what lets an
@@ -34,7 +34,6 @@ from hyphae.view import (
     listing,
     node_pages,
     pages,
-    templating,
 )
 from hyphae.view.store import (
     SchemaMoved,
@@ -69,7 +68,7 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
     """The viewer over the store at `db_path`, which must exist and hold this schema.
 
     Under `dev` the app also serves the reload stream and puts its client on every page, so a
-    saved template refreshes the browser (`view/dev.py`). Nothing else differs: a prod page is
+    saved stylesheet reaches an open one (`view/dev.py`). Nothing else differs: a prod page is
     a dev page minus that one script tag.
     """
     resolved = db_path.resolve()
@@ -88,7 +87,7 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
 
         app.include_router(dev_loop.reload_router())
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
-    viewer = Viewer(db=resolved, dev=dev, templates=templating.environment(dev=dev))
+    viewer = Viewer(db=resolved, dev=dev)
 
     @app.middleware("http")
     async def _policy(request: Request, call_next: Any) -> Response:

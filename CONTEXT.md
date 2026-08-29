@@ -56,6 +56,7 @@ What each page shows and cites: `docs/viewer.md`; the routes: the modules `src/h
 - **Errors page** — every failed tool call of a session, on every thread, in order
 - **Records page** — one thread's raw records, verbatim
 - **Query page** — the SQL behind a page; every footer cites one
+- **Component** — one typed function building part of a page's markup with htpy; a page is Python, not a template (`src/hyphae/view/components/`)
 - **Scenario** — one page of the fixture corpus by name: a URL, a title and a group, pinned in `tests/view/scenarios.py`
 - **Gallery** — the scenarios served as pages for UI work (`docs/ui-development.md`)
 

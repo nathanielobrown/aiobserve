@@ -1,6 +1,6 @@
-"""How the pages print numbers and times. Registered as Jinja filters by `app.build_app`.
+"""How the pages print numbers and times.
 
-Every one of these takes None, because a store column that can be NULL reaches the template
+Every one of these takes None, because a store column that can be NULL reaches a component
 as None and an empty cell says less than a dash.
 """
 

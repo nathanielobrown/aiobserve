@@ -26,8 +26,8 @@ from hyphae.view.store import Page, page_rows
 # listed, so a fourth level is asked about here too.
 TABLES = {level: spec.table for level, spec in LEVELS.items()}
 
-# What marks a string a model wrote rather than a session. Registered as a Jinja global, so
-# the character itself is written once and every surface that shows it reads this.
+# What marks a string a model wrote rather than a session, written once so that every surface
+# showing it reads the character from here.
 GLYPH = "✨"
 # The class that styles it, and the one thing a test can read a bare glyph by: a NavTree row
 # carries the mark alone, because the provenance behind it is a pane's to spell out.

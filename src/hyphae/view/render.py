@@ -1,6 +1,6 @@
 """Turning what a transcript wrote into HTML that cannot act.
 
-Every helper hands back `Markup`, which Jinja prints without escaping — so this module owns
+Every helper hands back `Markup`, which htpy prints without escaping — so this module owns
 the escaping for every value it renders, and a mistake here is a live one. Three rules make
 the difference, and the first two are each one argument from being lost:
 
@@ -12,10 +12,10 @@ the difference, and the first two are each one argument from being lost:
 - A URL is **a link only when its scheme is `http` or `https`**. Escaping leaves a
   `javascript:` URL intact, and an `href` is the one place a transcript's text is acted on
 
-`tests/view/test_render.py` pins all three. It cannot see a template that pipes a value
-through `|safe`, which is why the route-level sentinel test exists as well. The one place code
-meets prose is a fenced block, and `view/highlight.py` marks that up; a value that is code
-whole never comes through here at all.
+`tests/view/test_render.py` pins all three. It cannot see a component that wraps a value in
+`Markup` on its way to the page, which is why the route-level sentinel test exists as well.
+The one place code meets prose is a fenced block, and `view/highlight.py` marks that up; a
+value that is code whole never comes through here at all.
 """
 
 from collections.abc import MutableMapping, Sequence

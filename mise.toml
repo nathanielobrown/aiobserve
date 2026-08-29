@@ -39,22 +39,6 @@ run = "uv run ruff format ."
 description = "Check Python formatting without writing"
 run = "uv run ruff format --check ."
 
-[tasks.format-html]
-description = "Format the viewer's templates with djLint"
-# The paths are named rather than a bare `.`: djLint would otherwise walk the docs and the
-# gitignored `data/`. Both tasks carry the same list, and both are read back against the tree
-# by `tests/tools/test_mise_tasks.py`, so a template added outside them reds rather than going
-# quietly unformatted. `[tool.djlint]` in `pyproject.toml` decides how, and VS Code formats
-# on save through this same binary and that same block, so an editor's output is this output.
-# `--quiet` drops the per-file diff — `git diff` says it better. The trailing test swallows
-# djLint's exit 1, which is what it returns when it rewrote a file: a formatter doing its job,
-# not something that should stop `check-fast`. A real error still exits 2 and still fails.
-run = "uv run djlint src/hyphae/view/templates --reformat --quiet || [ $? -eq 1 ]"
-
-[tasks.format-html-check]
-description = "Check template formatting without writing (the CI shape)"
-run = "uv run djlint src/hyphae/view/templates --check"
-
 [tasks.lint]
 description = "Lint Python with ruff, applying safe fixes"
 run = "uv run ruff check --fix ."
@@ -220,13 +204,12 @@ no_proxy='*' uv run mutmut run --max-children 1 "$@"
 
 [tasks.check-fast]
 description = "Format and lint the code and the docs, and type-check — the loop to run while iterating"
-depends = ["format", "format-html", "lint", "lint-docs", "typecheck"]
+depends = ["format", "lint", "lint-docs", "typecheck"]
 
 [tasks.check]
 description = "Every gate. Run before opening a PR."
 depends = [
   "format-check",
-  "format-html-check",
   "lint-check",
   "lint-docs-check",
   "cogs-check",
