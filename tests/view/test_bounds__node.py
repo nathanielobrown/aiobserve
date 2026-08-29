@@ -225,7 +225,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     split = [priced(page) for page in served if 'id="nav-tree-rows"' in page]
     # A crumb, a NavTree row, a log row and a preview each weigh what the arithmetic budgets...
     for name, budget, exact in (
-        ("crumb", worst_crumb_bytes(), False),
+        ("crumb", worst_crumb_bytes(), exact_pins()),
         ("nav_tree", bounds.NAV_TREE_ROW_BYTES, True),
         ("log", worst_log_row_bytes(), False),
         ("pager", MEASURED_PAGER_BYTES, exact_pins()),
@@ -233,12 +233,13 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
         found = [row for _, rows in split for row in rows[name]]
         assert found, name
         widest_row = max(len(row.encode()) for row in found)
-        # A crumb and a log row are arithmetic over a cap, so a row that comes in under is a cap
-        # with room left in it and the budget is only ever a ceiling. The other two are
-        # measurements of the row itself. The NavTree's is held from below always — the NavTree is
-        # four fifths of the page, so a byte of slack there is 3,217 bytes the ceiling keeps for
-        # nothing, and `NODE_BYTES` now has room to hide one — and the pager's under the exact-pin
-        # mode, with every other measured pin.
+        # A log row is arithmetic over a cap with a rounding fudge inside it, so a row that comes
+        # in under is a cap with room left and the budget is only ever a ceiling. The other three
+        # are measurements of the row itself, or arithmetic with nothing rounded in it: the
+        # NavTree's is held from below always — the NavTree is most of the page, so a byte of
+        # slack there is 3,217 bytes the ceiling keeps for nothing, and `NODE_BYTES` now has room
+        # to hide one — and the crumb's and the pager's under the exact-pin mode, which is what
+        # keeps a hand-written pin from outliving the measurement it stood for.
         assert widest_row == budget if exact else widest_row <= budget, (name, widest_row)
         if name == "nav_tree":
             # And the row it priced drew a context bar at its widest spelling: three edges of

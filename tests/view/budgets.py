@@ -151,8 +151,8 @@ PAGE_BYTES = 500_000
 # elements, so the whitespace a formatted template put on every row of the page went with the
 # templates: a NavTree row fell from 1,929 B to 1,703 B, which over 3,217 rows is 727,042 B, and
 # the chrome, the crumbs, the log rows and the previews give back 34,635 B more. The arithmetic
-# comes to 6,484,296 B, and the 15,704 B over it is what the next thing a row grows by is
-# measured against.
+# comes to 6,483,912 B, once the crumb's own markup is re-measured rather than carried, and the
+# 16,088 B over it is what the next thing a row grows by is measured against.
 NODE_BYTES = 6_500_000
 # What one expansion may weigh: a node's body opened in place, inside someone else's children
 # log. It is over `PAGE_BYTES` and declared here rather than derived against it, for the reason
@@ -272,9 +272,12 @@ LOG_ROW_STRINGS = 3
 MEASURED_PAGER_BYTES = 565
 # And what the markup around one crumb of the chain down to the selection costs: the link, the
 # node's key, the mark saying what kind of node the step is, and the glyph saying who named it.
-# Measured the same way — 556 B less 200 B of title at `CRUMB_CHARS` and 50 B of knobs,
-# leaving 306 B.
-MEASURED_CRUMB_MARKUP = 330
+# Measured the same way — 556 B less 200 B of title at `CRUMB_CHARS` and 50 B of knobs, leaving
+# 306 B. It read 330 until here, which was never a measurement: the comment beside it said 306
+# too, and subtracted a title of 550 B that `CRUMB_CHARS` stopped cutting long before this
+# branch. So a crumb is the one row whose re-pin is not the engine's doing — what it lost is
+# arithmetic nobody had re-run, and it is held from both sides under `HYPHAE_PIN_EXACT` now.
+MEASURED_CRUMB_MARKUP = 306
 # And what the markup around one previewed value costs — the heading, the `<pre>` and the line
 # offering the rest of it — with the preview itself taken off. Measured through the app by
 # `test_bounds__node.py` at 531 B, on the preview it prints as the characters the store holds.
