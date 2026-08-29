@@ -211,8 +211,23 @@ markers = [
 # line. Config keys are 3.x's: `paths_to_mutate` and `tests_dir` are the deprecated 2.x names.
 source_paths = ["src/hyphae"]
 # The suite is the oracle, so a mutant that survives is a gap in it. `-x` stops at the first
-# test that catches the mutant, which is all a kill needs.
-pytest_add_cli_args = ["-x", "-p", "no:cacheprovider"]
+# test that catches the mutant, which is all a kill needs. The three deselected leaves cannot
+# pass from the copy, and each would red the baseline before a single mutant ran: the first two
+# read the repository as a git checkout and as a mise project, which `mutants/` is neither, and
+# the third reads component source, which mutmut rewrites — every function becomes a family of
+# `x_name__mutmut_N` variants taking `*args, **kwargs`, exactly what the signature floor forbids.
+# Dropping that one costs the sweep its floor, so a mutant only it would catch survives here.
+pytest_add_cli_args = [
+  "-x",
+  "-p",
+  "no:cacheprovider",
+  "--deselect",
+  "tests/tools/test_gen_layout.py::test_nothing_is_named_as_left_out_that_the_repo_no_longer_holds",
+  "--deselect",
+  "tests/tools/test_mise_tasks.py::test_the_chromatic_upload_refuses_to_run_on_an_empty_token",
+  "--deselect",
+  "tests/view/test_components.py::test_every_component_clears_the_signature_floor",
+]
 # mutmut copies `src`, `tests` and `pyproject.toml` and nothing else, so a test that reads a
 # repo file reads it out of `mutants/` and finds it missing. The stylesheet gate in
 # `tests/view/test_query.py` highlights this repo's own prose, task lines and hook scripts:
@@ -220,9 +235,23 @@ pytest_add_cli_args = ["-x", "-p", "no:cacheprovider"]
 # reaches by glob, which goes quietly empty — it passes today either way, but only over the
 # commands that are left. mutmut skips a path that does not exist just as quietly, so check
 # `mutants/` holds what this list promises rather than trusting a green run.
-# `tools/` is here because five test modules import it, and `aigarden.toml` because the
-# config test reads it.
-also_copy = ["mise.toml", "docs", ".claude/hooks", "tools", "aigarden.toml"]
+# `tools/` is here because five test modules import it, `aigarden.toml` because the
+# config test reads it, and `.github` because three workflow leaves do. `README.md` is here because `pyproject.toml` names it as the readme:
+# without it `uv run` cannot build the copied project, so any test that shells out to `uv`
+# dies before it runs — the gallery's reload-worker leaf does. `plans` and `reports` are here
+# because `aigarden.toml` names them and its config test asserts every pattern still matches
+# something; a directory missing from the copy reads as a pattern matching nothing.
+also_copy = [
+    ".github",
+    "mise.toml",
+    "docs",
+    ".claude/hooks",
+    "tools",
+    "aigarden.toml",
+    "README.md",
+    "plans",
+    "reports",
+]
 
 [tool.pyrefly]
 # Strict is the base: it adds the checks that catch an implicit `Any` slipping through an
