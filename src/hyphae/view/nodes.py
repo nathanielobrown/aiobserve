@@ -83,7 +83,7 @@ BUCKET_ICON = "∅"
 # What each kind is marked with, wherever a page names a node of it — the NavTree row, the crumb,
 # the pane's own heading, and the browser tab. Eight characters a reader learns once and then
 # reads a NavTree by without reading a title, which is why the table is here rather than in a
-# template: one of them written into one surface is a node that looks like something else on
+# component: one of them written into one surface is a node that looks like something else on
 # that surface. Total over `Kind`, so a kind added without a mark is a `KeyError` on the first
 # page that renders it rather than a row saying nothing.
 GLYPHS: dict[Kind, str] = {
@@ -587,7 +587,7 @@ class Node:
 
         What the row's bar and its badge stand for, written out (`docs/viewer.md`). The node's
         own path under a prefix, like `expansion` — a popover reads one node — and empty for a
-        kind `NUMBERED` leaves out, which is how the template knows not to wire a fetch.
+        kind `NUMBERED` leaves out, which is how the component knows not to wire a fetch.
         """
         return f"{NUMBERS_URL}{self.url}" if self.kind in NUMBERED else ""
 

@@ -113,7 +113,7 @@ def described(connection: duckdb.DuckDBPyConnection, session_id: str, source: st
 
     `source` is the thread the page renders — `main` on a session page, the run's id on a run
     page. An item with no row is absent from the mapping rather than present and empty, so a
-    template asks `.get(id)` and gets a description or nothing.
+    component asks `.get(id)` and gets a description or nothing.
     """
     if not enriched(connection):
         return Descriptions()

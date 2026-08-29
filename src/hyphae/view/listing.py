@@ -120,7 +120,7 @@ DEFAULT_DIRECTION = "desc"
 # every session under a longer one, and a `skill` outside the first few would find nothing —
 # and applied outside the window, so it cuts the rows one page shows and nothing else.
 #
-# Each cut takes one character more than the row prints, which is how the template knows a
+# Each cut takes one character more than the row prints, which is how the component knows a
 # value was stopped rather than ended and marks it (`view/format.py:cut`).
 SHOWN = """SELECT * EXCLUDE (pr_urls) REPLACE (
     substr(title, 1, $head_chars + 1) AS title,

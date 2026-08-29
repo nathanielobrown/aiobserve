@@ -31,7 +31,7 @@ Print `Node.nav_tree_title`, `tab_title`, `crumb_title`, `log_title` or `pane_ti
 
 # Naming and formatting live in Python; SQL ships fields
 
-A query hands the page the fields a name is read off, and Python composes what the reader sees. `formatters.name_tool` is the only place a tool call is named, `src/hyphae/view/nodes.py` the only place a node is, and `src/hyphae/view/numbers.py` the only place a dollar is split — so a fact printed on two surfaces was derived once.
+A query hands the page the fields a name is read off, and Python composes what the reader sees. `formatters.name_tool` is the only place a tool call is named, `src/hyphae/view/nodes.py` the only place a node is, `src/hyphae/view/numbers.py` the only place a dollar is split, and `src/hyphae/view/cuts.py` the only place a value is cut to the width its surface prints it at — so a fact printed on two surfaces was derived once.
 
 A `view_*.sql` that builds a string is a second naming system, and the two drift apart in the direction nobody is looking: SQL cannot dispatch on a tool's name without a `CASE` arm per tool, so the tool nobody wrote an arm for goes unnamed rather than falling back. What SQL owns instead is the reading a page cannot afford: a fat column is cut to the width its caller asked for before it leaves the store (`src/hyphae/analyze/macros.py`).
 
