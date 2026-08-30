@@ -8,13 +8,20 @@
 use hyphae_store::row::member;
 use hyphae_store::{Row, RowError, Value};
 
-use crate::components::node_body::{Facts, SessionFacts};
+use crate::columns::Shape;
+use crate::components::logs::{
+    Kind as LoggedKind, Logged, LoggedCall, LoggedRun, LoggedTool, LoggedTurn,
+};
+use crate::components::node_body::{
+    BucketFacts, CallFacts, CompactionFacts, Facts, RunFacts, SessionFacts, ToolFacts, TurnFacts,
+};
 use crate::format::ELLIPSIS;
 use crate::formatters::{Fields, Formatted, name_tool};
 use crate::nodes::{
     COST_PLACES, Context, Kind, LEAD_SEPARATOR, Ledger, Node, Ref, SPEECH_MARK, Spend, TALLY_CHARS,
     UNATTACHED_TITLE, UNATTRIBUTED_TITLE,
 };
+use crate::store::ViewError;
 
 /// Where the row says its node left the window, or `None` where it says nothing.
 ///
@@ -536,7 +543,8 @@ fn asked_for(run: &Row) -> Result<Vec<Ref>, RowError> {
 ///
 /// Where a store row stops being a bag of columns: past here a body reads named fields of a
 /// type, so a query that dropped one fails here rather than printing a dash under its label.
-/// Total over [`Kind`] once 3b adds the other six arms.
+/// Total over [`Kind`], the two buckets sharing a shape because neither is a row of the store —
+/// what they hold is counted on the node itself.
 pub fn node_facts(node: &Node, row: &Row) -> Result<Facts, RowError> {
     match node.kind {
         Kind::Session => Ok(Facts::Session(SessionFacts {
@@ -569,6 +577,121 @@ pub fn node_facts(node: &Node, row: &Row) -> Result<Facts, RowError> {
                 .collect(),
             pr_urls_cut: row.i64("pr_urls_cut")?,
         })),
-        kind => unimplemented!("stage 3b: the facts of a {kind}"),
+        Kind::Turn => Ok(Facts::Turn(TurnFacts {
+            turn_id: row.str("turn_id")?.to_owned(),
+            command_name: row.opt_str("command_name")?.map(str::to_owned),
+            turn_index: row.i64("turn_index")?,
+            started_at: row.opt_timestamp("started_at")?,
+            replayed: row.bool("replayed")?,
+            api_calls: row.i64("api_calls")?,
+            tool_calls: row.i64("tool_calls")?,
+            tool_errors: row.i64("tool_errors")?,
+            cost_usd: row.opt_f64("cost_usd")?,
+            unpriced_api_calls: row.i64("unpriced_api_calls")?,
+        })),
+        Kind::Run => Ok(Facts::Run(RunFacts {
+            run_id: row.str("run_id")?.to_owned(),
+            agent_type: row.opt_str("agent_type")?.map(str::to_owned),
+            model: row.opt_str("model")?.map(str::to_owned),
+            spawn_depth: row.i64("spawn_depth")?,
+            is_fork: row.bool("is_fork")?,
+            started_at: row.opt_timestamp("started_at")?,
+            wall_ms: row.opt_i64("wall_ms")?,
+            turns: row.i64("turns")?,
+            api_calls: row.i64("api_calls")?,
+            tool_calls: row.i64("tool_calls")?,
+            tool_errors: row.i64("tool_errors")?,
+            compactions: row.i64("compactions")?,
+            cost_usd: row.opt_f64("cost_usd")?,
+            unpriced_api_calls: row.i64("unpriced_api_calls")?,
+            output_tokens: row.i64("output_tokens")?,
+        })),
+        Kind::Call => Ok(Facts::Call(CallFacts {
+            call_index: row.i64("call_index")?,
+            model: row.opt_str("model")?.map(str::to_owned),
+            fallback_from: row.opt_str("fallback_from")?.map(str::to_owned),
+            effort: row.opt_str("effort")?.map(str::to_owned),
+            stop_reason: row.opt_str("stop_reason")?.map(str::to_owned),
+            attribution_skill: row.opt_str("attribution_skill")?.map(str::to_owned),
+            started_at: row.opt_timestamp("started_at")?,
+            tool_calls: row.i64("tool_calls")?,
+            input_tokens: row.i64("input_tokens")?,
+            output_tokens: row.i64("output_tokens")?,
+            cache_read_tokens: row.i64("cache_read_tokens")?,
+            cache_creation_tokens: row.i64("cache_creation_tokens")?,
+            cost_usd: row.opt_f64("cost_usd")?,
+            unpriced_api_calls: row.i64("unpriced_api_calls")?,
+        })),
+        Kind::Tool => Ok(Facts::Tool(ToolFacts {
+            session_id: row.str("session_id")?.to_owned(),
+            run_id: row.opt_str("run_id")?.map(str::to_owned),
+            tool_index: row.i64("tool_index")?,
+            name: row.opt_str("name")?.map(str::to_owned),
+            server_side: row.bool("server_side")?,
+            is_error: row.bool("is_error")?,
+            incomplete: row.bool("incomplete")?,
+            started_at: row.opt_timestamp("started_at")?,
+            wall_ms: row.opt_i64("wall_ms")?,
+            offload_file: row.opt_str("offload_file")?.map(str::to_owned),
+        })),
+        Kind::Compaction => Ok(Facts::Compaction(CompactionFacts {
+            trigger: row.opt_str("trigger")?.map(str::to_owned),
+            timestamp: row.opt_timestamp("timestamp")?,
+            pre_tokens: row.opt_i64("pre_tokens")?,
+            post_tokens: row.opt_i64("post_tokens")?,
+            duration_ms: row.opt_i64("duration_ms")?,
+        })),
+        Kind::Unattributed | Kind::Unattached => Ok(Facts::Bucket(BucketFacts {
+            cost_usd: node.cost_usd(),
+            unpriced_api_calls: node.unpriced_api_calls,
+        })),
     }
+}
+
+/// One row of a children log: the node its wide column links to, beside what the row prints.
+///
+/// Keyed by the log's shape rather than the node's kind, because the shape is what decides the
+/// columns the row has to fill. [`Shape::None`] lists nothing, so it has no row to build.
+pub fn logged(shape: Shape, node: Node, row: &Row) -> Result<Logged, ViewError> {
+    let cells = match shape {
+        Shape::Turns => LoggedKind::Turn(LoggedTurn {
+            turn_index: row.i64("turn_index")?,
+            api_calls: row.i64("api_calls")?,
+            tool_calls: row.i64("tool_calls")?,
+        }),
+        Shape::Calls => LoggedKind::Call(LoggedCall {
+            call_index: row.i64("call_index")?,
+            model: row.opt_str("model")?.map(str::to_owned),
+            text_head: row.opt_str("text_head")?.map(str::to_owned),
+            tool_calls: row.i64("tool_calls")?,
+            // The words rather than the rows: naming a tool call is [`crate::formatters`]'s, so
+            // the query ships the fields and this composes them.
+            called: tool_titles(members(row, "called_tools")).join(", "),
+            text_chars: row.i64("text_chars")?,
+        }),
+        Shape::Tools => LoggedKind::Tool(LoggedTool {
+            tool_index: row.i64("tool_index")?,
+            name: row.opt_str("name")?.map(str::to_owned),
+            about: tool_about(
+                row.opt_str("name")?.unwrap_or_default(),
+                Fields::read(row, "fields"),
+            ),
+            is_error: row.bool("is_error")?,
+            result_chars: row.opt_i64("result_chars")?,
+        }),
+        Shape::Runs => LoggedKind::Run(LoggedRun {
+            agent_type: row.opt_str("agent_type")?.map(str::to_owned),
+            tool_errors: row.i64("tool_errors")?,
+        }),
+        Shape::None => {
+            return Err(ViewError::Shape(
+                "A log of no shape lists no rows.".to_owned(),
+            ));
+        }
+    };
+    Ok(Logged {
+        node,
+        started_at: row.opt_timestamp("started_at")?,
+        cells,
+    })
 }

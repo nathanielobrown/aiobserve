@@ -23,6 +23,7 @@
 //!   `aria-current`. Hypertext's tables know the htmx set through its `htmx` feature and take
 //!   any `data-*` name, so the quoted-name escape hatch is not needed anywhere in this package.
 
+pub mod citation;
 pub mod layout;
 pub mod logs;
 pub mod nav_tree;
