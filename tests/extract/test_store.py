@@ -15,9 +15,8 @@ from typing import Any
 import duckdb
 import pytest
 
-from hyphae.export.duckdb import open_trace_store
+from hyphae.export.duckdb import TABLES, open_trace_store
 from hyphae.extract.store import (
-    ROW_ORDER,
     StoreSource,
     UnknownProjectError,
     UnplaceableSessionError,
@@ -56,7 +55,7 @@ def canonical(trace: SessionTrace) -> SessionTrace:
             getattr(trace, table),
             key=lambda row: tuple(getattr(row, column) for column in columns),
         )
-        for table, columns in ROW_ORDER.items()
+        for table, columns in ((name, spec.order) for name, spec in TABLES.items())
         if table != "sessions"
     }
     return replace(trace, **ordered)

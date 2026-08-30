@@ -5,8 +5,8 @@ weeks, so a session stays here after its files are gone.
 
 Writing is per-session replace inside one transaction — delete every row this session owns,
 then insert the new ones. That makes re-extraction idempotent whatever changed, and it is
-why a table added in a later slice must be added to `TABLES` too: a table left out of the
-delete would keep stale rows forever.
+why a table added in a later slice must be added to the `TABLES` registry too: a table left
+out of the delete would keep stale rows forever.
 
 Count through the rollup views rather than the base tables. The tables hold what each file
 recorded, replays and resume copies included. `session_rollups` drops the replays, so a
@@ -18,7 +18,7 @@ it to sum across sessions, and `session_rollups` to ask what one session's files
 import datetime as dt
 from collections.abc import Generator
 from contextlib import contextmanager
-from dataclasses import fields
+from dataclasses import dataclass, fields
 from pathlib import Path
 from types import TracebackType
 from typing import Any
@@ -298,22 +298,36 @@ def refresh_views(connection: duckdb.DuckDBPyConnection, *, read_only: bool) -> 
     )
 
 
-# Table name to the dataclass whose fields are its columns, in order. Every table a
-# session owns belongs here — this list drives both the insert and the delete, and
-# `extract/store.py` reads the same rows back off it, so a new column reaches both sides.
-TABLES: dict[str, type] = {
-    "sessions": Session,
-    "turns": Turn,
-    "api_calls": ApiCall,
-    "tool_calls": ToolCall,
-    "agent_runs": AgentRun,
-    "compactions": Compaction,
-    "pr_links": PrLink,
-    "offload_files": OffloadFile,
-    "raw_records": RawRecord,
+@dataclass(frozen=True)
+class TableSpec:
+    """Everything a session-owned table's rows need: their shape, their owner, their order."""
+
+    # The dataclass whose fields are the table's columns, in order. `tests/export/
+    # test_schema.py` holds the DDL to it, so a column added to one side and not the other
+    # fails there rather than at an insert.
+    model: type
+    # The column carrying the session id, which the per-session delete and read both filter
+    # on. `sessions` keys on the id itself; every other table carries it as a column.
+    session_key: str
+    # The rest of the primary key, which a single session's read orders by. List order
+    # carries no meaning — the model's lists are keyed by natural ids — but a stable one
+    # keeps two exports of an unchanged session byte-identical.
+    order: tuple[str, ...]
+
+
+# Every table a session owns. This registry drives the insert, the delete, and
+# `extract/store.py`'s read back out, so a new table or column reaches every side at once.
+TABLES: dict[str, TableSpec] = {
+    "sessions": TableSpec(Session, session_key="id", order=("id",)),
+    "turns": TableSpec(Turn, session_key="session_id", order=("source", "id")),
+    "api_calls": TableSpec(ApiCall, session_key="session_id", order=("source", "id")),
+    "tool_calls": TableSpec(ToolCall, session_key="session_id", order=("source", "id")),
+    "agent_runs": TableSpec(AgentRun, session_key="session_id", order=("id",)),
+    "compactions": TableSpec(Compaction, session_key="session_id", order=("source", "id")),
+    "pr_links": TableSpec(PrLink, session_key="session_id", order=("line_no",)),
+    "offload_files": TableSpec(OffloadFile, session_key="session_id", order=("name",)),
+    "raw_records": TableSpec(RawRecord, session_key="session_id", order=("source", "line_no")),
 }
-# `sessions` keys on the session id itself; every other table carries it as a column.
-SESSION_KEY = {"sessions": "id"}
 
 
 @contextmanager
@@ -435,9 +449,10 @@ class DuckDbExporter:
         }
         self.connection.begin()
         try:
-            for table in TABLES:
-                key = SESSION_KEY.get(table, "session_id")
-                self.connection.execute(f"DELETE FROM {table} WHERE {key} = ?", [session_id])
+            for table, spec in TABLES.items():
+                self.connection.execute(
+                    f"DELETE FROM {table} WHERE {spec.session_key} = ?", [session_id]
+                )
             self.connection.execute("DELETE FROM extract_state WHERE session_id = ?", [session_id])
             for table, entities in rows.items():
                 self._insert(table, entities)
@@ -460,7 +475,7 @@ class DuckDbExporter:
     def _insert(self, table: str, entities: list[Any]) -> None:
         if not entities:
             return
-        columns = [field.name for field in fields(TABLES[table])]
+        columns = [field.name for field in fields(TABLES[table].model)]
         quoted = ", ".join(f'"{column}"' for column in columns)
         placeholders = ", ".join("?" for _ in columns)
         self.connection.executemany(
