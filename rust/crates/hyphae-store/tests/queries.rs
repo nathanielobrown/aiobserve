@@ -111,5 +111,10 @@ fn the_bound_widths_match_the_python_library() {
         declared("ENRICHMENT_CHARS"),
         "ENRICHMENT_CHARS"
     );
+    assert_eq!(
+        queries::RECORD_PREVIEW as i64,
+        declared("RECORD_PREVIEW"),
+        "RECORD_PREVIEW"
+    );
     assert_eq!(queries::FIRST_PAGE, declared("FIRST_PAGE"), "FIRST_PAGE");
 }

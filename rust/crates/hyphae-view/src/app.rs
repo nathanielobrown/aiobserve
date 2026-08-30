@@ -18,13 +18,14 @@ use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use axum::{Router, middleware};
+use hyphae_store::queries;
 use hyphae_store::schema::SCHEMA_VERSION;
 
 use crate::browse::{Asked, PageError};
-use crate::components::pages;
+use crate::components::pages as error_pages;
 use crate::store::{Reader, ViewError};
 use crate::viewer::Viewer;
-use crate::{format, listing, node_pages, statics};
+use crate::{format, listing, node_pages, pages, statics};
 
 /// Loopback only, and a port unlikely to be taken. Fixed rather than picked at startup so a link
 /// pasted into a note opens the same page tomorrow.
@@ -80,6 +81,19 @@ pub fn build_app(db_path: &Path) -> Result<Router, ViewError> {
             get(unattributed_page),
         )
         .route("/session/{session_id}/unattached", get(unattached_page))
+        .route("/session/{session_id}/errors", get(errors_page))
+        .route(
+            &format!("{}/{{query_name}}", crate::citation::QUERY_URL),
+            get(query_page),
+        )
+        .route(
+            "/session/{session_id}/thread/{source}/records",
+            get(records_page),
+        )
+        .route(
+            "/session/{session_id}/offload/{*offload_name}",
+            get(offload_page),
+        )
         .fallback(not_found)
         .layer(middleware::map_response(policy))
         .with_state(viewer))
@@ -244,6 +258,64 @@ async fn unattached_page(
     )
 }
 
+/// Every failed tool call of one session, whichever thread it ran on.
+async fn errors_page(
+    State(viewer): State<Shared>,
+    UrlPath(session_id): UrlPath<String>,
+) -> Response {
+    served(pages::errors_page(&viewer, &session_id))
+}
+
+/// One library query's SQL, under the bindings the page that cited it carried.
+///
+/// The pairs arrive in the order they were written, and duplicates with them: what the page prints
+/// is what the citation spelled, and neither is bound to anything.
+async fn query_page(
+    State(viewer): State<Shared>,
+    UrlPath(query_name): UrlPath<String>,
+    Query(asked): Query<Vec<(String, String)>>,
+) -> Response {
+    served(pages::query_page(&viewer, &query_name, &asked))
+}
+
+/// One page of a thread's raw records.
+async fn records_page(
+    State(viewer): State<Shared>,
+    UrlPath((session_id, source)): UrlPath<(String, String)>,
+    Query(chunk): Query<Chunk>,
+) -> Response {
+    served(pages::records_page(
+        &viewer,
+        &session_id,
+        &source,
+        chunk.after.unwrap_or(queries::FIRST_PAGE),
+        chunk.size.unwrap_or(crate::knobs::RECORDS.default),
+    ))
+}
+
+/// One chunk of a tool result written to a file beside the transcript.
+async fn offload_page(
+    State(viewer): State<Shared>,
+    UrlPath((session_id, offload_name)): UrlPath<(String, String)>,
+    Query(chunk): Query<Chunk>,
+) -> Response {
+    served(pages::offload_page(
+        &viewer,
+        &session_id,
+        &offload_name,
+        chunk.after.unwrap_or(0),
+        chunk.size.unwrap_or(crate::knobs::CHUNK.default),
+    ))
+}
+
+/// The two knobs a chunked page carries: where to resume, and how much to serve. Each page owns
+/// its own defaults, because a record's cursor starts before the first row and a file's at zero.
+#[derive(serde::Deserialize)]
+pub struct Chunk {
+    after: Option<i64>,
+    size: Option<i64>,
+}
+
 /// One embedded asset, or the 404 every unknown path gets.
 async fn static_file(UrlPath(name): UrlPath<String>) -> Response {
     let Some((kind, bytes)) = statics::asset(&name) else {
@@ -292,7 +364,7 @@ fn answered(failure: PageError) -> Response {
 /// The error page, which is what every handler above answers with.
 fn error(status: StatusCode, message: &str) -> Response {
     // Never the dev page: `build_app` has no `--dev` yet, so nothing asks for the reload client.
-    let page = pages::error_page(status.as_u16(), message, false);
+    let page = error_pages::error_page(status.as_u16(), message, false);
     (status, Html(page.into_inner())).into_response()
 }
 

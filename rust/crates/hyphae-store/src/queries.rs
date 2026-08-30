@@ -77,6 +77,10 @@ pub const TAG_CHARS: usize = 20;
 /// How many rows one page of the records browser previews.
 pub const PAGE_RECORDS: i64 = 100;
 
+/// How much of a raw record one browser row shows. Long enough to tell a `user` record from an
+/// `assistant` one; short enough that a hundred of them is a page rather than a transcript.
+pub const RECORD_PREVIEW: usize = 160;
+
 /// How many projects the landing page ranks. A corpus grows projects the way it grows sessions,
 /// so the page is bound like the list — and a store holding more says how many it left out.
 pub const PAGE_PROJECTS: i64 = 100;
