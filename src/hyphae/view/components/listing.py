@@ -15,11 +15,7 @@ from hyphae.view import cuts
 from hyphae.view import format as fmt
 from hyphae.view.citation import Cited
 from hyphae.view.components import Html, citation, layout, parts
-
-# Where the list is served. Named here because the route, the link builder and the form the
-# page writes all have to agree: `/` is the projects landing, and a link that still points
-# there drops the sort and the filters the request composed.
-LIST_URL = "/sessions"
+from hyphae.view.nodes import LIST_URL
 
 
 class Control(NamedTuple):

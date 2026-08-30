@@ -29,10 +29,11 @@ from hyphae.view import bounds
 from hyphae.view import format as fmt
 from hyphae.view.citation import cited
 from hyphae.view.components import listing as components
-from hyphae.view.components.listing import LIST_URL, Control
+from hyphae.view.components.listing import Control
 from hyphae.view.components.parts import Count
 from hyphae.view.deps import ViewerDep
 from hyphae.view.enrichment import enriched
+from hyphae.view.nodes import LIST_URL
 from hyphae.view.store import (
     Page,
     Row,
