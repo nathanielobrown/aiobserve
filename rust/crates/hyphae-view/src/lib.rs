@@ -4,6 +4,9 @@
 //! [`store`] reads the rows, [`nodes`] turns them into what a page prints, [`components`]
 //! renders them, [`browse`] assembles one page, and [`app`] routes to it.
 
+pub mod browse;
+pub mod builders;
+pub mod components;
 pub mod cuts;
 pub mod format;
 pub mod inline_markdown;
