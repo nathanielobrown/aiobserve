@@ -52,6 +52,11 @@ with the extractor version. The design ports it; these leaves pin what re-extrac
   equal strings
 - The digest folds in the extractor version, so bumping it re-extracts. *Evidence:* two digests
   over the same tree with different version constants compare unequal
+- The digest agrees with Python's over the same tree at the same version. *Evidence:* the Rust
+  digest handed Python's own `EXTRACTOR_VERSION`, read out of `extract/claude_code.py` at run
+  time, against what that module's `fingerprint` prints for the same files. The shipped version
+  strings differ by design, so this is the only leaf that sees the entry format — the relative
+  path spelling, the size, the mtime resolution
 
 ### integration (`hyphae-store`) — a real DuckDB file in a tempdir, written by the Rust exporter
 
@@ -159,14 +164,17 @@ and its diff all live under `data/`.
   long tail of real transcripts the fixture corpus cannot hold, and it is what lets the levels
   above stay small. *Evidence:* the harness's per-table diff output, checked into the prototype's
   report as counts; ship with the diff empty or every difference explained
-- The comparison states what it excludes and why. *Evidence:* the harness names the excluded
-  columns in its output — `extract_state.extracted_at` (wall clock), the extractor name and
-  version columns, and the enrichment tables (no Rust pass writes them). An exclusion not printed
+- The comparison states what it excludes and why. *Evidence:* the harness prints every excluded
+  column before the first table — `extract_state.fingerprint` and `extract_state.extractor_version`
+  (the Rust extractor declares its own version string, so both differ by construction) and
+  `extract_state.extracted_at` (wall clock). It compares the extractor's tables and
+  `extract_state`; no enrichment table, because no Rust pass writes one. An exclusion not printed
   is an exclusion nobody reviewed
-- A session whose files changed since the Python store was built re-extracts under the Rust
-  binary. *Evidence:* the fingerprint columns of the two stores compare equal for unchanged
-  sessions — which requires the Rust extractor to use the Python `EXTRACTOR_VERSION` string
-  verbatim (see *Design findings*)
+- Re-extraction still keys on the whole file set, which the excluded fingerprint column cannot
+  show. *Evidence:* the fingerprint unit leaves, not the diff. The Rust extractor declares its own
+  `EXTRACTOR_VERSION` so that neither implementation reads the other's rows as current (the
+  amendment in `design.md`); the cross-language leaf above proves the digest format itself by
+  handing the Rust digest Python's string
 - The Rust extract's wall-clock time and the resulting store's file size are recorded beside the
   diff. *Evidence:* the report's numbers; not a pass/fail leaf, but the product question the
   prototype exists to answer
