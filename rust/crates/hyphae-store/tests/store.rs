@@ -11,9 +11,10 @@
 
 mod common;
 
+use chrono::NaiveDate;
 use duckdb::types::{ToSql, Value};
 use hyphae_store::row::member;
-use hyphae_store::{Store, StoreError, schema};
+use hyphae_store::{Param, Store, StoreError, schema};
 use tempfile::TempDir;
 
 /// A fixture session with enough rows in enough tables to make a round trip mean something.
@@ -59,6 +60,25 @@ fn a_new_store_is_stamped_with_the_schema_version() {
     assert_eq!(
         held[0].i64("schema_version").unwrap(),
         i64::from(schema::SCHEMA_VERSION)
+    );
+}
+
+/// A bound date arrives as a DATE, not as the text a date is written in.
+///
+/// The session list's `until` filter adds an interval to the value it bound, which is a binder
+/// error over a string literal: DuckDB will implicitly cast text where a comparison wants a
+/// timestamp, so the gap only shows where arithmetic does.
+#[test]
+fn a_bound_date_is_a_date_and_not_its_spelling() {
+    let scratch = TempDir::new().unwrap();
+    let store = Store::create(&scratch.path().join("traces.duckdb")).unwrap();
+    let day = Param::Date(NaiveDate::from_ymd_opt(2020, 1, 1).unwrap());
+    let rows = store
+        .fetch("SELECT $day + INTERVAL 1 DAY AS next", &[("day", day)])
+        .expect("a DATE takes an interval");
+    assert_eq!(
+        rows[0].timestamp("next").unwrap().to_string(),
+        "2020-01-02 00:00:00 UTC"
     );
 }
 

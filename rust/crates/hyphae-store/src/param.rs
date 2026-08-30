@@ -7,7 +7,13 @@
 
 use chrono::NaiveDate;
 use duckdb::ToSql;
-use duckdb::types::{Null, ToSqlOutput};
+use duckdb::types::{Null, ToSqlOutput, Value};
+
+/// What DuckDB counts a DATE's days from.
+const EPOCH: NaiveDate = match NaiveDate::from_ymd_opt(1970, 1, 1) {
+    Some(day) => day,
+    None => unreachable!(),
+};
 
 /// One bound value of a query.
 #[derive(Debug, Clone, PartialEq)]
@@ -70,7 +76,12 @@ impl ToSql for Param {
         match self {
             Self::Text(value) => Ok(ToSqlOutput::from(value.as_str())),
             Self::Int(value) => Ok(ToSqlOutput::from(*value)),
-            Self::Date(value) => value.to_sql(),
+            // Not chrono's own `ToSql`, which writes the date out as text: a string literal
+            // compares against a timestamp but cannot take an interval, and the session list's
+            // `until` filter adds one to what it bound.
+            Self::Date(value) => Ok(ToSqlOutput::Owned(Value::Date32(
+                (*value - EPOCH).num_days() as i32,
+            ))),
             Self::Absent => Ok(ToSqlOutput::from(Null)),
         }
     }
