@@ -24,6 +24,7 @@
 //!   any `data-*` name, so the quoted-name escape hatch is not needed anywhere in this package.
 
 pub mod layout;
+pub mod logs;
 pub mod nav_tree;
 pub mod node_body;
 pub mod node_page;

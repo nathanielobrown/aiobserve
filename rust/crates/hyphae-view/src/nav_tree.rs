@@ -24,13 +24,19 @@ use crate::components::nav_tree::NavTreeRow;
 use crate::enrichment::Descriptions;
 use crate::knobs::{CURSORLESS_TURNS, DEPTH};
 use crate::nodes::{Kind, Ledger, Node, Preset, Ref};
-use crate::store::{Page, TURN_CURSOR, ViewError, cursorless_rows, page_rows};
+use crate::store::{Page, Query, TURN_CURSOR, ViewError, cursorless_rows, page_rows};
 
 /// The main thread, the one every session's NavTree opens on.
 pub const MAIN_SOURCE: &str = "main";
 
+/// What one query was bound with, in the order the manifest declares its parameters.
+pub type Bound = Vec<(&'static str, Param)>;
+
 /// What one level's queries were bound with, in the order the level ran them.
-pub type Ran = Vec<(Page, Vec<(&'static str, Param)>)>;
+///
+/// The query is its file stem rather than a catalog member, because a level may run a
+/// [`Page`] or a [`crate::store::Fragment`] and a citation names the file either way.
+pub type Ran = Vec<(&'static str, Bound)>;
 
 /// What every level of one session's NavTree is built against, read once for the request.
 ///
@@ -170,7 +176,7 @@ fn run_parents(corpus: &Corpus, run_id: &str) -> Result<Vec<Ref>, ViewError> {
 /// A bucket's own row, beside the query line that produced it.
 pub struct Standing {
     pub row: Row,
-    pub ran: (Page, Vec<(&'static str, Param)>),
+    pub ran: (&'static str, Bound),
 }
 
 /// Where an api call sits: under the turn it answers, else in its thread's bucket.
@@ -185,8 +191,8 @@ pub fn home(source: &str, turn_id: Option<&str>) -> Ref {
 }
 
 /// Which timeline answers for a thread, and what it binds: `main` has one of its own.
-fn timeline(session_id: &str, source: &str) -> (Page, Vec<(&'static str, Param)>) {
-    let mut bound: Vec<(&'static str, Param)> = vec![
+fn timeline(session_id: &str, source: &str) -> (Page, Bound) {
+    let mut bound: Bound = vec![
         ("session_id", session_id.into()),
         ("log_chars", Param::Int(queries::LOG_CHARS as i64)),
     ];
@@ -210,7 +216,7 @@ pub fn unattributed(
     let rows = cursorless_rows(store, query, TURN_CURSOR, CURSORLESS_TURNS, &bound)?;
     Ok(rows.into_iter().next().map(|row| Standing {
         row,
-        ran: (query, bound),
+        ran: (query.stem(), bound),
     }))
 }
 
@@ -228,12 +234,12 @@ fn thread_level(
 ) -> Result<Level, ViewError> {
     // One binding list per query, because the two take different widths — and the mapping a query
     // runs under is the mapping it is cited by, so a reader re-running the line gets this page.
-    let listed: Vec<(&'static str, Param)> = vec![
+    let listed: Bound = vec![
         ("session_id", corpus.session_id.as_str().into()),
         ("source", source.into()),
         ("nav_chars", Param::Int(queries::NAV_CHARS as i64)),
     ];
-    let chipped: Vec<(&'static str, Param)> = vec![
+    let chipped: Bound = vec![
         ("session_id", corpus.session_id.as_str().into()),
         ("source", source.into()),
         ("chip_chars", Param::Int(queries::NAV_CHARS as i64)),
@@ -271,9 +277,9 @@ fn thread_level(
     Ok(Level {
         nodes: placed,
         ran: vec![
-            (Page::NavTreeTurns, listed),
-            (Page::Compactions, chipped),
-            (query, bound),
+            (Page::NavTreeTurns.stem(), listed),
+            (Page::Compactions.stem(), chipped),
+            (query.stem(), bound),
         ],
     })
 }
@@ -345,14 +351,14 @@ fn marks(
     let Some(turn_id) = turn_id else {
         return Ok((Vec::new(), Vec::new()));
     };
-    let keyed: Vec<(&'static str, Param)> = vec![
+    let keyed: Bound = vec![
         ("session_id", corpus.session_id.as_str().into()),
         ("source", source.into()),
         ("chip_chars", Param::Int(queries::NAV_CHARS as i64)),
     ];
     let rows = page_rows(store, Page::Compactions, &keyed)?;
     let placed = between(corpus, source, &rows, Some(turn_id))?;
-    Ok((placed, vec![(Page::Compactions, keyed)]))
+    Ok((placed, vec![(Page::Compactions.stem(), keyed)]))
 }
 
 /// A run row per node, described by whatever the enrichment pass called it.
@@ -471,7 +477,7 @@ fn calls_level(
     source: &str,
     turn_id: Option<&str>,
 ) -> Result<Level, ViewError> {
-    let bound: Vec<(&'static str, Param)> = vec![
+    let bound: Bound = vec![
         ("session_id", corpus.session_id.as_str().into()),
         ("source", source.into()),
         ("turn_id", turn_id.into()),
@@ -486,7 +492,7 @@ fn calls_level(
             row.opt_timestamp("started_at")?,
         ));
     }
-    let mut ran = vec![(Page::NavTreeCalls, bound)];
+    let mut ran = vec![(Page::NavTreeCalls.stem(), bound)];
     ran.extend(mark_ran);
     Ok(Level {
         nodes: interleave(ordered, placed),
@@ -506,7 +512,7 @@ fn tools_level(
     api_call_id: Option<&str>,
     turn_id: Option<&str>,
 ) -> Result<Level, ViewError> {
-    let bound: Vec<(&'static str, Param)> = vec![
+    let bound: Bound = vec![
         ("session_id", corpus.session_id.as_str().into()),
         ("source", source.into()),
         ("api_call_id", api_call_id.into()),
@@ -523,7 +529,7 @@ fn tools_level(
             row.opt_timestamp("started_at")?,
         ));
     }
-    let mut ran = vec![(Page::NavTreeTools, bound)];
+    let mut ran = vec![(Page::NavTreeTools.stem(), bound)];
     ran.extend(mark_ran);
     Ok(Level {
         nodes: interleave(ordered, placed),

@@ -8,6 +8,8 @@
 //! are the ones a viewer page binds. What each query takes stays in `analyze/manifest.py`:
 //! the Rust side binds by name at the call, as Python's viewer does.
 
+use crate::Param;
+
 // The name → text table, walked out of the query directory by `build.rs`.
 include!(concat!(env!("OUT_DIR"), "/queries.rs"));
 
@@ -55,6 +57,55 @@ pub const ENRICHMENT_CHARS: usize = 200;
 
 /// How much of one of the two closed-vocabulary tags beside it a page shows.
 pub const TAG_CHARS: usize = 20;
+
+/// How many rows one page of the records browser previews.
+pub const PAGE_RECORDS: i64 = 100;
+
+/// How many projects the landing page ranks. A corpus grows projects the way it grows sessions,
+/// so the page is bound like the list — and a store holding more says how many it left out.
+pub const PAGE_PROJECTS: i64 = 100;
+
+/// How many of a session's failed tool calls its errors page lists.
+pub const PAGE_ERRORS: i64 = 100;
+
+/// The two trailing windows the landing page counts a project in, beside its whole history.
+pub const PAGE_RECENT_DAYS: i64 = 7;
+pub const PAGE_WINDOW_DAYS: i64 = 30;
+
+/// How much of an offloaded tool result one chunk of the offload page carries.
+pub const CHUNK_CHARS: i64 = 50_000;
+
+/// How much of an agent run's three display columns a chip carries, and of a compaction's
+/// trigger.
+pub const CHIP_CHARS: i64 = 60;
+
+/// A binding as it is written down — NULL is a value a reader can rebind.
+///
+/// One spelling for both places a binding leaves the process: the citation line below, and the
+/// link a page's footer makes out of it (`hyphae_view::citation::cited`).
+pub fn shown(value: &Param) -> String {
+    match value {
+        Param::Absent => "NULL".to_owned(),
+        Param::Text(text) => text.clone(),
+        Param::Int(number) => number.to_string(),
+        Param::Date(date) => date.to_string(),
+    }
+}
+
+/// Query file and bindings as a SQL comment: what a report quotes and a reader re-runs.
+///
+/// Both consumers cite the same way. The viewer passes what it composed around the query — the
+/// sort a page applied is as much a part of what produced it as a bound parameter.
+pub fn citation(name: &str, bindings: &[(&str, Param)]) -> String {
+    let bound = bindings
+        .iter()
+        .map(|(key, value)| format!("{key}={}", shown(value)))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("-- queries/{name}.sql {bound}")
+        .trim_end()
+        .to_owned()
+}
 
 /// The keyset cursor before the first row: "the last index already shown", and indexes start
 /// at 0.

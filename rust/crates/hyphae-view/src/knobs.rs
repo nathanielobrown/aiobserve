@@ -7,6 +7,7 @@
 
 use hyphae_store::queries;
 
+use crate::components::logs::Pager;
 use crate::nodes::Preset;
 
 /// One size a reader may name: what a link omits, and what a URL may not exceed.
@@ -47,6 +48,47 @@ pub const CURSORLESS_TURNS: usize = 1;
 pub const DETAIL: Bound = Bound {
     default: queries::DETAIL_CHARS as i64,
     ceiling: queries::DETAIL_CHARS as i64,
+};
+
+/// The records browser, whose row is a preview and the `hx-get` that fetches the record whole.
+pub const RECORDS: Bound = Bound {
+    default: queries::PAGE_RECORDS,
+    ceiling: 200,
+};
+
+/// How long the record a page opens by itself may be.
+///
+/// The first row arrives open, because a citation's cursor puts the record it names there — and a
+/// fetch nobody clicked is priced against the page that triggers it rather than against the value
+/// route it goes to.
+pub const OPENED_RECORD_CHARS: usize = 15_000;
+
+/// The offload page, the one ceiling set by escaping alone rather than by a row's markup: the
+/// content is a file some tool wrote, and a chunk of nothing but `&` weighs five bytes a character.
+pub const CHUNK: Bound = Bound {
+    default: queries::CHUNK_CHARS,
+    ceiling: 60_000,
+};
+
+/// The session list, the one page a corpus grows. The maximum is what fits under the page ceiling
+/// at the *worst* cost of a row rather than the measured one, so the two are the same number.
+pub const SESSIONS: Bound = Bound {
+    default: 113,
+    ceiling: 113,
+};
+
+/// The landing page, which a corpus grows the way it grows sessions — one row per project it
+/// holds, worktrees folded in. Not a size a URL carries.
+pub const PROJECTS: Bound = Bound {
+    default: queries::PAGE_PROJECTS,
+    ceiling: queries::PAGE_PROJECTS,
+};
+
+/// One session's failed tool calls, bound like the landing page rather than paged: a reader jumps
+/// to a failure rather than paging through them. The stepper reads the same capped list.
+pub const ERRORS: Bound = Bound {
+    default: queries::PAGE_ERRORS,
+    ceiling: queries::PAGE_ERRORS,
 };
 
 /// A reader asked for something the viewer will not serve, and is told which.
@@ -109,4 +151,36 @@ pub fn knobs(nav: Preset, kin: i64, log: i64, detail: i64) -> String {
 /// The rows a page number stands past, for the query that binds an offset.
 pub fn skipped(page: i64, size: i64) -> i64 {
     (page - 1) * size
+}
+
+/// One page of a node's children log as a URL: the node, its knobs, and the page number.
+///
+/// Page one is the node's own URL. A reader who pages back to the start has to land on the
+/// document a link to the node serves, and it is the one the payload sweep prices.
+pub fn numbered(url: &str, marks: &str, page: i64) -> String {
+    if page == 1 {
+        return format!("{url}{marks}");
+    }
+    let joiner = if marks.is_empty() { "?" } else { "&" };
+    format!("{url}{marks}{joiner}page={page}")
+}
+
+/// The control under a children log, or `None` where the level is one page long.
+pub fn pager(url: &str, marks: &str, page: i64, pages: i64) -> Option<Pager> {
+    if pages < 2 {
+        return None;
+    }
+    Some(Pager {
+        place: format!("Page {page} of {pages}"),
+        previous: (page > 1).then(|| numbered(url, marks, page - 1)),
+        next: (page < pages).then(|| numbered(url, marks, page + 1)),
+    })
+}
+
+/// How many pages a level of `total` children runs to at `size` a page.
+///
+/// Python reaches for `math.ceil` over a float division; this is the same arithmetic in integers,
+/// which is what the two are comparing.
+pub fn pages(total: i64, size: i64) -> i64 {
+    total.div_euclid(size) + i64::from(total.rem_euclid(size) != 0)
 }
