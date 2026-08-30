@@ -41,7 +41,7 @@ DDL_OWNERS = [
     pytest.param(
         "hyphae.export.duckdb",
         TRACE_SCHEMA,
-        "3ad5fcdd81d080db3ebb6dbcc93a32bf133fbc29d02bc6469d3490306bcbfd91",
+        "7722fc836335ee343111504eca966d508374b1b6365b747296eac3ee9c5d3d95",
         id="trace",
     ),
     pytest.param(
@@ -88,9 +88,9 @@ def test_a_declared_shape_holds_every_table_a_ddl_creates_and_none_of_its_views(
     assert "description" not in shape["agent_runs"]
     assert shape.keys() >= {"sessions", "turns", "api_calls", "agent_runs", "meta"}
 
-    # ...and leaves out the view the same DDL creates: a view is replaced at every open, so
-    # a store cannot hold a stale one.
-    assert "first_seen" not in shape
+    # ...and leaves out the views an owner declares beside its tables: a view is rebuilt at
+    # every open, so a store cannot hold a stale one.
+    assert "enriched_turns" not in declared_shape(ENRICHMENT_SCHEMA)
 
 
 def test_a_renamed_trace_column_is_refused_with_the_table_and_column_named(db: Path) -> None:
