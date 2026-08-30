@@ -19,11 +19,11 @@ use axum::routing::get;
 use axum::{Router, middleware};
 use hyphae_store::schema::SCHEMA_VERSION;
 
-use crate::browse::{self, Asked, PageError};
+use crate::browse::{Asked, PageError};
 use crate::components::pages;
-use crate::format;
-use crate::statics;
 use crate::store::{Reader, ViewError};
+use crate::viewer::Viewer;
+use crate::{format, node_pages, statics};
 
 /// Loopback only, and a port unlikely to be taken. Fixed rather than picked at startup so a link
 /// pasted into a note opens the same page tomorrow.
@@ -34,9 +34,9 @@ pub const PORT: u16 = 8477;
 /// renders text a transcript wrote, so the escaping is the first defence and this is the second.
 pub const CSP: &str = "default-src 'self'";
 
-/// The store every route reads. One per app, handed to each route as its state rather than
-/// reached for through a global — a route body stays a plain function of what it needs.
-type Shared = Arc<Reader>;
+/// The viewer every route reads through. One per app, handed to each route as its state rather
+/// than reached for through a global — a route body stays a plain function of what it needs.
+type Shared = Arc<Viewer>;
 
 /// The viewer over the store at `db_path`, which must exist and hold this schema.
 ///
@@ -46,13 +46,41 @@ pub fn build_app(db_path: &Path) -> Result<Router, ViewError> {
     // Both startup checks, before a route exists to fail one of them: the store opens at the
     // schema version this build knows, and a named instant parses.
     format::check_clock();
-    let reader = Arc::new(Reader::open(db_path)?);
+    let viewer = Arc::new(Viewer {
+        reader: Reader::open(db_path)?,
+        dev: false,
+    });
+    // Route order is a contract: `tools/gen_routes.py` reads the registration order into the table
+    // in `docs/viewer.md`, and these eight are the node pages in the order `node_pages.py` binds
+    // them.
     Ok(Router::new()
         .route("/static/{name}", get(static_file))
         .route("/session/{session_id}", get(session_page))
+        .route(
+            "/session/{session_id}/thread/{source}/turn/{turn_id}",
+            get(turn_page),
+        )
+        .route("/session/{session_id}/run/{run_id}", get(run_page))
+        .route(
+            "/session/{session_id}/thread/{source}/call/{api_call_id}",
+            get(call_page),
+        )
+        .route(
+            "/session/{session_id}/thread/{source}/tool/{tool_call_id}",
+            get(tool_page),
+        )
+        .route(
+            "/session/{session_id}/thread/{source}/compaction/{compaction_id}",
+            get(compaction_page),
+        )
+        .route(
+            "/session/{session_id}/thread/{source}/unattributed",
+            get(unattributed_page),
+        )
+        .route("/session/{session_id}/unattached", get(unattached_page))
         .fallback(not_found)
         .layer(middleware::map_response(policy))
-        .with_state(reader))
+        .with_state(viewer))
 }
 
 /// The header every response carries, whatever produced it.
@@ -89,21 +117,113 @@ impl Knobs {
     }
 }
 
-/// A session's own node page.
-async fn session_page(
-    State(reader): State<Shared>,
-    UrlPath(session_id): UrlPath<String>,
-    Query(knobs): Query<Knobs>,
-) -> Response {
-    // Rendered whole before the response exists, deliberately: a stream would flush a 200 and the
-    // markup above a failure before it knew, leaving a reader a page that looks finished.
-    let rendered = knobs
-        .asked()
-        .and_then(|asked| browse::session_page(&reader, &session_id, &asked));
+/// One rendered page, or the status its failure earns.
+///
+/// Rendered whole before the response exists, deliberately: a stream would flush a 200 and the
+/// markup above a failure before it knew, leaving a reader a page that looks finished.
+fn served(rendered: Result<crate::components::Markup, PageError>) -> Response {
     match rendered {
         Ok(markup) => Html(markup.into_inner()).into_response(),
         Err(failure) => answered(failure),
     }
+}
+
+/// A session's own node page.
+async fn session_page(
+    State(viewer): State<Shared>,
+    UrlPath(session_id): UrlPath<String>,
+    Query(knobs): Query<Knobs>,
+) -> Response {
+    served(
+        knobs
+            .asked()
+            .and_then(|asked| node_pages::session_page(&viewer, &session_id, &asked)),
+    )
+}
+
+/// One turn, on the thread the URL names.
+async fn turn_page(
+    State(viewer): State<Shared>,
+    UrlPath((session_id, source, turn_id)): UrlPath<(String, String, String)>,
+    Query(knobs): Query<Knobs>,
+) -> Response {
+    served(
+        knobs.asked().and_then(|asked| {
+            node_pages::turn_page(&viewer, &session_id, &source, &turn_id, &asked)
+        }),
+    )
+}
+
+/// One agent run, which is its own thread.
+async fn run_page(
+    State(viewer): State<Shared>,
+    UrlPath((session_id, run_id)): UrlPath<(String, String)>,
+    Query(knobs): Query<Knobs>,
+) -> Response {
+    served(
+        knobs
+            .asked()
+            .and_then(|asked| node_pages::run_page(&viewer, &session_id, &run_id, &asked)),
+    )
+}
+
+/// One api call.
+async fn call_page(
+    State(viewer): State<Shared>,
+    UrlPath((session_id, source, api_call_id)): UrlPath<(String, String, String)>,
+    Query(knobs): Query<Knobs>,
+) -> Response {
+    served(knobs.asked().and_then(|asked| {
+        node_pages::call_page(&viewer, &session_id, &source, &api_call_id, &asked)
+    }))
+}
+
+/// One tool call.
+async fn tool_page(
+    State(viewer): State<Shared>,
+    UrlPath((session_id, source, tool_call_id)): UrlPath<(String, String, String)>,
+    Query(knobs): Query<Knobs>,
+) -> Response {
+    served(knobs.asked().and_then(|asked| {
+        node_pages::tool_page(&viewer, &session_id, &source, &tool_call_id, &asked)
+    }))
+}
+
+/// One compaction of a thread.
+async fn compaction_page(
+    State(viewer): State<Shared>,
+    UrlPath((session_id, source, compaction_id)): UrlPath<(String, String, String)>,
+    Query(knobs): Query<Knobs>,
+) -> Response {
+    served(knobs.asked().and_then(|asked| {
+        node_pages::compaction_page(&viewer, &session_id, &source, &compaction_id, &asked)
+    }))
+}
+
+/// One thread's api calls that answer no turn.
+async fn unattributed_page(
+    State(viewer): State<Shared>,
+    UrlPath((session_id, source)): UrlPath<(String, String)>,
+    Query(knobs): Query<Knobs>,
+) -> Response {
+    served(
+        knobs
+            .asked()
+            .and_then(|asked| node_pages::unattributed_page(&viewer, &session_id, &source, &asked)),
+    )
+}
+
+/// The session's agent runs no spawning call resolved.
+async fn unattached_page(
+    State(viewer): State<Shared>,
+    UrlPath(session_id): UrlPath<String>,
+    Query(knobs): Query<Knobs>,
+) -> Response {
+    served(
+        knobs
+            .asked()
+            .and_then(|asked| node_pages::unattached_page(&viewer, &session_id, &asked)),
+    )
 }
 
 /// One embedded asset, or the 404 every unknown path gets.
@@ -149,7 +269,8 @@ fn answered(failure: PageError) -> Response {
 
 /// The error page, which is what every handler above answers with.
 fn error(status: StatusCode, message: &str) -> Response {
-    let page = pages::error_page(status.as_u16(), message);
+    // Never the dev page: `build_app` has no `--dev` yet, so nothing asks for the reload client.
+    let page = pages::error_page(status.as_u16(), message, false);
     (status, Html(page.into_inner())).into_response()
 }
 
