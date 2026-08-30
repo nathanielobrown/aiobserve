@@ -18,7 +18,7 @@ from typing import NamedTuple
 
 from hyphae.analyze import queries
 from hyphae.view import bounds, nodes
-from hyphae.view.knobs import KNOB_DEFAULTS
+from hyphae.view.knobs import KNOB_DEFAULTS, Knobs
 from tests.view import budgets
 from tools import text
 
@@ -128,7 +128,7 @@ def described_preset(preset: nodes.Preset) -> str:
     if preset not in PRESET_WORDS:
         raise ValueError(f"preset `{preset.value}` has no words in the knob table")
     words = PRESET_WORDS[preset]
-    return f"{words}. The default" if KNOB_DEFAULTS["nav"] == preset else words
+    return f"{words}. The default" if KNOB_DEFAULTS.nav is preset else words
 
 
 def knob_rows() -> list[Row]:
@@ -139,7 +139,7 @@ def knob_rows() -> list[Row]:
     can type from outrunning what the page was measured at.
     """
     listed: list[Row] = []
-    for knob in KNOB_DEFAULTS:
+    for knob in Knobs._fields:
         if knob == "nav":
             listed += [
                 Row(f"?nav={preset.value}", described_preset(preset), ()) for preset in nodes.Preset

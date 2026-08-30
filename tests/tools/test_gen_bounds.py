@@ -9,7 +9,7 @@ undocumented by accident.
 import pytest
 
 from hyphae.view import bounds, nodes
-from hyphae.view.knobs import KNOB_DEFAULTS
+from hyphae.view.knobs import Knobs
 from tests.tools.conftest import cells, numbers
 from tests.view import budgets
 from tools import gen_bounds
@@ -85,7 +85,7 @@ def test_the_knob_table_lists_exactly_the_knobs_the_app_reads() -> None:
     # A knob table is a promise about the URL, so the app's own knob list is what it renders:
     # `?nav=` once per preset, and one row for each size a reader can type down.
     typed = [knob.removeprefix("?") for knob in knob_rows()]
-    assert {knob.split("=")[0] for knob in typed} == set(KNOB_DEFAULTS)
+    assert {knob.split("=")[0] for knob in typed} == set(Knobs._fields)
     navs = {knob.split("=")[1] for knob in typed if knob.startswith("nav=")}
     assert navs == {preset.value for preset in nodes.Preset}
 
@@ -101,7 +101,7 @@ def test_the_word_maps_describe_exactly_what_the_app_still_offers() -> None:
     # Both label maps are hand-written, so both rot in both directions: a knob or a preset with
     # no words would print a blank cell, and words for one the app dropped would describe a
     # URL nobody can type. Neither is visible in a green table, so it is pinned here.
-    assert set(gen_bounds.SIZE_WORDS) == set(KNOB_DEFAULTS) - {"nav"}
+    assert set(gen_bounds.SIZE_WORDS) == set(Knobs._fields) - {"nav"}
     assert set(gen_bounds.PRESET_WORDS) == set(nodes.Preset)
 
 

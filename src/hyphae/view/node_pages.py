@@ -14,7 +14,7 @@ from starlette.routing import BaseRoute
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.model import MAIN_SOURCE
-from hyphae.view import bounds, builders, highlight, nav_tree, nodes
+from hyphae.view import builders, highlight, nav_tree, nodes
 from hyphae.view.browse import (
     Seen,
     browse,
@@ -25,6 +25,7 @@ from hyphae.view.browse import (
 from hyphae.view.columns import Shape
 from hyphae.view.detail import detail_of
 from hyphae.view.knobs import (
+    KnobsDep,
     skipped,
     sliced,
 )
@@ -48,21 +49,18 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
     @router.get("/session/{session_id}")
     def session_page(
         session_id: str,
-        nav: str = nodes.Preset.FULL,
-        kin: int = bounds.KIN.default,
-        log: int = bounds.LOG.default,
-        detail: int = bounds.DETAIL.default,
+        knobs: KnobsDep,
         page: int = 1,
     ) -> Response:
         """A session's own node: what it was, and its main thread as the NavTree's first level."""
 
         def read(connection: duckdb.DuckDBPyConnection, corpus: nav_tree.Corpus, head: Row) -> Seen:
-            offset = skipped(page, log)
+            offset = skipped(page, knobs.log)
             bound: dict[str, ParamValue] = {
                 "session_id": session_id,
                 "log_chars": queries.LOG_CHARS,
             }
-            turns = window(connection, Page.TIMELINE, TURN_CURSOR, offset, log, **bound)
+            turns = window(connection, Page.TIMELINE, TURN_CURSOR, offset, knobs.log, **bound)
             return Seen(
                 header=head,
                 trail=[Ref(Kind.SESSION, None, session_id)],
@@ -71,20 +69,17 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 total=turns.total,
                 details=[],
                 record=None,
-                ran=[(Page.TIMELINE, bound | {"offset": offset, "limit": log})],
+                ran=[(Page.TIMELINE, bound | {"offset": offset, "limit": knobs.log})],
             )
 
-        return browse(viewer, session_id, MAIN_SOURCE, nav, kin, log, detail, page, read)
+        return browse(viewer, session_id, MAIN_SOURCE, knobs, page, read)
 
     @router.get("/session/{session_id}/thread/{source}/turn/{turn_id}")
     def turn_page(
         session_id: str,
         source: str,
         turn_id: str,
-        nav: str = nodes.Preset.FULL,
-        kin: int = bounds.KIN.default,
-        log: int = bounds.LOG.default,
-        detail: int = bounds.DETAIL.default,
+        knobs: KnobsDep,
         page: int = 1,
     ) -> Response:
         """One turn: what it was asked, and the api calls that answered it."""
@@ -95,7 +90,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 "source": source,
                 "turn_id": turn_id,
                 "head_chars": queries.HEADER_CHARS,
-                "detail_chars": detail,
+                "detail_chars": knobs.detail,
             }
             at = f"{nodes.thread_url(session_id, source)}/turn/{turn_id}"
             rows = page_rows(connection, Page.TURN_HEADER, **bound)
@@ -109,7 +104,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 row["turn_id"]: row["line_no"]
                 for row in page_rows(connection, Page.TURN_RECORDS, **thread)
             }
-            calls, log_rows, ran = call_log(connection, corpus, source, turn_id, page, log)
+            calls, log_rows, ran = call_log(connection, corpus, source, turn_id, page, knobs.log)
             return Seen(
                 header=rows[0],
                 trail=[Ref(Kind.TURN, source, turn_id)],
@@ -124,7 +119,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                             rows[0]["prompt"],
                             rows[0]["prompt_chars"],
                             f"/fragment/prompt{at}",
-                            detail,
+                            knobs.detail,
                             markdown=True,
                         ),
                         detail_of(
@@ -132,7 +127,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                             rows[0]["command_args"],
                             rows[0]["command_args_chars"],
                             f"/fragment/args{at}",
-                            detail,
+                            knobs.detail,
                             markdown=True,
                         ),
                     )
@@ -142,16 +137,13 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 ran=[(Page.TURN_HEADER, bound), *ran, (Page.TURN_RECORDS, thread)],
             )
 
-        return browse(viewer, session_id, source, nav, kin, log, detail, page, read)
+        return browse(viewer, session_id, source, knobs, page, read)
 
     @router.get("/session/{session_id}/run/{run_id}")
     def run_page(
         session_id: str,
         run_id: str,
-        nav: str = nodes.Preset.FULL,
-        kin: int = bounds.KIN.default,
-        log: int = bounds.LOG.default,
-        detail: int = bounds.DETAIL.default,
+        knobs: KnobsDep,
         page: int = 1,
     ) -> Response:
         """One agent run: the brief it was given, and its own thread of turns.
@@ -165,18 +157,20 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 "session_id": session_id,
                 "run_id": run_id,
                 "head_chars": queries.HEADER_CHARS,
-                "detail_chars": detail,
+                "detail_chars": knobs.detail,
             }
             rows = page_rows(connection, Page.RUN_HEADER, **bound)
             if not rows:
                 raise HTTPException(404, "No run with that id is in this session.")
-            offset = skipped(page, log)
+            offset = skipped(page, knobs.log)
             timeline: dict[str, ParamValue] = {
                 "session_id": session_id,
                 "source": run_id,
                 "log_chars": queries.LOG_CHARS,
             }
-            turns = window(connection, Page.RUN_TIMELINE, TURN_CURSOR, offset, log, **timeline)
+            turns = window(
+                connection, Page.RUN_TIMELINE, TURN_CURSOR, offset, knobs.log, **timeline
+            )
             return Seen(
                 header=rows[0],
                 trail=[Ref(Kind.RUN, run_id, run_id)],
@@ -191,7 +185,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                             rows[0]["brief"],
                             rows[0]["brief_chars"],
                             f"/fragment/brief{nodes.run_url(session_id, run_id)}",
-                            detail,
+                            knobs.detail,
                             markdown=True,
                         ),
                         # The ask and the answer, both markdown: one was written by whoever
@@ -201,7 +195,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                             rows[0]["prompt"],
                             rows[0]["prompt_chars"],
                             f"/fragment/prompt{nodes.run_url(session_id, run_id)}",
-                            detail,
+                            knobs.detail,
                             markdown=True,
                         ),
                         detail_of(
@@ -209,7 +203,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                             rows[0]["result"],
                             rows[0]["result_chars"],
                             f"/fragment/result{nodes.run_url(session_id, run_id)}",
-                            detail,
+                            knobs.detail,
                             markdown=True,
                         ),
                     )
@@ -218,21 +212,18 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 record=None,
                 ran=[
                     (Page.RUN_HEADER, bound),
-                    (Page.RUN_TIMELINE, timeline | {"offset": offset, "limit": log}),
+                    (Page.RUN_TIMELINE, timeline | {"offset": offset, "limit": knobs.log}),
                 ],
             )
 
-        return browse(viewer, session_id, run_id, nav, kin, log, detail, page, read)
+        return browse(viewer, session_id, run_id, knobs, page, read)
 
     @router.get("/session/{session_id}/thread/{source}/call/{api_call_id}")
     def call_page(
         session_id: str,
         source: str,
         api_call_id: str,
-        nav: str = nodes.Preset.FULL,
-        kin: int = bounds.KIN.default,
-        log: int = bounds.LOG.default,
-        detail: int = bounds.DETAIL.default,
+        knobs: KnobsDep,
         page: int = 1,
     ) -> Response:
         """One api call: what it answered, what it thought, and the tools it called."""
@@ -243,7 +234,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 "source": source,
                 "api_call_id": api_call_id,
                 "head_chars": queries.HEADER_CHARS,
-                "detail_chars": detail,
+                "detail_chars": knobs.detail,
             }
             at = f"{nodes.thread_url(session_id, source)}/call/{api_call_id}"
             rows = page_rows(connection, Page.CALL_HEADER, **bound)
@@ -254,8 +245,8 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 "session_id": session_id,
                 "source": source,
                 "api_call_id": api_call_id,
-                "skipped": skipped(page, log),
-                "page_tools": log,
+                "skipped": skipped(page, knobs.log),
+                "page_tools": knobs.log,
                 "log_chars": queries.LOG_CHARS,
             }
             called = listed(
@@ -284,7 +275,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                             row["text_head"],
                             row["text_chars"],
                             f"/fragment/text{at}",
-                            detail,
+                            knobs.detail,
                             markdown=True,
                         ),
                         detail_of(
@@ -292,7 +283,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                             row["thinking_head"],
                             row["thinking_chars"],
                             f"/fragment/thinking{at}",
-                            detail,
+                            knobs.detail,
                             markdown=True,
                         ),
                     )
@@ -302,17 +293,14 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 ran=[(Page.CALL_HEADER, bound), (Fragment.CALL_TOOLS, tools)],
             )
 
-        return browse(viewer, session_id, source, nav, kin, log, detail, page, read)
+        return browse(viewer, session_id, source, knobs, page, read)
 
     @router.get("/session/{session_id}/thread/{source}/tool/{tool_call_id}")
     def tool_page(
         session_id: str,
         source: str,
         tool_call_id: str,
-        nav: str = nodes.Preset.FULL,
-        kin: int = bounds.KIN.default,
-        log: int = bounds.LOG.default,
-        detail: int = bounds.DETAIL.default,
+        knobs: KnobsDep,
         page: int = 1,
     ) -> Response:
         """One tool call: what it was passed, and what it returned. Nothing hangs under it."""
@@ -323,7 +311,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 "source": source,
                 "tool_call_id": tool_call_id,
                 "head_chars": queries.HEADER_CHARS,
-                "detail_chars": detail,
+                "detail_chars": knobs.detail,
             }
             at = f"{nodes.thread_url(session_id, source)}/tool/{tool_call_id}"
             rows = page_rows(connection, Page.TOOL_HEADER, **bound)
@@ -352,7 +340,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                             row["command"],
                             row["command_chars"],
                             f"/fragment/command{at}",
-                            detail,
+                            knobs.detail,
                             highlight.Syntax.BASH,
                             markdown=False,
                         ),
@@ -364,7 +352,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                             row["input"],
                             row["input_chars"],
                             f"/fragment/input{at}",
-                            detail,
+                            knobs.detail,
                             highlight.Syntax.JSON,
                             markdown=False,
                         ),
@@ -377,7 +365,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                             row["result_head"],
                             row["result_chars"],
                             f"/fragment/result{at}",
-                            detail,
+                            knobs.detail,
                             highlight.by_suffix(row["result_type"]) or highlight.Syntax.JSON,
                             markdown=False,
                         ),
@@ -388,17 +376,14 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 ran=[(Page.TOOL_HEADER, bound)],
             )
 
-        return browse(viewer, session_id, source, nav, kin, log, detail, page, read)
+        return browse(viewer, session_id, source, knobs, page, read)
 
     @router.get("/session/{session_id}/thread/{source}/compaction/{compaction_id}")
     def compaction_page(
         session_id: str,
         source: str,
         compaction_id: str,
-        nav: str = nodes.Preset.FULL,
-        kin: int = bounds.KIN.default,
-        log: int = bounds.LOG.default,
-        detail: int = bounds.DETAIL.default,
+        knobs: KnobsDep,
         page: int = 1,
     ) -> Response:
         """One compaction: where a thread's context was rewritten, and what that cost it.
@@ -438,16 +423,13 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 ran=[(Page.COMPACTIONS, bound)],
             )
 
-        return browse(viewer, session_id, source, nav, kin, log, detail, page, read)
+        return browse(viewer, session_id, source, knobs, page, read)
 
     @router.get("/session/{session_id}/thread/{source}/unattributed")
     def unattributed_page(
         session_id: str,
         source: str,
-        nav: str = nodes.Preset.FULL,
-        kin: int = bounds.KIN.default,
-        log: int = bounds.LOG.default,
-        detail: int = bounds.DETAIL.default,
+        knobs: KnobsDep,
         page: int = 1,
     ) -> Response:
         """One thread's api calls that answer no turn — a resume's calls answer turns that
@@ -457,7 +439,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
             standing = nav_tree.unattributed(connection, corpus, source)
             if standing is None:
                 raise HTTPException(404, "Every api call on this thread answers a turn.")
-            calls, log_rows, ran = call_log(connection, corpus, source, None, page, log)
+            calls, log_rows, ran = call_log(connection, corpus, source, None, page, knobs.log)
             return Seen(
                 header=standing.row,
                 trail=[Ref(Kind.UNATTRIBUTED, source, source)],
@@ -469,15 +451,12 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 ran=[standing.ran, *ran],
             )
 
-        return browse(viewer, session_id, source, nav, kin, log, detail, page, read)
+        return browse(viewer, session_id, source, knobs, page, read)
 
     @router.get("/session/{session_id}/unattached")
     def unattached_page(
         session_id: str,
-        nav: str = nodes.Preset.FULL,
-        kin: int = bounds.KIN.default,
-        log: int = bounds.LOG.default,
-        detail: int = bounds.DETAIL.default,
+        knobs: KnobsDep,
         page: int = 1,
     ) -> Response:
         """The session's agent runs no spawning call resolved.
@@ -490,7 +469,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
             loose = [run for run in corpus.runs if run["spawn_source"] is None]
             if not loose:
                 raise HTTPException(404, "Every agent run in this session was placed.")
-            runs = sliced(loose, page, log)
+            runs = sliced(loose, page, knobs.log)
             return Seen(
                 header=head,
                 trail=[Ref(Kind.UNATTACHED, None, session_id)],
@@ -502,6 +481,6 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 ran=[],
             )
 
-        return browse(viewer, session_id, MAIN_SOURCE, nav, kin, log, detail, page, read)
+        return browse(viewer, session_id, MAIN_SOURCE, knobs, page, read)
 
     return router.routes
