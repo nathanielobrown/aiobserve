@@ -73,6 +73,7 @@ SURFACES: dict[str, tuple[tuple[str, ...], dict[str, Any]]] = {
             "as_of": dt.date.today,
             "param": [],
             "csv": False,
+            "list": False,
         },
     ),
     "view": ((), {"db": DEFAULT_DB, "port": PORT, "no_browser": False, "dev": False}),

@@ -12,6 +12,8 @@ from typing import Any, NamedTuple
 
 from dotenv import load_dotenv
 
+from hyphae.analyze.manifest import QUERIES
+from hyphae.analyze.queries import REQUIRED
 from hyphae.analyze.runner import QueryError, Result, run
 from hyphae.enrich.client import (
     DEFAULT_CONCURRENCY,
@@ -120,8 +122,30 @@ def _view_arguments(subcommand: argparse.ArgumentParser) -> None:
     )
 
 
+def _query_listing() -> str:
+    """Every query in the library: its name, its scope, and what a caller has to bind.
+
+    Read off the registry, so a query that ships is a line here whichever half of the
+    manifest declared it. Only the parameters with no default are listed — they are what a
+    run refuses without — and every viewer query takes several (`view/manifest.py`).
+    """
+    width = max(len(name) for name in QUERIES)
+    lines = []
+    for name, query in sorted(QUERIES.items()):
+        needed = " ".join(
+            parameter for parameter, spec in query.params.items() if spec.default is REQUIRED
+        )
+        lines.append(f"{name:<{width}}  {query.scope:<6}  {needed}".rstrip())
+    return "\n".join(lines)
+
+
 def _query(args: argparse.Namespace) -> None:
     """Run one library query and print its citation, its commentary, and its rows."""
+    if args.list:
+        print(_query_listing())
+        return
+    if args.name is None:
+        raise SystemExit("hp query takes the name of a query, or --list to see them")
     try:
         params = dict(pair.split("=", 1) for pair in args.param)
     except ValueError:
@@ -154,7 +178,7 @@ def _query(args: argparse.Namespace) -> None:
 
 
 def _query_arguments(subcommand: argparse.ArgumentParser) -> None:
-    subcommand.add_argument("name", help="The query to run — a file in analyze/queries/")
+    subcommand.add_argument("name", nargs="?", help="The query to run — a file in analyze/queries/")
     _add_db_argument(subcommand, "The trace store")
     subcommand.add_argument(
         "--project", type=Path, help="The analyzed repository — required by a corpus query"
@@ -179,6 +203,11 @@ def _query_arguments(subcommand: argparse.ArgumentParser) -> None:
     )
     subcommand.add_argument(
         "--csv", action="store_true", help="Write CSV to stdout, commentary to stderr"
+    )
+    subcommand.add_argument(
+        "--list",
+        action="store_true",
+        help="List every query with its scope and the parameters it needs bound",
     )
 
 
