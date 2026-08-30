@@ -6,19 +6,21 @@ publish.workspace = true
 
 [dependencies]
 hyphae-store.workspace = true
+# The popover splits a node's spend by category, off the extractor's own price table.
+hyphae-extract.workspace = true
 axum.workspace = true
 tokio.workspace = true
 hypertext.workspace = true
 markdown-it.workspace = true
 chrono.workspace = true
 serde.workspace = true
+# Re-laying-out a stored JSON value for reading: `preserve_order` keeps the keys the session wrote.
+serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 tower.workspace = true
 insta.workspace = true
-serde_json.workspace = true
-hyphae-extract.workspace = true
 tempfile.workspace = true
 # The planting test writes a sentinel into the store before serving it.
 duckdb.workspace = true

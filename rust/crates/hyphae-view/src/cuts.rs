@@ -46,3 +46,12 @@ pub fn head(value: Option<&str>) -> String {
 pub fn member(value: &str) -> String {
     fmt::cut(value, queries::HEADER_ITEM_CHARS)
 }
+
+/// One member of a list on a row of the session list, marked where the query cut it.
+///
+/// What [`member`] does for a header's lists, at the width a row shows a skill or an agent type.
+/// The kinds of work beside them do not come through here: their vocabulary is closed
+/// (`enrich/taxonomy.py`), so a mark there could never be true.
+pub fn item(value: &str) -> String {
+    fmt::cut(value, queries::LIST_ITEM_CHARS)
+}

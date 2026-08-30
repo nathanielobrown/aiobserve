@@ -15,6 +15,8 @@ use crate::components::logs::{
 use crate::components::node_body::{
     BucketFacts, CallFacts, CompactionFacts, Facts, RunFacts, SessionFacts, ToolFacts, TurnFacts,
 };
+use crate::components::numbers::{Compaction as CompactionNumbers, Tool, Window};
+use crate::components::values::Record;
 use crate::format::ELLIPSIS;
 use crate::formatters::{Fields, Formatted, name_tool};
 use crate::nodes::{
@@ -72,7 +74,7 @@ fn spend(cost: Option<f64>, node: &Ref, held: &Ledger) -> Spend {
 }
 
 /// A cost put back where the store hands them out, four decimals on.
-fn rounded(cost: f64) -> f64 {
+pub fn rounded(cost: f64) -> f64 {
     let places = 10f64.powi(COST_PLACES);
     (cost * places).round() / places
 }
@@ -693,5 +695,56 @@ pub fn logged(shape: Shape, node: Node, row: &Row) -> Result<Logged, ViewError> 
         node,
         started_at: row.opt_timestamp("started_at")?,
         cells,
+    })
+}
+
+/// A popover's readings for a node made of api calls, off the row `view_numbers` answered.
+pub fn window_numbers(row: &Row) -> Result<Window, RowError> {
+    Ok(Window {
+        model: row.opt_str("model")?.map(str::to_owned),
+        fill: row.opt_i64("fill")?,
+        window_tokens: row.opt_i64("window_tokens")?,
+        added: row.opt_i64("added")?,
+        cost_usd: row.opt_f64("cost_usd")?,
+        api_calls: row.opt_i64("api_calls")?,
+        unpriced_api_calls: row.opt_i64("unpriced_api_calls")?,
+    })
+}
+
+/// A popover's readings for one tool call, off the row `view_numbers_tool` answered.
+///
+/// The siblings are named here rather than in the query: what a tool call is called is
+/// [`crate::formatters`]'s, and the query ships the fields each name is composed of.
+pub fn tool_numbers(row: &Row) -> Result<Tool, RowError> {
+    Ok(Tool {
+        input_chars: row.opt_i64("input_chars")?,
+        result_chars: row.opt_i64("result_chars")?,
+        offload_file: row.opt_str("offload_file")?.map(str::to_owned),
+        spawned_run: row.bool("spawned_run")?,
+        siblings: tool_titles(members(row, "siblings")),
+        siblings_cut: row.i64("siblings_cut")?,
+    })
+}
+
+/// A popover's readings for one compaction, off `view_numbers_compaction`'s row.
+pub fn compaction_numbers(row: &Row) -> Result<CompactionNumbers, RowError> {
+    Ok(CompactionNumbers {
+        pre_tokens: row.opt_i64("pre_tokens")?,
+        post_tokens: row.opt_i64("post_tokens")?,
+        freed: row.opt_i64("freed")?,
+        trigger: row.opt_str("trigger")?.map(str::to_owned),
+    })
+}
+
+/// One archived record as its fragment prints it, off the record value query's row.
+pub fn record_value(row: &Row, citation: String) -> Result<Record, RowError> {
+    Ok(Record {
+        line_no: row.i64("line_no")?,
+        kind: row.str("type")?.to_owned(),
+        uuid: row.opt_str("uuid")?.map(str::to_owned),
+        timestamp: row.opt_timestamp("timestamp")?,
+        raw_chars: row.opt_i64("raw_chars")?,
+        raw: row.str("raw")?.to_owned(),
+        citation,
     })
 }

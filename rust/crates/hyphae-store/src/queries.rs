@@ -43,6 +43,18 @@ pub const HEADER_CHARS: usize = 100;
 pub const HEADER_ITEMS: usize = 5;
 pub const HEADER_ITEM_CHARS: usize = 60;
 
+/// The same three for one row of the session list, which the viewer composes rather than the
+/// query: the list's filters read the whole values. A skill name is not a PR url, which is why the
+/// header's widths do not carry over — the list multiplies its row by the page.
+pub const LIST_CHARS: usize = 100;
+pub const LIST_ITEMS: usize = 4;
+pub const LIST_ITEM_CHARS: usize = 20;
+
+/// How many kinds of work one list row names before it says how many it left: the categories a
+/// pass described that session's turns as. Fewer than the lists above, because the taxonomy is
+/// closed and small — three names say what a session spent its time on, and a fourth is noise.
+pub const LIST_CATEGORIES: usize = 3;
+
 /// How much of a string one row of a children log carries.
 pub const LOG_CHARS: usize = 300;
 

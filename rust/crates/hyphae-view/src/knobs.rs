@@ -37,6 +37,19 @@ pub const LOG: Bound = Bound {
 /// preference.
 pub const DEPTH: usize = 16;
 
+/// How much indentation a JSON value may gain before it is served as stored instead
+/// ([`crate::highlight`]). Indenting is quadratic in nesting — 10 KB of nothing but `[` indents to
+/// 50 MB — while real values gain very little: across the canonical store on 2026-08-07, the worst
+/// of a 2,000-record sample gained 3,418 characters and the largest values in it gained 352.
+pub const INDENT_CHARS: usize = 20_000;
+
+/// How long a value may be and still be marked up in its own syntax ([`crate::highlight`]).
+///
+/// Characters rather than bytes: what the ceiling guards is the tokenizer's time and the markup a
+/// span per token adds, and neither of those is counted in bytes. So a multibyte value under this
+/// ceiling is marked up even where its bytes run past it, which is deliberate.
+pub const HIGHLIGHT_CHARS: usize = 256_000;
+
 /// The turn rows a page renders that no cursor reaches.
 ///
 /// `session_timeline` gives one — the calls that answer no turn are a single group — and the

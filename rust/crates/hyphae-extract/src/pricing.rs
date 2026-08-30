@@ -118,11 +118,24 @@ pub const CONTEXT_WINDOWS: &[(&str, i64)] = &[
     ("claude-haiku-4-5-20251001", 200_000),
 ];
 
-/// What one reply cost in USD, or `None` when the table does not price its model.
+/// What one model's tokens cost in USD, category by category.
 ///
-/// Summed before the division rather than after, which is what keeps every stored cost the
-/// number it was: four divisions rounded and then added is not always the same float.
-pub fn compute_cost(model: &str, tokens: &TokenUsage) -> Option<f64> {
+/// The four rates a reply is billed at, kept apart rather than summed: the viewer's popover prints
+/// them as a legend saying where a phase's dollars went (`docs/viewer.md`), and the total below is
+/// the only number the store keeps.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CostSplit {
+    pub input: f64,
+    pub output: f64,
+    pub cache_read: f64,
+    pub cache_write: f64,
+}
+
+/// The four charges in USD per million tokens, or `None` for a model the table lacks.
+///
+/// The one place the rates are applied. Both callers below divide it down to dollars; what they
+/// differ in is whether they hand back the four or their sum.
+fn charges(model: &str, tokens: &TokenUsage) -> Option<CostSplit> {
     let price = PRICES
         .iter()
         .find(|(name, _)| *name == model)
@@ -131,12 +144,34 @@ pub fn compute_cost(model: &str, tokens: &TokenUsage) -> Option<f64> {
         (Some(five), Some(hour)) => five as f64 * CACHE_WRITE_5M + hour as f64 * CACHE_WRITE_1H,
         _ => tokens.cache_creation as f64 * CACHE_WRITE_5M,
     };
-    // The four charges added left to right, which is the order Python's `sum()` takes them
-    // in. Every term is non-negative, so starting from the first rather than from Python's
-    // literal zero is the same float.
-    let charged = tokens.input as f64 * price.input
-        + tokens.output as f64 * price.output
-        + tokens.cache_read as f64 * price.input * CACHE_READ
-        + write * price.input;
-    Some(charged / PER_MILLION)
+    Some(CostSplit {
+        input: tokens.input as f64 * price.input,
+        output: tokens.output as f64 * price.output,
+        cache_read: tokens.cache_read as f64 * price.input * CACHE_READ,
+        cache_write: write * price.input,
+    })
+}
+
+/// What one reply cost by category, or `None` when the table does not price its model.
+pub fn split_cost(model: &str, tokens: &TokenUsage) -> Option<CostSplit> {
+    let charged = charges(model, tokens)?;
+    Some(CostSplit {
+        input: charged.input / PER_MILLION,
+        output: charged.output / PER_MILLION,
+        cache_read: charged.cache_read / PER_MILLION,
+        cache_write: charged.cache_write / PER_MILLION,
+    })
+}
+
+/// What one reply cost in USD, or `None` when the table does not price its model.
+///
+/// Summed before the division rather than after, which is what keeps every stored cost the
+/// number it was: four divisions rounded and then added is not always the same float.
+pub fn compute_cost(model: &str, tokens: &TokenUsage) -> Option<f64> {
+    let charged = charges(model, tokens)?;
+    // The four added left to right, which is the order Python's `sum()` takes them in. Every term
+    // is non-negative, so starting from the first rather than from Python's literal zero is the
+    // same float.
+    let summed = charged.input + charged.output + charged.cache_read + charged.cache_write;
+    Some(summed / PER_MILLION)
 }

@@ -29,7 +29,9 @@ pub mod logs;
 pub mod nav_tree;
 pub mod node_body;
 pub mod node_page;
+pub mod numbers;
 pub mod pages;
 pub mod parts;
+pub mod values;
 
 pub use crate::render::Markup;
