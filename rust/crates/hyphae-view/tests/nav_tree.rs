@@ -47,3 +47,32 @@ async fn the_preset_control_of_a_session_page() {
     let end = page[at..].find("</p>").expect("the control closes") + 4;
     insta::assert_snapshot!(page[at..at + end].to_owned());
 }
+
+/// A turn on the spine's main thread, deep enough that its crumb chain has every link in it:
+/// home, the project, the session, the turn.
+const SPINE_TURN: &str = "30aad8e5-21f8-486d-b9d9-e118c703a5a1";
+
+#[tokio::test]
+async fn the_crumb_chain_and_facts_of_a_turn_page() {
+    // The two things the reading pane writes above and below its heading: the way out of the
+    // session, and the store fields the node is made of. Both are label registries as much as
+    // markup (`src/hyphae/view/labels.py`), so a snapshot is what makes a renamed label visible.
+    let served = common::served(|_| {});
+    let (status, page) = served
+        .page(&format!("/session/{SPINE}/thread/main/turn/{SPINE_TURN}"))
+        .await;
+    assert_eq!(status, axum::http::StatusCode::OK);
+    // The project a crumb names is folded against whoever is reading, so the one span on this
+    // page that depends on the machine is replaced rather than pinned.
+    let crumbs = element(&page, "<nav class=\"crumbs", "</nav>");
+    let shown = element(&crumbs, "<span data-field=\"project_dir\">", "</span>");
+    insta::assert_snapshot!("the_crumb_chain", crumbs.replace(&shown, "[project]"));
+    insta::assert_snapshot!("the_facts", element(&page, "<dl class=\"facts", "</dl>"));
+}
+
+/// One element of a page, from the tag that opens it to the first close of its kind.
+fn element(page: &str, opens: &str, closes: &str) -> String {
+    let at = page.find(opens).unwrap_or_else(|| panic!("no {opens}"));
+    let rest = &page[at..];
+    rest[..rest.find(closes).expect("the element closes") + closes.len()].to_owned()
+}
