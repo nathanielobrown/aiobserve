@@ -403,7 +403,12 @@ def test_a_dry_run_names_exactly_the_items_a_run_sends(forest: EnrichmentStore) 
     client = FakeClient()
     enrich(forest, client, limit=limit)
     assert client.keys == planned
-    # ...which is the whole first round — every leaf run — and one item of the second, not
+    # ...four items and no more. The second round holds two stale runs, so the limit stops
+    # inside it: what pins the round being cut to what is left rather than sent whole. A pass
+    # that overshoots here spends past the quote the operator approved — and `plan` and
+    # `enrich` share one derivation, so the equality above holds however far it overshoots...
+    assert len(planned) == limit
+    # ...and they are the whole first round — every leaf run — and one item of the second, not
     # the first four items of the level the store reads first.
     assert set(planned[:3]) == {
         key_of(forest, SPINE_LEAF),

@@ -10,8 +10,9 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import override
 
-# Between an item key's fields. Absent from every value it joins: a session id and a run id are
-# uuids, a source is one of those or `main`, and a turn id is an integer.
+# Between an item key's fields. Absent from every value it joins: a session id is a uuid, a turn
+# id is the prompt record's uuid (`model.Turn.id`), a run id is the hex stem of the run's own
+# files, and a source is a run id or `main`.
 SEPARATOR = "|"
 
 
