@@ -30,15 +30,6 @@ from hyphae.view.labels import label
 from hyphae.view.nodes import Node
 
 
-class Pager(NamedTuple):
-    """A children log's place in its level, and the way to either side of it."""
-
-    # Which page of how many, in words — the label the control is read and heard by.
-    place: str
-    previous: str | None
-    next: str | None
-
-
 class LoggedTurn(NamedTuple):
     """One turn as its parent's log prints it."""
 
@@ -117,7 +108,7 @@ def log(
     rows: Sequence[Logged],
     total: int | None,
     suffix: str,
-    pager: Pager | None,
+    pager: parts.Pager | None,
     opens: bool,
 ) -> Html | None:
     """One page of a node's children, or nothing where the node has no level under it.
@@ -151,7 +142,9 @@ def log(
                     ],
                 ]
             ],
-            _pager(shape=shape, pager=pager) if pager else None,
+            # Only where the level runs past one page: a control offering no page to go to
+            # is one a reader has to read to learn there is nothing under it.
+            parts.pager(name=shape, pages=pager) if pager else None,
         ]
     ]
 
@@ -177,28 +170,6 @@ def _what(*, shape: Shape, node: Node, suffix: str, field: str, words: str, seco
                 [parts.glyph(enriched=node.enriched), htpy.span(data_field=field)[words]]
             ],
             htpy.span(".secondary", data_field="about")[second] if second else None,
-        ]
-    ]
-
-
-def _pager(*, shape: Shape, pager: Pager) -> Html:
-    """The control under a log, where the level runs past one page.
-
-    Only there: a control offering no page to go to is a control a reader has to read to learn
-    there is nothing under it. Plain links, because turning a page is a page load — the NavTree
-    beside it opens on the child the reader is on.
-    """
-    return htpy.nav(".pager", data_pager=shape, aria_label=f"{shape} pager")[
-        [
-            htpy.fragment[
-                [htpy.a(data_page="previous", href=pager.previous)["← previous page"], " "]
-            ]
-            if pager.previous
-            else None,
-            htpy.span(data_field="place")[pager.place],
-            htpy.fragment[[" ", htpy.a(data_page="next", href=pager.next)["next page →"]]]
-            if pager.next
-            else None,
         ]
     ]
 
