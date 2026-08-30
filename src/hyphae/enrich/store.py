@@ -30,7 +30,7 @@ from hyphae.enrich.items import (
 )
 from hyphae.enrich.levels import LEVELS
 from hyphae.enrich.validation import Enrichment
-from hyphae.export.duckdb import open_trace_store
+from hyphae.export.duckdb import CLI_WAIT, open_trace_store
 from hyphae.export.schema import check_shape
 from hyphae.model import MAIN_SOURCE
 from hyphae.projects import project_predicate
@@ -167,7 +167,9 @@ class EnrichmentStore:
         # any one `with` block of the opener's, so it holds the block open on a stack and
         # closes it in `close()`.
         self._open = ExitStack()
-        self.connection = self._open.enter_context(open_trace_store(path, read_only=False))
+        self.connection = self._open.enter_context(
+            open_trace_store(path, read_only=False, wait=CLI_WAIT)
+        )
         try:
             # Before the DDL: an enrichment table that drifted from it would otherwise be
             # left alone by `CREATE TABLE IF NOT EXISTS` and fail at the first read below.

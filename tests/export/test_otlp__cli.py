@@ -14,7 +14,7 @@ import duckdb
 import pytest
 
 from hyphae import cli
-from hyphae.export.duckdb import open_trace_store
+from hyphae.export.duckdb import StoreLocked, open_trace_store
 from hyphae.export.otlp import TextPolicy, census
 from hyphae.export.otlp_delivery import (
     ENDPOINT_ENV,
@@ -26,8 +26,9 @@ from hyphae.export.otlp_delivery import (
 )
 from hyphae.extract.store import StoreSource
 from hyphae.pipeline import refresh
-from tests.conftest import MYCELIA, locked
+from tests.conftest import MYCELIA, NO_WAIT, locked
 from tests.export.conftest import KEY_SENTINEL, Receiver, attributes, delivery_rows
+from tests.export.test_duckdb__locking import IMPATIENT
 
 
 @pytest.fixture
@@ -43,7 +44,7 @@ def configured(monkeypatch: pytest.MonkeyPatch, receiver: Receiver) -> None:
 
 def ledger(path: Path) -> list[tuple[object, ...]]:
     """The delivery rows a finished run left, minus the clock in the last column."""
-    with open_trace_store(path, read_only=True) as connection:
+    with open_trace_store(path, read_only=True, wait=NO_WAIT) as connection:
         return [row[:5] for row in delivery_rows(connection)]
 
 
@@ -60,7 +61,7 @@ def test_the_command_ships_what_a_refresh_ships(
     direct = tmp_path / "direct.duckdb"
     shutil.copyfile(delivered_db, direct)
     with (
-        open_trace_store(direct, read_only=False) as connection,
+        open_trace_store(direct, read_only=False, wait=NO_WAIT) as connection,
         OtlpExporter(Backend(name=GENERIC, endpoint=receiver.url), connection) as exporter,
     ):
         refresh(Path(MYCELIA), extractor=StoreSource(connection), exporter=exporter)
@@ -99,7 +100,7 @@ def test_missing_configuration_refuses_before_anything_is_read(
     # ...then it refuses before it opens the store: no request went out, and the store came
     # away without even the ledger table a first export creates.
     assert receiver.bodies == []
-    with open_trace_store(store_path, read_only=True) as connection:
+    with open_trace_store(store_path, read_only=True, wait=NO_WAIT) as connection:
         assert connection.execute(
             "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'otlp_delivery'"
         ).fetchone() == (0,)
@@ -129,12 +130,17 @@ def test_a_failing_run_never_prints_the_key(
     assert receiver.sent_headers[0]["x-key"] == KEY_SENTINEL
 
 
-def test_a_locked_store_fails_fast(store_path: Path, receiver: Receiver, configured: None) -> None:
+def test_a_locked_store_stops_the_run(
+    store_path: Path, receiver: Receiver, configured: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A store another writer holds stops the run at the open, rather than half-delivering."""
     # If an extract is running against the same store — held from another process, since
-    # DuckDB answers a second open in this one differently — then the command stops at the
-    # open: one writer at a time, and the source and the exporter share that connection...
-    with locked(store_path), pytest.raises(duckdb.IOException, match="lock"):
+    # DuckDB answers a second open in this one differently — then the command waits its
+    # budget out and stops at the open: one writer at a time, and the source and the
+    # exporter share that connection. The budget is cut to keep the wait out of the suite;
+    # what production spends on it is `CLI_WAIT`.
+    monkeypatch.setattr(cli, "CLI_WAIT", IMPATIENT)
+    with locked(store_path), pytest.raises(StoreLocked, match="still held"):
         cli.main("export-otlp", MYCELIA, "--db", str(store_path))
     # ...then nothing was shipped: a run that cannot record what it delivered must not
     # deliver, or the next run duplicates the corpus.
@@ -159,7 +165,7 @@ def test_a_dry_run_counts_without_a_backend(
     # If one compaction is planted on a recorded session — invented, because neither session
     # in this store compacted, and a compaction count of zero would prove nothing about the
     # line that reports it...
-    with open_trace_store(store_path, read_only=False) as planted:
+    with open_trace_store(store_path, read_only=False, wait=NO_WAIT) as planted:
         planted.execute(
             "INSERT INTO compactions"
             " SELECT 'planted-compaction', id, 'main', started_at, 'auto', 100, 10, 5, false"
@@ -170,7 +176,7 @@ def test_a_dry_run_counts_without_a_backend(
     # ...then the printed count is the mapper's own, session for session and span for span,
     # down to the compactions among those spans, which the mapper ships or drops by the
     # `replayed` flag the extractor set...
-    with open_trace_store(store_path, read_only=True) as connection:
+    with open_trace_store(store_path, read_only=True, wait=NO_WAIT) as connection:
         source = StoreSource(connection)
         counted = census([source.extract(session) for session in source.sessions(Path(MYCELIA))])
     assert capsys.readouterr().out.strip() == (
@@ -183,7 +189,7 @@ def test_a_dry_run_counts_without_a_backend(
     # what an operator does *before* they have one. It leaves the store as it found it,
     # without even the ledger table an export creates, and never takes the write lock.
     assert receiver.bodies == []
-    with open_trace_store(store_path, read_only=True) as check:
+    with open_trace_store(store_path, read_only=True, wait=NO_WAIT) as check:
         assert check.execute(
             "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'otlp_delivery'"
         ).fetchone() == (0,)

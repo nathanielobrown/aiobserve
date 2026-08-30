@@ -16,6 +16,7 @@ it to sum across sessions, and `session_rollups` to ask what one session's files
 """
 
 import datetime as dt
+import time
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
@@ -330,18 +331,68 @@ TABLES: dict[str, TableSpec] = {
 }
 
 
+# How long a caller queues behind whoever holds the store, in seconds. One of these is what
+# every opener in the codebase passes, and which one says who is waiting: a page is a person
+# watching a spinner, a command is not. An extract's holds are per session and last tens of
+# milliseconds (`docs/store.md`), so a page that waits a second outlasts several of them.
+PAGE_WAIT = 1.0
+CLI_WAIT = 10.0
+
+# How often the wait retries. Flat rather than backed off with jitter: the contenders are two
+# local processes, so there is no herd to spread out, and one interval is easy to explain in a
+# doc and to assert on in a test.
+_POLL = 0.025
+
+# DuckDB's wording when another process holds the file. Matched on text because the exception
+# it arrives as covers every other I/O failure too — and the line itself is worth keeping, as
+# it names the pid of the process holding on.
+_LOCKED = "Conflicting lock is held"
+
+
+class StoreLocked(Exception):
+    """Another process held the store longer than this caller was willing to wait."""
+
+
+def _connect(path: Path, *, read_only: bool, wait: float) -> duckdb.DuckDBPyConnection:
+    """Take DuckDB's file lock, giving whoever holds it `wait` seconds to let go.
+
+    DuckDB admits one process at a time and offers no lock timeout of its own, so the waiting
+    is ours: retry until the budget is spent, then say who is holding what. Any other I/O
+    failure is the caller's to see whole and at once.
+    """
+    deadline = time.monotonic() + wait
+    while True:
+        try:
+            return duckdb.connect(str(path), read_only=read_only)
+        except duckdb.IOException as error:
+            if _LOCKED not in str(error):
+                raise
+            if time.monotonic() >= deadline:
+                raise StoreLocked(
+                    f"{path} was still held after {wait:g}s. Wait for the command using it "
+                    f"to finish, or stop it. {error}"
+                ) from error
+            time.sleep(_POLL)
+
+
 @contextmanager
-def open_trace_store(path: Path, *, read_only: bool) -> Generator[duckdb.DuckDBPyConnection]:
+def open_trace_store(
+    path: Path, *, read_only: bool, wait: float
+) -> Generator[duckdb.DuckDBPyConnection]:
     """Open a store an extract already wrote, for a reader or a writer that comes after one.
 
     The one way into an existing store: every reader and every writer but the extractor
-    itself goes through here, so the version check, the views and the closing are written
-    once. Creates nothing — a path with no store behind it is a typo rather than a new store,
-    and `DuckDbExporter` stays the only thing that writes the DDL. A write open migrates a
-    store of an older vintage; a read-only one cannot, and says so.
+    itself goes through here, so the version check, the views, the waiting and the closing
+    are written once. Creates nothing — a path with no store behind it is a typo rather than
+    a new store, and `DuckDbExporter` stays the only thing that writes the DDL. A write open
+    migrates a store of an older vintage; a read-only one cannot, and says so.
 
-    Keyword-only from `read_only` on, and it has no default: DuckDB admits one writer at a
-    time, so a reader that takes the write lock by accident locks the viewer out.
+    `wait` is how many seconds to queue behind another process, and has no default because
+    the caller is the only one who knows whether a person is watching: pass `PAGE_WAIT` or
+    `CLI_WAIT`. Past the budget it raises `StoreLocked`.
+
+    Keyword-only from `read_only` on, and it has no default either: DuckDB admits one writer
+    at a time, so a reader that takes the write lock by accident locks the viewer out.
 
     Timestamps come back as UTC whatever the machine's clock is set to: a page rendered or a
     corpus window measured in local time reproduces no citation of the same rows.
@@ -351,7 +402,7 @@ def open_trace_store(path: Path, *, read_only: bool) -> Generator[duckdb.DuckDBP
     """
     if not path.exists():
         raise FileNotFoundError(f"{path} holds no trace store. Run `hp extract` first.")
-    connection = duckdb.connect(str(path), read_only=read_only)
+    connection = _connect(path, read_only=read_only, wait=wait)
     try:
         connection.execute("SET TimeZone='UTC'")
         if not read_only:

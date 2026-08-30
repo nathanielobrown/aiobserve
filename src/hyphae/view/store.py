@@ -25,13 +25,9 @@ import duckdb
 
 from hyphae.analyze import macros, queries
 from hyphae.analyze.queries import ParamValue
-from hyphae.export.duckdb import open_trace_store
+from hyphae.export.duckdb import PAGE_WAIT, open_trace_store
 from hyphae.export.schema import SchemaVersionError
 from hyphae.projects import project_predicate
-
-# DuckDB's wording when another process holds the store's write lock. Matched on text
-# because the exception type it arrives as covers every other I/O failure too.
-_LOCKED = "Conflicting lock is held"
 
 Row = dict[str, Any]
 
@@ -140,10 +136,6 @@ class Value(StrEnum):
 Library = Page | Fragment | Value
 
 
-class StoreLocked(Exception):
-    """Another process holds the store's write lock, so this request cannot read it."""
-
-
 class SchemaMoved(Exception):
     """The store's schema version is not the one this build reads."""
 
@@ -152,19 +144,16 @@ class SchemaMoved(Exception):
 def open_store(db_path: Path) -> Generator[duckdb.DuckDBPyConnection]:
     """A read-only connection for one request, checked and closed.
 
-    The store's one opener (`export/duckdb.py`) with the viewer's own refusals over it:
-    `StoreLocked` when a writer holds the file, `SchemaMoved` when the store moved under the
-    running viewer. Both are checked per request rather than at startup because an extract
-    can land between two page loads. Only the open is translated — an error a page raises
-    while reading is the page's own.
+    The store's one opener (`export/duckdb.py`), told how long a page may hang, with the
+    viewer's own refusal over it: `SchemaMoved` when the store moved under the running
+    viewer. That is checked per request rather than at startup because an extract can land
+    between two page loads, and so is the opener's own `StoreLocked`, which the request
+    reaches only after waiting `PAGE_WAIT` for the writer. Only the open is translated — an
+    error a page raises while reading is the page's own.
     """
     opened = ExitStack()
     try:
-        connection = opened.enter_context(open_trace_store(db_path, read_only=True))
-    except duckdb.IOException as error:
-        if _LOCKED in str(error):
-            raise StoreLocked(str(db_path)) from error
-        raise
+        connection = opened.enter_context(open_trace_store(db_path, read_only=True, wait=PAGE_WAIT))
     except SchemaVersionError as error:
         # Carried whole: the opener already picked the remedy that fits this store, and a
         # reader sent to a fresh one where a migration would have done can lose a session.

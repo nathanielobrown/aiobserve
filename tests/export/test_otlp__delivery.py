@@ -36,7 +36,7 @@ from hyphae.export.otlp_delivery import (
 from hyphae.export.schema import SCHEMA_VERSION
 from hyphae.extract.store import StoreSource
 from hyphae.pipeline import refresh
-from tests.conftest import MYCELIA
+from tests.conftest import MYCELIA, NO_WAIT
 from tests.export.conftest import (
     FIRST,
     KEY_SENTINEL,
@@ -302,7 +302,7 @@ def test_the_ledger_survives_a_re_extract(
         exporter.export(trace, "re-extracted")
     # ...then its delivery row is still there. A table swept into the replace by reflex
     # would erase the ledger on every extract, and every later run would duplicate the corpus.
-    with open_trace_store(store_path, read_only=True) as reopened:
+    with open_trace_store(store_path, read_only=True, wait=NO_WAIT) as reopened:
         assert [row[0] for row in delivery_rows(reopened)] == [FIRST, SECOND]
 
 

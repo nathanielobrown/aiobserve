@@ -28,6 +28,7 @@ from tests.conftest import (
     FIXTURES,
     FORK_ORIGIN,
     NO_PROJECT_SESSION,
+    NO_WAIT,
     SPINE,
     SPINE_LEAF,
     SPINE_RUN,
@@ -270,7 +271,7 @@ def test_ids_hold_still_across_a_re_export(fixture_trace: TraceFactory, tmp_path
     trace = fixture_trace("spine", SPINE)
     path = tmp_path / "rebuilt.duckdb"
     build_store(path, [FIXTURES / "spine" / f"{SPINE}.jsonl"])
-    with open_trace_store(path, read_only=True) as connection:
+    with open_trace_store(path, read_only=True, wait=NO_WAIT) as connection:
         rebuilt = StoreSource(connection).extract(SessionSource(id=SPINE, fingerprint="x"))
     # ...then all three passes name the same spans: at-least-once delivery is only a
     # re-send while the ids stay put, and an id that moves lands a second unrelated trace.

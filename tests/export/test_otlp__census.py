@@ -16,7 +16,7 @@ from hyphae.export.duckdb import open_trace_store
 from hyphae.export.otlp import SpanKey, census, census_project, session_spans, span_id
 from hyphae.extract.store import StoreSource
 from hyphae.model import SessionTrace
-from tests.conftest import FORK_COMPACTION, FORK_RUN, MYCELIA, SPINE, SPINE_RUN
+from tests.conftest import FORK_COMPACTION, FORK_RUN, MYCELIA, NO_WAIT, SPINE, SPINE_RUN
 
 # The store a dry run reads when one is named, mirroring the pipeline plan's census pattern:
 # the leaf skips rather than inventing a corpus, since no fixture set is the real one.
@@ -75,7 +75,7 @@ def counted(exportable_db: Path, tmp_path: Path) -> Iterator[duckdb.DuckDBPyConn
     """The exportable corpus, writable, so a leaf can plant the shape no fixture records."""
     path = tmp_path / "traces.duckdb"
     shutil.copyfile(exportable_db, path)
-    with open_trace_store(path, read_only=False) as connection:
+    with open_trace_store(path, read_only=False, wait=NO_WAIT) as connection:
         yield connection
 
 
@@ -126,7 +126,7 @@ def test_the_census_holds_over_a_real_corpus() -> None:
     named = os.environ.get(CORPUS_ENV, "").strip()
     if not named:
         pytest.skip(f"{CORPUS_ENV} names no trace store to census")
-    with open_trace_store(Path(named), read_only=True) as connection:
+    with open_trace_store(Path(named), read_only=True, wait=NO_WAIT) as connection:
         shipped = traces(connection, Path(os.environ.get(CORPUS_PROJECT_ENV, MYCELIA)))
         assert census(shipped).spans == mapping_true(connection, shipped)
 

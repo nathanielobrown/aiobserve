@@ -17,7 +17,7 @@ import duckdb
 
 from hyphae.analyze import macros, manifest, queries
 from hyphae.analyze.queries import NoDefault, ParamType, ParamValue, Scope
-from hyphae.export.duckdb import open_trace_store
+from hyphae.export.duckdb import CLI_WAIT, StoreLocked, open_trace_store
 from hyphae.export.schema import SchemaVersionError
 from hyphae.projects import project_predicate, resolve_project
 
@@ -113,8 +113,8 @@ def run(
     # arrives as a `QueryError`, whichever part of the request it came from.
     opened = ExitStack()
     try:
-        connection = opened.enter_context(open_trace_store(db, read_only=True))
-    except (FileNotFoundError, SchemaVersionError) as error:
+        connection = opened.enter_context(open_trace_store(db, read_only=True, wait=CLI_WAIT))
+    except (FileNotFoundError, SchemaVersionError, StoreLocked) as error:
         raise QueryError(str(error)) from error
     with opened:
         macros.install(connection)
