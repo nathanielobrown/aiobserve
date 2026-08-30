@@ -20,7 +20,7 @@ The exporter reads the store, not Claude Code's transcript files. It can therefo
 
 The project argument selects sessions by their recorded working directory. The command expands `~` and resolves relative paths before matching. It stops if the store holds no session for that project, which catches a mistyped path instead of reporting a successful export of nothing.
 
-A real export reads sessions and writes its delivery ledger through one DuckDB connection. DuckDB admits one writer, so `export-otlp` cannot run beside `extract` or `enrich`; a second writer fails at the store lock before sending anything.
+A real export reads sessions and writes its delivery ledger through one DuckDB connection, held for the whole run. DuckDB admits one writer, so nothing else can write while an export runs: an `extract` or `enrich` beside it queues for the store and then gives up naming the process holding it ([the store guide](store.md)).
 
 ## Configure one destination
 
