@@ -50,13 +50,13 @@ class EnrichmentLines(NamedTuple):
 
 
 def detail_of(
+    *,
     name: str,
     head: str | None,
     chars: int | None,
     url: str,
     size: int,
     syntax: highlight.Syntax | None = None,
-    *,
     markdown: bool,
 ) -> Detail | None:
     """One fat column as a pane shows it, or None where the store holds nothing under it.
@@ -78,6 +78,11 @@ def detail_of(
         return None
     cut = (chars or 0) - size if len(head) > size else 0
     return Detail(name, fmt.cut(head, size), cut, url, syntax, markdown)
+
+
+def details(*maybe: Detail | None) -> list[Detail]:
+    """The details a pane shows: whichever of the columns it asked for the store held."""
+    return [item for item in maybe if item is not None]
 
 
 def enrichment_lines(
@@ -102,19 +107,19 @@ def enrichment_lines(
             assert_never(about.level)
     return EnrichmentLines(
         description=detail_of(
-            "description",
-            about.description,
-            about.description_chars,
-            f"/fragment/description{at}",
-            queries.ENRICHMENT_CHARS,
+            name="description",
+            head=about.description,
+            chars=about.description_chars,
+            url=f"/fragment/description{at}",
+            size=queries.ENRICHMENT_CHARS,
             markdown=False,
         ),
         friction=detail_of(
-            "friction",
-            about.friction,
-            about.friction_chars,
-            f"/fragment/friction{at}",
-            queries.ENRICHMENT_CHARS,
+            name="friction",
+            head=about.friction,
+            chars=about.friction_chars,
+            url=f"/fragment/friction{at}",
+            size=queries.ENRICHMENT_CHARS,
             markdown=False,
         ),
     )

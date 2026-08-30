@@ -23,7 +23,7 @@ from hyphae.view.browse import (
 )
 from hyphae.view.columns import Shape
 from hyphae.view.deps import ViewerDep
-from hyphae.view.detail import detail_of
+from hyphae.view.detail import detail_of, details
 from hyphae.view.knobs import (
     KnobsDep,
     skipped,
@@ -111,28 +111,24 @@ def turn_page(
             shape=Shape.CALLS,
             rows=log_rows,
             total=calls.total,
-            details=[
-                item
-                for item in (
-                    detail_of(
-                        "prompt",
-                        rows[0]["prompt"],
-                        rows[0]["prompt_chars"],
-                        f"/fragment/prompt{at}",
-                        knobs.detail,
-                        markdown=True,
-                    ),
-                    detail_of(
-                        "command_args",
-                        rows[0]["command_args"],
-                        rows[0]["command_args_chars"],
-                        f"/fragment/args{at}",
-                        knobs.detail,
-                        markdown=True,
-                    ),
-                )
-                if item is not None
-            ],
+            details=details(
+                detail_of(
+                    name="prompt",
+                    head=rows[0]["prompt"],
+                    chars=rows[0]["prompt_chars"],
+                    url=f"/fragment/prompt{at}",
+                    size=knobs.detail,
+                    markdown=True,
+                ),
+                detail_of(
+                    name="command_args",
+                    head=rows[0]["command_args"],
+                    chars=rows[0]["command_args_chars"],
+                    url=f"/fragment/args{at}",
+                    size=knobs.detail,
+                    markdown=True,
+                ),
+            ),
             record=archived.get(turn_id),
             ran=[(Page.TURN_HEADER, bound), *ran, (Page.TURN_RECORDS, thread)],
         )
@@ -177,38 +173,34 @@ def run_page(
             shape=Shape.TURNS,
             rows=turn_log(corpus, run_id, turns.rows),
             total=turns.total,
-            details=[
-                item
-                for item in (
-                    detail_of(
-                        "brief",
-                        rows[0]["brief"],
-                        rows[0]["brief_chars"],
-                        f"/fragment/brief{nodes.run_url(session_id, run_id)}",
-                        knobs.detail,
-                        markdown=True,
-                    ),
-                    # The ask and the answer, both markdown: one was written by whoever
-                    # spawned the run and the other by the run itself.
-                    detail_of(
-                        "prompt",
-                        rows[0]["prompt"],
-                        rows[0]["prompt_chars"],
-                        f"/fragment/prompt{nodes.run_url(session_id, run_id)}",
-                        knobs.detail,
-                        markdown=True,
-                    ),
-                    detail_of(
-                        "result",
-                        rows[0]["result"],
-                        rows[0]["result_chars"],
-                        f"/fragment/result{nodes.run_url(session_id, run_id)}",
-                        knobs.detail,
-                        markdown=True,
-                    ),
-                )
-                if item is not None
-            ],
+            details=details(
+                detail_of(
+                    name="brief",
+                    head=rows[0]["brief"],
+                    chars=rows[0]["brief_chars"],
+                    url=f"/fragment/brief{nodes.run_url(session_id, run_id)}",
+                    size=knobs.detail,
+                    markdown=True,
+                ),
+                # The ask and the answer, both markdown: one was written by whoever
+                # spawned the run and the other by the run itself.
+                detail_of(
+                    name="prompt",
+                    head=rows[0]["prompt"],
+                    chars=rows[0]["prompt_chars"],
+                    url=f"/fragment/prompt{nodes.run_url(session_id, run_id)}",
+                    size=knobs.detail,
+                    markdown=True,
+                ),
+                detail_of(
+                    name="result",
+                    head=rows[0]["result"],
+                    chars=rows[0]["result_chars"],
+                    url=f"/fragment/result{nodes.run_url(session_id, run_id)}",
+                    size=knobs.detail,
+                    markdown=True,
+                ),
+            ),
             record=None,
             ran=[
                 (Page.RUN_HEADER, bound),
@@ -267,28 +259,24 @@ def call_page(
                 for item in called.rows
             ],
             total=called.total,
-            details=[
-                item
-                for item in (
-                    detail_of(
-                        "text",
-                        row["text_head"],
-                        row["text_chars"],
-                        f"/fragment/text{at}",
-                        knobs.detail,
-                        markdown=True,
-                    ),
-                    detail_of(
-                        "thinking",
-                        row["thinking_head"],
-                        row["thinking_chars"],
-                        f"/fragment/thinking{at}",
-                        knobs.detail,
-                        markdown=True,
-                    ),
-                )
-                if item is not None
-            ],
+            details=details(
+                detail_of(
+                    name="text",
+                    head=row["text_head"],
+                    chars=row["text_chars"],
+                    url=f"/fragment/text{at}",
+                    size=knobs.detail,
+                    markdown=True,
+                ),
+                detail_of(
+                    name="thinking",
+                    head=row["thinking_head"],
+                    chars=row["thinking_chars"],
+                    url=f"/fragment/thinking{at}",
+                    size=knobs.detail,
+                    markdown=True,
+                ),
+            ),
             record=None,
             ran=[(Page.CALL_HEADER, bound), (Fragment.CALL_TOOLS, tools)],
         )
@@ -332,48 +320,44 @@ def tool_page(
             shape=Shape.NONE,
             rows=[],
             total=0,
-            details=[
-                item
-                for item in (
-                    # The command first, where the call ran one: it is what the input is
-                    # about, and the input below it is the record it was read out of.
-                    detail_of(
-                        "command",
-                        row["command"],
-                        row["command_chars"],
-                        f"/fragment/command{at}",
-                        knobs.detail,
-                        highlight.Syntax.BASH,
-                        markdown=False,
-                    ),
-                    # What a tool was passed is JSON — Claude Code records every tool's
-                    # arguments as an object — so the preview is marked up as JSON without
-                    # asking the row, which is the same syntax its own fetch reads it under.
-                    detail_of(
-                        "input",
-                        row["input"],
-                        row["input_chars"],
-                        f"/fragment/input{at}",
-                        knobs.detail,
-                        highlight.Syntax.JSON,
-                        markdown=False,
-                    ),
-                    # And what it answered is that file's syntax where the record names a
-                    # file, else JSON: a tool that does not answer in prose answers in
-                    # JSON, and `highlight.lit` prints a value that does not parse as the
-                    # characters the store holds rather than lexing it as broken JSON.
-                    detail_of(
-                        "result",
-                        row["result_head"],
-                        row["result_chars"],
-                        f"/fragment/result{at}",
-                        knobs.detail,
-                        highlight.by_suffix(row["result_type"]) or highlight.Syntax.JSON,
-                        markdown=False,
-                    ),
-                )
-                if item is not None
-            ],
+            details=details(
+                # The command first, where the call ran one: it is what the input is
+                # about, and the input below it is the record it was read out of.
+                detail_of(
+                    name="command",
+                    head=row["command"],
+                    chars=row["command_chars"],
+                    url=f"/fragment/command{at}",
+                    size=knobs.detail,
+                    syntax=highlight.Syntax.BASH,
+                    markdown=False,
+                ),
+                # What a tool was passed is JSON — Claude Code records every tool's
+                # arguments as an object — so the preview is marked up as JSON without
+                # asking the row, which is the same syntax its own fetch reads it under.
+                detail_of(
+                    name="input",
+                    head=row["input"],
+                    chars=row["input_chars"],
+                    url=f"/fragment/input{at}",
+                    size=knobs.detail,
+                    syntax=highlight.Syntax.JSON,
+                    markdown=False,
+                ),
+                # And what it answered is that file's syntax where the record names a
+                # file, else JSON: a tool that does not answer in prose answers in
+                # JSON, and `highlight.lit` prints a value that does not parse as the
+                # characters the store holds rather than lexing it as broken JSON.
+                detail_of(
+                    name="result",
+                    head=row["result_head"],
+                    chars=row["result_chars"],
+                    url=f"/fragment/result{at}",
+                    size=knobs.detail,
+                    syntax=highlight.by_suffix(row["result_type"]) or highlight.Syntax.JSON,
+                    markdown=False,
+                ),
+            ),
             record=None,
             ran=[(Page.TOOL_HEADER, bound)],
         )
