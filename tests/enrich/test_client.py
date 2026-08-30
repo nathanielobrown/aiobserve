@@ -14,6 +14,7 @@ from hyphae.enrich.client import (
     ATTEMPTS,
     BREAKER_BOUND,
     ITEM_TIMEOUT,
+    STDERR_TAIL,
     CliClient,
     EnvelopeDrift,
     Failed,
@@ -22,6 +23,7 @@ from hyphae.enrich.client import (
 from hyphae.enrich.taxonomy import Category, Outcome
 from hyphae.enrich.validation import Enrichment, FailureKind, validate
 from tests.enrich.fake_cli import (
+    FIXTURES,
     MODEL,
     OTHER_MODEL,
     RECORDED_USAGE,
@@ -33,6 +35,7 @@ from tests.enrich.fake_cli import (
     kinds,
     mutated,
     recorded,
+    refused,
     requests_for,
     succeeds,
     without,
@@ -227,6 +230,44 @@ def test_an_inconclusive_canary_recanaries_before_the_pool_opens(fake: Install) 
         "item-4": None,
         "item-5": None,
     }
+
+
+def test_a_refused_call_keeps_what_the_cli_said_and_drops_what_it_answered(
+    fake: Install,
+) -> None:
+    """A refusal carries its stderr back, and its stdout nowhere at all.
+
+    Stdout is where a render's transcript text comes back, so a failure that quoted it would
+    put private text into every crash summary and log line the run writes. Stderr is the CLI's
+    own diagnostics — here, the recorded refusal of a flag it does not take.
+    """
+    # If every call is refused, with an answer planted on stdout beside the refusal...
+    answered = "SENTINEL-stdout private transcript text"
+    keys = [f"item-{index}" for index in range(8)]
+    fake({content_of(key): refused(stdout=answered) for key in keys})
+    results = CliClient(MODEL).submit(requests_for(*keys))
+    said = [result.diagnostic for result in results if isinstance(result, Failed)]
+    # ...then every item the breaker sent says what the CLI said...
+    line = (FIXTURES / "stderr_unknown_option.txt").read_text().strip()
+    assert said[:BREAKER_BOUND] == [line] * BREAKER_BOUND
+    # ...the items it never sent say what ended the round, having no diagnostics of their own...
+    assert said[BREAKER_BOUND:] == [f"round stopped: {line}"] * (len(keys) - BREAKER_BOUND)
+    # ...and nothing the CLI wrote on stdout reaches any of them.
+    assert [diagnostic for diagnostic in said if answered in (diagnostic or "")] == []
+
+
+def test_a_long_refusal_is_kept_by_its_tail(fake: Install) -> None:
+    """What is kept is the end of stderr, capped — where a CLI prints the reason it failed."""
+    # If the CLI writes far more than the cap, with the reason last (invented: no recorded
+    # refusal is this long)...
+    reason = "the last thing it said"
+    fake({content_of("item-0"): Reply(stderr="noise " * 500 + reason, returncode=1)})
+    result = CliClient(MODEL).submit(requests_for("item-0"))[0]
+    assert isinstance(result, Failed)
+    # ...then the tail is kept, at the cap, and the head is gone.
+    assert result.diagnostic is not None
+    assert result.diagnostic.endswith(reason)
+    assert len(result.diagnostic) == STDERR_TAIL
 
 
 def test_a_canary_that_never_answers_ends_the_round(fake: Install) -> None:

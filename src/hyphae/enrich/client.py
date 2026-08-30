@@ -60,6 +60,10 @@ BREAKER_BOUND = 5
 # at all, which is what makes a canary that hits one inconclusive.
 _TRANSPORT_FAILURES = frozenset({FailureKind.api_error, FailureKind.timeout})
 
+# How much of a failed call's stderr is kept: enough for a refusal line and the flag it names.
+# Whatever the CLI wrote before that is cut, and stdout is never kept at all.
+STDERR_TAIL = 300
+
 # The envelope fields this client reads, pinned at claude 2.1.221 and recorded in
 # `tests/enrich/fixtures/`. `structured_output` is deliberately not among them: the CLI omits
 # it whenever the model produced nothing conforming, which is a bad answer, not drift.
@@ -93,6 +97,10 @@ class Failed:
 
     key: str
     kind: FailureKind
+    # The tail of what the CLI wrote on stderr — its own diagnostics, and the only thing an
+    # operator has when a whole run fails the same way. None where the failure had nothing to
+    # say: a timeout, an item the breaker never sent.
+    diagnostic: str | None = None
 
 
 Result = Succeeded | Failed
@@ -242,8 +250,22 @@ class CliClient:
         # still in the air when a Ctrl-C landed comes back here too — its spend is lost, the
         # round is not.
         answered = {result.key for result in results}
+        # An aborted item ran nothing and has no diagnostics of its own, so it carries what
+        # ended the round instead: the question an operator asks of a run that stopped early.
+        stopped = next(
+            (
+                result.diagnostic
+                for result in reversed(results)
+                if isinstance(result, Failed) and result.diagnostic is not None
+            ),
+            None,
+        )
         results += [
-            Failed(key=request.key, kind=FailureKind.aborted)
+            Failed(
+                key=request.key,
+                kind=FailureKind.aborted,
+                diagnostic=None if stopped is None else f"round stopped: {stopped}",
+            )
             for request in requests
             if request.key not in answered
         ]
@@ -333,8 +355,11 @@ class CliClient:
             # five in a row trip the breaker, which is the shape a broken machine takes here.
             return Failed(key=request.key, kind=FailureKind.api_error)
         if done.returncode != 0:
-            # Where the CLI's own refusals land — a logged-out call exits 1.
-            return Failed(key=request.key, kind=FailureKind.api_error)
+            # Where the CLI's own refusals land — a logged-out call exits 1, and so does one
+            # given a flag this build passes and that build no longer takes.
+            return Failed(
+                key=request.key, kind=FailureKind.api_error, diagnostic=_stderr_tail(done.stderr)
+            )
         try:
             return _answer(request.key, done.stdout, self.model)
         except EnvelopeDrift:
@@ -369,6 +394,16 @@ class CliClient:
             # A render full of private transcript text is never written under `~/.claude`.
             "--no-session-persistence",
         ]
+
+
+def _stderr_tail(stderr: str) -> str | None:
+    """The end of the CLI's own diagnostics, on one line and capped at `STDERR_TAIL`.
+
+    Stderr only, never stdout: the answer comes back on stdout, and with it whatever the
+    render's transcript text drove the model to quote. Nothing here is model output.
+    """
+    tail = " ".join(stderr.split())[-STDERR_TAIL:]
+    return tail or None
 
 
 def _drain(

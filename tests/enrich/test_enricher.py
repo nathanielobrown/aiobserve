@@ -16,6 +16,7 @@ import pytest
 
 from hyphae import cli
 from hyphae.enrich.client import (
+    CliClient,
     Failed,
     Succeeded,
 )
@@ -333,6 +334,35 @@ def test_the_auth_blob_never_reaches_the_output(
     said = printed.out + printed.err + str(failure.value)
     blobs = [status["email"], status["orgId"], status["orgName"]]
     assert [blob in said for blob in blobs] == [False] * 3
+
+
+def test_a_run_the_cli_refuses_names_what_the_cli_said(
+    forest: EnrichmentStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A round the CLI refuses carries its stderr into the crash, and never its stdout.
+
+    The refusal recorded here is a flag the installed CLI does not take — the shape a version
+    bump takes, and the one that fails every item of a run identically. Without the tail, an
+    operator whose whole pass failed reads a list of keys and the word `api_error`.
+    """
+    refused = (FIXTURES / "stderr_unknown_option.txt").read_text()
+    # Invented, standing for the answer stream: a render's transcript text comes back on
+    # stdout, so nothing from stdout may reach a summary, an error or a log.
+    answered = "SENTINEL-stdout private transcript text"
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 1, answered, refused),
+    )
+    # If a real client runs a pass against a CLI that refuses every call...
+    with pytest.raises(EnrichmentFailed) as failure:
+        enrich(forest, CliClient(MODEL, concurrency=1))
+    said = str(failure.value)
+    # ...then the crash says what the CLI said, once rather than once per failed item...
+    assert said.count(refused.strip()) == 1
+    assert said.count(str(FailureKind.api_error)) > 1
+    # ...and nothing the CLI wrote on stdout is anywhere in it.
+    assert answered not in said
 
 
 def test_rounds_send_children_before_parents(forest: EnrichmentStore) -> None:
