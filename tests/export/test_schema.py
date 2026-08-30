@@ -7,6 +7,7 @@ behind when a column is renamed and the version is not bumped.
 
 import hashlib
 import os
+from dataclasses import fields
 from pathlib import Path
 
 import duckdb
@@ -15,7 +16,7 @@ import pytest
 from hyphae.enrich.store import _SCHEMA as ENRICHMENT_SCHEMA
 from hyphae.enrich.store import EnrichmentStore
 from hyphae.export.duckdb import _SCHEMA as TRACE_SCHEMA
-from hyphae.export.duckdb import DuckDbExporter, open_trace_store
+from hyphae.export.duckdb import TABLES, DuckDbExporter, open_trace_store
 from hyphae.export.otlp_delivery import _DELIVERY_SCHEMA as DELIVERY_SCHEMA
 from hyphae.export.otlp_delivery import Backend, OtlpExporter
 from hyphae.export.schema import (
@@ -77,6 +78,26 @@ def test_no_owners_tables_can_change_without_the_schema_version(
         f"version and add the migration step that carries an existing store across the "
         f"change, then set this digest to {current}."
     )
+
+
+@pytest.mark.parametrize("table", list(TABLES), ids=list(TABLES))
+def test_a_tables_ddl_columns_are_exactly_its_models_fields(table: str) -> None:
+    """The insert and the read both build their column lists from the model's fields.
+
+    `DuckDbExporter._insert` names `fields(spec.model)` and inserts positionally, and
+    `StoreSource._read` selects the same names back — so a DDL column with no field is a
+    column nothing ever writes, and a field with no column crashes at the first export. Both
+    sides are hand-written on purpose: generating the DDL from the dataclasses would lose the
+    column comments that say what each one means. This is what ties them instead, and it
+    covers `raw_records` and `offload_files`, which the round-trip leaf only counts.
+    """
+    spec = TABLES[table]
+    columns = declared_shape(TRACE_SCHEMA)[table]
+    assert columns == {field.name for field in fields(spec.model)}
+    # And the two columns the registry names for itself are columns: the one a session's rows
+    # are found by, and the ones they come back ordered by. Nothing else reads these, so a
+    # typo in either would only show up as a binder error at the next export.
+    assert {spec.session_key, *spec.order} <= columns
 
 
 def test_a_declared_shape_holds_every_table_a_ddl_creates_and_none_of_its_views() -> None:

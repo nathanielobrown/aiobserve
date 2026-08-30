@@ -5,10 +5,11 @@ than the transcripts on disk, because the store is the archive (a pruned session
 here), because a backend then mirrors exactly what the analyses and the viewer cite, and
 because reading rows costs a fraction of re-parsing every record.
 
-Rebuilding is mechanical: each table's columns are its model's fields in order, so
-`export/duckdb.py`'s own table list drives the read and a new column reaches both sides at
-once. Provenance is not rebuilt — `extract_state`'s `extractor` and `extractor_version` come
-back verbatim, naming the parser that produced the rows rather than this reader.
+Rebuilding is mechanical: `export/duckdb.py`'s `TABLES` registry drives the read, so the
+columns, the session key and the row order are the ones the write used and a new column
+reaches both sides at once. Provenance is not rebuilt — `extract_state`'s `extractor` and
+`extractor_version` come back verbatim, naming the parser that produced the rows rather than
+this reader.
 """
 
 from dataclasses import fields
@@ -17,26 +18,10 @@ from typing import Any
 
 import duckdb
 
-from hyphae.export.duckdb import SESSION_KEY, TABLES
+from hyphae.export.duckdb import TABLES
 from hyphae.model import SessionTrace
 from hyphae.pipeline import SessionSource
 from hyphae.sessions import project_predicate, resolve_project
-
-# What each table's rows are ordered by: its primary key, minus the `session_id` a single
-# session's read holds constant. List order carries no meaning — the model's lists are keyed
-# by natural ids — but a stable one keeps two exports of an unchanged session byte-identical.
-ROW_ORDER: dict[str, tuple[str, ...]] = {
-    "sessions": ("id",),
-    "turns": ("source", "id"),
-    "api_calls": ("source", "id"),
-    "tool_calls": ("source", "id"),
-    "agent_runs": ("id",),
-    "compactions": ("source", "id"),
-    "pr_links": ("line_no",),
-    "offload_files": ("name",),
-    "raw_records": ("source", "line_no"),
-}
-
 
 # The tables that are the archive rather than the session's work: every line of every
 # transcript, and the tool outputs Claude Code wrote to files beside it. Nothing ships them,
@@ -122,15 +107,14 @@ class StoreSource:
 
     def _read(self, table: str, session_id: str) -> list[Any]:
         """One table's rows for one session, as its model."""
-        model = TABLES[table]
-        columns = ", ".join(f'"{field.name}"' for field in fields(model))
-        order = ", ".join(f'"{column}"' for column in ROW_ORDER[table])
+        spec = TABLES[table]
+        columns = ", ".join(f'"{field.name}"' for field in fields(spec.model))
+        order = ", ".join(f'"{column}"' for column in spec.order)
         rows = self.connection.execute(
-            f"SELECT {columns} FROM {table}"
-            f" WHERE {SESSION_KEY.get(table, 'session_id')} = ? ORDER BY {order}",
+            f"SELECT {columns} FROM {table} WHERE {spec.session_key} = ? ORDER BY {order}",
             [session_id],
         ).fetchall()
-        return [model(*row) for row in rows]
+        return [spec.model(*row) for row in rows]
 
     def _refuse_unplaceable_content(self) -> None:
         """Crash when a session with no `project_dir` holds work this filter would drop.
