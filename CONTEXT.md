@@ -50,6 +50,7 @@ Model-written descriptions beside the telemetry: `docs/enrichment.md`; the vocab
 
 What each page shows and cites: `docs/viewer.md`; the routes: the modules `src/hyphae/view/app.py` mounts, one per subject.
 
+- **Component** — one typed function building part of a page's markup with htpy; a page is Python, not a template (`src/hyphae/view/components/`)
 - **Projects page** — `/`, the landing page: every project and its recent sessions
 - **Session list** — `/sessions`: the filter form above one page of sessions
 - **Node page** — the one page shape every node kind shares: NavTree beside reading pane

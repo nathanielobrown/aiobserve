@@ -17,6 +17,7 @@ that shape against what the invented ones assume.
 """
 
 import asyncio
+import inspect
 import signal
 import socket
 import subprocess
@@ -34,12 +35,12 @@ from watchfiles import Change, awatch
 
 import hyphae.view
 from hyphae.view.app import CSP, HOST, STATIC, build_app, claim
-from hyphae.view.dev import RELOAD_URL, Event, Rendered, event_for, reload_router
+from hyphae.view.dev import RELOAD_URL, RENDERED, Event, Rendered, event_for, reload_router
 from tests.view.scenarios import SCENARIOS
 
-# The one line `base.html` adds under `--dev`, whole: the newline and the indent included, so
-# that a prod page is a dev page with this string taken out and nothing else changed.
-TAG = b'\n    <script src="/static/dev-reload.js" defer></script>'
+# The one line a page adds under `--dev`, whole. A prod page is the dev page with this string
+# taken out and nothing else changed.
+TAG = b'<script src="/static/dev-reload.js" defer></script>'
 
 
 @pytest.fixture(scope="module")
@@ -63,9 +64,9 @@ def dev_client(enriched_db: Path) -> Iterator[TestClient]:
         # recording of one exists. The slow leaf below checks the shape.
         # If every path in the set is a stylesheet the page can keep its state...
         (("static/style.css", "static/pygments.css"), Event.CSS),
-        # ...but one template beside a stylesheet is a page event, or a template edit is the
-        # thing the CSS fast path silently swallows...
-        (("static/style.css", "templates/node.html"), Event.PAGE),
+        # ...but the client script beside a stylesheet is a page event, because a set the fast
+        # path takes is a set whose script edit never reaches the browser...
+        (("static/style.css", "static/dev-reload.js"), Event.PAGE),
         # ...and the client script itself only takes effect on a load.
         (("static/dev-reload.js",), Event.PAGE),
     ],
@@ -96,15 +97,17 @@ def test_a_change_set_with_nothing_in_it_is_a_broken_assumption_rather_than_an_e
     [
         # What the viewer renders from, which is what a save should reach the browser through...
         ("/w/style.css", True),
-        ("/w/node.html", True),
         ("/w/dev-reload.js", True),
+        # ...a page, which is Python now: uvicorn restarts the server on that save, and a
+        # message from here would race the restart it is a symptom of...
+        ("/w/node_pages.py", False),
         # ...the directory macOS reports beside a saved file, which has no suffix and would
         # read as a page event if it got through...
         ("/w", False),
         # ...a file under a watched directory the viewer does not render...
         ("/w/README.md", False),
         # ...and what watchfiles' own filter drops, which this one still defers to.
-        ("/w/__pycache__/node.html", False),
+        ("/w/__pycache__/style.css", False),
     ],
 )
 def test_the_watcher_is_told_to_report_only_what_the_viewer_renders_from(
@@ -112,6 +115,21 @@ def test_the_watcher_is_told_to_report_only_what_the_viewer_renders_from(
 ) -> None:
     """The filter the stream watches under, read directly: suffix, and watchfiles' own noise."""
     assert Rendered()(Change.modified, path) is watched
+
+
+def test_the_stream_watches_the_static_directory_and_nothing_a_page_is_written_in() -> None:
+    """What `--dev` watches when its caller names nothing, and the suffixes it reports on.
+
+    A page is Python now, so a saved component is a restart the process manager performs, not a
+    message on this stream (`docs/ui-development.md`). The default is what decides that: widened
+    to the package, every component save would put a reload on the wire for the worker that is
+    already going away. Both halves are read off the source rather than off a run, because the
+    default a caller never passes is exactly what no served page can show.
+    """
+    assert inspect.signature(reload_router).parameters["watch_paths"].default == (STATIC,)
+    # And the one suffix that left: a template was a thing a page was rendered from, and a save
+    # of one was a reload. Nothing is rendered from disk now but the stylesheet and the script.
+    assert ".html" not in RENDERED
 
 
 # Drives the real watcher over a real directory: a debounce window of wall clock, and the only
@@ -170,16 +188,15 @@ def test_a_dev_page_is_a_prod_page_plus_the_one_script_tag(
     """`--dev` changes one line of every page and nothing else, and no prod page mentions it.
 
     One comparison for both halves of the promise: that the dev loop reaches every page, and
-    that a viewer built without it serves exactly what it served before. The fragments are the
-    reason the tag is matched rather than counted — they extend no base and come back identical
-    outright.
+    that a viewer built without it serves exactly what it served before.
     """
     dev = dev_client.get(path)
     prod = enriched_client.get(path)
     assert dev.status_code == 200 and prod.status_code == 200, path
     # Taking the tag out of the dev page leaves the prod page, byte for byte...
     assert dev.content.replace(TAG, b"") == prod.content, path
-    # ...it lands once on a page that extends `base.html` and not at all on a fragment...
+    # ...it lands once on a whole page and not at all on a fragment, which stands inside no
+    # frame and comes back identical outright...
     assert dev.content.count(TAG) == (0 if path.startswith("/fragment/") else 1), path
     # ...and the shipped viewer names neither the client script nor the route it listens on.
     assert b"dev-reload" not in prod.content, path
@@ -223,7 +240,7 @@ def test_the_reload_stream_answers_as_an_event_stream_under_the_same_policy(
     assert streamed.headers["content-security-policy"] == CSP
 
 
-@pytest.mark.parametrize(("name", "expected"), [("style.css", b"css"), ("node.html", b"page")])
+@pytest.mark.parametrize(("name", "expected"), [("style.css", b"css"), ("dev-reload.js", b"page")])
 def test_a_file_saved_under_a_watched_path_becomes_one_message_on_the_stream(
     tmp_path: Path, name: str, expected: bytes
 ) -> None:

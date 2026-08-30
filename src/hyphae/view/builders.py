@@ -1,12 +1,18 @@
-"""How one store row becomes a node: the builder for each kind, and the helpers they share.
+"""How one store row becomes what a surface prints: the node, its facts, and its log row.
 
 Every surface that names a node — a NavTree row, a crumb, a children log row, a pane — calls
 one of these, so the title, the URL and the share a reader sees are the same wherever they
 read it. `view/nodes.py` holds the vocabulary they build in.
+
+The last two are the seam the components package sits behind: they read a `Row`, whose columns
+are whatever the query returned, and hand back a type whose fields a body or a log row can only
+read by name (`view/components/`).
 """
 
 from collections.abc import Sequence
 
+from hyphae.view.columns import Shape
+from hyphae.view.components import logs, node_body, numbers, values
 from hyphae.view.enrichment import Descriptions
 from hyphae.view.format import ELLIPSIS
 from hyphae.view.formatters import Fields, name_tool
@@ -322,3 +328,211 @@ def _turn_title(row: Row) -> str:
     # The store declares a turn's prompt NOT NULL (`export/duckdb.py`), so this arm always
     # has something to say, even when what it says is the empty string.
     return row["prompt"]
+
+
+def node_facts(node: Node, row: Row) -> node_body.Facts:
+    """The facts a node's body prints, read off the row its header query answered.
+
+    Where a store row stops being a bag of columns: past here a body reads named fields of a
+    type, so a query that dropped one fails here rather than printing a dash under its label.
+    Total over `Kind`, the two buckets sharing a shape because neither is a row of the store —
+    what they hold is counted on the node itself.
+    """
+    match node.kind:
+        case Kind.SESSION:
+            return node_body.SessionFacts(
+                session_id=row["session_id"],
+                git_branch=row["git_branch"],
+                version=row["version"],
+                entrypoint=row["entrypoint"],
+                started_at=row["started_at"],
+                wall_ms=row["wall_ms"],
+                active_ms=row["active_ms"],
+                turns=row["turns"],
+                api_calls=row["api_calls"],
+                tool_calls=row["tool_calls"],
+                tool_errors=row["tool_errors"],
+                agent_runs=row["agent_runs"],
+                compactions=row["compactions"],
+                cost_usd=row["cost_usd"],
+                unpriced_api_calls=row["unpriced_api_calls"],
+                output_tokens=row["output_tokens"],
+                skills=row["skills"],
+                skills_cut=row["skills_cut"],
+                pr_urls=row["pr_urls"],
+                pr_urls_cut=row["pr_urls_cut"],
+            )
+        case Kind.TURN:
+            return node_body.TurnFacts(
+                turn_id=row["turn_id"],
+                command_name=row["command_name"],
+                turn_index=row["turn_index"],
+                started_at=row["started_at"],
+                replayed=row["replayed"],
+                api_calls=row["api_calls"],
+                tool_calls=row["tool_calls"],
+                tool_errors=row["tool_errors"],
+                cost_usd=row["cost_usd"],
+                unpriced_api_calls=row["unpriced_api_calls"],
+            )
+        case Kind.RUN:
+            return node_body.RunFacts(
+                run_id=row["run_id"],
+                agent_type=row["agent_type"],
+                model=row["model"],
+                spawn_depth=row["spawn_depth"],
+                is_fork=row["is_fork"],
+                started_at=row["started_at"],
+                wall_ms=row["wall_ms"],
+                turns=row["turns"],
+                api_calls=row["api_calls"],
+                tool_calls=row["tool_calls"],
+                tool_errors=row["tool_errors"],
+                compactions=row["compactions"],
+                cost_usd=row["cost_usd"],
+                unpriced_api_calls=row["unpriced_api_calls"],
+                output_tokens=row["output_tokens"],
+            )
+        case Kind.CALL:
+            return node_body.CallFacts(
+                call_index=row["call_index"],
+                model=row["model"],
+                fallback_from=row["fallback_from"],
+                effort=row["effort"],
+                stop_reason=row["stop_reason"],
+                attribution_skill=row["attribution_skill"],
+                started_at=row["started_at"],
+                tool_calls=row["tool_calls"],
+                input_tokens=row["input_tokens"],
+                output_tokens=row["output_tokens"],
+                cache_read_tokens=row["cache_read_tokens"],
+                cache_creation_tokens=row["cache_creation_tokens"],
+                cost_usd=row["cost_usd"],
+                unpriced_api_calls=row["unpriced_api_calls"],
+            )
+        case Kind.TOOL:
+            return node_body.ToolFacts(
+                session_id=row["session_id"],
+                run_id=row["run_id"],
+                tool_index=row["tool_index"],
+                name=row["name"],
+                server_side=row["server_side"],
+                is_error=row["is_error"],
+                incomplete=row["incomplete"],
+                started_at=row["started_at"],
+                wall_ms=row["wall_ms"],
+                offload_file=row["offload_file"],
+            )
+        case Kind.COMPACTION:
+            return node_body.CompactionFacts(
+                trigger=row["trigger"],
+                timestamp=row["timestamp"],
+                pre_tokens=row["pre_tokens"],
+                post_tokens=row["post_tokens"],
+                duration_ms=row["duration_ms"],
+            )
+        case Kind.UNATTRIBUTED | Kind.UNATTACHED:
+            return node_body.BucketFacts(
+                cost_usd=node.cost_usd, unpriced_api_calls=node.unpriced_api_calls
+            )
+
+
+def logged(shape: Shape, node: Node, row: Row) -> logs.Logged:
+    """One row of a children log: the node its wide column links to, beside what the row prints.
+
+    Keyed by the log's shape rather than the node's kind, because the shape is what decides the
+    columns the row has to fill. `Shape.NONE` lists nothing, so it has no row to build.
+    """
+    match shape:
+        case Shape.TURNS:
+            return logs.LoggedTurn(
+                node=node,
+                turn_index=row["turn_index"],
+                api_calls=row["api_calls"],
+                tool_calls=row["tool_calls"],
+                started_at=row["started_at"],
+            )
+        case Shape.CALLS:
+            return logs.LoggedCall(
+                node=node,
+                call_index=row["call_index"],
+                model=row["model"],
+                text_head=row["text_head"],
+                tool_calls=row["tool_calls"],
+                # The words rather than the rows: naming a tool call is Python's
+                # (`view/formatters.py`), so the query ships the fields and this composes them.
+                called=", ".join(tool_titles(row.get("called_tools") or ())),
+                text_chars=row["text_chars"],
+                started_at=row["started_at"],
+            )
+        case Shape.TOOLS:
+            return logs.LoggedTool(
+                node=node,
+                tool_index=row["tool_index"],
+                name=row["name"],
+                about=tool_about(row.get("name") or "", row.get("fields")),
+                is_error=row["is_error"],
+                result_chars=row["result_chars"],
+                started_at=row["started_at"],
+            )
+        case Shape.RUNS:
+            return logs.LoggedRun(
+                node=node,
+                agent_type=row["agent_type"],
+                tool_errors=row["tool_errors"],
+                started_at=row["started_at"],
+            )
+        case Shape.NONE:
+            raise ValueError("A log of no shape lists no rows.")
+
+
+def window_numbers(row: Row) -> numbers.Window:
+    """A popover's readings for a node made of api calls, off the row `view_numbers` answered."""
+    return numbers.Window(
+        model=row["model"],
+        fill=row["fill"],
+        window_tokens=row["window_tokens"],
+        added=row["added"],
+        cost_usd=row["cost_usd"],
+        api_calls=row["api_calls"],
+        unpriced_api_calls=row["unpriced_api_calls"],
+    )
+
+
+def tool_numbers(row: Row) -> numbers.Tool:
+    """A popover's readings for one tool call, off the row `view_numbers_tool` answered.
+
+    The siblings are named here rather than in the query: what a tool call is called is
+    Python's (`view/formatters.py`), and the query ships the fields each name is composed of.
+    """
+    return numbers.Tool(
+        input_chars=row["input_chars"],
+        result_chars=row["result_chars"],
+        offload_file=row["offload_file"],
+        spawned_run=row["spawned_run"],
+        siblings=tool_titles(row["siblings"]),
+        siblings_cut=row["siblings_cut"],
+    )
+
+
+def compaction_numbers(row: Row) -> numbers.Compaction:
+    """A popover's readings for one compaction, off `view_numbers_compaction`'s row."""
+    return numbers.Compaction(
+        pre_tokens=row["pre_tokens"],
+        post_tokens=row["post_tokens"],
+        freed=row["freed"],
+        trigger=row["trigger"],
+    )
+
+
+def record_value(row: Row, citation: str) -> values.Record:
+    """One archived record as its fragment prints it, off `Value.RECORD`'s row."""
+    return values.Record(
+        line_no=row["line_no"],
+        type=row["type"],
+        uuid=row["uuid"],
+        timestamp=row["timestamp"],
+        raw_chars=row["raw_chars"],
+        raw=row["raw"],
+        citation=citation,
+    )

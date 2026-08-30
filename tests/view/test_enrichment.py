@@ -114,6 +114,11 @@ def test_the_session_list_shows_what_the_model_said_about_each_session(
         # ...each described row showing a head of what the pass wrote, and both its tags...
         assert row["description"] == description[: queries.LIST_CHARS]
         assert (row["category"], row["outcome"]) == (category, outcome)
+        # ...with a space before the first pill. A tag carries a right margin and no left one,
+        # so without it the pill's border touches the last word of the description.
+        assert reads(listing, "data-enrichment", session_id) == " ".join(
+            f"{row['description']} {row['category']} {row['outcome']}".split()
+        )
     # ...and a session the pass never reached carrying nothing at all beside it.
     assert values(listing, "data-enrichment") == described
     # The query behind that is cited like every other query the page ran.
@@ -373,6 +378,12 @@ def test_an_item_described_under_an_older_prompt_is_marked_stale(
     # The turn described under the older prompt version is tagged...
     stale_page = enriched_client.get(f"/session/{session_id}/thread/main/turn/{turn_id}").text
     assert fields(stale_page, "data-enrichment", turn_id).get("stale") == "stale"
+    # Three pills read as three words. Their margins hold the boxes apart on screen; the spaces
+    # are what hold them apart for a reader who hears the block instead.
+    said = fields(stale_page, "data-enrichment", turn_id)
+    assert f"{said['category']} {said['outcome']} stale" in reads(
+        stale_page, "data-enrichment", turn_id
+    )
     # ...and one described under the current one is not, so the tag is telling them apart.
     fresh_page = enriched_client.get(f"/session/{fresh[0]}/thread/main/turn/{fresh[1]}").text
     assert "stale" not in fields(fresh_page, "data-enrichment", fresh[1])

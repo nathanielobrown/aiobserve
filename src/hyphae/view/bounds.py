@@ -91,11 +91,12 @@ CHUNK = Bound(default=queries.CHUNK_CHARS, ceiling=60_000)
 # character of a title or a path can escape to five bytes — so the two are the same number.
 # Cut from 125 when the row grew the columns that say what a session's subagents and its turns
 # were, from 110 when the row's markup was priced at the dearest row a list holds rather than at
-# whichever one sorted second, from 104 when every string a transcript wrote in a row began
-# saying where it was cut, and from 103 when the templates went under a formatter: the
-# indentation djLint writes between a row's cells is bytes on every row of every page. A row
-# that costs more is a row a page holds fewer of.
-SESSIONS = Bound(default=97, ceiling=97)
+# whichever one sorted second, and from 104 when every string a transcript wrote in a row began
+# saying where it was cut. Raised to 113 when the pages became htpy components: nothing is
+# written between two elements now, so a row costs its markup and its content and none of the
+# whitespace a template's own shape used to leave between a row's cells. A row that costs more
+# is a row a page holds fewer of.
+SESSIONS = Bound(default=113, ceiling=113)
 # The landing page, which a corpus grows the way it grows sessions — one row per project it
 # holds, worktrees folded in. Not a size a URL carries: a reader picks a project rather than
 # paging through them, so the page shows the most recently active `PROJECTS` and says how many
@@ -175,4 +176,8 @@ HIGHLIGHT_CHARS = 256_000
 # row draws: the row this counts is a turn's, whose URL is the longest any node has and is
 # written three times, so what a run's row gained cannot overtake it. Re-measured rather than
 # assumed — the leaf pins this from below as well as above, so a row that shrank would red too.
-NAV_TREE_ROW_BYTES = 1929
+# Down 226 B from 1,929 when the row became a component: htpy writes nothing between elements,
+# so the djLint indentation above and the newlines the template's own source carried are both
+# gone. The markup a reader gets is the same one — what left the row is whitespace
+# (`src/hyphae/view/components/nav_tree.py`).
+NAV_TREE_ROW_BYTES = 1703

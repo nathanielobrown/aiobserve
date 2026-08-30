@@ -12,18 +12,19 @@ above a node is `test_app__headers.py`, and what a page does with untrusted text
 them in `test_nav_tree.py`, each with its neighbours.
 """
 
+import html
 import json
 import re
 from collections import defaultdict
 from pathlib import Path
 
 import duckdb
+import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from hyphae.analyze import queries
 from hyphae.view import nodes
-from hyphae.view.templating import TEMPLATES
 from tests.conftest import (
     BASH_TOOL,
     DENSE_CALL,
@@ -42,6 +43,7 @@ from tests.view.conftest import (
     one,
     values,
 )
+from tests.view.scenarios import SCENARIOS
 
 
 def test_a_node_page_cites_every_query_it_ran(client: TestClient) -> None:
@@ -352,34 +354,46 @@ def test_a_fragment_naming_nothing_is_a_404(client: TestClient) -> None:
     assert MISSING not in response.text
 
 
-def test_every_asset_a_page_asks_for_is_one_the_viewer_ships(client: TestClient) -> None:
+@pytest.mark.parametrize("path", sorted(scenario.url for scenario in SCENARIOS.values()))
+def test_every_asset_a_page_asks_for_is_one_the_viewer_ships(
+    path: str, enriched_client: TestClient
+) -> None:
     """No page reaches off the machine for an asset, and none writes an inline style.
 
     Both are things the policy in `app.CSP` forbids, and both fail the same way: loudly in a
     browser and silently in this tier, because a blocked asset and a dropped attribute leave
-    a 200 behind. So the check is on the templates rather than on a response — the fragments
-    included, which are the templates no page-level sweep renders.
+    a 200 behind. Read off what each route served — the fragments included, which no other
+    page-level sweep renders — rather than off the code that builds it: a component composes
+    another component, so what a source scan reads is never the page a reader gets.
     """
-    for template in sorted(TEMPLATES.rglob("*.html")):
-        markup = template.read_text()
-        # Every `src` and `href` a template writes is a path on this server...
-        assert re.findall(r'(?:src|href)="(\w+:)?//[^"]*"', markup) == [], template.name
-        # ...and nothing carries a style attribute. This is the trap the cost badge's decile
-        # classes exist to dodge: a wash written inline is a badge no reader ever sees.
-        assert ' style="' not in markup, template.name
-        # ...and nothing wears the class htmx paints, which the config below stops it painting.
-        assert "htmx-indicator" not in markup, template.name
-    # ...and each asset the base page asks for is served, htmx included.
+    served = enriched_client.get(path)
+    assert served.status_code == 200, path
+    # Every `src` and `href` the page writes is a path on this server...
+    assert re.findall(r'(?:src|href)="(\w+:)?//[^"]*"', served.text) == [], path
+    # ...and nothing carries a style attribute. This is the trap the cost badge's decile
+    # classes exist to dodge: a wash written inline is a badge no reader ever sees.
+    assert ' style="' not in served.text, path
+    # ...and nothing wears the class htmx paints, which the config below stops it painting.
+    assert "htmx-indicator" not in served.text, path
+
+
+def test_the_frame_every_page_arrives_in_asks_only_for_assets_the_viewer_serves(
+    client: TestClient,
+) -> None:
+    """Each asset the base page names is served from this app, htmx included."""
     page = client.get("/").text
     assets = re.findall(r'(?:src|href)="(/static/[^"]*)"', page)
     assert any("htmx" in asset for asset in assets), page
     for asset in assets:
         assert client.get(asset).status_code == 200, asset
-    # Clean templates are not enough: htmx writes a `<style>` block of its own for the
-    # indicator class as it loads, which the policy blocks and the browser reports on every
-    # page. This meta is what stops it writing one — htmx merges the config before it paints.
-    (config,) = re.findall(r"<meta name=\"htmx-config\" content='([^']*)'>", page)
-    assert json.loads(config)["includeIndicatorStyles"] is False
+    # A clean page is not enough: htmx writes a `<style>` block of its own for the indicator
+    # class as it loads, which the policy blocks and the browser reports on every page. This
+    # meta is what stops it writing one — htmx merges the config before it paints. Read back
+    # through htpy's escaping: it quotes every attribute with `"` and escapes the JSON's own
+    # quotes to `&#34;`, so what the browser parses is the config and what the source holds
+    # is not.
+    (config,) = re.findall(r'<meta name="htmx-config" content="([^"]*)">', page)
+    assert json.loads(html.unescape(config))["includeIndicatorStyles"] is False
 
 
 def test_serving_the_store_leaves_it_read_only(corpus_db: Path, client: TestClient) -> None:

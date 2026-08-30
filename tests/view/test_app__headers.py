@@ -15,10 +15,10 @@ from fastapi.testclient import TestClient
 from hyphae.analyze import queries
 from hyphae.view import app as view_app
 from hyphae.view import columns as view_columns
+from hyphae.view import components
 from hyphae.view import format as fmt
 from hyphae.view.app import build_app
 from hyphae.view.labels import LABELS
-from hyphae.view.templating import TEMPLATES
 from tests.conftest import (
     MAIN,
     SPINE,
@@ -90,27 +90,40 @@ def test_a_header_labels_its_facts_in_words(client: TestClient) -> None:
 
 
 def test_every_fact_a_header_asks_for_has_a_label() -> None:
-    """The label registry is closed over the templates: no extra entries, and no missing ones.
+    """The label registry is closed over the components: no extra entries, and no missing ones.
 
     A header field with no label would reach a reader as a column name, which is the thing
     `LABELS` exists to stop, and an entry nothing asks for is a word nobody sees. Read off the
-    templates, the panes and the log's column table rather than listed here, so a fact added
+    components, the panes and the log's column table rather than listed here, so a fact added
     to any of them lands in this check. The panes are a source because a previewed value is
-    labelled by the name the route passed it under, which no template holds; the column table
-    is one because a children log heads itself from a variable, which no regex over a template
-    can see. Every module of the view package is read rather than `app.py` alone, so a pane
-    that moves to a module of its own keeps its previews in the check.
+    labelled by the name the route passed it under, which no component names; the column table
+    is one because a children log heads itself from a variable, which no regex over a source
+    file can see. Every module of the view package is read rather than `app.py` alone, so a
+    pane that moves to a module of its own keeps its previews in the check.
+
+    A source scan and not a render, unlike its neighbours: a label a component asks for and no
+    page reaches would go unseen either way, but a missing one crashes on `LABELS`'s own
+    `KeyError` the moment a page does reach it. What this adds is the other half — a word in
+    the registry that nothing asks for.
     """
     asked = {
         name
-        for path in TEMPLATES.rglob("*.html")
-        for name in re.findall(r"(?:parts\.fact|label)\('([a-z_]+)'", path.read_text())
+        for path in Path(components.__file__).parent.rglob("*.py")
+        for name in re.findall(
+            r"""(?:fact|label)(?:led)?\(\s*(?:name=)?["']([a-z_]+)""", path.read_text()
+        )
     }
     previewed = {
         name
-        for path in Path(view_app.__file__).parent.glob("*.py")
+        for path in Path(view_app.__file__).parent.rglob("*.py")
         for name in re.findall(r'detail_of\(\s*"([a-z_]+)"', path.read_text())
     }
+    # Both scans walk the package rather than one directory of it, and both have to find
+    # something: a scan that matched nothing would agree with the registry by saying nothing,
+    # so a `detail_of` call that moved under `components/` — where the first glob used not to
+    # reach — would drop out of the check instead of reding it.
+    assert asked, "no component asks for a label, so the registry has no subject"
+    assert previewed, "no pane previews a value, so half this check has no subject"
     headed = {column.field for shape in view_columns.COLUMNS.values() for column in shape}
     assert asked | previewed | headed == set(LABELS)
 

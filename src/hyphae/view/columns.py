@@ -4,8 +4,8 @@ A pane lists one kind of child at a time, and each kind is read by different col
 tells two turns apart is not what tells two tool calls apart. This module is that table, plus
 the marks a column head and a node's own kind both carry (`view/nodes.py:GLYPHS`).
 
-The templates read `COLUMNS` as a global and `nodes.spanned` counts it; nothing here knows what
-a node is, so the table can be read by anything that renders a row.
+The log components read `COLUMNS` and `nodes.spanned` counts it; nothing here knows what a node
+is, so the table can be read by anything that renders a row.
 """
 
 from enum import StrEnum

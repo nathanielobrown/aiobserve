@@ -17,7 +17,17 @@ from hyphae.view import bounds
 from hyphae.view.app import build_app
 from hyphae.view.store import Page
 from tests.conftest import ANCESTOR, MAIN, RESUME, RESUME_LONG_RECORD, SPINE, SPINE_RUN
-from tests.view.conftest import MISSING, Planter, block, fields, inside, one, plain, values
+from tests.view.conftest import (
+    MISSING,
+    Planter,
+    block,
+    fields,
+    inside,
+    one,
+    plain,
+    reads,
+    values,
+)
 
 # The records a page opens with its own body already fetched, in document order. Read off the
 # start tag rather than through `inside`, because what says a record is open is `open` itself —
@@ -173,17 +183,29 @@ def test_a_record_row_shows_a_preview_and_the_length_it_was_cut_from(
         [RESUME, MAIN, str(RESUME_LONG_RECORD)],
     )
     assert len(stored) > queries.RECORD_PREVIEW * 10
-    row = fields(
-        client.get(
-            f"/session/{RESUME}/thread/{MAIN}/records", params={"after": RESUME_LONG_RECORD - 1}
-        ).text,
-        "data-record",
-        str(RESUME_LONG_RECORD),
-    )
+    page = client.get(
+        f"/session/{RESUME}/thread/{MAIN}/records", params={"after": RESUME_LONG_RECORD - 1}
+    ).text
+    row = fields(page, "data-record", str(RESUME_LONG_RECORD))
     # Through the same formatter every count on a page goes through. This record is the one
     # recorded value long enough to tell the two spellings apart: 3,054 against 3054.
     assert row["raw_chars"] == f"{len(stored):,}"
     assert len(row["raw_head"]) <= queries.RECORD_PREVIEW
+    # And the row's five values read as five, not as one long word. Only the line number carries
+    # a margin here — `ol.records li` is no flex row (`view/static/style.css`) — so the spaces
+    # between the type, the time, the length and the preview are all that hold them apart.
+    said = reads(page, "data-record", str(RESUME_LONG_RECORD))
+    assert said.startswith(
+        " ".join(
+            [
+                str(RESUME_LONG_RECORD),
+                row["type"],
+                row["timestamp"],
+                f"{row['raw_chars']} chars",
+                " ".join(row["raw_head"].split()),
+            ]
+        )
+    ), said
 
 
 def test_every_number_the_records_browser_prints_carries_its_separators(

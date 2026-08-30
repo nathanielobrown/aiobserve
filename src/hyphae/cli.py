@@ -115,7 +115,7 @@ def _view_arguments(subcommand: argparse.ArgumentParser) -> None:
     subcommand.add_argument(
         "--dev",
         action="store_true",
-        help="Reload the open page when a template or a stylesheet is saved",
+        help="Reload the open page when a component or a stylesheet is saved",
     )
 
 

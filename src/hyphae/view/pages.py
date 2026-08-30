@@ -16,6 +16,7 @@ from hyphae.view.browse import (
     header_bound,
 )
 from hyphae.view.citation import QUERY_URL, cited
+from hyphae.view.components import pages as components
 from hyphae.view.knobs import (
     checked,
 )
@@ -25,7 +26,7 @@ from hyphae.view.store import (
     page_rows,
     paged,
 )
-from hyphae.view.templating import Viewer
+from hyphae.view.viewer import Viewer
 
 
 def routes(viewer: Viewer) -> list[BaseRoute]:
@@ -33,7 +34,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
     router = APIRouter()
 
     @router.get("/session/{session_id}/errors")
-    def errors_page(request: Request, session_id: str) -> Response:
+    def errors_page(session_id: str) -> Response:
         """Every failed tool call of one session, in the order they happened.
 
         Not a node page: a failure is a property of a tool call rather than a place in the
@@ -56,15 +57,14 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 if held
                 else "No session with that id is in this store.",
             )
-        return viewer.templates.TemplateResponse(
-            request,
-            "errors.html",
-            {
-                "session_id": session_id,
-                "listed": failed.listed,
-                "cut": failed.cut,
-                "citations": {named.value: cited(named, bound) for named, bound in failed.ran},
-            },
+        return viewer.html(
+            components.errors_page(
+                session_id=session_id,
+                listed=failed.listed,
+                cut=failed.cut,
+                citations={named.value: cited(named, bound) for named, bound in failed.ran},
+                dev=viewer.dev,
+            )
         )
 
     @router.get(f"{QUERY_URL}/{{query_name}}")
@@ -77,25 +77,26 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         """
         if query_name not in manifest.QUERIES:
             raise HTTPException(404, "No query by that name ships with this build.")
-        return viewer.templates.TemplateResponse(
-            request,
-            "query.html",
-            # Whatever the citation carried, printed back rather than bound to anything: this
-            # page runs no query, so a binding here is a fact about the page that sent you.
-            {
-                "name": query_name,
-                "sql": queries.load(query_name),
+        statement = queries.load(query_name)
+        return viewer.html(
+            components.query_page(
+                name=query_name,
+                sql=statement,
                 # What a shell has to run first, where the statement calls a library macro:
                 # both consumers install these, and a reader pasting the statement alone has
                 # no way to find out why the catalog does not know the name.
-                "macros": macros.needed_by(queries.load(query_name)),
-                "bindings": dict(request.query_params),
-            },
+                macro_setup=macros.needed_by(statement),
+                # Whatever the citation carried, printed back rather than bound to anything:
+                # this page runs no query, so a binding here is a fact about the page that
+                # sent you. It is the one place a request's own text reaches rendering, and it
+                # crosses the seam as plain data rather than as the request.
+                bindings=dict(request.query_params),
+                dev=viewer.dev,
+            )
         )
 
     @router.get("/session/{session_id}/thread/{source}/records")
     def records_page(
-        request: Request,
         session_id: str,
         source: str,
         after: int = queries.FIRST_PAGE,
@@ -129,22 +130,32 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         # click from its own fetch, because a reader who paged here asked for no such thing.
         first = page.rows[0]
         opened = first["line_no"] if first["raw_chars"] <= bounds.OPENED_RECORD_CHARS else None
-        return viewer.templates.TemplateResponse(
-            request,
-            "records.html",
-            {
-                "session_id": session_id,
-                "source": source,
-                "page": page,
-                "size": size,
-                "opened": opened,
-                "citations": {Page.RECORDS.value: cited(Page.RECORDS, bound)},
-            },
+        return viewer.html(
+            components.records_page(
+                session_id=session_id,
+                source=source,
+                rows=[
+                    components.RecordRow(
+                        line_no=row["line_no"],
+                        type=row["type"],
+                        timestamp=row["timestamp"],
+                        raw_chars=row["raw_chars"],
+                        raw_head=row["raw_head"],
+                    )
+                    for row in page.rows
+                ],
+                matched=first["matched_records"],
+                opened=opened,
+                after=page.after,
+                more=page.more,
+                size=size,
+                citations={Page.RECORDS.value: cited(Page.RECORDS, bound)},
+                dev=viewer.dev,
+            )
         )
 
     @router.get("/session/{session_id}/offload/{offload_name:path}")
     def offload_page(
-        request: Request,
         session_id: str,
         offload_name: str,
         after: int = 0,
@@ -170,18 +181,24 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         if not rows:
             raise HTTPException(404, "No offloaded result of that name is in this session.")
         row = rows[0]
-        served = after + len(row["chunk"])
-        return viewer.templates.TemplateResponse(
-            request,
-            "offload.html",
-            {
-                "session_id": session_id,
-                "row": row,
-                "size": size,
+        file = components.OffloadFile(
+            name=row["name"],
+            size_bytes=row["size_bytes"],
+            content_chars=row["content_chars"],
+            lossy_decode=row["lossy_decode"],
+            chunk=row["chunk"],
+        )
+        served = after + len(file.chunk)
+        return viewer.html(
+            components.offload_page(
+                session_id=session_id,
+                file=file,
                 # Where the next chunk starts, or None when this one reached the end.
-                "after": served if served < row["content_chars"] else None,
-                "citations": {Page.OFFLOAD.value: cited(Page.OFFLOAD, bound)},
-            },
+                after=served if served < file.content_chars else None,
+                size=size,
+                citations={Page.OFFLOAD.value: cited(Page.OFFLOAD, bound)},
+                dev=viewer.dev,
+            )
         )
 
     return router.routes

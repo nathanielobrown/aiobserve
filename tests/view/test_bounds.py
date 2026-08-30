@@ -36,19 +36,21 @@ from tests.conftest import (
 )
 from tests.view.budgets import (
     ESCAPED_CHAR_BYTES,
+    EXACT_PIN,
     EXPANSION_BYTES,
     FAT,
     MARKED_CHAR_BYTES,
-    MEASURED_ERRORS_CHROME,
     MEASURED_LIST_CHROME,
-    MEASURED_PROJECTS_CHROME,
     NODE_BYTES,
     PAGE_BYTES,
-    worst_error_row_bytes,
+    exact_pins,
+    fits,
+    worst_errors_page_bytes,
     worst_expansion_bytes,
     worst_node_bytes,
-    worst_project_row_bytes,
-    worst_record_bytes,
+    worst_projects_page_bytes,
+    worst_records_page_bytes,
+    worst_session_list_bytes,
     worst_session_row_bytes,
 )
 from tests.view.conftest import (
@@ -323,7 +325,7 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     assert QUERIES["view_session_errors"].params["errors"].default == 100
     # Every ceiling is projected at the largest page a URL can ask for, because a size is
     # something a reader types.
-    assert bounds.RECORDS.ceiling * worst_record_bytes() < PAGE_BYTES
+    assert worst_records_page_bytes() < PAGE_BYTES
     # And the record that page opens for a reader who did not click it, which is priced as a
     # page rather than as the per-value fetch it goes to: every character its own token, plus
     # the indentation a JSON record gains, which is whitespace and written out bare.
@@ -332,7 +334,7 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     # The list is the page a corpus grows, so its ceiling is the widest page a URL can ask for
     # plus the chrome that rides every page — both bound by construction now, not by how long
     # the titles this corpus happens to hold are.
-    assert MEASURED_LIST_CHROME + bounds.SESSIONS.ceiling * worst_session_row_bytes() < PAGE_BYTES
+    assert worst_session_list_bytes() < PAGE_BYTES
     # And it is the most rows that fit, not merely some number that does: the ceiling is
     # derived from the row's cost, so a row that grew has to move it rather than eat the slack
     # silently. The two together are what make `bounds.SESSIONS` a measurement — an upper bound
@@ -344,13 +346,11 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     )
     # The landing page grows the same way — a project per repository the corpus records — and
     # its ceiling is not a size a URL carries: a reader picks a project rather than paging.
-    assert (
-        MEASURED_PROJECTS_CHROME + bounds.PROJECTS.ceiling * worst_project_row_bytes() < PAGE_BYTES
-    )
+    assert worst_projects_page_bytes() < PAGE_BYTES
     # And a session's errors list, which grows the way both of those do — nothing about a
     # session caps how often its tools fail — and is not a size a URL carries either: a reader
     # jumps to a failure rather than paging through them.
-    assert MEASURED_ERRORS_CHROME + bounds.ERRORS.ceiling * worst_error_row_bytes() < PAGE_BYTES
+    assert worst_errors_page_bytes() < PAGE_BYTES
     # And the node page, the one page every node URL serves: the NavTree a reader walks down the
     # left, and the pane beside it. Its three sizes are each their own ceiling, so this is the
     # widest response any node URL can be asked for.
@@ -392,6 +392,32 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
         "OPENED_RECORD_CHARS",
         "NAV_TREE_ROW_BYTES",
     }
+
+
+def test_a_pin_a_page_no_longer_reaches_passes_the_everyday_run_and_reds_the_exact_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The mode that turns re-pinning into something a run reds on rather than a step to remember.
+
+    Every measured pin above is read as a ceiling, which is what lets an everyday change make a
+    page smaller without re-pinning the page — and is also how a constant quietly stops
+    describing what it measured. A change that moves bytes on purpose runs the suite under
+    `HYPHAE_PIN_EXACT=1`, where the same pin has to be the measurement, and re-pins whatever the
+    run names. That is the run the conversion to components made against every constant in
+    `budgets.py`.
+    """
+    # A page that came in 100 B under its pin. The everyday run has nothing to say about it...
+    monkeypatch.delenv(EXACT_PIN, raising=False)
+    assert not exact_pins()
+    assert fits(measured=8_896, budget=8_996)
+    # ...and the exact run reds on it, naming both numbers through the leaf that called it.
+    monkeypatch.setenv(EXACT_PIN, "1")
+    assert exact_pins()
+    assert not fits(measured=8_896, budget=8_996)
+    # The pin that run would write instead is the measurement, and it passes both ways.
+    assert fits(measured=8_896, budget=8_896)
+    monkeypatch.delenv(EXACT_PIN)
+    assert fits(measured=8_896, budget=8_896)
 
 
 def limits(sql: str) -> list[str]:

@@ -46,8 +46,8 @@ HEADING = re.compile(r"<h2[^>]*>\s*([^<]+?)\s*</h2>")
 COUNTED = ("sessions", "session_enrichments", "agent_run_enrichments", "turn_enrichments")
 
 # How long ago something happened, as a page prints it. The one cell on any page whose text is
-# a reading of the clock rather than of the store — `sessions.html` and `projects.html` are the
-# only templates that reach the `ago` filter.
+# a reading of the clock rather than of the store — the session list and the projects page are
+# the only pages that print one.
 AGO = re.compile(r'<span data-field="ago"[^>]*>\s*([^<]*?)\s*</span>')
 
 # The pages a frozen clock has to hold still: the two that print ages, and a node page, which
@@ -113,6 +113,9 @@ def test_the_gallery_cannot_be_pointed_at_a_store() -> None:
     it was called — and the environment is not read at all.
     """
     assert inspect.signature(serve.main).parameters == {}
+    # And the factory a reload worker imports, which is the second entry point and the one a
+    # store path would arrive at most quietly — a fresh interpreter with nobody watching it.
+    assert inspect.signature(serve.dev_gallery).parameters == {}
     assert vars(serve.parser().parse_args([])) == {"port": serve.PORT}
     assert serve.parser().parse_args(["--port", "9001"]).port == 9001
     # A store path has no way in, however it is spelled: argparse exits on an option it does
@@ -132,8 +135,8 @@ def test_the_gallery_is_a_dev_viewer(gallery: TestClient) -> None:
     What the stream then does is pinned in `tests/view/test_dev.py` over the same router; the
     obligation here is only that the gallery is the app that carries it.
     """
-    assert gallery.get(serve.INDEX).content.count(TAG) == 1
-    assert gallery.get("/").content.count(TAG) == 1
+    for page in (gallery.get(serve.INDEX).content, gallery.get("/").content):
+        assert page.count(TAG) == 1
     assert RELOAD_URL in declared(gallery)
 
 
@@ -207,6 +210,42 @@ def test_the_clock_the_gallery_freezes_to_is_read_out_of_the_corpus(
     with duckdb.connect(str(newer)) as store:
         store.execute("UPDATE sessions SET ended_at = ended_at + INTERVAL 30 DAY")
     assert serve.corpus_now(newer) == latest[0] + dt.timedelta(days=30)
+
+
+# Builds a whole store in a fresh interpreter, which is the only place a reload worker's clock
+# is observable — in this process `fmt.utcnow` is already whatever the last gallery left.
+@pytest.mark.slow
+def test_a_reload_worker_builds_the_gallery_with_the_corpus_clock_frozen(
+    enriched_db: Path,
+) -> None:
+    """A gallery a save restarted reads its pages against the same instant the first one did.
+
+    The freeze belongs to the factory rather than to `main`, because `main` is the parent and
+    the pages are served by a child that re-imports this module on every save. A freeze left in
+    the parent would hold for one launch and be gone from every page after the first edit.
+    """
+    # The clock it froze to, and where it put the store it read that off — the second because
+    # a worker cleans up nothing: the parent that started it does, and here that is `uv`.
+    probe = (
+        "import os;"
+        " import hyphae.view.format as fmt;"
+        " import tests.gallery.serve as gallery;"
+        " gallery.dev_gallery();"
+        " print(fmt.utcnow().isoformat(), gallery.scratch_dir(os.getppid()))"
+    )
+    built = subprocess.run(
+        ["uv", "run", "python", "-c", probe],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=True,
+    )
+    frozen, scratch = built.stdout.split()
+    shutil.rmtree(scratch, ignore_errors=True)
+    # The worker builds its own store from the fixtures, so the instant it froze to is the one
+    # this store's newest session ended at — read here from the fixture the tier shares.
+    assert frozen == serve.corpus_now(enriched_db).isoformat()
 
 
 def test_the_viewer_the_package_ships_keeps_its_own_clock(

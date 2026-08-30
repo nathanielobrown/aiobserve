@@ -1,8 +1,8 @@
 """How a page says what it ran: the line a reader re-runs, and the link to the query page.
 
 Every footer in the viewer carries one. The page composes its bindings, `cited` writes them
-both ways, and `_parts.html:footer` prints them — so what the comment says was bound and what
-the link binds are one thing (`docs/viewer.md`).
+both ways, and `view/components/citation.py` prints them — so what the comment says was bound
+and what the link binds are one thing (`docs/viewer.md`).
 """
 
 from collections.abc import Mapping

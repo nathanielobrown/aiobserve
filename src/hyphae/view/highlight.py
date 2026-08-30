@@ -8,7 +8,7 @@ source, never a rendering of it: a tool result is evidence, and it prints as it 
 character for character, which is what `_EXACT` and `_run` are for.
 
 The markup is Pygments' with `nowrap`, so what comes back is a run of classed spans and the
-template owns the `<pre>` around them. Classes rather than inline colors because the policy in
+component owns the `<pre>` around them. Classes rather than inline colors because the policy in
 `app.CSP` allows no `style` attribute; `static/pygments.css` is where they are painted.
 
 Escaping is Pygments' own — it escapes `&`, `<`, `>`, `"` and `'` before it writes a token —
@@ -51,7 +51,7 @@ class _PlainWhitespace(Filter):
 
 
 class Syntax(StrEnum):
-    """The syntaxes the viewer marks up, which is also what a template may ask for."""
+    """The syntaxes the viewer marks up, which is also what a component may ask for."""
 
     JSON = "json"
     SQL = "sql"
@@ -140,7 +140,7 @@ class _ShortClasses(HtmlFormatter[str]):
         return self.classprefix + STANDARD_TYPES[named] if named is not None else ""
 
 
-# No wrapper: the `<pre>` and its `data-field` belong to the template, and a formatter that
+# No wrapper: the `<pre>` and its `data-field` belong to the component, and a formatter that
 # brought its own `<div class="highlight">` would put a second box around every value.
 _FORMATTER = _ShortClasses(nowrap=True)
 

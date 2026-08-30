@@ -34,6 +34,7 @@ from hyphae.view.builders import (
     unattached_node,
     unattributed_node,
 )
+from hyphae.view.components.nav_tree import NavTreeRow
 from hyphae.view.enrichment import Descriptions
 from hyphae.view.nodes import (
     Kind,
@@ -92,25 +93,6 @@ class Level(NamedTuple):
 
     nodes: list[Node]
     ran: Ran
-
-
-@dataclass(frozen=True)
-class NavTreeRow:
-    """One line of the NavTree: a node at its depth, or the tail standing for what a cap cut."""
-
-    node: Node
-    depth: int
-    selected: bool
-    # Whether this row is a step of the open path above the selection: the stylesheet clamps
-    # those at the top of the scroller, so a reader deep in a level sees what they are inside.
-    ancestor: bool
-    # On a tail row, how many of `node`'s children the cap left out. Zero on a node's own row,
-    # which is what tells the two apart.
-    cut: int = 0
-    # On a tail row, the key of the child the open path descends through, when this level holds
-    # one. The row's own fetch carries it: the cap keeps that child whatever its place in the
-    # level, so the fetch has to know it to leave it out of what it sends back.
-    opened: str | None = None
 
 
 class NavTree(NamedTuple):

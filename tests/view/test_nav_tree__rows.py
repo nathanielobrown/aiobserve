@@ -283,9 +283,9 @@ def test_a_row_pairs_its_depth_with_the_key_in_the_same_tag() -> None:
     Every leaf here reads the NavTree through that pair, and the tag boundary is the whole of what
     it rests on: a tail row carries a depth and no key — the leaf above builds one — so a pair
     that could span `>` would hand it the next row's key and every level would read one long.
-    How a tag is laid out belongs to the formatter (`mise run format-html`), which today
-    neither reorders these attributes nor writes anything between them; the first case is
-    invented for exactly that reason, standing for a layout djLint is free to produce.
+    How a tag is laid out belongs to the component that writes it, which today names these
+    attributes in this order and puts nothing between two of them; the first case is invented
+    for exactly that reason, standing for a layout a row is free to grow into.
     """
     apart = '<li class="row node" data-depth="2" data-selected="turn:a" data-nav-tree="turn:a">'
     assert rows(apart) == [(2, "turn:a")]

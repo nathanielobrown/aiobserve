@@ -10,11 +10,17 @@ dependencies = [
   "python-dotenv>=1.1", # reads the OTLP backends' ingest keys out of .env, which is gitignored
   "fastapi>=0.115", # the trace viewer's routes, and the test client the viewer tier drives
   "uvicorn>=0.34", # serves the viewer on localhost; nothing here is deployed
-  "jinja2>=3.1", # the viewer's templates, autoescaping every value a transcript wrote
+  # The viewer's components: markup as typed Python functions, which pyrefly checks and a
+  # template cannot be. It escapes every string child and every attribute value — an attribute
+  # even when the value is already a `Markup`, which is why no component writes markup into one
+  # (`.claude/rules/viewer-ui.md`). A floor at 26.5 because that is the release the escaping
+  # behaviour was read off and pinned in `tests/view/test_components.py`.
+  "htpy>=26.5",
   # Renders a transcript's markdown with HTML passthrough and the image rule off — see
   # `view/render.py`, which is the only place the reader is configured.
   "markdown-it-py>=3.0",
-  # Jinja's escaping, used directly: `view/render.py` returns HTML it has escaped itself.
+  # `Markup`, the one opt-out from htpy's escaping: `view/render.py` returns HTML it escaped
+  # itself, and htpy passes a `Markup` child through untouched.
   "markupsafe>=3.0",
   # The OTLP wire types only — `TracesData` and `ExportTraceServiceResponse`. Deliberately
   # not `opentelemetry-sdk`: its BatchSpanProcessor queue drops spans silently, and its
@@ -48,15 +54,10 @@ dev = [
   # Exact, not a floor: a ruff release adds rules to the groups selected below, so an upgrade
   # is a change to what the gate demands. It lands when someone bumps this line.
   "ruff==0.16.1",
-  # The viewer's HTML formatter — `mise run format-html`, and the binary VS Code runs on save
-  # (`.vscode/settings.json`). Exact for ruff's reason and one more: it reflows markup no test
-  # here pins byte for byte, so a release's output lands when someone bumps this line and
-  # re-reads the pages.
-  "djlint==1.44.2",
   # Mutation testing — `mise run mutate`. Answers what a green suite cannot: whether a leaf
   # would notice the code being wrong. Outside `check`, because it costs a test run per mutant.
   "mutmut>=3.7",
-  # Watches the templates and the stylesheets behind `hp view --dev` (`view/dev.py`).
+  # Watches the stylesheets behind `hp view --dev` (`view/dev.py`).
   # A dev-group dependency deliberately: the shipped viewer never imports it, so `--dev` in a
   # checkout without these deps fails at startup rather than serving a loop that never fires.
   "watchfiles>=1.0",
@@ -175,22 +176,6 @@ ban-relative-imports = "all"
 # around it. Markdown is excluded above, so this reaches docstrings only.
 docstring-code-format = true
 
-# The viewer's templates and `tests/gallery/index.html` — `mise run format-html` writes what
-# `format-html-check` gates and VS Code runs on save. Formatter only: djLint's linter wants
-# `{{ url_for() }}` for every internal link, and this viewer builds its URLs in
-# `src/hyphae/view/nodes.py` on purpose.
-[tool.djlint]
-# Jinja, not HTML: this is what makes `{% %}` a tag djLint indents rather than text it reflows,
-# and what keeps `{%- -%}` intact.
-profile = "jinja"
-# Two, not djLint's four. The templates and the stylesheet beside them are written at two, and
-# a NavTree row nested six deep would otherwise start past column 24.
-indent = 2
-# Everything else stays default. An unknown key here is ignored silently, unlike `aigarden.toml`
-# and `mise.toml`, so a typo turns a setting off and says nothing. djLint also reads an
-# `.editorconfig` if one appears; this repo has none, and an `[*.html]` section added later must
-# agree with `indent` above or this block stops deciding.
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # A hung test with no ceiling burns the whole run and prints no failure line.
@@ -226,8 +211,23 @@ markers = [
 # line. Config keys are 3.x's: `paths_to_mutate` and `tests_dir` are the deprecated 2.x names.
 source_paths = ["src/hyphae"]
 # The suite is the oracle, so a mutant that survives is a gap in it. `-x` stops at the first
-# test that catches the mutant, which is all a kill needs.
-pytest_add_cli_args = ["-x", "-p", "no:cacheprovider"]
+# test that catches the mutant, which is all a kill needs. The three deselected leaves cannot
+# pass from the copy, and each would red the baseline before a single mutant ran: the first two
+# read the repository as a git checkout and as a mise project, which `mutants/` is neither, and
+# the third reads component source, which mutmut rewrites — every function becomes a family of
+# `x_name__mutmut_N` variants taking `*args, **kwargs`, exactly what the signature floor forbids.
+# Dropping that one costs the sweep its floor, so a mutant only it would catch survives here.
+pytest_add_cli_args = [
+  "-x",
+  "-p",
+  "no:cacheprovider",
+  "--deselect",
+  "tests/tools/test_gen_layout.py::test_nothing_is_named_as_left_out_that_the_repo_no_longer_holds",
+  "--deselect",
+  "tests/tools/test_mise_tasks.py::test_the_chromatic_upload_refuses_to_run_on_an_empty_token",
+  "--deselect",
+  "tests/view/test_components.py::test_every_component_clears_the_signature_floor",
+]
 # mutmut copies `src`, `tests` and `pyproject.toml` and nothing else, so a test that reads a
 # repo file reads it out of `mutants/` and finds it missing. The stylesheet gate in
 # `tests/view/test_query.py` highlights this repo's own prose, task lines and hook scripts:
@@ -235,9 +235,23 @@ pytest_add_cli_args = ["-x", "-p", "no:cacheprovider"]
 # reaches by glob, which goes quietly empty — it passes today either way, but only over the
 # commands that are left. mutmut skips a path that does not exist just as quietly, so check
 # `mutants/` holds what this list promises rather than trusting a green run.
-# `tools/` is here because five test modules import it, and `aigarden.toml` because the
-# config test reads it.
-also_copy = ["mise.toml", "docs", ".claude/hooks", "tools", "aigarden.toml"]
+# `tools/` is here because five test modules import it, `aigarden.toml` because the
+# config test reads it, and `.github` because three workflow leaves do. `README.md` is here because `pyproject.toml` names it as the readme:
+# without it `uv run` cannot build the copied project, so any test that shells out to `uv`
+# dies before it runs — the gallery's reload-worker leaf does. `plans` and `reports` are here
+# because `aigarden.toml` names them and its config test asserts every pattern still matches
+# something; a directory missing from the copy reads as a pattern matching nothing.
+also_copy = [
+    ".github",
+    "mise.toml",
+    "docs",
+    ".claude/hooks",
+    "tools",
+    "aigarden.toml",
+    "README.md",
+    "plans",
+    "reports",
+]
 
 [tool.pyrefly]
 # Strict is the base: it adds the checks that catch an implicit `Any` slipping through an
@@ -296,6 +310,20 @@ untyped-import = false
 # The containers these lambdas sit in are annotated, which is where the shape is stated.
 implicit-any-lambda = false
 
+# The gallery index is the one page composed outside `components/`, so it meets the same
+# recursive-alias bug, for the same reason and with the same expiry as the block two below.
+# A file matches one sub-config — the first — so this sits ahead of `tests/**` and restates
+# what that block turns off; keep the four in step with it.
+[[tool.pyrefly.sub-config]]
+matches = "tests/gallery/**"
+
+[tool.pyrefly.sub-config.errors]
+bad-index = false
+implicit-any-empty-container = false
+implicit-any-type-argument = false
+implicit-any-parameter = false
+unannotated-return = false
+
 # Tests, where an empty literal is usually a case rather than a container that outlives the
 # line: `({}, {"thread": MAIN})` says "no arguments, then these" and annotating it says less.
 [[tool.pyrefly.sub-config]]
@@ -309,3 +337,23 @@ implicit-any-parameter = false
 # This lifts the rule off the whole tree, fixtures included — but a fixture's return type is
 # what the tests taking it read, and every fixture here annotates one already.
 unannotated-return = false
+
+# The viewer's components, where one error kind is off and everything else pyrefly does stays on.
+[[tool.pyrefly.sub-config]]
+matches = "src/hyphae/view/components/**"
+
+[tool.pyrefly.sub-config.errors]
+# htpy's child parameter is a recursive type alias — `Node` names itself inside `Iterable`,
+# `Callable`, `AsyncIterable` and `Awaitable` — and pyrefly cannot decide it, so *every* element
+# written as a child of another element reds: `htpy.nav[htpy.a(href="/")["x"]]` is the whole
+# repro, on 1.2.0 and on 1.3.0.dev3 alike, at `default` severity as well as `strict`. Turning the
+# kind off here rather than per line, because it is not a line: it is the package's one idiom.
+#
+# What it costs is bounded — the only subscripts under `components/` are htpy's child brackets,
+# and a bad child still fails loudly at render, where htpy raises `TypeError` and the suite
+# renders every component. Everywhere the type-safety goal is actually cashed — signatures,
+# typed rows, `match`/`assert_never` — pyrefly is untouched.
+#
+# Delete this block when pyrefly can decide the alias. `tests/view/test_components.py` holds a
+# canary that reds on the release that makes it possible, so nobody has to remember.
+bad-index = false

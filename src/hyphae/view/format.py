@@ -1,6 +1,6 @@
-"""How the pages print numbers and times. Registered as Jinja filters by `app.build_app`.
+"""How the pages print numbers and times.
 
-Every one of these takes None, because a store column that can be NULL reaches the template
+Every one of these takes None, because a store column that can be NULL reaches a component
 as None and an empty cell says less than a dash.
 """
 
@@ -79,6 +79,15 @@ def cut(value: str, size: int) -> str:
 def text(value: str | None) -> str:
     """A string column as a cell: whatever the store holds, or the dash a NULL prints."""
     return ABSENT if value is None else value
+
+
+def flag(value: bool) -> str:
+    """A boolean column as a cell, in the words the pane has always printed it in.
+
+    Its own function because htpy renders `True` as nothing at all — a flag handed straight to
+    an element is an empty `<dd>` under a label saying a fact is there.
+    """
+    return str(value)
 
 
 def path(value: str | None, home: str) -> str:
