@@ -19,6 +19,7 @@ from hyphae.analyze.runner import CORPUS_RELATIONS
 from hyphae.enrich.levels import LEVELS
 from hyphae.export.duckdb import TABLES
 from hyphae.view.manifest import VIEW_QUERIES
+from hyphae.view.store import SHOWN
 from tests.analyze.conftest import AS_OF_WHOLE, QueryRunner
 from tests.conftest import (
     ANCESTOR,
@@ -269,9 +270,16 @@ def declared_parameters(name: str) -> set[str]:
 AT_WIDTH = re.compile(r"substr\((.*?),\s*1,\s*\$(\w+)\s*\)")
 
 
-def cut_at_width(name: str) -> set[str]:
-    """Every value one query cuts *at* a width by hand, spelled as the query spells it."""
-    return {argument.strip() for argument, _ in AT_WIDTH.findall(" ".join(statement(name).split()))}
+def cut_at_width(sql: str) -> set[str]:
+    """Every value one statement cuts *at* a width by hand, spelled as it spells it."""
+    return {argument.strip() for argument, _ in AT_WIDTH.findall(" ".join(sql.split()))}
+
+
+# Every statement the cut protocol governs: the library's files, and the one SQL the viewer
+# composes in Python. `view/store.py:SHOWN` cuts the strings a session-list row shows, and it
+# lives outside `queries/*.sql` — so a scan that globs the query directory is blind to exactly
+# the place a hand-spelled cut is easiest to write and hardest to notice.
+CUT_SQL: dict[str, str] = {name: statement(name) for name in NAMES} | {"view/store.py:SHOWN": SHOWN}
 
 
 # Every hand-spelled `substr(value, 1, $width)` the library still holds, keyed by its query.
@@ -357,7 +365,7 @@ def test_a_citation_with_nothing_bound_ends_at_the_query_file() -> None:
     assert queries.citation("sessions", {}) == "-- queries/sessions.sql"
 
 
-@pytest.mark.parametrize("name", NAMES)
+@pytest.mark.parametrize("name", CUT_SQL)
 def test_no_query_spells_the_one_past_the_width_cut_by_hand(name: str) -> None:
     """The cut protocol is `cut(value, $width)` and nothing else, so it cannot drift.
 
@@ -368,12 +376,12 @@ def test_no_query_spells_the_one_past_the_width_cut_by_hand(name: str) -> None:
     Cutting *at* a width is the other spelling, and `HAND_CUTS` is where each one that stays is
     named — the leaf below holds that list.
     """
-    assert not re.search(r",\s*1,\s*\$\w+\s*\+\s*1\s*\)", statement(name)), (
+    assert not re.search(r",\s*1,\s*\$\w+\s*\+\s*1\s*\)", CUT_SQL[name]), (
         f"{name} writes the cut by hand: call cut(value, $width) instead"
     )
 
 
-@pytest.mark.parametrize("name", NAMES)
+@pytest.mark.parametrize("name", CUT_SQL)
 def test_every_cut_to_a_width_is_the_macro_or_a_named_exception(name: str) -> None:
     """Anything cut for a reader goes through `cut`, and every `substr` left is a decision.
 
@@ -387,7 +395,7 @@ def test_every_cut_to_a_width_is_the_macro_or_a_named_exception(name: str) -> No
     since become a `cut` is an exception standing over nothing, and the next hand-spelled cut
     would inherit it.
     """
-    assert cut_at_width(name) == HAND_CUTS.get(name, set()), (
+    assert cut_at_width(CUT_SQL[name]) == HAND_CUTS.get(name, set()), (
         f"{name} cuts at a width where HAND_CUTS does not say so: call cut(value, $width), "
         "which returns the one character past it that says there is more, or name the "
         "exception and why it is one"
