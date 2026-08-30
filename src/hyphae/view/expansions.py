@@ -22,11 +22,7 @@ from hyphae.view.components import nav_tree, node_body
 from hyphae.view.components.logs import Logged
 from hyphae.view.components.nav_tree import NavTreeRow
 from hyphae.view.enrichment import described
-from hyphae.view.knobs import (
-    carried,
-    checked,
-    viewed,
-)
+from hyphae.view.knobs import Knobs, KnobsDep
 from hyphae.view.nav_tree import Corpus, Ran, children, spread, windowed
 from hyphae.view.nodes import Kind, Ref
 from hyphae.view.store import (
@@ -156,10 +152,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         session_id: str,
         source: str,
         node_id: str,
-        nav: str = nodes.Preset.FULL,
-        kin: int = bounds.KIN.default,
-        log: int = bounds.LOG.default,
-        detail: int = bounds.DETAIL.default,
+        knobs: KnobsDep,
     ) -> Response:
         """The body of a turn, an api call, or a tool call, for an expansion in its parent.
 
@@ -190,7 +183,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
             "log_chars": queries.LOG_CHARS,
         }
         if shaped.listed is not None:
-            level[shaped.listed.size] = log
+            level[shaped.listed.size] = knobs.log
         with open_store(viewer.db) as connection:
             rows = page_rows(connection, shaped.page, **bound)
             if not rows:
@@ -219,7 +212,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
             rows[0],
             shaped.shape,
             rows[0][shaped.children] if shaped.children else None,
-            carried(nav, kin, log, detail),
+            knobs.suffix,
             ran,
             under,
         )
@@ -228,10 +221,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
     def run_body(
         session_id: str,
         run_id: str,
-        nav: str = nodes.Preset.FULL,
-        kin: int = bounds.KIN.default,
-        log: int = bounds.LOG.default,
-        detail: int = bounds.DETAIL.default,
+        knobs: KnobsDep,
     ) -> Response:
         """One agent run's body. Its own mount: a run's URL carries its id where a thread goes."""
         bound: dict[str, ParamValue] = {
@@ -258,21 +248,13 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
             rows[0],
             Shape.TURNS,
             rows[0]["turns"],
-            carried(nav, kin, log, detail),
+            knobs.suffix,
             ran,
             [],
         )
 
     def spilled(
-        session_id: str,
-        at: Ref,
-        thread: str,
-        depth: int,
-        opened: str,
-        nav: str,
-        kin: int,
-        log: int,
-        detail: int,
+        session_id: str, at: Ref, thread: str, depth: int, opened: str, knobs: Knobs
     ) -> Response:
         """The children one level's window left out: the rows a `+N more` row stands in for.
 
@@ -289,10 +271,6 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         Unbounded on purpose: what comes back is a level less a window, so a node with ten
         thousand children answers with ten thousand rows.
         """
-        preset = viewed(nav)
-        cap = checked(kin, bounds.KIN.ceiling)
-        checked(log, bounds.LOG.ceiling)
-        checked(detail, bounds.DETAIL.ceiling)
         if not 0 < depth <= bounds.DEPTH:
             raise HTTPException(400, f"A NavTree row sits between depth 1 and {bounds.DEPTH}.")
         keyed: dict[str, ParamValue] = {"session_id": session_id}
@@ -315,7 +293,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 described=described(connection, session_id, thread),
                 source=thread,
             )
-            level = children(connection, corpus, at, preset, opened or None)
+            level = children(connection, corpus, at, knobs.nav, opened or None)
         # Each row shut, and under it whatever a shut row stands: the runs it hides come back
         # with it, the way the page's own rows carry them. None of them is a step of the open
         # path — the cap keeps the child the path descends through inside the window, and this
@@ -327,13 +305,13 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
             nav_tree.lines(
                 rows=[
                     row
-                    for node in windowed(level.nodes, cap, [opened]).cut
+                    for node in windowed(level.nodes, knobs.kin, [opened]).cut
                     for row in [
                         NavTreeRow(node, depth, selected=False, ancestor=False),
                         *spread(corpus, node, depth + 1),
                     ]
                 ],
-                suffix=carried(nav, kin, log, detail),
+                suffix=knobs.suffix,
                 thread=thread,
             )
         )
@@ -346,11 +324,8 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         node_id: str,
         thread: str,
         depth: int,
+        knobs: KnobsDep,
         opened: str = "",
-        nav: str = nodes.Preset.FULL,
-        kin: int = bounds.KIN.default,
-        log: int = bounds.LOG.default,
-        detail: int = bounds.DETAIL.default,
     ) -> Response:
         """The rest of one level, under a node recorded on a thread.
 
@@ -361,7 +336,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         if kind not in set(Kind):
             raise HTTPException(404, "No level is served for that kind of node.")
         at = Ref(kind=Kind(kind), source=source, node_id=node_id)
-        return spilled(session_id, at, thread, depth, opened, nav, kin, log, detail)
+        return spilled(session_id, at, thread, depth, opened, knobs)
 
     @router.get(f"{nodes.KIN_URL}/session/{{session_id}}/{{kind}}/{{node_id}}")
     def loose_kin(
@@ -370,11 +345,8 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         node_id: str,
         thread: str,
         depth: int,
+        knobs: KnobsDep,
         opened: str = "",
-        nav: str = nodes.Preset.FULL,
-        kin: int = bounds.KIN.default,
-        log: int = bounds.LOG.default,
-        detail: int = bounds.DETAIL.default,
     ) -> Response:
         """The rest of one level, under a node that carries no thread of its own.
 
@@ -385,6 +357,6 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         if kind not in set(Kind):
             raise HTTPException(404, "No level is served for that kind of node.")
         at = Ref(kind=Kind(kind), source=None, node_id=node_id)
-        return spilled(session_id, at, thread, depth, opened, nav, kin, log, detail)
+        return spilled(session_id, at, thread, depth, opened, knobs)
 
     return router.routes
