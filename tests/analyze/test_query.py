@@ -12,7 +12,7 @@ import duckdb
 import pytest
 
 from hyphae.analyze import manifest, queries
-from hyphae.export.schema import SCHEMA_VERSION
+from hyphae.export.schema import MIGRATE_REMEDY, SCHEMA_MISMATCH_REMEDY, SCHEMA_VERSION
 from tests.analyze.conftest import AS_OF_PARTIAL, MYCELIA_SESSIONS, Output, QueryRunner, query
 from tests.conftest import (
     MAIN,
@@ -163,8 +163,17 @@ def test_an_unknown_query_or_parameter_names_what_it_did_not_recognize(
         run_query("sessions", "--project", MYCELIA, "--param", "nonsense=1")
 
 
-def test_a_store_from_another_schema_is_refused_and_sends_the_reader_to_the_guide(
-    corpus_db: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize(
+    ("held", "remedy"),
+    # One vintage a write open would carry forward, and one nothing reaches.
+    [
+        (SCHEMA_VERSION - 1, MIGRATE_REMEDY),
+        (SCHEMA_VERSION + 1, SCHEMA_MISMATCH_REMEDY),
+    ],
+    ids=["migratable", "unreachable"],
+)
+def test_a_store_from_another_schema_is_refused_with_the_remedy_that_fits_it(
+    corpus_db: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], held: int, remedy: str
 ) -> None:
     """A store these queries were not written against is refused, with what to do about it."""
     # If the store holds a schema version this build does not read — stamped onto a copy,
@@ -172,12 +181,27 @@ def test_a_store_from_another_schema_is_refused_and_sends_the_reader_to_the_guid
     path = tmp_path / "traces.duckdb"
     path.write_bytes(corpus_db.read_bytes())
     with duckdb.connect(str(path)) as connection:
-        connection.execute("UPDATE meta SET schema_version = ?", [SCHEMA_VERSION - 1])
-    # ...then the query refuses rather than reading tables it may not understand, and points
-    # at the store guide — a reader told to delete the store instead can destroy the only
-    # copy of a session Claude Code has since pruned from disk.
-    with pytest.raises(SystemExit, match=r"docs/store\.md"):
+        connection.execute("UPDATE meta SET schema_version = ?", [held])
+    # ...then the query refuses rather than reading tables it may not understand, and names
+    # the one action that fits this store. A reader told to extract into a fresh one when a
+    # migration would have done can destroy the only copy of a session Claude Code pruned.
+    with pytest.raises(SystemExit) as refused:
         query(path, capsys, "sessions", "--project", MYCELIA)
+    assert remedy in str(refused.value)
+
+
+def test_a_db_path_with_no_store_behind_it_names_the_path(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A typo in `--db` is the runner's error to report, not DuckDB's to raise."""
+    # If `--db` names a path nothing extracted to — the store is never created by a reader...
+    missing = tmp_path / "nothing.duckdb"
+    # ...then the command exits saying which path and what to run, rather than crashing out
+    # of the opener with an I/O error naming a file the operator never asked about.
+    with pytest.raises(SystemExit) as refused:
+        query(missing, capsys, "sessions", "--project", MYCELIA)
+    assert str(missing) in str(refused.value)
+    assert "hp extract" in str(refused.value)
 
 
 def test_the_store_is_opened_read_only(

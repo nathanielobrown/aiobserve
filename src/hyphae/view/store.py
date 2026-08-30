@@ -11,7 +11,7 @@ scans (`tests/view/test_bounds.py`), so the union is also the checklist.
 """
 
 from collections.abc import Generator, Mapping
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -20,7 +20,8 @@ import duckdb
 
 from hyphae.analyze import macros, queries
 from hyphae.analyze.queries import ParamValue
-from hyphae.export.schema import SCHEMA_VERSION, held_schema_version
+from hyphae.export.duckdb import open_trace_store
+from hyphae.export.schema import SchemaVersionError
 
 # DuckDB's wording when another process holds the store's write lock. Matched on text
 # because the exception type it arrives as covers every other I/O failure too.
@@ -145,28 +146,27 @@ class SchemaMoved(Exception):
 def open_store(db_path: Path) -> Generator[duckdb.DuckDBPyConnection]:
     """A read-only connection for one request, checked and closed.
 
-    Raises `StoreLocked` when a writer holds the file and `SchemaMoved` when the store was
-    re-created under the running viewer; both are checked per request rather than at startup
-    because an extract can land between two page loads.
+    The store's one opener (`export/duckdb.py`) with the viewer's own refusals over it:
+    `StoreLocked` when a writer holds the file, `SchemaMoved` when the store moved under the
+    running viewer. Both are checked per request rather than at startup because an extract
+    can land between two page loads. Only the open is translated — an error a page raises
+    while reading is the page's own.
     """
+    opened = ExitStack()
     try:
-        connection = duckdb.connect(str(db_path), read_only=True)
+        connection = opened.enter_context(open_trace_store(db_path, read_only=True))
     except duckdb.IOException as error:
         if _LOCKED in str(error):
             raise StoreLocked(str(db_path)) from error
         raise
-    try:
-        # Timestamps went in as UTC; a page rendered in the machine's local zone would print
-        # times that no citation of the same rows reproduces.
-        connection.execute("SET TimeZone='UTC'")
+    except SchemaVersionError as error:
+        # Carried whole: the opener already picked the remedy that fits this store, and a
+        # reader sent to a fresh one where a migration would have done can lose a session.
+        raise SchemaMoved(str(error)) from error
+    with opened:
         # The library's shared SQL functions, which several of the queries below call by name.
         macros.install(connection)
-        held = held_schema_version(connection)
-        if held != SCHEMA_VERSION:
-            raise SchemaMoved(f"{held or 'nothing'}")
         yield connection
-    finally:
-        connection.close()
 
 
 def fetch(

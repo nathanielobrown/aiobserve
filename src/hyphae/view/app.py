@@ -27,7 +27,6 @@ from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from hyphae.export.schema import SCHEMA_VERSION
 from hyphae.view import (
     expansions,
     fragments,
@@ -105,11 +104,9 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
 
     @app.exception_handler(SchemaMoved)
     def _moved(request: Request, exception: Exception) -> Response:
-        return viewer.error(
-            503,
-            f"The store now holds schema version {exception}, and this build reads "
-            f"{SCHEMA_VERSION}. Restart the viewer.",
-        )
+        # The opener's own sentence: it names both versions and the remedy that fits the
+        # store on disk. All the viewer adds is what to do once the store is right.
+        return viewer.error(503, f"{exception} Restart the viewer.")
 
     @app.exception_handler(StarletteHTTPException)
     def _http(request: Request, exception: Exception) -> Response:
