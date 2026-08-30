@@ -1,6 +1,6 @@
 """What ties the record models to the parser while the parser still reads dicts.
 
-Both sides here are live source — no fixtures. The parser is closed-world: `record_types.py`
+Both sides here are live source — no fixtures. The parser is closed-world: `records/registry.py`
 registers every record type, subtype and block kind it has seen and the readers crash on the
 rest. `records/` describes those same shapes for `docs/schema.md`. Nothing makes the two agree
 at runtime, so these leaves are the tie: a shape the parser learns must gain a model or a stated
@@ -17,13 +17,13 @@ from types import ModuleType
 import pytest
 
 from hyphae.extract import claude_code
-from hyphae.extract.record_types import (
+from hyphae.extract.records import blocks, field_tables, shapes
+from hyphae.extract.records.registry import (
     ArchiveRecordType,
     ContentBlock,
     RecordType,
     SystemSubtype,
 )
-from hyphae.extract.records import blocks, schema, shapes
 
 # The models side, whose source names every documented field as a literal. Reading it as parser
 # source would make "the parser reads this field" true of every field ever documented.
@@ -87,7 +87,8 @@ def test_every_registered_shape_has_a_model_or_a_stated_reason(member: str) -> N
     # kind the parser learns tomorrow lands here as an undescribed shape, and the run stops until
     # someone writes the model or writes down why there is nothing to describe.
     assert member in modelled() or member in shapes.UNMODELLED, (
-        f"`{member}` is registered in record_types.py but has no model and no entry in UNMODELLED"
+        f"`{member}` is registered in records/registry.py but has no model "
+        "and no entry in UNMODELLED"
     )
 
 
@@ -108,7 +109,7 @@ def documented_fields() -> dict[str, str]:
     """
     return {
         doc.locate[-1]: doc.path
-        for doc in schema.documentation()
+        for doc in field_tables.documentation()
         if isinstance(doc.locate[-1], str)
     }
 

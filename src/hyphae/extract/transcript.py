@@ -18,7 +18,7 @@ from pathlib import Path, PurePath
 from typing import Any, NamedTuple
 
 from hyphae.extract.pricing import SYNTHETIC_MODEL, TokenUsage, compute_cost
-from hyphae.extract.record_types import (
+from hyphae.extract.records.registry import (
     AdvisorResult,
     ArchiveRecordType,
     ContentBlock,

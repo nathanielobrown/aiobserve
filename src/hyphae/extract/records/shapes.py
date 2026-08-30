@@ -8,12 +8,6 @@ from typing import Annotated, Any, ClassVar
 
 from pydantic import Field
 
-from hyphae.extract.record_types import (
-    ArchiveRecordType,
-    ContentBlock,
-    RecordType,
-    SystemSubtype,
-)
 from hyphae.extract.records.blocks import AssistantMessage, ToolUseResult, UserMessage
 from hyphae.extract.records.evidence import (
     COMPACTION,
@@ -28,6 +22,12 @@ from hyphae.extract.records.evidence import (
     SPINE,
     Cited,
     Described,
+)
+from hyphae.extract.records.registry import (
+    ArchiveRecordType,
+    ContentBlock,
+    RecordType,
+    SystemSubtype,
 )
 
 
@@ -519,7 +519,7 @@ RECORD_MODELS: tuple[type[Record], ...] = (
 
 
 # Registered shapes no model describes, each with the reason. The drift tier holds this set to
-# the registries in `record_types.py`, so a new record type lands here or gets a model.
+# the registries in `registry.py`, so a new record type lands here or gets a model.
 UNMODELLED: dict[str, str] = {
     **{
         kind.value: "archived verbatim and read by nothing, so there is no field to describe"

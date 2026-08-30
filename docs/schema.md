@@ -14,7 +14,7 @@ The transcript-field tables under the next heading are generated. A field's mean
 
 ## Transcript records are typed JSON objects
 
-A transcript stores one JSON object per line. Each object has a `type`. `hyphae.extract.record_types` registers every type it has seen and the readers crash on unknown types. Treat that registry—not the tables below—as the current census.
+A transcript stores one JSON object per line. Each object has a `type`. `hyphae.extract.records.registry` registers every type it has seen and the readers crash on unknown types. Treat that registry—not the tables below—as the current census.
 
 ### Record identity and session context
 

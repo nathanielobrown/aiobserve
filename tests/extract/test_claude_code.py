@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 import pytest
 
 from hyphae.extract.claude_code import ClaudeCodeExtractor
-from hyphae.extract.record_types import TranscriptSchemaError
+from hyphae.extract.records.registry import TranscriptSchemaError
 from hyphae.model import MAIN_SOURCE, ApiCall, PrLink, Session, Turn
 from tests.conftest import SourceFactory
 

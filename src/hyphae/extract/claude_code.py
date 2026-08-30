@@ -5,7 +5,7 @@ reads every transcript's lines into entities (`extract/transcript.py`), and stam
 with a fingerprint that decides re-extraction.
 
 The reader below it is closed-world on purpose: every record type, every `system` subtype and
-every tag a prompt can lead with is registered in `extract/record_types.py`, and anything else
+every tag a prompt can lead with is registered in `extract/records/registry.py`, and anything else
 stops the run. What each field means, and the session that proves it, is in `docs/schema.md`.
 """
 

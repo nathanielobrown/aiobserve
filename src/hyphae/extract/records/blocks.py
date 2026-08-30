@@ -1,14 +1,13 @@
 """The blocks a `message.content` list holds, and the messages that hold them.
 
 A block model's docstring is the meaning its own table row prints, and `BLOCK` names the
-registered kind it describes, which is what ties this file to `record_types.py`'s registry.
+registered kind it describes, which is what ties this file to the registry beside it.
 """
 
 from typing import Annotated, Any, ClassVar
 
 from pydantic import Field
 
-from hyphae.extract.record_types import ContentBlock
 from hyphae.extract.records.evidence import (
     OFFLOAD,
     PARALLEL_TOOLS,
@@ -18,6 +17,7 @@ from hyphae.extract.records.evidence import (
     Cited,
     Described,
 )
+from hyphae.extract.records.registry import ContentBlock
 
 
 class Block(Described):
