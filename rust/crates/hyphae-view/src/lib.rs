@@ -17,6 +17,7 @@ pub mod errors;
 pub mod expansions;
 pub mod format;
 pub mod formatters;
+pub mod fragments;
 pub mod highlight;
 pub mod inline_markdown;
 pub mod knobs;

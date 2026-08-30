@@ -125,7 +125,7 @@ impl Kind {
     /// Whether this kind has numbers behind its row: every kind that stands for a row of the
     /// store. Only the two buckets are absent, because a bucket is a place rather than a node
     /// and there is no row under it to count.
-    fn numbered(self) -> bool {
+    pub fn numbered(self) -> bool {
         !matches!(self, Self::Unattributed | Self::Unattached)
     }
 }
