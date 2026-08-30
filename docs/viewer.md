@@ -139,6 +139,7 @@ The viewer closes its database connection after each request, and `hp extract` h
 
 - If a page loads while an extract is writing, it waits up to a second and then answers. Only a writer still holding the store after that turns into a 503 saying the store is being written; reload once the writer is done
 - If an extract starts while a page request holds the store, it waits up to ten seconds. Past that it stops, naming the store and the process holding it
+- `hp enrich` and `hp export-otlp` are the writers that do hold the store: each keeps it for its whole run, so every page is a 503 until the pass ends
 - If a re-extract changes the schema while the viewer runs, the viewer returns 503 naming both versions and the one action that fits the store on disk — migrate it by opening it for write, or extract into a fresh one. Restart the viewer afterwards
 
 The viewer fails at startup if the store is missing, its schema is unsupported, or the port is already in use.
