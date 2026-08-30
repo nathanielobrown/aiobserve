@@ -91,6 +91,16 @@ One shot, but ordered so the riskiest unknowns die first and every stage has an 
    chrono, run one node-page query. Known trap: the appender can panic on nested LIST/STRUCT
    values — if hit, fall back to prepared `INSERT` batches (the Python exporter's own shape) and
    record it here.
+   **Recorded 2026-08-30 — go.** The appender won: the DDL is flat scalars end to end, so no
+   stored column is nested and the trap never fired. Nesting lives on the *read* side instead,
+   where `view_call_header.sql` answers with a struct of a struct and a list, and
+   `duckdb::types::Value` carries it back whole — which is what makes the generic `Row` above
+   workable. The fallback would not have helped anyway: both paths bind through `ToSql`, so
+   prepared `INSERT` refuses a nested value exactly as the appender does, and refuses it as a
+   typed error rather than the expected panic. A nested column, if one is ever added, has to be
+   composed in SQL rather than bound. On 10,000 real `api_calls` rows the appender took 22ms
+   against the `INSERT` path's 1.6s, so `INSERT` stays only for the rollback shape stage 2
+   needs.
 2. **Model + extract + store.** Port `model.py` to structs; port the `Value` walk of
    `extract/transcript.py` and `extract/session_files.py` guard-for-guard; port the DDL,
    delete-then-insert transaction, and fingerprint logic of `export/duckdb.py`. The generic
@@ -130,7 +140,8 @@ One shot, but ordered so the riskiest unknowns die first and every stage has an 
   also speaks maud syntax, so a forced migration touches syntax, not architecture. Pin the
   version; vendor if it goes quiet
 - **duckdb-rs appender gaps on nested types** — stage 1 exists to hit this first; prepared
-  `INSERT` batches are the fallback
+  `INSERT` batches are the fallback. *Closed:* the gap is real but out of reach of this
+  schema, and the fallback was the wrong one — see the stage 1 record above
 - **Attribute names hypertext's tables don't know** (`data-*`, ours like `data-nav-tree`) use its
   quoted-name escape hatch; if that reads badly at scale, that's a finding for the report, not a
   blocker
