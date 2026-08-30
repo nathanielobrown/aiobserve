@@ -384,6 +384,54 @@ def test_a_failed_export_changes_nothing(db: Path, fixture_trace: TraceFactory):
         assert exporter.fingerprints() == {SPINE: "fingerprint-1"}
 
 
+def test_a_view_definition_reaches_a_reader_without_a_re_extract(
+    db: Path, fixture_trace: TraceFactory
+):
+    """A view is rebuilt from the code at every open, so editing one takes effect at once.
+
+    The definitions live in `export/duckdb.py`, but a store on disk carries a copy of the
+    text that was current when it was last extracted. A reader that answered off that copy
+    would report yesterday's rule for as long as nothing re-extracted the file.
+    """
+    trace = fixture_trace("spine", SPINE)
+    with DuckDbExporter(db) as exporter:
+        exporter.export(trace, "fingerprint-1")
+        # If the file's stored view definitions are older than the code's — the state an
+        # edit to `_live_view` leaves every store extracted before it...
+        exporter.connection.execute(
+            "CREATE OR REPLACE VIEW live_turns AS SELECT * FROM turns WHERE false"
+        )
+    assert stale_turns(db) == 0
+
+    # ...then a reader answers off the code's definition, both directly...
+    connection = open_trace_store(db, read_only=True)
+    try:
+        assert connection.execute("SELECT count(*) FROM live_turns").fetchone() == (
+            len(trace.turns),
+        )
+        # ...and through `session_rollups`, which reads the `live_*` family by name.
+        assert connection.execute(
+            "SELECT turns FROM session_rollups WHERE session_id = ?", [SPINE]
+        ).fetchone() == (len(trace.turns),)
+    finally:
+        connection.close()
+    # A reader cannot write, so it shadows the stale definition rather than repairing it...
+    assert stale_turns(db) == 0
+    # ...and the next open for write is what puts the current text back in the file.
+    open_trace_store(db, read_only=False).close()
+    assert stale_turns(db) == len(trace.turns)
+
+
+def stale_turns(path: Path) -> int:
+    """What `live_turns` answers off the definition stored in the file itself.
+
+    A plain connection, so nothing refreshes the views first: this is the question only a
+    store's own text can answer.
+    """
+    with duckdb.connect(str(path), read_only=True) as connection:
+        return connection.execute("SELECT count(*) FROM live_turns").fetchone()[0]  # type: ignore[index]
+
+
 def shape(path: Path) -> dict[str, list[str]]:
     """Every table in the file and its column names — what opening a store may not change."""
     with duckdb.connect(str(path), read_only=True) as connection:

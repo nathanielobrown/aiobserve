@@ -183,12 +183,20 @@ CREATE TABLE IF NOT EXISTS extract_state (
     extractor VARCHAR NOT NULL,
     extractor_version VARCHAR NOT NULL
 );
--- Which session gets credit for a row two sessions both hold. Ordering by start time makes
--- the ancestor win a resume pair; the id breaks a tie between sessions that opened in the
--- same millisecond.
-CREATE OR REPLACE VIEW first_seen AS
+"""
+
+
+def _first_seen_view(view: str) -> str:
+    """Which session gets credit for a row two sessions both hold.
+
+    Ordering by start time makes the ancestor win a resume pair; the id breaks a tie between
+    sessions that opened in the same millisecond.
+    """
+    return f"""
+CREATE OR REPLACE {view} first_seen AS
 SELECT id AS session_id, row_number() OVER (ORDER BY started_at, id) AS rank FROM sessions;
 """
+
 
 # Whether the table carries `replayed` — the flag slice 3 sets on a fork's copy of another
 # transcript's records. The rest of a session's countable tables carry no such copies.
@@ -201,20 +209,20 @@ _COUNTED: dict[str, bool] = {
 }
 
 
-def _live_view(table: str, replayed: bool) -> str:
+def _live_view(table: str, replayed: bool, view: str) -> str:
     """The rows of one table that count for the session whose files hold them."""
     where = " WHERE NOT replayed" if replayed else ""
-    return f"CREATE OR REPLACE VIEW live_{table} AS SELECT * FROM {table}{where};"
+    return f"CREATE OR REPLACE {view} live_{table} AS SELECT * FROM {table}{where};"
 
 
-def _corpus_view(table: str) -> str:
+def _corpus_view(table: str, view: str) -> str:
     """The same rows, minus every one an earlier session already holds.
 
     A resume copies its ancestor's records verbatim into a new session file, so the same
     natural id appears under two session ids. Counting both doubles the corpus.
     """
     return f"""
-CREATE OR REPLACE VIEW corpus_{table} AS
+CREATE OR REPLACE {view} corpus_{table} AS
 SELECT * EXCLUDE (rank, owner_rank) FROM (
     SELECT e.*, f.rank, min(f.rank) OVER (PARTITION BY e.id) AS owner_rank
     FROM live_{table} e JOIN first_seen f USING (session_id)
@@ -222,10 +230,10 @@ SELECT * EXCLUDE (rank, owner_rank) FROM (
 """
 
 
-def _rollup_view(name: str, prefix: str) -> str:
+def _rollup_view(name: str, prefix: str, view: str) -> str:
     """One row per session, counting the rows of the `prefix` family of views."""
     return f"""
-CREATE OR REPLACE VIEW {name} AS
+CREATE OR REPLACE {view} {name} AS
 SELECT
     s.id AS session_id,
     s.project_dir,
@@ -259,14 +267,32 @@ FROM sessions s;
 """
 
 
-_VIEWS = "".join(
-    [
-        *(_live_view(table, replayed) for table, replayed in _COUNTED.items()),
-        *(_corpus_view(table) for table in _COUNTED),
-        _rollup_view("session_rollups", "live"),
-        _rollup_view("corpus_rollups", "corpus"),
-    ]
-)
+def refresh_views(connection: duckdb.DuckDBPyConnection, *, read_only: bool) -> None:
+    """Rebuild every view of the store from the definitions above, on any open connection.
+
+    Every open runs this, so a definition edited here answers the next query — a store on
+    disk is never read through the text that was current when it was last extracted.
+
+    A read-only connection cannot replace a stored view, so it builds the same statements as
+    `TEMP VIEW`s instead. Those shadow the stored ones of the same name for the life of the
+    connection, including inside a stored view that names one — so a reader sees this code's
+    rules whether or not a writer has been past since they changed. It costs about 3 ms on a
+    15 GB store, which is the whole of what a reader pays for the guarantee.
+    """
+    view = "TEMP VIEW" if read_only else "VIEW"
+    # `first_seen` leads: the corpus views read it, and the rollups read those.
+    connection.execute(
+        "".join(
+            [
+                _first_seen_view(view),
+                *(_live_view(table, replayed, view) for table, replayed in _COUNTED.items()),
+                *(_corpus_view(table, view) for table in _COUNTED),
+                _rollup_view("session_rollups", "live", view),
+                _rollup_view("corpus_rollups", "corpus", view),
+            ]
+        )
+    )
+
 
 # Table name to the dataclass whose fields are its columns, in order. Every table a
 # session owns belongs here — this list drives both the insert and the delete, and
@@ -303,6 +329,9 @@ def open_trace_store(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnectio
         if not read_only:
             migrate(connection, path)
         check_version(connection, path)
+        # After the version check: a store of another vintage holds tables these views
+        # cannot bind, and its refusal has to name the version rather than a column.
+        refresh_views(connection, read_only=read_only)
     except Exception:
         # Nothing was handed out, so no `with` block will close it: a refusal that kept the
         # connection would hold DuckDB's write lock until the process ends.
@@ -330,8 +359,8 @@ class DuckDbExporter:
             migrate(self.connection, self.path)
             check_shape(self.connection, _SCHEMA)
             self.connection.execute(_SCHEMA)
-            # After the tables: every view below reads them.
-            self.connection.execute(_VIEWS)
+            # After the tables: every view reads them.
+            refresh_views(self.connection, read_only=False)
             self._stamp_schema_version()
         except Exception:
             # Nothing here was ever handed out, so no `with` block will close it: a refusal
