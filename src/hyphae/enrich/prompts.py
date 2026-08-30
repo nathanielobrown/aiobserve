@@ -1,9 +1,10 @@
-"""What each level sends the model: the instructions, and the text an item renders to.
+"""What every level sends the model: the shared instructions, and each level's render.
 
 The renders are pure — items in (`enrich/items.py`), prompt text out — so their evidence is a
 real store built from the recorded fixtures rather than a client and a network. Every size
-limit is a parameter with a default here, because a redacted fixture is two orders of
-magnitude short of the real budgets and elision could not otherwise be tested at all.
+limit is a parameter rather than a constant read here, because a redacted fixture is two
+orders of magnitude short of the real budgets and elision could not otherwise be tested at
+all; `enrich/levels.py` holds the budgets a pass really runs on.
 """
 
 import hashlib
@@ -14,8 +15,6 @@ from hyphae.enrich.items import (
     AgentRunItem,
     ApiCallRow,
     Budgets,
-    Item,
-    Level,
     SessionChild,
     SessionItem,
     ToolCallRow,
@@ -27,27 +26,6 @@ from hyphae.enrich.taxonomy import (
     Category,
     Outcome,
 )
-
-# Per level, covering what `input_hash` cannot see: the instructions and the output schema.
-# Bump one and that level re-enriches; its parents follow through the hash.
-PROMPT_VERSION: dict[Level, int] = {Level.turn: 4, Level.agent_run: 4, Level.session: 4}
-
-# What each level is looking at. The rest of the instructions is the same everywhere, so a
-# level reads differently only where it should.
-_SUBJECT: dict[Level, str] = {
-    Level.turn: (
-        "You are reading one turn of a coding session: what the person asked for, and what "
-        "the agent did about it. Describe that turn."
-    ),
-    Level.agent_run: (
-        "You are reading one run of a subagent: the task it was given, any later "
-        "instructions, and what it did about them. Describe that run."
-    ),
-    Level.session: (
-        "You are reading a summary of one coding session: what it cost, and a description of "
-        "each thing it did, in order. Describe the session as a whole."
-    ),
-}
 
 _ANSWER = """Answer with one JSON object recording what you just read, and say nothing else:
 
@@ -78,17 +56,17 @@ report partial or failed unless the records name what did not land
 - tool_use means the last call asked for a tool and the records stop there, so the item did \
 not finish. Name what did not land, and call it abandoned, not completed"""
 
-# Appended for `Level.session` alone. A session render is one line per child, each written by
-# an earlier pass over the records; a QC pass found the model reading those lines as a plan
-# and reporting that the session did what it set out to do.
-_RELAYING = """Each line below is another reader's description of one thing the session did. \
+# A session render is one line per child, each written by an earlier pass over the records; a
+# QC pass found the model reading those lines as a plan and reporting that the session did
+# what it set out to do. Carried by `Level.session` alone, which `enrich/levels.py` says.
+RELAYING = """Each line below is another reader's description of one thing the session did. \
 Say what those lines say happened, not what the session set out to do. Do not name a result \
 no line names: if a line says a cause was found, the session found a cause — it did not fix \
 it."""
 
 # The output contract itself: passed to `--json-schema`, so the model cannot answer out of
-# vocabulary in the first place. An edit here is a `PROMPT_VERSION` bump, since `input_hash`
-# cannot see it.
+# vocabulary in the first place. An edit here is a `prompt_version` bump on every level,
+# since `input_hash` cannot see it.
 OUTPUT_SCHEMA: dict[str, object] = {
     "type": "object",
     "properties": {
@@ -105,8 +83,12 @@ OUTPUT_SCHEMA: dict[str, object] = {
 }
 
 
-def instructions(level: Level) -> str:
-    """The system prompt for one level. Versioned by `PROMPT_VERSION`, not by `input_hash`."""
+def instructions(subject: str, *riders: str) -> str:
+    """The system prompt: what to read, how to answer, the vocabulary, and how to choose.
+
+    `subject` says what the level is looking at and `riders` are the paragraphs it alone
+    carries; `enrich/levels.py` holds both. Everything between them is the same at every level.
+    """
     vocabulary = "\n".join(
         [
             "Categories:",
@@ -116,19 +98,7 @@ def instructions(level: Level) -> str:
             *(f"- {member}: {text}" for member, text in OUTCOME_DEFINITIONS.items()),
         ]
     )
-    parts = [_SUBJECT[level], _ANSWER, vocabulary, _CHOOSING]
-    if level is Level.session:
-        parts.append(_RELAYING)
-    return "\n\n".join(parts)
-
-
-TURN_BUDGETS = Budgets(total=30_000)
-# The same cap: a run holds the same kind of work a main turn does, and 209 of 2,458 recorded
-# runs reach it.
-RUN_BUDGETS = Budgets(total=30_000)
-# Smaller: a session carries one line per child rather than a transcript. Sessions average 3.1
-# children and the longest recorded one has 92.
-SESSION_BUDGETS = Budgets(total=24_000)
+    return "\n\n".join([subject, _ANSWER, vocabulary, _CHOOSING, *riders])
 
 
 def _ended_line(calls: Sequence[ApiCallRow]) -> str:
@@ -156,7 +126,7 @@ def _command_result_block(result: str | None, budgets: Budgets) -> str:
     return f"## Command result\n{_cap(result, budgets.command_result)}"
 
 
-def render_turn(item: TurnItem, budgets: Budgets = TURN_BUDGETS) -> str:
+def render_turn(item: TurnItem, budgets: Budgets) -> str:
     """One main turn as the model sees it: what was asked, and what the session then did."""
     head = ["# Main turn", ""]
     if item.command_name is not None:
@@ -179,7 +149,7 @@ def render_turn(item: TurnItem, budgets: Budgets = TURN_BUDGETS) -> str:
     return _fit("\n".join(head), lines, budgets.total)
 
 
-def render_run(item: AgentRunItem, budgets: Budgets = RUN_BUDGETS) -> str:
+def render_run(item: AgentRunItem, budgets: Budgets) -> str:
     """One agent run as the model sees it: every instruction it got, and the work each drove.
 
     The title and the run's first section survive any budget; the sequence after them elides.
@@ -210,7 +180,7 @@ def render_run(item: AgentRunItem, budgets: Budgets = RUN_BUDGETS) -> str:
     return _fit("\n".join(head), lines, budgets.total)
 
 
-def render_session(item: SessionItem, budgets: Budgets = SESSION_BUDGETS) -> str:
+def render_session(item: SessionItem, budgets: Budgets) -> str:
     """One session as the model sees it: what it cost, and a line per thing it did."""
     head = [
         f"# Session: {item.title or 'untitled'}",
@@ -227,27 +197,11 @@ def render_session(item: SessionItem, budgets: Budgets = SESSION_BUDGETS) -> str
     return _fit("\n".join(head), [_child_line(child) for child in item.children], budgets.total)
 
 
-def render(item: Item) -> str:
-    """One item as its level's prompt, at that level's default budgets.
-
-    The enricher's one door into the renders. Take a `render_*` function directly to pass
-    budgets, as the tests do.
-    """
-    match item:
-        case TurnItem():
-            return render_turn(item)
-        case AgentRunItem():
-            return render_run(item)
-        case SessionItem():
-            return render_session(item)
-    raise ValueError(f"nothing renders a {type(item).__name__}")
-
-
 def input_hash(rendered: str) -> str:
     """The staleness hash: the rendered content and nothing else.
 
-    Not the instructions and not the output schema — `PROMPT_VERSION` covers those, so an
-    instruction edit does not have to pretend the content changed.
+    Not the instructions and not the output schema — a level's `prompt_version` covers those,
+    so an instruction edit does not have to pretend the content changed.
     """
     return hashlib.sha256(rendered.encode()).hexdigest()
 

@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from hyphae.enrich.items import Level
-from hyphae.enrich.prompts import PROMPT_VERSION
+from hyphae.enrich.levels import LEVELS
 from hyphae.enrich.store import EnrichmentStore, Stamp
 from hyphae.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
 from hyphae.enrich.validation import Enrichment
@@ -382,7 +382,7 @@ def planted_stamp(level: Level, index: int) -> Stamp:
         # A version behind on every fifth row: the stamp breakdown splits on the model and on
         # the prompt version, axes that moved together could not say which, and the viewer's
         # stale tag needs a row on each side of the current version.
-        prompt_version=PROMPT_VERSION[level] - (1 if index % 5 == 0 else 0),
+        prompt_version=LEVELS[level].prompt_version - (1 if index % 5 == 0 else 0),
         taxonomy_version=TAXONOMY_VERSION,
         model=PLANTED_MODELS[index % len(PLANTED_MODELS)],
     )

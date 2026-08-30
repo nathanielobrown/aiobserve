@@ -10,7 +10,8 @@ from dataclasses import dataclass
 
 from hyphae.enrich.client import BatchClient, EnrichRequest, Failed, Succeeded
 from hyphae.enrich.items import Item, Level, level_of
-from hyphae.enrich.prompts import PROMPT_VERSION, input_hash, instructions, render
+from hyphae.enrich.levels import LEVELS, ROUND_ORDER, instructions, render
+from hyphae.enrich.prompts import input_hash
 from hyphae.enrich.store import EnrichmentStore, Stamp
 from hyphae.enrich.taxonomy import TAXONOMY_VERSION
 from hyphae.enrich.validation import InvalidOutput, ItemFailure, validate
@@ -40,14 +41,6 @@ class EnrichmentFailed(Exception):
         self.failures = failures
         listed = "\n".join(f"  {failure.kind}: {failure.key}" for failure in failures)
         super().__init__(f"{len(failures)} item(s) failed, wrote nothing:\n{listed}")
-
-
-# The levels a run describes, in the order it describes them: bottom-up, because every prompt
-# embeds its children's descriptions rather than their text. The agent runs are themselves
-# split into rounds by parentage. Every level `enrich/store.py` can write has a round here —
-# one missing would be a level nothing ever describes, which `tests/enrich/test_enricher.py`
-# checks.
-ROUND_ORDER = (Level.agent_run, Level.turn, Level.session)
 
 
 def plan(
@@ -132,7 +125,7 @@ def _plan_level(
             rendered=(rendered := render(item)),
             stamp=Stamp(
                 input_hash=input_hash(rendered),
-                prompt_version=PROMPT_VERSION[level],
+                prompt_version=LEVELS[level].prompt_version,
                 taxonomy_version=TAXONOMY_VERSION,
                 model=model,
             ),

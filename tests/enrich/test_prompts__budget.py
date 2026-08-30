@@ -15,15 +15,9 @@ from pathlib import Path
 
 import pytest
 
-from hyphae.enrich.prompts import (
-    RUN_BUDGETS,
-    SESSION_BUDGETS,
-    TURN_BUDGETS,
-    input_hash,
-    render_run,
-    render_session,
-    render_turn,
-)
+from hyphae.enrich.items import Level
+from hyphae.enrich.levels import LEVELS, render
+from hyphae.enrich.prompts import input_hash, render_run, render_session, render_turn
 from hyphae.enrich.store import EnrichmentStore
 from tests.enrich.conftest import (
     SERVER_TOOLS,
@@ -39,6 +33,12 @@ from tests.enrich.items import (
     session,
     turn,
 )
+
+# The budgets a pass really runs on, read off the registry that declares them: a cap test
+# injects a small one, and the two corpus sweeps below check the real ones.
+TURN_BUDGETS = LEVELS[Level.turn].budgets
+RUN_BUDGETS = LEVELS[Level.agent_run].budgets
+SESSION_BUDGETS = LEVELS[Level.session].budgets
 
 # A string no redacted fixture can contain, planted into one field per test.
 SENTINEL = "SENTINEL-b4d1e7-content-that-must-not-travel"
@@ -68,7 +68,7 @@ def test_a_long_command_result_is_capped_and_still_ends_with_how_it_ended(
                 SPINE,
             ],
         )
-        rendered = render_turn(turn(store, SPINE, "5b848af7"))
+        rendered = render(turn(store, SPINE, "5b848af7"))
     # ...then the block carries its budget's worth and counts what it dropped...
     assert "## Command result\nxxx" in rendered
     # ...the marker comes out of the budget rather than riding on top of it: 1,985 characters
@@ -92,7 +92,7 @@ def test_thinking_reaches_no_prompt(mutable_db: Path) -> None:
         # estimate assumes it is gone.
         for item in store.turn_items():
             if item.session_id == SPINE:
-                assert SENTINEL not in render_turn(item)
+                assert SENTINEL not in render(item)
 
 
 def test_a_tool_result_reaches_no_prompt_but_its_size_does(mutable_db: Path) -> None:
@@ -103,7 +103,7 @@ def test_a_tool_result_reaches_no_prompt_but_its_size_does(mutable_db: Path) -> 
             "UPDATE tool_calls SET result = ? WHERE id = 'toolu_015dP3eMe5GZn7BzFipupZwS'",
             [SENTINEL],
         )
-        rendered = render_turn(turn(store, SPINE, "818588ad"))
+        rendered = render(turn(store, SPINE, "818588ad"))
     # ...then the prompt carries none of it — results are 390 MB corpus-wide, and including
     # them would dominate every prompt...
     assert SENTINEL not in rendered
@@ -117,7 +117,7 @@ def test_an_error_result_tail_is_the_one_exception(fixture_db: Path) -> None:
     # If `server_tools/`'s one recorded failing call is rendered...
     with EnrichmentStore(fixture_db) as store:
         item = turn(store, SERVER_TOOLS, "9ae45aaa")
-        rendered = render_turn(item)
+        rendered = render(item)
         # ...then its line is flagged and carries the error text...
         assert "- advisor (input 2 chars, result 11 chars, ERROR) {} | error tail: unavailable" in (
             rendered
@@ -135,7 +135,7 @@ def test_the_tool_input_head_is_the_head(fixture_db: Path) -> None:
     # If `workflow/`'s `Workflow` call is rendered...
     with EnrichmentStore(fixture_db) as store:
         item = turn(store, WORKFLOW, "cd7adeae")
-        rendered = render_turn(item)
+        rendered = render(item)
         # ...then the line carries the input's own first characters — the workflow's name
         # here, a file path or a command elsewhere — not a hash and not the tool name again.
         assert '{"name": "deep-research"' in rendered
@@ -150,13 +150,13 @@ def test_input_hash_reads_the_rendered_content_and_nothing_else(mutable_db: Path
     """The staleness hash moves when the prompt does, and only then."""
     with EnrichmentStore(mutable_db) as store:
         # If the same turn is rendered twice, the hash is the same...
-        before = input_hash(render_turn(turn(store, SPINE, "818588ad")))
-        assert before == input_hash(render_turn(turn(store, SPINE, "818588ad")))
+        before = input_hash(render(turn(store, SPINE, "818588ad")))
+        assert before == input_hash(render(turn(store, SPINE, "818588ad")))
         # ...if a field the render reads changes — a tool call's name...
         store.connection.execute(
             "UPDATE tool_calls SET name = 'Grep' WHERE id = 'toolu_015dP3eMe5GZn7BzFipupZwS'"
         )
-        renamed = input_hash(render_turn(turn(store, SPINE, "818588ad")))
+        renamed = input_hash(render(turn(store, SPINE, "818588ad")))
         # ...then the hash moves, so the turn re-enriches...
         assert renamed != before
         # ...and if a field the render does not read changes, it does not, so a re-extract
@@ -164,7 +164,7 @@ def test_input_hash_reads_the_rendered_content_and_nothing_else(mutable_db: Path
         store.connection.execute(
             "UPDATE api_calls SET request_id = 'req_rewritten' WHERE session_id = ?", [SPINE]
         )
-        assert input_hash(render_turn(turn(store, SPINE, "818588ad"))) == renamed
+        assert input_hash(render(turn(store, SPINE, "818588ad"))) == renamed
 
 
 def test_an_over_budget_turn_drops_the_middle_of_its_work(fixture_db: Path) -> None:
@@ -295,8 +295,8 @@ def test_no_real_item_renders_past_its_budget(tmp_path: Path) -> None:
         turn_items, run_items = store.turn_items(), store.run_items()
     assert turn_items, f"{LIVE_STORE} names a store with no turns in it"
     assert run_items, f"{LIVE_STORE} names a store with no agent runs in it"
-    over = [item.key for item in turn_items if len(render_turn(item)) > TURN_BUDGETS.total]
-    over += [item.key for item in run_items if len(render_run(item)) > RUN_BUDGETS.total]
+    over = [item.key for item in turn_items if len(render(item)) > TURN_BUDGETS.total]
+    over += [item.key for item in run_items if len(render(item)) > RUN_BUDGETS.total]
     assert over == []
 
 

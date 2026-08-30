@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from hyphae.enrich.items import Level
-from hyphae.enrich.prompts import instructions
+from hyphae.enrich.levels import instructions
 
 
 @dataclass(frozen=True)

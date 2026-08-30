@@ -9,6 +9,7 @@ what it writes, what makes an item stale, and how a new description travels up.
 import json
 import subprocess
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -18,15 +19,11 @@ from hyphae.enrich.client import (
     Failed,
     Succeeded,
 )
-from hyphae.enrich.enricher import (
-    ROUND_ORDER,
-    EnrichmentFailed,
-    EnrichReport,
-    enrich,
-)
+from hyphae.enrich.enricher import EnrichmentFailed, EnrichReport, enrich
 from hyphae.enrich.items import Level
-from hyphae.enrich.prompts import PROMPT_VERSION, input_hash, render_turn
-from hyphae.enrich.store import LEVELS, EnrichmentStore
+from hyphae.enrich.levels import LEVELS, ROUND_ORDER, render
+from hyphae.enrich.prompts import input_hash
+from hyphae.enrich.store import EnrichmentStore
 from hyphae.enrich.taxonomy import TAXONOMY_VERSION
 from hyphae.enrich.validation import FailureKind
 from tests.conftest import MODEL_ONLY, build_store, fixture_transcripts
@@ -80,13 +77,28 @@ def forest(forest_store: Path, tmp_path: Path) -> Iterator[EnrichmentStore]:
         yield opened
 
 
-def test_every_level_the_store_can_write_gets_a_round() -> None:
-    """A pass describes all three levels — a level with no round would be described by nothing.
+def test_every_level_is_declared_whole_and_described_bottom_up(store: EnrichmentStore) -> None:
+    """Each level's entry names a reader that exists, a renderer that takes its items, a table.
 
-    The rounds are ordered bottom-up and the store's levels are a closed set, so the two are
-    the same members read for different reasons; only their equality is checked here.
+    One registry declares all of it (`enrich/levels.py`), so this is what stands in for the
+    checks the seven separate maps used to owe each other: a level naming a reader no store
+    has, or a renderer belonging to another level, would be found here rather than partway
+    through a paid pass.
     """
-    assert set(ROUND_ORDER) == set(LEVELS)
+    # If every level the store can write is read through its own entry...
+    for level, spec in LEVELS.items():
+        items = store.items(level)
+        # ...then the entry's reader is a method of the store, and it hands back that level's
+        # items — never another level's, which is what a copied entry would produce...
+        assert {item.level for item in items} == {level}
+        # ...each of which renders through the entry's renderer, at the entry's budgets...
+        for item in items:
+            assert render(item) == spec.renderer(item, spec.budgets)
+        # ...and the table it names is one the store created.
+        assert store.connection.execute(f"SELECT count(*) FROM {spec.table}").fetchone()
+    # The order is the whole cascade: a run's description reaches the turn that spawned it,
+    # and both reach the session, because the rounds run in this order and no other.
+    assert (Level.agent_run, Level.turn, Level.session) == ROUND_ORDER
 
 
 def test_a_run_writes_a_row_for_every_stale_item(store: EnrichmentStore) -> None:
@@ -118,8 +130,8 @@ def test_a_run_writes_a_row_for_every_stale_item(store: EnrichmentStore) -> None
             "test",
             "completed",
             None,
-            input_hash(render_turn(item)),
-            PROMPT_VERSION[Level.turn],
+            input_hash(render(item)),
+            LEVELS[Level.turn].prompt_version,
             TAXONOMY_VERSION,
             MODEL,
         )
@@ -182,7 +194,7 @@ def test_a_prompt_version_bump_re_enriches_the_level(
     """Changing the instructions the hash cannot see re-enriches everything they cover."""
     enrich(store, FakeClient())
     # If the turn level's prompt version moves — an instruction or output-schema edit...
-    monkeypatch.setitem(PROMPT_VERSION, Level.turn, 99)
+    monkeypatch.setitem(LEVELS, Level.turn, replace(LEVELS[Level.turn], prompt_version=99))
     client = FakeClient()
     enrich(store, client)
     # ...then every turn is re-sent, and every row records the new version.
