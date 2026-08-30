@@ -10,9 +10,9 @@ Ordering the transcripts is the whole problem, and `_transcript_order` says how 
 from datetime import UTC, datetime
 from typing import Any
 
-from hyphae.extract.agent_runs import _is_fork
+from hyphae.extract.agent_runs import is_fork
 from hyphae.extract.errors import TranscriptSchemaError
-from hyphae.extract.transcript import _Line, _timestamp
+from hyphae.extract.transcript import Line, timestamp_of
 from hyphae.model import MAIN_SOURCE
 
 # Where a run whose meta names no spawn depth sorts among its siblings: after every run
@@ -20,8 +20,8 @@ from hyphae.model import MAIN_SOURCE
 _UNKNOWN_DEPTH = 1_000_000
 
 
-def _replays(
-    kept: dict[str, list[_Line]], metas: dict[str, dict[str, Any]], session_id: str
+def replayed_lines(
+    kept: dict[str, list[Line]], metas: dict[str, dict[str, Any]], session_id: str
 ) -> dict[str, set[int]]:
     """Which lines of each transcript an earlier one already held.
 
@@ -39,7 +39,7 @@ def _replays(
             for line in kept[name]
             if (uuid := line.uuid) is not None and uuid in owner
         }
-        if copies and not _is_fork(metas.get(name, {})):
+        if copies and not is_fork(metas.get(name, {})):
             copied = copies[min(copies)]
             raise TranscriptSchemaError(
                 f"Session {session_id}: transcript {name} repeats record {copied} from "
@@ -52,7 +52,7 @@ def _replays(
     return replays
 
 
-def _transcript_order(kept: dict[str, list[_Line]], metas: dict[str, dict[str, Any]]) -> list[str]:
+def _transcript_order(kept: dict[str, list[Line]], metas: dict[str, dict[str, Any]]) -> list[str]:
     """The session's transcripts, first to record a uuid first.
 
     Spawn depth leads, because a copied-history fork is spawned *by* the transcript it
@@ -67,7 +67,7 @@ def _transcript_order(kept: dict[str, list[_Line]], metas: dict[str, dict[str, A
         # A meta that names no depth sorts last. The one such transcript on this machine
         # shares no uuid with any sibling, so where it sits changes nothing (2.1.186).
         depth = metas[name].get("spawnDepth")
-        moments = [t for t in (_timestamp(line.record) for line in kept[name]) if t]
+        moments = [t for t in (timestamp_of(line.record) for line in kept[name]) if t]
         return (
             _UNKNOWN_DEPTH if depth is None else depth,
             min(moments) if moments else datetime.max.replace(tzinfo=UTC),

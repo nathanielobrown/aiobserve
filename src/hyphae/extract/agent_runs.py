@@ -8,14 +8,14 @@ for when it started and ended.
 import logging
 from typing import Any
 
-from hyphae.extract.layout import _AgentFiles
-from hyphae.extract.transcript import _fork_context, _Line, _timestamp
+from hyphae.extract.layout import AgentFiles
+from hyphae.extract.transcript import Line, fork_context, timestamp_of
 from hyphae.model import AgentRun
 
 logger = logging.getLogger(__name__)
 
 
-def _is_fork(meta: dict[str, Any]) -> bool:
+def is_fork(meta: dict[str, Any]) -> bool:
     """Whether a run continues another transcript's conversation.
 
     `agentType: "fork"` agrees with the flag on all 52 fork metas on this machine
@@ -24,9 +24,9 @@ def _is_fork(meta: dict[str, Any]) -> bool:
     return bool(meta.get("isFork"))
 
 
-def _agent_runs(
-    agents: list[_AgentFiles],
-    kept: dict[str, list[_Line]],
+def agent_runs(
+    agents: list[AgentFiles],
+    kept: dict[str, list[Line]],
     metas: dict[str, dict[str, Any]],
     replays: dict[str, set[int]],
     launches: dict[str, str],
@@ -47,13 +47,13 @@ def _agent_runs(
                 "Session %s: agent run %s has no spawning tool call", session_id, agent.id
             )
         lines = kept[agent.id]
-        moments = [t for t in (_timestamp(line.record) for line in lines) if t]
+        moments = [t for t in (timestamp_of(line.record) for line in lines) if t]
         # A fork's file opens with the conversation it inherited, so its own work starts
         # where the copying stops.
         own = [
             t
             for t in (
-                _timestamp(line.record) for line in lines if line.line_no not in replays[agent.id]
+                timestamp_of(line.record) for line in lines if line.line_no not in replays[agent.id]
             )
             if t
         ]
@@ -71,8 +71,8 @@ def _agent_runs(
                 workflow_id=agent.workflow_id,
                 # Absent on one meta of the 2764 on this machine, a 2.1.186 session.
                 spawn_depth=meta.get("spawnDepth"),
-                is_fork=_is_fork(meta),
-                fork_context_uuid=_fork_context(lines),
+                is_fork=is_fork(meta),
+                fork_context_uuid=fork_context(lines),
                 started_at=min(own) if own else None,
                 ended_at=max(moments) if moments else None,
             )

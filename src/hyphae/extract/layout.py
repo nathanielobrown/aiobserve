@@ -114,7 +114,7 @@ def find_sessions(
     ]
 
 
-class _AgentFiles(NamedTuple):
+class AgentFiles(NamedTuple):
     """One subagent's pair of files, and where the pair sat."""
 
     # The agentId: the file stem after `agent-`, and the `source` its records take.
@@ -125,18 +125,18 @@ class _AgentFiles(NamedTuple):
     meta: Path
 
 
-class _ClassifiedFiles(NamedTuple):
+class ClassifiedFiles(NamedTuple):
     """One session's files, sorted by what reads them."""
 
     transcript: Path
-    agents: list[_AgentFiles]
+    agents: list[AgentFiles]
     # Each workflow journal, paired with its `wf_<id>/journal` source. Archive only: the
     # runs it logs write their own transcripts.
     journals: list[tuple[str, Path]]
     offloads: list[Path]
 
 
-def _classify(session: SessionFiles) -> _ClassifiedFiles:
+def classify(session: SessionFiles) -> ClassifiedFiles:
     """Sort a session's files by what reads them. An unplaceable file stops the run."""
     transcript = session.transcript
     directory = session.directory
@@ -168,12 +168,12 @@ def _classify(session: SessionFiles) -> _ClassifiedFiles:
             f"Session {session.id}: agent runs {sorted(odd)} have a transcript or a meta, not both"
         )
     agents = [
-        _AgentFiles(
+        AgentFiles(
             id=agent, workflow_id=workflows[agent], transcript=transcripts[agent], meta=metas[agent]
         )
         for agent in transcripts
     ]
-    return _ClassifiedFiles(
+    return ClassifiedFiles(
         transcript=transcript, agents=agents, journals=journals, offloads=offloads
     )
 
@@ -215,7 +215,7 @@ def _companion(parts: tuple[str, ...], session_id: str) -> _Companion:
     raise unknown
 
 
-def _offload_file(path: Path, session_id: str) -> OffloadFile:
+def read_offload_file(path: Path, session_id: str) -> OffloadFile:
     """One `tool-results/` file, read whole — it is the only copy once Claude Code prunes."""
     data = path.read_bytes()
     try:
