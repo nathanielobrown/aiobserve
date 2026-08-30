@@ -29,6 +29,7 @@ pub mod nodes;
 pub mod numbers;
 pub mod pages;
 pub mod render;
+pub mod routes;
 pub mod statics;
 pub mod store;
 pub mod urls;
