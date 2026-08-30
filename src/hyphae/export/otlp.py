@@ -33,6 +33,7 @@ from hyphae.model import (
     ToolCall,
     Turn,
 )
+from hyphae.pipeline import Extractor, SessionSource
 
 # The span-shaping version. A row in `otlp_delivery` recorded under an older one is treated
 # as undelivered, so a shaping change re-sends the corpus the way an extractor upgrade
@@ -205,6 +206,18 @@ def census(traces: Iterable[SessionTrace], text: TextPolicy = METADATA_ONLY) -> 
         spans += len(shaped)
         compactions += sum(1 for span in shaped if span.name == COMPACTION_SPAN)
     return Census(sessions=sessions, spans=spans, compactions=compactions)
+
+
+def census_project[SourceT: SessionSource](
+    project: Path, *, extractor: Extractor[SourceT], text: TextPolicy = METADATA_ONLY
+) -> Census:
+    """Count what a run against `project` would ship, shaping every session and sending none.
+
+    The dry run's half of `pipeline.refresh`: the same extractor, driven the same way, with
+    no fingerprint diff in front of it — a census counts the whole selection, not the part
+    that moved since the last send.
+    """
+    return census((extractor.extract(source) for source in extractor.sessions(project)), text)
 
 
 class TimelessSessionError(Exception):
