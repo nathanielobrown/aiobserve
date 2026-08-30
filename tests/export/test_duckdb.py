@@ -19,7 +19,7 @@ from hyphae.export.duckdb import (
 )
 from hyphae.export.schema import MIGRATIONS, SCHEMA_VERSION, SchemaVersionError
 from hyphae.model import SessionTrace
-from tests.conftest import TraceFactory, lock_is_free
+from tests.conftest import FORK_RUN, TraceFactory, lock_is_free
 
 SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"
 DUPS = "8ee00a94-b01a-4394-b447-b065f74b11af"
@@ -252,16 +252,22 @@ def test_a_rollup_counts_replayed_work_once(db: Path, fixture_trace: TraceFactor
         # If a session ran an auditor and a fork that replayed it...
         exporter.export(trace, "fingerprint-1")
         rollup = exporter.connection.execute(
-            "SELECT api_calls, output_tokens FROM session_rollups WHERE session_id = ?", [ORIGIN]
+            "SELECT api_calls, output_tokens, compactions FROM session_rollups "
+            "WHERE session_id = ?",
+            [ORIGIN],
         ).fetchone()
 
-        # ...then the rollup counts the copied message once and the fork's own work beside it...
-        assert rollup == (3, 6050)
-        # ...while the base table still holds the copy, flagged, so the archive keeps what
+        # ...then the rollup counts the copied message once and the fork's own work beside it,
+        # and reads the compaction the fork inherited with that history the same way...
+        assert rollup == (3, 6050, 1)
+        # ...while the base tables still hold both copies, flagged, so the archive keeps what
         # the fork's file recorded.
         assert exporter.connection.execute(
             "SELECT count(*), sum(output_tokens) FROM api_calls WHERE replayed"
         ).fetchone() == (1, 1146)
+        assert exporter.connection.execute(
+            "SELECT count(*) FROM compactions WHERE replayed"
+        ).fetchone() == (1,)
 
 
 def test_a_corpus_rollup_counts_a_resumed_session_once(db: Path, fixture_trace: TraceFactory):
@@ -458,16 +464,19 @@ def stamped_version(path: Path) -> int | None:
 OLDEST_MIGRATABLE = min(MIGRATIONS) - 1
 
 
-def old_store(path: Path, trace: SessionTrace) -> dict[str, list[str]]:
-    """A store as schema 7 left it: `agent_runs.description`, before the rename to `brief`.
+def old_store(path: Path, *traces: SessionTrace) -> dict[str, list[str]]:
+    """A store as schema 7 left it: `agent_runs.description` and compactions with no flag.
 
-    Built by inverting the migration rather than by checking out the old code. The rename is
-    the whole difference between the two versions, so the file this leaves is what a version-7
-    extract wrote, row for row — including the briefs, which the rows below are read back for.
+    Built by inverting both steps rather than by checking out the old code. They are the whole
+    difference between that version and this one, so the file this leaves is what a version-7
+    extract wrote, row for row — including the briefs and the copied compaction the rows below
+    are read back for.
     """
     with DuckDbExporter(path) as exporter:
-        exporter.export(trace, "fingerprint-1")
+        for index, trace in enumerate(traces):
+            exporter.export(trace, f"fingerprint-{index}")
         exporter.connection.execute("ALTER TABLE agent_runs RENAME brief TO description")
+        exporter.connection.execute("ALTER TABLE compactions DROP COLUMN replayed")
         exporter.connection.execute("UPDATE meta SET schema_version = ?", [OLDEST_MIGRATABLE])
     return shape(path)
 
@@ -508,22 +517,35 @@ def test_a_schema_version_no_migration_reaches_refuses_to_open(db: Path):
 def test_an_older_store_is_migrated_and_keeps_its_rows(db: Path, fixture_trace: TraceFactory):
     """A store of an older vintage is carried forward on open, with every row still readable.
 
-    Version 8 renamed `agent_runs.description` to `brief`. Opening a version-7 store applies
-    that rename in place: the archive can hold the only copy of a session Claude Code has
-    pruned, so a schema change has to move a store forward rather than ask for a fresh one.
+    Version 8 renamed `agent_runs.description` to `brief`; version 9 gave a compaction the
+    `replayed` flag every other copied row already carried. Opening a version-7 store applies
+    both in place: the archive can hold the only copy of a session Claude Code has pruned, so
+    a schema change has to move a store forward rather than ask for a fresh one.
     """
-    # If a store written at version 7 holds agent runs, each with the brief it was spawned
-    # with under the old column name...
+    # If a store written at version 7 holds agent runs under the old column name, and a
+    # session whose fork copied a compaction out of the transcript it forked...
     trace = fixture_trace("spine", SPINE)
     briefs = sorted(str(run.brief) for run in trace.agent_runs)
     assert any(briefs), "the spine fixture is the evidence here — its runs carry briefs"
-    old_store(db, trace)
+    old_store(db, trace, fixture_trace("fork_origin", ORIGIN))
 
     # ...then opening it migrates the file...
     with DuckDbExporter(db) as exporter:
         # ...leaving every brief readable under the name the code now reads...
-        stored = exporter.connection.execute("SELECT brief FROM agent_runs").fetchall()
+        stored = exporter.connection.execute(
+            "SELECT brief FROM agent_runs WHERE session_id = ?", [SPINE]
+        ).fetchall()
         assert sorted(str(brief) for (brief,) in stored) == briefs
+        # ...and the copy flagged, which the migration has to derive from the rows alone: the
+        # transcript line numbers the extractor reads are not in a store on disk. Against the
+        # canonical store the rule it uses instead flags 4 of 1,367 compactions, the same 4 a
+        # scan for a uuid two transcripts of one session both hold finds (2026-08-30)...
+        assert exporter.connection.execute(
+            "SELECT source FROM compactions WHERE replayed"
+        ).fetchall() == [(FORK_RUN,)]
+        assert exporter.connection.execute("SELECT count(*) FROM live_compactions").fetchone() == (
+            1,
+        )
         # ...and the store stamped at the version this build writes.
         assert exporter.connection.execute("SELECT schema_version FROM meta").fetchone() == (
             SCHEMA_VERSION,
@@ -563,12 +585,13 @@ def test_a_migration_step_that_raises_leaves_the_store_at_its_old_version(
     """
     before = old_store(db, fixture_trace("spine", SPINE))
 
-    def raise_after_renaming(connection: duckdb.DuckDBPyConnection) -> None:
-        connection.execute("ALTER TABLE agent_runs RENAME description TO brief")
+    def raise_after_dropping(connection: duckdb.DuckDBPyConnection) -> None:
+        connection.execute("ALTER TABLE compactions DROP COLUMN duration_ms")
         raise RuntimeError("the step failed half-way")
 
-    # If a step fails after changing the store...
-    monkeypatch.setitem(MIGRATIONS, SCHEMA_VERSION, raise_after_renaming)
+    # If the last step fails after changing the store, with an earlier step's rename already
+    # applied...
+    monkeypatch.setitem(MIGRATIONS, SCHEMA_VERSION, raise_after_dropping)
     with pytest.raises(RuntimeError, match="half-way"):
         DuckDbExporter(db)
 

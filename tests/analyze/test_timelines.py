@@ -292,17 +292,17 @@ def test_records_slice_caps_the_raw_text_it_returns(
 
 
 def test_view_runs_carries_what_ranking_a_session_s_runs_takes(
-    planted_run_compaction_db: Path, capsys: pytest.CaptureFixture[str]
+    corpus_db: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A session's runs come back with each one's cost, failed tool calls and compactions."""
     # If a session's two runs differ on every measure a reader ranks by — one spent four
-    # times the other, one failed a tool call, one ran out of context (that compaction is
-    # planted onto a real run: the one recorded run compaction is in a single-run session)...
+    # times the other, one failed a tool call, one compacted while the fork under it only
+    # inherited that compaction...
     rows = {
         row["run_id"]: row
         for row in mappings(
             query(
-                planted_run_compaction_db,
+                corpus_db,
                 capsys,
                 "view_runs",
                 "--param",
@@ -316,7 +316,7 @@ def test_view_runs_carries_what_ranking_a_session_s_runs_takes(
     assert set(rows) == {FORK_ORIGIN_RUN, FORK_RUN}
     for run_id, row in rows.items():
         cost, unpriced, errors, compactions = scalar(
-            planted_run_compaction_db,
+            corpus_db,
             """SELECT
                  (SELECT coalesce(round(sum(c.cost_usd), 4), 0) FROM live_api_calls c
                     WHERE c.session_id = ? AND c.source = ?),

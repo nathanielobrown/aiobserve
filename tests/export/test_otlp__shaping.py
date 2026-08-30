@@ -10,16 +10,11 @@ from dataclasses import replace
 
 import pytest
 
-from hyphae.export.otlp import (
-    CompactionBeforeRunError,
-    SpanKey,
-    TimelessRunError,
-    copied_compaction,
-    session_spans,
-)
+from hyphae.export.otlp import SpanKey, TimelessRunError, session_spans
 from tests.conftest import (
     BYREF_FORK,
     COMPACTED,
+    FORK_COMPACTION,
     FORK_ORIGIN,
     FORK_ORIGIN_RUN,
     FORK_RUN,
@@ -316,78 +311,26 @@ def test_a_main_thread_compaction_is_a_span_under_the_root(fixture_trace: TraceF
         assert attributes(span)["claude_code.compaction.pre_tokens"] == compaction.pre_tokens
 
 
-def test_the_copied_prefix_rule_decides_a_compactions_replay(
-    fixture_trace: TraceFactory,
-) -> None:
-    """A compaction a fork copied in with its prefix is a replay, and one landing exactly on
-    the fork's first own record is a copy too."""
-    # If a recorded compaction is planted onto the fork's source at each timestamp around the
-    # fork's own first record — labeled, because all six recorded compactions are main-thread,
-    # and `compactions` carries no `replayed` column for the mapper to read...
-    recorded = fixture_trace("compaction", COMPACTED).compactions[0]
-    fork = next(
-        run for run in fixture_trace("fork_origin", FORK_ORIGIN).agent_runs if run.id == FORK_RUN
-    )
-    assert fork.is_fork and fork.started_at is not None
-    planted = replace(recorded, session_id=FORK_ORIGIN, source=FORK_RUN)
-    # ...then everything at or before that instant is a copy of the parent's compaction: a
-    # fork cannot compact at the instant of its own first record, and when the copied prefix
-    # ends at the compaction the two share a millisecond...
-    assert copied_compaction(replace(planted, timestamp=fork.started_at - MILLISECOND), fork)
-    assert copied_compaction(replace(planted, timestamp=fork.started_at), fork)
-    # ...only what came afterwards is the fork's own work...
-    assert not copied_compaction(replace(planted, timestamp=fork.started_at + MILLISECOND), fork)
-    # ...a fork that copied everything it holds records no start at all, so nothing in it can
-    # be its own (planted: no recorded fork run has a null start)...
-    copied_whole = replace(fork, started_at=None)
-    assert copied_compaction(replace(planted, timestamp=fork.started_at), copied_whole)
-    # ...and a main-thread compaction, which comes first in the ordering and so can hold no
-    # copies, always ships.
-    assert not copied_compaction(replace(recorded, source=MAIN), None)
-
-
-def test_the_copied_prefix_rule_is_wired_into_the_mapper(fixture_trace: TraceFactory) -> None:
-    """A compaction the rule calls a copy reaches no span, and one it calls live hangs off the
-    run that made it."""
-    # If the same planted compaction is put through the whole mapper, once on the tie and once
-    # a millisecond later...
+def test_a_compaction_a_fork_replayed_ships_no_span(fixture_trace: TraceFactory) -> None:
+    """A compaction a fork inherited with its copied prefix ships once, under the run that
+    recorded it."""
+    # If the session whose fork copied a compaction out of the transcript it forked is
+    # shaped — both files hold that record, uuid and all...
     trace = fixture_trace("fork_origin", FORK_ORIGIN)
-    recorded = fixture_trace("compaction", COMPACTED).compactions[0]
-    fork = next(run for run in trace.agent_runs if run.id == FORK_RUN)
-    assert fork.started_at is not None
-    tie = replace(recorded, session_id=FORK_ORIGIN, source=FORK_RUN, timestamp=fork.started_at)
-    own = replace(tie, timestamp=fork.started_at + MILLISECOND)
-    key = digest(FORK_ORIGIN, SpanKey.compaction, FORK_RUN, recorded.id)
-    # ...then the tie ships nothing...
-    assert all(span.span_id != key for span in session_spans(replace(trace, compactions=[tie])))
-    # ...and the later one ships under the run whose transcript recorded it.
-    span = one(session_spans(replace(trace, compactions=[own])), key)
-    assert span.parent_span_id == digest(FORK_ORIGIN, SpanKey.agent_run, "", FORK_RUN)
-
-
-def test_a_compaction_before_a_non_fork_runs_start_crashes(fixture_trace: TraceFactory) -> None:
-    """A compaction older than the run that recorded it, where no copying can explain it,
-    stops the run."""
-    # If a compaction is planted just before a recorded non-fork run's first record — labeled,
-    # since none of the canonical store's 847 non-fork-run compactions is one...
-    trace = fixture_trace("spine", SPINE)
-    recorded = fixture_trace("compaction", COMPACTED).compactions[0]
-    run = next(row for row in trace.agent_runs if row.id == SPINE_RUN)
-    assert not run.is_fork and run.started_at is not None
-    planted = replace(
-        recorded,
-        session_id=SPINE,
-        source=SPINE_RUN,
-        timestamp=run.started_at - MILLISECOND,
-    )
-    # ...then the mapper crashes naming both clocks, because the replay rule's whole safety is
-    # that only a fork can hold a copy — dropping this one silently would lose a live event.
-    with pytest.raises(CompactionBeforeRunError) as raised:
-        session_spans(replace(trace, compactions=[planted]))
-    message = str(raised.value)
-    assert SPINE in message and SPINE_RUN in message
-    assert planted.timestamp.isoformat() in message
-    assert run.started_at.isoformat() in message
+    copies = [row for row in trace.compactions if row.id == FORK_COMPACTION]
+    assert {(row.source, row.replayed) for row in copies} == {
+        (FORK_ORIGIN_RUN, False),
+        (FORK_RUN, True),
+    }
+    spans = session_spans(trace)
+    # ...then the run that recorded it ships it, under its own span...
+    span = one(spans, digest(FORK_ORIGIN, SpanKey.compaction, FORK_ORIGIN_RUN, FORK_COMPACTION))
+    assert span.name == "claude_code.compaction"
+    assert span.parent_span_id == digest(FORK_ORIGIN, SpanKey.agent_run, "", FORK_ORIGIN_RUN)
+    # ...and the fork's copy ships nothing, so a backend counts one compaction rather than
+    # the two the session's files hold.
+    copy = digest(FORK_ORIGIN, SpanKey.compaction, FORK_RUN, FORK_COMPACTION)
+    assert all(other.span_id != copy for other in spans)
 
 
 def test_pr_links_are_events_on_the_root_carrying_only_the_number(

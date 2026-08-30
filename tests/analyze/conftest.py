@@ -23,10 +23,7 @@ from hyphae.extract.claude_code import ClaudeCodeExtractor
 from hyphae.pipeline import SessionSource
 from hyphae.sessions import SessionFiles
 from tests.conftest import (
-    ANCESTOR,
     FIXTURES,
-    FORK_ORIGIN,
-    FORK_ORIGIN_RUN,
     MYCELIA,
     RESUME,
     SIBLING_SESSION,
@@ -79,7 +76,6 @@ def far_future(monkeypatch: pytest.MonkeyPatch) -> None:
 NO_WORK_SESSIONS = (RESUME, "8ee00a94-b01a-4394-b447-b065f74b11af")
 
 # The id the planted agent-run compaction carries, so no first-seen twin can own it.
-PLANTED_COMPACTION = "planted-compaction"
 
 # Measured on 2026-08-27: of the in-window sessions, the ones with any turn or agent run.
 POOL_AT_WHOLE = 12
@@ -173,30 +169,6 @@ def enriched_query(enriched_db: Path, capsys: pytest.CaptureFixture[str]) -> Que
         return query(enriched_db, capsys, name, *arguments)
 
     return run
-
-
-@pytest.fixture(scope="session")
-def planted_run_compaction_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """The corpus plus a copy of a recorded main-thread compaction, moved onto an agent run.
-
-    Invented placement, and it stays invented for one reader: `compaction/`'s run is the only
-    recorded run compaction, and its session has a single run, so nothing there contrasts two
-    runs of one session. A copy under a new id rather than a move, so the recorded compaction
-    stays where it was recorded and the `corpus_*` first-seen rule has no twin to prefer.
-    """
-    path = tmp_path_factory.mktemp("run_compaction") / "traces.duckdb"
-    path.write_bytes(corpus_db.read_bytes())
-    connection = duckdb.connect(str(path))
-    try:
-        connection.execute(
-            """INSERT INTO compactions
-               SELECT ?, ?, ?, timestamp, trigger, pre_tokens, post_tokens, duration_ms
-               FROM compactions WHERE session_id = ? LIMIT 1""",
-            [PLANTED_COMPACTION, FORK_ORIGIN, FORK_ORIGIN_RUN, ANCESTOR],
-        )
-    finally:
-        connection.close()
-    return path
 
 
 @pytest.fixture(scope="session")

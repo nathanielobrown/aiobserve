@@ -21,7 +21,7 @@ import duckdb
 
 # Bumped whenever any owner's stored tables change. A store older than this is carried
 # forward by `MIGRATIONS`; one older than every step there is refused.
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 # The remedy a version-mismatch message carries when no migration can help, written once
 # because getting it wrong is expensive: a store can be the only copy of a session Claude Code
@@ -132,12 +132,36 @@ def _rename_agent_run_description_to_brief(connection: duckdb.DuckDBPyConnection
     connection.execute("ALTER TABLE agent_runs RENAME description TO brief")
 
 
+def _flag_the_compactions_a_fork_replayed(connection: duckdb.DuckDBPyConnection) -> None:
+    """8 -> 9: `compactions.replayed`, the flag the OTLP mapper used to work out per send.
+
+    A store on disk has no transcript line numbers left, so the back-fill spells the rule the
+    deleted mapper code spelled: a compaction recorded under a fork run, at or before that
+    run's first record of its own, came in with the prefix that fork copied. Measured against
+    the canonical store on 2026-08-30, it flags 4 of 1,367 compactions — the same 4 that a
+    scan for a uuid two of a session's transcripts both hold finds.
+
+    The column it leaves is nullable where a fresh store's is `NOT NULL`: DuckDB refuses to
+    build the constraint's index in the transaction the back-fill runs in. Every row gets a
+    value here, and every row written afterwards comes from `Compaction.replayed`, which is a
+    `bool`, so nothing can put a NULL in it.
+    """
+    connection.execute("ALTER TABLE compactions ADD COLUMN replayed BOOLEAN DEFAULT false")
+    connection.execute("""
+        UPDATE compactions k SET replayed = true
+        FROM agent_runs r
+        WHERE r.session_id = k.session_id AND r.id = k.source AND r.is_fork
+          AND (r.started_at IS NULL OR k.timestamp <= r.started_at)
+    """)
+
+
 # Each step keyed by the version it produces, so a store at version N is carried forward by
 # every step above N in order. A step edits tables in place: the archive can hold the only
 # copy of a session Claude Code has pruned, so a schema change moves a store rather than
 # asking for a fresh one.
 MIGRATIONS: dict[int, Callable[[duckdb.DuckDBPyConnection], None]] = {
     8: _rename_agent_run_description_to_brief,
+    9: _flag_the_compactions_a_fork_replayed,
 }
 
 

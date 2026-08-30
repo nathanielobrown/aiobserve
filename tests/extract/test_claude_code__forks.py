@@ -61,6 +61,12 @@ def test_a_copied_record_belongs_to_the_transcript_that_ran_it(fixture_source: S
     assert turns == {(AUDITOR, False), (FORK, True)}
     tools = {tool.id for tool in extracted.tool_calls if tool.source == FORK and tool.replayed}
     assert tools == {tool.id for tool in extracted.tool_calls if tool.source == AUDITOR}
+    # ...and for the compaction the auditor recorded, which sits inside the prefix the fork
+    # copied: the fork inherited the summarised context, it did not summarise anything.
+    assert {(row.source, row.replayed) for row in extracted.compactions} == {
+        (AUDITOR, False),
+        (FORK, True),
+    }
     # No row is flagged on both sides, which is what would make the work vanish.
     assert not [call for call in extracted.api_calls if call.source == AUDITOR and call.replayed]
 

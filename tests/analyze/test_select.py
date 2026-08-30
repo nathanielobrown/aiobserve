@@ -234,7 +234,7 @@ def test_discovery_passes_over_a_session_with_almost_nothing_in_it(run_query: Qu
     assert {stratum for stratum, _ in picks} == {DISCOVERY}
     # ...while the floor is discovery's alone: a ranked stratum still reaches the thinnest
     # session in the corpus, because what it ranks on is the reason to read it.
-    ranked = _select(run_query, {"compaction_quota": 3, "min_discovery_api_calls": 4})
+    ranked = _select(run_query, {"compaction_quota": 4, "min_discovery_api_calls": 4})
     assert (COMPACTIONS, REGISTRY_ZOO) in ranked
 
 

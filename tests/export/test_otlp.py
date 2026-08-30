@@ -151,15 +151,17 @@ def test_every_span_climbs_to_the_one_root(fixture_trace: TraceFactory, transcri
 
 def test_a_forks_copies_never_become_spans(fixture_trace: TraceFactory) -> None:
     """Rows a fork replayed from the transcript it continues are shipped by neither of them."""
-    # If the fork fixture is shaped — one replayed turn, one replayed model call and four
-    # replayed tool calls, all copies of rows the auditor run beneath it already holds...
+    # If the fork fixture is shaped — one replayed turn, one replayed model call, four
+    # replayed tool calls and one replayed compaction, all copies of rows the auditor run
+    # beneath it already holds...
     trace = fixture_trace("fork_origin", FORK_ORIGIN)
     replayed = (
         [(SpanKey.turn, row.source, row.id) for row in trace.turns if row.replayed]
         + [(SpanKey.api_call, row.source, row.id) for row in trace.api_calls if row.replayed]
         + [(SpanKey.tool_call, row.source, row.id) for row in trace.tool_calls if row.replayed]
+        + [(SpanKey.compaction, row.source, row.id) for row in trace.compactions if row.replayed]
     )
-    assert len(replayed) == 6, "the fixture stopped carrying the copies this leaf reads"
+    assert len(replayed) == 7, "the fixture stopped carrying the copies this leaf reads"
     # ...then no span carries a copy's key, because shipping one double-counts the same event
     # in every backend aggregation — the whole reason the exclusion exists...
     shipped = {span.span_id for span in session_spans(trace)}
@@ -168,7 +170,7 @@ def test_a_forks_copies_never_become_spans(fixture_trace: TraceFactory) -> None:
     # live `Agent` call that spawned the fork, which became its run's span instead.
     live = sum(
         1
-        for rows in (trace.turns, trace.api_calls, trace.tool_calls)
+        for rows in (trace.turns, trace.api_calls, trace.tool_calls, trace.compactions)
         for row in rows
         if not row.replayed
     )
