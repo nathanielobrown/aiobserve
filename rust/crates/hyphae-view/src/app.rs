@@ -25,7 +25,7 @@ use crate::browse::{Asked, PageError};
 use crate::components::pages as error_pages;
 use crate::store::{Reader, ViewError};
 use crate::viewer::Viewer;
-use crate::{format, listing, node_pages, pages, statics};
+use crate::{expansions, format, listing, node_pages, pages, statics};
 
 /// Loopback only, and a port unlikely to be taken. Fixed rather than picked at startup so a link
 /// pasted into a note opens the same page tomorrow.
@@ -93,6 +93,35 @@ pub fn build_app(db_path: &Path) -> Result<Router, ViewError> {
         .route(
             "/session/{session_id}/offload/{*offload_name}",
             get(offload_page),
+        )
+        .route(
+            &format!(
+                "{}/session/{{session_id}}/thread/{{source}}/{{kind}}/{{node_id}}",
+                crate::nodes::BODY_URL
+            ),
+            get(thread_body),
+        )
+        .route(
+            &format!(
+                "{}/session/{{session_id}}/{}/{{run_id}}",
+                crate::nodes::BODY_URL,
+                crate::nodes::Kind::Run.word()
+            ),
+            get(run_body),
+        )
+        .route(
+            &format!(
+                "{}/session/{{session_id}}/thread/{{source}}/{{kind}}/{{node_id}}",
+                crate::nodes::KIN_URL
+            ),
+            get(node_kin),
+        )
+        .route(
+            &format!(
+                "{}/session/{{session_id}}/{{kind}}/{{node_id}}",
+                crate::nodes::KIN_URL
+            ),
+            get(loose_kin),
         )
         .fallback(not_found)
         .layer(middleware::map_response(policy))
@@ -306,6 +335,62 @@ async fn offload_page(
         chunk.after.unwrap_or(0),
         chunk.size.unwrap_or(crate::knobs::CHUNK.default),
     ))
+}
+
+/// The body of a turn, an api call, or a tool call, opened in its parent's log.
+async fn thread_body(
+    State(viewer): State<Shared>,
+    UrlPath((session_id, source, kind, node_id)): UrlPath<(String, String, String, String)>,
+    Query(knobs): Query<Knobs>,
+) -> Response {
+    served(knobs.asked().and_then(|asked| {
+        expansions::thread_body(&viewer, &session_id, &source, &kind, &node_id, &asked)
+    }))
+}
+
+/// One agent run's body, opened in the log of whatever lists it.
+async fn run_body(
+    State(viewer): State<Shared>,
+    UrlPath((session_id, run_id)): UrlPath<(String, String)>,
+    Query(knobs): Query<Knobs>,
+) -> Response {
+    served(
+        knobs
+            .asked()
+            .and_then(|asked| expansions::run_body(&viewer, &session_id, &run_id, &asked)),
+    )
+}
+
+/// The rest of one level under a node recorded on a thread.
+async fn node_kin(
+    State(viewer): State<Shared>,
+    UrlPath((session_id, source, kind, node_id)): UrlPath<(String, String, String, String)>,
+    Query(spill): Query<expansions::Spill>,
+    Query(knobs): Query<Knobs>,
+) -> Response {
+    served(knobs.asked().and_then(|asked| {
+        expansions::node_kin(
+            &viewer,
+            &session_id,
+            &source,
+            &kind,
+            &node_id,
+            &spill,
+            &asked,
+        )
+    }))
+}
+
+/// The rest of one level under a node that carries no thread of its own.
+async fn loose_kin(
+    State(viewer): State<Shared>,
+    UrlPath((session_id, kind, node_id)): UrlPath<(String, String, String)>,
+    Query(spill): Query<expansions::Spill>,
+    Query(knobs): Query<Knobs>,
+) -> Response {
+    served(knobs.asked().and_then(|asked| {
+        expansions::loose_kin(&viewer, &session_id, &kind, &node_id, &spill, &asked)
+    }))
 }
 
 /// The two knobs a chunked page carries: where to resume, and how much to serve. Each page owns

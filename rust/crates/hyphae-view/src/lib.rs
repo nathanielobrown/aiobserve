@@ -14,6 +14,7 @@ pub mod cuts;
 pub mod detail;
 pub mod enrichment;
 pub mod errors;
+pub mod expansions;
 pub mod format;
 pub mod formatters;
 pub mod highlight;

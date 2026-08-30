@@ -85,6 +85,25 @@ impl Kind {
         }
     }
 
+    /// The kind that word names, or nothing when no kind is spelled that way.
+    ///
+    /// The inverse of [`Kind::word`]: a URL segment is something a reader can type, so a segment
+    /// outside the set is a 404 rather than a page built around a kind that does not exist.
+    pub fn spelled(word: &str) -> Option<Self> {
+        [
+            Self::Session,
+            Self::Turn,
+            Self::Run,
+            Self::Call,
+            Self::Tool,
+            Self::Compaction,
+            Self::Unattributed,
+            Self::Unattached,
+        ]
+        .into_iter()
+        .find(|kind| kind.word() == word)
+    }
+
     /// The mark saying what kind of node this is, wherever a page names one — the NavTree row,
     /// the crumb, the pane's own heading, and the browser tab. Eight characters a reader
     /// learns once and then reads a NavTree by without reading a title, which is why the table
