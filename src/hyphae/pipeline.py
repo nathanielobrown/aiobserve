@@ -55,7 +55,13 @@ class Exporter(Protocol):
         ...
 
     def export(self, trace: SessionTrace, fingerprint: str) -> None:
-        """Replace everything the sink holds for this session, atomically."""
+        """Make the sink hold this session at this fingerprint, replacing what it held.
+
+        All or nothing per session: returning means `fingerprints()` now reports this
+        fingerprint, and raising means it still reports no new one, so the next run sends
+        the session again. What a failure leaves in the sink is the sink's own business —
+        the store rolls back to the old copy, an append-only backend keeps what landed.
+        """
         ...
 
 
@@ -71,9 +77,9 @@ def refresh[SourceT: SessionSource](
 ) -> RefreshResult:
     """Bring the sink up to date with what is on disk for `project`.
 
-    Idempotent by construction: an unchanged session is skipped, and a changed one is
-    replaced wholly rather than appended to. A session in the sink whose files are gone
-    keeps its rows.
+    Idempotent by construction: an unchanged session is skipped, and a changed one is sent
+    whole — nothing here diffs a session against what the sink already holds. A session in
+    the sink whose files are gone keeps its rows.
     """
     held = exporter.fingerprints()
     extracted: list[str] = []
