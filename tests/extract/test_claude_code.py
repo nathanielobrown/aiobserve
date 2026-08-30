@@ -595,6 +595,26 @@ def test_a_novel_prompt_tag_crashes(fixture_source: SourceFactory):
     assert "SUPER-SECRET-PAYLOAD-9f2a" not in message
 
 
+def test_a_record_with_no_timestamp_crashes_naming_the_kind_it_was(
+    fixture_source: SourceFactory,
+):
+    """The crash names the record kind that was missing a timestamp, not a guess at it.
+
+    INVENTED fixture — of the 678,793 records on the recording machine that reach this raise,
+    none is missing a timestamp, so it has no recorded example (`fixtures/invented/README.md`).
+    The message is the whole value of a fail-fast crash, and eight parse paths reach it:
+    compactions, pr links, api calls and tool calls among them.
+    """
+    with pytest.raises(TranscriptSchemaError) as excinfo:
+        ClaudeCodeExtractor().extract(fixture_source("invented", "invented-no-timestamp"))
+
+    message = str(excinfo.value)
+    assert "pr-link" in message and "line 2" in message
+    # The old message called every one of them a prompt, and this record is not one.
+    assert "prompt" not in message
+    assert "SUPER-SECRET-PAYLOAD-9f2a" not in message
+
+
 def test_a_duplicate_uuid_whose_content_differs_crashes(fixture_source: SourceFactory):
     """Two records under one uuid may differ in their envelope, never in what was said.
 

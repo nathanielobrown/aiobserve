@@ -34,8 +34,8 @@ MYCELIA = "/Users/nob/repos/mycelia"
 # the machine the corpus was recorded on. Named here so a leaf can say who is reading.
 HOME = "/Users/nob"
 
-# The six transcripts under `invented/` that carry unknown record shapes crash on export by
-# design, so the corpus takes the two that do not by name. They are the only fixtures
+# The seven transcripts under `invented/` that carry a shape the extractor refuses crash on
+# export by design, so the corpus takes the two that do not by name. They are the only fixtures
 # recorded under another project, which is what makes the corpus predicate testable.
 CLEAN_INVENTED = ("invented-no-cache-creation", "invented-truncated-tail")
 # `/invented/project` and `/repo` respectively — outside the corpus whatever `--project` says.
