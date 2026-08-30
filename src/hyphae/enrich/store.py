@@ -25,6 +25,7 @@ from hyphae.enrich.items import (
     SessionItem,
     ToolCallRow,
     TurnItem,
+    item_key,
 )
 from hyphae.enrich.levels import LEVELS
 from hyphae.enrich.validation import Enrichment
@@ -567,19 +568,19 @@ class EnrichmentStore:
         parents: dict[str, str | None] = {}
         for link in self._run_links(project):
             if link.parent_run is not None:
-                parent = f"{Level.agent_run}|{link.session_id}|{link.parent_run}"
+                parent = item_key(Level.agent_run, link.session_id, link.parent_run)
             elif link.parent_turn is not None:
-                parent = f"{Level.turn}|{link.session_id}|{MAIN_SOURCE}|{link.parent_turn}"
+                parent = item_key(Level.turn, link.session_id, MAIN_SOURCE, link.parent_turn)
             else:
-                parent = f"{Level.session}|{link.session_id}"
-            parents[f"{Level.agent_run}|{link.session_id}|{link.run_id}"] = parent
+                parent = item_key(Level.session, link.session_id)
+            parents[item_key(Level.agent_run, link.session_id, link.run_id)] = parent
         for session_id, turn_id in self.connection.execute(
             f"""SELECT t.session_id, t.id FROM live_turns t JOIN sessions s ON s.id = t.session_id
                 WHERE {_source_clause("t", main=True)}{_project_clause(project)}""",
             _project_parameters(project),
         ).fetchall():
-            parents[f"{Level.turn}|{session_id}|{MAIN_SOURCE}|{turn_id}"] = (
-                f"{Level.session}|{session_id}"
+            parents[item_key(Level.turn, session_id, MAIN_SOURCE, turn_id)] = item_key(
+                Level.session, session_id
             )
         return parents
 
@@ -600,7 +601,7 @@ class EnrichmentStore:
             f" FROM {spec.table}"
         ).fetchall()
         width = len(spec.keys)
-        return {"|".join((level, *row[:width])): Stamp(*row[width:]) for row in rows}
+        return {item_key(level, *row[:width]): Stamp(*row[width:]) for row in rows}
 
     def upsert(self, item: Item, enrichment: Enrichment, stamp: Stamp) -> None:
         """Write one item's enrichment, replacing whatever the key held before."""
