@@ -243,7 +243,7 @@ def call_page(
             "page_tools": knobs.log,
             "log_chars": queries.LOG_CHARS,
         }
-        called = listed(page_rows(connection, Fragment.CALL_TOOLS, **tools), "matched_tool_calls")
+        called = listed(page_rows(connection, Fragment.CALL_TOOLS, **tools))
         return Seen(
             header=row,
             # The call's own header says which turn it answers, so its place costs no

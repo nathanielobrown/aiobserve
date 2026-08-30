@@ -24,7 +24,7 @@ WITH page AS (
         -- How many tool calls the api call made in all, counted before the LIMIT bites. The
         -- page divides it by its own size to say which page of how many this is, which is what
         -- keeps a cap from looking like a call that simply made fewer tool calls.
-        count(*) OVER () AS matched_tool_calls,
+        count(*) OVER () AS matched_rows,
         -- What the input carried under the names the tools the viewer knows name their calls
         -- by, so a `Read` row reads as a path and a `Bash` row as the command it ran
         -- (`view/tool_names.py:FORMATTERS`). Every member cut at the width of the column that
@@ -54,7 +54,7 @@ SELECT
     started_at,
     input_chars,
     result_chars,
-    matched_tool_calls,
+    matched_rows,
     fields
 FROM page
 ORDER BY tool_index;

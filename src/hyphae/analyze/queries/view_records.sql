@@ -12,7 +12,7 @@ SELECT
     substr(raw, 1, $preview_chars) AS raw_head,
     -- How many records the cursor still has ahead of it, counted before the LIMIT bites, so
     -- the page can say what it cut rather than looking like the end of a thread.
-    count(*) OVER () AS matched_records
+    count(*) OVER () AS matched_rows
 FROM raw_records
 WHERE session_id = $session_id
   AND source = $source

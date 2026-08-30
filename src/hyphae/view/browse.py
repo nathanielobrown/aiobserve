@@ -307,7 +307,7 @@ def call_log(
         "page_calls": log,
         "log_chars": queries.LOG_CHARS,
     }
-    calls = listed(page_rows(connection, Fragment.TURN_CALLS, **bound), "matched_api_calls")
+    calls = listed(page_rows(connection, Fragment.TURN_CALLS, **bound))
     rows = [
         builders.logged(
             Shape.CALLS, builders.call_node(corpus.session_id, source, row, corpus.held), row

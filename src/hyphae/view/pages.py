@@ -21,6 +21,7 @@ from hyphae.view.knobs import (
     checked,
 )
 from hyphae.view.store import (
+    MATCHED_ROWS,
     Page,
     open_store,
     page_rows,
@@ -115,11 +116,7 @@ def records_page(
         "preview_chars": queries.RECORD_PREVIEW,
     }
     with open_store(viewer.db) as connection:
-        page = paged(
-            page_rows(connection, Page.RECORDS, **bound),
-            "matched_records",
-            "line_no",
-        )
+        page = paged(page_rows(connection, Page.RECORDS, **bound), "line_no")
     # A thread the store never held and a cursor past the end of one it does are the same
     # answer — nothing at this URL. Neither is a page worth rendering empty.
     if not page.rows:
@@ -144,7 +141,7 @@ def records_page(
                 )
                 for row in page.rows
             ],
-            matched=first["matched_records"],
+            matched=first[MATCHED_ROWS],
             opened=opened,
             after=page.after,
             more=page.more,
