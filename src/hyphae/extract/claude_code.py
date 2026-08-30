@@ -14,6 +14,7 @@ import json
 from collections.abc import Iterable
 from pathlib import Path
 
+from hyphae.extract.layout import DEFAULT_PROJECTS_ROOT, find_sessions
 from hyphae.extract.session_files import (
     _agent_runs,
     _classify,
@@ -26,7 +27,7 @@ from hyphae.extract.session_files import (
 from hyphae.extract.transcript import _parse, _pr_links, _raw_record, _session
 from hyphae.model import MAIN_SOURCE, SessionTrace
 from hyphae.pipeline import SessionSource
-from hyphae.sessions import DEFAULT_PROJECTS_ROOT, encode_project_path, find_sessions
+from hyphae.projects import encode_project_path
 
 EXTRACTOR_NAME = "claude_code"
 

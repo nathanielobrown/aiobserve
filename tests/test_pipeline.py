@@ -16,7 +16,7 @@ from hyphae.extract import claude_code
 from hyphae.extract.claude_code import ClaudeCodeExtractor
 from hyphae.model import SessionTrace
 from hyphae.pipeline import Extractor, SessionSource, refresh
-from hyphae.sessions import encode_project_path
+from hyphae.projects import encode_project_path
 from tests.conftest import FIXTURES
 
 SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"

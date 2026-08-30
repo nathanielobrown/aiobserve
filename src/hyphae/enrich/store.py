@@ -30,7 +30,7 @@ from hyphae.enrich.validation import Enrichment
 from hyphae.export.duckdb import open_trace_store
 from hyphae.export.schema import check_shape
 from hyphae.model import MAIN_SOURCE
-from hyphae.sessions import project_predicate
+from hyphae.projects import project_predicate
 
 # Every enrichment table holds the same columns; only the primary key differs.
 _ENRICHMENT_COLUMNS = """

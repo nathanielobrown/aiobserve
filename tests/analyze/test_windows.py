@@ -14,8 +14,8 @@ import pytest
 
 from hyphae.export.duckdb import DuckDbExporter
 from hyphae.extract.claude_code import ClaudeCodeExtractor
+from hyphae.extract.layout import SessionFiles
 from hyphae.pipeline import SessionSource
-from hyphae.sessions import SessionFiles
 from tests.analyze.conftest import (
     AS_OF_MID,
     AS_OF_PARTIAL,

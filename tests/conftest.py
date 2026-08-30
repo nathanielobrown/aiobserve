@@ -22,9 +22,9 @@ from hyphae.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
 from hyphae.enrich.validation import Enrichment
 from hyphae.export.duckdb import DuckDbExporter
 from hyphae.extract.claude_code import ClaudeCodeExtractor
+from hyphae.extract.layout import SessionFiles
 from hyphae.model import SessionTrace
 from hyphae.pipeline import SessionSource
-from hyphae.sessions import SessionFiles
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

@@ -16,9 +16,10 @@ from hyphae.cli import DEFAULT_DB
 from hyphae.enrich.client import DEFAULT_CONCURRENCY, DEFAULT_MODEL
 from hyphae.export.otlp import DEFAULT_MAX_CHARS
 from hyphae.export.otlp_delivery import DEFAULT_RATE, GENERIC
-from hyphae.sessions import DEFAULT_PROJECTS_ROOT, encode_project_path
+from hyphae.extract.layout import DEFAULT_PROJECTS_ROOT
+from hyphae.projects import encode_project_path
 from hyphae.view.app import PORT
-from tests.test_sessions import make_projects_root
+from tests.extract.test_layout import make_projects_root
 
 PROJECT = Path("repos/mycelia")
 

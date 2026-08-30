@@ -15,11 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from hyphae.extract.record_types import ContentBlock, RecordType, TranscriptSchemaError
-from hyphae.extract.transcript import _check_type, _content, _Line, _timestamp
-from hyphae.model import MAIN_SOURCE, AgentRun, OffloadFile
-from hyphae.pipeline import SessionSource
-from hyphae.sessions import (
+from hyphae.extract.layout import (
     AGENT_PREFIX,
     JOURNAL_NAME,
     META_SUFFIX,
@@ -29,6 +25,10 @@ from hyphae.sessions import (
     WORKFLOW_PREFIX,
     WORKFLOWS_DIR,
 )
+from hyphae.extract.record_types import ContentBlock, RecordType, TranscriptSchemaError
+from hyphae.extract.transcript import _check_type, _content, _Line, _timestamp
+from hyphae.model import MAIN_SOURCE, AgentRun, OffloadFile
+from hyphae.pipeline import SessionSource
 
 # The `source` a workflow journal records under, after its `wf_<id>/` directory.
 JOURNAL_SOURCE = "journal"

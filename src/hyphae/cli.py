@@ -36,9 +36,10 @@ from hyphae.export.otlp_delivery import (
     named_backend,
 )
 from hyphae.extract.claude_code import ClaudeCodeExtractor
+from hyphae.extract.layout import DEFAULT_PROJECTS_ROOT, find_sessions
 from hyphae.extract.store import StoreSource, UnknownProjectError
 from hyphae.pipeline import refresh
-from hyphae.sessions import DEFAULT_PROJECTS_ROOT, find_sessions, resolve_project
+from hyphae.projects import resolve_project
 from hyphae.view.app import PORT, serve
 
 # Gitignored, so an extract never lands in a commit.

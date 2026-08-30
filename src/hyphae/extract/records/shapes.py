@@ -118,7 +118,7 @@ class SessionContext(Identified):
             default=None,
             description=(
                 "The project directory, absolute and symlink-free. Resolve a command-line path "
-                "before matching it — `hyphae.sessions.resolve_project` does. Early "
+                "before matching it — `hyphae.projects.resolve_project` does. Early "
                 "bookkeeping records omit it, so reading only the first record yields nulls"
             ),
         ),
