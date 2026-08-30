@@ -9,7 +9,6 @@ What those lines mean is `extract/transcript.py`; the extractor that drives both
 `extract/claude_code.py`.
 """
 
-import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
@@ -25,8 +24,8 @@ from hyphae.extract.layout import (
     WORKFLOW_PREFIX,
     WORKFLOWS_DIR,
 )
-from hyphae.extract.records.registry import ContentBlock, RecordType, TranscriptSchemaError
-from hyphae.extract.transcript import _check_type, _content, _Line, _timestamp
+from hyphae.extract.records.registry import TranscriptSchemaError
+from hyphae.extract.transcript import _fork_context, _Line, _timestamp
 from hyphae.model import MAIN_SOURCE, AgentRun, OffloadFile
 from hyphae.pipeline import SessionSource
 
@@ -268,37 +267,6 @@ def _agent_runs(
     return runs
 
 
-def _fork_context(lines: list[_Line]) -> str | None:
-    """The record a by-reference fork continues from, when its file opens on one.
-
-    Only that variant carries it: a fork that copied its history states the same thing by
-    holding the records themselves. Every one of the 25 in the corpus leads the file
-    (scanned 2026-08-07), but the search does not depend on that.
-    """
-    for line in lines:
-        if line.record["type"] == RecordType.FORK_CONTEXT_REF:
-            return line.record["parentLastUuid"]
-    return None
-
-
-def _workflow_launches(lines: list[_Line]) -> dict[str, str]:
-    """Which tool call launched each fan-out: `runId` from the result, to its call's id.
-
-    A `Workflow` call answers with the run it started, and the run id is the name of the
-    directory its agents write into — the only join between a fan-out's transcripts and the
-    call that asked for them.
-    """
-    launches = {}
-    for line in lines:
-        details = line.record.get("toolUseResult")
-        if not isinstance(details, dict) or "runId" not in details:
-            continue
-        for block in line.record["message"]["content"]:
-            if block["type"] == ContentBlock.TOOL_RESULT:
-                launches[details["runId"]] = block["tool_use_id"]
-    return launches
-
-
 def _offload_file(path: Path, session_id: str) -> OffloadFile:
     """One `tool-results/` file, read whole — it is the only copy once Claude Code prunes."""
     data = path.read_bytes()
@@ -322,41 +290,6 @@ def _offload_file(path: Path, session_id: str) -> OffloadFile:
         )
 
 
-def _read(path: Path, session_id: str) -> list[_Line]:
-    """Every line of a transcript, parsed as JSON.
-
-    Split on "\\n" rather than `splitlines()`: real records contain U+2028 and U+2029
-    inside string values, which `splitlines()` treats as line breaks and so cuts records
-    in half.
-
-    A transcript read while Claude Code is writing it can end mid-record. That last line is
-    dropped with a warning, because the session is live rather than corrupt and the next
-    refresh will pick it up whole. Anywhere earlier, unparseable JSON is real damage and
-    stops the run.
-    """
-    raws = path.read_text().split("\n")
-    lines = []
-    for line_no, raw in enumerate(raws, start=1):
-        if not raw.strip():
-            continue
-        try:
-            record = json.loads(raw)
-        except json.JSONDecodeError as error:
-            if any(later.strip() for later in raws[line_no:]):
-                raise TranscriptSchemaError(
-                    f"Unparseable record in session {session_id}, line {line_no}"
-                ) from error
-            logger.warning(
-                "Session %s: dropped an incomplete final line (%d), still being written",
-                session_id,
-                line_no,
-            )
-            continue
-        _check_type(record, session_id, line_no)
-        lines.append(_Line(line_no=line_no, record=record, raw=raw))
-    return lines
-
-
 def _transcript_of(source: SessionSource) -> Path:
     """The session's own transcript, among the files discovery collected."""
     name = f"{source.id}{TRANSCRIPT_SUFFIX}"
@@ -364,30 +297,3 @@ def _transcript_of(source: SessionSource) -> Path:
         if path.name == name:
             return path
     raise TranscriptSchemaError(f"Session {source.id}: no {name} among its files")
-
-
-def _resolve_duplicates(lines: list[_Line], session_id: str) -> list[_Line]:
-    """Collapse repeated uuids to their last occurrence.
-
-    A rewind or an in-file fork rewrites a record's envelope under the uuid it already
-    used. The last write is the state the session continued from. A rewrite that changes
-    what was *said* is a different animal and stops the run.
-    """
-    last_at: dict[str, int] = {}
-    for index, line in enumerate(lines):
-        # Bookkeeping types carry no uuid — a documented absence, and nothing to dedup.
-        uuid = line.record.get("uuid")
-        if uuid is None:
-            continue
-        if uuid in last_at and _content(lines[last_at[uuid]]) != _content(line):
-            raise TranscriptSchemaError(
-                f"Duplicate uuid {uuid} with differing message content in session "
-                f"{session_id}, lines {lines[last_at[uuid]].line_no} and {line.line_no}"
-            )
-        last_at[uuid] = index
-    survivors = set(last_at.values())
-    return [
-        line
-        for index, line in enumerate(lines)
-        if line.record.get("uuid") is None or index in survivors
-    ]

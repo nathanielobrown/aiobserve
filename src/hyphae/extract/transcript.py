@@ -1,15 +1,18 @@
-"""What one transcript's lines say: the readers that turn records into entities.
+"""What one transcript holds: the file read into lines, and what those lines say.
 
 One thread at a time — the session's own transcript or a subagent's — and no knowledge of
 which files make up a session (`extract/session_files.py`) or of how a refresh is driven
-(`extract/claude_code.py`). `_parse` is the entry: lines in, turns, api calls, tool calls and
-compactions out.
+(`extract/claude_code.py`). What a record *is* lives here and nowhere else: `_read` parses a
+file into lines and rejects any shape outside the registries, `_resolve_duplicates` collapses a
+uuid the file wrote twice, and `_parse` turns what survives into turns, api calls, tool calls
+and compactions.
 
 Every field name these readers reach for is Claude Code's own, and the meaning of each is
 declared on a model in `extract/records/` with the session that proved it (`docs/schema.md`).
 """
 
 import json
+import logging
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
@@ -46,6 +49,8 @@ _LEADING_TAG = re.compile(r"<([A-Za-z0-9_-]+)(?=[\s>])")
 _COMMAND_NAME = re.compile(r"<command-name>(.*?)</command-name>", re.DOTALL)
 _COMMAND_ARGS = re.compile(r"<command-args>(.*?)</command-args>", re.DOTALL)
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class _Line:
@@ -54,6 +59,11 @@ class _Line:
     line_no: int
     record: dict[str, Any]
     raw: str
+
+    @property
+    def uuid(self) -> str | None:
+        """The record's own id, absent on the bookkeeping types — a documented absence."""
+        return self.record.get("uuid")
 
 
 class _Parsed(NamedTuple):
@@ -83,6 +93,63 @@ class _Prompt:
     text: str
     command_name: str | None
     command_args: str | None
+
+
+def _read(path: Path, session_id: str) -> list[_Line]:
+    """Every line of a transcript, parsed as JSON.
+
+    Split on "\\n" rather than `splitlines()`: real records contain U+2028 and U+2029
+    inside string values, which `splitlines()` treats as line breaks and so cuts records
+    in half.
+
+    A transcript read while Claude Code is writing it can end mid-record. That last line is
+    dropped with a warning, because the session is live rather than corrupt and the next
+    refresh will pick it up whole. Anywhere earlier, unparseable JSON is real damage and
+    stops the run.
+    """
+    raws = path.read_text().split("\n")
+    lines = []
+    for line_no, raw in enumerate(raws, start=1):
+        if not raw.strip():
+            continue
+        try:
+            record = json.loads(raw)
+        except json.JSONDecodeError as error:
+            if any(later.strip() for later in raws[line_no:]):
+                raise TranscriptSchemaError(
+                    f"Unparseable record in session {session_id}, line {line_no}"
+                ) from error
+            logger.warning(
+                "Session %s: dropped an incomplete final line (%d), still being written",
+                session_id,
+                line_no,
+            )
+            continue
+        _check_type(record, session_id, line_no)
+        lines.append(_Line(line_no=line_no, record=record, raw=raw))
+    return lines
+
+
+def _resolve_duplicates(lines: list[_Line], session_id: str) -> list[_Line]:
+    """Collapse repeated uuids to their last occurrence.
+
+    A rewind or an in-file fork rewrites a record's envelope under the uuid it already
+    used. The last write is the state the session continued from. A rewrite that changes
+    what was *said* is a different animal and stops the run.
+    """
+    last_at: dict[str, int] = {}
+    for index, line in enumerate(lines):
+        # Bookkeeping types carry no uuid — a documented absence, and nothing to dedup.
+        if line.uuid is None:
+            continue
+        if line.uuid in last_at and _content(lines[last_at[line.uuid]]) != _content(line):
+            raise TranscriptSchemaError(
+                f"Duplicate uuid {line.uuid} with differing message content in session "
+                f"{session_id}, lines {lines[last_at[line.uuid]].line_no} and {line.line_no}"
+            )
+        last_at[line.uuid] = index
+    survivors = set(last_at.values())
+    return [line for index, line in enumerate(lines) if line.uuid is None or index in survivors]
 
 
 def _parse(lines: list[_Line], session_id: str, source: str, replayed: set[int]) -> _Parsed:
@@ -135,7 +202,7 @@ def _raw_record(session_id: str, source: str, line: _Line) -> RawRecord:
         session_id=session_id,
         source=source,
         line_no=line.line_no,
-        uuid=line.record.get("uuid"),
+        uuid=line.uuid,
         timestamp=_timestamp(line.record),
         type=line.record["type"],
         raw=line.raw,
@@ -231,6 +298,37 @@ def _pr_links(lines: list[_Line], session_id: str) -> list[PrLink]:
         for line in lines
         if line.record["type"] == RecordType.PR_LINK
     ]
+
+
+def _fork_context(lines: list[_Line]) -> str | None:
+    """The record a by-reference fork continues from, when its file opens on one.
+
+    Only that variant carries it: a fork that copied its history states the same thing by
+    holding the records themselves. Every one of the 25 in the corpus leads the file
+    (scanned 2026-08-07), but the search does not depend on that.
+    """
+    for line in lines:
+        if line.record["type"] == RecordType.FORK_CONTEXT_REF:
+            return line.record["parentLastUuid"]
+    return None
+
+
+def _workflow_launches(lines: list[_Line]) -> dict[str, str]:
+    """Which tool call launched each fan-out: `runId` from the result, to its call's id.
+
+    A `Workflow` call answers with the run it started, and the run id is the name of the
+    directory its agents write into — the only join between a fan-out's transcripts and the
+    call that asked for them.
+    """
+    launches = {}
+    for line in lines:
+        details = line.record.get("toolUseResult")
+        if not isinstance(details, dict) or "runId" not in details:
+            continue
+        for block in line.record["message"]["content"]:
+            if block["type"] == ContentBlock.TOOL_RESULT:
+                launches[details["runId"]] = block["tool_use_id"]
+    return launches
 
 
 def _turns(
@@ -350,7 +448,7 @@ def _api_calls(
     by `parentUuid`, interleaved with the tool results they triggered. Two thirds of the
     messages in the corpus span several records, so grouping is not optional.
     """
-    at_uuid = {line.record["uuid"]: line for line in lines if line.record.get("uuid")}
+    at_uuid = {line.uuid: line for line in lines if line.uuid}
     chunks: dict[str, list[_Line]] = {}
     for line in lines:
         if line.record["type"] != RecordType.ASSISTANT:
