@@ -92,8 +92,8 @@ def _sessions(args: argparse.Namespace) -> None:
 def _extract(args: argparse.Namespace) -> None:
     """Parse a project's transcripts into the trace store, skipping what has not changed."""
     extractor = ClaudeCodeExtractor(projects_root=args.projects_root)
-    with DuckDbExporter(args.db) as exporter:
-        result = refresh(args.project, extractor=extractor, exporter=exporter)
+    exporter = DuckDbExporter(args.db, wait=CLI_WAIT)
+    result = refresh(args.project, extractor=extractor, exporter=exporter)
     print(f"{len(result.extracted)} session(s) extracted, {len(result.skipped)} unchanged")
 
 

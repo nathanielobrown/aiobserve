@@ -298,8 +298,8 @@ def test_the_ledger_survives_a_re_extract(
     deliver(store, receiver)
     trace = trace_of(store, FIRST)
     store.close()
-    with DuckDbExporter(store_path) as exporter:
-        exporter.export(trace, "re-extracted")
+    exporter = DuckDbExporter(store_path, wait=NO_WAIT)
+    exporter.export(trace, "re-extracted")
     # ...then its delivery row is still there. A table swept into the replace by reflex
     # would erase the ledger on every extract, and every later run would duplicate the corpus.
     with open_trace_store(store_path, read_only=True, wait=NO_WAIT) as reopened:

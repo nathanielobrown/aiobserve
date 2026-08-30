@@ -26,7 +26,7 @@ from hyphae.export.schema import (
     declared_shape,
     table_ddl,
 )
-from tests.conftest import NO_WAIT, lock_is_free
+from tests.conftest import NO_WAIT, opens_elsewhere
 
 
 @pytest.fixture
@@ -122,13 +122,14 @@ def test_a_renamed_trace_column_is_refused_with_the_table_and_column_named(db: P
     reached the operator was a binder error naming a column, with no version and no remedy.
     """
     # If a store's `agent_runs` no longer holds the column the DDL declares...
-    with DuckDbExporter(db) as exporter:
-        exporter.connection.execute("ALTER TABLE agent_runs RENAME brief TO description")
+    DuckDbExporter(db, wait=NO_WAIT)
+    with duckdb.connect(str(db)) as drifted:
+        drifted.execute("ALTER TABLE agent_runs RENAME brief TO description")
 
     # ...then opening it says which table drifted, which column each side has, and where to
     # read before touching an archive.
     with pytest.raises(SchemaShapeError) as refused:
-        DuckDbExporter(db)
+        DuckDbExporter(db, wait=NO_WAIT)
     message = str(refused.value)
     assert "agent_runs" in message
     assert "description" in message and "brief" in message
@@ -142,7 +143,7 @@ def test_a_renamed_enrichment_column_is_refused_the_same_way(db: Path) -> None:
     open with `Binder Error: Table "e" does not have a column named "friction"`.
     """
     # If the enrichment tables exist and one of them has drifted from its DDL...
-    DuckDbExporter(db).close()
+    DuckDbExporter(db, wait=NO_WAIT)
     EnrichmentStore(db).close()
     with duckdb.connect(str(db)) as connection:
         connection.execute("ALTER TABLE turn_enrichments RENAME friction TO struggle")
@@ -155,18 +156,19 @@ def test_a_renamed_enrichment_column_is_refused_the_same_way(db: Path) -> None:
 
     # ...and lets go of the file, which a refusal holding DuckDB's single writer lock would
     # not: nothing was handed back, so no `with` block will ever close it.
-    assert lock_is_free(db), f"the refusal kept the write lock: {refused.value}"
+    assert opens_elsewhere(db, read_only=False), f"the refusal kept the write lock: {refused.value}"
 
 
 def test_a_renamed_delivery_column_is_refused_the_same_way(db: Path) -> None:
     """The third owner: the OTLP delivery ledger, which lives in the same file."""
     backend = Backend(name="test", endpoint="http://127.0.0.1:1/v1/traces")
-    with DuckDbExporter(db) as exporter:
-        OtlpExporter(backend, exporter.connection).close()
-        exporter.connection.execute("ALTER TABLE otlp_delivery RENAME spans_sent TO spans")
+    DuckDbExporter(db, wait=NO_WAIT)
+    with duckdb.connect(str(db)) as connection:
+        OtlpExporter(backend, connection).close()
+        connection.execute("ALTER TABLE otlp_delivery RENAME spans_sent TO spans")
 
         with pytest.raises(SchemaShapeError) as refused:
-            OtlpExporter(backend, exporter.connection)
+            OtlpExporter(backend, connection)
     assert "otlp_delivery" in str(refused.value)
     assert "spans_sent" in str(refused.value)
 
@@ -177,20 +179,19 @@ def test_a_table_a_ddl_declares_but_the_store_lacks_is_not_drift(db: Path) -> No
     Absence is the normal state of a fresh store, so the guard has to read it as "nothing to
     compare" rather than as drift — otherwise no store could be opened until every layer had.
     """
-    with DuckDbExporter(db) as exporter:
+    DuckDbExporter(db, wait=NO_WAIT)
+    with open_trace_store(db, read_only=True, wait=NO_WAIT) as connection:
         tables = {
             name
-            for (name,) in exporter.connection.execute(
-                "SELECT table_name FROM duckdb_tables()"
-            ).fetchall()
+            for (name,) in connection.execute("SELECT table_name FROM duckdb_tables()").fetchall()
         }
         # If the store holds none of another owner's tables...
         assert not tables & (declared_shape(ENRICHMENT_SCHEMA).keys())
         assert not tables & (declared_shape(DELIVERY_SCHEMA).keys())
 
         # ...then checking those DDLs against it passes.
-        check_shape(exporter.connection, ENRICHMENT_SCHEMA)
-        check_shape(exporter.connection, DELIVERY_SCHEMA)
+        check_shape(connection, ENRICHMENT_SCHEMA)
+        check_shape(connection, DELIVERY_SCHEMA)
 
 
 # Names a real trace store for the opt-in check below. Off by default: the store holds

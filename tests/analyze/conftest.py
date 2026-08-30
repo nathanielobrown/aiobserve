@@ -24,6 +24,7 @@ from hyphae.extract.layout import SessionFiles
 from tests.conftest import (
     FIXTURES,
     MYCELIA,
+    NO_WAIT,
     RESUME,
     SIBLING_SESSION,
     WORKTREE_SESSION,
@@ -180,15 +181,15 @@ def worktree_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Pa
     """
     path = tmp_path_factory.mktemp("worktree") / "traces.duckdb"
     path.write_bytes(corpus_db.read_bytes())
-    with DuckDbExporter(path) as exporter:
-        for directory, stem, project_dir in (
-            ("legacy_title", WORKTREE_SESSION, f"{MYCELIA}/.claude/worktrees/planted"),
-            ("legacy_entrypoint", SIBLING_SESSION, f"{MYCELIA}-old"),
-        ):
-            transcript = FIXTURES / directory / f"{stem}.jsonl"
-            session = SessionFiles(id=stem, transcript=transcript)
-            source = ClaudeCodeSource(id=stem, fingerprint="planted", files=session)
-            trace = ClaudeCodeExtractor().extract(source)
-            trace = replace(trace, session=replace(trace.session, project_dir=project_dir))
-            exporter.export(trace, source.fingerprint)
+    exporter = DuckDbExporter(path, wait=NO_WAIT)
+    for directory, stem, project_dir in (
+        ("legacy_title", WORKTREE_SESSION, f"{MYCELIA}/.claude/worktrees/planted"),
+        ("legacy_entrypoint", SIBLING_SESSION, f"{MYCELIA}-old"),
+    ):
+        transcript = FIXTURES / directory / f"{stem}.jsonl"
+        session = SessionFiles(id=stem, transcript=transcript)
+        source = ClaudeCodeSource(id=stem, fingerprint="planted", files=session)
+        trace = ClaudeCodeExtractor().extract(source)
+        trace = replace(trace, session=replace(trace.session, project_dir=project_dir))
+        exporter.export(trace, source.fingerprint)
     return path

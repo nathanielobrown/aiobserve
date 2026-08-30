@@ -15,7 +15,7 @@ import pytest
 from hyphae.export.duckdb import DuckDbExporter, StoreLocked, open_trace_store
 from hyphae.export.schema import SchemaVersionError
 from hyphae.model import SessionTrace
-from tests.conftest import LOCK_TIMEOUT, NO_WAIT, SPINE, TraceFactory, lock_is_free, locked
+from tests.conftest import LOCK_TIMEOUT, NO_WAIT, SPINE, TraceFactory, locked, opens_elsewhere
 from tests.export.test_duckdb import foreign_store, unmigratable_store
 
 # How long the holder below keeps the lock before letting go on its own. Every wait the tests
@@ -32,9 +32,9 @@ def db(tmp_path: Path) -> Path:
 
 def stored(db: Path, *traces: SessionTrace) -> None:
     """A store on disk holding these traces — the file the tests below open."""
-    with DuckDbExporter(db) as exporter:
-        for index, trace in enumerate(traces):
-            exporter.export(trace, f"fingerprint-{index}")
+    exporter = DuckDbExporter(db, wait=NO_WAIT)
+    for index, trace in enumerate(traces):
+        exporter.export(trace, f"fingerprint-{index}")
 
 
 def test_a_writer_waits_out_a_holder(db: Path, fixture_trace: TraceFactory):
@@ -105,9 +105,14 @@ def open_for_write(path: Path) -> object:
         return connection
 
 
+def open_for_export(path: Path) -> object:
+    """The exporter's own open, which prepares the store and hands back no connection."""
+    return DuckDbExporter(path, wait=NO_WAIT)
+
+
 @pytest.mark.parametrize(
     "open_store",
-    [DuckDbExporter, open_for_write],
+    [open_for_export, open_for_write],
     ids=["exporter", "reader"],
 )
 @pytest.mark.parametrize(
@@ -121,9 +126,9 @@ def test_a_refused_store_keeps_none_of_its_lock(
     """However a store is opened and whatever makes it unreadable, refusing it frees the file.
 
     Half the contract is invisible in the file: an opener that raises hands nothing back, so
-    no `with` block runs and nothing calls `close()`. The connection lives on in the
-    traceback its caller holds, and DuckDB's single-writer lock goes with it — the next
-    process to open the store is refused for a reason that has nothing to do with the store.
+    no caller is left to close what it opened. The connection lives on in the traceback its
+    caller holds, and DuckDB's single-writer lock goes with it — the next process to open the
+    store is refused for a reason that has nothing to do with the store.
     """
     # If an unreadable store is refused, and its caller keeps the error to report — a live
     # process, not one exiting on the spot...
@@ -132,4 +137,4 @@ def test_a_refused_store_keeps_none_of_its_lock(
         open_store(db)
 
     # ...then nothing here still holds the file.
-    assert lock_is_free(db), f"the refusal kept the write lock: {refused.value}"
+    assert opens_elsewhere(db, read_only=False), f"the refusal kept the write lock: {refused.value}"

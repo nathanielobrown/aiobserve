@@ -14,7 +14,7 @@ from typing import Any
 import duckdb
 import pytest
 
-from tests.conftest import LOCK_TIMEOUT, lock_is_free, locked, stop
+from tests.conftest import LOCK_TIMEOUT, locked, opens_elsewhere, stop
 
 # A holder that will not answer SIGTERM, so only the fallback can end it. Invented, and it
 # has to be: the real holder does answer, and the flake this leaf covers is one that
@@ -71,7 +71,7 @@ def test_waiting_for_the_lock_opens_the_store_in_no_other_process(
     monkeypatch.setattr(duckdb, "connect", spy)
     # ...then the lock is held for the length of the block, as another process sees it...
     with locked(path):
-        assert not lock_is_free(path)
+        assert not opens_elsewhere(path, read_only=False)
     # ...and the wait that established it opened nothing here, so there was never a read
     # lock of ours for the holder's write open to collide with.
     assert opened == []

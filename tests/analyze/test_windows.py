@@ -28,7 +28,7 @@ from tests.analyze.conftest import (
     QueryRunner,
     query,
 )
-from tests.conftest import FIXTURES, MYCELIA, NO_PROJECT_SESSION
+from tests.conftest import FIXTURES, MYCELIA, NO_PROJECT_SESSION, NO_WAIT
 
 CORPUS = "corpus"
 TRAILING = "trailing_window"
@@ -153,9 +153,9 @@ def undated_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Pat
     transcript = FIXTURES / "fork_byref" / f"{NO_PROJECT_SESSION}.jsonl"
     session = SessionFiles(id=NO_PROJECT_SESSION, transcript=transcript)
     source = ClaudeCodeSource(id=NO_PROJECT_SESSION, fingerprint="planted", files=session)
-    with DuckDbExporter(path) as exporter:
-        trace = ClaudeCodeExtractor().extract(source)
-        exporter.export(replace(trace, session=replace(trace.session, project_dir=MYCELIA)), "p")
+    exporter = DuckDbExporter(path, wait=NO_WAIT)
+    trace = ClaudeCodeExtractor().extract(source)
+    exporter.export(replace(trace, session=replace(trace.session, project_dir=MYCELIA)), "p")
     return path
 
 

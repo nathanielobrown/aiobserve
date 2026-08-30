@@ -10,9 +10,10 @@ import shutil
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Generator, Iterable
+from collections.abc import Callable, Generator, Iterable, Sequence
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -21,7 +22,7 @@ from hyphae.enrich.levels import LEVELS
 from hyphae.enrich.store import EnrichmentStore, Stamp
 from hyphae.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
 from hyphae.enrich.validation import Enrichment
-from hyphae.export.duckdb import DuckDbExporter
+from hyphae.export.duckdb import DuckDbExporter, open_trace_store
 from hyphae.extract.claude_code import ClaudeCodeExtractor, ClaudeCodeSource
 from hyphae.extract.layout import SessionFiles
 from hyphae.model import SessionTrace
@@ -180,11 +181,11 @@ def build_store(path: Path, transcripts: Iterable[Path]) -> None:
     costs an extraction per transcript — build once per test session and copy the file for
     any test that plants or deletes rows.
     """
-    with DuckDbExporter(path) as exporter:
-        for transcript in transcripts:
-            session = SessionFiles(id=transcript.stem, transcript=transcript)
-            source = ClaudeCodeSource(id=session.id, fingerprint="fixture", files=session)
-            exporter.export(ClaudeCodeExtractor().extract(source), source.fingerprint)
+    exporter = DuckDbExporter(path, wait=NO_WAIT)
+    for transcript in transcripts:
+        session = SessionFiles(id=transcript.stem, transcript=transcript)
+        source = ClaudeCodeSource(id=session.id, fingerprint="fixture", files=session)
+        exporter.export(ClaudeCodeExtractor().extract(source), source.fingerprint)
 
 
 def corpus_transcripts() -> tuple[Path, ...]:
@@ -253,23 +254,35 @@ def stop(holder: "subprocess.Popen[bytes]", *, patience: float) -> None:
         holder.wait(timeout=patience)
 
 
-# What another process does to check the lock is free: takes it and lets go.
-_TAKER = "import duckdb, sys; duckdb.connect(sys.argv[1]).close()"
+def stored_rows(path: Path, sql: str, parameters: Sequence[object] = ()) -> list[tuple[Any, ...]]:
+    """Every row this query finds in the store on disk, read the way a viewer page reads it.
+
+    The exporter holds no connection between writes, so a test that wants to see what one
+    wrote opens the file for itself.
+    """
+    with open_trace_store(path, read_only=True, wait=NO_WAIT) as connection:
+        return connection.execute(sql, list(parameters)).fetchall()
 
 
-def lock_is_free(path: Path) -> bool:
-    """Whether another process can take `path`'s write lock — so nothing here still holds it.
+# What another process does to check a store: opens it as told and lets go.
+_TAKER = "import duckdb, sys; duckdb.connect(sys.argv[1], read_only=sys.argv[2] == 'read').close()"
+
+
+def opens_elsewhere(path: Path, *, read_only: bool) -> bool:
+    """Whether another process can open `path` right now — as a reader, or for write.
 
     A subprocess for the same reason `locked()` uses one: this process's own second open
-    succeeds whatever the file lock says, so an in-process check answers nothing.
+    succeeds whatever the file lock says, so an in-process check answers nothing. Read-only
+    is the question a viewer page asks; for write is the one that says nothing here still
+    holds the file.
     """
-    taker = subprocess.run(
-        [sys.executable, "-c", _TAKER, str(path)],
+    prober = subprocess.run(
+        [sys.executable, "-c", _TAKER, str(path), "read" if read_only else "write"],
         capture_output=True,
         timeout=LOCK_TIMEOUT,
         check=False,
     )
-    return taker.returncode == 0
+    return prober.returncode == 0
 
 
 @contextmanager

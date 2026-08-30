@@ -21,7 +21,6 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from pathlib import Path
-from types import TracebackType
 from typing import Any
 
 import duckdb
@@ -417,48 +416,58 @@ def open_trace_store(
 
 
 class DuckDbExporter:
-    """Writes traces into one DuckDB file. Usable as a context manager."""
+    """Writes traces into one DuckDB file, holding the file only while it writes.
 
-    def __init__(self, path: Path) -> None:
+    Nothing here keeps a connection open between calls. Construction prepares the store and
+    lets go, `fingerprints()` reads it, and each `export()` takes the write lock for one
+    transaction. That is what lets `hp view` answer pages while `hp extract` runs: the
+    extract spends most of its time parsing, and the store is free throughout. `wait` is the
+    budget every one of those opens will queue behind another process for.
+    """
+
+    def __init__(self, path: Path, *, wait: float) -> None:
         self.path = path
+        self.wait = wait
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.connection = duckdb.connect(str(path))
+        connection = _connect(path, read_only=False, wait=wait)
         try:
             # Timestamps go in as UTC and must come back as UTC, whatever the machine's clock
             # is set to.
-            self.connection.execute("SET TimeZone='UTC'")
+            connection.execute("SET TimeZone='UTC'")
             # All three before any DDL: a file this build cannot write must be left exactly
             # as it was. `migrate` carries an older store forward, and `check_shape` catches
             # a table that drifted with no migration behind it — which `CREATE TABLE IF NOT
             # EXISTS` would otherwise skip over and leave to fail at the first insert.
-            self._check_store_is_ours()
-            migrate(self.connection, self.path)
-            check_shape(self.connection, _SCHEMA)
-            self.connection.execute(_SCHEMA)
+            self._check_store_is_ours(connection)
+            migrate(connection, self.path)
+            check_shape(connection, _SCHEMA)
+            connection.execute(_SCHEMA)
             # After the tables: every view reads them.
-            refresh_views(self.connection, read_only=False)
-            self._stamp_schema_version()
-        except Exception:
-            # Nothing here was ever handed out, so no `with` block will close it: a refusal
-            # that kept the connection would hold DuckDB's write lock until the process ends.
-            self.connection.close()
-            raise
+            refresh_views(connection, read_only=False)
+            self._stamp_schema_version(connection)
+        finally:
+            # Always, refusal included: a connection nothing hands back would hold DuckDB's
+            # write lock until the process ends.
+            connection.close()
 
-    def __enter__(self) -> "DuckDbExporter":
-        return self
+    @contextmanager
+    def _writing(self) -> Generator[duckdb.DuckDBPyConnection]:
+        """The store held for one write and let go — deliberately leaner than the opener.
 
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
-        self.close()
+        `__init__` already migrated the file and built its views, and rebuilding the views
+        costs about 60 ms per open on a 9.5 GB store against 5 ms for the write itself
+        (`docs/store.md`). `check_version` stays: another build could have moved the schema
+        on since.
+        """
+        connection = _connect(self.path, read_only=False, wait=self.wait)
+        try:
+            connection.execute("SET TimeZone='UTC'")
+            check_version(connection, self.path)
+            yield connection
+        finally:
+            connection.close()
 
-    def close(self) -> None:
-        self.connection.close()
-
-    def _check_store_is_ours(self) -> None:
+    def _check_store_is_ours(self, connection: duckdb.DuckDBPyConnection) -> None:
         """Refuse a file that is someone else's database, before any DDL touches it.
 
         Runs first because the damage is silent otherwise: `CREATE TABLE IF NOT EXISTS`
@@ -468,9 +477,7 @@ class DuckDbExporter:
         """
         tables = {
             name
-            for (name,) in self.connection.execute(
-                "SELECT table_name FROM duckdb_tables()"
-            ).fetchall()
+            for (name,) in connection.execute("SELECT table_name FROM duckdb_tables()").fetchall()
         }
         if tables and "meta" not in tables:
             raise SchemaVersionError(
@@ -478,14 +485,16 @@ class DuckDbExporter:
                 f"file, or delete this one and re-extract."
             )
 
-    def _stamp_schema_version(self) -> None:
-        if self.connection.execute("SELECT schema_version FROM meta").fetchone() is None:
-            self.connection.execute("INSERT INTO meta VALUES (?)", [SCHEMA_VERSION])
+    def _stamp_schema_version(self, connection: duckdb.DuckDBPyConnection) -> None:
+        if connection.execute("SELECT schema_version FROM meta").fetchone() is None:
+            connection.execute("INSERT INTO meta VALUES (?)", [SCHEMA_VERSION])
 
     def fingerprints(self) -> dict[str, str]:
-        rows = self.connection.execute(
-            "SELECT session_id, fingerprint FROM extract_state"
-        ).fetchall()
+        """What each stored session was last extracted from, read without taking the lock."""
+        with open_trace_store(self.path, read_only=True, wait=self.wait) as connection:
+            rows = connection.execute(
+                "SELECT session_id, fingerprint FROM extract_state"
+            ).fetchall()
         return dict(rows)
 
     def export(self, trace: SessionTrace, fingerprint: str) -> None:
@@ -498,38 +507,41 @@ class DuckDbExporter:
             table: [trace.session] if table == "sessions" else getattr(trace, table)
             for table in TABLES
         }
-        self.connection.begin()
-        try:
-            for table, spec in TABLES.items():
-                self.connection.execute(
-                    f"DELETE FROM {table} WHERE {spec.session_key} = ?", [session_id]
+        with self._writing() as connection:
+            connection.begin()
+            try:
+                for table, spec in TABLES.items():
+                    connection.execute(
+                        f"DELETE FROM {table} WHERE {spec.session_key} = ?", [session_id]
+                    )
+                connection.execute("DELETE FROM extract_state WHERE session_id = ?", [session_id])
+                for table, entities in rows.items():
+                    self._insert(connection, table, entities)
+                connection.execute(
+                    "INSERT INTO extract_state VALUES (?, ?, ?, ?, ?, ?)",
+                    [
+                        session_id,
+                        fingerprint,
+                        trace.session.transcript_path,
+                        dt.datetime.now(dt.UTC),
+                        trace.extractor,
+                        trace.extractor_version,
+                    ],
                 )
-            self.connection.execute("DELETE FROM extract_state WHERE session_id = ?", [session_id])
-            for table, entities in rows.items():
-                self._insert(table, entities)
-            self.connection.execute(
-                "INSERT INTO extract_state VALUES (?, ?, ?, ?, ?, ?)",
-                [
-                    session_id,
-                    fingerprint,
-                    trace.session.transcript_path,
-                    dt.datetime.now(dt.UTC),
-                    trace.extractor,
-                    trace.extractor_version,
-                ],
-            )
-        except Exception:
-            self.connection.rollback()
-            raise
-        self.connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+            connection.commit()
 
-    def _insert(self, table: str, entities: list[Any]) -> None:
+    def _insert(
+        self, connection: duckdb.DuckDBPyConnection, table: str, entities: list[Any]
+    ) -> None:
         if not entities:
             return
         columns = [field.name for field in fields(TABLES[table].model)]
         quoted = ", ".join(f'"{column}"' for column in columns)
         placeholders = ", ".join("?" for _ in columns)
-        self.connection.executemany(
+        connection.executemany(
             f"INSERT INTO {table} ({quoted}) VALUES ({placeholders})",
             [[getattr(entity, column) for column in columns] for entity in entities],
         )
