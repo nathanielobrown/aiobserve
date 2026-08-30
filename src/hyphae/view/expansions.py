@@ -15,6 +15,7 @@ from fastapi.responses import Response
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.view import bounds, builders, nodes
+from hyphae.view.browse import header_bound
 from hyphae.view.citation import cited
 from hyphae.view.columns import Shape
 from hyphae.view.components import nav_tree, node_body
@@ -277,14 +278,7 @@ def spilled(
         raise HTTPException(400, f"A NavTree row sits between depth 1 and {bounds.DEPTH}.")
     keyed: dict[str, ParamValue] = {"session_id": session_id}
     with open_store(viewer.db) as connection:
-        head = page_rows(
-            connection,
-            Page.SESSION_HEADER,
-            **keyed,
-            head_chars=queries.HEADER_CHARS,
-            item_chars=queries.HEADER_ITEM_CHARS,
-            head_items=queries.HEADER_ITEMS,
-        )
+        head = page_rows(connection, Page.SESSION_HEADER, **header_bound(session_id))
         if not head:
             raise HTTPException(404, "No session with that id is in this store.")
         runs = page_rows(connection, Page.RUNS, **keyed, chip_chars=queries.NAV_CHARS)
