@@ -23,7 +23,7 @@ from fastapi.testclient import TestClient
 from markupsafe import escape
 
 from hyphae.analyze import queries
-from hyphae.extract.pricing import CONTEXT_WINDOWS
+from hyphae.extract.pricing import MODELS
 from hyphae.view.app import build_app
 from hyphae.view.nodes import BAR_STEPS
 from tests.conftest import MAIN, SPINE
@@ -399,7 +399,11 @@ def step(tokens: int | None, model: str) -> int | None:
     """
     if tokens is None:
         return None
-    return min(round(tokens / CONTEXT_WINDOWS[model] * BAR_STEPS), BAR_STEPS)
+    # Every model a recorded call names is one the table sizes; only the placeholder is not,
+    # and a synthetic reply reports no tokens to draw.
+    window = MODELS[model].context_window
+    assert window is not None, model
+    return min(round(tokens / window * BAR_STEPS), BAR_STEPS)
 
 
 # One NavTree row that stands for a node, depth beside key. Read as a pair rather than as two

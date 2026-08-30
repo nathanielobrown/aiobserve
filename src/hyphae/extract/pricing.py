@@ -6,7 +6,7 @@ model name with no cost — a queryable absence that can be filled in later. Cra
 would kill a backfill the day a new model ships.
 
 Prices are USD per million tokens, read from
-<https://platform.claude.com/docs/en/about-claude/pricing> on **2026-08-07**. Nothing in the
+<https://platform.claude.com/docs/en/about-claude/pricing> on **2026-08-30**. Nothing in the
 test suite can check them against that page; re-read it and update the date when you touch
 the table.
 
@@ -33,11 +33,17 @@ _CACHE_WRITE_1H = 2.0
 _PER_MILLION = 1_000_000
 
 
-class ModelPrice(NamedTuple):
-    """One model's base rates, USD per million tokens. Cache rates derive from `input`."""
+class ModelSpec(NamedTuple):
+    """Everything the table states about one model: what it charges and how much it holds.
+
+    `input` and `output` are USD per million tokens, and the cache rates derive from `input`.
+    `context_window` is the number of tokens it answers in, or None for a model that never
+    went to a model at all — the placeholder, and nothing else.
+    """
 
     input: float
     output: float
+    context_window: int | None
 
 
 class TokenUsage(NamedTuple):
@@ -54,28 +60,17 @@ class TokenUsage(NamedTuple):
 
 
 # Every model the mycelia corpus records, plus the placeholder. Keyed by the exact
-# `message.model` string, since that is what the transcript carries.
-PRICES: dict[str, ModelPrice] = {
-    SYNTHETIC_MODEL: ModelPrice(input=0.0, output=0.0),
-    "claude-fable-5": ModelPrice(input=10.0, output=50.0),
-    "claude-opus-5": ModelPrice(input=5.0, output=25.0),
-    "claude-opus-4-8": ModelPrice(input=5.0, output=25.0),
-    "claude-opus-4-1-20250805": ModelPrice(input=15.0, output=75.0),
-    # Introductory pricing, in effect through 2026-08-31; it rises to $3/$15 on
-    # 2026-09-01. The table is flat, so a call recorded after that date will price low
-    # until this line is split by effective date.
-    "claude-sonnet-5": ModelPrice(input=2.0, output=10.0),
-    "claude-sonnet-4-6": ModelPrice(input=3.0, output=15.0),
-    "claude-haiku-4-5-20251001": ModelPrice(input=1.0, output=5.0),
-}
-
-# How many tokens of context each model answers in — the scale the viewer's context bar is
-# drawn against (`docs/viewer.md`). Keyed like `PRICES`, by the exact `message.model` string,
-# and every model that table prices but the placeholder: a `<synthetic>` record never went to
-# a model, so it has a stated price of nothing and no window at all. A model absent here draws
-# no bar, the way a model absent from `PRICES` shows no cost.
+# `message.model` string, since that is what the transcript carries. A model absent here
+# shows no cost and draws no context bar.
 #
-# 200,000 is the published window, and the corpus holds it up as the one in force: auto
+# The table has no effective-date dimension: it says what a model charges, not what it
+# charged. Every price it has ever held has been the model's only one, and a rise announced
+# for 2026-09-01 was cancelled (see the Sonnet 5 line). Add the dimension the day a price
+# actually changes — until then it would be a column with one value and a timestamp to thread
+# through every caller.
+#
+# The window is the scale the viewer's context bar is drawn against (`docs/viewer.md`).
+# 200,000 is the published figure, and the corpus holds it up as the one in force: auto
 # compaction fires at a median prompt of 167,385 tokens (`compactions.pre_tokens` where
 # `trigger = 'auto'`, 1,225 of them in the canonical store on 2026-08-26), which is where a
 # 200,000-token limit puts it, and 98.9% of the 159,907 non-synthetic calls recorded sit under
@@ -83,14 +78,21 @@ PRICES: dict[str, ModelPrice] = {
 # the reply still names the base model — `claude-opus-5[1m]` is the alias a request carries,
 # not a `message.model` this table could key on. So a call past its window reads full rather
 # than getting a scale of its own, and the numbers are the popover's to print.
-CONTEXT_WINDOWS: dict[str, int] = {
-    "claude-fable-5": 200_000,
-    "claude-opus-5": 200_000,
-    "claude-opus-4-8": 200_000,
-    "claude-opus-4-1-20250805": 200_000,
-    "claude-sonnet-5": 200_000,
-    "claude-sonnet-4-6": 200_000,
-    "claude-haiku-4-5-20251001": 200_000,
+MODELS: dict[str, ModelSpec] = {
+    # A `<synthetic>` record never went to a model, so it has a stated price of nothing and
+    # no window at all.
+    SYNTHETIC_MODEL: ModelSpec(input=0.0, output=0.0, context_window=None),
+    "claude-fable-5": ModelSpec(input=10.0, output=50.0, context_window=200_000),
+    "claude-opus-5": ModelSpec(input=5.0, output=25.0, context_window=200_000),
+    "claude-opus-4-8": ModelSpec(input=5.0, output=25.0, context_window=200_000),
+    "claude-opus-4-1-20250805": ModelSpec(input=15.0, output=75.0, context_window=200_000),
+    # $2/$10 was announced at launch as introductory pricing through 2026-08-31, and the rise
+    # to $3/$15 on 2026-09-01 has since been called off: the pricing page above now records
+    # $2/$10 as the standard price (its `claude-sonnet-5-introductory-pricing` note, read
+    # 2026-08-30). One price, no boundary.
+    "claude-sonnet-5": ModelSpec(input=2.0, output=10.0, context_window=200_000),
+    "claude-sonnet-4-6": ModelSpec(input=3.0, output=15.0, context_window=200_000),
+    "claude-haiku-4-5-20251001": ModelSpec(input=1.0, output=5.0, context_window=200_000),
 }
 
 
@@ -119,7 +121,7 @@ def _charges(model: str, tokens: TokenUsage) -> CostSplit | None:
     The one place the rates are applied. Both callers below divide it down to dollars; what
     they differ in is whether they hand back the four or their sum.
     """
-    price = PRICES.get(model)
+    price = MODELS.get(model)
     if price is None:
         return None
     if tokens.cache_5m is None or tokens.cache_1h is None:
