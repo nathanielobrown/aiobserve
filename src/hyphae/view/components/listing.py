@@ -149,10 +149,16 @@ def _project_name(*, row: ProjectRow) -> Html:
     the head this page shows is text: a link carrying a cut path lands on nothing. The sessions
     naming no directory are text for a different reason — there is no project to open, and
     `?project=` matches no session at all.
+
+    Cut like a session-list row's path, and for the same reason: the query hands back one
+    character past the width, and a path too long to link is the one a reader most needs the
+    mark on — the row it lands on is the one with no link to explain itself.
     """
     if row.link:
-        return htpy.a(data_field="project_dir", href=row.link)[cuts.project_path(row.project_dir)]
-    shown = cuts.project_path(row.project_dir) if row.project_dir else "(no project)"
+        return htpy.a(data_field="project_dir", href=row.link)[
+            cuts.project_path(cuts.short(row.project_dir))
+        ]
+    shown = cuts.project_path(cuts.short(row.project_dir)) if row.project_dir else "(no project)"
     return htpy.span(data_field="project_dir")[shown]
 
 

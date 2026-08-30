@@ -17,11 +17,12 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
+from hyphae.analyze import queries
 from hyphae.projects import project_predicate
 from hyphae.view import bounds
 from hyphae.view import format as fmt
 from hyphae.view.app import build_app
-from hyphae.view.format import ABSENT
+from hyphae.view.format import ABSENT, ELLIPSIS
 from hyphae.view.store import Page
 from tests.conftest import HOME, MYCELIA, NO_PROJECT_SESSION, SPINE
 from tests.view.conftest import Planter, fields, inside, one, suggestions, values
@@ -249,6 +250,35 @@ def test_a_project_row_links_to_the_sessions_it_counts(
     listed = client.get(link)
     assert listed.status_code == 200
     assert set(values(listed.text, "data-session-id")) == set(folded(store)[MYCELIA])
+
+
+def test_a_project_path_too_long_to_link_is_marked_where_it_was_cut(plant: Planter) -> None:
+    """A path past the width the page shows prints its head, marked, and links nowhere.
+
+    Planted because no recorded directory comes near the width: the fixtures run in four short
+    paths. The row this lands on is the one with the least to go on — the link is gone, because
+    a filter on a cut path matches no session, and the box does not offer it either. What is
+    left is the head, so the head has to say it is one: the query cuts through `cut`, which
+    hands back the character past the width that `view/format.py:cut` turns into the mark.
+    """
+    # One character past what the page shows, under no root the corpus recorded, so the fold
+    # leaves it standing as its own row rather than folding it into a shorter directory.
+    long_path = "/" + "n" * queries.LIST_CHARS
+    path = plant(("UPDATE sessions SET project_dir = ? WHERE id = ?", [long_path, SPINE]))
+    with TestClient(build_app(path)) as planted:
+        landing, listed = planted.get("/").text, planted.get("/sessions").text
+    # The row is keyed by what the query returned, which is the head plus the one character
+    # that says there is more...
+    key = long_path[: queries.LIST_CHARS + 1]
+    assert key in values(landing, "data-project")
+    # ...and the cell prints the head with the mark in that character's place.
+    assert fields(landing, "data-project", key)["project_dir"] == (
+        "/" + "n" * (queries.LIST_CHARS - 1) + ELLIPSIS
+    )
+    # Nothing on the row offers the whole path: no link out of the cell, and no suggestion in
+    # the filter box, which is why the mark is the only thing that can say the path goes on.
+    assert not inside(landing, "data-project", key, "href")
+    assert not [offered for offered in suggestions(listed) if offered.startswith("/n")]
 
 
 def test_the_page_cites_the_query_and_the_window_it_ran(client: TestClient) -> None:

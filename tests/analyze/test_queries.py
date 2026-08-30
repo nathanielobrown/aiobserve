@@ -13,11 +13,12 @@ import re
 import pytest
 
 from hyphae.analyze import queries
-from hyphae.analyze.manifest import QUERIES
+from hyphae.analyze.manifest import ANALYSIS, QUERIES
 from hyphae.analyze.queries import Scope
 from hyphae.analyze.runner import CORPUS_RELATIONS
 from hyphae.enrich.levels import LEVELS
 from hyphae.export.duckdb import TABLES
+from hyphae.view.manifest import VIEW_QUERIES
 from tests.analyze.conftest import AS_OF_WHOLE, QueryRunner
 from tests.conftest import (
     ANCESTOR,
@@ -265,6 +266,51 @@ def declared_parameters(name: str) -> set[str]:
     return set(re.findall(r"\$([A-Za-z_][A-Za-z0-9_]*)", statement(name)))
 
 
+AT_WIDTH = re.compile(r"substr\((.*?),\s*1,\s*\$(\w+)\s*\)")
+
+
+def cut_at_width(name: str) -> set[str]:
+    """Every value one query cuts *at* a width by hand, spelled as the query spells it."""
+    return {
+        argument.strip() for argument, _ in AT_WIDTH.findall(" ".join(statement(name).split()))
+    }
+
+
+# Every hand-spelled `substr(value, 1, $width)` the library still holds, keyed by its query.
+# These stop at the width and leave nothing for `view/format.py:cut` to mark, which is right for
+# a closed vocabulary, for a key looked up in one, and for a cap a report states — and wrong for
+# anything a page shows a reader, who then reads a cut value as the whole one. No scan can tell
+# those apart, so each one is named here and everything else goes through the `cut` macro.
+HAND_CUTS: dict[str, set[str]] = {
+    # Capped reports. The head of a command line and the first line of a failure are what the
+    # report groups by, so a mark would be a character in a key rather than a hint to a reader.
+    "command_failures": {
+        r"regexp_extract(invocation, '^(\S+(\s+[a-z][a-z-]*){0,2})(\s|$)', 1)",
+        "signature_line(result)",
+    },
+    "error_signatures": {"signature_line(t.result)"},
+    # Raw transcript, capped by the caller's own `--param`: the answer is the window asked for.
+    "error_records": {r"regexp_replace(trim(t.result), '\s+', ' ', 'g')"},
+    "records_slice": {"raw"},
+    "view_records": {"raw"},
+    # The closed vocabularies (`enrich/taxonomy.py`) and the model that wrote an enrichment: a
+    # width no member reaches, held as arithmetic the page's bound needs rather than as a cut.
+    "view_compactions": {"k.trigger"},
+    "view_numbers_compaction": {"k.trigger"},
+    "view_described_sessions": {"category", "e.category", "e.outcome"},
+    "view_enrichment": {"e.category", "e.outcome", "e.model"},
+    # The model a call fell back from, likewise a name out of a closed table.
+    "view_turn_calls": {"c.fallback_from"},
+    # A file suffix, which is a key `view/highlight.py:by_suffix` looks up and never prints.
+    "view_tool_header": {
+        r"lower(regexp_extract(json_extract_string(t.input, '$.file_path'), '\.[^./]+$'))"
+    },
+    "view_tool_result": {
+        r"lower(regexp_extract(json_extract_string(t.input, '$.file_path'), '\.[^./]+$'))"
+    },
+}
+
+
 @pytest.mark.parametrize("name", NAMES)
 def test_every_query_runs(name: str, run_query: QueryRunner, enriched_query: QueryRunner) -> None:
     """Every shipped query executes against a real store — an empty result is fine."""
@@ -297,8 +343,13 @@ def test_every_query_runs(name: str, run_query: QueryRunner, enriched_query: Que
 
 
 def test_every_query_file_has_a_manifest_entry() -> None:
-    """The manifest and the directory hold the same set of queries."""
+    """The manifest and the directory hold the same set of queries, declared once each."""
     assert sorted(QUERIES) == NAMES
+    # `QUERIES` is `ANALYSIS | VIEW_QUERIES`, and a merge settles a clash by keeping the right
+    # half. A name in both would leave one entry standing and the other gone — different
+    # parameters bound under the name a citation prints — while the set above stays whole and
+    # says nothing. One name space, so one declaration.
+    assert not set(ANALYSIS) & set(VIEW_QUERIES), "declared in both halves of the manifest"
 
 
 def test_a_citation_with_nothing_bound_ends_at_the_query_file() -> None:
@@ -316,12 +367,32 @@ def test_no_query_spells_the_one_past_the_width_cut_by_hand(name: str) -> None:
     accumulated fifty copies of it — and a copy that dropped the `+ 1` served a value cut
     where `view/format.py:cut` could no longer mark it, with the whole tier green.
 
-    Cutting *at* a width is still allowed and is what the remaining `substr` calls do: a
-    closed vocabulary, a value guarded by its own length check, or a cap a report states.
-    Those read as exceptions now, which is the other half of naming the rule.
+    Cutting *at* a width is the other spelling, and `HAND_CUTS` is where each one that stays is
+    named — the leaf below holds that list.
     """
     assert not re.search(r",\s*1,\s*\$\w+\s*\+\s*1\s*\)", statement(name)), (
         f"{name} writes the cut by hand: call cut(value, $width) instead"
+    )
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_every_cut_to_a_width_is_the_macro_or_a_named_exception(name: str) -> None:
+    """Anything cut for a reader goes through `cut`, and every `substr` left is a decision.
+
+    The leaf above bans the correct hand spelling; this one bans the wrong one, which is the
+    spelling that loses the protocol. `substr(x, 1, $w)` runs and returns a value the formatter
+    cannot mark — a title or a prompt served short and printed as if whole, with the tier green,
+    which is the failure naming the cut was for. Banning it outright is not open to us: a dozen
+    values are cut at the width on purpose, so they are named in `HAND_CUTS` with the reason.
+
+    Set equality, so the list shrinks as the exceptions go. An entry for a `substr` that has
+    since become a `cut` is an exception standing over nothing, and the next hand-spelled cut
+    would inherit it.
+    """
+    assert cut_at_width(name) == HAND_CUTS.get(name, set()), (
+        f"{name} cuts at a width where HAND_CUTS does not say so: call cut(value, $width), "
+        "which returns the one character past it that says there is more, or name the "
+        "exception and why it is one"
     )
 
 
