@@ -1,7 +1,7 @@
 """What one transcript holds: the file read into lines, and what those lines say.
 
 One thread at a time — the session's own transcript or a subagent's — and no knowledge of
-which files make up a session (`extract/session_files.py`) or of how a refresh is driven
+which files make up a session (`extract/layout.py`) or of how a refresh is driven
 (`extract/claude_code.py`). What a record *is* lives here and nowhere else: `_read` parses a
 file into lines and rejects any shape outside the registries, `_resolve_duplicates` collapses a
 uuid the file wrote twice, and `_parse` turns what survives into turns, api calls, tool calls

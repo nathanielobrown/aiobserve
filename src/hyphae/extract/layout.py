@@ -6,16 +6,24 @@ session's working directory:
     <projects_root>/<encoded-cwd>/<session-id>.jsonl
     <projects_root>/<encoded-cwd>/<session-id>/subagents/agent-<id>.jsonl
 
-This module locates those files. It does not read them — parsing owns the records, and the
-two rot on different schedules: the layout is stable, the record shapes are not
-(`docs/schema.md`).
+This module finds those files and sorts them by what reads them. It parses none of them —
+records belong to `extract/transcript.py`, and the two rot on different schedules: the layout
+is stable, the record shapes are not (`docs/schema.md`). The one file it reads whole is an
+offloaded tool result, which is text rather than records.
+
+The layout is closed-world like the record registry: a file whose place we cannot name is a
+Claude Code change we need to see, not a file to skip.
 
 What a project *is* to the layers that query the store is `hyphae/projects.py`.
 """
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 
+from hyphae.extract.records.registry import TranscriptSchemaError
+from hyphae.model import OffloadFile
+from hyphae.pipeline import SessionSource
 from hyphae.projects import encode_project_path
 
 # Where Claude Code keeps transcripts. The tree is shared across accounts —
@@ -36,6 +44,9 @@ TOOL_RESULTS_DIR = "tool-results"
 AGENT_PREFIX = "agent-"
 META_SUFFIX = ".meta.json"
 JOURNAL_NAME = "journal.jsonl"
+
+# The `source` a workflow journal records under, after its `wf_<id>/` directory.
+JOURNAL_SOURCE = "journal"
 
 
 @dataclass(frozen=True)
@@ -102,3 +113,136 @@ def find_sessions(
         SessionFiles(id=transcript.stem, transcript=transcript)
         for transcript in sorted(project_dir.glob(f"*{TRANSCRIPT_SUFFIX}"))
     ]
+
+
+class _AgentFiles(NamedTuple):
+    """One subagent's pair of files, and where the pair sat."""
+
+    # The agentId: the file stem after `agent-`, and the `source` its records take.
+    id: str
+    # The `wf_<id>` fan-out directory it sat in, for the runs a workflow drove.
+    workflow_id: str | None
+    transcript: Path
+    meta: Path
+
+
+class _ClassifiedFiles(NamedTuple):
+    """One session's files, sorted by what reads them."""
+
+    transcript: Path
+    agents: list[_AgentFiles]
+    # Each workflow journal, paired with its `wf_<id>/journal` source. Archive only: the
+    # runs it logs write their own transcripts.
+    journals: list[tuple[str, Path]]
+    offloads: list[Path]
+
+
+def _classify(source: SessionSource) -> _ClassifiedFiles:
+    """Sort a session's files by what reads them. An unplaceable file stops the run."""
+    transcript = _transcript_of(source)
+    directory = transcript.with_suffix("")
+    # Each agent's two files arrive independently; they are paired once both are seen.
+    transcripts: dict[str, Path] = {}
+    metas: dict[str, Path] = {}
+    workflows: dict[str, str | None] = {}
+    journals: list[tuple[str, Path]] = []
+    offloads: list[Path] = []
+    for path in source.files:
+        if path == transcript:
+            continue
+        parts = path.relative_to(directory).parts
+        if parts[:1] == (TOOL_RESULTS_DIR,) and len(parts) == 2:
+            offloads.append(path)
+            continue
+        # A workflow's definition and the script that ran it, beside the runs they drove.
+        if parts[:1] == (WORKFLOWS_DIR,):
+            continue
+        place = _companion(parts, source.id)
+        if place.agent_id is None:
+            journals.append((f"{place.workflow_id}/{JOURNAL_SOURCE}", path))
+            continue
+        (metas if place.meta else transcripts)[place.agent_id] = path
+        workflows[place.agent_id] = place.workflow_id
+    if transcripts.keys() != metas.keys():
+        odd = transcripts.keys() ^ metas.keys()
+        raise TranscriptSchemaError(
+            f"Session {source.id}: agent runs {sorted(odd)} have a transcript or a meta, not both"
+        )
+    agents = [
+        _AgentFiles(
+            id=agent, workflow_id=workflows[agent], transcript=transcripts[agent], meta=metas[agent]
+        )
+        for agent in transcripts
+    ]
+    return _ClassifiedFiles(
+        transcript=transcript, agents=agents, journals=journals, offloads=offloads
+    )
+
+
+class _Companion(NamedTuple):
+    """Where one file under the session directory sits, and what it is."""
+
+    # The `wf_<id>` directory it sat in, when a fan-out wrote it.
+    workflow_id: str | None
+    # The agentId its name carries, or None for a workflow's journal.
+    agent_id: str | None
+    # The `.meta.json` beside a subagent's transcript rather than the transcript.
+    meta: bool
+
+
+def _companion(parts: tuple[str, ...], session_id: str) -> _Companion:
+    """Place one file under `subagents/`. A file we cannot place stops the run."""
+    unknown = TranscriptSchemaError(
+        f"Session {session_id}: unknown file {'/'.join(parts)} in its directory"
+    )
+    workflow = None
+    if parts[:2] == (SUBAGENTS_DIR, WORKFLOWS_DIR):
+        if len(parts) != 4 or not parts[2].startswith(WORKFLOW_PREFIX):
+            raise unknown
+        workflow = parts[2]
+    elif parts[:1] != (SUBAGENTS_DIR,) or len(parts) != 2:
+        raise unknown
+    name = parts[-1]
+    if workflow and name == JOURNAL_NAME:
+        return _Companion(workflow_id=workflow, agent_id=None, meta=False)
+    if not name.startswith(AGENT_PREFIX):
+        raise unknown
+    stem = name[len(AGENT_PREFIX) :]
+    # `.meta.json` first: it is the longer suffix, and both end in "json".
+    if stem.endswith(META_SUFFIX):
+        return _Companion(workflow, stem[: -len(META_SUFFIX)], meta=True)
+    if stem.endswith(TRANSCRIPT_SUFFIX):
+        return _Companion(workflow, stem[: -len(TRANSCRIPT_SUFFIX)], meta=False)
+    raise unknown
+
+
+def _transcript_of(source: SessionSource) -> Path:
+    """The session's own transcript, among the files discovery collected."""
+    name = f"{source.id}{TRANSCRIPT_SUFFIX}"
+    for path in source.files:
+        if path.name == name:
+            return path
+    raise TranscriptSchemaError(f"Session {source.id}: no {name} among its files")
+
+
+def _offload_file(path: Path, session_id: str) -> OffloadFile:
+    """One `tool-results/` file, read whole — it is the only copy once Claude Code prunes."""
+    data = path.read_bytes()
+    try:
+        return OffloadFile(
+            session_id=session_id,
+            name=path.name,
+            content=data.decode(),
+            lossy_decode=False,
+            size_bytes=len(data),
+        )
+    except UnicodeDecodeError:
+        # Not text at all — a fetched PDF — or text cut mid-character. Archived anyway:
+        # the file is gone in a few weeks, and its size and name still say what ran.
+        return OffloadFile(
+            session_id=session_id,
+            name=path.name,
+            content=data.decode(errors="replace"),
+            lossy_decode=True,
+            size_bytes=len(data),
+        )
