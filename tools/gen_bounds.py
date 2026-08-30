@@ -24,7 +24,7 @@ from tools import text
 
 # Where a cited name is looked up. `bounds.py` names every page size beside its ceiling and
 # re-exports the widths the queries declare; a width it does not re-export is read here from
-# the manifest that does declare it, so no number is copied to be printed.
+# `analyze/queries.py`, which declares it, so no number is copied to be printed.
 # `budgets.py` is where the arithmetic itself lives, beside the measurements it multiplies,
 # because the tests weigh each page against it — printing a page's worst case here would be a
 # second derivation of a number the suite already enforces.

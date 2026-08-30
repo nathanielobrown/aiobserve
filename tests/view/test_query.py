@@ -100,10 +100,10 @@ def test_every_citation_a_page_carries_links_to_the_query_it_names(
 def test_a_citation_quotes_every_binding_its_query_takes(path: str, client: TestClient) -> None:
     """A page cites what it ran — all of it, not the bindings that happen to vary by page.
 
-    A width has a production default, so a citation leaving it out reads as a run at that
-    default. That is true until the day a page picks its own width, and it is already two
-    spellings of one habit: a reader comparing the line under one page with the line under the
-    next cannot tell a query bound differently from a query cited differently.
+    No `view_` parameter has a default (`view/manifest.py`), so a width left out of a citation
+    is a width nobody can recover: the line under the page is the whole record of what the page
+    bound, and a reader comparing the line under one page with the line under the next cannot
+    tell a query bound differently from a query cited differently.
 
     Every parameter the manifest declares and not exactly them: a page may bind more than the
     file takes — the sessions list composes its own sort, page and widths around a query that

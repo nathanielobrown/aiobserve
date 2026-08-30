@@ -269,12 +269,11 @@ def test_every_sort_key_names_a_column_the_query_returns(
 ) -> None:
     """No sort key can reach past the library query into SQL of its own."""
     listing = queries.load("view_sessions").strip().rstrip(";")
-    # At the query's own defaults, read off the manifest rather than listed: what a sort key
-    # names is a column, and no binding the file takes changes which columns it returns.
-    defaults = {
-        name: spec.default for name, spec in manifest.QUERIES["view_sessions"].params.items()
-    }
-    returned = {row[0] for row in store.execute(f"DESCRIBE ({listing})", defaults).fetchall()}
+    # At the width the list runs its one parameter at, read off the manifest rather than
+    # listed: what a sort key names is a column, and no binding changes which columns come
+    # back.
+    widths = dict.fromkeys(manifest.QUERIES["view_sessions"].params, queries.LIST_ITEM_CHARS)
+    returned = {row[0] for row in store.execute(f"DESCRIBE ({listing})", widths).fetchall()}
     assert set(SORTS) <= returned
 
 
@@ -292,13 +291,11 @@ def test_a_sort_and_its_reverse_are_exact_opposites(
     # Which sessions carry no value in this column, asked of the query the list ranks rather
     # than of a table beside it: two of the eleven keys are the query's own arithmetic.
     listing = queries.load("view_sessions").strip().rstrip(";")
-    defaults = {
-        name: spec.default for name, spec in manifest.QUERIES["view_sessions"].params.items()
-    }
+    widths = dict.fromkeys(manifest.QUERIES["view_sessions"].params, queries.LIST_ITEM_CHARS)
     empty = {
         row[0]
         for row in store.execute(
-            f"SELECT session_id FROM ({listing}) WHERE {sort} IS NULL", defaults
+            f"SELECT session_id FROM ({listing}) WHERE {sort} IS NULL", widths
         ).fetchall()
     }
     order = {

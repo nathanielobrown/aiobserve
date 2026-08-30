@@ -6,6 +6,15 @@ than embedding SQL of its own. What sets them apart is who owns their numbers: a
 row count is the surface's, named beside the ceiling that caps it in `view/bounds.py`, so
 these entries sit here rather than in the analysis half.
 
+No entry declares a default. The viewer never reads one — every page composes its own
+bindings, and DuckDB refuses an unbound parameter rather than falling back — so a default
+here would be a number nothing runs and nothing checks. It is also a number that cannot be
+right: `chip_chars` runs at 110 in a NavTree row and at 300 in a runs log, and the analysis
+half's promise for a default is that it is *the* value a bare invocation runs and a committed
+report quotes. The width lives once, as the constant in `analyze/queries.py` that the surface
+binds, and what a page ran is quoted in the citation under it. A reader running one of these
+from the command line states every size, which `hp query --list` prints.
+
 They are read through the one registry `analyze/manifest.py` publishes, which is what the
 runner binds against and what the smoke tier holds to the query directory. The SQL itself
 lives with every other query file in `analyze/queries/`, and the parameter vocabulary these
@@ -13,38 +22,14 @@ entries are written in is `analyze/queries.py`.
 """
 
 from hyphae.analyze.queries import (
-    AFTER,
     API_CALL_ID,
-    CHIP_CHARS_PARAM,
-    CHUNK_CHARS,
     COMPACTION_ID,
-    DETAIL_CHARS_PARAM,
-    ENRICHMENT_CHARS,
-    HEADER_CHARS,
-    HEADER_ITEM_CHARS,
-    HEADER_ITEMS,
-    LIST_CATEGORIES,
-    LIST_CHARS,
-    LIST_ITEM_CHARS,
-    LIST_PROJECTS,
-    LOG_CHARS_PARAM,
-    LOG_ROWS,
-    MODEL_CHARS,
-    NAV_CHARS_PARAM,
     NODE_ID,
     NODE_KIND,
-    PAGE_ERRORS,
-    PAGE_PROJECTS,
-    PAGE_RECENT_DAYS,
-    PAGE_RECORDS,
-    PAGE_WINDOW_DAYS,
-    RECORD_PREVIEW,
     REQUIRED,
     RUN_ID,
     SESSION_ID,
-    SKIPPED,
     SOURCE,
-    TAG_CHARS,
     TOOL_CALL_ID,
     TURN_ID,
     Param,
@@ -52,6 +37,11 @@ from hyphae.analyze.queries import (
     Query,
     Scope,
 )
+
+# Every number a viewer query takes: a width to cut a value to, a page of rows to fetch, a
+# cursor to resume from. One spelling for all of them, because what tells them apart is the
+# surface that binds one and not anything declared here.
+SIZE = Param(type=ParamType.INTEGER, default=REQUIRED)
 
 VIEW_QUERIES: dict[str, Query] = {
     "view_call_text": Query(
@@ -68,9 +58,9 @@ VIEW_QUERIES: dict[str, Query] = {
             "session_id": SESSION_ID,
             "source": SOURCE,
             "api_call_id": API_CALL_ID,
-            "skipped": SKIPPED,
-            "page_tools": Param(type=ParamType.INTEGER, default=LOG_ROWS),
-            "log_chars": LOG_CHARS_PARAM,
+            "skipped": SIZE,
+            "page_tools": SIZE,
+            "log_chars": SIZE,
         },
     ),
     "view_call_header": Query(
@@ -79,35 +69,33 @@ VIEW_QUERIES: dict[str, Query] = {
             "session_id": SESSION_ID,
             "source": SOURCE,
             "api_call_id": API_CALL_ID,
-            "head_chars": Param(type=ParamType.INTEGER, default=HEADER_CHARS),
-            "detail_chars": DETAIL_CHARS_PARAM,
+            "head_chars": SIZE,
+            "detail_chars": SIZE,
         },
     ),
     "view_described_sessions": Query(
         scope=Scope.KEYED,
-        # What a list row shows of a session's enrichment. The description takes a row's head
-        # rather than a page's, because the list multiplies its row by the size of the page,
-        # and the work cell is cut here rather than in the composition: nothing filters on it.
+        # What a list row shows of a session's enrichment. The work cell is cut here rather
+        # than in the composition around the query: nothing filters on it.
         params={
-            "head_chars": Param(type=ParamType.INTEGER, default=LIST_CHARS),
-            "tag_chars": Param(type=ParamType.INTEGER, default=TAG_CHARS),
-            "kind_chars": Param(type=ParamType.INTEGER, default=TAG_CHARS),
-            "head_kinds": Param(type=ParamType.INTEGER, default=LIST_CATEGORIES),
+            "head_chars": SIZE,
+            "tag_chars": SIZE,
+            "kind_chars": SIZE,
+            "head_kinds": SIZE,
         },
     ),
     "view_enrichment": Query(
         scope=Scope.KEYED,
         params={
             "session_id": SESSION_ID,
-            # Which thread's turns to describe. Required like every other source: the turn
-            # keys are `(session, source, turn)`, so a default would silently answer for the
-            # main thread on a run's page.
+            # Which thread's turns to describe. The turn keys are `(session, source, turn)`,
+            # so a page that left this out would be answering for another thread.
             "source": SOURCE,
-            "description_chars": Param(type=ParamType.INTEGER, default=ENRICHMENT_CHARS),
-            "tag_chars": Param(type=ParamType.INTEGER, default=TAG_CHARS),
-            # The width the model's own name is cut to: a header's, not a tag's — a model
-            # string is longer than a taxonomy word and shorter than a sentence.
-            "head_chars": Param(type=ParamType.INTEGER, default=HEADER_CHARS),
+            "description_chars": SIZE,
+            "tag_chars": SIZE,
+            # The model's own name is cut at a width of its own: a model string is longer
+            # than a taxonomy word and shorter than a sentence.
+            "head_chars": SIZE,
         },
     ),
     # The whole of what that pass wrote, one item at a time: the three levels the pane shows,
@@ -121,7 +109,7 @@ VIEW_QUERIES: dict[str, Query] = {
     "view_session_said": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
     "view_compactions": Query(
         scope=Scope.KEYED,
-        params={"session_id": SESSION_ID, "source": SOURCE, "chip_chars": CHIP_CHARS_PARAM},
+        params={"session_id": SESSION_ID, "source": SOURCE, "chip_chars": SIZE},
     ),
     "view_run_header": Query(
         scope=Scope.KEYED,
@@ -129,8 +117,8 @@ VIEW_QUERIES: dict[str, Query] = {
         params={
             "session_id": SESSION_ID,
             "run_id": RUN_ID,
-            "head_chars": Param(type=ParamType.INTEGER, default=HEADER_CHARS),
-            "detail_chars": DETAIL_CHARS_PARAM,
+            "head_chars": SIZE,
+            "detail_chars": SIZE,
         },
     ),
     "view_run_brief": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID, "run_id": RUN_ID}),
@@ -151,7 +139,7 @@ VIEW_QUERIES: dict[str, Query] = {
             "source": SOURCE,
             "node_id": NODE_ID,
             "kind": NODE_KIND,
-            "model_chars": Param(type=ParamType.INTEGER, default=MODEL_CHARS),
+            "model_chars": SIZE,
         },
     ),
     # And the compaction, which is made of no api calls either — what it has is the window it
@@ -162,7 +150,7 @@ VIEW_QUERIES: dict[str, Query] = {
             "session_id": SESSION_ID,
             "source": SOURCE,
             "compaction_id": COMPACTION_ID,
-            "chip_chars": CHIP_CHARS_PARAM,
+            "chip_chars": SIZE,
         },
     ),
     "view_numbers_tool": Query(
@@ -171,42 +159,38 @@ VIEW_QUERIES: dict[str, Query] = {
             "session_id": SESSION_ID,
             "source": SOURCE,
             "tool_call_id": TOOL_CALL_ID,
-            "item_chars": Param(type=ParamType.INTEGER, default=HEADER_ITEM_CHARS),
-            "head_items": Param(type=ParamType.INTEGER, default=HEADER_ITEMS),
+            "item_chars": SIZE,
+            "head_items": SIZE,
         },
     ),
     "view_offload": Query(
         scope=Scope.KEYED,
         params={
             "session_id": SESSION_ID,
-            # Which file. Required for the same reason the session is: a default would pick
-            # some session's offloaded tool output at random.
+            # Which file: a key, like the session it was written under.
             "name": Param(type=ParamType.TEXT, default=REQUIRED),
-            "after_chars": Param(type=ParamType.INTEGER, default=0),
-            "chunk_chars": Param(type=ParamType.INTEGER, default=CHUNK_CHARS),
+            "after_chars": SIZE,
+            "chunk_chars": SIZE,
         },
     ),
     "view_project_rollups": Query(
         scope=Scope.KEYED,
         params={
-            # The clock both windows are measured back from. No default: a landing page's
-            # "last 7 days" is only reproducible if the day it counted from is bound and
-            # cited, and SQL's own clock would answer something else tomorrow.
+            # The clock both windows are measured back from. A landing page's "last 7 days"
+            # is only reproducible if the day it counted from is bound and cited, and SQL's
+            # own clock would answer something else tomorrow.
             "as_of": Param(type=ParamType.DATE, default=REQUIRED),
-            "recent_days": Param(type=ParamType.INTEGER, default=PAGE_RECENT_DAYS),
-            "window_days": Param(type=ParamType.INTEGER, default=PAGE_WINDOW_DAYS),
-            # A project path takes a row's head, like the list's — and the row links by the
-            # whole path, so the head is what the page shows and not what it filters by.
-            "head_chars": Param(type=ParamType.INTEGER, default=LIST_CHARS),
-            "projects": Param(type=ParamType.INTEGER, default=PAGE_PROJECTS),
+            "recent_days": SIZE,
+            "window_days": SIZE,
+            # A project path takes a head, and the row links by the whole path: the head is
+            # what the page shows and not what it filters by.
+            "head_chars": SIZE,
+            "projects": SIZE,
         },
     ),
     "view_projects": Query(
         scope=Scope.KEYED,
-        params={
-            "head_chars": Param(type=ParamType.INTEGER, default=LIST_CHARS),
-            "head_projects": Param(type=ParamType.INTEGER, default=LIST_PROJECTS),
-        },
+        params={"head_chars": SIZE, "head_projects": SIZE},
     ),
     "view_record": Query(
         scope=Scope.KEYED,
@@ -223,31 +207,29 @@ VIEW_QUERIES: dict[str, Query] = {
         params={
             "session_id": SESSION_ID,
             "source": SOURCE,
-            "after": AFTER,
-            "page_records": Param(type=ParamType.INTEGER, default=PAGE_RECORDS),
-            "preview_chars": Param(type=ParamType.INTEGER, default=RECORD_PREVIEW),
+            "after": SIZE,
+            "page_records": SIZE,
+            "preview_chars": SIZE,
         },
     ),
-    "view_runs": Query(
-        scope=Scope.KEYED, params={"session_id": SESSION_ID, "chip_chars": CHIP_CHARS_PARAM}
-    ),
+    "view_runs": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID, "chip_chars": SIZE}),
     "view_session_header": Query(
         scope=Scope.KEYED,
         params={
             "session_id": SESSION_ID,
-            "head_chars": Param(type=ParamType.INTEGER, default=HEADER_CHARS),
-            "item_chars": Param(type=ParamType.INTEGER, default=HEADER_ITEM_CHARS),
-            "head_items": Param(type=ParamType.INTEGER, default=HEADER_ITEMS),
+            "head_chars": SIZE,
+            "item_chars": SIZE,
+            "head_items": SIZE,
         },
     ),
     "view_session_errors": Query(
         scope=Scope.KEYED,
         params={
             "session_id": SESSION_ID,
-            # Labelled at a NavTree row's width, because the rows link to nodes: a failure reads
-            # as the same line here as it does in the NavTree beside its own page.
-            "nav_chars": NAV_CHARS_PARAM,
-            "errors": Param(type=ParamType.INTEGER, default=PAGE_ERRORS),
+            # The rows link to nodes, so a failure reads as the same line here as it does in
+            # the NavTree beside its own page — which is what the surface binds it at.
+            "nav_chars": SIZE,
+            "errors": SIZE,
         },
     ),
     "view_sessions": Query(
@@ -255,7 +237,7 @@ VIEW_QUERIES: dict[str, Query] = {
         # How much of each agent definition's name a row's list carries. The viewer composes
         # the rest of a row's cuts around this query (`view/store.py`) because its filters
         # read whole values; nothing filters on this one, so it is cut in the file.
-        params={"item_chars": Param(type=ParamType.INTEGER, default=LIST_ITEM_CHARS)},
+        params={"item_chars": SIZE},
     ),
     "view_tool_header": Query(
         scope=Scope.KEYED,
@@ -263,8 +245,8 @@ VIEW_QUERIES: dict[str, Query] = {
             "session_id": SESSION_ID,
             "source": SOURCE,
             "tool_call_id": TOOL_CALL_ID,
-            "head_chars": Param(type=ParamType.INTEGER, default=HEADER_CHARS),
-            "detail_chars": DETAIL_CHARS_PARAM,
+            "head_chars": SIZE,
+            "detail_chars": SIZE,
         },
     ),
     "view_tool_command": Query(
@@ -283,7 +265,7 @@ VIEW_QUERIES: dict[str, Query] = {
             "tool_call_id": TOOL_CALL_ID,
             # Not a width the answer is cut to — the value rides whole — but the bound on the
             # file suffix beside it, which says what the value is written in.
-            "head_chars": Param(type=ParamType.INTEGER, default=HEADER_CHARS),
+            "head_chars": SIZE,
         },
     ),
     "view_nav_tree_calls": Query(
@@ -291,10 +273,10 @@ VIEW_QUERIES: dict[str, Query] = {
         params={
             "session_id": SESSION_ID,
             "source": SOURCE,
-            # NULL is the real question "which calls sit under no turn", so the key is
-            # required rather than defaulted: absence cannot stand in for it.
+            # NULL is the real question "which calls sit under no turn", so the key carries
+            # it: nothing may stand in for the id.
             "turn_id": TURN_ID,
-            "nav_chars": NAV_CHARS_PARAM,
+            "nav_chars": SIZE,
         },
     ),
     "view_nav_tree_tools": Query(
@@ -302,30 +284,29 @@ VIEW_QUERIES: dict[str, Query] = {
         params={
             "session_id": SESSION_ID,
             "source": SOURCE,
-            # Both NULL-able and both required for the same reason as `view_nav_tree_calls`:
-            # NULL is the question "under this turn, whichever call made it" at the first and
-            # "under no turn of this thread" at the second, not a key left out.
+            # Both NULL-able, and NULL is a question at each: "under this turn, whichever
+            # call made it" at the first, "under no turn of this thread" at the second.
             "api_call_id": API_CALL_ID,
             "turn_id": TURN_ID,
-            "nav_chars": NAV_CHARS_PARAM,
+            "nav_chars": SIZE,
         },
     ),
     "view_nav_tree_turns": Query(
         scope=Scope.KEYED,
-        params={"session_id": SESSION_ID, "source": SOURCE, "nav_chars": NAV_CHARS_PARAM},
+        params={"session_id": SESSION_ID, "source": SOURCE, "nav_chars": SIZE},
     ),
     "view_turn_calls": Query(
         scope=Scope.KEYED,
         params={
             "session_id": SESSION_ID,
             "source": SOURCE,
-            # NULL is the real question "which calls sit under no turn", so the key is
-            # required rather than defaulted: absence cannot stand in for it.
+            # NULL is the real question "which calls sit under no turn", so the key carries
+            # it: nothing may stand in for the id.
             "turn_id": TURN_ID,
-            "skipped": SKIPPED,
-            "page_calls": Param(type=ParamType.INTEGER, default=LOG_ROWS),
-            # The two model names a call row shows, cut like every other log row's strings.
-            "log_chars": LOG_CHARS_PARAM,
+            "skipped": SIZE,
+            "page_calls": SIZE,
+            # The width the two model names a call row shows are cut to.
+            "log_chars": SIZE,
         },
     ),
     "view_turn_command_args": Query(
@@ -344,8 +325,8 @@ VIEW_QUERIES: dict[str, Query] = {
             # Which turn. A key like the session and the thread: "some turn of this thread"
             # is not a question anyone asked.
             "turn_id": TURN_ID,
-            "head_chars": Param(type=ParamType.INTEGER, default=HEADER_CHARS),
-            "detail_chars": DETAIL_CHARS_PARAM,
+            "head_chars": SIZE,
+            "detail_chars": SIZE,
         },
     ),
     "view_turn_prompt": Query(
