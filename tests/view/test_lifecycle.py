@@ -10,6 +10,7 @@ The third is the viewer's own: a component that raises halfway down a page. It i
 
 import shutil
 import socket
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -17,11 +18,12 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
+from hyphae.export.duckdb import StoreLocked
 from hyphae.export.schema import MIGRATE_REMEDY, SCHEMA_MISMATCH_REMEDY, SCHEMA_VERSION
 from hyphae.view.app import CSP, build_app, serve
 from hyphae.view.components import parts
 from hyphae.view.nodes import NUMBERS_URL
-from hyphae.view.store import SchemaMoved, StoreLocked
+from hyphae.view.store import SchemaMoved
 from tests.conftest import SPINE, locked
 from tests.view.conftest import fields
 
@@ -35,6 +37,10 @@ HALF = "<!--rendered-before-the-component-exploded-->"
 # the route body.
 REACHES = {"page": "/", "fragment": f"{NUMBERS_URL}/session/{SPINE}"}
 
+# How long the writer below holds the store before letting go on its own — well inside the
+# second a page will wait (`export/duckdb.PAGE_WAIT`), and what the test costs the suite.
+BRIEF_HOLD = 0.4
+
 
 @pytest.fixture
 def copy(corpus_db: Path, tmp_path: Path) -> Path:
@@ -42,6 +48,24 @@ def copy(corpus_db: Path, tmp_path: Path) -> Path:
     path = tmp_path / "store.duckdb"
     shutil.copyfile(corpus_db, path)
     return path
+
+
+@pytest.mark.parametrize("path", REACHES.values(), ids=REACHES)
+def test_a_page_waits_out_a_short_writer(copy: Path, path: str) -> None:
+    """A page that lands mid-extract waits for the writer rather than refusing on sight.
+
+    An extract takes the lock per session now, for tens of milliseconds each, so the hold a
+    page is likely to meet is far shorter than the second it will wait (`docs/store.md`).
+    """
+    with TestClient(build_app(copy)) as client, locked(copy, hold=BRIEF_HOLD):
+        started = time.monotonic()
+        response = client.get(path)
+        waited = time.monotonic() - started
+    # The reader gets its page, not the 503 the same hold used to earn...
+    assert response.status_code == 200
+    # ...and it got there by queueing: halved because the holder may have been asleep for up
+    # to one of `locked()`'s 50 ms polls before this test's clock started.
+    assert waited >= BRIEF_HOLD / 2
 
 
 @pytest.mark.parametrize("path", REACHES.values(), ids=REACHES)

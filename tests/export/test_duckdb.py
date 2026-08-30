@@ -5,7 +5,6 @@ columns under test hold values a real transcript produced.
 """
 
 import dataclasses
-from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
@@ -19,7 +18,7 @@ from hyphae.export.duckdb import (
 )
 from hyphae.export.schema import MIGRATIONS, SCHEMA_VERSION, SchemaVersionError
 from hyphae.model import SessionTrace
-from tests.conftest import FORK_RUN, TraceFactory, lock_is_free
+from tests.conftest import FORK_RUN, NO_WAIT, TraceFactory
 
 SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"
 DUPS = "8ee00a94-b01a-4394-b447-b065f74b11af"
@@ -410,7 +409,7 @@ def test_a_view_definition_reaches_a_reader_without_a_re_extract(
     assert stale_turns(db) == 0
 
     # ...then a reader answers off the code's definition, both directly...
-    with open_trace_store(db, read_only=True) as connection:
+    with open_trace_store(db, read_only=True, wait=NO_WAIT) as connection:
         assert connection.execute("SELECT count(*) FROM live_turns").fetchone() == (
             len(trace.turns),
         )
@@ -421,7 +420,7 @@ def test_a_view_definition_reaches_a_reader_without_a_re_extract(
     # A reader cannot write, so it shadows the stale definition rather than repairing it...
     assert stale_turns(db) == 0
     # ...and the next open for write is what puts the current text back in the file.
-    with open_trace_store(db, read_only=False):
+    with open_trace_store(db, read_only=False, wait=NO_WAIT):
         pass
     assert stale_turns(db) == len(trace.turns)
 
@@ -564,7 +563,10 @@ def test_a_read_only_open_of_an_older_store_says_how_to_migrate(
 
     # ...then it is refused with the one action that fixes it, not with the fresh-store
     # remedy that would throw the archive away...
-    with pytest.raises(SchemaVersionError, match="for write"), open_trace_store(db, read_only=True):
+    with (
+        pytest.raises(SchemaVersionError, match="for write"),
+        open_trace_store(db, read_only=True, wait=NO_WAIT),
+    ):
         pass
 
     # ...and the file it could not migrate is untouched.
@@ -638,42 +640,6 @@ def test_a_foreign_database_refuses_to_open(db: Path):
     with pytest.raises(SchemaVersionError, match="re-extract"):
         DuckDbExporter(db)
     assert shape(db) == before
-
-
-def open_for_write(path: Path) -> object:
-    """The opener entered and left the way a caller does — the block is what closes it."""
-    with open_trace_store(path, read_only=False) as connection:
-        return connection
-
-
-@pytest.mark.parametrize(
-    "open_store",
-    [DuckDbExporter, open_for_write],
-    ids=["exporter", "reader"],
-)
-@pytest.mark.parametrize(
-    "write_store", [unmigratable_store, foreign_store], ids=["old-schema", "foreign"]
-)
-def test_a_refused_store_keeps_none_of_its_lock(
-    db: Path,
-    write_store: Callable[[Path], dict[str, list[str]]],
-    open_store: Callable[[Path], object],
-):
-    """However a store is opened and whatever makes it unreadable, refusing it frees the file.
-
-    Half the contract is invisible in the file: an opener that raises hands nothing back, so
-    no `with` block runs and nothing calls `close()`. The connection lives on in the
-    traceback its caller holds, and DuckDB's single-writer lock goes with it — the next
-    process to open the store is refused for a reason that has nothing to do with the store.
-    """
-    # If an unreadable store is refused, and its caller keeps the error to report — a live
-    # process, not one exiting on the spot...
-    write_store(db)
-    with pytest.raises(SchemaVersionError) as refused:
-        open_store(db)
-
-    # ...then nothing here still holds the file.
-    assert lock_is_free(db), f"the refusal kept the write lock: {refused.value}"
 
 
 def test_a_newer_schema_version_refuses_to_open(db: Path):

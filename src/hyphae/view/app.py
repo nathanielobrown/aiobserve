@@ -27,6 +27,7 @@ from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from hyphae.export.duckdb import StoreLocked
 from hyphae.view import (
     expansions,
     fragments,
@@ -37,7 +38,6 @@ from hyphae.view import (
 from hyphae.view.deps import Viewer
 from hyphae.view.store import (
     SchemaMoved,
-    StoreLocked,
     open_store,
 )
 

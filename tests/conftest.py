@@ -208,16 +208,25 @@ def exportable_transcripts() -> tuple[Path, ...]:
     )
 
 
-# What a writer does to the store: opens it read-write, says so, and holds it. The connection
-# has to stay referenced — an unnamed one is freed at once, and the lock goes with it. The
-# holder announces the lock by touching a file rather than leaving the waiter to look, because
-# every way of looking takes a lock of its own (see `locked`).
+# What a test opening a store passes for the opener's lock budget. Nothing else holds a
+# temporary store, so waiting would only turn a bug into a pause: a test that finds the file
+# locked wants to say so at once, naming whatever process took it.
+NO_WAIT = 0.0
+
+# What a writer does to the store: opens it read-write, says so, and holds it for the seconds
+# it was told to. The connection has to stay referenced — an unnamed one is freed at once, and
+# the lock goes with it. The holder announces the lock by touching a file rather than leaving
+# the waiter to look, because every way of looking takes a lock of its own (see `locked`).
 _HOLDER = (
     "import duckdb, pathlib, sys, time;"
     " held = duckdb.connect(sys.argv[1]);"
     " pathlib.Path(sys.argv[2]).touch();"
-    " time.sleep(30)"
+    " time.sleep(float(sys.argv[3]))"
 )
+
+# How long the holder keeps the lock when the block does not name a shorter hold: longer than
+# any test's block, so `locked()`'s exit is what ends it.
+HOLD_UNTIL_STOPPED = 30.0
 
 # How long to wait for that subprocess to take the lock before giving up on the test.
 LOCK_TIMEOUT = 10.0
@@ -264,12 +273,17 @@ def lock_is_free(path: Path) -> bool:
 
 
 @contextmanager
-def locked(path: Path) -> Generator[None]:
+def locked(path: Path, *, hold: float = HOLD_UNTIL_STOPPED) -> Generator["subprocess.Popen[bytes]"]:
     """Hold a store's write lock from another process for the length of the block.
 
     A subprocess, not a second connection here: DuckDB answers the same process's second
     open differently from the file lock it takes across processes, so an in-process holder
-    tests the wrong failure.
+    tests the wrong failure. The holder is yielded so a test can name the pid an error
+    message is supposed to carry.
+
+    Pass `hold` to let go partway through the block instead — that is how a test whose
+    subject is the waiting gets a writer that finishes while a caller is queued behind it,
+    with no thread of its own.
 
     The wait for the holder never opens the store. A read-only open takes a shared read
     lock, and DuckDB refuses a write open while one is held — so a wait that polled by
@@ -280,7 +294,7 @@ def locked(path: Path) -> Generator[None]:
     signal = path.with_name(f"{path.name}.locked")
     signal.unlink(missing_ok=True)
     holder = subprocess.Popen(
-        [sys.executable, "-c", _HOLDER, str(path), str(signal)], stderr=subprocess.PIPE
+        [sys.executable, "-c", _HOLDER, str(path), str(signal), str(hold)], stderr=subprocess.PIPE
     )
     try:
         deadline = time.monotonic() + LOCK_TIMEOUT
@@ -291,7 +305,7 @@ def locked(path: Path) -> Generator[None]:
             if time.monotonic() > deadline:
                 pytest.fail(f"nothing took the lock on {path} within {LOCK_TIMEOUT}s")
             time.sleep(0.05)
-        yield
+        yield holder
     finally:
         stop(holder, patience=TERMINATE_TIMEOUT)
         if holder.stderr is not None:

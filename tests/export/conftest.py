@@ -36,7 +36,7 @@ from hyphae.export.otlp_delivery import (
 from hyphae.extract.store import StoreSource
 from hyphae.model import SessionTrace
 from hyphae.pipeline import RefreshResult, SessionSource, refresh
-from tests.conftest import FIXTURES, MYCELIA, SERVER_TOOLS, SPINE, build_store
+from tests.conftest import FIXTURES, MYCELIA, NO_WAIT, SERVER_TOOLS, SPINE, build_store
 
 # No request in these tests crosses a network, so a slow one is a hang, not a slow link.
 TIMEOUT = 5.0
@@ -285,7 +285,7 @@ def store_path(delivered_db: Path, tmp_path: Path) -> Path:
 
 @pytest.fixture
 def store(store_path: Path) -> Iterator[duckdb.DuckDBPyConnection]:
-    with open_trace_store(store_path, read_only=False) as connection:
+    with open_trace_store(store_path, read_only=False, wait=NO_WAIT) as connection:
         yield connection
 
 

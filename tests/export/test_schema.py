@@ -26,7 +26,7 @@ from hyphae.export.schema import (
     declared_shape,
     table_ddl,
 )
-from tests.conftest import lock_is_free
+from tests.conftest import NO_WAIT, lock_is_free
 
 
 @pytest.fixture
@@ -209,6 +209,6 @@ def test_the_real_archive_matches_every_owners_ddl() -> None:
     only copy of every pruned session (`docs/store.md`).
     """
     archive = Path(os.environ[LIVE_STORE])
-    with open_trace_store(archive, read_only=True) as connection:
+    with open_trace_store(archive, read_only=True, wait=NO_WAIT) as connection:
         for ddl in (TRACE_SCHEMA, ENRICHMENT_SCHEMA, DELIVERY_SCHEMA):
             check_shape(connection, ddl)

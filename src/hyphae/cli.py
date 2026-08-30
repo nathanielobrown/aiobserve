@@ -26,7 +26,7 @@ from hyphae.enrich.cost import Prompt, estimate
 from hyphae.enrich.enricher import PlannedItem, enrich, plan
 from hyphae.enrich.levels import ROUND_ORDER
 from hyphae.enrich.store import EnrichmentStore
-from hyphae.export.duckdb import DuckDbExporter, open_trace_store
+from hyphae.export.duckdb import CLI_WAIT, DuckDbExporter, open_trace_store
 from hyphae.export.otlp import DEFAULT_MAX_CHARS, TextPolicy, census_project
 from hyphae.export.otlp_delivery import (
     BACKEND_NAMES,
@@ -295,7 +295,7 @@ def _export_otlp(args: argparse.Namespace) -> None:
         # One connection for both halves — DuckDB admits a single writer, and the exporter
         # needs to write its ledger into the store the source is reading.
         with (
-            open_trace_store(args.db, read_only=False) as connection,
+            open_trace_store(args.db, read_only=False, wait=CLI_WAIT) as connection,
             OtlpExporter(
                 backend, connection, service_name=args.service_name, text=text, rate=args.rate
             ) as exporter,
@@ -308,7 +308,7 @@ def _export_otlp(args: argparse.Namespace) -> None:
 
 def _census_otlp(args: argparse.Namespace, text: TextPolicy) -> None:
     """Say what a send would ship, without a backend, a key, or the store's write lock."""
-    with open_trace_store(args.db, read_only=True) as connection:
+    with open_trace_store(args.db, read_only=True, wait=CLI_WAIT) as connection:
         counts = census_project(args.project, extractor=StoreSource(connection), text=text)
     # The compaction count is broken out because a compaction is where a session's account
     # of itself gets lossy, so how many ship is worth seeing before an hour of sending.
