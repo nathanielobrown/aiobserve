@@ -1,0 +1,11 @@
+[package]
+name = "hp"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+hyphae-extract.workspace = true
+hyphae-store.workspace = true
+anyhow.workspace = true
+clap.workspace = true

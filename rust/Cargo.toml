@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/hyphae-extract", "crates/hyphae-model", "crates/hyphae-store"]
+members = ["crates/hp", "crates/hyphae-extract", "crates/hyphae-model", "crates/hyphae-store"]
 
 [workspace.package]
 edition = "2024"
@@ -11,6 +11,7 @@ publish = false
 # The crates, by path: the workspace is the only consumer and nothing here is published.
 hyphae-model = { path = "crates/hyphae-model" }
 hyphae-extract = { path = "crates/hyphae-extract" }
+hyphae-store = { path = "crates/hyphae-store" }
 # The store. `bundled` compiles DuckDB itself, so the binary carries no libduckdb; the
 # version tracks DuckDB releases and 1.10505.0 is DuckDB 1.5.5, the version `pyproject.toml`
 # pins — a store file is only readable by a build at or past the one that wrote it.
@@ -26,6 +27,10 @@ tempfile = "3"
 serde_json = { version = "1", features = ["preserve_order"] }
 # Snapshots of the ids and parents the walk produced, reviewed once and then pinned.
 insta = "1"
+# The `hp` binary's CLI. `derive` is the only feature the commands need.
+clap = { version = "4", features = ["derive"] }
+# Errors at the binary, per the design's `thiserror` (crates) / `anyhow` (bin) split.
+anyhow = "1"
 
 [profile.dev]
 # The spike copies whole tables through DuckDB; unoptimized debug builds make that slow
