@@ -16,11 +16,9 @@ use crate::components::nav_tree::{NavTreeRow, PresetChoice};
 use crate::components::node_page::{Archived, Trail};
 use crate::components::{Markup, node_page};
 use crate::knobs::{self, BadAsk};
+use crate::nav_tree::MAIN_SOURCE;
 use crate::nodes::{self, Kind, Node, Preset};
 use crate::store::{Page, Reader, TURN_CURSOR, ViewError, page_rows, window};
-
-/// The main thread, whose rows a session page's NavTree opens on.
-const MAIN_SOURCE: &str = "main";
 
 /// Where the session list lives, and where the crumb chain starts.
 const LIST_URL: &str = "/sessions";

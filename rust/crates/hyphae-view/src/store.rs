@@ -192,6 +192,9 @@ impl Query for Whole {
 pub enum ViewError {
     #[error(transparent)]
     Store(#[from] StoreError),
+    /// A column a query was expected to ship, read off a row that does not carry it.
+    #[error(transparent)]
+    Row(#[from] hyphae_store::RowError),
     /// A query gave more rows outside every page than the page that renders them budgeted.
     #[error("{query} gave more than {limit} row(s) with no {cursor}")]
     Cursorless {
@@ -202,6 +205,9 @@ pub enum ViewError {
     /// A URL naming something the store does not hold.
     #[error("{0}")]
     NoSuchNode(String),
+    /// The store gave a shape the viewer has no page for, such as a chain past [`crate::knobs::DEPTH`].
+    #[error("{0}")]
+    Shape(String),
 }
 
 /// The store one viewer serves, opened afresh for every request.

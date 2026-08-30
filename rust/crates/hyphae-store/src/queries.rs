@@ -53,6 +53,9 @@ pub const DETAIL_CHARS: usize = 4_000;
 /// How much of a model-written description or friction line a page shows.
 pub const ENRICHMENT_CHARS: usize = 200;
 
+/// How much of one of the two closed-vocabulary tags beside it a page shows.
+pub const TAG_CHARS: usize = 20;
+
 /// The keyset cursor before the first row: "the last index already shown", and indexes start
 /// at 0.
 pub const FIRST_PAGE: i64 = -1;

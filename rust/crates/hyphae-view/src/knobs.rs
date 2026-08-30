@@ -27,6 +27,22 @@ pub const LOG: Bound = Bound {
     ceiling: queries::LOG_ROWS,
 };
 
+/// How deep a chain the NavTree will open, the selection counted.
+///
+/// A session's nesting is a transcript's, and a transcript can nest as far as an agent spawns: the
+/// corpus reaches five, and a chain past this is a store shape nothing here has seen rather than a
+/// page to render, so [`crate::nav_tree::ancestry`] refuses instead of building it. The response's
+/// bound is arithmetic over this and [`KIN`], which is what makes it a bound rather than a
+/// preference.
+pub const DEPTH: usize = 16;
+
+/// The turn rows a page renders that no cursor reaches.
+///
+/// `session_timeline` gives one — the calls that answer no turn are a single group — and the
+/// NavTree reads it as the unattributed bucket's row. Bound because a level renders it: a timeline
+/// answering with more than one raises rather than serving a row nothing counted.
+pub const CURSORLESS_TURNS: usize = 1;
+
 /// How much of a fat value the pane previews.
 pub const DETAIL: Bound = Bound {
     default: queries::DETAIL_CHARS as i64,
