@@ -246,6 +246,40 @@ def test_a_project_filter_narrows_the_items(fixture_db: Path, mutable_db: Path) 
     assert [item.command_result for item in scoped if item.command_result] != []
 
 
+def test_every_reader_narrows_to_the_project_it_was_given(mutable_db: Path) -> None:
+    """Every read that takes a project drops the other repositories' sessions, at every level.
+
+    A query that carried the filter without binding it would raise, but one that dropped the
+    filter and kept the binding answers about the whole corpus under a project's name — a
+    wrong-corpus number nothing downstream can tell from a right one.
+    """
+    # If one recorded session is planted under a neighbouring checkout — a path sharing this
+    # project's prefix, which the filter must not annex (the path invented, the session
+    # recorded)...
+    with EnrichmentStore(mutable_db) as store:
+        store.connection.execute(
+            "UPDATE sessions SET project_dir = ? WHERE id = ?", [f"{MYCELIA}-old", TEAMMATE]
+        )
+        # ...then every reader that takes a project reads the project's own items, and none
+        # of them the neighbour's.
+        for scoped, whole in (
+            (store.turn_items(MYCELIA), store.turn_items()),
+            (store.run_items(MYCELIA), store.run_items()),
+            (store.session_items(MYCELIA), store.session_items()),
+        ):
+            kept = {item.session_id for item in scoped}
+            assert TEAMMATE not in kept, "kept the neighbouring checkout's session"
+            assert scoped, "narrowed to nothing"
+            # The filter only drops sessions: what it keeps is what the unscoped read built.
+            assert scoped == [item for item in whole if item.session_id in kept]
+            assert len(scoped) < len(whole), "returned the whole corpus"
+        # The parent links narrow with them: a link the scoped items cannot name is a parent
+        # the pass would send a request for and never write a row from.
+        parents = store.item_parents(MYCELIA)
+        assert parents and len(parents) < len(store.item_parents())
+        assert TEAMMATE not in {key.split("|")[1] for key in parents}
+
+
 def test_a_run_naming_no_parent_agent_hangs_off_the_transcript_that_spawned_it(
     mutable_db: Path,
 ) -> None:
