@@ -14,7 +14,7 @@ use std::fmt;
 
 use hyphae_store::queries;
 
-use crate::columns::Shape;
+use crate::columns::{CALL_ICON, RUN_ICON, Shape, TOOL_ICON};
 use crate::format::cut;
 use crate::inline_markdown;
 use crate::render::Markup;
@@ -117,11 +117,6 @@ impl fmt::Display for Kind {
     }
 }
 
-// The three marks `view/columns.py` owns, read here because a kind wears one.
-const RUN_ICON: &str = "🤖";
-const CALL_ICON: &str = "◇";
-const TOOL_ICON: &str = "⚒";
-
 /// Which children a level shows: the value `?nav=` carries, full when it carries none.
 ///
 /// A view of the same session rather than a different session — nothing is dropped, only
@@ -149,7 +144,7 @@ impl Preset {
     /// URL.
     pub fn label(self) -> &'static str {
         match self {
-            Self::Full => "everything",
+            Self::Full => "full",
             Self::NoApi => "no api calls",
             Self::Agents => "agents only",
         }

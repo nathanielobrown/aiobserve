@@ -103,10 +103,9 @@ fn pair(name: &str, value: Markup) -> Markup {
 /// read rather than a page that reads better.
 pub fn code(value: &str, syntax: Syntax, field: &str) -> Markup {
     let shown = highlight::lit(Some(value), syntax);
-    let classes = shown
-        .syntax
-        .map(|syntax| format!("code {syntax}"))
-        .unwrap_or_else(|| "code".to_owned());
+    // No class at all where nothing was marked up: a `<pre>` wearing `code` with no lexer's
+    // classes under it would be painted as if it had been.
+    let classes = shown.syntax.map(|syntax| format!("code {syntax}"));
     rsx! {
         @if shown.over > 0 {
             <p class="plain" data-plain=(field)>
@@ -117,7 +116,7 @@ pub fn code(value: &str, syntax: Syntax, field: &str) -> Markup {
                 " this viewer marks up."
             </p>
         }
-        <pre data-field=(field) class=(classes)>(hypertext::Raw::dangerously_create(shown.html.as_str()))</pre>
+        <pre data-field=(field) class=[classes.as_deref()]>(hypertext::Raw::dangerously_create(shown.html.as_str()))</pre>
     }
     .memoize()
 }

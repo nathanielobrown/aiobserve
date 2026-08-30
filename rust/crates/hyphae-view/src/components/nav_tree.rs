@@ -129,13 +129,15 @@ fn tail(row: &NavTreeRow, suffix: &str, thread: &str) -> Markup {
     rsx! {
         <li class="row more" data-depth=(row.depth) data-more=(row.node.key())>
             <button
-                type="button"
                 hx-get=(fetch)
-                hx-target="closest li"
-                hx-swap="outerHTML"
+                // The three undoing the inherited swap come first, in the order htpy spreads
+                // them, so the two viewers serve one button byte for byte.
                 hx-select="unset"
                 hx-select-oob="unset"
                 hx-push-url="false"
+                type="button"
+                hx-target="closest li"
+                hx-swap="outerHTML"
             >"+"<span data-field="cut">(fmt::count(Some(row.cut)))</span>" more"</button>
         </li>
     }
@@ -155,7 +157,7 @@ fn line(row: &NavTreeRow, suffix: &str) -> Markup {
     // the class list ending on the separator, and the two viewers serve one page.
     let mut class = format!("row node {} {}", node.kind, node.bar());
     if row.ancestor {
-        class.push_str("ancestor");
+        class.push_str(" ancestor");
     }
     rsx! {
         <li
