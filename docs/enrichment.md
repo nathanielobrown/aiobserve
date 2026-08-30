@@ -102,6 +102,8 @@ Five consecutive failures trip the breaker. The enricher starts nothing else, ma
 
 **Ctrl-C stops after the current round, not during it.** The enricher waits for running calls, writes their answers, and stops before the next round. Press Ctrl-C again to abandon calls still in flight; they return `aborted`, like any item with no answer. This behavior makes it safe to stop a pass that runs for hours, while `--limit` remains the pacing control.
 
+A pass holds the store from its first round to its last, and DuckDB admits one process at a time, so `hp view` answers 503 and `hp extract` gives up while one runs ([the store guide](store.md)).
+
 ### The CLI envelope is pinned to `claude` 2.1.221
 
 With `--output-format json`, this version returns one object. The enricher reads four fields and ignores all others, so an added field does not count as drift:

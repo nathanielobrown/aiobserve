@@ -190,6 +190,8 @@ Elements are written `htpy.div[...]`, never `from htpy import div`: the prefix i
 
 A string its query cut arrives one character past the width it is printed at, and the filter that prints it cuts it back and marks where the rest was left behind (`src/hyphae/view/format.py:cut`): `line` for a children log's row, `head` and `member` for a header, `short` and `item` for a row of the session list. Print such a value bare and a reader cannot tell a name that ended from one that was stopped. A title arrives marked already, at whichever of the four widths `src/hyphae/view/nodes.py` cut it to.
 
+The query is the other half of that protocol: a value a page prints is cut by the `cut` macro, which stops one character past the width so the filter has something to find (`src/hyphae/analyze/macros.py`). A hand-spelled `substr(value, 1, $width)` stops *at* it and leaves nothing to mark. Every one the library keeps on purpose is named with its reason in `tests/analyze/test_queries.py:HAND_CUTS`, held by set equality, so a new one fails there rather than reaching a page as a value that looks whole.
+
 A closed vocabulary is the one thing cut without a mark: a taxonomy value is bound at `queries.TAG_CHARS` because a page whose size is arithmetic needs every width named, not because any member reaches it (`src/hyphae/enrich/taxonomy.py`). `parts.counted` takes `mark_cuts=False` for those, and a mark there would claim a name went on when nothing was left behind.
 
 A mark is three bytes on every row of the page that carries it, so adding one to a column of the session list moves `bounds.SESSIONS` — the ceiling is derived from the dearest row, and the pin in `tests/view/test_bounds.py` holds it from both sides against what `tests/view/budgets.py` measured that row at.

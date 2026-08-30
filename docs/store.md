@@ -27,7 +27,7 @@ A session's main thread and agent runs use the same trace tables. The `source` c
 
 Queries use views instead of reading the trace tables directly. `refresh_views` in `src/hyphae/export/duckdb.py` defines `live_*` views, which omit records replayed by a fork. The `corpus_*` views also omit records already stored for an earlier session. Resumed sessions copy their ancestor's records, so counting both would count the same records twice. `session_rollups` and `corpus_rollups` reduce each family to one row per session.
 
-`open_trace_store` in `src/hyphae/export/duckdb.py` is the one way into a store that already exists: the viewer, `hp query`, `hp enrich` and `hp export-otlp` all open through it, and each translates its refusals into the currency it reports in. Every open rebuilds all of them, so editing a definition reaches `hp view`, `hp query` and `hp enrich` at once rather than at the next extract. A read-only connection cannot replace a stored view, so it builds the same statements as temporary views; those shadow the stored ones for the life of the connection, including inside a stored view that names one. A reader pays about 3 ms for that on a 15 GB store.
+`open_trace_store` in `src/hyphae/export/duckdb.py` is the one way into a store that already exists: the viewer, `hp query`, `hp enrich` and `hp export-otlp` all open through it, and each translates its refusals into the currency it reports in. Every open rebuilds those views, so editing a definition reaches `hp view`, `hp query` and `hp enrich` at once rather than at the next extract. A read-only connection cannot replace a stored view, so it builds the same statements as temporary views; those shadow the stored ones for the life of the connection, including inside a stored view that names one. A reader pays about 3 ms for that on a 15 GB store.
 
 [Enrichment](enrichment.md) adds three `*_enrichments` tables keyed one-to-one to sessions, turns, and agent runs. It also adds views that join the enrichments to those records. Until an enrichment pass writes these tables, queries against them fail with an error that says they don't exist.
 
@@ -37,7 +37,7 @@ DuckDB admits one writer and offers no lock timeout of its own, so every open th
 
 `hp extract` holds the file only while it writes. It prepares the store and lets go, reads its fingerprints read-only, and takes the write lock for one transaction per session — so the parse between sessions costs no lock at all, and [the viewer](viewer.md) answers pages throughout a long extract. Those per-session writes skip the view rebuild the opener does, which costs about 60 ms against 5 ms for the write itself on a store grown from the fixture corpus to 9.5 GB (measured 2026-08-30); the store the extract prepared already holds them.
 
-`hp enrich` and `hp export-otlp` are the other way round: each holds one connection for its whole run. They queue for the store like anything else, and nothing else can write while they run.
+`hp enrich` and `hp export-otlp` are the other way round: each holds one connection for its whole run. They queue for the store like anything else, and while one runs nothing else reaches the file at all — DuckDB's lock shuts out readers as well as writers, so [the viewer](viewer.md) answers 503 until the pass ends. Price a long pass accordingly.
 
 ## The store is the only durable archive
 
