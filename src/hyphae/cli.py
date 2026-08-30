@@ -24,7 +24,7 @@ from hyphae.enrich.cost import Prompt, estimate
 from hyphae.enrich.enricher import ROUND_ORDER, PlannedItem, enrich, plan
 from hyphae.enrich.store import EnrichmentStore
 from hyphae.export.duckdb import DuckDbExporter, open_trace_store
-from hyphae.export.otlp import DEFAULT_MAX_CHARS, TextPolicy
+from hyphae.export.otlp import DEFAULT_MAX_CHARS, TextPolicy, census
 from hyphae.export.otlp_delivery import (
     BACKEND_NAMES,
     DEFAULT_RATE,
@@ -32,7 +32,6 @@ from hyphae.export.otlp_delivery import (
     GENERIC,
     ConfigurationError,
     OtlpExporter,
-    census,
     named_backend,
 )
 from hyphae.extract.claude_code import ClaudeCodeExtractor

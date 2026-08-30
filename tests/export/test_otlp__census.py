@@ -13,8 +13,7 @@ import duckdb
 import pytest
 
 from hyphae.export.duckdb import open_trace_store
-from hyphae.export.otlp import SpanKey, session_spans, span_id
-from hyphae.export.otlp_delivery import census
+from hyphae.export.otlp import SpanKey, census, session_spans, span_id
 from hyphae.extract.store import StoreSource
 from hyphae.model import SessionTrace
 from tests.conftest import FORK_COMPACTION, FORK_RUN, MYCELIA, SPINE, SPINE_RUN

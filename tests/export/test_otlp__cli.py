@@ -15,7 +15,7 @@ import pytest
 
 from hyphae import cli
 from hyphae.export.duckdb import open_trace_store
-from hyphae.export.otlp import TextPolicy
+from hyphae.export.otlp import TextPolicy, census
 from hyphae.export.otlp_delivery import (
     ENDPOINT_ENV,
     GENERIC,
@@ -23,7 +23,6 @@ from hyphae.export.otlp_delivery import (
     Backend,
     DeliveryError,
     OtlpExporter,
-    census,
 )
 from hyphae.extract.store import StoreSource
 from hyphae.pipeline import refresh

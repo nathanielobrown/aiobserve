@@ -1,4 +1,4 @@
-"""Shipping the store's sessions to an OTLP backend: span shaping and checked delivery.
+"""What a session becomes on the wire: the span shaping, and the census that counts it.
 
 One trace per session, ids derived from the store's own composite keys, so re-sending a
 session lands on the spans it landed on last time. That is the whole delivery promise:
@@ -12,6 +12,7 @@ party publishes it, so prompts, model text, tool arguments and results stay home
 
 import datetime as dt
 import hashlib
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -178,6 +179,32 @@ def session_resource(session: Session, service_name: str | None) -> resource_pb2
             }
         )
     )
+
+
+@dataclass(frozen=True)
+class Census:
+    """What a run would ship, counted by shaping every session and sending nothing."""
+
+    sessions: int
+    spans: int
+    # Compactions shipped: what `live_compactions` holds, since the mapper and the view
+    # both read the extractor's `replayed` flag.
+    compactions: int
+
+
+def census(traces: Iterable[SessionTrace], text: TextPolicy = METADATA_ONLY) -> Census:
+    """Count what a send would put on the wire, without sending it.
+
+    Shapes each session exactly as `export()` does, so the total is the mapper's own answer
+    rather than a SQL approximation of it.
+    """
+    sessions = spans = compactions = 0
+    for trace in traces:
+        shaped = session_spans(trace, text)
+        sessions += 1
+        spans += len(shaped)
+        compactions += sum(1 for span in shaped if span.name == COMPACTION_SPAN)
+    return Census(sessions=sessions, spans=spans, compactions=compactions)
 
 
 class TimelessSessionError(Exception):
