@@ -15,5 +15,5 @@ pub mod schema;
 pub mod store;
 
 pub use param::Param;
-pub use row::{Row, RowError};
+pub use row::{Row, RowError, Value};
 pub use store::{Store, StoreError};

@@ -5,10 +5,16 @@
 //! share a reader sees are the same wherever they read it. [`crate::nodes`] holds the
 //! vocabulary they build in.
 
-use hyphae_store::{Row, RowError};
+use hyphae_store::row::member;
+use hyphae_store::{Row, RowError, Value};
 
 use crate::components::node_body::{Facts, SessionFacts};
-use crate::nodes::{COST_PLACES, Context, Kind, Ledger, Node, Ref, Spend};
+use crate::format::ELLIPSIS;
+use crate::formatters::{Fields, Formatted, name_tool};
+use crate::nodes::{
+    COST_PLACES, Context, Kind, LEAD_SEPARATOR, Ledger, Node, Ref, SPEECH_MARK, Spend, TALLY_CHARS,
+    UNATTACHED_TITLE, UNATTRIBUTED_TITLE,
+};
 
 /// Where the row says its node left the window, or `None` where it says nothing.
 ///
@@ -62,6 +68,92 @@ fn spend(cost: Option<f64>, node: &Ref, held: &Ledger) -> Spend {
 fn rounded(cost: f64) -> f64 {
     let places = 10f64.powi(COST_PLACES);
     (cost * places).round() / places
+}
+
+/// One column a query may not have shipped at all, which is Python's `row.get`.
+///
+/// A children log's query and a NavTree row's query read the same builder with different
+/// columns, so an absent column is a shape the caller means rather than one it forgot.
+fn optional_str<'a>(row: &'a Row, column: &str) -> Result<Option<&'a str>, RowError> {
+    match row.value(column) {
+        Ok(_) => row.opt_str(column),
+        Err(_) => Ok(None),
+    }
+}
+
+fn optional_i64(row: &Row, column: &str) -> Result<Option<i64>, RowError> {
+    match row.value(column) {
+        Ok(_) => row.opt_i64(column),
+        Err(_) => Ok(None),
+    }
+}
+
+fn optional_f64(row: &Row, column: &str) -> Result<Option<f64>, RowError> {
+    match row.value(column) {
+        Ok(_) => row.opt_f64(column),
+        Err(_) => Ok(None),
+    }
+}
+
+/// The members of a `LIST` column, or nothing where the query shipped none.
+pub fn members<'a>(row: &'a Row, column: &str) -> &'a [Value] {
+    match row.value(column) {
+        Ok(Value::List(held) | Value::Array(held)) => held,
+        _ => &[],
+    }
+}
+
+/// One tool call's lead and words, for the two kinds of node that print a tool's name.
+///
+/// Where the registry names the tool, its glyph stands in for the name and rides in the words
+/// rather than the lead: a children log heads its lead in a column of its own, and a mark saying
+/// which tool this is has to survive that (`Node::log_title`). Where it does not, the tool's name
+/// leads the shape-driven words instead.
+fn named(name: &str, fields: Fields<'_>) -> (String, String) {
+    let Formatted { mark, words } = name_tool(name, fields);
+    if mark.is_empty() {
+        (name.to_owned(), words)
+    } else {
+        (String::new(), format!("{mark} {words}"))
+    }
+}
+
+/// A list of tool calls named one at a time, for the surfaces that print them on one line.
+///
+/// An api call's row in a children log says which tools it called, and a tool call's popover says
+/// what was asked for beside it. Both are lists of the rows the tools log holds, so both are named
+/// through [`named`] — the lead and the words joined the way [`Node::title`] joins them, because a
+/// list of tool calls that read differently from the rows it stands for would be a second answer
+/// to what a call is called.
+pub fn tool_titles(called: &[Value]) -> Vec<String> {
+    called
+        .iter()
+        .map(|one| {
+            let name = match member(one, "name") {
+                Some(Value::Text(text) | Value::Enum(text)) => text.as_str(),
+                _ => "",
+            };
+            let (lead, words) = named(name, Fields::of(member(one, "fields")));
+            [lead, words]
+                .into_iter()
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>()
+                .join(LEAD_SEPARATOR)
+        })
+        .collect()
+}
+
+/// The line under a tool call's title in a children log: what the call was *for*.
+///
+/// A `Bash` row heads with the command it ran, so the description the caller wrote reads
+/// underneath it. Empty where the record carried no description, and where the title is already
+/// that description: a row does not print one value twice.
+pub fn tool_about(name: &str, fields: Fields<'_>) -> String {
+    let said = fields.text("description");
+    if said.is_empty() || named(name, fields).1.contains(said) {
+        return String::new();
+    }
+    said.to_owned()
 }
 
 /// The root of every NavTree: the session everything under it was recorded in.
@@ -134,6 +226,230 @@ fn turn_title(row: &Row) -> Result<String, RowError> {
     // The store declares a turn's prompt NOT NULL (`export/duckdb.py`), so this arm always has
     // something to say, even when what it says is the empty string.
     Ok(row.str("prompt")?.to_owned())
+}
+
+/// One agent run as a node, hoisted to wherever its spawning call sits.
+pub fn run_node(
+    session_id: &str,
+    row: &Row,
+    held: &Ledger,
+    described: Option<&str>,
+) -> Result<Node, RowError> {
+    let run_id = row.str("run_id")?.to_owned();
+    // A run's id is the source its own rows carry.
+    let mut node = Node::bare(Kind::Run, session_id, Some(&run_id), &run_id);
+    // Which agent ran leads the name wherever no column heads it (`Node::lead`), bracketed so a
+    // tree of runs reads as a column of types — and after it what the pass said the run did, else
+    // the brief it was given, else nothing.
+    node.lead = match row.opt_str("agent_type")? {
+        Some(agent_type) => format!("[{agent_type}]"),
+        None => String::new(),
+    };
+    node.separator = " ";
+    node.words = described
+        .or(row.opt_str("brief")?)
+        .unwrap_or_default()
+        .to_owned();
+    node.spend = spend(
+        row.opt_f64("cost_usd")?,
+        &Ref::new(Kind::Run, Some(&run_id), &run_id),
+        held,
+    );
+    node.unpriced_api_calls = row.i64("unpriced_api_calls")?;
+    node.enriched = described.is_some();
+    node.context = context(row)?;
+    // A run that compacted ran its window out, whatever the last call it made says it held — and
+    // how often it did is what the row's badge says, since a run's own compactions are recorded
+    // on a thread the reader is not looking at.
+    node.compactions = row.i64("compactions")?;
+    node.maxed = node.compactions > 0;
+    Ok(node)
+}
+
+/// How many of each tool an api call invoked, in the order each tool first appears.
+///
+/// The half of an api call's title that survives every cut (`Node::tail`), so it is bounded here
+/// rather than by the surface: a group that will not fit is dropped whole and the drop marked,
+/// because `+2(Ba…` counts calls of a tool the reader cannot name.
+fn tally(names: &[&str], chars: usize) -> String {
+    let mut counted: Vec<(&str, i64)> = Vec::new();
+    for name in names {
+        match counted.iter_mut().find(|(held, _)| held == name) {
+            Some((_, made)) => *made += 1,
+            None => counted.push((name, 1)),
+        }
+    }
+    let mut tallied = String::new();
+    for (name, made) in counted {
+        let group = format!(" +{made}({name})");
+        if tallied.chars().count() + group.chars().count() > chars {
+            return tallied + ELLIPSIS;
+        }
+        tallied += &group;
+    }
+    tallied
+}
+
+/// One api call as a node: what it said, else the tools it called, else the model.
+pub fn call_node(
+    session_id: &str,
+    source: &str,
+    row: &Row,
+    held: &Ledger,
+) -> Result<Node, RowError> {
+    let api_call_id = row.str("api_call_id")?.to_owned();
+    // What the call went on to do, where the query that read it fetched that: the tool names in
+    // the order they were called, and the first call's own title. A children log's query fetches
+    // neither — its rows are named by the model, and its node is only ever a link.
+    let tools = row
+        .value("tools")
+        .ok()
+        .filter(|held| !matches!(held, Value::Null));
+    let names: Vec<&str> = match tools.and_then(|held| member(held, "names")) {
+        Some(Value::List(held) | Value::Array(held)) => held
+            .iter()
+            .filter_map(|one| match one {
+                Value::Text(text) | Value::Enum(text) => Some(text.as_str()),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    // A call that answered with tool calls and no text has nothing to quote, so it is named by
+    // what it did: the tool it called first, that call's own name, and a count of the rest. One
+    // that neither spoke nor called a tool is named by the model that answered.
+    let spoken = optional_str(row, "text_head")?.filter(|said| !said.is_empty());
+    let silent = spoken.is_none() && !names.is_empty();
+    let first = tools.and_then(|held| member(held, "first"));
+    // Named through the same derivation the tool row under it takes, so the glyph a reader picks
+    // a `Read` out of a tree by leads here too ([`named`]).
+    let (lead, called) = if silent {
+        let name = match first.and_then(|held| member(held, "name")) {
+            Some(Value::Text(text) | Value::Enum(text)) => text.as_str(),
+            _ => "",
+        };
+        named(
+            name,
+            Fields::of(first.and_then(|held| member(held, "fields"))),
+        )
+    } else {
+        (String::new(), String::new())
+    };
+    let mut node = Node::bare(Kind::Call, session_id, Some(source), &api_call_id);
+    node.lead = lead;
+    // Marked where the words are speech, including on a call that also ran tools: what the model
+    // said is the one thing on the row nothing else on the page says.
+    node.words = if silent {
+        called
+    } else if let Some(said) = spoken {
+        format!("{SPEECH_MARK} {said}")
+    } else {
+        row.opt_str("model")?.unwrap_or_default().to_owned()
+    };
+    node.tail = if silent {
+        tally(&names[1..], TALLY_CHARS)
+    } else {
+        String::new()
+    };
+    node.spend = spend(
+        Some(row.opt_f64("cost_usd")?.unwrap_or(0.0)),
+        &Ref::new(Kind::Call, Some(source), &api_call_id),
+        held,
+    );
+    node.unpriced_api_calls = row.i64("unpriced_api_calls")?;
+    node.context = context(row)?;
+    Ok(node)
+}
+
+/// One tool call as a node. No cost of its own: what it took is the api call's.
+///
+/// Except a ⚒ row, which asked for a run and is charged what the api call holding it cost — the
+/// nearest thing the store prices to what the reader is looking at. Costless wherever no run hangs
+/// under it, which is every other tool there is.
+pub fn tool_node(
+    session_id: &str,
+    source: &str,
+    row: &Row,
+    held: &Ledger,
+) -> Result<Node, RowError> {
+    let tool_call_id = row.str("tool_call_id")?.to_owned();
+    let (lead, words) = named(row.str("name")?, Fields::read(row, "fields"));
+    // `view_nav_tree_tools.sql` is the one query that reads the call's price, because the NavTree
+    // is the one surface that draws the badge. A row that asked for nothing takes neither the
+    // price nor the mark saying our table could not complete it.
+    let node_ref = Ref::new(Kind::Tool, Some(source), &tool_call_id);
+    let asked = held.below(&node_ref) != 0.0;
+    let spent = optional_f64(row, "call_cost_usd")?.unwrap_or(0.0);
+    let mut node = Node::bare(Kind::Tool, session_id, Some(source), &tool_call_id);
+    // The tool's name leads, and its title says which call of that tool this is — a page of twenty
+    // `Read` rows otherwise says twenty times that a file was read ([`named`]).
+    node.lead = lead;
+    node.words = words;
+    node.spend = spend(asked.then_some(spent), &node_ref, held);
+    node.unpriced_api_calls = if asked {
+        optional_i64(row, "unpriced_api_calls")?.unwrap_or(0)
+    } else {
+        0
+    };
+    // Every query a tool node is built from selects it, and the column is NOT NULL, so a row
+    // arriving without it is a query that forgot rather than a call that may have failed.
+    node.is_error = row.bool("is_error")?;
+    Ok(node)
+}
+
+/// One compaction as a node. A stop on the walk, and a node with no spend of its own.
+pub fn compaction_node(session_id: &str, source: &str, row: &Row) -> Result<Node, RowError> {
+    let compaction_id = row.str("compaction_id")?.to_owned();
+    let mut node = Node::bare(Kind::Compaction, session_id, Some(source), &compaction_id);
+    node.words = format!("compaction · {}", row.str("trigger")?);
+    // The one node whose bar reads backwards: what it freed, between the two fills it recorded,
+    // against the window of the call its thread made nearest to it.
+    node.context = context(row)?;
+    Ok(node)
+}
+
+/// One thread's calls that answer no turn, as the timeline's own cursorless row reads them.
+pub fn unattributed_node(
+    session_id: &str,
+    source: &str,
+    row: &Row,
+    held: &Ledger,
+) -> Result<Node, RowError> {
+    let mut node = Node::bare(Kind::Unattributed, session_id, Some(source), source);
+    node.words = UNATTRIBUTED_TITLE.to_owned();
+    node.spend = spend(
+        row.opt_f64("cost_usd")?,
+        &Ref::new(Kind::Unattributed, Some(source), source),
+        held,
+    );
+    node.unpriced_api_calls = row.i64("unpriced_api_calls")?;
+    Ok(node)
+}
+
+/// The session's runs no spawning call resolved, gathered under one node.
+///
+/// Spans every thread rather than sitting on one: what makes a run unattached is that nothing says
+/// which thread spawned it, so the bucket hangs off the session. One number and not two: its own
+/// is already the sum of the runs it gathers, so a subtree half over the same rows would say the
+/// same thing twice.
+pub fn unattached_node(session_id: &str, rows: &[&Row], held: &Ledger) -> Result<Node, RowError> {
+    let mut cost = 0.0;
+    let mut unpriced = 0;
+    for row in rows {
+        cost += row.f64("cost_usd")?;
+        unpriced += row.i64("unpriced_api_calls")?;
+    }
+    let cost = rounded(cost);
+    let mut node = Node::bare(Kind::Unattached, session_id, None, session_id);
+    node.words = UNATTACHED_TITLE.to_owned();
+    node.spend = Spend {
+        own: Some(cost),
+        total: None,
+        share: share(Some(cost), held.whole),
+        total_share: None,
+    };
+    node.unpriced_api_calls = unpriced;
+    Ok(node)
 }
 
 /// Where each run's spend lands, walked once for a page. `view_runs.sql` holds the edges.

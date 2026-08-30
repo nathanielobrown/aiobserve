@@ -14,6 +14,7 @@ use std::fmt;
 
 use hyphae_store::queries;
 
+use crate::columns::Shape;
 use crate::format::cut;
 use crate::inline_markdown;
 use crate::render::Markup;
@@ -32,6 +33,20 @@ const BAR_STEPS: i64 = 20;
 /// What stands between a node's lead and its words ([`Node::title`]). A lead that brackets
 /// itself says where it ends without a dash, and takes `separator` to a space.
 pub const LEAD_SEPARATOR: &str = " — ";
+
+/// What the two buckets are called. Neither is a row of the store: they stand for the rows that
+/// attach to nothing, so their titles say what is missing rather than naming a thing.
+pub const UNATTRIBUTED_TITLE: &str = "calls under no turn of this thread";
+pub const UNATTACHED_TITLE: &str = "runs attached to no turn";
+
+/// What marks an api call's title as the model's own words rather than a description of what the
+/// call did (`crate::builders::call_node`). The one glyph a reader can scan a thread for: it says
+/// this row is something the model said, whether or not the call went on to run tools.
+pub const SPEECH_MARK: &str = "💭";
+
+/// The most of an api call's title the count of its tool calls may take. Half the narrowest width
+/// any surface cuts a title to, so the tool the reader picks the row out by keeps the other half.
+pub const TALLY_CHARS: usize = queries::HEADER_CHARS / 2;
 
 /// Where a cost is rounded back to. Every one the store hands out is already at four decimals
 /// (`view_runs.sql`), so a sum or a difference of them is put back at the same place: a main
@@ -324,6 +339,21 @@ impl Node {
         )
     }
 
+    /// The title at the width of a children log's own column.
+    ///
+    /// Wider than a NavTree row's because the log is a table and the column is the width of the
+    /// pane: a description cut to a NavTree row's width is the reason a reader opens a node to
+    /// find out what it was. The words alone — a log that leads a column with a word heads that
+    /// column with it too (`lead`).
+    pub fn log_title(&self) -> Markup {
+        self.at(
+            queries::LOG_CHARS,
+            &[&self.words],
+            false,
+            self.cut_at(queries::LOG_CHARS),
+        )
+    }
+
     /// The title at a row's width with its markup gone, for the browser tab.
     ///
     /// A `<title>` element prints an element as characters rather than acting on it, so the one
@@ -601,6 +631,29 @@ pub fn run_url(session_id: &str, run_id: &str) -> String {
 }
 
 /// Where a node's body alone is served from, written once.
+/// Which shape of log lists a kind, and nothing for a kind no log lists.
+///
+/// For the one reader that knows a child and needs its parent's table: an expansion arrives as a
+/// row of the log it opens under, and that row spans the log's columns. A kind lists in one shape
+/// of log wherever it lists at all, which is what makes the width answerable from the child alone.
+pub fn listed(kind: Kind) -> Option<Shape> {
+    match kind {
+        Kind::Turn => Some(Shape::Turns),
+        Kind::Call => Some(Shape::Calls),
+        Kind::Tool => Some(Shape::Tools),
+        Kind::Run => Some(Shape::Runs),
+        _ => None,
+    }
+}
+
+/// How many columns the log listing a node of `kind` has, for a row that spans them.
+pub fn spanned(kind: Kind) -> usize {
+    listed(kind)
+        .unwrap_or_else(|| panic!("no children log lists a {kind}"))
+        .columns()
+        .len()
+}
+
 pub const BODY_URL: &str = "/fragment/body";
 /// And where the children one level's window left out are served from, which is what a tail row
 /// fetches ([`Node::rest`]).

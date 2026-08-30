@@ -5,7 +5,12 @@
 //! type is a loud error here, exactly as Python's `KeyError` is there.
 
 use chrono::{DateTime, TimeZone, Utc};
-use duckdb::types::{TimeUnit, Value};
+use duckdb::types::TimeUnit;
+
+/// What a column holds, as DuckDB names it. Re-exported because [`Row::value`] hands one back:
+/// a caller reading a nested `LIST` or `STRUCT` needs the type without a duckdb dependency of
+/// its own.
+pub use duckdb::types::Value;
 
 /// What a getter refuses, named by the column it was asked for.
 #[derive(Debug, thiserror::Error)]

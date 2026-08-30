@@ -7,9 +7,11 @@
 pub mod app;
 pub mod browse;
 pub mod builders;
+pub mod columns;
 pub mod components;
 pub mod cuts;
 pub mod format;
+pub mod formatters;
 pub mod inline_markdown;
 pub mod knobs;
 pub mod labels;
