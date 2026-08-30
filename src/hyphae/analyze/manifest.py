@@ -467,7 +467,7 @@ QUERIES: dict[str, Query] = {
     "view_sessions": Query(
         scope=Scope.KEYED,
         # How much of each agent definition's name a row's list carries. The viewer composes
-        # the rest of a row's cuts around this query (`view/listing.py`) because its filters
+        # the rest of a row's cuts around this query (`view/store.py`) because its filters
         # read whole values; nothing filters on this one, so it is cut in the file.
         params={"item_chars": Param(type=ParamType.INTEGER, default=LIST_ITEM_CHARS)},
     ),

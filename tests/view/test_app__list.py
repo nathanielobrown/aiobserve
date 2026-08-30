@@ -23,9 +23,8 @@ from hyphae.view.listing import (
     ARIA_SORT,
     DEFAULT_DIRECTION,
     DEFAULT_SORT,
-    DIRECTIONS,
-    SORTS,
 )
+from hyphae.view.store import DIRECTIONS, SORTS
 from tests.conftest import (
     NO_PROJECT_SESSION,
     SPINE,

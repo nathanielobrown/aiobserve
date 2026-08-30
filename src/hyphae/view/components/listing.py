@@ -1,8 +1,8 @@
 """The store's two lists: the projects landing, and the session list under its filter form.
 
 Both are tables of one row per thing, so both are built the same way — a typed row in, a `<tr>`
-out. What each row prints is what its type carries; the composition behind them, and the links
-they mint, are `view/listing.py`'s.
+out. What each row prints is what its type carries; the links they mint are `view/listing.py`'s,
+and the SQL behind them `view/store.py`'s.
 """
 
 import datetime as dt

@@ -165,7 +165,7 @@ HEADER_ITEM_CHARS = 60
 HEADER_ITEMS = 5
 
 # The same three for one row of the session list, which the viewer composes rather than the
-# query (`view/listing.py`): the list's filters read the whole values. 100 covers the longest
+# query (`view/store.py:SHOWN`): the list's filters read the whole values. 100 covers the longest
 # title the canonical store holds (81) and its longest project path (58); 4 skills of 20 cover
 # the busiest session recorded, whose longest skill name is 18. A skill name is not a PR url,
 # which is why the header's 60 does not carry over — the list multiplies its row by the page.

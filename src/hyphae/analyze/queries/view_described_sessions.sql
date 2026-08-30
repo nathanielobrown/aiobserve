@@ -2,7 +2,7 @@
 -- the kinds of work its turns were.
 -- `view_enrichment` is the same question asked of one session at every level. This one asks
 -- the session level of the whole store, because the list renders a page of sessions at a time
--- and the viewer joins this to the page it just read (`view/listing.py`) rather than running
+-- and the viewer joins this to the page it just read (`view/store.py`) rather than running
 -- a query per row.
 -- Cut to a row's head rather than a page's: a list row is multiplied by the size of the page,
 -- and the whole description is on the session's own page a click away. Friction stays there
