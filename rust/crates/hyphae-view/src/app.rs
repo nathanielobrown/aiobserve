@@ -247,14 +247,18 @@ async fn unattached_page(
 /// One embedded asset, or the 404 every unknown path gets.
 async fn static_file(UrlPath(name): UrlPath<String>) -> Response {
     let Some((kind, bytes)) = statics::asset(&name) else {
-        return error(StatusCode::NOT_FOUND, "No such file.");
+        return error(StatusCode::NOT_FOUND, NOT_FOUND);
     };
     ([(header::CONTENT_TYPE, kind)], bytes).into_response()
 }
 
 async fn not_found() -> Response {
-    error(StatusCode::NOT_FOUND, "No such page.")
+    error(StatusCode::NOT_FOUND, NOT_FOUND)
 }
+
+/// What a path no route claims is answered with, in Starlette's own words: the Python viewer hands
+/// its error page `HTTPException.detail`, and an unrouted request there carries this one.
+const NOT_FOUND: &str = "Not Found";
 
 /// What a failed page becomes: the status the failure earns, and a sentence saying why.
 ///
