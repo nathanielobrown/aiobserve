@@ -45,7 +45,7 @@ SELECT
     max(started_at) AS last_active,
     -- How many projects the store holds, so a page that cut some can say how many. Counted
     -- over the groups rather than by a second query: window functions run after the grouping.
-    count(*) OVER () AS matched_projects
+    count(*) OVER () AS matched_rows
 FROM folded
 GROUP BY root
 -- The sessions naming no directory group into one row, which has no timestamp to rank by:

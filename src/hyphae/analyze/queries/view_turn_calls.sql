@@ -65,7 +65,7 @@ SELECT
     ) AS called_tools,
     -- How many calls the turn holds in all, counted before the LIMIT bites, so the page
     -- knows how many pages there are without a second query.
-    count(*) OVER () AS matched_api_calls
+    count(*) OVER () AS matched_rows
 FROM live_api_calls c
 LEFT JOIN live_turns t
     ON t.session_id = c.session_id AND t.source = c.source AND t.id = c.turn_id

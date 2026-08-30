@@ -216,8 +216,11 @@ class Listed(NamedTuple):
     total: int
 
 
-# What the composed window counts its pre-LIMIT matches into. A name of the composition and
-# not of any library query, which is what lets the query stay unlimited and citable.
+# The one name for how many rows matched before a LIMIT bit, wherever that count is computed:
+# by the query itself where it limits its own rows, and by `window` where it limits nothing and
+# the viewer wraps it. One name is what lets a route read the count without knowing which query
+# it came from — and the two ways of computing it never meet, because a query that limits itself
+# is never one `window` wraps.
 MATCHED_ROWS = "matched_rows"
 
 
@@ -248,7 +251,7 @@ def window(
         f" WHERE {cursor} IS NOT NULL ORDER BY {cursor} LIMIT $size OFFSET $skipped",
         {"skipped": skipped, "size": size, **bindings},
     )
-    return listed(rows, MATCHED_ROWS)
+    return listed(rows)
 
 
 def cursorless_rows(
@@ -452,24 +455,32 @@ def sorted_sessions(
     return Listing(rows[:size], len(rows) > size)
 
 
-def listed(rows: list[Row], matched: str) -> Listed:
+def listed(rows: list[Row]) -> Listed:
     """A page of rows and the size of the level it came from, out of the query's own count.
 
-    `matched` names the column carrying how many rows matched before the LIMIT, which the
-    paging queries compute with a window function — so a page knows the whole level without a
-    second query, and a level whose page is empty is one whose pages ran out.
+    Every paging query carries `MATCHED_ROWS`: how many rows matched before the LIMIT, computed
+    with a window function — so a page knows the whole level without a second query, and a level
+    whose page is empty is one whose pages ran out.
     """
-    return Listed(rows, rows[0][matched] if rows else 0)
+    return Listed(rows, rows[0][MATCHED_ROWS] if rows else 0)
 
 
-def paged(rows: list[Row], matched: str, cursor: str) -> Paged:
+def cut(rows: list[Row]) -> int:
+    """How many rows the query's own LIMIT dropped, for the pages that say so rather than lose them.
+
+    Zero on an empty page: a level with nothing in it cut nothing.
+    """
+    return listed(rows).total - len(rows)
+
+
+def paged(rows: list[Row], cursor: str) -> Paged:
     """A page of rows and its continuation, from a query's own pre-LIMIT match count.
 
-    `matched` names the column carrying how many rows the cursor had ahead of it, which the
-    paging queries compute with a window function — so a page knows what it cut without a
-    second query, and cannot report "+0 more" for rows it silently dropped.
+    `MATCHED_ROWS` carries how many rows the cursor had ahead of it, which the paging queries
+    compute with a window function — so a page knows what it cut without a second query, and
+    cannot report "+0 more" for rows it silently dropped.
     """
     if not rows:
         return Paged(rows, 0, None)
-    behind = rows[0][matched] - len(rows)
+    behind = cut(rows)
     return Paged(rows, behind, rows[-1][cursor] if behind else None)

@@ -26,7 +26,7 @@ SELECT
     t.started_at,
     -- How many the session failed in all, counted before the LIMIT bites, so a page that
     -- showed the first `$errors` can say how many it left rather than reading as the whole.
-    count(*) OVER () AS matched_errors
+    count(*) OVER () AS matched_rows
 FROM live_tool_calls t
 -- What a path in the title is read against. LEFT joined, so a tool call whose session row is
 -- missing is a row titled with an absolute path rather than a failure the list drops.
