@@ -1,22 +1,12 @@
 //! The session's node page, end to end: the router in, the whole document out.
 //!
-//! Everything here goes through `oneshot` rather than through a component call, deliberately.
-//! A component test cannot see the escaping contract — a component that wrapped a value in
-//! `Raw` would bypass every assertion below, and only a served response shows it.
+//! Everything here goes through `oneshot` rather than through a component call: the escaping
+//! sweep these leaves stand beside is in `tests/routes.rs`.
 
 mod common;
 
 use axum::http::StatusCode;
-use hyphae_store::Store;
 use hyphae_view::app::CSP;
-
-/// The sentinel: markup no recorded fixture carries, so planting it is the only way to see what
-/// a page does with text nobody here wrote.
-const SENTINEL: &str = "<script>alert('planted')</script>";
-
-/// What the sentinel must look like by the time it reaches a reader — the markupsafe spelling
-/// `view/render.py` serves, which is what `escape` in `render.rs` writes.
-const ESCAPED: &str = "&lt;script&gt;alert(&#39;planted&#39;)&lt;/script&gt;";
 
 #[tokio::test]
 async fn every_session_in_the_corpus_gets_a_page() {
@@ -65,38 +55,6 @@ async fn a_response_that_is_not_a_page_still_carries_the_content_security_policy
             "GET {path}"
         );
     }
-}
-
-#[tokio::test]
-async fn planted_markup_arrives_inert() {
-    // Both surfaces this page prints a recorded string on: the session's title, which heads the
-    // pane and names the crumb, and a turn's prompt, which is what its NavTree row says. Each
-    // lands on a real row, so this checks the whole chain rather than a hand-built page.
-    let served = common::served(|store: &Store| {
-        store
-            .connection()
-            .execute("UPDATE sessions SET title = ?", [SENTINEL])
-            .expect("the title is plantable");
-        store
-            .connection()
-            .execute(
-                "UPDATE turns SET prompt = ?, command_args = ?",
-                [SENTINEL, SENTINEL],
-            )
-            .expect("the prompt is plantable");
-    });
-    let mut checked = 0;
-    for id in common::session_ids(&served.db()) {
-        let (status, page) = served.page(&format!("/session/{id}")).await;
-        assert_eq!(status, StatusCode::OK);
-        assert!(!page.contains(SENTINEL), "raw sentinel in /session/{id}");
-        if page.contains(ESCAPED) {
-            checked += 1;
-        }
-    }
-    // A page that escaped nothing because it printed nothing would pass the assertion above, so
-    // the sweep has to have seen the sentinel arrive somewhere.
-    assert!(checked > 0, "the sentinel reached at least one page");
 }
 
 #[tokio::test]
