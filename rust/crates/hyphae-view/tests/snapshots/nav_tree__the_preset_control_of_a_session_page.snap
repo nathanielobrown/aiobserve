@@ -1,0 +1,5 @@
+---
+source: crates/hyphae-view/tests/nav_tree.rs
+expression: "page[at..at + end].to_owned()"
+---
+<p class="presets" aria-label="NavTree presets"><a class="button" data-nav="full" href="/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b" aria-current="true">everything</a><a class="button" data-nav="noapi" href="/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b?nav=noapi">no api calls</a><a class="button" data-nav="agents" href="/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b?nav=agents">agents only</a></p>

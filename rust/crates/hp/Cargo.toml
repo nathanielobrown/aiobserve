@@ -7,5 +7,7 @@ publish.workspace = true
 [dependencies]
 hyphae-extract.workspace = true
 hyphae-store.workspace = true
+hyphae-view.workspace = true
+tokio.workspace = true
 anyhow.workspace = true
 clap.workspace = true

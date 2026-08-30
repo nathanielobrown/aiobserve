@@ -24,8 +24,8 @@ const DAY: i64 = 24 * HOUR;
 ///
 /// The Python gallery freezes `fmt.utcnow` after import so a relative time is stable across
 /// runs (`tests/gallery/serve.py`); a Rust server cannot be patched that way, so the freeze
-/// arrives in the environment. Read once, at first use: a viewer left open must not have its
-/// clock stopped by a variable someone exported later.
+/// arrives in the environment. Read once, when the app is built: a viewer left open must not
+/// have its clock stopped by a variable someone exported later.
 const FIXED_NOW: &str = "HYPHAE_FIXED_NOW";
 
 static FROZEN: LazyLock<Option<DateTime<Utc>>> = LazyLock::new(|| {
@@ -40,6 +40,14 @@ static FROZEN: LazyLock<Option<DateTime<Utc>>> = LazyLock::new(|| {
             .unwrap_or_else(|error| panic!("{FIXED_NOW} is not an RFC 3339 instant: {error}")),
     )
 });
+
+/// Read the environment's frozen instant now, so a misspelled one refuses to launch.
+///
+/// Without this the `LazyLock` below first runs inside whichever request prints a relative
+/// time, which turns a typo into one page's 500 rather than a server that will not start.
+pub fn check_clock() {
+    LazyLock::force(&FROZEN);
+}
 
 /// The clock the pages read, in the store's zone — the one place that asks for it.
 pub fn utcnow() -> DateTime<Utc> {

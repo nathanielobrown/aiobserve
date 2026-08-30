@@ -25,6 +25,8 @@ thiserror = "2"
 tempfile = "3"
 # Transcript records, read as the dicts they are. `preserve_order` keeps a tool input's keys
 # in the recorded order, which is what `json.dumps` writes and what the store row must match.
+# The query-string knobs a node-page URL carries; axum's `Query` extractor deserializes them.
+serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 # Snapshots of the ids and parents the walk produced, reviewed once and then pinned.
 insta = "1"

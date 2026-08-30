@@ -36,6 +36,15 @@ enum Command {
         #[arg(long, default_value = DEFAULT_DB)]
         db: PathBuf,
     },
+    /// Open the trace store in a local browser
+    View {
+        /// Which trace store to read
+        #[arg(long, default_value = DEFAULT_DB)]
+        db: PathBuf,
+        /// Which port to serve on
+        #[arg(long, default_value_t = hyphae_view::app::PORT)]
+        port: u16,
+    },
 }
 
 fn main() -> ExitCode {
@@ -56,7 +65,19 @@ fn run() -> Result<()> {
             projects_root,
             db,
         } => extract(&project, projects_root, &db),
+        Command::View { db, port } => view(&db, port),
     }
+}
+
+/// `hp view`: the viewer over one store, until interrupted.
+///
+/// The runtime is built here rather than by a `#[tokio::main]` on `main`, so `hp extract` — which
+/// is wholly synchronous — starts no reactor it never uses.
+fn view(db: &std::path::Path, port: u16) -> Result<()> {
+    let runtime = tokio::runtime::Runtime::new().context("starting the server runtime")?;
+    runtime
+        .block_on(hyphae_view::app::serve(db, port))
+        .map_err(|error| anyhow::anyhow!("{error}"))
 }
 
 /// The `refresh` loop of `src/hyphae/pipeline.py`: ask what is on disk, skip what the store

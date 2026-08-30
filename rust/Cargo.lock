@@ -940,6 +940,8 @@ dependencies = [
  "clap",
  "hyphae-extract",
  "hyphae-store",
+ "hyphae-view",
+ "tokio",
 ]
 
 [[package]]
@@ -1092,11 +1094,13 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "chrono",
+ "duckdb",
  "hypertext",
  "hyphae-extract",
  "hyphae-store",
  "insta",
  "markdown-it",
+ "serde",
  "serde_json",
  "tempfile",
  "thiserror",
