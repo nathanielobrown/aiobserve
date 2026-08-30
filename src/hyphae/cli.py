@@ -264,14 +264,13 @@ def _export_otlp(args: argparse.Namespace) -> None:
             raise SystemExit(str(error)) from error
         # One connection for both halves — DuckDB admits a single writer, and the exporter
         # needs to write its ledger into the store the source is reading.
-        connection = open_trace_store(args.db, read_only=False)
-        try:
-            with OtlpExporter(
+        with (
+            open_trace_store(args.db, read_only=False) as connection,
+            OtlpExporter(
                 backend, connection, service_name=args.service_name, text=text, rate=args.rate
-            ) as exporter:
-                result = refresh(args.project, extractor=StoreSource(connection), exporter=exporter)
-        finally:
-            connection.close()
+            ) as exporter,
+        ):
+            result = refresh(args.project, extractor=StoreSource(connection), exporter=exporter)
     except UnknownProjectError as error:
         raise SystemExit(str(error)) from error
     print(f"{len(result.extracted)} session(s) exported, {len(result.skipped)} unchanged")
@@ -279,14 +278,11 @@ def _export_otlp(args: argparse.Namespace) -> None:
 
 def _census_otlp(args: argparse.Namespace, text: TextPolicy) -> None:
     """Say what a send would ship, without a backend, a key, or the store's write lock."""
-    connection = open_trace_store(args.db, read_only=True)
-    try:
+    with open_trace_store(args.db, read_only=True) as connection:
         source = StoreSource(connection)
         counts = census(
             (source.extract(session) for session in source.sessions(args.project)), text
         )
-    finally:
-        connection.close()
     # The compaction count is broken out because a compaction is where a session's account
     # of itself gets lossy, so how many ship is worth seeing before an hour of sending.
     print(

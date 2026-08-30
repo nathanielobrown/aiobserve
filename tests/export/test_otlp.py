@@ -270,9 +270,10 @@ def test_ids_hold_still_across_a_re_export(fixture_trace: TraceFactory, tmp_path
     trace = fixture_trace("spine", SPINE)
     path = tmp_path / "rebuilt.duckdb"
     build_store(path, [FIXTURES / "spine" / f"{SPINE}.jsonl"])
-    connection = open_trace_store(path, read_only=True)
-    rebuilt = StoreSource(connection).extract(SessionSource(id=SPINE, files=(), fingerprint="x"))
-    connection.close()
+    with open_trace_store(path, read_only=True) as connection:
+        rebuilt = StoreSource(connection).extract(
+            SessionSource(id=SPINE, files=(), fingerprint="x")
+        )
     # ...then all three passes name the same spans: at-least-once delivery is only a
     # re-send while the ids stay put, and an id that moves lands a second unrelated trace.
     first = {span.span_id for span in session_spans(trace)}

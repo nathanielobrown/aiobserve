@@ -70,17 +70,15 @@ def source(session_id: str) -> SessionSource:
 @pytest.fixture(scope="module")
 def store(corpus_db: Path) -> Iterator[duckdb.DuckDBPyConnection]:
     """The whole fixture corpus, open read-only — the tier that only reads rows back."""
-    connection = open_trace_store(corpus_db, read_only=True)
-    yield connection
-    connection.close()
+    with open_trace_store(corpus_db, read_only=True) as connection:
+        yield connection
 
 
 @pytest.fixture
 def listable(exportable_db: Path) -> Iterator[duckdb.DuckDBPyConnection]:
     """The corpus the source filter can place, open read-only (`exportable_db`)."""
-    connection = open_trace_store(exportable_db, read_only=True)
-    yield connection
-    connection.close()
+    with open_trace_store(exportable_db, read_only=True) as connection:
+        yield connection
 
 
 def test_a_recorded_trace_round_trips_through_the_store(
@@ -161,9 +159,8 @@ def test_the_filter_takes_the_project_and_what_sits_under_it(
         )
     # ...then the worktree ships and the sibling does not: the filter cuts on path
     # components, so a string-prefix filter passes the first half and fails here.
-    connection = open_trace_store(path, read_only=True)
-    listed = {found.id for found in StoreSource(connection).sessions(Path(MYCELIA))}
-    connection.close()
+    with open_trace_store(path, read_only=True) as connection:
+        listed = {found.id for found in StoreSource(connection).sessions(Path(MYCELIA))}
     assert SIBLING_SESSION in listed
     assert WORKTREE_SESSION not in listed
 
@@ -185,9 +182,8 @@ def test_the_filter_places_a_project_named_relative_to_the_working_directory(
     # command runs in, ships it: `project_dir` is an absolute cwd, so a filter that matched
     # the string as typed would report a successful export of nothing.
     monkeypatch.chdir(tmp_path)
-    connection = open_trace_store(path, read_only=True)
-    listed = {found.id for found in StoreSource(connection).sessions(Path("repo"))}
-    connection.close()
+    with open_trace_store(path, read_only=True) as connection:
+        listed = {found.id for found in StoreSource(connection).sessions(Path("repo"))}
     assert SIBLING_SESSION in listed
 
 
@@ -202,10 +198,11 @@ def test_a_childless_session_with_no_project_is_excluded(tmp_path: Path) -> None
     build_store(path, [transcript])
     # ...then discovery leaves it out without complaint about the session — there is nothing
     # to lose — and what it refuses is the project, which the store then holds nothing under.
-    connection = open_trace_store(path, read_only=True)
-    with pytest.raises(UnknownProjectError) as refused:
+    with (
+        open_trace_store(path, read_only=True) as connection,
+        pytest.raises(UnknownProjectError) as refused,
+    ):
         StoreSource(connection).sessions(Path(MYCELIA))
-    connection.close()
     assert MYCELIA in str(refused.value)
     assert NO_PROJECT_SESSION not in str(refused.value)
 
@@ -216,11 +213,12 @@ def test_a_session_with_no_project_but_rows_crashes(tmp_path: Path) -> None:
     # tool calls, 1 agent run and 10 raw records under a NULL `project_dir`...
     path = tmp_path / "contentful.duckdb"
     build_store(path, [FIXTURES / "fork_byref" / f"{NO_PROJECT_SESSION}.jsonl"])
-    connection = open_trace_store(path, read_only=True)
     # ...then discovery refuses to place it rather than dropping it...
-    with pytest.raises(UnplaceableSessionError) as raised:
+    with (
+        open_trace_store(path, read_only=True) as connection,
+        pytest.raises(UnplaceableSessionError) as raised,
+    ):
         StoreSource(connection).sessions(Path(MYCELIA))
-    connection.close()
     # ...naming the session and what would have been lost, table by table...
     message = str(raised.value)
     assert NO_PROJECT_SESSION in message

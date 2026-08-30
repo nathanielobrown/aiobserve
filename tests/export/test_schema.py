@@ -188,9 +188,6 @@ def test_the_real_archive_matches_every_owners_ddl() -> None:
     only copy of every pruned session (`docs/store.md`).
     """
     archive = Path(os.environ[LIVE_STORE])
-    connection = open_trace_store(archive, read_only=True)
-    try:
+    with open_trace_store(archive, read_only=True) as connection:
         for ddl in (TRACE_SCHEMA, ENRICHMENT_SCHEMA, DELIVERY_SCHEMA):
             check_shape(connection, ddl)
-    finally:
-        connection.close()

@@ -44,10 +44,8 @@ def configured(monkeypatch: pytest.MonkeyPatch, receiver: Receiver) -> None:
 
 def ledger(path: Path) -> list[tuple[object, ...]]:
     """The delivery rows a finished run left, minus the clock in the last column."""
-    connection = open_trace_store(path, read_only=True)
-    rows = [row[:5] for row in delivery_rows(connection)]
-    connection.close()
-    return rows
+    with open_trace_store(path, read_only=True) as connection:
+        return [row[:5] for row in delivery_rows(connection)]
 
 
 def test_the_command_ships_what_a_refresh_ships(
@@ -62,10 +60,11 @@ def test_the_command_ships_what_a_refresh_ships(
     # If one copy of the store is exported by calling `refresh()` in the test...
     direct = tmp_path / "direct.duckdb"
     shutil.copyfile(delivered_db, direct)
-    connection = open_trace_store(direct, read_only=False)
-    with OtlpExporter(Backend(name=GENERIC, endpoint=receiver.url), connection) as exporter:
+    with (
+        open_trace_store(direct, read_only=False) as connection,
+        OtlpExporter(Backend(name=GENERIC, endpoint=receiver.url), connection) as exporter,
+    ):
         refresh(Path(MYCELIA), extractor=StoreSource(connection), exporter=exporter)
-    connection.close()
     expected = receiver.spans
     receiver.bodies.clear()
     # ...and another copy through the command...
@@ -101,11 +100,10 @@ def test_missing_configuration_refuses_before_anything_is_read(
     # ...then it refuses before it opens the store: no request went out, and the store came
     # away without even the ledger table a first export creates.
     assert receiver.bodies == []
-    connection = open_trace_store(store_path, read_only=True)
-    assert connection.execute(
-        "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'otlp_delivery'"
-    ).fetchone() == (0,)
-    connection.close()
+    with open_trace_store(store_path, read_only=True) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'otlp_delivery'"
+        ).fetchone() == (0,)
 
 
 def test_a_failing_run_never_prints_the_key(
@@ -162,22 +160,20 @@ def test_a_dry_run_counts_without_a_backend(
     # If one compaction is planted on a recorded session — invented, because neither session
     # in this store compacted, and a compaction count of zero would prove nothing about the
     # line that reports it...
-    planted = open_trace_store(store_path, read_only=False)
-    planted.execute(
-        "INSERT INTO compactions"
-        " SELECT 'planted-compaction', id, 'main', started_at, 'auto', 100, 10, 5, false"
-        " FROM sessions LIMIT 1"
-    )
-    planted.close()
+    with open_trace_store(store_path, read_only=False) as planted:
+        planted.execute(
+            "INSERT INTO compactions"
+            " SELECT 'planted-compaction', id, 'main', started_at, 'auto', 100, 10, 5, false"
+            " FROM sessions LIMIT 1"
+        )
     # ...and the store is counted rather than shipped...
     cli.main("export-otlp", MYCELIA, "--db", str(store_path), "--dry-run")
     # ...then the printed count is the mapper's own, session for session and span for span,
     # down to the compactions among those spans, which the mapper ships or drops by the
     # `replayed` flag the extractor set...
-    connection = open_trace_store(store_path, read_only=True)
-    source = StoreSource(connection)
-    counted = census([source.extract(session) for session in source.sessions(Path(MYCELIA))])
-    connection.close()
+    with open_trace_store(store_path, read_only=True) as connection:
+        source = StoreSource(connection)
+        counted = census([source.extract(session) for session in source.sessions(Path(MYCELIA))])
     assert capsys.readouterr().out.strip() == (
         f"{counted.sessions} session(s) and {counted.spans} span(s) would ship, "
         f"{counted.compactions} of them compactions — nothing sent"
@@ -188,11 +184,10 @@ def test_a_dry_run_counts_without_a_backend(
     # what an operator does *before* they have one. It leaves the store as it found it,
     # without even the ledger table an export creates, and never takes the write lock.
     assert receiver.bodies == []
-    check = open_trace_store(store_path, read_only=True)
-    assert check.execute(
-        "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'otlp_delivery'"
-    ).fetchone() == (0,)
-    check.close()
+    with open_trace_store(store_path, read_only=True) as check:
+        assert check.execute(
+            "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'otlp_delivery'"
+        ).fetchone() == (0,)
 
 
 @pytest.mark.parametrize("arguments", [(), ("--dry-run",)], ids=["send", "dry-run"])
