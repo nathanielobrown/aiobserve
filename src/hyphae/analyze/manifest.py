@@ -5,10 +5,10 @@ default — the value a bare invocation runs, and the value a committed report q
 `REQUIRED`, for a choice the caller has to make: a defaulted line range on `records_slice`
 would quietly hand back a window of raw transcript instead of an error.
 
-`QUERIES` at the foot is the library whole: these entries and the viewer's, which are declared
-beside the page sizes they carry (`view/manifest.py`). The runner binds against it and the
-smoke tier holds it to the query directory, so adding a query means adding its file *and* its
-entry in one of the two halves; either alone fails there.
+`QUERIES` at the foot is the library whole: these entries and the viewer's, which declare no
+default at all — a page size belongs to the surface that prints it (`view/manifest.py`). The
+runner binds against it and the smoke tier holds it to the query directory, so adding a query
+means adding its file *and* its entry in one of the two halves; either alone fails there.
 
 The parameter vocabulary both halves are written in — the types, the widths, and the shared
 `Param`s — is `analyze/queries.py`.

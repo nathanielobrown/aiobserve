@@ -5,9 +5,10 @@ payload bound is arithmetic over. The two halves used to live apart — a defaul
 manifest, a ceiling in the app, and the composed sizes in whichever module composed them — so
 answering "what bounds this page?" meant visiting four files under three naming conventions.
 
-A size a query binds keeps its default in the manifest, where the parameter is declared, and
-is named here beside its ceiling; a size the viewer composes around a query is defined here
-outright. `tests/view/budgets.py` holds what each page and row was measured at, and the
+A size a query binds is the surface's rather than the query's — no `view_` parameter declares
+a default (`view/manifest.py`) — so it is named here beside its ceiling and quoted in the
+citation under whichever page bound it; a size the viewer composes around a query is defined
+here outright. `tests/view/budgets.py` holds what each page and row was measured at, and the
 `test_bounds*` leaves beside it do the arithmetic over this module.
 
 Only `SESSIONS` is pinned from below there. Its ceiling is the most rows that fit under the

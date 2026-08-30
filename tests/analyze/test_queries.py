@@ -42,6 +42,46 @@ from tests.conftest import (
     SPINE_RUN,
 )
 
+# What a surface states when it runs a viewer query, at fixture size. No `view_` query
+# declares a default — the surface that prints a value owns its width (`view/manifest.py`) —
+# so the smoke run says it here, keyed by parameter rather than by query: what a size is for
+# does not change between the queries that take it, and the production numbers are pinned
+# against what the pages ran (`tests/view/test_bounds.py`).
+VIEW_SIZES = {
+    # Widths. Narrow enough to be visibly not a production number, wide enough that a cut
+    # value still reads as itself in a CSV a failure prints.
+    "head_chars": "40",
+    "nav_chars": "40",
+    "log_chars": "40",
+    "chip_chars": "40",
+    "item_chars": "40",
+    "model_chars": "40",
+    "tag_chars": "40",
+    "kind_chars": "40",
+    "description_chars": "40",
+    "preview_chars": "40",
+    "detail_chars": "40",
+    "chunk_chars": "500",
+    # Rows and members a page shows. Above one, so a level with several children answers with
+    # more than the single row this tier's own assertion would accept.
+    "page_records": "10",
+    "page_calls": "10",
+    "page_tools": "10",
+    "errors": "10",
+    "projects": "10",
+    "head_items": "3",
+    "head_kinds": "3",
+    "head_projects": "3",
+    # The two windows the landing page counts in, at the production spans: `view_project_rollups`
+    # is bound below at an `as_of` that holds fixture sessions in both.
+    "recent_days": "7",
+    "window_days": "30",
+    # Where a paged read starts, which is the first page in all three spellings.
+    "after": str(queries.FIRST_PAGE),
+    "after_chars": "0",
+    "skipped": "0",
+}
+
 # Bindings that make a query return something on the fixture corpus, per query name. The
 # production defaults are pinned by their own leaves; these are the fixture-sized values.
 FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
@@ -230,12 +270,16 @@ def test_every_query_runs(name: str, run_query: QueryRunner, enriched_query: Que
     """Every shipped query executes against a real store — an empty result is fine."""
     query = QUERIES[name]
     runner = enriched_query if reads_enrichment(name) else run_query
-    # If a parameter is required with no default, this tier has to say what to bind...
-    bindings = FIXTURE_BINDINGS.get(name, {})
-    for parameter, spec in query.params.items():
-        assert spec.default is not queries.REQUIRED or parameter in bindings, (
-            f"{name} requires ${parameter}: add it to FIXTURE_BINDINGS"
-        )
+    # If a parameter is required with no default, this tier has to say what to bind: a size
+    # off the table above, and anything a query keys on off its own entry...
+    required = {
+        parameter for parameter, spec in query.params.items() if spec.default is queries.REQUIRED
+    }
+    bindings = {
+        parameter: value for parameter, value in VIEW_SIZES.items() if parameter in required
+    } | FIXTURE_BINDINGS.get(name, {})
+    for parameter in required:
+        assert parameter in bindings, f"{name} requires ${parameter}: add it to FIXTURE_BINDINGS"
     arguments = [part for key, value in bindings.items() for part in ("--param", f"{key}={value}")]
     if query.scope is Scope.CORPUS:
         # `--as-of` defaults to today, and the runner's trailing window is 28 days wide, so
