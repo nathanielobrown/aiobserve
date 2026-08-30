@@ -1,0 +1,21 @@
+[package]
+name = "hyphae-view"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+hyphae-store.workspace = true
+axum.workspace = true
+tokio.workspace = true
+hypertext.workspace = true
+markdown-it.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tower.workspace = true
+insta.workspace = true
+serde_json.workspace = true
+hyphae-extract.workspace = true
+tempfile.workspace = true

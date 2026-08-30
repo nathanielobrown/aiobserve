@@ -1,0 +1,284 @@
+{
+  "money": [
+    {
+      "value": 0.0,
+      "money": "$0.00",
+      "charge": "$0.0000"
+    },
+    {
+      "value": 0.004,
+      "money": "$0.00",
+      "charge": "$0.0040"
+    },
+    {
+      "value": 0.005,
+      "money": "$0.01",
+      "charge": "$0.0050"
+    },
+    {
+      "value": 0.015,
+      "money": "$0.01",
+      "charge": "$0.0150"
+    },
+    {
+      "value": 1.0,
+      "money": "$1.00",
+      "charge": "$1.0000"
+    },
+    {
+      "value": 12.3456,
+      "money": "$12.35",
+      "charge": "$12.3456"
+    },
+    {
+      "value": 1234.5,
+      "money": "$1234.50",
+      "charge": "$1234.5000"
+    },
+    {
+      "value": 0.12345,
+      "money": "$0.12",
+      "charge": "$0.1235"
+    }
+  ],
+  "counts": [
+    {
+      "value": 0,
+      "count": "0",
+      "signed": "+0"
+    },
+    {
+      "value": 7,
+      "count": "7",
+      "signed": "+7"
+    },
+    {
+      "value": 999,
+      "count": "999",
+      "signed": "+999"
+    },
+    {
+      "value": 1000,
+      "count": "1,000",
+      "signed": "+1,000"
+    },
+    {
+      "value": 1234,
+      "count": "1,234",
+      "signed": "+1,234"
+    },
+    {
+      "value": 1000000,
+      "count": "1,000,000",
+      "signed": "+1,000,000"
+    },
+    {
+      "value": -1,
+      "count": "-1",
+      "signed": "-1"
+    },
+    {
+      "value": -1234,
+      "count": "-1,234",
+      "signed": "-1,234"
+    },
+    {
+      "value": -1000000,
+      "count": "-1,000,000",
+      "signed": "-1,000,000"
+    }
+  ],
+  "durations": [
+    {
+      "value": 0,
+      "shown": "0.0s"
+    },
+    {
+      "value": 1,
+      "shown": "0.0s"
+    },
+    {
+      "value": 800,
+      "shown": "0.8s"
+    },
+    {
+      "value": 999,
+      "shown": "1.0s"
+    },
+    {
+      "value": 1000,
+      "shown": "1.0s"
+    },
+    {
+      "value": 59999,
+      "shown": "60.0s"
+    },
+    {
+      "value": 60000,
+      "shown": "1m 00s"
+    },
+    {
+      "value": 125000,
+      "shown": "2m 05s"
+    },
+    {
+      "value": 3599999,
+      "shown": "59m 59s"
+    },
+    {
+      "value": 3600000,
+      "shown": "1h 00m"
+    },
+    {
+      "value": 7500000,
+      "shown": "2h 05m"
+    }
+  ],
+  "shares": [
+    {
+      "part": 0.0,
+      "whole": 1.0,
+      "share": "0.0%",
+      "percent": "0.0%"
+    },
+    {
+      "part": 1.0,
+      "whole": 3.0,
+      "share": "33.3%",
+      "percent": "100.0%"
+    },
+    {
+      "part": 0.022,
+      "whole": 1.0,
+      "share": "2.2%",
+      "percent": "2.2%"
+    },
+    {
+      "part": 2.0,
+      "whole": 0.0,
+      "share": "—",
+      "percent": "200.0%"
+    },
+    {
+      "part": 1.0,
+      "whole": 8.0,
+      "share": "12.5%",
+      "percent": "100.0%"
+    }
+  ],
+  "paths": [
+    {
+      "value": "/Users/someone/repos/hyphae",
+      "home": "/Users/someone",
+      "shown": "~/repos/hyphae"
+    },
+    {
+      "value": "/Users/someone",
+      "home": "/Users/someone",
+      "shown": "~"
+    },
+    {
+      "value": "/Users/someone-else/repos/hyphae",
+      "home": "/Users/someone",
+      "shown": "/Users/someone-else/repos/hyphae"
+    },
+    {
+      "value": "/opt/elsewhere",
+      "home": "/Users/someone",
+      "shown": "/opt/elsewhere"
+    },
+    {
+      "value": "/Users/someone/repos/hyphae",
+      "home": "",
+      "shown": "/Users/someone/repos/hyphae"
+    }
+  ],
+  "now": "2026-08-30T12:00:00+00:00",
+  "agos": [
+    {
+      "before_ms": 0,
+      "shown": "just now"
+    },
+    {
+      "before_ms": 30000,
+      "shown": "just now"
+    },
+    {
+      "before_ms": 60000,
+      "shown": "1m ago"
+    },
+    {
+      "before_ms": 90000,
+      "shown": "1m ago"
+    },
+    {
+      "before_ms": 3600000,
+      "shown": "1h ago"
+    },
+    {
+      "before_ms": 7200000,
+      "shown": "2h ago"
+    },
+    {
+      "before_ms": 86400000,
+      "shown": "1d ago"
+    },
+    {
+      "before_ms": 300000000,
+      "shown": "3d ago"
+    },
+    {
+      "before_ms": -5000,
+      "shown": "just now"
+    }
+  ],
+  "stamps": [
+    {
+      "value": "2026-08-30T12:34:56+00:00",
+      "when": "2026-08-30 12:34",
+      "clock": "12:34:56"
+    },
+    {
+      "value": "2026-01-01T00:00:00+00:00",
+      "when": "2026-01-01 00:00",
+      "clock": "00:00:00"
+    }
+  ],
+  "flags": [
+    {
+      "value": true,
+      "shown": "True"
+    },
+    {
+      "value": false,
+      "shown": "False"
+    }
+  ],
+  "cuts": [
+    {
+      "value": "abcdef",
+      "size": 3,
+      "shown": "abc…"
+    },
+    {
+      "value": "abc",
+      "size": 3,
+      "shown": "abc"
+    },
+    {
+      "value": "abc",
+      "size": 9,
+      "shown": "abc"
+    },
+    {
+      "value": "é🌱x",
+      "size": 2,
+      "shown": "é🌱…"
+    },
+    {
+      "value": "",
+      "size": 3,
+      "shown": ""
+    }
+  ]
+}
