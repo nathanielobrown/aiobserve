@@ -100,6 +100,7 @@ fn the_bound_widths_match_the_python_library() {
         declared("LOG_CHARS"),
         "LOG_CHARS"
     );
+    assert_eq!(queries::MODEL_CHARS, declared("MODEL_CHARS"), "MODEL_CHARS");
     assert_eq!(queries::LOG_ROWS, declared("LOG_ROWS"), "LOG_ROWS");
     assert_eq!(
         queries::DETAIL_CHARS as i64,

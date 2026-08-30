@@ -95,6 +95,9 @@ pub const PAGE_WINDOW_DAYS: i64 = 30;
 /// How much of an offloaded tool result one chunk of the offload page carries.
 pub const CHUNK_CHARS: i64 = 50_000;
 
+/// How much of a model name a popover's own line carries.
+pub const MODEL_CHARS: i64 = 60;
+
 /// How much of an agent run's three display columns a chip carries, and of a compaction's
 /// trigger.
 pub const CHIP_CHARS: i64 = 60;

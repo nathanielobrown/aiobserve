@@ -237,6 +237,29 @@ impl Row {
             .collect()
     }
 
+    /// The members of a `LIST` of `STRUCT` as rows of their own — a nested result read the way
+    /// the outer result is.
+    ///
+    /// `view_numbers.sql` answers with a group per model, and what prices those groups reads a
+    /// row. So the members become rows rather than the reader learning a second way to read a
+    /// value.
+    pub fn structs(&self, column: &str) -> Result<Vec<Row>, RowError> {
+        let held = match self.value(column)? {
+            Value::Null => return Ok(Vec::new()),
+            Value::List(members) | Value::Array(members) => members,
+            other => return Err(self.wrong_type(column, "a LIST", other)),
+        };
+        held.iter()
+            .map(|entry| match entry {
+                Value::Struct(members) => Ok(Row::new(
+                    members.keys().cloned().collect(),
+                    members.values().cloned().collect(),
+                )),
+                other => Err(self.wrong_type(column, "a LIST of structs", other)),
+            })
+            .collect()
+    }
+
     /// The members of a `LIST` of `STRUCT` as the name and count each holds — the counted lists
     /// a session-list row prints, where the column counted differs per list.
     pub fn counts(&self, column: &str, count: &str) -> Result<Vec<(String, i64)>, RowError> {
