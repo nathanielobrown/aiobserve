@@ -23,7 +23,7 @@ import htpy
 
 from hyphae.view import cuts
 from hyphae.view import format as fmt
-from hyphae.view.columns import COLUMNS, Column, Shape
+from hyphae.view.columns import COLUMNS, Column, Shape, css
 from hyphae.view.components import Html, parts
 from hyphae.view.components.nav_tree import PANE_SWAP
 from hyphae.view.labels import label
@@ -146,7 +146,9 @@ def log(
                             ]
                         ]
                     ],
-                    htpy.tbody[[_row(row=row, suffix=suffix, opens=opens) for row in rows],],
+                    htpy.tbody[
+                        [_row(shape=shape, row=row, suffix=suffix, opens=opens) for row in rows],
+                    ],
                 ]
             ],
             _pager(shape=shape, pager=pager) if pager else None,
@@ -161,7 +163,7 @@ def _head(*, column: Column) -> Html:
     ]
 
 
-def _what(*, node: Node, suffix: str, field: str, words: str, second: str) -> Html:
+def _what(*, shape: Shape, node: Node, suffix: str, field: str, words: str, second: str) -> Html:
     """The one wide column of a row: what the child is called, linking to the child's own page.
 
     `second` is the line under it, in lower hierarchy — what the first line left out, which
@@ -169,7 +171,7 @@ def _what(*, node: Node, suffix: str, field: str, words: str, second: str) -> Ht
     (`view/builders.py:tool_about`). Empty on every other shape, which has one line to give.
     """
     url = f"{node.url}{suffix}"
-    return htpy.td(data_column=field, class_="what")[
+    return htpy.td(data_column=field, class_=css(shape, field) or None)[
         [
             htpy.a(".primary", {"hx-get": url, **PANE_SWAP}, href=url)[
                 [parts.glyph(enriched=node.enriched), htpy.span(data_field=field)[words]]
@@ -201,18 +203,18 @@ def _pager(*, shape: Shape, pager: Pager) -> Html:
     ]
 
 
-def _row(*, row: Logged, suffix: str, opens: bool) -> Html:
+def _row(*, shape: Shape, row: Logged, suffix: str, opens: bool) -> Html:
     """One child's row: the shape's own cells, the time it started, and the way to open it."""
     return htpy.tr(data_child=row.node.key)[
         [
-            _cells(row=row, suffix=suffix),
-            _cell(field="started_at", value=fmt.clock(row.started_at), css="when"),
+            _cells(shape=shape, row=row, suffix=suffix),
+            _cell(shape=shape, field="started_at", value=fmt.clock(row.started_at)),
             _opener(node=row.node, suffix=suffix) if opens else None,
         ]
     ]
 
 
-def _cells(*, row: Logged, suffix: str) -> Html:
+def _cells(*, shape: Shape, row: Logged, suffix: str) -> Html:
     """The cells the row's own shape prints, in the order its columns head them.
 
     Total over the four kinds of row a log lists: a shape with no arm would print a row of the
@@ -222,47 +224,50 @@ def _cells(*, row: Logged, suffix: str) -> Html:
         case LoggedTurn():
             return htpy.fragment[
                 [
-                    _cell(field="turn_index", value=fmt.count(row.turn_index), css="number"),
+                    _cell(shape=shape, field="turn_index", value=fmt.count(row.turn_index)),
                     _what(
+                        shape=shape,
                         node=row.node,
                         suffix=suffix,
                         field="title",
                         words=row.node.log_title,
                         second="",
                     ),
-                    _cell(field="api_calls", value=fmt.count(row.api_calls), css="number"),
-                    _cell(field="tool_calls", value=fmt.count(row.tool_calls), css="number"),
-                    _cell(field="cost_usd", value=fmt.money(row.node.cost_usd), css="number"),
+                    _cell(shape=shape, field="api_calls", value=fmt.count(row.api_calls)),
+                    _cell(shape=shape, field="tool_calls", value=fmt.count(row.tool_calls)),
+                    _cell(shape=shape, field="cost_usd", value=fmt.money(row.node.cost_usd)),
                 ]
             ]
         case LoggedCall():
             return htpy.fragment[
                 [
-                    _cell(field="call_index", value=fmt.count(row.call_index), css="number"),
+                    _cell(shape=shape, field="call_index", value=fmt.count(row.call_index)),
                     _what(
+                        shape=shape,
                         node=row.node,
                         suffix=suffix,
                         field="model",
                         words=cuts.line(row.model),
                         second="",
                     ),
-                    _cell(field="text", value=cuts.line(row.text_head), css="said"),
-                    _cell(field="tool_calls", value=fmt.count(row.tool_calls), css="number"),
-                    _cell(field="tool_titles", value=cuts.line(row.called), css="called"),
-                    _cell(field="text_chars", value=fmt.count(row.text_chars), css="number"),
-                    _cell(field="cost_usd", value=fmt.money(row.node.cost_usd), css="number"),
+                    _cell(shape=shape, field="text", value=cuts.line(row.text_head)),
+                    _cell(shape=shape, field="tool_calls", value=fmt.count(row.tool_calls)),
+                    _cell(shape=shape, field="tool_titles", value=cuts.line(row.called)),
+                    _cell(shape=shape, field="text_chars", value=fmt.count(row.text_chars)),
+                    _cell(shape=shape, field="cost_usd", value=fmt.money(row.node.cost_usd)),
                 ]
             ]
         case LoggedTool():
             return htpy.fragment[
                 [
-                    _cell(field="tool_index", value=fmt.count(row.tool_index), css="number"),
-                    _cell(field="name", value=cuts.line(row.name), css=""),
+                    _cell(shape=shape, field="tool_index", value=fmt.count(row.tool_index)),
+                    _cell(shape=shape, field="name", value=cuts.line(row.name)),
                     # The title alone, with the name already in its own column beside it. What
                     # the call was for reads through the same cut, and is left out rather than
                     # dashed where the record says nothing: a dash under a command is a line of
                     # nothing where the second line means "and this is what it was for".
                     _what(
+                        shape=shape,
                         node=row.node,
                         suffix=suffix,
                         field="title",
@@ -270,35 +275,38 @@ def _cells(*, row: Logged, suffix: str) -> Html:
                         second=cuts.line(row.about) if row.about else "",
                     ),
                     _cell(
+                        shape=shape,
                         field="is_error",
                         value=fmt.text("error" if row.is_error else None),
-                        css="",
                     ),
-                    _cell(field="result_chars", value=fmt.count(row.result_chars), css="number"),
+                    _cell(shape=shape, field="result_chars", value=fmt.count(row.result_chars)),
                 ]
             ]
         case LoggedRun():
             return htpy.fragment[
                 [
-                    _cell(field="agent_type", value=cuts.line(row.agent_type), css=""),
+                    _cell(shape=shape, field="agent_type", value=cuts.line(row.agent_type)),
                     _what(
+                        shape=shape,
                         node=row.node,
                         suffix=suffix,
                         field="title",
                         words=row.node.log_title,
                         second="",
                     ),
-                    _cell(field="tool_errors", value=fmt.count(row.tool_errors), css="number"),
-                    _cell(field="cost_usd", value=fmt.money(row.node.cost_usd), css="number"),
+                    _cell(shape=shape, field="tool_errors", value=fmt.count(row.tool_errors)),
+                    _cell(shape=shape, field="cost_usd", value=fmt.money(row.node.cost_usd)),
                 ]
             ]
         case _:
             assert_never(row)
 
 
-def _cell(*, field: str, value: str, css: str) -> Html:
+def _cell(*, shape: Shape, field: str, value: str) -> Html:
     """One cell of a row: the value under its own column, labelled for a test to read."""
-    return htpy.td(data_column=field, class_=css or None)[htpy.span(data_field=field)[value]]
+    return htpy.td(data_column=field, class_=css(shape, field) or None)[
+        htpy.span(data_field=field)[value]
+    ]
 
 
 def _opener(*, node: Node, suffix: str) -> Html:
