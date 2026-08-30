@@ -12,7 +12,7 @@ import json
 import pytest
 
 from hyphae.extract.claude_code import ClaudeCodeExtractor
-from hyphae.extract.records.registry import TranscriptSchemaError
+from hyphae.extract.errors import TranscriptSchemaError
 from hyphae.model import SessionTrace
 from tests.conftest import FIXTURES, PlantedFactory, SourceFactory
 from tests.extract.test_claude_code import at

@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from hyphae.extract.claude_code import ClaudeCodeExtractor
-from hyphae.extract.records.registry import TranscriptSchemaError
+from hyphae.extract.errors import ExtractionError, SessionLayoutError, TranscriptSchemaError
 from hyphae.model import MAIN_SOURCE, OffloadFile, SessionTrace
 from tests.conftest import FIXTURES, PlantedFactory, SourceFactory
 from tests.extract.test_claude_code import SPINE
@@ -139,13 +139,29 @@ def test_a_workflow_definition_is_not_a_transcript(planted_source: PlantedFactor
     assert set(lines_by_source(trace)) == {MAIN_SOURCE}
 
 
-def test_an_unknown_file_in_a_session_directory_crashes(planted_source: PlantedFactory):
-    """A file we cannot place is a Claude Code change to look at, not a file to skip.
+@pytest.mark.parametrize(
+    ("planted", "message"),
+    [
+        # A file whose place in the session directory we cannot name at all...
+        ({"subagents/notes.txt": ""}, "unknown file"),
+        # ...and one we can place, arriving without the other half of its pair.
+        ({"subagents/agent-orphan.meta.json": "{}"}, "a transcript or a meta, not both"),
+    ],
+)
+def test_a_session_directory_we_cannot_read_crashes_as_a_layout_error(
+    planted_source: PlantedFactory, planted: dict[str, str], message: str
+):
+    """A directory shape we cannot read is a Claude Code change to look at, not a file to skip.
 
     Skipping it would lose whatever it holds for as long as nobody noticed — and the
     session's files are pruned within weeks.
     """
-    source = planted_source("spine", SPINE, {"subagents/notes.txt": ""})
+    source = planted_source("spine", SPINE, planted)
 
-    with pytest.raises(TranscriptSchemaError, match="unknown file"):
+    with pytest.raises(SessionLayoutError, match=message) as raised:
         ClaudeCodeExtractor().extract(source)
+
+    # Nothing here read a record, so it is not a schema error: the two send a reader to
+    # different places. They share a base, for a caller that does not care which it got.
+    assert not isinstance(raised.value, TranscriptSchemaError)
+    assert isinstance(raised.value, ExtractionError)

@@ -11,8 +11,8 @@ records belong to `extract/transcript.py`, and the two rot on different schedule
 is stable, the record shapes are not (`docs/schema.md`). The one file it reads whole is an
 offloaded tool result, which is text rather than records.
 
-The layout is closed-world like the record registry: a file whose place we cannot name is a
-Claude Code change we need to see, not a file to skip.
+The layout is closed-world like the record registry: a file whose place we cannot name raises
+`SessionLayoutError` (`extract/errors.py`) rather than being skipped.
 
 What a project *is* to the layers that query the store is `hyphae/projects.py`.
 """
@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
 
-from hyphae.extract.records.registry import TranscriptSchemaError
+from hyphae.extract.errors import SessionLayoutError
 from hyphae.model import OffloadFile
 from hyphae.projects import encode_project_path
 
@@ -164,7 +164,7 @@ def _classify(session: SessionFiles) -> _ClassifiedFiles:
         workflows[place.agent_id] = place.workflow_id
     if transcripts.keys() != metas.keys():
         odd = transcripts.keys() ^ metas.keys()
-        raise TranscriptSchemaError(
+        raise SessionLayoutError(
             f"Session {session.id}: agent runs {sorted(odd)} have a transcript or a meta, not both"
         )
     agents = [
@@ -191,7 +191,7 @@ class _Companion(NamedTuple):
 
 def _companion(parts: tuple[str, ...], session_id: str) -> _Companion:
     """Place one file under `subagents/`. A file we cannot place stops the run."""
-    unknown = TranscriptSchemaError(
+    unknown = SessionLayoutError(
         f"Session {session_id}: unknown file {'/'.join(parts)} in its directory"
     )
     workflow = None

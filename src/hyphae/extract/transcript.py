@@ -20,6 +20,7 @@ from datetime import datetime
 from pathlib import Path, PurePath
 from typing import Any, NamedTuple
 
+from hyphae.extract.errors import TranscriptSchemaError
 from hyphae.extract.pricing import SYNTHETIC_MODEL, TokenUsage, compute_cost
 from hyphae.extract.records.registry import (
     AdvisorResult,
@@ -29,7 +30,6 @@ from hyphae.extract.records.registry import (
     RecordType,
     ResultBlock,
     SystemSubtype,
-    TranscriptSchemaError,
     TurnTag,
 )
 from hyphae.model import (
