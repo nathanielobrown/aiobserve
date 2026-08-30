@@ -11,7 +11,7 @@
 //! This module locates those files. It does not read them — parsing owns the records, and the
 //! two rot on different schedules: the layout is stable, the record shapes are not.
 //!
-//! Ported from `src/hyphae/sessions.py`, minus the SQL half, which no Rust caller needs yet.
+//! Ported from `src/hyphae/sessions.py`.
 
 use std::path::{Path, PathBuf};
 
@@ -32,6 +32,17 @@ pub const TOOL_RESULTS_DIR: &str = "tool-results";
 pub const AGENT_PREFIX: &str = "agent-";
 pub const META_SUFFIX: &str = ".meta.json";
 pub const JOURNAL_NAME: &str = "journal.jsonl";
+
+/// SQL matching the sessions a project recorded: its own, and those of its worktrees.
+///
+/// A worktree checkout sits under the repository it was cut from and its sessions are the
+/// project's, so every filter that takes a project matches a path prefix rather than a path.
+/// Written once because the `/` is a trap: without it the predicate annexes every neighbouring
+/// checkout whose path merely begins with this one's. `parameter` names the placeholder, which
+/// appears twice.
+pub fn project_predicate(column: &str, parameter: &str) -> String {
+    format!("({column} = {parameter} OR starts_with({column}, {parameter} || '/'))")
+}
 
 /// Where Claude Code keeps transcripts. The tree is shared across accounts, so a
 /// transcript's path says nothing about which account produced it.

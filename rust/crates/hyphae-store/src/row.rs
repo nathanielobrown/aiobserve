@@ -237,6 +237,32 @@ impl Row {
             .collect()
     }
 
+    /// The members of a `LIST` of `STRUCT` as the name and count each holds — the counted lists
+    /// a session-list row prints, where the column counted differs per list.
+    pub fn counts(&self, column: &str, count: &str) -> Result<Vec<(String, i64)>, RowError> {
+        let held = match self.value(column)? {
+            Value::Null => return Ok(Vec::new()),
+            Value::List(members) | Value::Array(members) => members,
+            other => return Err(self.wrong_type(column, "a LIST", other)),
+        };
+        held.iter()
+            .map(|entry| {
+                let named = match member(entry, "name") {
+                    Some(Value::Text(text) | Value::Enum(text)) => text.clone(),
+                    _ => return Err(self.wrong_type(column, "a LIST of named structs", entry)),
+                };
+                let counted = match member(entry, count) {
+                    Some(Value::TinyInt(number)) => i64::from(*number),
+                    Some(Value::SmallInt(number)) => i64::from(*number),
+                    Some(Value::Int(number)) => i64::from(*number),
+                    Some(Value::BigInt(number)) => *number,
+                    _ => return Err(self.wrong_type(column, "a LIST of counted structs", entry)),
+                };
+                Ok((named, counted))
+            })
+            .collect()
+    }
+
     fn wrong_type(&self, column: &str, expected: &'static str, found: &Value) -> RowError {
         RowError::WrongType {
             column: column.to_owned(),

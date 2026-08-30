@@ -8,6 +8,7 @@
 //! ([`crate::store`]), checks the store's schema version, renders, and closes. That is what lets
 //! an extract run while a page is open, and what makes a locked store a 503 rather than a crash.
 
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
@@ -23,7 +24,7 @@ use crate::browse::{Asked, PageError};
 use crate::components::pages;
 use crate::store::{Reader, ViewError};
 use crate::viewer::Viewer;
-use crate::{format, node_pages, statics};
+use crate::{format, listing, node_pages, statics};
 
 /// Loopback only, and a port unlikely to be taken. Fixed rather than picked at startup so a link
 /// pasted into a note opens the same page tomorrow.
@@ -51,10 +52,11 @@ pub fn build_app(db_path: &Path) -> Result<Router, ViewError> {
         dev: false,
     });
     // Route order is a contract: `tools/gen_routes.py` reads the registration order into the table
-    // in `docs/viewer.md`, and these eight are the node pages in the order `node_pages.py` binds
-    // them.
+    // in `docs/viewer.md`, which is the order each route module binds its own.
     Ok(Router::new()
         .route("/static/{name}", get(static_file))
+        .route("/", get(projects_page))
+        .route(listing::LIST_URL, get(session_list))
         .route("/session/{session_id}", get(session_page))
         .route(
             "/session/{session_id}/thread/{source}/turn/{turn_id}",
@@ -126,6 +128,22 @@ fn served(rendered: Result<crate::components::Markup, PageError>) -> Response {
         Ok(markup) => Html(markup.into_inner()).into_response(),
         Err(failure) => answered(failure),
     }
+}
+
+/// Every project the store holds sessions for.
+async fn projects_page(State(viewer): State<Shared>) -> Response {
+    served(listing::projects_page(&viewer))
+}
+
+/// One page of sessions, under the filter, sort and size the URL carries.
+///
+/// Every query-string key arrives rather than the four the page declares: what the list takes is a
+/// closed set, and a key outside it is a 400 rather than a filter that silently did nothing.
+async fn session_list(
+    State(viewer): State<Shared>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
+    served(listing::session_list(&viewer, &params))
 }
 
 /// A session's own node page.

@@ -25,6 +25,7 @@
 
 pub mod citation;
 pub mod layout;
+pub mod listing;
 pub mod logs;
 pub mod nav_tree;
 pub mod node_body;

@@ -55,3 +55,14 @@ pub fn member(value: &str) -> String {
 pub fn item(value: &str) -> String {
     fmt::cut(value, queries::LIST_ITEM_CHARS)
 }
+
+/// A string at the width a row of the session list prints it, marked where it was cut.
+///
+/// The narrowest of the four: a row is multiplied by the page. The mark is what the link beside
+/// it makes good on — the whole value is on the session's page, a click away.
+pub fn short(value: Option<&str>) -> String {
+    value.map_or_else(
+        || fmt::ABSENT.to_owned(),
+        |value| fmt::cut(value, queries::LIST_CHARS),
+    )
+}

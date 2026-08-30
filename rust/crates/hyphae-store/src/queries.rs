@@ -50,6 +50,10 @@ pub const LIST_CHARS: usize = 100;
 pub const LIST_ITEMS: usize = 4;
 pub const LIST_ITEM_CHARS: usize = 20;
 
+/// How many projects the list's filter box suggests. A path is offered whole or left out: a
+/// suggestion cut to its head filters to nothing.
+pub const LIST_PROJECTS: usize = 10;
+
 /// How many kinds of work one list row names before it says how many it left: the categories a
 /// pass described that session's turns as. Fewer than the lists above, because the taxonomy is
 /// closed and small — three names say what a session spent its time on, and a fourth is noise.
