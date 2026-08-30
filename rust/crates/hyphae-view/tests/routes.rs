@@ -26,7 +26,7 @@ fn field<'a>(entry: &'a Value, name: &str) -> &'a str {
 async fn every_route_the_browser_tier_visits_answers() {
     // The enriched store, because the description and friction fragments are 404 until a pass
     // has written to the store: an un-enriched sweep would pass while saying nothing.
-    let served = common::enriched();
+    let served = common::enriched(|_| ());
     let mut failed = Vec::new();
     for entry in routes() {
         let (status, _) = served.page(field(&entry, "url")).await;
@@ -42,7 +42,7 @@ async fn every_route_the_browser_tier_visits_answers() {
 async fn every_route_carries_the_content_security_policy() {
     // The header is what makes the browser tier's empty-console assertion mean anything: without
     // it a page could load an inline script and nothing would notice.
-    let served = common::enriched();
+    let served = common::enriched(|_| ());
     for entry in routes() {
         let url = field(&entry, "url");
         let response = served.get(url).await;

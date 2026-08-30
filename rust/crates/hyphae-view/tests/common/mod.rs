@@ -89,13 +89,14 @@ pub fn served(plant: impl Fn(&Store)) -> Served {
 /// No Rust code writes one: the enrichment schema and its views belong to the Python pass, so
 /// the store this serves is built by calling `tests/conftest.py:build_enriched_store` over the
 /// store the Rust extractor just wrote. It plants a row on all but the last item of each level,
-/// which is the partly-enriched shape a page has to render.
-pub fn enriched() -> Served {
+/// which is the partly-enriched shape a page has to render. `plant` then writes over that store,
+/// for a test that needs a row to say something the planted ones do not.
+pub fn enriched(plant: impl Fn(&Store)) -> Served {
     let scratch = TempDir::new().expect("a tempdir for the store");
     let path = scratch.path().join("traces.duckdb");
     corpus(&path, |_| ());
     let enriched = scratch.path().join("enriched.duckdb");
-    let plant = format!(
+    let script = format!(
         "import sys; sys.path.insert(0, {repo:?}); \
          from tests.conftest import build_enriched_store; \
          build_enriched_store(__import__('pathlib').Path({enriched:?}), \
@@ -107,7 +108,7 @@ pub fn enriched() -> Served {
     let done = std::process::Command::new("uv")
         .args(["run", "--project"])
         .arg(repo())
-        .args(["python", "-c", &plant])
+        .args(["python", "-c", &script])
         .current_dir(repo())
         .output()
         .expect("uv runs the enrichment pass that owns the schema");
@@ -116,6 +117,10 @@ pub fn enriched() -> Served {
         "the enrichment pass failed: {}",
         String::from_utf8_lossy(&done.stderr)
     );
+    {
+        let store = Store::create(&enriched).expect("the enriched store opens for writing");
+        plant(&store);
+    }
     let app = build_app(&enriched).expect("the viewer opens the enriched store");
     Served {
         scratch,
