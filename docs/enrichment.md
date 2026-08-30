@@ -125,7 +125,7 @@ Prices and models change. Asking for an unpriced model crashes instead of return
 
 Both changes deliberately make stored rows stale:
 
-- After changing a level's instructions, bump `PROMPT_VERSION[level]` in `src/hyphae/enrich/prompts.py`. The content hash cannot see the instructions
+- After changing a level's instructions, bump that level's `prompt_version` in `src/hyphae/enrich/levels.py`. The content hash cannot see the instructions
 - After adding, renaming, or redefining a taxonomy member, bump `TAXONOMY_VERSION`. The model classifies from these definitions, so the change re-describes every level
 
 A run-level prompt bump cascades through later rounds. Price it with `--dry-run` before starting the pass.

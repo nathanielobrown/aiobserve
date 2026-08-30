@@ -8,14 +8,8 @@ the render — is in `test_prompts__budget.py`.
 from pathlib import Path
 
 from hyphae.enrich.items import Level
-from hyphae.enrich.prompts import (
-    OUTPUT_SCHEMA,
-    PROMPT_VERSION,
-    instructions,
-    render_run,
-    render_session,
-    render_turn,
-)
+from hyphae.enrich.levels import LEVELS, instructions, render
+from hyphae.enrich.prompts import OUTPUT_SCHEMA
 from hyphae.enrich.store import EnrichmentStore
 from hyphae.enrich.taxonomy import (
     CATEGORY_DEFINITIONS,
@@ -81,7 +75,11 @@ def test_every_level_asks_for_json_at_the_same_version() -> None:
     cannot see, so the bump is the whole mechanism by which the corpus gets re-described under
     new guidance.
     """
-    assert {Level.turn: 4, Level.agent_run: 4, Level.session: 4} == PROMPT_VERSION
+    assert {level: spec.prompt_version for level, spec in LEVELS.items()} == {
+        Level.turn: 4,
+        Level.agent_run: 4,
+        Level.session: 4,
+    }
     # Both stamps in one place: a pass that bumped one and not the other would describe the
     # corpus under a mixed key, and no query could tell the halves apart afterwards.
     assert TAXONOMY_VERSION == 2
@@ -212,7 +210,7 @@ def test_a_plain_main_turn_renders_its_prompt_then_its_calls(fixture_db: Path) -
     # asking for two tools at once, one notifying, and one reading a file that the session
     # ended before answering...
     with EnrichmentStore(fixture_db) as store:
-        rendered = render_turn(turn(store, SPINE, "818588ad"))
+        rendered = render(turn(store, SPINE, "818588ad"))
     # ...then the whole prompt is this, with every field's presence, order and label visible:
     # the response text capped but present, and one line per tool call carrying its name, the
     # size of what went in, the size of what came back, and the head of the input.
@@ -256,12 +254,12 @@ def test_a_turn_says_how_it_ended(fixture_db: Path) -> None:
         # If a turn's last api call recorded why generation stopped, that value is the last
         # line, verbatim — `end_turn` is the one the fix exists for, and `stop_sequence` is
         # the rarest of the recorded values...
-        assert ended(render_turn(turn(store, LEGACY_TITLE, "7d30c171"))) == "## Ended: end_turn"
-        assert ended(render_turn(turn(store, SPINE, "8cdceb31"))) == "## Ended: stop_sequence"
+        assert ended(render(turn(store, LEGACY_TITLE, "7d30c171"))) == "## Ended: end_turn"
+        assert ended(render(turn(store, SPINE, "8cdceb31"))) == "## Ended: stop_sequence"
         # ...if it recorded none, the line says so rather than going missing: `server_tools/`'s
         # turn made three calls, stopping `end_turn`, `tool_use` and NULL in that order, so the
         # null is the one that decides...
-        assert ended(render_turn(turn(store, SERVER_TOOLS, "9ae45aaa"))) == "## Ended: not recorded"
+        assert ended(render(turn(store, SERVER_TOOLS, "9ae45aaa"))) == "## Ended: not recorded"
         # ...and a turn the model never answered at all says that, which is the whole fix for
         # turns: `/model` and `/coordinator` are handled by the CLI, and turns are not gated.
         for session_id, prefix in (
@@ -269,9 +267,7 @@ def test_a_turn_says_how_it_ended(fixture_db: Path) -> None:
             (TEAMMATE, "97d6f3d4"),
             (MODEL_ONLY, "264ef04d"),
         ):
-            assert ended(render_turn(turn(store, session_id, prefix))) == (
-                "## Ended: no model response"
-            )
+            assert ended(render(turn(store, session_id, prefix))) == ("## Ended: no model response")
 
 
 def test_a_run_says_how_it_ended_once(fixture_db: Path) -> None:
@@ -279,12 +275,12 @@ def test_a_run_says_how_it_ended_once(fixture_db: Path) -> None:
     with EnrichmentStore(fixture_db) as store:
         # If a run's calls recorded no stop reason — `spine/`'s outer run made two, both
         # NULL — then the run says so once, after everything it did...
-        outer = render_run(run(store, SPINE_RUN))
+        outer = render(run(store, SPINE_RUN))
         assert ended(outer) == "## Ended: not recorded"
         # ...and a run whose last call recorded one carries it verbatim, also once. 51 of the
         # 69 recorded stop reasons are `tool_use`, which is why the design put the line at the
         # end rather than beside every response.
-        leaf = render_run(run(store, SPINE_LEAF))
+        leaf = render(run(store, SPINE_LEAF))
         assert ended(leaf) == "## Ended: tool_use"
         for rendered in (outer, leaf):
             assert rendered.count("## Ended:") == 1
@@ -295,8 +291,8 @@ def test_a_slash_turn_renders_the_command_not_its_tags(fixture_db: Path) -> None
     # If both of `spine/`'s slash turns are rendered — one recorded leading with
     # `<command-name>`, one with `<command-message>`, since both orderings occur...
     with EnrichmentStore(fixture_db) as store:
-        first = render_turn(turn(store, SPINE, "5b848af7"))
-        second = render_turn(turn(store, SPINE, "30aad8e5"))
+        first = render(turn(store, SPINE, "5b848af7"))
+        second = render(turn(store, SPINE, "30aad8e5"))
     # ...then each names its command...
     assert "## Command\n/model [redacted]" in first
     assert "## Command\n/night-run [redacted]" in second
@@ -317,7 +313,7 @@ def test_a_command_turn_carries_what_the_cli_printed(fixture_db: Path) -> None:
         # If `spine/`'s `/model` turn is rendered — the CLI answered it, and the archive kept
         # what it printed — then the whole prompt is this: the answer sits in the head beside
         # the command, ahead of the work, and the `Ended:` line still ends the render.
-        assert render_turn(turn(store, SPINE, "5b848af7")) == (
+        assert render(turn(store, SPINE, "5b848af7")) == (
             "# Main turn\n"
             "\n"
             "## Command\n"
@@ -331,12 +327,12 @@ def test_a_command_turn_carries_what_the_cli_printed(fixture_db: Path) -> None:
         # ...if the record that answered it printed nothing — `/clear` always does — the
         # render says so in its own words...
         assert "## Command result: the command printed nothing" in (
-            render_turn(turn(store, MODEL_ONLY, "144af379"))
+            render(turn(store, MODEL_ONLY, "144af379"))
         )
         # ...and if nothing archived an answer — `/night-run` is the one recorded turn in
         # that state — the render says that instead. The two read alike and mean opposite
         # things, which is why one test renders both.
-        assert "## Command result: not recorded" in render_turn(turn(store, SPINE, "30aad8e5"))
+        assert "## Command result: not recorded" in render(turn(store, SPINE, "30aad8e5"))
 
 
 def test_a_multi_turn_run_renders_every_instruction_in_sequence(fixture_db: Path) -> None:
@@ -347,7 +343,7 @@ def test_a_multi_turn_run_renders_every_instruction_in_sequence(fixture_db: Path
     """
     # If the `teammate/` architect was given a second instruction an hour after the first...
     with EnrichmentStore(fixture_db) as store:
-        rendered = render_run(run(store, TEAM_RUN))
+        rendered = render(run(store, TEAM_RUN))
     # ...then the whole prompt is this: the run's type, its task, and then each later
     # instruction with the work it drove, in the order they happened.
     assert rendered == (
@@ -383,7 +379,7 @@ def test_a_zero_turn_run_renders_as_a_continuation(fixture_db: Path) -> None:
     """
     # If `fork_byref/`'s fork, which holds two api calls and not one turn, is rendered...
     with EnrichmentStore(fixture_db) as store:
-        rendered = render_run(run(store, BYREF_RUN))
+        rendered = render(run(store, BYREF_RUN))
     # ...then the render says where the task went, and carries both calls in order. The
     # first is the fork's own spawning call, recorded inside the fork: a run does not embed
     # itself.
@@ -414,8 +410,8 @@ def test_a_replayed_turn_is_not_the_runs_task(fixture_db: Path) -> None:
     # If `fork_origin/`'s auditor and the fork it spawned both hold turn `33438141…` — the
     # auditor because it ran it, the fork because forking replays it...
     with EnrichmentStore(fixture_db) as store:
-        auditor = render_run(run(store, AUDITOR_RUN))
-        fork = render_run(run(store, ORIGIN_RUN))
+        auditor = render(run(store, AUDITOR_RUN))
+        fork = render(run(store, ORIGIN_RUN))
     # ...then the run that ran the turn renders it as its task...
     assert auditor.startswith("# Agent run: auditor\n\n## Task\n[redacted]\n")
     # ...and the fork renders as a continuation, with no task at all...
@@ -441,7 +437,7 @@ def test_a_spawned_run_renders_as_its_description(mutable_db: Path) -> None:
     # spawned it — is rendered...
     with EnrichmentStore(mutable_db) as store:
         describe(store, run(store, SPINE_LEAF), "Read one file and reported back.")
-        rendered = render_run(run(store, SPINE_RUN))
+        rendered = render(run(store, SPINE_RUN))
     # ...then the spawning line carries what the child did, which is how a parent describes
     # work it never saw the text of.
     assert (
@@ -457,7 +453,7 @@ def test_a_spawning_call_with_no_run_renders_plainly(mutable_db: Path) -> None:
     # really spawned no run row, the subagent having left no transcript...
     with EnrichmentStore(mutable_db) as store:
         describe(store, run(store, SPINE_LEAF), "Read one file and reported back.")
-        rendered = render_run(run(store, SPINE_RUN))
+        rendered = render(run(store, SPINE_RUN))
     # ...then that call is a tool line like any other, with no description slot and no
     # crash: exactly one of the two `Agent` lines carries a child.
     assert rendered.count(" | subagent: ") == 1
@@ -477,7 +473,7 @@ def test_a_session_renders_its_metrics_then_what_it_did(mutable_db: Path) -> Non
         for item in store.turn_items():
             if item.session_id == SPINE:
                 describe(store, item, f"Did thing {item.index}.")
-        rendered = render_session(session(store, SPINE))
+        rendered = render(session(store, SPINE))
     # ...then the whole prompt is this: the title and branch the session recorded, the time it
     # took, what it spent, and its children as their own descriptions — never their text.
     assert rendered == (
@@ -511,7 +507,7 @@ def test_a_sessions_children_are_its_turns_and_the_runs_nothing_embeds(mutable_d
         for item in store.turn_items():
             if item.session_id == TEAMMATE:
                 describe(store, item, "Asked for a plan.")
-        rendered = render_session(session(store, TEAMMATE))
+        rendered = render(session(store, TEAMMATE))
         # ...then both are children of the session, each once...
         assert rendered.endswith(
             "## Work\n"
@@ -521,7 +517,7 @@ def test_a_sessions_children_are_its_turns_and_the_runs_nothing_embeds(mutable_d
         # ...while `spine/`'s subagent, which a main turn spawned, is not a child of the
         # session at all: it reaches the session through that turn's own description.
         describe(store, run(store, SPINE_RUN), "Ran the subagent.")
-        assert "Ran the subagent." not in render_session(session(store, SPINE))
+        assert "Ran the subagent." not in render(session(store, SPINE))
 
 
 def test_a_run_spawned_outside_every_turn_is_still_a_session_child(mutable_db: Path) -> None:
@@ -539,7 +535,7 @@ def test_a_run_spawned_outside_every_turn_is_still_a_session_child(mutable_db: P
         )
         describe(store, run(store, SPINE_RUN), "Ran the subagent.")
         # ...then nothing else embeds it, so the session does.
-        assert "- Agent run (claude) [explore/completed] Ran the subagent." in render_session(
+        assert "- Agent run (claude) [explore/completed] Ran the subagent." in render(
             session(store, SPINE)
         )
 
@@ -549,7 +545,7 @@ def test_a_workflow_line_embeds_its_spawned_run(mutable_db: Path) -> None:
     # If the run `workflow/`'s main turn started has been described...
     with EnrichmentStore(mutable_db) as store:
         describe(store, run(store, WORKFLOW_RUN), "Researched the question.")
-        rendered = render_turn(turn(store, WORKFLOW, "cd7adeae"))
+        rendered = render(turn(store, WORKFLOW, "cd7adeae"))
     # ...then the turn that spawned it reads what it did — the second of the two tools that
     # start a run, and the one a rule keyed on the `Agent` name alone would miss.
     assert rendered.endswith(

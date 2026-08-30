@@ -16,7 +16,7 @@ from hyphae.analyze import queries
 from hyphae.analyze.manifest import QUERIES
 from hyphae.analyze.queries import Scope
 from hyphae.analyze.runner import CORPUS_RELATIONS
-from hyphae.enrich.store import LEVELS
+from hyphae.enrich.levels import LEVELS
 from hyphae.export.duckdb import TABLES
 from tests.analyze.conftest import AS_OF_WHOLE, QueryRunner
 from tests.conftest import (

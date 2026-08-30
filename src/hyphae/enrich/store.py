@@ -9,7 +9,7 @@ is stale and it compares each item's `Stamp` against the one on disk.
 """
 
 import datetime as dt
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +26,7 @@ from hyphae.enrich.items import (
     ToolCallRow,
     TurnItem,
 )
+from hyphae.enrich.levels import LEVELS
 from hyphae.enrich.validation import Enrichment
 from hyphae.export.duckdb import open_trace_store
 from hyphae.export.schema import check_shape
@@ -97,46 +98,6 @@ FROM session_rollups r
 LEFT JOIN session_enrichments e ON e.session_id = r.session_id;
 """
 
-
-@dataclass(frozen=True)
-class LevelSpec:
-    """Where one level's rows live, and what makes one of them an orphan."""
-
-    table: str
-    # The enrichment table's primary key columns, in order.
-    keys: tuple[str, ...]
-    # The view holding the rows enrichment describes, and the columns matching `keys`.
-    base: str
-    base_keys: tuple[str, ...]
-
-
-# Closed set: a level added here without a table above cannot be written, and a table added
-# without a level here would never be swept.
-LEVELS: dict[Level, LevelSpec] = {
-    Level.turn: LevelSpec(
-        table="turn_enrichments",
-        keys=("session_id", "source", "turn_id"),
-        # `live_turns`, not `turns`: a fork's replay of another transcript's turn is a copy,
-        # and the turn it copied is enriched under the transcript that ran it.
-        base="live_turns",
-        base_keys=("session_id", "source", "id"),
-    ),
-    Level.agent_run: LevelSpec(
-        table="agent_run_enrichments",
-        keys=("session_id", "agent_run_id"),
-        base="live_agent_runs",
-        base_keys=("session_id", "id"),
-    ),
-    Level.session: LevelSpec(
-        table="session_enrichments",
-        keys=("session_id",),
-        # `describable_sessions`, not `sessions`: a row for a session the pass will never
-        # refresh again is a zombie by the same definition as one whose session is gone, and
-        # 45 such rows are already on disk from before the gate existed.
-        base="describable_sessions",
-        base_keys=("session_id",),
-    ),
-}
 
 _PAYLOAD_COLUMNS = (
     "description",
@@ -540,13 +501,13 @@ class EnrichmentStore:
         return children
 
     def items(self, level: Level, project: str | None = None) -> list[Item]:
-        """Every enrichable item of one level. The enricher's one door into the store."""
-        readers = {
-            Level.turn: self.turn_items,
-            Level.agent_run: self.run_items,
-            Level.session: self.session_items,
-        }
-        return list(readers[level](project))
+        """Every enrichable item of one level. The enricher's one door into the store.
+
+        The reader is the method `enrich/levels.py` names for the level; `turn_items`,
+        `run_items` and `session_items` are public because the tests read one level directly.
+        """
+        reader: Callable[[str | None], list[Item]] = getattr(self, LEVELS[level].reader)
+        return list(reader(project))
 
     def _run_links(self, project: str | None) -> list[RunLink]:
         """Each agent run against whatever spawned it, by both rules the records offer.

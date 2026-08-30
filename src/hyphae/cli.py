@@ -21,7 +21,8 @@ from hyphae.enrich.client import (
     preflight,
 )
 from hyphae.enrich.cost import Prompt, estimate
-from hyphae.enrich.enricher import ROUND_ORDER, PlannedItem, enrich, plan
+from hyphae.enrich.enricher import PlannedItem, enrich, plan
+from hyphae.enrich.levels import ROUND_ORDER
 from hyphae.enrich.store import EnrichmentStore
 from hyphae.export.duckdb import DuckDbExporter, open_trace_store
 from hyphae.export.otlp import DEFAULT_MAX_CHARS, TextPolicy, census_project
