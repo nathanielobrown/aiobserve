@@ -13,8 +13,8 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from hyphae.extract.record_types import ContentBlock
-from hyphae.extract.records import blocks, evidence, schema, shapes
+from hyphae.extract.records import blocks, evidence, field_tables, shapes
+from hyphae.extract.records.registry import ContentBlock
 from tests.conftest import FIXTURES
 
 # The repository root, because a field's evidence cites a fixture the way a reader would type
@@ -108,8 +108,8 @@ def test_a_shared_field_is_declared_on_one_mixin() -> None:
         assert "uuid" not in model.__annotations__
         assert "uuid" in model.model_fields
     # ...and the row the generator derives from that inheritance names every record that has one.
-    uuid_row = next(doc for doc in schema.documentation() if doc.path == "uuid")
-    assert schema.spell(uuid_row.carriers) == ("user", "assistant", "system")
+    uuid_row = next(doc for doc in field_tables.documentation() if doc.path == "uuid")
+    assert field_tables.spell(uuid_row.carriers) == ("user", "assistant", "system")
 
 
 def test_a_record_type_with_no_uuid_does_not_inherit_one() -> None:
@@ -123,7 +123,7 @@ def test_a_record_type_with_no_uuid_does_not_inherit_one() -> None:
 def test_every_documented_field_carries_its_meaning_and_its_evidence() -> None:
     # The rule `docs/schema.md` states in prose — every claim names a recording — as a property
     # of the models themselves, so the generator has nothing to fill a blank cell with.
-    for doc in schema.documentation():
+    for doc in field_tables.documentation():
         assert doc.meaning, f"{doc.path} says nothing"
         assert doc.evidence, f"{doc.path} cites nothing"
 
@@ -134,7 +134,7 @@ def test_every_nested_field_names_exactly_one_container_the_tables_also_document
     # of its own on system records, and the row named none of them. A nested row's container
     # must therefore resolve to one row, matched the way a reader matches it — by the container
     # name, wherever that row spells it from.
-    names = {doc.path for doc in schema.documentation()}
+    names = {doc.path for doc in field_tables.documentation()}
     for name in sorted(names):
         if "." not in name:
             continue
@@ -149,7 +149,7 @@ def test_a_field_inside_a_block_is_named_from_the_block() -> None:
     # What makes the addresses unique: a block is the one container a reader identifies by name
     # rather than by position, and two blocks can hold fields that agree on everything else.
     # The advisor result's `content` and the fallback's `from` are the recorded cases.
-    names = {doc.path for doc in schema.documentation()}
+    names = {doc.path for doc in field_tables.documentation()}
     assert "advisor_tool_result.content.type" in names
     assert "fallback.from.model" in names
 
@@ -157,7 +157,7 @@ def test_a_field_inside_a_block_is_named_from_the_block() -> None:
 def test_every_cited_fixture_exists() -> None:
     # A citation to a fixture that was deleted or renamed is worse than no citation: it reads as
     # verified and is not.
-    for doc in schema.documentation():
+    for doc in field_tables.documentation():
         for cite in doc.evidence:
             if cite.fixture:
                 assert (REPO / cite.fixture).is_dir(), (
@@ -165,8 +165,10 @@ def test_every_cited_fixture_exists() -> None:
                 )
 
 
-@pytest.mark.parametrize("doc", schema.documentation(), ids=lambda doc: doc.path)
-def test_every_citation_shows_the_field_in_the_fixture_it_names(doc: schema.Documentation) -> None:
+@pytest.mark.parametrize("doc", field_tables.documentation(), ids=lambda doc: doc.path)
+def test_every_citation_shows_the_field_in_the_fixture_it_names(
+    doc: field_tables.Documentation,
+) -> None:
     # The migration's own check, kept: each meaning moved out of `docs/schema.md` with the
     # fixture the document cited for it, and this is what says the citation was right. A field
     # cited as present appears in a record of a kind that carries it; a field cited as absent —

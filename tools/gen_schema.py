@@ -14,7 +14,7 @@ import sys
 from enum import StrEnum
 
 from hyphae.extract.records.evidence import Cited
-from hyphae.extract.records.schema import EVERY_RECORD, Documentation, documentation, spell
+from hyphae.extract.records.field_tables import EVERY_RECORD, Documentation, documentation, spell
 from tools import text
 
 

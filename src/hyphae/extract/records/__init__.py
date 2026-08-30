@@ -9,11 +9,12 @@ Two rules hold the description honest:
 
 - Every declared field carries a `description` and at least one `Cited`. A blank one crashes the
   generator rather than printing an empty cell
-- Nothing is closed except the registries in `record_types.py`. Every model allows extra keys,
+- Nothing is closed except the registries in `registry`. Every model allows extra keys,
   because Claude Code adds fields without notice and a validation error would be a worse answer
   than an undocumented field
 
-The four modules, in dependency order: `evidence` (what proves a claim), `blocks` (content
-blocks and the messages holding them), `shapes` (the record models and the registries), and
-`schema` (the walk that turns all of it into table rows).
+The modules, in dependency order: `registry` (every type, subtype, block and tag the parser
+knows), `evidence` (what proves a claim), `blocks` (content blocks and the messages holding
+them), `shapes` (the record models), and `field_tables` (the walk that turns all of it into
+table rows).
 """

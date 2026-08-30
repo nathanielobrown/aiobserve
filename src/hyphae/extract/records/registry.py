@@ -5,7 +5,7 @@ changes them without notice, so anything not registered here stops the run: a ty
 skip today is a wrong count months from now.
 
 Names only. The field-by-field models that describe what each shape holds, and the recording
-that proves each claim, are `extract/records/`; `docs/schema.md` prints them.
+that proves each claim, are the modules beside this one; `docs/schema.md` prints them.
 """
 
 from enum import StrEnum

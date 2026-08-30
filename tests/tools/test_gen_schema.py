@@ -15,8 +15,8 @@ from typing import Annotated, Any, ClassVar
 import pytest
 from pydantic import Field
 
-from hyphae.extract.record_types import RecordType
-from hyphae.extract.records import schema, shapes
+from hyphae.extract.records import field_tables, shapes
+from hyphae.extract.records.registry import RecordType
 from tests.tools.conftest import cells
 from tools import gen_schema
 
@@ -92,8 +92,8 @@ class Uncited(shapes.Record):
     hearsay: Annotated[str | None, Field(description="Something someone remembers")] = None
 
 
-def documented(model: type[shapes.Record], path: str) -> schema.Documentation:
-    return next(doc for doc in schema.documentation((model,)) if doc.path == path)
+def documented(model: type[shapes.Record], path: str) -> field_tables.Documentation:
+    return next(doc for doc in field_tables.documentation((model,)) if doc.path == path)
 
 
 def test_a_field_with_no_meaning_stops_the_generator() -> None:

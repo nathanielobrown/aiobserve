@@ -7,9 +7,9 @@ added to a model is a row and a field deleted is a row gone, with no second plac
 from collections.abc import Iterator
 from typing import Any, ForwardRef, NamedTuple, get_args
 
-from hyphae.extract.record_types import RecordType
 from hyphae.extract.records.blocks import Message
 from hyphae.extract.records.evidence import Among, Cited, Described, Step
+from hyphae.extract.records.registry import RecordType
 from hyphae.extract.records.shapes import RECORD_MODELS, Record
 
 

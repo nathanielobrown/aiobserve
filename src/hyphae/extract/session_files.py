@@ -25,7 +25,7 @@ from hyphae.extract.layout import (
     WORKFLOW_PREFIX,
     WORKFLOWS_DIR,
 )
-from hyphae.extract.record_types import ContentBlock, RecordType, TranscriptSchemaError
+from hyphae.extract.records.registry import ContentBlock, RecordType, TranscriptSchemaError
 from hyphae.extract.transcript import _check_type, _content, _Line, _timestamp
 from hyphae.model import MAIN_SOURCE, AgentRun, OffloadFile
 from hyphae.pipeline import SessionSource
