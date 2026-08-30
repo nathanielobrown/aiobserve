@@ -225,7 +225,11 @@ impl Reader {
     /// Opens once here so a typo in `--db` refuses at startup rather than opening a browser
     /// onto an error page.
     pub fn open(path: &Path) -> Result<Self, ViewError> {
-        let resolved = path.canonicalize().map_err(StoreError::from)?;
+        // Before resolving, because a path with nothing behind it does not resolve and the
+        // I/O error that comes back names no file — the one thing a typo needs said.
+        let resolved = path
+            .canonicalize()
+            .map_err(|_| StoreError::NoStore(path.to_owned()))?;
         let reader = Self { path: resolved };
         reader.connect()?;
         Ok(reader)

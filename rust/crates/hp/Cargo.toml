@@ -11,3 +11,9 @@ hyphae-view.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
 clap.workspace = true
+
+[dev-dependencies]
+# The CLI tier runs the binary against stores in a tempdir, and reads back the timestamps it
+# stamped — so the tests need the store crate's own clock type.
+tempfile.workspace = true
+chrono.workspace = true
