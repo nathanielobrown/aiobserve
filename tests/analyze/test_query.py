@@ -151,6 +151,28 @@ def test_the_production_defaults_run_unless_a_param_overrides_one(run_query: Que
     assert len(overridden.csv_rows()[1][-1]) == 50
 
 
+def test_the_listing_names_every_query_with_its_scope_and_what_it_needs_bound(
+    run_query: QueryRunner,
+) -> None:
+    """`--list` is the library's directory: a reader picks a name off it and knows what to bind.
+
+    Read off the registry rather than written down, so a query that ships is a line here
+    whichever half of the manifest declared it. The viewer's half declares no defaults — a
+    size belongs to the surface that prints it (`view/manifest.py`) — so for those queries
+    this is the only place a caller finds out what a bare run is missing.
+    """
+    printed = run_query("--list").stdout.splitlines()
+    listed = {line.split()[0]: line.split()[1:] for line in printed}
+    # One line per query, and the names are the registry's...
+    assert len(printed) == len(manifest.QUERIES)
+    assert set(listed) == set(manifest.QUERIES)
+    # ...each carrying the scope, which is what says whether `--project` is wanted...
+    assert listed["agent_types"] == ["corpus"]
+    # ...and the parameters with no default, in the order the manifest declares them.
+    assert listed["view_runs"] == ["keyed", "session_id", "chip_chars"]
+    assert listed["records_slice"] == ["keyed", "session_id", "source", "first_line", "last_line"]
+
+
 def test_an_unknown_query_or_parameter_names_what_it_did_not_recognize(
     run_query: QueryRunner,
 ) -> None:
