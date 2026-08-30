@@ -26,7 +26,7 @@ from tests.view.nav_trees import candidates, node_url
 def _shaped(given: str | None, project: str | None, chars: int) -> str:
     """What a tool call the viewer knows no rule for is called, restated from its input.
 
-    Restated rather than imported (`view/formatters.py`): an oracle sharing the implementation
+    Restated rather than imported (`view/tool_names.py`): an oracle sharing the implementation
     would agree with itself whatever it said. Each field is cut before it is chosen, the way
     the query cuts it, so a path longer than the column loses its repository prefix off an
     already-bounded head.
@@ -58,7 +58,7 @@ def _shaped(given: str | None, project: str | None, chars: int) -> str:
 
 
 # The tools the fixture corpus records that the viewer names by their own field, restated from
-# `plans/viewer-polish/design.md` rather than read off `view/formatters.py:FORMATTERS`. The leaf
+# `plans/viewer-polish/design.md` rather than read off `view/tool_names.py:FORMATTERS`. The leaf
 # below asserts which registered names this corpus exercises, so a name added to the design
 # without a recorded call is a rule this sweep never sees rather than one it silently blesses.
 _MARKS = {

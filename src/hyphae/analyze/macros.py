@@ -112,7 +112,7 @@ _CONTEXT_WINDOW = (
     + "END\n"
 )
 
-# What a tool call carried, for the rules that name one (`view/formatters.py`) — one struct
+# What a tool call carried, for the rules that name one (`view/tool_names.py`) — one struct
 # rather than a column apiece, so a query adds the whole set with one expression and a
 # formatter reads what it needs by name.
 # Extraction only: which member a tool reads is the registry's business, and keeping the
@@ -124,7 +124,7 @@ _CONTEXT_WINDOW = (
 # tool no rule names and whose input carried nothing any rule reads.
 # `query` and `message` were read off session `4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b` (Claude
 # Code 2.1.221), which is what `ToolSearch` and `PushNotification` name their calls by
-# (`view/formatters.py`) and the recording `tests/fixtures/spine` is cut from.
+# (`view/tool_names.py`) and the recording `tests/fixtures/spine` is cut from.
 _TOOL_FIELDS = """
 CREATE OR REPLACE TEMP MACRO tool_fields(input, project_dir, addressed, chars) AS {
     'path': tool_path(input, project_dir, chars),

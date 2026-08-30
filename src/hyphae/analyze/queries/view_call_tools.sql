@@ -4,7 +4,7 @@
 --
 -- A row carries the fields the tool call is named by, because a name alone tells no two calls
 -- of one tool apart: a page of twenty `Read` rows says twenty times that a file was read. The
--- words are composed in Python (`view/formatters.py`), the derivation every other surface that
+-- words are composed in Python (`view/tool_names.py`), the derivation every other surface that
 -- names a tool call reads.
 WITH page AS (
     SELECT
@@ -27,14 +27,14 @@ WITH page AS (
         count(*) OVER () AS matched_tool_calls,
         -- What the input carried under the names the tools the viewer knows name their calls
         -- by, so a `Read` row reads as a path and a `Bash` row as the command it ran
-        -- (`view/formatters.py:FORMATTERS`). Every member cut at the width of the column that
+        -- (`view/tool_names.py:FORMATTERS`). Every member cut at the width of the column that
         -- prints it, one character past it.
         tool_fields(t.input, s.project_dir, ad.agent_type, $log_chars) AS fields
     FROM live_tool_calls t
     LEFT JOIN sessions s ON s.id = t.session_id
     -- Who a `SendMessage` addressed, where `to` held an agent run's id rather than a name the
     -- caller typed: one lookup, LEFT so a name that matches no run comes back NULL and the row
-    -- prints what was recorded (`view/formatters.py:_send_message`).
+    -- prints what was recorded (`view/tool_names.py:_send_message`).
     LEFT JOIN live_agent_runs ad
         ON ad.session_id = t.session_id AND ad.id = tool_asked(t.input, 'to', $log_chars)
     WHERE t.session_id = $session_id

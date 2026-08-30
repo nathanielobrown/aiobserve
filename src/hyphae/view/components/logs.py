@@ -54,7 +54,7 @@ class LoggedCall(NamedTuple):
 
     `called` is the tools it went on to call, named the way their own rows name them: composed
     at the route from the rows the query shipped, because naming a tool call is Python's
-    (`view/formatters.py`).
+    (`view/tool_names.py`).
     """
 
     node: Node

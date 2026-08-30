@@ -31,7 +31,7 @@ Print `Node.nav_tree_title`, `tab_title`, `crumb_title`, `log_title` or `pane_ti
 
 # Naming and formatting live in Python; SQL ships fields
 
-A query hands the page the fields a name is read off, and Python composes what the reader sees. `formatters.name_tool` is the only place a tool call is named, `src/hyphae/view/nodes.py` the only place a node is, `src/hyphae/view/numbers.py` the only place a dollar is split, and `src/hyphae/view/cuts.py` the only place a value is cut to the width its surface prints it at — so a fact printed on two surfaces was derived once.
+A query hands the page the fields a name is read off, and Python composes what the reader sees. `tool_names.name_tool` is the only place a tool call is named, `src/hyphae/view/nodes.py` the only place a node is, `src/hyphae/view/numbers.py` the only place a dollar is split, and `src/hyphae/view/cuts.py` the only place a value is cut to the width its surface prints it at — so a fact printed on two surfaces was derived once.
 
 A `view_*.sql` that builds a string is a second naming system, and the two drift apart in the direction nobody is looking: SQL cannot dispatch on a tool's name without a `CASE` arm per tool, so the tool nobody wrote an arm for goes unnamed rather than falling back. What SQL owns instead is the reading a page cannot afford: a fat column is cut to the width its caller asked for before it leaves the store (`src/hyphae/analyze/macros.py`).
 
@@ -49,7 +49,7 @@ Where a title repeats — a NavTree row, a crumb, a log row, a walk control — 
 
 Every mark saying what a thing *is* — the kind of node a surface names, and the kind a children log's column is about — goes through `parts.mark(character)`, whose character comes from `nodes.GLYPHS` or a `Column` — the one place those characters are written, so a mark cannot mean one thing in a table and another in the NavTree. It is `aria-hidden` and carries no `title`: the word it stands for is already in the markup beside it (`docs/viewer-titles.md`). The `<title>` element is the one place a mark goes in bare, because it is text and has no markup to hide it in.
 
-A tool's own glyph is not one of these marks and does not go through `parts.mark`. It stands in for the tool's name inside the title's words (`src/hyphae/view/formatters.py`), so it rides as text wherever the title does — including a children log, which heads the lead in a column of its own and would drop a mark written there.
+A tool's own glyph is not one of these marks and does not go through `parts.mark`. It stands in for the tool's name inside the title's words (`src/hyphae/view/tool_names.py`), so it rides as text wherever the title does — including a children log, which heads the lead in a column of its own and would drop a mark written there.
 
 # A NavTree row is priced, not budgeted
 
