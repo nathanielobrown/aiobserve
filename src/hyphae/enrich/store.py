@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
 
-from hyphae.enrich.prompts import (
+from hyphae.enrich.items import (
     AgentRunItem,
     ApiCallRow,
     Item,

@@ -7,10 +7,10 @@ the render — is in `test_prompts__budget.py`.
 
 from pathlib import Path
 
+from hyphae.enrich.items import Level
 from hyphae.enrich.prompts import (
     OUTPUT_SCHEMA,
     PROMPT_VERSION,
-    Level,
     instructions,
     render_run,
     render_session,

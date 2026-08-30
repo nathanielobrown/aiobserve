@@ -1,33 +1,32 @@
-"""What each level sends the model: the rows it is built from, and the text they render to.
+"""What each level sends the model: the instructions, and the text an item renders to.
 
-The renders are pure — rows in, prompt text out — so their evidence is a real store built
-from the recorded fixtures rather than a client and a network. Every size limit is a
-parameter with a default here, because a redacted fixture is two orders of magnitude short
-of the real budgets and elision could not otherwise be tested at all.
+The renders are pure — items in (`enrich/items.py`), prompt text out — so their evidence is a
+real store built from the recorded fixtures rather than a client and a network. Every size
+limit is a parameter with a default here, because a redacted fixture is two orders of
+magnitude short of the real budgets and elision could not otherwise be tested at all.
 """
 
 import hashlib
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
-from enum import StrEnum
-from typing import override
 
+from hyphae.enrich.items import (
+    AgentRunItem,
+    ApiCallRow,
+    Budgets,
+    Item,
+    Level,
+    SessionChild,
+    SessionItem,
+    ToolCallRow,
+    TurnItem,
+)
 from hyphae.enrich.taxonomy import (
     CATEGORY_DEFINITIONS,
     OUTCOME_DEFINITIONS,
     Category,
     Outcome,
 )
-
-
-class Level(StrEnum):
-    """The three things that get an enrichment row, each with its own table and prompt."""
-
-    turn = "turn"
-    agent_run = "agent_run"
-    session = "session"
-
 
 # Per level, covering what `input_hash` cannot see: the instructions and the output schema.
 # Bump one and that level re-enriches; its parents follow through the hash.
@@ -123,29 +122,6 @@ def instructions(level: Level) -> str:
     return "\n\n".join(parts)
 
 
-@dataclass(frozen=True)
-class Budgets:
-    """Every size limit one render obeys, in characters.
-
-    Passed rather than read from a constant so the elision paths can be exercised: every
-    string in a redacted fixture is ten characters long, so no recorded row comes within two
-    orders of magnitude of `total`.
-    """
-
-    # The whole rendered prompt. Differs per level, so there is no sensible default.
-    total: int
-    prompt: int = 4_000
-    # The assistant's text per api call. Enough for the narration, not for a file dump.
-    text: int = 1_500
-    # The head of a tool's input — the file read, the command run, the URL fetched.
-    input_head: int = 120
-    # The tail of a *failed* tool result. No other result content travels at all.
-    error_tail: int = 300
-    # A slash command's own printed output — for most command turns, the whole of what
-    # happened. 315 of the 316 recorded bodies fit it; the median is 71 characters.
-    command_result: int = 2_000
-
-
 TURN_BUDGETS = Budgets(total=30_000)
 # The same cap: a run holds the same kind of work a main turn does, and 209 of 2,458 recorded
 # runs reach it.
@@ -153,38 +129,6 @@ RUN_BUDGETS = Budgets(total=30_000)
 # Smaller: a session carries one line per child rather than a transcript. Sessions average 3.1
 # children and the longest recorded one has 92.
 SESSION_BUDGETS = Budgets(total=24_000)
-
-
-@dataclass(frozen=True)
-class ToolCallRow:
-    """One tool call as a prompt sees it: what was asked, and how big the answer was.
-
-    The result text itself never travels — 390 MB corpus-wide — except the tail of a failed
-    one, which is where friction shows.
-    """
-
-    name: str
-    input: str
-    # None when the call was never answered, which is what `incomplete` means.
-    result: str | None
-    is_error: bool
-    incomplete: bool
-    # The description of the agent run this call spawned — the one way a child's work
-    # reaches a parent's prompt. None when the call spawned nothing, when the run it spawned
-    # is not enriched yet, and when the run is the one being rendered: a fork's transcript
-    # holds a copy of its own spawning call, and a run does not embed itself.
-    spawned: str | None
-
-
-@dataclass(frozen=True)
-class ApiCallRow:
-    """One model response and the tools it asked for. `thinking` is deliberately absent."""
-
-    text: str
-    # Why generation stopped, as recorded. None is a real recorded state — 26 of the 69 stop
-    # reasons in the fixtures are null — and renders as "not recorded", never as absence.
-    stop_reason: str | None
-    tool_calls: tuple[ToolCallRow, ...]
 
 
 def _ended_line(calls: Sequence[ApiCallRow]) -> str:
@@ -197,58 +141,6 @@ def _ended_line(calls: Sequence[ApiCallRow]) -> str:
         return "## Ended: no model response"
     reason = calls[-1].stop_reason
     return f"## Ended: {reason if reason is not None else 'not recorded'}"
-
-
-class Item:
-    """One thing that gets one enrichment row."""
-
-    @property
-    def level(self) -> Level:
-        raise NotImplementedError
-
-    @property
-    def key_values(self) -> tuple[str, ...]:
-        """The item's primary key, in the enrichment table's column order."""
-        raise NotImplementedError
-
-    @property
-    def key(self) -> str:
-        """The key as one string — what a request, a call log, and a failure record carry."""
-        return "|".join((self.level, *self.key_values))
-
-
-def level_of(key: str) -> Level:
-    """The level of an item key, so a caller holding keys alone can still tell them apart."""
-    return Level(key.split("|", 1)[0])
-
-
-@dataclass(frozen=True)
-class TurnItem(Item):
-    """One main turn: the prompt a person wrote, and the work it drove."""
-
-    session_id: str
-    source: str
-    turn_id: str
-    index: int
-    # As recorded, tags included. A slash turn renders `command_name`/`command_args` instead.
-    prompt: str
-    command_name: str | None
-    command_args: str | None
-    # What the CLI itself printed for a slash command. None means no record archived an
-    # answer; "" means one did and it printed nothing. Most command turns drive no model
-    # response, so this is the only thing the render can say about what happened.
-    command_result: str | None
-    api_calls: tuple[ApiCallRow, ...]
-
-    @property
-    @override
-    def level(self) -> Level:
-        return Level.turn
-
-    @property
-    @override
-    def key_values(self) -> tuple[str, ...]:
-        return (self.session_id, self.source, self.turn_id)
 
 
 def _command_result_block(result: str | None, budgets: Budgets) -> str:
@@ -287,36 +179,6 @@ def render_turn(item: TurnItem, budgets: Budgets = TURN_BUDGETS) -> str:
     return _fit("\n".join(head), lines, budgets.total)
 
 
-@dataclass(frozen=True)
-class RunSection:
-    """One stretch of a run's transcript: one instruction, and the calls it drove."""
-
-    # None for the calls a run made before any turn of its own — a fork continuing a
-    # conversation whose prompt lives in another transcript.
-    prompt: str | None
-    api_calls: tuple[ApiCallRow, ...]
-
-
-@dataclass(frozen=True)
-class AgentRunItem(Item):
-    """One subagent run: what it was asked, in sequence, and what it did about it."""
-
-    session_id: str
-    agent_run_id: str
-    agent_type: str
-    sections: tuple[RunSection, ...]
-
-    @property
-    @override
-    def level(self) -> Level:
-        return Level.agent_run
-
-    @property
-    @override
-    def key_values(self) -> tuple[str, ...]:
-        return (self.session_id, self.agent_run_id)
-
-
 def render_run(item: AgentRunItem, budgets: Budgets = RUN_BUDGETS) -> str:
     """One agent run as the model sees it: every instruction it got, and the work each drove.
 
@@ -346,55 +208,6 @@ def render_run(item: AgentRunItem, budgets: Budgets = RUN_BUDGETS) -> str:
     # Once, after the last section — the run's last call, wherever it sat.
     lines += ["", _ended_line([call for section in item.sections for call in section.api_calls])]
     return _fit("\n".join(head), lines, budgets.total)
-
-
-@dataclass(frozen=True)
-class SessionChild:
-    """One thing a session did, as that thing's own enrichment described it.
-
-    No transcript text reaches a session prompt: a child that has not been described yet
-    renders as undescribed, which moves the session's hash again once it has been.
-    """
-
-    # `turn` for a main turn, `agent_run` for a run nothing else in the session embeds.
-    level: Level
-    # The run's type — `architect`, `Explore`. None for a main turn.
-    agent_type: str | None
-    description: str | None
-    category: str | None
-    outcome: str | None
-
-
-@dataclass(frozen=True)
-class SessionItem(Item):
-    """One whole session: what it cost, and what its children were described as doing."""
-
-    session_id: str
-    # As Claude Code recorded them; either can be absent from an older transcript.
-    title: str | None
-    git_branch: str | None
-    # Wall time is the whole span, gaps included; active is what Claude Code reported working.
-    # Wall is None when the session's records carry no end.
-    wall_ms: int | None
-    active_ms: int | None
-    input_tokens: int
-    output_tokens: int
-    cache_read_tokens: int
-    cache_creation_tokens: int
-    # Sums only the api calls the extractor could price.
-    cost_usd: float
-    # The session's main turns and its rootless runs, in the order they started.
-    children: tuple[SessionChild, ...]
-
-    @property
-    @override
-    def level(self) -> Level:
-        return Level.session
-
-    @property
-    @override
-    def key_values(self) -> tuple[str, ...]:
-        return (self.session_id,)
 
 
 def render_session(item: SessionItem, budgets: Budgets = SESSION_BUDGETS) -> str:

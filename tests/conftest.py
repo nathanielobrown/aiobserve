@@ -16,7 +16,8 @@ from pathlib import Path
 
 import pytest
 
-from hyphae.enrich.prompts import PROMPT_VERSION, Level
+from hyphae.enrich.items import Level
+from hyphae.enrich.prompts import PROMPT_VERSION
 from hyphae.enrich.store import EnrichmentStore, Stamp
 from hyphae.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
 from hyphae.enrich.validation import Enrichment

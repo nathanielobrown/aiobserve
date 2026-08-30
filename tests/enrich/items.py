@@ -6,7 +6,7 @@ picker asserts it named exactly one item: a fixture that stops carrying the shap
 rather than rendering something else. A plain module, read by both prompt test files.
 """
 
-from hyphae.enrich.prompts import (
+from hyphae.enrich.items import (
     AgentRunItem,
     Item,
     SessionItem,
