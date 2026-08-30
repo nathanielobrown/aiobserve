@@ -107,7 +107,7 @@ def test_a_citation_quotes_every_binding_its_query_takes(path: str, client: Test
 
     Every parameter the manifest declares and not exactly them: a page may bind more than the
     file takes — the sessions list composes its own sort, page and widths around a query that
-    declares one (`view/listing.py`) — and what it composed is part of what it ran.
+    declares one (`view/store.py`) — and what it composed is part of what it ran.
     """
     lines = fields(client.get(path).text, "id", "citation")
     assert lines, path

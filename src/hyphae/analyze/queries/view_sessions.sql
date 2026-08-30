@@ -1,7 +1,7 @@
 -- Every session in the store, one row: what the viewer's list ranks and drills from.
 -- Reads `session_rollups`, so each row says what that session's own files hold — the numbers
 -- a reader opening the session will see, resume copies included.
--- The viewer wraps this SELECT to sort and filter it (`view/listing.py`): the file stays the
+-- The viewer wraps this SELECT to sort and filter it (`view/store.py`): the file stays the
 -- citable core, and no user-supplied value is ever interpolated into it.
 WITH agent_kinds AS (
     SELECT session_id, list({'name': name, 'runs': runs} ORDER BY runs DESC, name) AS agent_types

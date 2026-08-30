@@ -16,8 +16,7 @@ from hyphae.analyze import queries
 from hyphae.view import bounds, nodes
 from hyphae.view.format import ELLIPSIS
 from hyphae.view.knobs import Knobs
-from hyphae.view.listing import SHOWN
-from hyphae.view.store import Page
+from hyphae.view.store import SHOWN, Page
 from tests.view.conftest import (
     Statement,
 )
