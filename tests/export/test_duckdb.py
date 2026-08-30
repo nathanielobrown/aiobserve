@@ -18,7 +18,7 @@ from hyphae.export.duckdb import (
 )
 from hyphae.export.schema import MIGRATIONS, SCHEMA_VERSION, SchemaVersionError
 from hyphae.model import SessionTrace
-from tests.conftest import FORK_RUN, NO_WAIT, TraceFactory, stored_rows
+from tests.conftest import FORK_ORIGIN_RUN, FORK_RUN, NO_WAIT, TraceFactory, stored_rows
 
 SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"
 DUPS = "8ee00a94-b01a-4394-b447-b065f74b11af"
@@ -478,6 +478,44 @@ def old_store(path: Path, *traces: SessionTrace) -> dict[str, list[str]]:
     return shape(path)
 
 
+# The session `boundary_rows` plants its two runs under, and the instant they share.
+BOUNDARY_SESSION = "boundary-session"
+TIE_RUN = "boundary-fork-run"
+PLAIN_RUN = "boundary-plain-run"
+BOUNDARY_AT = "2026-08-30 22:05:03.220+00"
+
+
+def boundary_rows(path: Path) -> None:
+    """Plant the two back-fill cases no recorded fixture holds, into a version-7 store.
+
+    The fork_origin fixture's copied compaction lands 1 ms before its fork's `started_at`, so
+    it satisfies the rule's fork test and its timestamp test at once and can falsify neither.
+    These split them. Hand-built rather than recorded: a fork whose copied compaction is
+    stamped at the very instant of its first own record is a boundary Claude Code has not
+    handed us, and the migration runs once per store, with nothing to re-run if it is wrong.
+    """
+    with duckdb.connect(str(path)) as aged:
+        for run, is_fork, timestamp in (
+            # The tie the rule's `<=` is for: the fork's copied compaction is the record its
+            # own work starts at.
+            (TIE_RUN, True, BOUNDARY_AT),
+            # A run that forked nothing, whose compaction predates its start. Only the
+            # `is_fork` test keeps this live compaction out of the flag.
+            (PLAIN_RUN, False, "2026-08-30 22:05:00.000+00"),
+        ):
+            aged.execute(
+                "INSERT INTO agent_runs (id, session_id, agent_type, is_fork, started_at) "
+                "VALUES (?, ?, 'general-purpose', ?, ?)",
+                [run, BOUNDARY_SESSION, is_fork, BOUNDARY_AT],
+            )
+            aged.execute(
+                "INSERT INTO compactions "
+                "(id, session_id, source, timestamp, trigger, pre_tokens, post_tokens, "
+                "duration_ms) VALUES (?, ?, ?, ?, 'auto', 100, 10, 5)",
+                [f"{run}-compaction", BOUNDARY_SESSION, run, timestamp],
+            )
+
+
 def unmigratable_store(path: Path) -> dict[str, list[str]]:
     """A store of a vintage no migration step reaches: a stamped `meta`, and its own tables.
 
@@ -525,6 +563,9 @@ def test_an_older_store_is_migrated_and_keeps_its_rows(db: Path, fixture_trace: 
     briefs = sorted(str(run.brief) for run in trace.agent_runs)
     assert any(briefs), "the spine fixture is the evidence here — its runs carry briefs"
     old_store(db, trace, fixture_trace("fork_origin", ORIGIN))
+    # ...plus the two boundary cases no fixture holds, so each half of the rule the back-fill
+    # spells has a case that fails when it goes...
+    boundary_rows(db)
 
     # ...then opening it migrates the file...
     exporter = DuckDbExporter(db, wait=NO_WAIT)
@@ -533,14 +574,20 @@ def test_an_older_store_is_migrated_and_keeps_its_rows(db: Path, fixture_trace: 
         exporter.path, "SELECT brief FROM agent_runs WHERE session_id = ?", [SPINE]
     )
     assert sorted(str(brief) for (brief,) in stored) == briefs
-    # ...and the copy flagged, which the migration has to derive from the rows alone: the
+    # ...and the copies flagged, which the migration has to derive from the rows alone: the
     # transcript line numbers the extractor reads are not in a store on disk. Against the
     # canonical store the rule it uses instead flags 4 of 1,367 compactions, the same 4 a
-    # scan for a uuid two transcripts of one session both hold finds (2026-08-30)...
-    assert stored_rows(exporter.path, "SELECT source FROM compactions WHERE replayed") == [
-        (FORK_RUN,)
-    ]
-    assert stored_rows(exporter.path, "SELECT count(*) FROM live_compactions") == [(1,)]
+    # scan for a uuid two transcripts of one session both hold finds (2026-08-30). The
+    # fixture's copy, and the planted fork whose copy sits at the instant its own work
+    # starts — the tie the rule is written to include...
+    assert stored_rows(
+        exporter.path, "SELECT source FROM compactions WHERE replayed ORDER BY source"
+    ) == sorted([(FORK_RUN,), (TIE_RUN,)])
+    # ...while the planted run that forked nothing keeps its compaction, whatever its
+    # timestamp says: a live compaction wrongly flagged would shrink a migrated corpus...
+    assert stored_rows(
+        exporter.path, "SELECT source FROM live_compactions ORDER BY source"
+    ) == sorted([(FORK_ORIGIN_RUN,), (PLAIN_RUN,)])
     # ...and the store stamped at the version this build writes.
     assert stored_rows(exporter.path, "SELECT schema_version FROM meta") == [(SCHEMA_VERSION,)]
     assert stamped_version(db) == SCHEMA_VERSION
