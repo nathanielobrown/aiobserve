@@ -157,7 +157,8 @@ stage shares one answer:
 - **Browser-tier reuse is spec-level, not config-level.** The specs under `tests/e2e/specs/`
   run unchanged; `tests/e2e/playwright.config.ts` gains an environment seam (base URL, server
   command, and readiness URL overridable via env vars) so the same specs can point at the Rust
-  server. That config change is the one Python-side edit this prototype makes
+  server. That config change is the prototype's only behavioural edit outside `rust/`; its other
+  Python-side touches are configuration and tooling learning the new directory exists
 - **The tier drives the gallery; the gallery stays Python.** Python builds the gallery fixture
   store (enrichment rows included, via the existing `tests/gallery` code); the Rust `hp view`
   serves that store file — the store file is already the seam. The readiness URL override points
