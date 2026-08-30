@@ -6,6 +6,7 @@ a click serve the same bytes.
 """
 
 from collections.abc import Mapping, Sequence
+from enum import StrEnum
 from typing import NamedTuple
 
 import htpy
@@ -243,6 +244,18 @@ def _raw(*, archived: Archived) -> Html:
     ]
 
 
+class Way(StrEnum):
+    """Which of the two ways a control points, and the value it writes into the markup.
+
+    The walk and the error stepper both put one control on each side of the pane, and both
+    lean on which side it is: the arrow leads on the way back and trails on the way on, and
+    the stylesheet pushes each to its own margin off this value.
+    """
+
+    PREVIOUS = "previous"
+    NEXT = "next"
+
+
 def _walk(*, previous: Walked | None, following: Walked | None, suffix: str) -> Html:
     """Reading in order, along the level the reader is standing on.
 
@@ -254,13 +267,16 @@ def _walk(*, previous: Walked | None, following: Walked | None, suffix: str) -> 
     return htpy.nav(".walk", PANE_SWAP, aria_label="Read in order")[
         [
             _step(
-                step=previous, way="previous", arrow="↑" if previous.climbed else "←", suffix=suffix
+                step=previous,
+                way=Way.PREVIOUS,
+                arrow="↑" if previous.climbed else "←",
+                suffix=suffix,
             )
             if previous
             else None,
             _step(
                 step=following,
-                way="next",
+                way=Way.NEXT,
                 arrow="↑" if following.climbed else "→",
                 suffix=suffix,
             )
@@ -270,7 +286,7 @@ def _walk(*, previous: Walked | None, following: Walked | None, suffix: str) -> 
     ]
 
 
-def _step(*, step: Walked, way: str, arrow: str, suffix: str) -> Html:
+def _step(*, step: Walked, way: Way, arrow: str, suffix: str) -> Html:
     """One control of the walk: where it goes, and whether taking it leaves the level."""
     named: list[Html | str | None] = [
         parts.glyph(enriched=step.node.enriched),
@@ -285,7 +301,7 @@ def _step(*, step: Walked, way: str, arrow: str, suffix: str) -> Html:
         data_node=step.node.key,
         data_climb=way if step.climbed else None,
         hx_get=f"{step.node.url}{suffix}",
-    )[[arrow, " ", *named] if way == "previous" else [*named, " ", arrow]]
+    )[[arrow, " ", *named] if way is Way.PREVIOUS else [*named, " ", arrow]]
 
 
 def _stepper(
@@ -303,22 +319,22 @@ def _stepper(
         return None
     return htpy.nav(".error-stepper", aria_label="Where this session failed")[
         [
-            _failure(node=failures.previous, way="previous", suffix=suffix)
+            _failure(node=failures.previous, way=Way.PREVIOUS, suffix=suffix)
             if failures and failures.previous
             else None,
             htpy.a(data_step="all", href=f"/session/{session_id}/errors")[
                 [htpy.span(data_field="tool_errors")[fmt.count(tool_errors)], " tool error(s)"]
             ],
-            _failure(node=failures.next, way="next", suffix=suffix)
+            _failure(node=failures.next, way=Way.NEXT, suffix=suffix)
             if failures and failures.next
             else None,
         ]
     ]
 
 
-def _failure(*, node: Node, way: str, suffix: str) -> Html:
+def _failure(*, node: Node, way: Way, suffix: str) -> Html:
     """One step of the error stepper: the failure read before this one, or the one after."""
     named = htpy.span(data_field="title")[node.nav_tree_title]
     return htpy.a(data_step=way, data_node=node.key, href=f"{node.url}{suffix}")[
-        ["← ", named] if way == "previous" else [named, " →"]
+        ["← ", named] if way is Way.PREVIOUS else [named, " →"]
     ]
