@@ -15,8 +15,8 @@ from urllib.parse import urlencode
 from fastapi import Depends, HTTPException
 
 from hyphae.view import bounds, nodes
-from hyphae.view.components.logs import Pager
 from hyphae.view.components.nav_tree import PresetChoice
+from hyphae.view.components.parts import Pager, Step
 from hyphae.view.store import Listed, Row
 
 
@@ -115,9 +115,10 @@ def pager(url: str, knobs: Knobs, page: int, pages: int) -> Pager | None:
         return None
     marks = knobs.suffix
     return Pager(
-        place=f"Page {page} of {pages}",
-        previous=numbered(url, marks, page - 1) if page > 1 else None,
-        next=numbered(url, marks, page + 1) if page < pages else None,
+        field="place",
+        words=f"Page {page} of {pages}",
+        previous=Step(numbered(url, marks, page - 1), "← previous page") if page > 1 else None,
+        next=Step(numbered(url, marks, page + 1), "next page →") if page < pages else None,
     )
 
 

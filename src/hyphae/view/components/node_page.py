@@ -16,9 +16,10 @@ from hyphae.view import format as fmt
 from hyphae.view.citation import Cited
 from hyphae.view.columns import Shape
 from hyphae.view.components import Html, citation, layout, logs, nav_tree, node_body, parts
-from hyphae.view.components.logs import Logged, Pager
+from hyphae.view.components.logs import Logged
 from hyphae.view.components.nav_tree import PANE_SWAP, NavTreeRow, PresetChoice
 from hyphae.view.components.node_body import Facts
+from hyphae.view.components.parts import Pager
 from hyphae.view.detail import Detail, EnrichmentLines
 from hyphae.view.enrichment import Enrichment
 from hyphae.view.errors import Step as Failures

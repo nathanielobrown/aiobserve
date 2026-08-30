@@ -262,6 +262,7 @@ def sessions_page(
     whether the list carries a work column: an empty one over a store no pass has touched is a
     claim the store cannot support. The same pager stands above and below the table.
     """
+    turning = _turning(pages)
     return layout.page(
         tab_title="Sessions — hyphae",
         scripts=None,
@@ -275,7 +276,7 @@ def sessions_page(
                 htpy.datalist(id="project-names")[
                     [htpy.option(value=project) for project in projects]
                 ],
-                _pager(place="top", pages=pages),
+                parts.pager(name="top", pages=turning),
                 htpy.table(id="sessions")[
                     [
                         htpy.thead[
@@ -293,7 +294,7 @@ def sessions_page(
                         htpy.tbody[[_session(row=row, describes=describes) for row in rows]],
                     ]
                 ],
-                _pager(place="bottom", pages=pages),
+                parts.pager(name="bottom", pages=turning),
             ]
         ],
         footer=citation.footer(citations=citations),
@@ -343,32 +344,23 @@ def _heading(*, heading: Heading, sort: str, aria: str) -> Html:
     )[htpy.a(href=heading.url)[heading.label]]
 
 
-def _pager(*, place: str, pages: Pages) -> Html:
-    """The controls the list carries above and below the table.
+def _turning(pages: Pages) -> parts.Pager:
+    """The list's paging as the shared control prints it, built once for the two that show it.
 
-    `place` tells the two apart — including for a reader who hears them rather than seeing
-    where they sit.
-
-    The three controls are inline and no rule holds them apart, so each link carries the space
-    that separates it from the range: htpy writes nothing between elements, and a pager without
-    them reads as one word.
+    The words between the links are the sessions this page holds rather than which page of how
+    many it is: a reader tiling a store by paging through it is counting rows, and the list has
+    no last page to number against — the query reads one row past the page, never the rest.
     """
     last = pages.first + pages.shown - 1
-    return htpy.nav(".pager", data_pager=place, aria_label=f"{place} pager")[
-        [
-            htpy.fragment[[htpy.a(data_page="previous", href=pages.previous)["← newer page"], " "]]
-            if pages.previous
-            else None,
-            htpy.span(data_field="range")[
-                f"Sessions {fmt.count(pages.first)}–{fmt.count(last)}"
-                if pages.shown
-                else "No sessions"
-            ],
-            htpy.fragment[[" ", htpy.a(data_page="next", href=pages.next)["older page →"]]]
-            if pages.next
-            else None,
-        ]
-    ]
+    return parts.Pager(
+        field="range",
+        words=(
+            f"Sessions {fmt.count(pages.first)}–{fmt.count(last)}" if pages.shown else "No sessions"
+        ),
+        # Newest first, so the page before this one holds newer sessions.
+        previous=parts.Step(pages.previous, "← newer page") if pages.previous else None,
+        next=parts.Step(pages.next, "older page →") if pages.next else None,
+    )
 
 
 def _session(*, row: SessionRow, describes: bool) -> Html:
