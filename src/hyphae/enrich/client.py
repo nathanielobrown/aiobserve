@@ -224,7 +224,7 @@ class CliClient:
         breaker = _Breaker()
         # Consumed from the front by both phases below; whatever is left was never sent.
         pending = deque(requests)
-        # `sessions.py` keys the projects directory on the cwd, so running here is what keeps
+        # `projects.py` keys the projects directory on the cwd, so running here is what keeps
         # any session the CLI still writes out of every extractable project.
         with tempfile.TemporaryDirectory(prefix="hyphae-enrich-") as cwd:
             try:

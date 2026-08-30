@@ -163,7 +163,7 @@ run = "./chromatic-upload.sh"
 description = "Mutation-test the source this branch changed; pass mutant globs to scope it yourself"
 # Asks what a green suite cannot: would a leaf notice the code being wrong? Deliberately out
 # of `check` — it re-runs the covering tests once per mutant. Whole-branch scope by default,
-# because a run over the package takes hours; `mise run mutate 'hyphae.sessions.*'` narrows
+# because a run over the package takes hours; `mise run mutate 'hyphae.projects.*'` narrows
 # it. mutmut names a mutant `<module path>.x_<function>__mutmut_<n>`, and a method's
 # `<module path>.xǁ<Class>ǁ<method>__mutmut_<n>`; it takes globs over that.
 # Read the survivors with `uv run mutmut browse`.

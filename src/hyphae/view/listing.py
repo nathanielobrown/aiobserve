@@ -25,7 +25,7 @@ from starlette.routing import BaseRoute
 
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
-from hyphae.sessions import project_predicate
+from hyphae.projects import project_predicate
 from hyphae.view import bounds
 from hyphae.view import format as fmt
 from hyphae.view.citation import cited
@@ -84,7 +84,7 @@ class Filter:
 FILTERS: dict[str, Filter] = {
     # A path prefix, not a path: a worktree checkout sits under the repository it was cut
     # from, so filtering by a project has to hold its worktrees' sessions the way the CLI's
-    # `--project` does. One statement of the rule, in `hyphae.sessions`.
+    # `--project` does. One statement of the rule, in `hyphae.projects`.
     "project": Filter(project_predicate("project_dir", "$project"), queries.ParamType.TEXT),
     "since": Filter("started_at >= $since", queries.ParamType.DATE),
     # Inclusive of the day named: someone asking for sessions until the 7th means the 7th.

@@ -17,7 +17,7 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from hyphae.sessions import project_predicate
+from hyphae.projects import project_predicate
 from hyphae.view import bounds
 from hyphae.view import format as fmt
 from hyphae.view.app import build_app

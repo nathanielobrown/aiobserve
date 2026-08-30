@@ -21,7 +21,7 @@ import duckdb
 from hyphae.export.duckdb import TABLES
 from hyphae.model import SessionTrace
 from hyphae.pipeline import SessionSource
-from hyphae.sessions import project_predicate, resolve_project
+from hyphae.projects import project_predicate, resolve_project
 
 # The tables that are the archive rather than the session's work: every line of every
 # transcript, and the tool outputs Claude Code wrote to files beside it. Nothing ships them,

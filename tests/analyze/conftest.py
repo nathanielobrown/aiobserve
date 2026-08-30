@@ -20,8 +20,8 @@ import pytest
 from hyphae import cli
 from hyphae.export.duckdb import DuckDbExporter
 from hyphae.extract.claude_code import ClaudeCodeExtractor
+from hyphae.extract.layout import SessionFiles
 from hyphae.pipeline import SessionSource
-from hyphae.sessions import SessionFiles
 from tests.conftest import (
     FIXTURES,
     MYCELIA,
