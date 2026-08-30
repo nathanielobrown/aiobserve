@@ -199,22 +199,22 @@ unchanged, the config is not.
 The design says the browser tier runs "unchanged". Read literally that is false, and the gap is
 worth naming before someone discovers it mid-implementation.
 
-- `tests/e2e/playwright.config.ts` hard-codes `PORT = 8479` and
-  `webServer.command = "mise run gallery --port ..."` with `cwd: "../.."`. Pointing the tier at
-  the Rust server needs an environment seam in that file — the command and the port read from the
-  environment, defaulting to today's values. The **specs** under `specs/` are genuinely unchanged;
-  they read only `routes.json` and `baseURL`
+- `tests/e2e/playwright.config.ts` hard-coded `PORT = 8479` and
+  `webServer.command = "mise run gallery --port ..."` with `cwd: "../.."`. It now reads three
+  values from the environment, each defaulting to what it was: the base URL, the server command,
+  and the readiness URL. The **specs** under `specs/` are genuinely unchanged; they read only
+  `routes.json` and `baseURL`
 - The tier tests the *gallery*, not the bare viewer: `tests/gallery/serve.py` builds a store from
   the redacted fixtures, writes enrichment rows through `build_enriched_store`, freezes
   `fmt.utcnow` to `corpus_now(store)` so pages hold still between launches, and mounts an index at
-  `/gallery` — which is also the config's readiness URL. The Rust server must answer all four.
-  The store file is the seam the design already declares, so the practical shape is: Python builds
-  the gallery store once, the Rust binary serves that file, and the Rust server grows a `/gallery`
-  index and the same frozen clock
+  `/gallery`. The store file is the seam the design already declares, so the practical shape is:
+  Python builds the gallery store once and the Rust binary serves that file, with `HYPHAE_FIXED_NOW`
+  set to the instant `corpus_now` derived. The `/gallery` index is Python's and stays there — no
+  spec visits it, and the readiness URL points at `/` instead
 - `gallery()` calls `build_app(store, dev=True)`, which puts `/static/dev-reload.js` on every page;
   that script opens an `EventSource` on `/dev/reload`. With `--dev` parity a non-goal, the Rust
-  server must either serve a quiet SSE endpoint there or omit the script — otherwise the sweep's
-  empty-console assertion fails on a page that is otherwise correct
+  server omits the script rather than growing a quiet SSE endpoint — which is what keeps the
+  sweep's empty-console assertion meaningful on a server that cannot reload
 
 ## Deliberately not covered
 
