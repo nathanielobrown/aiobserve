@@ -63,6 +63,44 @@ fn a_new_store_is_stamped_with_the_schema_version() {
     );
 }
 
+/// The Rust constant tracks the Python one, which is the source of truth.
+///
+/// `a_new_store_is_stamped_with_the_schema_version` compares the stamp against our own
+/// constant, so it stays green through a one-sided bump. This leaf reads
+/// `export/schema.py` instead: the two implementations write the same store file, and a
+/// Python bump the Rust side has not followed only shows up when a Python reader — the
+/// enrichment pass, the gallery build — opens a store this crate wrote.
+#[test]
+fn the_schema_version_tracks_the_python_one() {
+    let source = common::repo().join("src/hyphae/export/schema.py");
+    let text = std::fs::read_to_string(&source).expect("the Python schema module is readable");
+    let declared: Vec<i32> = text
+        .lines()
+        .filter_map(|line| line.strip_prefix("SCHEMA_VERSION = "))
+        .map(|value| {
+            value
+                .trim()
+                .parse()
+                .expect("SCHEMA_VERSION is declared as an integer literal")
+        })
+        .collect();
+    let [python] = declared[..] else {
+        panic!(
+            "expected one top-level SCHEMA_VERSION in {}, found {}",
+            source.display(),
+            declared.len()
+        );
+    };
+    assert_eq!(
+        schema::SCHEMA_VERSION,
+        python,
+        "schema versions have drifted: Rust (schema.rs) reads {}, Python \
+         (src/hyphae/export/schema.py) reads {python}. Whichever side moved, move the other \
+         — both write the same store file",
+        schema::SCHEMA_VERSION
+    );
+}
+
 /// A bound date arrives as a DATE, not as the text a date is written in.
 ///
 /// The session list's `until` filter adds an interval to the value it bound, which is a binder

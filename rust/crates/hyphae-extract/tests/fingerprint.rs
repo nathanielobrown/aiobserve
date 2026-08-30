@@ -47,7 +47,7 @@ fn a_change_to_any_session_file_moves_the_digest() {
     let directory = tempfile::tempdir().expect("a tempdir");
     let root = directory.path();
     let files = planted(root);
-    let before = fingerprint(&files, root, EXTRACTOR_VERSION).expect("the files are readable");
+    let mut before = fingerprint(&files, root, EXTRACTOR_VERSION).expect("the files are readable");
 
     // Every file but the main transcript, which is `files[0]`.
     let companions = &files[1..];
@@ -68,6 +68,10 @@ fn a_change_to_any_session_file_moves_the_digest() {
                 .expect("the file is under the tempdir")
                 .display()
         );
+        // Re-baseline, or every companion after the first is only compared against the
+        // original digest: a port that digests one file moves away from it once and then
+        // passes the rest of the loop for free.
+        before = after;
     }
 }
 
