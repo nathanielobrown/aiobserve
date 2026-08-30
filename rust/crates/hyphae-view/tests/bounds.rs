@@ -131,7 +131,7 @@ async fn a_preview_is_cut_at_the_ceiling_and_the_fetch_behind_it_is_not() {
     let (session_id, source, id) = a_tool(&served.db());
     let node = format!("/session/{session_id}/thread/{source}/tool/{id}");
     let fetch = format!("/fragment/input/session/{session_id}/thread/{source}/tool/{id}");
-    let ceiling = hyphae_store::queries::DETAIL_CHARS as usize;
+    let ceiling = hyphae_store::queries::DETAIL_CHARS;
     // The default: the preview stops at the ceiling and marks where it stopped.
     let (status, page) = served.page(&node).await;
     assert_eq!(status, StatusCode::OK);

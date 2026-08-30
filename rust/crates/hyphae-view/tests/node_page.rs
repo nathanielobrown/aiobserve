@@ -58,7 +58,7 @@ async fn a_response_that_is_not_a_page_still_carries_the_content_security_policy
         "/static/style.css",
         "/nothing/here",
     ] {
-        let response = served.get(&path).await;
+        let response = served.get(path).await;
         assert_eq!(
             response.headers()["content-security-policy"],
             CSP,
