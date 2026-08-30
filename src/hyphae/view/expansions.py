@@ -9,7 +9,7 @@ where the level below opens nothing further (`docs/viewer.md`).
 from collections.abc import Callable
 from typing import NamedTuple
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from starlette.routing import BaseRoute
 
@@ -264,7 +264,6 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         )
 
     def spilled(
-        request: Request,
         session_id: str,
         at: Ref,
         thread: str,
@@ -341,7 +340,6 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
 
     @router.get(f"{nodes.KIN_URL}/session/{{session_id}}/thread/{{source}}/{{kind}}/{{node_id}}")
     def node_kin(
-        request: Request,
         kind: str,
         session_id: str,
         source: str,
@@ -363,11 +361,10 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         if kind not in set(Kind):
             raise HTTPException(404, "No level is served for that kind of node.")
         at = Ref(kind=Kind(kind), source=source, node_id=node_id)
-        return spilled(request, session_id, at, thread, depth, opened, nav, kin, log, detail)
+        return spilled(session_id, at, thread, depth, opened, nav, kin, log, detail)
 
     @router.get(f"{nodes.KIN_URL}/session/{{session_id}}/{{kind}}/{{node_id}}")
     def loose_kin(
-        request: Request,
         kind: str,
         session_id: str,
         node_id: str,
@@ -388,6 +385,6 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         if kind not in set(Kind):
             raise HTTPException(404, "No level is served for that kind of node.")
         at = Ref(kind=Kind(kind), source=None, node_id=node_id)
-        return spilled(request, session_id, at, thread, depth, opened, nav, kin, log, detail)
+        return spilled(session_id, at, thread, depth, opened, nav, kin, log, detail)
 
     return router.routes

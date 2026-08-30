@@ -12,7 +12,7 @@ from math import ceil
 from typing import NamedTuple
 
 import duckdb
-from fastapi import HTTPException, Request
+from fastapi import HTTPException
 from fastapi.responses import Response
 
 from hyphae.analyze import queries
@@ -126,7 +126,6 @@ def header_bound(session_id: str) -> dict[str, ParamValue]:
 
 def browse(
     viewer: Viewer,
-    request: Request,
     session_id: str,
     source: str,
     nav: str,

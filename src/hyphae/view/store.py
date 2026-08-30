@@ -245,22 +245,6 @@ def window(
     return listed(rows, MATCHED_ROWS)
 
 
-def thread_outline(
-    connection: duckdb.DuckDBPyConnection, page: Library, cursor: str, **bindings: ParamValue
-) -> list[Row]:
-    """A whole thread in outline — a timeline's rows, id and cursor and clock only.
-
-    Two questions need the thread and not the page: which runs the session could place, and
-    which page each compaction falls on. Both are cheap here because the projection is three
-    scalars; neither can be answered from a window without changing what the answer means.
-    """
-    return fetch(
-        connection,
-        f"SELECT turn_id, {cursor}, started_at FROM ({_core(page)}) ORDER BY {cursor} NULLS LAST",
-        bindings,
-    )
-
-
 def cursorless_rows(
     connection: duckdb.DuckDBPyConnection,
     page: Library,

@@ -11,7 +11,7 @@ here unless there is a value to fetch.
 
 from collections.abc import Mapping
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from starlette.routing import BaseRoute
 
@@ -31,9 +31,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
     """Every fragment route, bound to one viewer, in the order `build_app` registers them."""
     router = APIRouter()
 
-    def counted(
-        request: Request, kind: Kind, session_id: str, source: str, node_id: str
-    ) -> Response:
+    def counted(kind: Kind, session_id: str, source: str, node_id: str) -> Response:
         """One node's numbers, for the popover its NavTree row fetches.
 
         `source` is the thread the window is read on, which is not always the thread the node
@@ -93,9 +91,7 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
         f"{nodes.NUMBERS_URL}/session/{{session_id}}/thread/{{source}}"
         f"/{Kind.COMPACTION}/{{compaction_id}}"
     )
-    def compaction_numbers(
-        request: Request, session_id: str, source: str, compaction_id: str
-    ) -> Response:
+    def compaction_numbers(session_id: str, source: str, compaction_id: str) -> Response:
         """One compaction's numbers: the window it dropped, and the word recorded for why.
 
         Its own route rather than a branch of `counted`, because a compaction shares nothing
@@ -124,23 +120,21 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
     @router.get(
         f"{nodes.NUMBERS_URL}/session/{{session_id}}/thread/{{source}}/{{kind}}/{{node_id}}"
     )
-    def node_numbers(
-        request: Request, kind: str, session_id: str, source: str, node_id: str
-    ) -> Response:
+    def node_numbers(kind: str, session_id: str, source: str, node_id: str) -> Response:
         """The numbers behind a turn, an api call, or a tool call recorded on a thread."""
         if kind not in nodes.NUMBERED:
             raise HTTPException(404, "No numbers are served for that kind of node.")
-        return counted(request, Kind(kind), session_id, source, node_id)
+        return counted(Kind(kind), session_id, source, node_id)
 
     @router.get(f"{nodes.NUMBERS_URL}/session/{{session_id}}/{Kind.RUN}/{{run_id}}")
-    def run_numbers(request: Request, session_id: str, run_id: str) -> Response:
+    def run_numbers(session_id: str, run_id: str) -> Response:
         """One agent run's numbers, read on the thread the run's id also names."""
-        return counted(request, Kind.RUN, session_id, run_id, run_id)
+        return counted(Kind.RUN, session_id, run_id, run_id)
 
     @router.get(f"{nodes.NUMBERS_URL}/session/{{session_id}}")
-    def session_numbers(request: Request, session_id: str) -> Response:
+    def session_numbers(session_id: str) -> Response:
         """A whole session's numbers: the main thread's window, and every thread's spend."""
-        return counted(request, Kind.SESSION, session_id, MAIN_SOURCE, session_id)
+        return counted(Kind.SESSION, session_id, MAIN_SOURCE, session_id)
 
     def fetched(value: Value, keyed: Mapping[str, ParamValue], column: str) -> tuple[Row, str]:
         """The one row a per-value fragment is for, and the query that found it.

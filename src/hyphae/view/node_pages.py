@@ -7,7 +7,7 @@ and the session's runs no tool call spawned — because a bucket gets a page lik
 """
 
 import duckdb
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from starlette.routing import BaseRoute
 
@@ -47,7 +47,6 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
 
     @router.get("/session/{session_id}")
     def session_page(
-        request: Request,
         session_id: str,
         nav: str = nodes.Preset.FULL,
         kin: int = bounds.KIN.default,
@@ -75,11 +74,10 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 ran=[(Page.TIMELINE, bound | {"offset": offset, "limit": log})],
             )
 
-        return browse(viewer, request, session_id, MAIN_SOURCE, nav, kin, log, detail, page, read)
+        return browse(viewer, session_id, MAIN_SOURCE, nav, kin, log, detail, page, read)
 
     @router.get("/session/{session_id}/thread/{source}/turn/{turn_id}")
     def turn_page(
-        request: Request,
         session_id: str,
         source: str,
         turn_id: str,
@@ -144,11 +142,10 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 ran=[(Page.TURN_HEADER, bound), *ran, (Page.TURN_RECORDS, thread)],
             )
 
-        return browse(viewer, request, session_id, source, nav, kin, log, detail, page, read)
+        return browse(viewer, session_id, source, nav, kin, log, detail, page, read)
 
     @router.get("/session/{session_id}/run/{run_id}")
     def run_page(
-        request: Request,
         session_id: str,
         run_id: str,
         nav: str = nodes.Preset.FULL,
@@ -225,11 +222,10 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 ],
             )
 
-        return browse(viewer, request, session_id, run_id, nav, kin, log, detail, page, read)
+        return browse(viewer, session_id, run_id, nav, kin, log, detail, page, read)
 
     @router.get("/session/{session_id}/thread/{source}/call/{api_call_id}")
     def call_page(
-        request: Request,
         session_id: str,
         source: str,
         api_call_id: str,
@@ -306,11 +302,10 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 ran=[(Page.CALL_HEADER, bound), (Fragment.CALL_TOOLS, tools)],
             )
 
-        return browse(viewer, request, session_id, source, nav, kin, log, detail, page, read)
+        return browse(viewer, session_id, source, nav, kin, log, detail, page, read)
 
     @router.get("/session/{session_id}/thread/{source}/tool/{tool_call_id}")
     def tool_page(
-        request: Request,
         session_id: str,
         source: str,
         tool_call_id: str,
@@ -393,11 +388,10 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 ran=[(Page.TOOL_HEADER, bound)],
             )
 
-        return browse(viewer, request, session_id, source, nav, kin, log, detail, page, read)
+        return browse(viewer, session_id, source, nav, kin, log, detail, page, read)
 
     @router.get("/session/{session_id}/thread/{source}/compaction/{compaction_id}")
     def compaction_page(
-        request: Request,
         session_id: str,
         source: str,
         compaction_id: str,
@@ -444,11 +438,10 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 ran=[(Page.COMPACTIONS, bound)],
             )
 
-        return browse(viewer, request, session_id, source, nav, kin, log, detail, page, read)
+        return browse(viewer, session_id, source, nav, kin, log, detail, page, read)
 
     @router.get("/session/{session_id}/thread/{source}/unattributed")
     def unattributed_page(
-        request: Request,
         session_id: str,
         source: str,
         nav: str = nodes.Preset.FULL,
@@ -476,11 +469,10 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 ran=[standing.ran, *ran],
             )
 
-        return browse(viewer, request, session_id, source, nav, kin, log, detail, page, read)
+        return browse(viewer, session_id, source, nav, kin, log, detail, page, read)
 
     @router.get("/session/{session_id}/unattached")
     def unattached_page(
-        request: Request,
         session_id: str,
         nav: str = nodes.Preset.FULL,
         kin: int = bounds.KIN.default,
@@ -510,6 +502,6 @@ def routes(viewer: Viewer) -> list[BaseRoute]:
                 ran=[],
             )
 
-        return browse(viewer, request, session_id, MAIN_SOURCE, nav, kin, log, detail, page, read)
+        return browse(viewer, session_id, MAIN_SOURCE, nav, kin, log, detail, page, read)
 
     return router.routes
