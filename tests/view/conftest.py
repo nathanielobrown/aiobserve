@@ -22,7 +22,7 @@ import pytest
 from fastapi.testclient import TestClient
 from markupsafe import escape
 
-from hyphae.analyze import queries
+from hyphae.analyze import macros, queries
 from hyphae.extract.pricing import MODELS
 from hyphae.view.app import build_app
 from hyphae.view.nodes import BAR_STEPS
@@ -113,9 +113,14 @@ def client(corpus_db: Path) -> Iterator[TestClient]:
 
 @pytest.fixture(scope="session")
 def store(corpus_db: Path) -> Iterator[duckdb.DuckDBPyConnection]:
-    """A read-only connection for the expectations — what the page is checked against."""
+    """A read-only connection for the expectations — what the page is checked against.
+
+    Opened the way a request opens one (`view/store.py:open_store`), macros and all: a library
+    query calls them by name, so a bare connection answers a catalog error rather than rows.
+    """
     connection = duckdb.connect(str(corpus_db), read_only=True)
     connection.execute("SET TimeZone='UTC'")
+    macros.install(connection)
     yield connection
     connection.close()
 

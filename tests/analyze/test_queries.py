@@ -265,6 +265,23 @@ def test_a_citation_with_nothing_bound_ends_at_the_query_file() -> None:
 
 
 @pytest.mark.parametrize("name", NAMES)
+def test_no_query_spells_the_one_past_the_width_cut_by_hand(name: str) -> None:
+    """The cut protocol is `cut(value, $width)` and nothing else, so it cannot drift.
+
+    A query writing `substr(x, 1, $w + 1)` runs the same way today, which is why the library
+    accumulated fifty copies of it — and a copy that dropped the `+ 1` served a value cut
+    where `view/format.py:cut` could no longer mark it, with the whole tier green.
+
+    Cutting *at* a width is still allowed and is what the remaining `substr` calls do: a
+    closed vocabulary, a value guarded by its own length check, or a cap a report states.
+    Those read as exceptions now, which is the other half of naming the rule.
+    """
+    assert not re.search(r",\s*1,\s*\$\w+\s*\+\s*1\s*\)", statement(name)), (
+        f"{name} writes the cut by hand: call cut(value, $width) instead"
+    )
+
+
+@pytest.mark.parametrize("name", NAMES)
 def test_the_manifest_declares_exactly_the_parameters_the_sql_uses(name: str) -> None:
     """No parameter goes unbound, and no manifest entry describes one that is gone."""
     assert declared_parameters(name) == set(QUERIES[name].params)

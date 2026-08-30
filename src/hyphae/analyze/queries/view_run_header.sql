@@ -11,13 +11,13 @@ SELECT
     -- whatever the spawning agent typed in the Agent tool's `description`, the definition it
     -- named, and the model the run answered on. Nothing on the far side of any of them bounds
     -- what it holds — an agent definition is named by whoever writes it.
-    substr(a.agent_type, 1, $head_chars + 1) AS agent_type,
+    cut(a.agent_type, $head_chars) AS agent_type,
     -- The task brief, cut one character past a pane's width — the protocol
     -- `view/format.py:cut` reads — with its whole length beside it; the rest is fetched as
     -- one value (`view_run_brief`).
-    substr(a.brief, 1, $detail_chars + 1) AS brief,
+    cut(a.brief, $detail_chars) AS brief,
     length(a.brief) AS brief_chars,
-    substr(a.model, 1, $head_chars + 1) AS model,
+    cut(a.model, $head_chars) AS model,
     -- What the run was asked and what its parent got back, both read off the one call that
     -- spawned it: Claude Code records a run's instructions as that call's `prompt` and the
     -- run's answer as its `result`. The answer is what the parent received and not the run's
@@ -25,9 +25,9 @@ SELECT
     -- the JSON field rather than on the tool's name, because a run spawned by something other
     -- than `Agent` is asked in whatever that tool's arguments are called. Both are cut one
     -- character past a pane's width, and fetched whole as `view_run_prompt`/`view_run_result`.
-    substr(json_extract_string(tc.input, '$.prompt'), 1, $detail_chars + 1) AS prompt,
+    cut(json_extract_string(tc.input, '$.prompt'), $detail_chars) AS prompt,
     length(json_extract_string(tc.input, '$.prompt')) AS prompt_chars,
-    substr(tc.result, 1, $detail_chars + 1) AS result,
+    cut(tc.result, $detail_chars) AS result,
     length(tc.result) AS result_chars,
     a.spawn_depth,
     a.is_fork,

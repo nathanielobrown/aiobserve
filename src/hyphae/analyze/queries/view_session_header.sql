@@ -29,16 +29,16 @@ WITH skill AS (
 )
 SELECT
     s.id AS session_id,
-    substr(s.title, 1, $head_chars + 1) AS title,
-    substr(s.project_dir, 1, $head_chars + 1) AS project_dir,
+    cut(s.title, $head_chars) AS title,
+    cut(s.project_dir, $head_chars) AS project_dir,
     -- The same path, whole, for the one surface that filters by it rather than printing it:
     -- the crumb above the session opens the list narrowed to this project, and the filter
     -- matches a path prefix, so a cut path would open a list of nothing. NULL where the whole
     -- one is longer than the head — a link that cannot be minted is a crumb printed as text.
     CASE WHEN length(s.project_dir) <= $head_chars THEN s.project_dir END AS project_filter,
-    substr(s.git_branch, 1, $head_chars + 1) AS git_branch,
-    substr(s.version, 1, $head_chars + 1) AS version,
-    substr(s.entrypoint, 1, $head_chars + 1) AS entrypoint,
+    cut(s.git_branch, $head_chars) AS git_branch,
+    cut(s.version, $head_chars) AS version,
+    cut(s.entrypoint, $head_chars) AS entrypoint,
     r.started_at,
     r.ended_at,
     -- Wall time counts the gaps the user spent away; `active_ms` is what Claude Code
@@ -59,10 +59,10 @@ SELECT
     r.cache_read_tokens,
     r.cache_creation_tokens,
     list_transform(list_slice(skill.names, 1, $head_items),
-        name -> substr(name, 1, $item_chars + 1)) AS skills,
+        name -> cut(name, $item_chars)) AS skills,
     greatest(len(skill.names) - $head_items, 0) AS skills_cut,
     list_transform(list_slice(pr.urls, 1, $head_items),
-        url -> substr(url, 1, $item_chars + 1)) AS pr_urls,
+        url -> cut(url, $item_chars)) AS pr_urls,
     greatest(len(pr.urls) - $head_items, 0) AS pr_urls_cut,
     -- The session's bar reads fullness alone: there is no turn before the session for it to
     -- have added anything to, so the tip is left unsaid.

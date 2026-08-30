@@ -11,8 +11,8 @@ SELECT
     -- through the join rather than off the column: a fork replays its parent's turn, so its
     -- calls carry a turn id recorded on the parent's thread and belong to neither.
     t.id AS turn_id,
-    substr(c.model, 1, $head_chars + 1) AS model,
-    substr(c.fallback_from, 1, $head_chars + 1) AS fallback_from,
+    cut(c.model, $head_chars) AS model,
+    cut(c.fallback_from, $head_chars) AS fallback_from,
     c.effort,
     c.stop_reason,
     c.attribution_skill,
@@ -24,9 +24,9 @@ SELECT
     round(c.cost_usd, 4) AS cost_usd,
     -- A NULL cost is a model our price table lacks, not a call that was free.
     (c.cost_usd IS NULL)::INTEGER AS unpriced_api_calls,
-    substr(c.text, 1, $detail_chars + 1) AS text_head,
+    cut(c.text, $detail_chars) AS text_head,
     length(c.text) AS text_chars,
-    substr(c.thinking, 1, $detail_chars + 1) AS thinking_head,
+    cut(c.thinking, $detail_chars) AS thinking_head,
     length(c.thinking) AS thinking_chars,
     (
         SELECT count(*) FROM live_tool_calls t

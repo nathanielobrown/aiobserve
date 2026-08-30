@@ -11,10 +11,10 @@
 SELECT
     'turn' AS level,
     e.turn_id AS item_id,
-    substr(e.description, 1, $description_chars + 1) AS description,
+    cut(e.description, $description_chars) AS description,
     substr(e.category, 1, $tag_chars) AS category,
     substr(e.outcome, 1, $tag_chars) AS outcome,
-    substr(e.friction, 1, $description_chars + 1) AS friction,
+    cut(e.friction, $description_chars) AS friction,
     -- How long each of the two runs whole, which is what the link beside a cut one offers.
     length(e.description) AS description_chars,
     length(e.friction) AS friction_chars,
@@ -32,10 +32,10 @@ UNION ALL
 -- it and the session page lists them all, and both want the same tags.
 SELECT
     'agent_run', e.agent_run_id,
-    substr(e.description, 1, $description_chars + 1),
+    cut(e.description, $description_chars),
     substr(e.category, 1, $tag_chars),
     substr(e.outcome, 1, $tag_chars),
-    substr(e.friction, 1, $description_chars + 1),
+    cut(e.friction, $description_chars),
     length(e.description), length(e.friction),
     substr(e.model, 1, $head_chars), e.enriched_at,
     e.prompt_version, e.taxonomy_version
@@ -45,10 +45,10 @@ UNION ALL
 -- The session's own row is keyed by the session, so the item id is the session id.
 SELECT
     'session', e.session_id,
-    substr(e.description, 1, $description_chars + 1),
+    cut(e.description, $description_chars),
     substr(e.category, 1, $tag_chars),
     substr(e.outcome, 1, $tag_chars),
-    substr(e.friction, 1, $description_chars + 1),
+    cut(e.friction, $description_chars),
     length(e.description), length(e.friction),
     substr(e.model, 1, $head_chars), e.enriched_at,
     e.prompt_version, e.taxonomy_version
