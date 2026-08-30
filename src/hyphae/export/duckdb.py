@@ -329,6 +329,9 @@ def open_trace_store(path: Path, *, read_only: bool) -> Generator[duckdb.DuckDBP
     Keyword-only from `read_only` on, and it has no default: DuckDB admits one writer at a
     time, so a reader that takes the write lock by accident locks the viewer out.
 
+    Timestamps come back as UTC whatever the machine's clock is set to: a page rendered or a
+    corpus window measured in local time reproduces no citation of the same rows.
+
     The block owns the connection, including on the way out through an exception — a refusal
     that kept it would hold DuckDB's lock until the process ended.
     """

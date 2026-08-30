@@ -139,6 +139,6 @@ The viewer closes its database connection after each request, leaving `hp extrac
 
 - If an extract starts while a page request holds the store, the extract fails with DuckDB's lock error. Reload the page, then run the extract again
 - If a page loads while an extract holds the lock, the viewer returns 503 and says the store is being written. Reload after the writer releases the lock
-- If a re-extract changes the schema while the viewer runs, the viewer returns 503 with the schema version this build expects. Restart the viewer
+- If a re-extract changes the schema while the viewer runs, the viewer returns 503 naming both versions and the one action that fits the store on disk — migrate it by opening it for write, or extract into a fresh one. Restart the viewer afterwards
 
 The viewer fails at startup if the store is missing, its schema is unsupported, or the port is already in use.

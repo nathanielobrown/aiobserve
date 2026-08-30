@@ -17,7 +17,7 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from hyphae.export.schema import SCHEMA_VERSION
+from hyphae.export.schema import MIGRATE_REMEDY, SCHEMA_MISMATCH_REMEDY, SCHEMA_VERSION
 from hyphae.view.app import CSP, build_app, serve
 from hyphae.view.components import parts
 from hyphae.view.store import SchemaMoved, StoreLocked
@@ -50,18 +50,36 @@ def test_a_locked_store_answers_503(copy: Path) -> None:
         assert client.get("/").status_code == 200
 
 
-def test_a_store_replaced_under_the_viewer_is_caught_per_request(copy: Path) -> None:
+@pytest.mark.parametrize(
+    ("held", "remedy"),
+    # A store this build is too old for: nothing carries it back, so the reader is sent to the
+    # guide rather than to `rm`. And one this build is a migration ahead of, which a write
+    # open would carry forward — the case the viewer cannot fix itself but can name.
+    [
+        (SCHEMA_VERSION + 1, SCHEMA_MISMATCH_REMEDY),
+        (SCHEMA_VERSION - 1, MIGRATE_REMEDY),
+    ],
+    ids=["newer", "migratable"],
+)
+def test_a_store_replaced_under_the_viewer_is_caught_per_request(
+    copy: Path, held: int, remedy: str
+) -> None:
     """A re-extract between two page loads is refused rather than half-read."""
     with TestClient(build_app(copy)) as client:
         assert client.get("/").status_code == 200
         # The store the viewer started against is gone: this is what a schema bump plus a
         # fresh extract looks like from inside a running viewer.
         connection = duckdb.connect(str(copy))
-        connection.execute("UPDATE meta SET schema_version = ?", [SCHEMA_VERSION + 1])
+        connection.execute("UPDATE meta SET schema_version = ?", [held])
         connection.close()
         response = client.get("/")
     assert response.status_code == 503
-    assert str(SCHEMA_VERSION) in fields(response.text, "id", "error")["message"]
+    # The page names both versions, and the one thing to do about this store in particular —
+    # a reader told to extract into a fresh store when a migration would have carried this
+    # one forward can throw away the only copy of a pruned session.
+    message = fields(response.text, "id", "error")["message"]
+    assert str(SCHEMA_VERSION) in message and str(held) in message
+    assert remedy in message
 
 
 def test_a_store_this_build_cannot_read_is_refused_at_launch(copy: Path) -> None:
@@ -75,8 +93,12 @@ def test_a_store_this_build_cannot_read_is_refused_at_launch(copy: Path) -> None
 
 def test_a_store_that_is_not_there_is_refused_at_launch(tmp_path: Path) -> None:
     """A typo in `--db` is an error at startup, not an empty session list."""
-    with pytest.raises(duckdb.IOException):
-        build_app(tmp_path / "nothing.duckdb")
+    missing = tmp_path / "nothing.duckdb"
+    # Named as a missing store rather than as DuckDB's own I/O failure: the viewer creates
+    # nothing, so the only thing wrong is the path.
+    with pytest.raises(FileNotFoundError) as refused:
+        build_app(missing)
+    assert str(missing) in str(refused.value)
 
 
 def test_a_locked_store_is_refused_at_launch(copy: Path) -> None:
