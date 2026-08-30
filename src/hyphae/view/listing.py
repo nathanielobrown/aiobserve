@@ -21,7 +21,6 @@ from urllib.parse import urlencode
 import duckdb
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
-from starlette.routing import BaseRoute
 
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
@@ -32,6 +31,7 @@ from hyphae.view.citation import cited
 from hyphae.view.components import listing as components
 from hyphae.view.components.listing import LIST_URL, Control
 from hyphae.view.components.parts import Count
+from hyphae.view.deps import ViewerDep
 from hyphae.view.enrichment import enriched
 from hyphae.view.store import (
     Page,
@@ -40,7 +40,6 @@ from hyphae.view.store import (
     open_store,
     page_rows,
 )
-from hyphae.view.viewer import Viewer
 
 # What the session list can be sorted by: a column of `view_sessions`, mapped to its header
 # label. A closed dictionary, and the only place a request's `sort` value is ever looked up —
@@ -319,149 +318,146 @@ def _session_row(row: Row) -> components.SessionRow:
     )
 
 
-def routes(viewer: Viewer) -> list[BaseRoute]:
-    """The store's two lists as pages, bound to one viewer, in registration order."""
-    router = APIRouter()
+router = APIRouter()
 
-    @router.get("/")
-    def projects_page() -> Response:
-        """Every project the store holds sessions for, most recently active first."""
-        # The clock both trailing windows are measured back from, read here and bound like
-        # any other parameter. The query reads no clock of its own: a page counting "the last
-        # 7 days" from SQL's `now()` would cite a line that answers something else tomorrow,
-        # and the footer's whole promise is that a reader can re-run what the page ran.
-        bound: dict[str, ParamValue] = {
-            "as_of": fmt.utcnow().date(),
-            "recent_days": queries.PAGE_RECENT_DAYS,
-            "window_days": queries.PAGE_WINDOW_DAYS,
-            "head_chars": queries.LIST_CHARS,
-            "projects": bounds.PROJECTS.default,
-        }
-        with open_store(viewer.db) as connection:
-            rows = page_rows(connection, Page.PROJECT_ROLLUPS, **bound)
-        return viewer.html(
-            components.projects_page(
-                rows=[_project_row(row) for row in rows],
-                # The bindings the two window headings print, so a heading and its column read
-                # the same numbers — the citation below carries them too.
-                recent_days=queries.PAGE_RECENT_DAYS,
-                window_days=queries.PAGE_WINDOW_DAYS,
-                # What the page cut, which the query counted before its LIMIT: a landing page
-                # that silently dropped projects would be a corpus a reader cannot see.
-                cut=(rows[0]["matched_projects"] - len(rows)) if rows else 0,
-                citations={Page.PROJECT_ROLLUPS.value: cited(Page.PROJECT_ROLLUPS, bound)},
-                dev=viewer.dev,
-            )
+
+@router.get("/")
+def projects_page(viewer: ViewerDep) -> Response:
+    """Every project the store holds sessions for, most recently active first."""
+    # The clock both trailing windows are measured back from, read here and bound like
+    # any other parameter. The query reads no clock of its own: a page counting "the last
+    # 7 days" from SQL's `now()` would cite a line that answers something else tomorrow,
+    # and the footer's whole promise is that a reader can re-run what the page ran.
+    bound: dict[str, ParamValue] = {
+        "as_of": fmt.utcnow().date(),
+        "recent_days": queries.PAGE_RECENT_DAYS,
+        "window_days": queries.PAGE_WINDOW_DAYS,
+        "head_chars": queries.LIST_CHARS,
+        "projects": bounds.PROJECTS.default,
+    }
+    with open_store(viewer.db) as connection:
+        rows = page_rows(connection, Page.PROJECT_ROLLUPS, **bound)
+    return viewer.html(
+        components.projects_page(
+            rows=[_project_row(row) for row in rows],
+            # The bindings the two window headings print, so a heading and its column read
+            # the same numbers — the citation below carries them too.
+            recent_days=queries.PAGE_RECENT_DAYS,
+            window_days=queries.PAGE_WINDOW_DAYS,
+            # What the page cut, which the query counted before its LIMIT: a landing page
+            # that silently dropped projects would be a corpus a reader cannot see.
+            cut=(rows[0]["matched_projects"] - len(rows)) if rows else 0,
+            citations={Page.PROJECT_ROLLUPS.value: cited(Page.PROJECT_ROLLUPS, bound)},
+            dev=viewer.dev,
         )
+    )
 
-    @router.get(LIST_URL)
-    def session_list(
-        request: Request,
-        sort: str = DEFAULT_SORT,
-        direction: str = DEFAULT_DIRECTION,
-        page: int = 1,
-        size: int = bounds.SESSIONS.default,
-    ) -> Response:
-        """One page of sessions, under the filter, sort and size the URL carries."""
-        if sort not in SORTS or direction not in DIRECTIONS:
-            raise HTTPException(
-                400,
-                f"Sort by one of {', '.join(SORTS)}, in direction {' or '.join(DIRECTIONS)}.",
-            )
-        if page < 1 or not 1 <= size <= bounds.SESSIONS.ceiling:
-            raise HTTPException(
-                400, f"Ask for page 1 or later, at a size between 1 and {bounds.SESSIONS.ceiling}."
-            )
-        filters = narrowing(request.query_params)
-        # What the URL said, kept as text: the links have to reproduce the request, and the
-        # form has to come back filled in with what was typed into it.
-        given = {key: request.query_params.get(key, "") for key in FILTERS}
-        with open_store(viewer.db) as connection:
-            # Whether the store holds the enrichment tables at all, which decides both what
-            # the list joins and what it cites: a page cites what it ran.
-            describes = enriched(connection)
-            rows, more = sorted_sessions(
-                connection, sort, direction, page, size, filters, described=describes
-            )
-            projects = page_rows(
-                connection,
-                Page.PROJECTS,
-                head_chars=queries.LIST_CHARS,
-                head_projects=queries.LIST_PROJECTS,
-            )
-        # A header link flips the direction of the column already sorted by, and opens any
-        # other column at the direction that puts its largest values first. Re-sorting starts
-        # from the first page: page 4 of one order says nothing about page 4 of another.
-        flipped = "asc" if direction == "desc" else "desc"
-        links = {
-            key: list_url(key, flipped if key == sort else DEFAULT_DIRECTION, 1, size, given)
-            for key in SORTS
-        }
-        return viewer.html(
-            components.sessions_page(
-                rows=[_session_row(row) for row in rows],
-                # One heading per sortable column, in `SORTS` order, each carrying the link
-                # that re-sorts by it.
-                headings=[
-                    components.Heading(key, label, links[key]) for key, label in SORTS.items()
-                ],
-                sort=sort,
-                direction=direction,
-                # The same ordering in ARIA's vocabulary, for the heading that marks it: the
-                # form and the links carry the query string's word, the mark carries ARIA's.
-                aria_direction=ARIA_SORT[direction],
-                # One input per filter, in `FILTERS` order, carrying what this request asked.
-                controls=[
-                    Control(key, CONTROLS[spec.type], given[key]) for key, spec in FILTERS.items()
-                ],
-                projects=[row["project_dir"] for row in projects],
-                pages=components.Pages(
-                    first=(page - 1) * size + 1,
-                    shown=len(rows),
-                    previous=list_url(sort, direction, page - 1, size, given) if page > 1 else None,
-                    next=list_url(sort, direction, page + 1, size, given) if more else None,
+
+@router.get(LIST_URL)
+def session_list(
+    request: Request,
+    viewer: ViewerDep,
+    sort: str = DEFAULT_SORT,
+    direction: str = DEFAULT_DIRECTION,
+    page: int = 1,
+    size: int = bounds.SESSIONS.default,
+) -> Response:
+    """One page of sessions, under the filter, sort and size the URL carries."""
+    if sort not in SORTS or direction not in DIRECTIONS:
+        raise HTTPException(
+            400,
+            f"Sort by one of {', '.join(SORTS)}, in direction {' or '.join(DIRECTIONS)}.",
+        )
+    if page < 1 or not 1 <= size <= bounds.SESSIONS.ceiling:
+        raise HTTPException(
+            400, f"Ask for page 1 or later, at a size between 1 and {bounds.SESSIONS.ceiling}."
+        )
+    filters = narrowing(request.query_params)
+    # What the URL said, kept as text: the links have to reproduce the request, and the
+    # form has to come back filled in with what was typed into it.
+    given = {key: request.query_params.get(key, "") for key in FILTERS}
+    with open_store(viewer.db) as connection:
+        # Whether the store holds the enrichment tables at all, which decides both what
+        # the list joins and what it cites: a page cites what it ran.
+        describes = enriched(connection)
+        rows, more = sorted_sessions(
+            connection, sort, direction, page, size, filters, described=describes
+        )
+        projects = page_rows(
+            connection,
+            Page.PROJECTS,
+            head_chars=queries.LIST_CHARS,
+            head_projects=queries.LIST_PROJECTS,
+        )
+    # A header link flips the direction of the column already sorted by, and opens any
+    # other column at the direction that puts its largest values first. Re-sorting starts
+    # from the first page: page 4 of one order says nothing about page 4 of another.
+    flipped = "asc" if direction == "desc" else "desc"
+    links = {
+        key: list_url(key, flipped if key == sort else DEFAULT_DIRECTION, 1, size, given)
+        for key in SORTS
+    }
+    return viewer.html(
+        components.sessions_page(
+            rows=[_session_row(row) for row in rows],
+            # One heading per sortable column, in `SORTS` order, each carrying the link
+            # that re-sorts by it.
+            headings=[components.Heading(key, label, links[key]) for key, label in SORTS.items()],
+            sort=sort,
+            direction=direction,
+            # The same ordering in ARIA's vocabulary, for the heading that marks it: the
+            # form and the links carry the query string's word, the mark carries ARIA's.
+            aria_direction=ARIA_SORT[direction],
+            # One input per filter, in `FILTERS` order, carrying what this request asked.
+            controls=[
+                Control(key, CONTROLS[spec.type], given[key]) for key, spec in FILTERS.items()
+            ],
+            projects=[row["project_dir"] for row in projects],
+            pages=components.Pages(
+                first=(page - 1) * size + 1,
+                shown=len(rows),
+                previous=list_url(sort, direction, page - 1, size, given) if page > 1 else None,
+                next=list_url(sort, direction, page + 1, size, given) if more else None,
+            ),
+            # Whether the store holds an enrichment pass's answers at all, which decides
+            # whether the list carries a work column: an empty one over a store no pass
+            # has touched is a claim the store cannot support.
+            describes=describes,
+            citations={
+                Page.SESSIONS.value: cited(
+                    Page.SESSIONS,
+                    {
+                        "sort": sort,
+                        "direction": direction,
+                        "limit": size,
+                        "offset": (page - 1) * size,
+                        # What the page shows of each row, which is composed around the
+                        # query like the paging is: re-running the file alone answers
+                        # with whole titles, paths and skill lists.
+                        "head_chars": queries.LIST_CHARS,
+                        "item_chars": queries.LIST_ITEM_CHARS,
+                        "head_items": queries.LIST_ITEMS,
+                        **filters,
+                    },
                 ),
-                # Whether the store holds an enrichment pass's answers at all, which decides
-                # whether the list carries a work column: an empty one over a store no pass
-                # has touched is a claim the store cannot support.
-                describes=describes,
-                citations={
-                    Page.SESSIONS.value: cited(
-                        Page.SESSIONS,
-                        {
-                            "sort": sort,
-                            "direction": direction,
-                            "limit": size,
-                            "offset": (page - 1) * size,
-                            # What the page shows of each row, which is composed around the
-                            # query like the paging is: re-running the file alone answers
-                            # with whole titles, paths and skill lists.
-                            "head_chars": queries.LIST_CHARS,
-                            "item_chars": queries.LIST_ITEM_CHARS,
-                            "head_items": queries.LIST_ITEMS,
-                            **filters,
-                        },
-                    ),
-                    # Joined to that page rather than run against it, so it is cited on its
-                    # own — and only over a store whose enrichment tables exist to join.
-                    **(
-                        {
-                            Page.DESCRIBED_SESSIONS.value: cited(
-                                Page.DESCRIBED_SESSIONS,
-                                {
-                                    "head_chars": queries.LIST_CHARS,
-                                    "tag_chars": queries.TAG_CHARS,
-                                    "kind_chars": queries.TAG_CHARS,
-                                    "head_kinds": queries.LIST_CATEGORIES,
-                                },
-                            )
-                        }
-                        if describes
-                        else {}
-                    ),
-                },
-                dev=viewer.dev,
-            )
+                # Joined to that page rather than run against it, so it is cited on its
+                # own — and only over a store whose enrichment tables exist to join.
+                **(
+                    {
+                        Page.DESCRIBED_SESSIONS.value: cited(
+                            Page.DESCRIBED_SESSIONS,
+                            {
+                                "head_chars": queries.LIST_CHARS,
+                                "tag_chars": queries.TAG_CHARS,
+                                "kind_chars": queries.TAG_CHARS,
+                                "head_kinds": queries.LIST_CATEGORIES,
+                            },
+                        )
+                    }
+                    if describes
+                    else {}
+                ),
+            },
+            dev=viewer.dev,
         )
-
-    return router.routes
+    )
