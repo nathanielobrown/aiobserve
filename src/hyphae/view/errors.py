@@ -27,7 +27,7 @@ from hyphae.view import bounds
 from hyphae.view.builders import tool_node
 from hyphae.view.nav_tree import Ran
 from hyphae.view.nodes import NO_LEDGER, Node
-from hyphae.view.store import Page, cut, page_rows
+from hyphae.view.store import Page, dropped, page_rows
 
 
 class Failure(NamedTuple):
@@ -64,7 +64,7 @@ def failures(connection: duckdb.DuckDBPyConnection, session_id: str) -> Failures
     ]
     # Counted by the query before its LIMIT bit, so a page that cut some says how many rather
     # than reading as the whole list.
-    return Failures(listed, cut(rows), [(Page.SESSION_ERRORS, bound)])
+    return Failures(listed, dropped(rows), [(Page.SESSION_ERRORS, bound)])
 
 
 class Step(NamedTuple):

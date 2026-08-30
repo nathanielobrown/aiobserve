@@ -35,7 +35,7 @@ from hyphae.view.store import (
     SORTS,
     Page,
     Row,
-    cut,
+    dropped,
     list_bound,
     open_store,
     page_rows,
@@ -206,7 +206,7 @@ def projects_page(viewer: ViewerDep) -> Response:
             window_days=queries.PAGE_WINDOW_DAYS,
             # What the page cut, which the query counted before its LIMIT: a landing page
             # that silently dropped projects would be a corpus a reader cannot see.
-            cut=cut(rows),
+            cut=dropped(rows),
             citations={Page.PROJECT_ROLLUPS.value: cited(Page.PROJECT_ROLLUPS, bound)},
             dev=viewer.dev,
         )

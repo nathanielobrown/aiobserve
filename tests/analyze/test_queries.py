@@ -271,9 +271,7 @@ AT_WIDTH = re.compile(r"substr\((.*?),\s*1,\s*\$(\w+)\s*\)")
 
 def cut_at_width(name: str) -> set[str]:
     """Every value one query cuts *at* a width by hand, spelled as the query spells it."""
-    return {
-        argument.strip() for argument, _ in AT_WIDTH.findall(" ".join(statement(name).split()))
-    }
+    return {argument.strip() for argument, _ in AT_WIDTH.findall(" ".join(statement(name).split()))}
 
 
 # Every hand-spelled `substr(value, 1, $width)` the library still holds, keyed by its query.
