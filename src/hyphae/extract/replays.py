@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from hyphae.extract.agent_runs import _is_fork
-from hyphae.extract.records.registry import TranscriptSchemaError
+from hyphae.extract.errors import TranscriptSchemaError
 from hyphae.extract.transcript import _Line, _timestamp
 from hyphae.model import MAIN_SOURCE
 
