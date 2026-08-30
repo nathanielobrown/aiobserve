@@ -31,7 +31,7 @@ folded AS (
     FROM corpus_rollups r
 )
 SELECT
-    substr(root, 1, $head_chars) AS project_dir,
+    cut(root, $head_chars) AS project_dir,
     CASE WHEN length(root) <= $head_chars THEN root END AS project_filter,
     count(*) FILTER (in_recent) AS recent_sessions,
     round(sum(cost_usd) FILTER (in_recent), 4) AS recent_cost,
