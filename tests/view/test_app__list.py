@@ -24,7 +24,7 @@ from hyphae.view.listing import (
     DEFAULT_DIRECTION,
     DEFAULT_SORT,
 )
-from hyphae.view.store import DIRECTIONS, SORTS
+from hyphae.view.store import DIRECTIONS, SORTS, Page
 from tests.conftest import (
     NO_PROJECT_SESSION,
     SPINE,
@@ -389,6 +389,11 @@ def test_the_list_is_served_a_page_at_a_time(
     string fetched, unescaped as a browser would unescape it. A test that built its own
     `?page=` would tile the store just as well against a pager pointing at the wrong page,
     so following the link is what puts the link under test.
+
+    The footer is read on every page for the same reason: the query reads one row past the
+    page so the pager can learn there is another, and the citation quotes the size the reader
+    asked for rather than that probe. A footer citing the probe would offer a row the page
+    never showed (`view/store.py:PAGER_PROBE`).
     """
     size = 5
     seen: list[str] = []
@@ -398,6 +403,7 @@ def test_the_list_is_served_a_page_at_a_time(
         html = client.get(url).text
         rows = values(html, "data-session-id")
         assert len(rows) <= size
+        assert f"limit={size}" in fields(html, "id", "citation")[Page.SESSIONS.value].split()
         seen += rows
         onward = {unescape(href) for href in inside(html, "data-page", "next", "href")}
         if not onward:

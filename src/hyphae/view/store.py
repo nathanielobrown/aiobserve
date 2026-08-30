@@ -357,6 +357,39 @@ SHOWN = """SELECT * EXCLUDE (pr_urls) REPLACE (
    greatest(len(coalesce(agent_types, [])) - $head_items, 0) AS agent_types_cut FROM"""
 
 
+# How many rows past the page the list reads: enough to know whether there is another page,
+# never enough to show one. `sorted_sessions` is the only place it is spent, and the citation
+# under the page quotes the size the reader asked for instead (`view/listing.py`).
+PAGER_PROBE = 1
+
+# What the description joined to a page of the list cuts its own strings to. Bound by the query
+# when there is an enrichment pass to join, and cited on its own when there is — the same four
+# values either way, because a citation is what its page ran.
+DESCRIBED_BOUND: dict[str, ParamValue] = {
+    "head_chars": queries.LIST_CHARS,
+    "tag_chars": queries.TAG_CHARS,
+    "kind_chars": queries.TAG_CHARS,
+    "head_kinds": queries.LIST_CATEGORIES,
+}
+
+
+def list_bound(page: int, size: int, filters: Mapping[str, ParamValue]) -> dict[str, ParamValue]:
+    """What one page of the session list binds: its window, its row cut, and its filters.
+
+    Read twice — by the query below, and by the citation the page prints under it
+    (`view/listing.py`) — because a citation that drifted from its query is a false citation.
+    The one difference between the two is the query's `PAGER_PROBE`, added where it is spent.
+    """
+    return {
+        "limit": size,
+        "offset": (page - 1) * size,
+        "head_chars": queries.LIST_CHARS,
+        "item_chars": queries.LIST_ITEM_CHARS,
+        "head_items": queries.LIST_ITEMS,
+        **filters,
+    }
+
+
 class Listing(NamedTuple):
     """One page of the session list, and whether the store holds another after it."""
 
@@ -401,20 +434,14 @@ def sorted_sessions(
     # whichever way a URL was typed.
     applied = [FILTERS[key].predicate for key in FILTERS if key in filters]
     where = f" WHERE {' AND '.join(applied)}" if applied else ""
-    # One row past the page: cheaper than a second query, and all a pager needs to know.
-    bound: dict[str, ParamValue] = {
-        "limit": size + 1,
-        "offset": (page - 1) * size,
-        "head_chars": queries.LIST_CHARS,
-        "item_chars": queries.LIST_ITEM_CHARS,
-        "head_items": queries.LIST_ITEMS,
-        **filters,
-    }
+    bound = list_bound(page, size, filters)
+    # The one place the query and the citation under it differ, and deliberately: reading a row
+    # past the page is cheaper than a second query and all a pager needs to know there is
+    # another one, while a footer quoting that limit would offer a row the page never showed.
+    bound["limit"] = size + PAGER_PROBE
     # The joined query cuts its own strings, and takes the same head a row's other strings do.
     if described:
-        bound["tag_chars"] = queries.TAG_CHARS
-        bound["kind_chars"] = queries.TAG_CHARS
-        bound["head_kinds"] = queries.LIST_CATEGORIES
+        bound |= DESCRIBED_BOUND
     rows = fetch(
         connection,
         f"{SHOWN} (SELECT * FROM ({_core(Page.SESSIONS)}){joined}{where}"
