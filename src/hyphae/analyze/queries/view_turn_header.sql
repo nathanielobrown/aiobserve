@@ -19,15 +19,15 @@ SELECT
     -- Every command turn of the canonical store held the wrapper and nothing else (read
     -- 2026-08-24), so a pane that showed both printed them a second time in their tags. The
     -- wrapper is still what was sent, and the thread's transcript has it whole.
-    CASE WHEN t.command_name IS NULL THEN substr(t.prompt, 1, $detail_chars + 1) END AS prompt,
+    CASE WHEN t.command_name IS NULL THEN cut(t.prompt, $detail_chars) END AS prompt,
     CASE WHEN t.command_name IS NULL THEN length(t.prompt) END AS prompt_chars,
     -- A slash turn leads with the command it ran instead. The name is a word, so it is
     -- cut to a fact's width...
-    substr(t.command_name, 1, $head_chars + 1) AS command_name,
+    cut(t.command_name, $head_chars) AS command_name,
     -- ...and what followed it is a value of the turn like the prompt is — arguments run to
     -- thousands of characters — so it is cut one past `$detail_chars` with its whole length
     -- beside it, and `view_turn_command_args` has the rest.
-    substr(t.command_args, 1, $detail_chars + 1) AS command_args,
+    cut(t.command_args, $detail_chars) AS command_args,
     length(t.command_args) AS command_args_chars,
     t.started_at,
     t.ended_at,

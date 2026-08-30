@@ -66,15 +66,24 @@ CREATE OR REPLACE TEMP MACRO context_added(call) AS
 call.cache_creation_tokens + call.input_tokens + call.output_tokens
 """
 
+# The cut protocol itself: a value to the width its column prints, plus the one character
+# that says it was stopped rather than ended — what `view/format.py:cut` reads to mark it.
+# A name rather than a spelling, because the library wrote it out fifty times and a query
+# that forgot the `+ 1` served a value cut where nothing could say so. The sites that cut
+# *at* the width are the exceptions now, and they are closed vocabularies whose members are
+# shorter than any width they ride.
+_CUT = """
+CREATE OR REPLACE TEMP MACRO cut(text, chars) AS substr(text, 1, chars + 1)
+"""
+
 # One field of a tool call's input, cut to the width of the column that will print it. Every
 # read of `input` is guarded, because the column holds whatever the transcript did and
 # `json_extract_string` raises on a value that is not JSON: a malformed input is a row to
-# render, not a 500. The cut is one character past the width, which is the protocol every
-# preview in the viewer rides (`view/format.py:cut`).
+# render, not a 500.
 _TOOL_ASKED = """
 CREATE OR REPLACE TEMP MACRO tool_asked(input, field, chars) AS
 CASE WHEN json_valid(input)
-     THEN substr(json_extract_string(input, '$.' || field), 1, chars + 1)
+     THEN cut(json_extract_string(input, '$.' || field), chars)
      END
 """
 
@@ -134,7 +143,7 @@ CREATE OR REPLACE TEMP MACRO tool_fields(input, project_dir, addressed, chars) A
     'skill': tool_asked(input, 'skill', chars),
     'args': tool_asked(input, 'args', chars),
     'to': tool_asked(input, 'to', chars),
-    'addressed': substr(addressed, 1, chars + 1),
+    'addressed': cut(addressed, chars),
     'summary': tool_asked(input, 'summary', chars),
     'pattern': tool_asked(input, 'pattern', chars),
     'url': tool_asked(input, 'url', chars),
@@ -142,7 +151,7 @@ CREATE OR REPLACE TEMP MACRO tool_fields(input, project_dir, addressed, chars) A
     'message': tool_asked(input, 'message', chars),
     'todos': CASE WHEN json_valid(input)
                   THEN json_array_length(input, '$.todos') END,
-    'input_head': substr(input, 1, chars + 1)
+    'input_head': cut(input, chars)
 }
 """
 
@@ -151,13 +160,14 @@ CREATE OR REPLACE TEMP MACRO tool_fields(input, project_dir, addressed, chars) A
 # scan of query text (`tests/view/test_bounds.py`), and a scan cannot see through a macro call
 # — so it trusts these names, and a leaf there re-scans each body to earn that trust.
 BOUNDING = {
+    "cut": _CUT,
     "tool_asked": _TOOL_ASKED,
     "tool_path": _TOOL_PATH,
     "tool_fields": _TOOL_FIELDS,
 }
 
-# Every macro a shipped query may call, in dependency order — `tool_path` and `tool_fields` are
-# written in terms of the ones above them. Installed as a set rather than per query: which
+# Every macro a shipped query may call, in dependency order — the three below `cut` are
+# written in terms of it and of each other. Installed as a set rather than per query: which
 # macros a file needs is the file's business, and a connection that holds some of them is a
 # connection where a query fails on the ones it does not.
 DEFINITIONS = {

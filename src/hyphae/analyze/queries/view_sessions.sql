@@ -8,7 +8,7 @@ WITH agent_kinds AS (
     FROM (
         -- Cut inside the grouping, because a type is counted after it, and one character past
         -- what a row prints, so the template can mark a name it stopped rather than ended.
-        SELECT session_id, substr(agent_type, 1, $item_chars + 1) AS name, count(*) AS runs
+        SELECT session_id, cut(agent_type, $item_chars) AS name, count(*) AS runs
         FROM live_agent_runs GROUP BY 1, 2
     ) GROUP BY session_id
 )

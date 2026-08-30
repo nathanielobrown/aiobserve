@@ -199,6 +199,8 @@ def test_every_macro_the_scan_trusts_answers_one_character_past_the_width() -> N
         return connection.execute(f"SELECT {expression}", list(params)).fetchall()[0][0]
 
     for chars in (10, 60, 300):
+        # The protocol itself, which every macro below and every bounded column is written in.
+        assert len(answer("cut(?, ?)", "v" * 400, chars)) == chars + 1
         # A field read straight.
         assert len(answer("tool_asked(?, 'file_path', ?)", inside, chars)) == chars + 1
         # The relativized path is the arm that spends width on a prefix it then throws away:

@@ -12,8 +12,8 @@ SELECT
     -- What the call said, and the model that said it: the title falls back through the tool
     -- calls below to the model when the answer was tool calls and no text. Both are cut
     -- here, and only one of them reaches a row.
-    substr(c.text, 1, $nav_chars + 1) AS text_head,
-    substr(c.model, 1, $nav_chars + 1) AS model,
+    cut(c.text, $nav_chars) AS text_head,
+    cut(c.model, $nav_chars) AS model,
     -- What the call went on to do, for the title of a call that answered with tool calls and
     -- no words (`view/builders.py:call_node`): the first tool call's name and the fields the
     -- rules that name one read, and every call's tool name in the order it was made. The name

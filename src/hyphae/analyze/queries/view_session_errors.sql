@@ -15,7 +15,7 @@ SELECT
     t.id AS tool_call_id,
     -- What the tool was called, beside the fields its title is composed out of — which is what
     -- tells two failures of one tool apart in the width of a row (`view/tool_names.py`).
-    substr(t.name, 1, $nav_chars + 1) AS name,
+    cut(t.name, $nav_chars) AS name,
     -- And what the input carried under the names the tools the viewer knows name their calls
     -- by, so a `Read` row reads as a path and a `Bash` row as the command it ran
     -- (`view/tool_names.py:FORMATTERS`). Every member cut to the same width as the title above.

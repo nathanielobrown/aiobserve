@@ -12,9 +12,9 @@
 -- that was stopped — whoever binds the width cuts again at it and marks what it cut.
 SELECT
     a.id AS run_id,
-    substr(a.agent_type, 1, $chip_chars + 1) AS agent_type,
-    substr(a.brief, 1, $chip_chars + 1) AS brief,
-    substr(a.model, 1, $chip_chars + 1) AS model,
+    cut(a.agent_type, $chip_chars) AS agent_type,
+    cut(a.brief, $chip_chars) AS brief,
+    cut(a.model, $chip_chars) AS model,
     a.spawn_depth,
     a.is_fork,
     a.parent_agent_id,
