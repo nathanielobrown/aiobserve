@@ -1,6 +1,6 @@
 """The Claude Code extractor: which sessions a project has, and what each one holds.
 
-Assembly. It finds a project's sessions, sorts each one's files (`extract/session_files.py`),
+Assembly. It finds a project's sessions, sorts each one's files (`extract/layout.py`),
 reads every transcript's lines into entities (`extract/transcript.py`), and stamps the result
 with a fingerprint that decides re-extraction.
 
@@ -14,8 +14,9 @@ import json
 from collections.abc import Iterable
 from pathlib import Path
 
-from hyphae.extract.layout import DEFAULT_PROJECTS_ROOT, find_sessions
-from hyphae.extract.session_files import _agent_runs, _classify, _offload_file, _replays
+from hyphae.extract.agent_runs import _agent_runs
+from hyphae.extract.layout import DEFAULT_PROJECTS_ROOT, _classify, _offload_file, find_sessions
+from hyphae.extract.replays import _replays
 from hyphae.extract.transcript import (
     _parse,
     _pr_links,
