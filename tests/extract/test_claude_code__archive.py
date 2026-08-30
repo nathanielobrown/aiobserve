@@ -48,7 +48,7 @@ def test_the_archive_holds_every_line_of_every_file(fixture_source: SourceFactor
     assert agent == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     # ...and the two `meta.json` files the walk also found became no source at all: they
     # are linkage that agent runs read, not records.
-    assert len(source.files) == 5
+    assert len(source.files.files()) == 5
 
 
 def test_a_workflow_run_archives_its_journal_and_its_agents(fixture_source: SourceFactory):

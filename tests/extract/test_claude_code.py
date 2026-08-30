@@ -63,7 +63,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
         ended_at=at("2026-08-06T18:41:14.084"),
         # ...and active time is the sum of the two `system/turn_duration` records, 206872 + 12713.
         active_ms=219585,
-        transcript_path=str(source.files[0]),
+        transcript_path=str(source.files.transcript),
         # ...the title is the *last* `custom-title`, and a later `ai-title` does not
         # displace it: a hand-written name outranks a generated one...
         title="fixture-title-2",

@@ -23,7 +23,6 @@ from typing import NamedTuple
 
 from hyphae.extract.records.registry import TranscriptSchemaError
 from hyphae.model import OffloadFile
-from hyphae.pipeline import SessionSource
 from hyphae.projects import encode_project_path
 
 # Where Claude Code keeps transcripts. The tree is shared across accounts —
@@ -137,17 +136,17 @@ class _ClassifiedFiles(NamedTuple):
     offloads: list[Path]
 
 
-def _classify(source: SessionSource) -> _ClassifiedFiles:
+def _classify(session: SessionFiles) -> _ClassifiedFiles:
     """Sort a session's files by what reads them. An unplaceable file stops the run."""
-    transcript = _transcript_of(source)
-    directory = transcript.with_suffix("")
+    transcript = session.transcript
+    directory = session.directory
     # Each agent's two files arrive independently; they are paired once both are seen.
     transcripts: dict[str, Path] = {}
     metas: dict[str, Path] = {}
     workflows: dict[str, str | None] = {}
     journals: list[tuple[str, Path]] = []
     offloads: list[Path] = []
-    for path in source.files:
+    for path in session.files():
         if path == transcript:
             continue
         parts = path.relative_to(directory).parts
@@ -157,7 +156,7 @@ def _classify(source: SessionSource) -> _ClassifiedFiles:
         # A workflow's definition and the script that ran it, beside the runs they drove.
         if parts[:1] == (WORKFLOWS_DIR,):
             continue
-        place = _companion(parts, source.id)
+        place = _companion(parts, session.id)
         if place.agent_id is None:
             journals.append((f"{place.workflow_id}/{JOURNAL_SOURCE}", path))
             continue
@@ -166,7 +165,7 @@ def _classify(source: SessionSource) -> _ClassifiedFiles:
     if transcripts.keys() != metas.keys():
         odd = transcripts.keys() ^ metas.keys()
         raise TranscriptSchemaError(
-            f"Session {source.id}: agent runs {sorted(odd)} have a transcript or a meta, not both"
+            f"Session {session.id}: agent runs {sorted(odd)} have a transcript or a meta, not both"
         )
     agents = [
         _AgentFiles(
@@ -214,15 +213,6 @@ def _companion(parts: tuple[str, ...], session_id: str) -> _Companion:
     if stem.endswith(TRANSCRIPT_SUFFIX):
         return _Companion(workflow, stem[: -len(TRANSCRIPT_SUFFIX)], meta=False)
     raise unknown
-
-
-def _transcript_of(source: SessionSource) -> Path:
-    """The session's own transcript, among the files discovery collected."""
-    name = f"{source.id}{TRANSCRIPT_SUFFIX}"
-    for path in source.files:
-        if path.name == name:
-            return path
-    raise TranscriptSchemaError(f"Session {source.id}: no {name} among its files")
 
 
 def _offload_file(path: Path, session_id: str) -> OffloadFile:

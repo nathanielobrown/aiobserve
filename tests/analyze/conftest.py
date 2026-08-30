@@ -19,9 +19,8 @@ import pytest
 
 from hyphae import cli
 from hyphae.export.duckdb import DuckDbExporter
-from hyphae.extract.claude_code import ClaudeCodeExtractor
+from hyphae.extract.claude_code import ClaudeCodeExtractor, ClaudeCodeSource
 from hyphae.extract.layout import SessionFiles
-from hyphae.pipeline import SessionSource
 from tests.conftest import (
     FIXTURES,
     MYCELIA,
@@ -188,7 +187,7 @@ def worktree_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Pa
         ):
             transcript = FIXTURES / directory / f"{stem}.jsonl"
             session = SessionFiles(id=stem, transcript=transcript)
-            source = SessionSource(id=stem, files=tuple(session.files()), fingerprint="planted")
+            source = ClaudeCodeSource(id=stem, fingerprint="planted", files=session)
             trace = ClaudeCodeExtractor().extract(source)
             trace = replace(trace, session=replace(trace.session, project_dir=project_dir))
             exporter.export(trace, source.fingerprint)

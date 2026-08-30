@@ -21,10 +21,9 @@ from hyphae.enrich.store import EnrichmentStore, Stamp
 from hyphae.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
 from hyphae.enrich.validation import Enrichment
 from hyphae.export.duckdb import DuckDbExporter
-from hyphae.extract.claude_code import ClaudeCodeExtractor
+from hyphae.extract.claude_code import ClaudeCodeExtractor, ClaudeCodeSource
 from hyphae.extract.layout import SessionFiles
 from hyphae.model import SessionTrace
-from hyphae.pipeline import SessionSource
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -158,9 +157,9 @@ PLANTED_OUTCOMES = (Outcome.completed, Outcome.partial, Outcome.failed)
 PLANTED_OUTCOME_RUN = 3
 PLANTED_MODELS = ("claude-haiku-4-5-20251001", "claude-sonnet-4-5-20250929")
 
-SourceFactory = Callable[[str, str], SessionSource]
+SourceFactory = Callable[[str, str], ClaudeCodeSource]
 TraceFactory = Callable[[str, str], SessionTrace]
-PlantedFactory = Callable[[str, str, dict[str, str]], SessionSource]
+PlantedFactory = Callable[[str, str, dict[str, str]], ClaudeCodeSource]
 
 
 def fixture_transcripts(*directories: str) -> tuple[Path, ...]:
@@ -183,9 +182,7 @@ def build_store(path: Path, transcripts: Iterable[Path]) -> None:
     with DuckDbExporter(path) as exporter:
         for transcript in transcripts:
             session = SessionFiles(id=transcript.stem, transcript=transcript)
-            source = SessionSource(
-                id=transcript.stem, files=tuple(session.files()), fingerprint="fixture"
-            )
+            source = ClaudeCodeSource(id=session.id, fingerprint="fixture", files=session)
             exporter.export(ClaudeCodeExtractor().extract(source), source.fingerprint)
 
 
@@ -392,21 +389,15 @@ def planted_stamp(level: Level, index: int) -> Stamp:
 
 @pytest.fixture
 def fixture_source() -> SourceFactory:
-    """Build a `SessionSource` over one fixture session, the way `sessions()` would.
-
-    The whole session directory, not just the transcript: subagent transcripts, workflow
-    journals and offloaded tool outputs are part of the session, and a builder that
-    skipped them would let a test pass on files the real pipeline never sees.
+    """Build a `ClaudeCodeSource` over one fixture session, the way `sessions()` would.
 
     Fingerprints belong to discovery, not parsing, so the value here is a placeholder —
     `extract()` never reads it.
     """
 
-    def build(directory: str, stem: str) -> SessionSource:
+    def build(directory: str, stem: str) -> ClaudeCodeSource:
         session = SessionFiles(id=stem, transcript=FIXTURES / directory / f"{stem}.jsonl")
-        return SessionSource(
-            id=stem, files=tuple(session.files()), fingerprint="fixture-fingerprint"
-        )
+        return ClaudeCodeSource(id=stem, fingerprint="fixture-fingerprint", files=session)
 
     return build
 
@@ -419,7 +410,7 @@ def planted_source(tmp_path: Path) -> PlantedFactory:
     the point — they stand for layouts Claude Code writes, or might write next.
     """
 
-    def build(directory: str, stem: str, files: dict[str, str]) -> SessionSource:
+    def build(directory: str, stem: str, files: dict[str, str]) -> ClaudeCodeSource:
         transcript = tmp_path / f"{stem}.jsonl"
         shutil.copy(FIXTURES / directory / transcript.name, transcript)
         for relative, content in files.items():
@@ -427,7 +418,7 @@ def planted_source(tmp_path: Path) -> PlantedFactory:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content)
         session = SessionFiles(id=stem, transcript=transcript)
-        return SessionSource(id=stem, files=tuple(session.files()), fingerprint="planted")
+        return ClaudeCodeSource(id=stem, fingerprint="planted", files=session)
 
     return build
 
