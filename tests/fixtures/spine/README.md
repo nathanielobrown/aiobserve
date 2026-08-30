@@ -73,7 +73,7 @@ map by absolute path.
 
 ### The seven tool-input fields the titles read
 
-The viewer titles a tool call from a named field per tool (`src/hyphae/view/formatters.py:FORMATTERS`),
+The viewer titles a tool call from a named field per tool (`src/hyphae/view/tool_names.py:FORMATTERS`),
 so a fixture with every input blanked can only prove that the page prints `[redacted]`. Six of these
 seven are as recorded, and nothing else under `input` is:
 
