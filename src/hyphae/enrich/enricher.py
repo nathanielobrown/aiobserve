@@ -9,15 +9,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from hyphae.enrich.client import BatchClient, EnrichRequest, Failed, Succeeded
-from hyphae.enrich.prompts import (
-    PROMPT_VERSION,
-    Item,
-    Level,
-    input_hash,
-    instructions,
-    level_of,
-    render,
-)
+from hyphae.enrich.items import Item, Level, level_of
+from hyphae.enrich.prompts import PROMPT_VERSION, input_hash, instructions, render
 from hyphae.enrich.store import EnrichmentStore, Stamp
 from hyphae.enrich.taxonomy import TAXONOMY_VERSION
 from hyphae.enrich.validation import InvalidOutput, ItemFailure, validate

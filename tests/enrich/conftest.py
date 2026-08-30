@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from hyphae.enrich.client import CLAUDE
-from hyphae.enrich.prompts import SessionItem
+from hyphae.enrich.items import SessionItem
 from hyphae.enrich.store import EnrichmentStore, Stamp
 from hyphae.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
 from hyphae.enrich.validation import Enrichment

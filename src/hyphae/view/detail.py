@@ -9,7 +9,7 @@ shape, because a pass writes past the width as readily as a transcript does.
 from typing import NamedTuple, assert_never
 
 from hyphae.analyze import queries
-from hyphae.enrich.prompts import Level
+from hyphae.enrich.items import Level
 from hyphae.view import format as fmt
 from hyphae.view import highlight, nodes
 from hyphae.view.enrichment import Enrichment

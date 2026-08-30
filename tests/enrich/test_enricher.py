@@ -24,12 +24,8 @@ from hyphae.enrich.enricher import (
     EnrichReport,
     enrich,
 )
-from hyphae.enrich.prompts import (
-    PROMPT_VERSION,
-    Level,
-    input_hash,
-    render_turn,
-)
+from hyphae.enrich.items import Level
+from hyphae.enrich.prompts import PROMPT_VERSION, input_hash, render_turn
 from hyphae.enrich.store import LEVELS, EnrichmentStore
 from hyphae.enrich.taxonomy import TAXONOMY_VERSION
 from hyphae.enrich.validation import FailureKind

@@ -17,7 +17,8 @@ import htpy
 import pytest
 
 from hyphae.analyze import queries
-from hyphae.enrich.prompts import PROMPT_VERSION, Level
+from hyphae.enrich.items import Level
+from hyphae.enrich.prompts import PROMPT_VERSION
 from hyphae.view.citation import cited
 from hyphae.view.components import citation, parts
 from hyphae.view.detail import Detail, EnrichmentLines

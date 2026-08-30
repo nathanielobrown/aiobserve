@@ -16,7 +16,8 @@ from hyphae.enrich.cost import (
     Prompt,
     estimate,
 )
-from hyphae.enrich.prompts import Level, instructions
+from hyphae.enrich.items import Level
+from hyphae.enrich.prompts import instructions
 
 MODEL = "claude-haiku-4-5-20251001"
 

@@ -16,7 +16,8 @@ import duckdb
 
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
-from hyphae.enrich.prompts import PROMPT_VERSION, Level
+from hyphae.enrich.items import Level
+from hyphae.enrich.prompts import PROMPT_VERSION
 from hyphae.enrich.store import LEVELS
 from hyphae.enrich.taxonomy import TAXONOMY_VERSION
 from hyphae.view.format import when

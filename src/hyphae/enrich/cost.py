@@ -13,7 +13,8 @@ a bound; quote it as an estimate.
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from hyphae.enrich.prompts import Level, instructions
+from hyphae.enrich.items import Level
+from hyphae.enrich.prompts import instructions
 
 
 @dataclass(frozen=True)

@@ -11,7 +11,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from hyphae.enrich.prompts import Level, TurnItem
+from hyphae.enrich.items import Level, TurnItem
 from hyphae.enrich.store import EnrichmentStore, Stamp
 from hyphae.export.schema import SchemaVersionError
 from tests.conftest import MODEL_ONLY, MYCELIA, build_store, fixture_transcripts
