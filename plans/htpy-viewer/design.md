@@ -8,7 +8,7 @@ The viewer's render layer is 23 Jinja templates (1,416 lines) that pyrefly canno
 
 ## Call paths, current → proposed
 
-Current: route (`browse.py:148`, `listing.py`, `pages.py`, `fragments.py`, `expansions.py`) → builds context dict → `viewer.templates.TemplateResponse(request, name, ctx)` (14 sites, handoff §1) → Jinja env (`templating.py:29`) with 17 filters + 8 globals → HTML.
+Current: route (`browse.py:148`, `listing.py`, `pages.py`, `fragments.py`, `expansions.py`) → builds context dict → `viewer.templates.TemplateResponse(request, name, ctx)` (14 sites, handoff §1) → Jinja env (`templating.py:29`) with the filters and globals it registers → HTML.
 
 Proposed: route → builds **typed view-models** (mostly the ones that already exist: `nodes.Node`, `Detail`, `Pager`, `PresetChoice`, plus new per-kind row types) → calls a component function in `view/components/` → `HTMLResponse(str(element))` via one helper. No Jinja env, no filter/global registry, no `Request` anywhere past the route body. `Viewer` (`templating.py:165`) becomes `Viewer(db: Path, dev: bool)`; its `error()` renders `components.pages.error_page(status, message)` with no `request` argument.
 
