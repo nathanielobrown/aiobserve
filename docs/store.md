@@ -31,6 +31,14 @@ Queries use views instead of reading the trace tables directly. `refresh_views` 
 
 [Enrichment](enrichment.md) adds three `*_enrichments` tables keyed one-to-one to sessions, turns, and agent runs. It also adds views that join the enrichments to those records. Until an enrichment pass writes these tables, queries against them fail with an error that says they don't exist.
 
+## One process writes at a time, and the others queue
+
+DuckDB admits one writer and offers no lock timeout of its own, so every open through `open_trace_store` waits for a budget of its own and then gives up, reporting the store, the budget it spent, and DuckDB's own line naming the process that holds the file. A page waits one second: a reader is owed an answer or a 503, not a hung tab. A command waits ten (`PAGE_WAIT` and `CLI_WAIT` in `src/hyphae/export/duckdb.py`).
+
+`hp extract` holds the file only while it writes. It prepares the store and lets go, reads its fingerprints read-only, and takes the write lock for one transaction per session — so the parse between sessions costs no lock at all, and [the viewer](viewer.md) answers pages throughout a long extract. Those per-session writes skip the view rebuild the opener does, which costs about 60 ms against 5 ms for the write itself on a store grown from the fixture corpus to 9.5 GB (measured 2026-08-30); the store the extract prepared already holds them.
+
+`hp enrich` and `hp export-otlp` are the other way round: each holds one connection for its whole run. They queue for the store like anything else, and nothing else can write while they run.
+
 ## The store is the only durable archive
 
 Claude Code deletes session transcripts and their `tool-results/` files from disk after a few weeks. This constraint shaped [the trace-pipeline design](../plans/trace-pipeline/design.md). The extractor archives every line: `raw_records` holds transcripts, while `offload_files` holds tool outputs that Claude Code moved out of them. A refresh keeps rows for sessions whose source files are gone instead of making the store mirror the disk.
