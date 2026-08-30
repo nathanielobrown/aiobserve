@@ -29,11 +29,13 @@ from hyphae.view.deps import ViewerDep
 from hyphae.view.enrichment import enriched
 from hyphae.view.nodes import LIST_URL
 from hyphae.view.store import (
+    DESCRIBED_BOUND,
     DIRECTIONS,
     FILTERS,
     SORTS,
     Page,
     Row,
+    list_bound,
     open_store,
     page_rows,
     sorted_sessions,
@@ -283,34 +285,17 @@ def session_list(
             citations={
                 Page.SESSIONS.value: cited(
                     Page.SESSIONS,
-                    {
-                        "sort": sort,
-                        "direction": direction,
-                        "limit": size,
-                        "offset": (page - 1) * size,
-                        # What the page shows of each row, which is composed around the
-                        # query like the paging is: re-running the file alone answers
-                        # with whole titles, paths and skill lists.
-                        "head_chars": queries.LIST_CHARS,
-                        "item_chars": queries.LIST_ITEM_CHARS,
-                        "head_items": queries.LIST_ITEMS,
-                        **filters,
-                    },
+                    # The bindings the query above ran, out of the one builder it read
+                    # them from — including the widths, which are composed around the
+                    # file like the paging is: re-running it alone answers with whole
+                    # titles, paths and skill lists. The sort and the direction are the
+                    # composition's own and bind nothing, so they are stated here.
+                    {"sort": sort, "direction": direction, **list_bound(page, size, filters)},
                 ),
                 # Joined to that page rather than run against it, so it is cited on its
                 # own — and only over a store whose enrichment tables exist to join.
                 **(
-                    {
-                        Page.DESCRIBED_SESSIONS.value: cited(
-                            Page.DESCRIBED_SESSIONS,
-                            {
-                                "head_chars": queries.LIST_CHARS,
-                                "tag_chars": queries.TAG_CHARS,
-                                "kind_chars": queries.TAG_CHARS,
-                                "head_kinds": queries.LIST_CATEGORIES,
-                            },
-                        )
-                    }
+                    {Page.DESCRIBED_SESSIONS.value: cited(Page.DESCRIBED_SESSIONS, DESCRIBED_BOUND)}
                     if describes
                     else {}
                 ),
