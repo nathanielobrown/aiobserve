@@ -7,6 +7,7 @@ on is itself a contract a piped analysis depends on.
 
 import datetime as dt
 from pathlib import Path
+from typing import cast
 
 import duckdb
 import pytest
@@ -161,6 +162,41 @@ def test_an_unknown_query_or_parameter_names_what_it_did_not_recognize(
     # a silently ignored parameter produces a plausible wrong number and no signal.
     with pytest.raises(SystemExit, match="nonsense"):
         run_query("sessions", "--project", MYCELIA, "--param", "nonsense=1")
+
+
+def test_a_parameter_type_nothing_binds_is_refused_rather_than_bound_to_null(
+    corpus_db: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A `ParamType` the binder does not parse is an error, not a silent SQL NULL.
+
+    A fourth type is a plausible next change — a boolean, a list — and the match that parses
+    one covered three arms and then fell off the end, which in Python hands back `None`. The
+    query would have run with NULL where the reader's value belonged, and the citation would
+    have reported it as bound: a wrong answer with nothing marking it.
+
+    Planted rather than added to the enum, because what this holds is the arm that catches a
+    member this build knows nothing about.
+    """
+    monkeypatch.setattr(queries, "QUERY_DIR", tmp_path)
+    monkeypatch.setitem(
+        manifest.QUERIES,
+        "planted",
+        queries.Query(
+            scope=queries.Scope.KEYED,
+            params={
+                "flag": queries.Param(
+                    type=cast(queries.ParamType, "boolean"), default=queries.REQUIRED
+                )
+            },
+        ),
+    )
+    (tmp_path / "planted.sql").write_text("SELECT $flag AS flag")
+    # The refusal names the type it could not bind, so the fix is the binder and not the call.
+    with pytest.raises(SystemExit, match="boolean"):
+        query(corpus_db, capsys, "planted", "--param", "flag=true")
 
 
 @pytest.mark.parametrize(
