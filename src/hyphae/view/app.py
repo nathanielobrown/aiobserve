@@ -1,9 +1,9 @@
 """The viewer itself: what `build_app` assembles over a trace store, and what `serve` runs.
 
 `build_app(db_path)` returns a FastAPI app over one store. It mounts the statics, answers a
-locked or moved store with a page rather than a stack trace, and registers each route module in
-turn — the two lists, the node pages, the pages that are not a node's, the expansions, and the
-fragments.
+locked or moved store with a page rather than a stack trace, puts the `Viewer` on `app.state`
+for the dependencies in `view/deps.py`, and registers each route module's router in turn — the
+two lists, the node pages, the pages that are not a node's, the expansions, and the fragments.
 
 Nothing the viewer serves writes: every request opens its own read-only connection
 (`view/store.py`), checks the store's schema version, renders, and closes. That is what lets an
@@ -34,12 +34,12 @@ from hyphae.view import (
     node_pages,
     pages,
 )
+from hyphae.view.deps import Viewer
 from hyphae.view.store import (
     SchemaMoved,
     StoreLocked,
     open_store,
 )
-from hyphae.view.viewer import Viewer
 
 # Loopback only, and a port unlikely to be taken. Fixed rather than picked at startup so a
 # link pasted into a note opens the same page tomorrow.
@@ -86,7 +86,10 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
 
         app.include_router(dev_loop.reload_router())
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
+    # Where every route reads the store from: a route is a module-level function now, so it
+    # asks for this by `Depends` rather than closing over it (`view/deps.py`).
     viewer = Viewer(db=resolved, dev=dev)
+    app.state.viewer = viewer
 
     @app.middleware("http")
     async def _policy(request: Request, call_next: Any) -> Response:
@@ -117,11 +120,11 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
     # Extended rather than `include_router`: FastAPI keeps an included router nested under
     # one opaque route object, and `tools/gen_routes.py` and the payload sweep both read
     # `app.routes` expecting the routes themselves (`tests/view/test_dev.py` says so too).
-    app.router.routes.extend(listing.routes(viewer))
-    app.router.routes.extend(node_pages.routes(viewer))
-    app.router.routes.extend(pages.routes(viewer))
-    app.router.routes.extend(expansions.routes(viewer))
-    app.router.routes.extend(fragments.routes(viewer))
+    app.router.routes.extend(listing.router.routes)
+    app.router.routes.extend(node_pages.router.routes)
+    app.router.routes.extend(pages.router.routes)
+    app.router.routes.extend(expansions.router.routes)
+    app.router.routes.extend(fragments.router.routes)
     return app
 
 

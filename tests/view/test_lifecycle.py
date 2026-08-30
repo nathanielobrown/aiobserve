@@ -20,12 +20,20 @@ from fastapi.testclient import TestClient
 from hyphae.export.schema import MIGRATE_REMEDY, SCHEMA_MISMATCH_REMEDY, SCHEMA_VERSION
 from hyphae.view.app import CSP, build_app, serve
 from hyphae.view.components import parts
+from hyphae.view.nodes import NUMBERS_URL
 from hyphae.view.store import SchemaMoved, StoreLocked
-from tests.conftest import locked
+from tests.conftest import SPINE, locked
 from tests.view.conftest import fields
 
 # Markup a half-rendered page would carry, distinctive enough to find anywhere in a response.
 HALF = "<!--rendered-before-the-component-exploded-->"
+
+# The two ways a request reaches the store, because the refusal has to come back the same page
+# either way. A page opens it inside the handler and closes it before rendering; a fragment
+# takes the connection as a dependency (`view/deps.py`), so the open happens before the handler
+# runs at all and the exception is raised inside FastAPI's dependency resolution rather than in
+# the route body.
+REACHES = {"page": "/", "fragment": f"{NUMBERS_URL}/session/{SPINE}"}
 
 
 @pytest.fixture
@@ -36,10 +44,11 @@ def copy(corpus_db: Path, tmp_path: Path) -> Path:
     return path
 
 
-def test_a_locked_store_answers_503(copy: Path) -> None:
+@pytest.mark.parametrize("path", REACHES.values(), ids=REACHES)
+def test_a_locked_store_answers_503(copy: Path, path: str) -> None:
     """While an extract holds the store, a page says so instead of failing."""
     with TestClient(build_app(copy)) as client, locked(copy):
-        response = client.get("/")
+        response = client.get(path)
     # A 503 is the honest answer: the store is there, and it will read again shortly...
     assert response.status_code == 503
     assert "holds the trace store" in fields(response.text, "id", "error")["message"]
@@ -47,7 +56,7 @@ def test_a_locked_store_answers_503(copy: Path) -> None:
     assert response.headers["content-security-policy"] == CSP
     # The viewer serves again once the writer lets go.
     with TestClient(build_app(copy)) as client:
-        assert client.get("/").status_code == 200
+        assert client.get(path).status_code == 200
 
 
 @pytest.mark.parametrize(
@@ -61,18 +70,19 @@ def test_a_locked_store_answers_503(copy: Path) -> None:
     ],
     ids=["newer", "migratable"],
 )
+@pytest.mark.parametrize("path", REACHES.values(), ids=REACHES)
 def test_a_store_replaced_under_the_viewer_is_caught_per_request(
-    copy: Path, held: int, remedy: str
+    copy: Path, held: int, remedy: str, path: str
 ) -> None:
     """A re-extract between two page loads is refused rather than half-read."""
     with TestClient(build_app(copy)) as client:
-        assert client.get("/").status_code == 200
+        assert client.get(path).status_code == 200
         # The store the viewer started against is gone: this is what a schema bump plus a
         # fresh extract looks like from inside a running viewer.
         connection = duckdb.connect(str(copy))
         connection.execute("UPDATE meta SET schema_version = ?", [held])
         connection.close()
-        response = client.get("/")
+        response = client.get(path)
     assert response.status_code == 503
     # The page names both versions, and the one thing to do about this store in particular —
     # a reader told to extract into a fresh store when a migration would have carried this

@@ -22,6 +22,7 @@ from hyphae.view.citation import cited
 from hyphae.view.columns import Shape
 from hyphae.view.components import node_page
 from hyphae.view.components.logs import Logged
+from hyphae.view.deps import Viewer
 from hyphae.view.detail import Detail, enrichment_lines
 from hyphae.view.enrichment import Descriptions, Enrichment, described
 from hyphae.view.knobs import (
@@ -40,7 +41,6 @@ from hyphae.view.store import (
     open_store,
     page_rows,
 )
-from hyphae.view.viewer import Viewer
 
 
 class Seen(NamedTuple):
