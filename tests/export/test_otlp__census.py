@@ -13,7 +13,7 @@ import duckdb
 import pytest
 
 from hyphae.export.duckdb import open_trace_store
-from hyphae.export.otlp import SpanKey, census, session_spans, span_id
+from hyphae.export.otlp import SpanKey, census, census_project, session_spans, span_id
 from hyphae.extract.store import StoreSource
 from hyphae.model import SessionTrace
 from tests.conftest import FORK_COMPACTION, FORK_RUN, MYCELIA, SPINE, SPINE_RUN
@@ -83,11 +83,12 @@ def test_the_census_counts_what_the_mapper_would_ship(
     counted: duckdb.DuckDBPyConnection,
 ) -> None:
     """The dry run's span total is the number a real send would put on the wire."""
-    # If every shipped session is shaped...
-    shipped = traces(counted)
-    counts = census(shipped)
+    # If a project's whole selection is counted the way a dry run counts it — the extractor
+    # `refresh` would drive, with no fingerprint diff in front of it...
+    counts = census_project(Path(MYCELIA), extractor=StoreSource(counted))
     # ...then the census agrees with the shapes themselves, session for session and span for
     # span...
+    shipped = traces(counted)
     assert counts.sessions == len(shipped)
     assert counts.spans == sum(len(session_spans(trace)) for trace in shipped)
     # ...and with the store's own rows read through the mapping formula, which is the check
