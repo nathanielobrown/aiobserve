@@ -21,7 +21,7 @@ from pathlib import Path
 import duckdb
 from fastapi.testclient import TestClient
 
-from hyphae.extract.pricing import CONTEXT_WINDOWS, CostSplit, TokenUsage, split_cost
+from hyphae.extract.pricing import MODELS, CostSplit, TokenUsage, split_cost
 from hyphae.view.app import build_app
 from hyphae.view.format import ABSENT
 from hyphae.view.nodes import NUMBERS_URL, Kind
@@ -82,13 +82,16 @@ def held(
 ) -> dict[str, str]:
     """The window half of a popover, as the store's own columns give it."""
     model, cached, creation, sent, out = one(store, LAST.format(extra=extra), [session_id, source])
+    # The call the popover was drawn from went to a model, so the table sizes it.
+    window = MODELS[model].context_window
+    assert window is not None, model
     return {
         "model": model,
         "cached": f"{cached:,}",
         "new_input": f"{creation + sent:,}",
         "output": f"{out:,}",
         "fill": f"{cached + creation + sent + out:,}",
-        "window": f"{CONTEXT_WINDOWS[model]:,}",
+        "window": f"{window:,}",
     }
 
 
