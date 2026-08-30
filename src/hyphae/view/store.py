@@ -454,10 +454,11 @@ def listed(rows: list[Row]) -> Listed:
     return Listed(rows, rows[0][MATCHED_ROWS] if rows else 0)
 
 
-def cut(rows: list[Row]) -> int:
-    """How many rows the query's own LIMIT dropped, for the pages that say so rather than lose them.
+def dropped(rows: list[Row]) -> int:
+    """How many rows the query's own LIMIT left off, for a page that says so rather than lose them.
 
-    Zero on an empty page: a level with nothing in it cut nothing.
+    A count of rows, not a shortened string: `format.cut` and the `cut` SQL macro are the other
+    thing that word means here. Zero on an empty page — a level with nothing in it lost nothing.
     """
     return listed(rows).total - len(rows)
 
@@ -471,5 +472,5 @@ def paged(rows: list[Row], cursor: str) -> Paged:
     """
     if not rows:
         return Paged(rows, 0, None)
-    behind = cut(rows)
+    behind = dropped(rows)
     return Paged(rows, behind, rows[-1][cursor] if behind else None)
