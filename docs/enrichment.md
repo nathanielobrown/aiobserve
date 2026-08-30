@@ -68,6 +68,8 @@ The hash covers rendered content, not extraction metadata. Re-extracting unchang
 
 For this reason, a dry run reports an upper bound. It quotes every stale item and every item that embeds one; it cannot know which descriptions will change before the model answers.
 
+A dry run makes the rounds a paid pass makes, against a model that answers everything and fails nothing, so `--dry-run --limit N` names the items `--limit N` sends, in the order it sends them.
+
 There is no resume file. A failed item writes no row and remains stale for the next pass. An item with a failed child also writes nothing. Otherwise, a description built around a missing child could be hashed as current and no later pass could repair it.
 
 ## Each round protects paid answers
@@ -96,7 +98,7 @@ The subprocess gets a constructed environment rather than inheriting the caller'
 
 The first item runs alone as a canary and is the only call that may crash the pass immediately. Every later call spends the subscription. `submit` returns all results before the enricher writes the round, because an exception during fan-out would otherwise discard answers already paid for.
 
-Five consecutive failures trip the breaker. The enricher starts nothing else, marks the unsent items `Failed(aborted)`, writes completed answers, and then crashes with both kinds of failure in its report.
+Five consecutive failures trip the breaker. The enricher starts nothing else, marks the unsent items `Failed(aborted)`, writes completed answers, and then crashes with both kinds of failure in its report. Each unsent item carries what ended the round, so a pass that failed on every item names its cause rather than listing keys.
 
 **Ctrl-C stops after the current round, not during it.** The enricher waits for running calls, writes their answers, and stops before the next round. Press Ctrl-C again to abandon calls still in flight; they return `aborted`, like any item with no answer. This behavior makes it safe to stop a pass that runs for hours, while `--limit` remains the pacing control.
 
@@ -104,7 +106,7 @@ Five consecutive failures trip the breaker. The enricher starts nothing else, ma
 
 With `--output-format json`, this version returns one object. The enricher reads four fields and ignores all others, so an added field does not count as drift:
 
-- `is_error` and a nonzero exit status mean the call failed. The enricher retries once, then records `api_error`
+- `is_error` and a nonzero exit status mean the call failed. The enricher retries once, then records `api_error` with the tail of what the CLI wrote on stderr. Never stdout: the answer comes back there, and with it whatever transcript text the render carried
 - `stop_reason` equal to `max_tokens` means the answer was cut off, so the result is `invalid_output`. For other values, `structured_output` decides validity
 - `modelUsage` is keyed by model ID. A key other than the requested model means the CLI substituted one, so the row's model would no longer be a truthful staleness key
 - `structured_output` holds the answer. Its absence is `invalid_output`, not drift, because the CLI omits it when the model returns nothing conforming; the recorded logged-out envelope demonstrates this case

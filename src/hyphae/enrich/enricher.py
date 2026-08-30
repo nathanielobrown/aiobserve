@@ -40,7 +40,14 @@ class EnrichmentFailed(Exception):
     def __init__(self, failures: list[ItemFailure]) -> None:
         self.failures = failures
         listed = "\n".join(f"  {failure.kind}: {failure.key}" for failure in failures)
-        super().__init__(f"{len(failures)} item(s) failed, wrote nothing:\n{listed}")
+        # Each distinct diagnostic once: a run that failed the same way three hundred times
+        # has one cause to read, and reading it is the only way to fix the next run.
+        causes = dict.fromkeys(failure.diagnostic for failure in failures if failure.diagnostic)
+        said = "".join(f"\n  {cause}" for cause in causes)
+        super().__init__(
+            f"{len(failures)} item(s) failed, wrote nothing:\n{listed}"
+            + (f"\nwhat the transport said:{said}" if said else "")
+        )
 
 
 def plan(
@@ -243,8 +250,8 @@ def _round(
         answered.add(result.key)
         entry = by_key[result.key]
         match result:
-            case Failed(kind=kind):
-                failures.append(ItemFailure(key=result.key, kind=kind))
+            case Failed(kind=kind, diagnostic=diagnostic):
+                failures.append(ItemFailure(key=result.key, kind=kind, diagnostic=diagnostic))
             case Succeeded(output=output):
                 try:
                     enrichment = validate(output)
