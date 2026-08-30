@@ -318,7 +318,31 @@ pub const TABLES: &[(&str, &[&str])] = &[
     ),
 ];
 
-/// The widest table, which is what the stage-1 spike round-trips.
+/// The one table an export writes that no `SessionTrace` list feeds: what was read, when,
+/// and by which extractor. Kept out of [`TABLES`] because the export loop drives that list
+/// from the trace, and this row is built from the fingerprint instead.
+pub const EXTRACT_STATE: (&str, &[&str]) = (
+    "extract_state",
+    &[
+        "session_id",
+        "fingerprint",
+        "transcript_path",
+        "extracted_at",
+        "extractor",
+        "extractor_version",
+    ],
+);
+
+/// `sessions` keys on the session id itself; every other table carries it as a column.
+pub fn session_key(table: &str) -> &'static str {
+    if table == "sessions" {
+        "id"
+    } else {
+        "session_id"
+    }
+}
+
+/// The widest table, which is what the store tests round-trip.
 pub const WIDEST_TABLE: &str = "api_calls";
 
 /// The columns of one table in DDL order, or `None` when no table goes by that name.
