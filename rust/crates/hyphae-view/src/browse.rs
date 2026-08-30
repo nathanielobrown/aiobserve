@@ -16,6 +16,7 @@ use crate::components::node_page::{Archived, NodePage, Said, Trail};
 use crate::components::{Markup, node_page};
 use crate::detail::{Detail, enrichment_lines};
 use crate::enrichment::{Descriptions, Enrichment, described};
+use crate::facts::node_facts;
 use crate::knobs::{self, BadAsk};
 use crate::nav_tree::{self, Bound, Corpus, Ran};
 use crate::nodes::{self, Kind, Node, Preset, Ref};
@@ -304,7 +305,7 @@ pub fn browse(
         thread: source,
         trail: &trail,
         chain: &built.chain,
-        facts: &builders::node_facts(&selection, &seen.header)?,
+        facts: &node_facts(&selection, &seen.header)?,
         said: said.as_ref(),
         details: &seen.details,
         // The bytes behind the node: the thread's transcript, and — for a turn — the one line it

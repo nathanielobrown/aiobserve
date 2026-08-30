@@ -15,6 +15,7 @@ pub mod detail;
 pub mod enrichment;
 pub mod errors;
 pub mod expansions;
+pub mod facts;
 pub mod format;
 pub mod formatters;
 pub mod fragments;

@@ -16,6 +16,7 @@ use crate::components::nav_tree::NavTreeRow;
 use crate::components::node_body::Expansion;
 use crate::components::{Markup, nav_tree as nav_rows, node_body};
 use crate::enrichment::described;
+use crate::facts::node_facts;
 use crate::knobs::{self, BadAsk};
 use crate::nav_tree::{Bound, Corpus, Ran, children, spread, windowed};
 use crate::nodes::{Kind, Ledger, Node, Ref};
@@ -132,7 +133,7 @@ fn expanded(
 ) -> Result<Markup, PageError> {
     Ok(node_body::expansion(&Expansion {
         node,
-        facts: &builders::node_facts(node, row)?,
+        facts: &node_facts(node, row)?,
         suffix: marks,
         shape,
         children,
