@@ -6,11 +6,12 @@ publish.workspace = true
 
 [dependencies]
 hyphae-model.workspace = true
+# `analyze/macros.py` generates the `context_window` macro from `extract/pricing.py`'s table;
+# this crate's port of that module does the same, so the price table is the dependency.
+hyphae-extract.workspace = true
 duckdb.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-# The store tier builds its corpus by extracting `tests/fixtures/` through the Rust path.
-hyphae-extract.workspace = true
 tempfile.workspace = true

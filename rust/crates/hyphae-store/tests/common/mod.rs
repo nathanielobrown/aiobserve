@@ -22,12 +22,17 @@ use tempfile::TempDir;
 /// shapes and crash by design, which is what `hyphae-extract`'s walk tier proves.
 const CLEAN_INVENTED: &[&str] = &["invented-no-cache-creation", "invented-truncated-tail"];
 
-/// `tests/fixtures/` in the repo, from this crate's own location.
-pub fn fixtures() -> PathBuf {
+/// The repository root, from this crate's own location.
+pub fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../tests/fixtures")
+        .join("../../..")
         .canonicalize()
-        .expect("the fixture corpus sits at tests/fixtures/")
+        .expect("the crate sits three levels under the repository root")
+}
+
+/// `tests/fixtures/` in the repo.
+pub fn fixtures() -> PathBuf {
+    repo().join("tests/fixtures")
 }
 
 /// Every fixture transcript that exports cleanly, discovered rather than listed — the twin

@@ -102,6 +102,22 @@ const PRICES: &[(&str, ModelPrice)] = &[
     ),
 ];
 
+/// The window each model answers in, in tokens, in the order `extract/pricing.py` writes it.
+///
+/// The order is load-bearing. `analyze/macros.py` writes this table out as the SQL macro
+/// `context_window`, one `WHEN` arm per entry, so a reordering here installs a macro whose
+/// text differs from the one the Python viewer installs. A model the table lacks answers
+/// NULL, which is a bar the viewer does not draw rather than a scale it invents.
+pub const CONTEXT_WINDOWS: &[(&str, i64)] = &[
+    ("claude-fable-5", 200_000),
+    ("claude-opus-5", 200_000),
+    ("claude-opus-4-8", 200_000),
+    ("claude-opus-4-1-20250805", 200_000),
+    ("claude-sonnet-5", 200_000),
+    ("claude-sonnet-4-6", 200_000),
+    ("claude-haiku-4-5-20251001", 200_000),
+];
+
 /// What one reply cost in USD, or `None` when the table does not price its model.
 ///
 /// Summed before the division rather than after, which is what keeps every stored cost the
