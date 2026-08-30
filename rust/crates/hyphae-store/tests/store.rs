@@ -430,7 +430,7 @@ fn a_node_page_query_reads_its_nested_struct_and_list() {
     let detail_chars: &dyn ToSql = &4000_i32;
     let rows = store
         .fetch(
-            hyphae_store::queries::VIEW_CALL_HEADER,
+            hyphae_store::queries::load("view_call_header"),
             &[
                 ("session_id", session),
                 ("source", source_param),
