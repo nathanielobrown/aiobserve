@@ -240,7 +240,7 @@ def browse(
                 # stands above the chain rather than in it — a session is still the outermost
                 # node.
                 trail=node_page.Trail(
-                    list_url=listing.LIST_URL,
+                    list_url=nodes.LIST_URL,
                     project_dir=head[0]["project_dir"],
                     project_url=listing.project_link(head[0]["project_filter"]),
                 ),
