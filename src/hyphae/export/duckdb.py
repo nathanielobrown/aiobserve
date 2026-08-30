@@ -146,6 +146,7 @@ CREATE TABLE IF NOT EXISTS compactions (
     pre_tokens BIGINT NOT NULL,
     post_tokens BIGINT NOT NULL,
     duration_ms BIGINT NOT NULL,
+    replayed BOOLEAN NOT NULL,
     PRIMARY KEY (session_id, source, id)
 );
 CREATE TABLE IF NOT EXISTS pr_links (
@@ -198,14 +199,15 @@ SELECT id AS session_id, row_number() OVER (ORDER BY started_at, id) AS rank FRO
 """
 
 
-# Whether the table carries `replayed` — the flag slice 3 sets on a fork's copy of another
-# transcript's records. The rest of a session's countable tables carry no such copies.
+# Whether the table carries `replayed` — the flag a fork's copy of another transcript's
+# records takes. Only `agent_runs` carries none: a run is described by its own pair of files,
+# so no fork ever holds a copy of one.
 _COUNTED: dict[str, bool] = {
     "turns": True,
     "api_calls": True,
     "tool_calls": True,
     "agent_runs": False,
-    "compactions": False,
+    "compactions": True,
 }
 
 

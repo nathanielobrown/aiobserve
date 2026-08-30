@@ -44,6 +44,7 @@ def test_a_compaction_records_what_it_dropped(fixture_source: SourceFactory):
             pre_tokens=171313,
             post_tokens=9478,
             duration_ms=133939,
+            replayed=False,
         ),
         Compaction(
             id="0710fcd7-edbe-4012-bee4-89aadf04f6f2",
@@ -55,6 +56,7 @@ def test_a_compaction_records_what_it_dropped(fixture_source: SourceFactory):
             pre_tokens=222837,
             post_tokens=13556,
             duration_ms=127487,
+            replayed=False,
         ),
         Compaction(
             id="1c83df25-c70c-4ef1-965d-395a34f281ef",
@@ -67,6 +69,7 @@ def test_a_compaction_records_what_it_dropped(fixture_source: SourceFactory):
             pre_tokens=240349,
             post_tokens=16918,
             duration_ms=119332,
+            replayed=False,
         ),
     ]
 

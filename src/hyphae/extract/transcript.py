@@ -96,7 +96,7 @@ def _parse(lines: list[_Line], session_id: str, source: str, replayed: set[int])
         turns=turns,
         api_calls=_api_calls(lines, turn_by_line, session_id, source, replayed),
         tool_calls=_tool_calls(lines, session_id, source, replayed),
-        compactions=_compactions(lines, session_id, source),
+        compactions=_compactions(lines, session_id, source, replayed),
     )
 
 
@@ -187,7 +187,9 @@ def _last_field(lines: list[_Line], kind: RecordType, field: str) -> str | None:
     return values[-1] if values else None
 
 
-def _compactions(lines: list[_Line], session_id: str, source: str) -> list[Compaction]:
+def _compactions(
+    lines: list[_Line], session_id: str, source: str, replayed: set[int]
+) -> list[Compaction]:
     """Every point this transcript summarised itself to free context.
 
     Each boundary is written alongside the summary that replaced the history, so one row
@@ -203,6 +205,7 @@ def _compactions(lines: list[_Line], session_id: str, source: str) -> list[Compa
             pre_tokens=line.record["compactMetadata"]["preTokens"],
             post_tokens=line.record["compactMetadata"]["postTokens"],
             duration_ms=line.record["compactMetadata"]["durationMs"],
+            replayed=line.line_no in replayed,
         )
         for line in lines
         if line.record["type"] == RecordType.SYSTEM

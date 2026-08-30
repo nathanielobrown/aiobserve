@@ -102,6 +102,10 @@ ANCESTOR = "2352492b-1437-4427-ad51-70f35c75f663"
 FORK_ORIGIN = "5a88789c-1da7-4f32-b631-40a7e243334b"
 FORK_ORIGIN_RUN = "acbc29008a04b9702"
 FORK_RUN = "a61a059e3610e6fb4"
+# The compaction both of those transcripts hold: `FORK_ORIGIN_RUN` recorded it and the fork
+# copied it in with the rest of the prefix, so the fork's copy is the corpus's one replayed
+# compaction (`tests/fixtures/fork_origin/README.md`).
+FORK_COMPACTION = "53858e9c-25e4-48a6-95d3-7f9baa5946de"
 BYREF_FORK = "afa3946951a08a798"
 REGISTRY_ZOO = "registry-zoo-0000-0000-0000-000000000000"
 # The pool session no other leaf asserts on, so a copied store can strip its api calls and

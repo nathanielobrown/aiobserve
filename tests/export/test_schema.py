@@ -41,7 +41,7 @@ DDL_OWNERS = [
     pytest.param(
         "hyphae.export.duckdb",
         TRACE_SCHEMA,
-        "7722fc836335ee343111504eca966d508374b1b6365b747296eac3ee9c5d3d95",
+        "7252a61c6ebbf68580bf2136854843f4d2f546dadb82e1172fa44535d00178a8",
         id="trace",
     ),
     pytest.param(

@@ -122,9 +122,8 @@ def session_spans(trace: SessionTrace, text: TextPolicy = METADATA_ONLY) -> list
     """Every span one session becomes, root first.
 
     Replayed rows emit nothing: a fork's copy of its parent's transcript would double-count
-    in every backend aggregation. Compactions carry no such flag, so `copied_compaction`
-    derives one. A tool call that started a subagent becomes that subagent's span rather than
-    a span of its own.
+    in every backend aggregation. A tool call that started a subagent becomes that subagent's
+    span rather than a span of its own.
     """
     session = trace.session
     if session.started_at is None or session.ended_at is None:
@@ -150,7 +149,7 @@ def session_spans(trace: SessionTrace, text: TextPolicy = METADATA_ONLY) -> list
         *(
             _compaction_span(session, compaction)
             for compaction in trace.compactions
-            if not copied_compaction(compaction, runs.get(compaction.source))
+            if not compaction.replayed
         ),
     ]
     return [_root_span(trace, children, text), *children]
@@ -451,39 +450,6 @@ def _compaction_span(session: Session, compaction: Compaction) -> trace_pb2.Span
             "logfire.msg": f"compaction {compaction.trigger}",
         },
     )
-
-
-def copied_compaction(compaction: Compaction, run: AgentRun | None) -> bool:
-    """Whether a compaction is one a fork copied in with its prefix, and so ships no span.
-
-    `compactions` carries no `replayed` column, so the rule reads the same prefix shape the
-    extractor's flags read: `AgentRun.started_at` is by contract the first record no earlier
-    transcript already held, so anything in a fork at or before it came from the parent. A
-    tie is a copy — a fork cannot compact at the instant of its own first record, and when
-    the copied prefix ends at the compaction the two share a millisecond.
-
-    `run` is the run a compaction's `source` names, or None on the main thread, which comes
-    first in the extractor's ordering and can hold no copies.
-    """
-    if run is None:
-        return False
-    if not run.is_fork:
-        if run.started_at is not None and compaction.timestamp < run.started_at:
-            raise CompactionBeforeRunError(
-                f"Compaction {compaction.id} of session {compaction.session_id} is timestamped "
-                f"{compaction.timestamp.isoformat()}, before its non-fork run "
-                f"{compaction.source} started at {run.started_at.isoformat()}. Only a fork can "
-                f"hold a copy, so this is schema drift."
-            )
-        return False
-    # It copied everything it holds, so nothing in it is its own.
-    if run.started_at is None:
-        return True
-    return compaction.timestamp <= run.started_at
-
-
-class CompactionBeforeRunError(Exception):
-    """A compaction predates the run that recorded it, where no copied prefix explains it."""
 
 
 def _text(policy: TextPolicy, value: str | None) -> str | None:

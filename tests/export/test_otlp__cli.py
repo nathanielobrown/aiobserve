@@ -165,15 +165,15 @@ def test_a_dry_run_counts_without_a_backend(
     planted = open_trace_store(store_path, read_only=False)
     planted.execute(
         "INSERT INTO compactions"
-        " SELECT 'planted-compaction', id, 'main', started_at, 'auto', 100, 10, 5"
+        " SELECT 'planted-compaction', id, 'main', started_at, 'auto', 100, 10, 5, false"
         " FROM sessions LIMIT 1"
     )
     planted.close()
     # ...and the store is counted rather than shipped...
     cli.main("export-otlp", MYCELIA, "--db", str(store_path), "--dry-run")
     # ...then the printed count is the mapper's own, session for session and span for span,
-    # down to the compactions among those spans — the one number no query reproduces, since
-    # the replay rule that drops a fork's inherited copies lives in the mapper...
+    # down to the compactions among those spans, which the mapper ships or drops by the
+    # `replayed` flag the extractor set...
     connection = open_trace_store(store_path, read_only=True)
     source = StoreSource(connection)
     counted = census([source.extract(session) for session in source.sessions(Path(MYCELIA))])

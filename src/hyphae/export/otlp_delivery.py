@@ -12,7 +12,6 @@ row, only the spans that module made.
 import datetime as dt
 import gzip
 import time
-from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from types import TracebackType
@@ -28,7 +27,6 @@ from hyphae.export.otlp import (
     MAPPER_VERSION,
     METADATA_ONLY,
     TextPolicy,
-    copied_compaction,
     session_resource,
     session_spans,
 )
@@ -368,54 +366,24 @@ class Census:
 
     sessions: int
     spans: int
-    # Compactions that survive the copied-prefix replay rule. `live_compactions` does not
-    # reproduce this number — it keeps the copies a fork inherited — so a census that read
-    # the view would over-report every fork copy in the corpus.
+    # Compactions shipped: what `live_compactions` holds, since the mapper and the view
+    # both read the extractor's `replayed` flag.
     compactions: int
-
-
-class AmbiguousCompactionError(Exception):
-    """One compaction appears twice in a session and the copied-prefix rule keeps both.
-
-    A duplicated id is a fork's copy of its parent's compaction, so exactly one copy is the
-    live one. Two would ship one compaction as two spans, which is a rule we can no longer
-    apply rather than a count to fudge.
-    """
 
 
 def census(traces: Iterable[SessionTrace], text: TextPolicy = METADATA_ONLY) -> Census:
     """Count what a send would put on the wire, without sending it.
 
     Shapes each session exactly as `export()` does, so the total is the mapper's own answer
-    rather than a SQL approximation of it, and crashes on a session whose duplicated
-    compactions the replay rule cannot separate.
+    rather than a SQL approximation of it.
     """
     sessions = spans = compactions = 0
     for trace in traces:
-        _check_one_live_copy(trace)
         shaped = session_spans(trace, text)
         sessions += 1
         spans += len(shaped)
         compactions += sum(1 for span in shaped if span.name == COMPACTION_SPAN)
     return Census(sessions=sessions, spans=spans, compactions=compactions)
-
-
-def _check_one_live_copy(trace: SessionTrace) -> None:
-    """Every compaction id a session holds twice must keep exactly one live copy."""
-    runs = {run.id: run for run in trace.agent_runs}
-    held: Counter[str] = Counter(compaction.id for compaction in trace.compactions)
-    live: Counter[str] = Counter(
-        compaction.id
-        for compaction in trace.compactions
-        if not copied_compaction(compaction, runs.get(compaction.source))
-    )
-    for compaction_id, count in held.items():
-        if count > 1 and live[compaction_id] != 1:
-            raise AmbiguousCompactionError(
-                f"session {trace.session.id} holds compaction {compaction_id} {count} time(s) "
-                f"and the copied-prefix rule keeps {live[compaction_id]} of them. Exactly one "
-                f"copy is live; a fork shape this rule cannot separate has landed."
-            )
 
 
 def _batches(spans: list[trace_pb2.Span], size: int) -> Iterator[list[trace_pb2.Span]]:
