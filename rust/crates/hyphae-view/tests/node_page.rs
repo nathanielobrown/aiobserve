@@ -49,16 +49,14 @@ async fn every_session_in_the_corpus_gets_a_page() {
 }
 
 #[tokio::test]
-async fn every_response_carries_the_content_security_policy() {
-    // The policy rides every response, error pages and static files included: the escaping below
-    // is the first defence and this is the second.
+async fn a_response_that_is_not_a_page_still_carries_the_content_security_policy() {
+    // The route sweep asserts the header over every page; these are the responses no route file
+    // names — a refusal, a static file, a miss — where dropping it would go unseen.
     let served = common::served(|_| {});
-    let id = common::session_ids(&served.db()).remove(0);
     for path in [
-        format!("/session/{id}"),
-        "/session/no-such-session".to_owned(),
-        "/static/style.css".to_owned(),
-        "/nothing/here".to_owned(),
+        "/session/no-such-session",
+        "/static/style.css",
+        "/nothing/here",
     ] {
         let response = served.get(&path).await;
         assert_eq!(
