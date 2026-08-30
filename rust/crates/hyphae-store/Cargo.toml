@@ -1,0 +1,13 @@
+[package]
+name = "hyphae-store"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+duckdb.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

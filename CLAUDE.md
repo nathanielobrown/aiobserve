@@ -45,6 +45,7 @@ src/hyphae/               Analyze AI coding agents from their telemetry
   pipeline.py             The seams: what an extractor and an exporter owe each other, and the loop that drives them
 tests/                    The suite, mirroring the package layout; fixtures are recorded sessions, and `gallery/` serves them as pages (`docs/ui-development.md`)
 tools/                    The repo's own generators: what the code already owns, written back out for another reader
+rust/                     The Rust conversion prototype: a cargo workspace whose crates mirror the Python packages one-for-one (`plans/rust-prototype/design.md`)
 docs/
   analysis.md             Follow this process to turn the trace store into evidence-backed findings about how an AI coding agent behaved on a project
   schema.md               Every Claude Code telemetry field hyphae reads, what it means, and the recording that proves it

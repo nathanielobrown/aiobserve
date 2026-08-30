@@ -72,6 +72,13 @@ ENTRIES = (
     Entry("src/hyphae/pipeline.py", Module("hyphae.pipeline")),
     Entry("tests/", Module("tests")),
     Entry("tools/", Module("tools")),
+    Entry(
+        "rust/",
+        Words(
+            "The Rust conversion prototype: a cargo workspace whose crates mirror the Python "
+            "packages one-for-one (`plans/rust-prototype/design.md`)"
+        ),
+    ),
     Entry("docs/", None),
     Entry("docs/analysis.md", Doc("docs/analysis.md")),
     Entry("docs/schema.md", Doc("docs/schema.md")),
