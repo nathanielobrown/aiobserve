@@ -372,10 +372,14 @@ def _turns(
 
 
 def _required_timestamp(line: _Line, session_id: str) -> datetime:
+    """The record's timestamp, for the entities that cannot be placed in time without one."""
     moment = _timestamp(line.record)
     if moment is None:
+        # The kind comes off the record rather than the caller: eight parse paths reach
+        # here, and a caller naming the wrong one sends the reader to the wrong records.
         raise TranscriptSchemaError(
-            f"Session {session_id}, line {line.line_no}: a prompt record with no timestamp"
+            f"Session {session_id}, line {line.line_no}: "
+            f"a {line.record['type']} record with no timestamp"
         )
     return moment
 
