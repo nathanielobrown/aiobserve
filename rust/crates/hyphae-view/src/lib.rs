@@ -1,5 +1,12 @@
+//! The trace viewer: every node of a session served as its own page.
+//!
+//! Mirrors `src/hyphae/view/`, module for module. Reading order is the way a request travels:
+//! [`store`] reads the rows, [`nodes`] turns them into what a page prints, [`components`]
+//! renders them, [`browse`] assembles one page, and [`app`] routes to it.
+
 pub mod cuts;
 pub mod format;
 pub mod inline_markdown;
 pub mod labels;
 pub mod render;
+pub mod store;

@@ -12,7 +12,7 @@
 
 use std::path::{Path, PathBuf};
 
-use duckdb::types::{ToSql, Value};
+use duckdb::types::Value;
 use hyphae_extract::sessions::SessionFiles;
 use hyphae_extract::{Extractor, SessionSource};
 use hyphae_store::{Store, schema};
@@ -113,11 +113,10 @@ pub fn session_rows(store: &Store, session_id: &str, table: &str) -> Vec<Vec<Val
         .collect::<Vec<_>>()
         .join(", ");
     let key = schema::session_key(table);
-    let session: &dyn ToSql = &session_id;
     store
         .fetch(
             &format!("SELECT {selected} FROM {table} WHERE {key} = $session_id"),
-            &[("session_id", session)],
+            &[("session_id", session_id.into())],
         )
         .expect("the store answers a table read")
         .into_iter()

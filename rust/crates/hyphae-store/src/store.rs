@@ -14,6 +14,7 @@ use duckdb::types::{ToSql, Value};
 use duckdb::{Config, Connection};
 use hyphae_model::SessionTrace;
 
+use crate::param::Param;
 use crate::row::Row;
 use crate::{macros, rows, schema};
 
@@ -255,9 +256,13 @@ impl Store {
     ///
     /// Values come back as `duckdb::types::Value`, nested `LIST` and `STRUCT` included, so a
     /// query the SQL library owns needs no Rust type declared for its result.
-    pub fn fetch(&self, sql: &str, params: &[(&str, &dyn ToSql)]) -> Result<Vec<Row>, StoreError> {
+    pub fn fetch(&self, sql: &str, params: &[(&str, Param)]) -> Result<Vec<Row>, StoreError> {
+        let bound = params
+            .iter()
+            .map(|(name, value)| (*name, value as &dyn ToSql))
+            .collect::<Vec<_>>();
         let mut statement = self.connection.prepare(sql)?;
-        let mut answered = statement.query(params)?;
+        let mut answered = statement.query(bound.as_slice())?;
         let mut rows = Vec::new();
         // Column names come off the first row: DuckDB knows the result's shape only once the
         // statement has run.

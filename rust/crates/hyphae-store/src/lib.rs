@@ -7,11 +7,13 @@
 //! everything here until the Python store retires.
 
 pub mod macros;
+pub mod param;
 pub mod queries;
 pub mod row;
 pub mod rows;
 pub mod schema;
 pub mod store;
 
+pub use param::Param;
 pub use row::{Row, RowError};
 pub use store::{Store, StoreError};

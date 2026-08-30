@@ -67,14 +67,49 @@ fn the_bound_widths_match_the_python_library() {
             .parse()
             .unwrap_or_else(|_| panic!("`{name}` is assigned a number"))
     };
-    assert_eq!(queries::NAV_CHARS, declared("NAV_CHARS"));
-    assert_eq!(queries::CRUMB_CHARS, declared("CRUMB_CHARS"));
-    assert_eq!(queries::HEADER_CHARS, declared("HEADER_CHARS"));
-    assert_eq!(queries::HEADER_ITEMS, declared("HEADER_ITEMS"));
-    assert_eq!(queries::HEADER_ITEM_CHARS, declared("HEADER_ITEM_CHARS"));
-    assert_eq!(queries::LOG_CHARS, declared("LOG_CHARS"));
-    assert_eq!(queries::LOG_ROWS, declared("LOG_ROWS"));
-    assert_eq!(queries::DETAIL_CHARS, declared("DETAIL_CHARS"));
-    assert_eq!(queries::ENRICHMENT_CHARS, declared("ENRICHMENT_CHARS"));
-    assert_eq!(queries::FIRST_PAGE, declared("FIRST_PAGE"));
+    // A width is a count of characters and is spent as one (`fmt::cut`), so it is `usize`; a
+    // row count and the cursor's first page are signed, since the latter is negative. Both
+    // families are compared as the one signed number the Python module writes.
+    assert_eq!(
+        queries::NAV_CHARS as i64,
+        declared("NAV_CHARS"),
+        "NAV_CHARS"
+    );
+    assert_eq!(
+        queries::CRUMB_CHARS as i64,
+        declared("CRUMB_CHARS"),
+        "CRUMB_CHARS"
+    );
+    assert_eq!(
+        queries::HEADER_CHARS as i64,
+        declared("HEADER_CHARS"),
+        "HEADER_CHARS"
+    );
+    assert_eq!(
+        queries::HEADER_ITEMS as i64,
+        declared("HEADER_ITEMS"),
+        "HEADER_ITEMS"
+    );
+    assert_eq!(
+        queries::HEADER_ITEM_CHARS as i64,
+        declared("HEADER_ITEM_CHARS"),
+        "HEADER_ITEM_CHARS"
+    );
+    assert_eq!(
+        queries::LOG_CHARS as i64,
+        declared("LOG_CHARS"),
+        "LOG_CHARS"
+    );
+    assert_eq!(queries::LOG_ROWS, declared("LOG_ROWS"), "LOG_ROWS");
+    assert_eq!(
+        queries::DETAIL_CHARS as i64,
+        declared("DETAIL_CHARS"),
+        "DETAIL_CHARS"
+    );
+    assert_eq!(
+        queries::ENRICHMENT_CHARS as i64,
+        declared("ENRICHMENT_CHARS"),
+        "ENRICHMENT_CHARS"
+    );
+    assert_eq!(queries::FIRST_PAGE, declared("FIRST_PAGE"), "FIRST_PAGE");
 }

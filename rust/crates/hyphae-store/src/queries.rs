@@ -29,29 +29,29 @@ pub const VIEW_PREFIX: &str = "view_";
 /// How much of a title a NavTree row carries — a turn's, a run's, an api call's. What a row
 /// *can* say rather than what fits: the NavTree is draggable, so the cut has to survive a
 /// reader widening it.
-pub const NAV_CHARS: i64 = 110;
+pub const NAV_CHARS: usize = 110;
 
 /// How much of a title one crumb of a crumb chain carries. A crumb is a place to click, not a
 /// place to read — the node itself is open underneath.
-pub const CRUMB_CHARS: i64 = 40;
+pub const CRUMB_CHARS: usize = 40;
 
 /// How much of a string a node page's header carries, and how many items and how much of each
 /// one a header list holds.
-pub const HEADER_CHARS: i64 = 100;
-pub const HEADER_ITEMS: i64 = 5;
-pub const HEADER_ITEM_CHARS: i64 = 60;
+pub const HEADER_CHARS: usize = 100;
+pub const HEADER_ITEMS: usize = 5;
+pub const HEADER_ITEM_CHARS: usize = 60;
 
 /// How much of a string one row of a children log carries.
-pub const LOG_CHARS: i64 = 300;
+pub const LOG_CHARS: usize = 300;
 
 /// How many rows one children log holds.
 pub const LOG_ROWS: i64 = 100;
 
 /// How much of the one value a node page is *about* the pane shows before it offers the rest.
-pub const DETAIL_CHARS: i64 = 4_000;
+pub const DETAIL_CHARS: usize = 4_000;
 
 /// How much of a model-written description or friction line a page shows.
-pub const ENRICHMENT_CHARS: i64 = 200;
+pub const ENRICHMENT_CHARS: usize = 200;
 
 /// The keyset cursor before the first row: "the last index already shown", and indexes start
 /// at 0.

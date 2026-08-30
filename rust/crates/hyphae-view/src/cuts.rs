@@ -27,7 +27,7 @@ pub fn project_path(value: Option<&str>) -> String {
 pub fn line(value: Option<&str>) -> String {
     value.map_or_else(
         || fmt::ABSENT.to_owned(),
-        |value| fmt::cut(value, queries::LOG_CHARS as usize),
+        |value| fmt::cut(value, queries::LOG_CHARS),
     )
 }
 
@@ -38,11 +38,11 @@ pub fn line(value: Option<&str>) -> String {
 pub fn head(value: Option<&str>) -> String {
     value.map_or_else(
         || fmt::ABSENT.to_owned(),
-        |value| fmt::cut(value, queries::HEADER_CHARS as usize),
+        |value| fmt::cut(value, queries::HEADER_CHARS),
     )
 }
 
 /// One member of a header's list, marked where the query cut it.
 pub fn member(value: &str) -> String {
-    fmt::cut(value, queries::HEADER_ITEM_CHARS as usize)
+    fmt::cut(value, queries::HEADER_ITEM_CHARS)
 }

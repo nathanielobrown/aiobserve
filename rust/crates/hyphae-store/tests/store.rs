@@ -209,11 +209,12 @@ fn a_timestamptz_matches_the_instant_the_python_store_holds() {
     let (_scratch, store) = common::fixture_store();
     let session_id = representative_session(&store);
 
-    let session: &dyn ToSql = &session_id;
     // The store's own rendering of the instant beside chrono's reading of the same column.
     let sql = "SELECT strftime(started_at, '%Y-%m-%d %H:%M:%S.%g') AS printed, started_at \
                FROM sessions WHERE id = $session_id";
-    let ours = store.fetch(sql, &[("session_id", session)]).unwrap();
+    let ours = store
+        .fetch(sql, &[("session_id", session_id.as_str().into())])
+        .unwrap();
     let instant = ours[0].timestamp("started_at").unwrap();
     assert_eq!(
         instant.format("%Y-%m-%d %H:%M:%S%.3f").to_string(),
@@ -310,7 +311,7 @@ fn re_exporting_a_session_replaces_its_rows_and_touches_no_other() {
     let state = store
         .fetch(
             "SELECT count(*) AS n FROM extract_state WHERE session_id = $session_id",
-            &[("session_id", &session_id as &dyn ToSql)],
+            &[("session_id", session_id.as_str().into())],
         )
         .unwrap();
     assert_eq!(state[0].i64("n").unwrap(), 1);
@@ -409,34 +410,29 @@ fn a_node_page_query_reads_its_nested_struct_and_list() {
     let session_id = representative_session(&store);
 
     // A call that went on to make tool calls, so `tools` is a struct rather than NULL.
-    let session: &dyn ToSql = &session_id;
     let target = store
         .fetch(
             "SELECT c.source, c.id FROM live_api_calls c WHERE c.session_id = $session_id \
              AND EXISTS (SELECT 1 FROM live_tool_calls t WHERE t.session_id = c.session_id \
              AND t.source = c.source AND t.api_call_id = c.id) \
              ORDER BY c.source, c.\"index\" LIMIT 1",
-            &[("session_id", session)],
+            &[("session_id", session_id.as_str().into())],
         )
         .unwrap();
     let target = target.first().expect("the session has a call with tools");
     let source = target.str("source").unwrap().to_owned();
     let api_call_id = target.str("id").unwrap().to_owned();
 
-    let source_param: &dyn ToSql = &source;
-    let call_param: &dyn ToSql = &api_call_id;
     // The widths the viewer's node page binds (`docs/viewer-bounds.md` defaults).
-    let head_chars: &dyn ToSql = &120_i32;
-    let detail_chars: &dyn ToSql = &4000_i32;
     let rows = store
         .fetch(
             hyphae_store::queries::load("view_call_header"),
             &[
-                ("session_id", session),
-                ("source", source_param),
-                ("api_call_id", call_param),
-                ("head_chars", head_chars),
-                ("detail_chars", detail_chars),
+                ("session_id", session_id.as_str().into()),
+                ("source", source.as_str().into()),
+                ("api_call_id", api_call_id.as_str().into()),
+                ("head_chars", 120_i64.into()),
+                ("detail_chars", 4000_i64.into()),
             ],
         )
         .expect("the node-page query runs against a store this crate wrote");

@@ -129,6 +129,13 @@ impl Row {
             Value::SmallInt(number) => Ok(i64::from(*number)),
             Value::Int(number) => Ok(i64::from(*number)),
             Value::BigInt(number) => Ok(*number),
+            // A `SUM` over a BIGINT column answers HUGEINT, which is DuckDB refusing to
+            // overflow rather than a column of a different type — every counted column a
+            // viewer query rolls up arrives this way. Narrowed rather than carried, because
+            // Python reads the same value as a plain `int`; a total that genuinely does not
+            // fit is the loud error the design asks for.
+            Value::HugeInt(number) => i64::try_from(*number)
+                .map_err(|_| self.wrong_type(column, "an integer", &Value::HugeInt(*number))),
             other => Err(self.wrong_type(column, "an integer", other)),
         }
     }
@@ -183,6 +190,46 @@ impl Row {
             Value::Null => Ok(None),
             _ => self.timestamp(column).map(Some),
         }
+    }
+
+    /// One member of a `STRUCT` column, as the integer it holds — the shape a node's context
+    /// arrives in (`view_nav_tree_turns.sql`).
+    ///
+    /// `None` for a NULL column, a NULL member, and a member the struct does not declare: a
+    /// level whose nodes end on no window leaves the member out, and a model our price table
+    /// has no window for answers NULL inside it. Both are a bar the page does not draw.
+    pub fn member_i64(&self, column: &str, name: &str) -> Result<Option<i64>, RowError> {
+        let held = match self.value(column)? {
+            Value::Null => return Ok(None),
+            other => other,
+        };
+        match member(held, name) {
+            None | Some(Value::Null) => Ok(None),
+            Some(Value::TinyInt(number)) => Ok(Some(i64::from(*number))),
+            Some(Value::SmallInt(number)) => Ok(Some(i64::from(*number))),
+            Some(Value::Int(number)) => Ok(Some(i64::from(*number))),
+            Some(Value::BigInt(number)) => Ok(Some(*number)),
+            Some(other) => Err(RowError::WrongType {
+                column: format!("{column}.{name}"),
+                expected: "an integer",
+                found: type_name(other),
+            }),
+        }
+    }
+
+    /// The members of a `LIST` column of text — the cut lists a header query answers with.
+    pub fn strings(&self, column: &str) -> Result<Vec<&str>, RowError> {
+        let held = match self.value(column)? {
+            Value::Null => return Ok(Vec::new()),
+            Value::List(members) | Value::Array(members) => members,
+            other => return Err(self.wrong_type(column, "a LIST", other)),
+        };
+        held.iter()
+            .map(|member| match member {
+                Value::Text(text) | Value::Enum(text) => Ok(text.as_str()),
+                other => Err(self.wrong_type(column, "a LIST of text", other)),
+            })
+            .collect()
     }
 
     fn wrong_type(&self, column: &str, expected: &'static str, found: &Value) -> RowError {
