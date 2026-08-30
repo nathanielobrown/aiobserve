@@ -185,5 +185,10 @@ def _parse(parameter: str, type_: ParamType, text: str) -> ParamValue:
                 return int(text)
             case ParamType.DATE:
                 return dt.date.fromisoformat(text)
+            case _:
+                # A type this function has no arm for. Falling off the end of a match hands
+                # back None, which DuckDB binds as SQL NULL and the citation reports as
+                # bound — a wrong answer with nothing marking it, so a fourth type stops here.
+                raise QueryError(f"--param {parameter}: nothing binds a {type_} parameter")
     except ValueError as error:
         raise QueryError(f"--param {parameter}={text} is not a {type_}: {error}") from error
