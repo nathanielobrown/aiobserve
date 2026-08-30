@@ -63,7 +63,7 @@ def canonical(trace: SessionTrace) -> SessionTrace:
 
 def source(session_id: str) -> SessionSource:
     """What `refresh()` hands `extract()`: an id and a fingerprint, and no files."""
-    return SessionSource(id=session_id, files=(), fingerprint="fixture")
+    return SessionSource(id=session_id, fingerprint="fixture")
 
 
 @pytest.fixture(scope="module")
@@ -125,7 +125,7 @@ def test_sessions_carry_the_fingerprint_the_store_holds(
     """Discovery reports each session's recorded fingerprint and no files to read."""
     # If the store holds the sessions of the analyzed repository...
     expected = [
-        SessionSource(id=session_id, files=(), fingerprint=fingerprint)
+        SessionSource(id=session_id, fingerprint=fingerprint)
         for session_id, fingerprint in listable.execute(
             "SELECT e.session_id, e.fingerprint FROM extract_state e"
             " JOIN sessions s ON s.id = e.session_id"

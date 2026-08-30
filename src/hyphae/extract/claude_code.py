@@ -12,10 +12,17 @@ stops the run. What each field means, and the session that proves it, is in `doc
 import hashlib
 import json
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 from hyphae.extract.agent_runs import _agent_runs
-from hyphae.extract.layout import DEFAULT_PROJECTS_ROOT, _classify, _offload_file, find_sessions
+from hyphae.extract.layout import (
+    DEFAULT_PROJECTS_ROOT,
+    SessionFiles,
+    _classify,
+    _offload_file,
+    find_sessions,
+)
 from hyphae.extract.replays import _replays
 from hyphae.extract.transcript import (
     _parse,
@@ -37,34 +44,42 @@ EXTRACTOR_NAME = "claude_code"
 EXTRACTOR_VERSION = "7"
 
 
+@dataclass(frozen=True)
+class ClaudeCodeSource(SessionSource):
+    """One discovered session, still as the files that hold it.
+
+    Discovery already knows where the transcript is and what sits beside it, so `extract()`
+    is handed the structure rather than a flat list to guess its way back through.
+    """
+
+    files: SessionFiles
+
+
 class ClaudeCodeExtractor:
     """Discovers and parses Claude Code sessions for one project."""
 
     def __init__(self, *, projects_root: Path = DEFAULT_PROJECTS_ROOT) -> None:
         self.projects_root = projects_root
 
-    def sessions(self, project: Path) -> list[SessionSource]:
+    def sessions(self, project: Path) -> list[ClaudeCodeSource]:
         """Every session recorded for `project`, with the fingerprint of its files."""
         project_dir = self.projects_root / encode_project_path(project)
-        sources = []
-        for session in find_sessions(project, projects_root=self.projects_root):
-            files = session.files()
-            sources.append(
-                SessionSource(
-                    id=session.id,
-                    files=tuple(files),
-                    fingerprint=fingerprint(files, project_dir),
-                )
+        return [
+            ClaudeCodeSource(
+                id=session.id,
+                fingerprint=fingerprint(session.files(), project_dir),
+                files=session,
             )
-        return sources
+            for session in find_sessions(project, projects_root=self.projects_root)
+        ]
 
-    def extract(self, source: SessionSource) -> SessionTrace:
+    def extract(self, source: ClaudeCodeSource) -> SessionTrace:
         """Parse every file of one session into a trace.
 
         Every transcript the session wrote — its own and each subagent's — runs through the
         same parser, distinguished only by the `source` its rows carry.
         """
-        files = _classify(source)
+        files = _classify(source.files)
         transcripts = [
             (MAIN_SOURCE, files.transcript),
             *((agent.id, agent.transcript) for agent in files.agents),

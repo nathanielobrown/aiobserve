@@ -321,4 +321,4 @@ def test_a_session_source_carries_every_file_it_owns(corpus: Corpus):
 
     # An offloaded tool result is part of the session, so it reaches the fingerprint and,
     # from slice 2 on, the parser.
-    assert offloaded in source.files
+    assert offloaded in source.files.files()

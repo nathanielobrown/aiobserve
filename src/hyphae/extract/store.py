@@ -54,8 +54,9 @@ class StoreSource:
     def sessions(self, project: Path) -> list[SessionSource]:
         """Every extracted session recorded at or under `project`, resolved as typed.
 
-        No files: the store is the source, so there is nothing on disk to stat, and the
-        fingerprint is the one `extract_state` recorded when the rows were written.
+        The base `SessionSource`, with nothing added: the store is the source, so there is
+        nothing on disk to stat, and the fingerprint is the one `extract_state` recorded
+        when the rows were written.
 
         Sessions with no `project_dir` sit under no project and are excluded by the filter
         itself. That is only safe while they are empty, so one holding rows crashes here
@@ -81,7 +82,7 @@ class StoreSource:
                 f"Check the path, or run `hp extract` for it first."
             )
         return [
-            SessionSource(id=session_id, files=(), fingerprint=fingerprint)
+            SessionSource(id=session_id, fingerprint=fingerprint)
             for session_id, fingerprint in rows
         ]
 

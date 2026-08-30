@@ -333,4 +333,4 @@ def deliver(
 
 def trace_of(store: duckdb.DuckDBPyConnection, session_id: str) -> SessionTrace:
     """One session read back out of the store, the way the exporter is handed it."""
-    return StoreSource(store).extract(SessionSource(id=session_id, files=(), fingerprint="x"))
+    return StoreSource(store).extract(SessionSource(id=session_id, fingerprint="x"))
