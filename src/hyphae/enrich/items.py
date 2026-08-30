@@ -10,6 +10,10 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import override
 
+# Between an item key's fields. Absent from every value it joins: a session id and a run id are
+# uuids, a source is one of those or `main`, and a turn id is an integer.
+SEPARATOR = "|"
+
 
 class Level(StrEnum):
     """The three things that get an enrichment row, each with its own table and prompt."""
@@ -116,12 +120,23 @@ class Item:
     @property
     def key(self) -> str:
         """The key as one string — what a request, a call log, and a failure record carry."""
-        return "|".join((self.level, *self.key_values))
+        return item_key(self.level, *self.key_values)
+
+
+def item_key(level: Level, *values: str) -> str:
+    """One item's key: its level and its primary key, in the enrichment table's column order.
+
+    The one place the format is written. A caller that builds a key from parts — the parent
+    links, the stored stamps — must come through here, because nothing compares the two
+    spellings at runtime: a key built differently matches no stored row and names no item, and
+    the pass reports fresh work rather than an error.
+    """
+    return SEPARATOR.join((level, *values))
 
 
 def level_of(key: str) -> Level:
-    """The level of an item key, so a caller holding keys alone can still tell them apart."""
-    return Level(key.split("|", 1)[0])
+    """The level of an item key — `item_key` read back, for a caller holding keys alone."""
+    return Level(key.split(SEPARATOR, 1)[0])
 
 
 @dataclass(frozen=True)
