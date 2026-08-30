@@ -25,9 +25,20 @@ from hyphae.extract.records.registry import (
     SystemSubtype,
 )
 
-# The models side, whose source names every documented field as a literal. Reading it as parser
-# source would make "the parser reads this field" true of every field ever documented.
 MODELS = "hyphae.extract.records"
+# The modules of that package that describe rather than parse. Their source names every
+# documented field as a literal — `shapes.py` spells the excuse list itself — so reading one as
+# parser source would make "the parser reads this field" true of every field ever documented.
+# Named one by one rather than by package, because `registry.py` sits beside them and is parser
+# source: the closed-world registry the readers crash outside of. A module added to the package
+# is parser source until it is named here, which the leaf below turns into a decision.
+DESCRIBING = frozenset({"__init__", "blocks", "evidence", "field_tables", "shapes"})
+
+
+def describes(module: str) -> bool:
+    """Whether a dotted module name is the models side rather than parser source."""
+    package, _, stem = module.rpartition(".")
+    return module == MODELS or (package == MODELS and stem in DESCRIBING)
 
 
 def parsing_modules(entry: ModuleType) -> list[ModuleType]:
@@ -44,13 +55,7 @@ def parsing_modules(entry: ModuleType) -> list[ModuleType]:
             if not isinstance(node, ast.ImportFrom) or node.module is None:
                 continue
             name = node.module
-            reached = name.startswith("hyphae.extract.")
-            if (
-                reached
-                and name != MODELS
-                and not name.startswith(f"{MODELS}.")
-                and name not in seen
-            ):
+            if name.startswith("hyphae.extract.") and not describes(name) and name not in seen:
                 seen.add(name)
                 found.append(importlib.import_module(name))
     return found
@@ -124,17 +129,32 @@ def test_no_module_outside_the_parser_source_reads_a_documented_field() -> None:
     fields = {field for field in documented_fields() if not field.islower()}
     # Recursively, because this gate was written after one split and the next one is exactly
     # what it would otherwise miss: a reader moved into a subpackage is a module the walk above
-    # never reaches. `records/` is the one subpackage today, and it is the models side, which
-    # names every documented field by design.
-    models = Path(importlib.import_module(MODELS).__file__ or "").parent
+    # never reaches. Only the describing modules are passed over, and by name, so a reader that
+    # lands beside them in `records/` is held to this gate like any other module.
+    package = Path(importlib.import_module(MODELS).__file__ or "").parent
     for path in Path(claude_code.__file__).parent.rglob("*.py"):
-        if str(path) in reached or models in path.parents:
+        if str(path) in reached or (path.parent == package and path.stem in DESCRIBING):
             continue
         source = path.read_text()
         read = {field for field in fields if f'"{field}"' in source}
         assert not read, (
             f"`{path.name}` reads {sorted(read)} but the parser source above never reaches it: "
             "the drift leaves would pass by not looking"
+        )
+
+
+def test_every_module_beside_the_models_is_parser_source() -> None:
+    # What keeps the exemption above from going stale. A list of excused modules rots the way
+    # the package-wide exemption it replaced did: the split that moved the registry in beside
+    # the models is exactly the move that would carry a reader behind the exemption with it. So
+    # every module of the package is either named as describing or reached by the walk, and a
+    # new one stops the run until someone says which it is.
+    package = Path(importlib.import_module(MODELS).__file__ or "").parent
+    reached = {module.__file__ for module in PARSER_MODULES}
+    for path in sorted(package.glob("*.py")):
+        assert path.stem in DESCRIBING or str(path) in reached, (
+            f"`records/{path.name}` is neither named in DESCRIBING nor imported by any module "
+            "the parser walk reaches: say which side of the drift check it is on"
         )
 
 
