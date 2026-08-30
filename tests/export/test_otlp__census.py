@@ -76,9 +76,8 @@ def counted(exportable_db: Path, tmp_path: Path) -> Iterator[duckdb.DuckDBPyConn
     """The exportable corpus, writable, so a leaf can plant the shape no fixture records."""
     path = tmp_path / "traces.duckdb"
     shutil.copyfile(exportable_db, path)
-    connection = open_trace_store(path, read_only=False)
-    yield connection
-    connection.close()
+    with open_trace_store(path, read_only=False) as connection:
+        yield connection
 
 
 def test_the_census_counts_what_the_mapper_would_ship(
@@ -127,12 +126,9 @@ def test_the_census_holds_over_a_real_corpus() -> None:
     named = os.environ.get(CORPUS_ENV, "").strip()
     if not named:
         pytest.skip(f"{CORPUS_ENV} names no trace store to census")
-    connection = open_trace_store(Path(named), read_only=True)
-    try:
+    with open_trace_store(Path(named), read_only=True) as connection:
         shipped = traces(connection, Path(os.environ.get(CORPUS_PROJECT_ENV, MYCELIA)))
         assert census(shipped).spans == mapping_true(connection, shipped)
-    finally:
-        connection.close()
 
 
 # Planted, synthetic: no recorded fixture holds a workflow fan-out, and the canonical corpus

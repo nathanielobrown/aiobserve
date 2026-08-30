@@ -10,6 +10,7 @@ is stale and it compares each item's `Stamp` against the one on disk.
 
 import datetime as dt
 from collections.abc import Mapping
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
@@ -204,8 +205,11 @@ class EnrichmentStore:
         self.path = path
         # Enrichment reads the pipeline's views by name and column, so a store another schema
         # wrote is not one this code can enrich, and it opens on the same terms as every
-        # other reader: nothing is created at a path that holds no store.
-        self.connection = open_trace_store(path, read_only=False)
+        # other reader: nothing is created at a path that holds no store. The store outlives
+        # any one `with` block of the opener's, so it holds the block open on a stack and
+        # closes it in `close()`.
+        self._open = ExitStack()
+        self.connection = self._open.enter_context(open_trace_store(path, read_only=False))
         try:
             # Before the DDL: an enrichment table that drifted from it would otherwise be
             # left alone by `CREATE TABLE IF NOT EXISTS` and fail at the first read below.
@@ -214,7 +218,7 @@ class EnrichmentStore:
         except Exception:
             # Nothing was handed out, so no `with` block will close it, and the write lock
             # would outlive the refusal.
-            self.connection.close()
+            self._open.close()
             raise
 
     def __enter__(self) -> "EnrichmentStore":
@@ -229,7 +233,7 @@ class EnrichmentStore:
         self.close()
 
     def close(self) -> None:
-        self.connection.close()
+        self._open.close()
 
     def turn_items(self, project: str | None = None) -> list[TurnItem]:
         """Every enrichable main turn, each carrying the api and tool calls it drove.

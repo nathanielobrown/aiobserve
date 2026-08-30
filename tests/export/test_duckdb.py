@@ -410,8 +410,7 @@ def test_a_view_definition_reaches_a_reader_without_a_re_extract(
     assert stale_turns(db) == 0
 
     # ...then a reader answers off the code's definition, both directly...
-    connection = open_trace_store(db, read_only=True)
-    try:
+    with open_trace_store(db, read_only=True) as connection:
         assert connection.execute("SELECT count(*) FROM live_turns").fetchone() == (
             len(trace.turns),
         )
@@ -419,12 +418,11 @@ def test_a_view_definition_reaches_a_reader_without_a_re_extract(
         assert connection.execute(
             "SELECT turns FROM session_rollups WHERE session_id = ?", [SPINE]
         ).fetchone() == (len(trace.turns),)
-    finally:
-        connection.close()
     # A reader cannot write, so it shadows the stale definition rather than repairing it...
     assert stale_turns(db) == 0
     # ...and the next open for write is what puts the current text back in the file.
-    open_trace_store(db, read_only=False).close()
+    with open_trace_store(db, read_only=False):
+        pass
     assert stale_turns(db) == len(trace.turns)
 
 
@@ -566,8 +564,8 @@ def test_a_read_only_open_of_an_older_store_says_how_to_migrate(
 
     # ...then it is refused with the one action that fixes it, not with the fresh-store
     # remedy that would throw the archive away...
-    with pytest.raises(SchemaVersionError, match="for write"):
-        open_trace_store(db, read_only=True)
+    with pytest.raises(SchemaVersionError, match="for write"), open_trace_store(db, read_only=True):
+        pass
 
     # ...and the file it could not migrate is untouched.
     assert shape(db) == before
@@ -642,9 +640,15 @@ def test_a_foreign_database_refuses_to_open(db: Path):
     assert shape(db) == before
 
 
+def open_for_write(path: Path) -> object:
+    """The opener entered and left the way a caller does — the block is what closes it."""
+    with open_trace_store(path, read_only=False) as connection:
+        return connection
+
+
 @pytest.mark.parametrize(
     "open_store",
-    [DuckDbExporter, lambda path: open_trace_store(path, read_only=False)],
+    [DuckDbExporter, open_for_write],
     ids=["exporter", "reader"],
 )
 @pytest.mark.parametrize(

@@ -16,6 +16,8 @@ it to sum across sessions, and `session_rollups` to ask what one session's files
 """
 
 import datetime as dt
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import fields
 from pathlib import Path
 from types import TracebackType
@@ -314,14 +316,21 @@ TABLES: dict[str, type] = {
 SESSION_KEY = {"sessions": "id"}
 
 
-def open_trace_store(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnection:
+@contextmanager
+def open_trace_store(path: Path, *, read_only: bool) -> Generator[duckdb.DuckDBPyConnection]:
     """Open a store an extract already wrote, for a reader or a writer that comes after one.
 
-    Creates nothing: a path with no store behind it is a typo rather than a new store, and
-    `DuckDbExporter` stays the only thing that writes the DDL. A write open migrates a store
-    of an older vintage; a read-only one cannot, and says so. `read_only` has no default
-    because DuckDB admits one writer at a time — a reader that takes the write lock by
-    accident locks the viewer out.
+    The one way into an existing store: every reader and every writer but the extractor
+    itself goes through here, so the version check, the views and the closing are written
+    once. Creates nothing — a path with no store behind it is a typo rather than a new store,
+    and `DuckDbExporter` stays the only thing that writes the DDL. A write open migrates a
+    store of an older vintage; a read-only one cannot, and says so.
+
+    Keyword-only from `read_only` on, and it has no default: DuckDB admits one writer at a
+    time, so a reader that takes the write lock by accident locks the viewer out.
+
+    The block owns the connection, including on the way out through an exception — a refusal
+    that kept it would hold DuckDB's lock until the process ended.
     """
     if not path.exists():
         raise FileNotFoundError(f"{path} holds no trace store. Run `hp extract` first.")
@@ -334,12 +343,9 @@ def open_trace_store(path: Path, *, read_only: bool) -> duckdb.DuckDBPyConnectio
         # After the version check: a store of another vintage holds tables these views
         # cannot bind, and its refusal has to name the version rather than a column.
         refresh_views(connection, read_only=read_only)
-    except Exception:
-        # Nothing was handed out, so no `with` block will close it: a refusal that kept the
-        # connection would hold DuckDB's write lock until the process ends.
+        yield connection
+    finally:
         connection.close()
-        raise
-    return connection
 
 
 class DuckDbExporter:

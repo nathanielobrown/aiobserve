@@ -302,9 +302,8 @@ def test_the_ledger_survives_a_re_extract(
         exporter.export(trace, "re-extracted")
     # ...then its delivery row is still there. A table swept into the replace by reflex
     # would erase the ledger on every extract, and every later run would duplicate the corpus.
-    reopened = open_trace_store(store_path, read_only=True)
-    assert [row[0] for row in delivery_rows(reopened)] == [FIRST, SECOND]
-    reopened.close()
+    with open_trace_store(store_path, read_only=True) as reopened:
+        assert [row[0] for row in delivery_rows(reopened)] == [FIRST, SECOND]
 
 
 def test_the_ledger_is_created_without_a_schema_bump(

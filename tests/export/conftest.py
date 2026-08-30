@@ -285,9 +285,8 @@ def store_path(delivered_db: Path, tmp_path: Path) -> Path:
 
 @pytest.fixture
 def store(store_path: Path) -> Iterator[duckdb.DuckDBPyConnection]:
-    connection = open_trace_store(store_path, read_only=False)
-    yield connection
-    connection.close()
+    with open_trace_store(store_path, read_only=False) as connection:
+        yield connection
 
 
 def delivery_rows(connection: duckdb.DuckDBPyConnection) -> list[tuple[Any, ...]]:
