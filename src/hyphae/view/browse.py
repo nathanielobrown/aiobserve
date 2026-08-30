@@ -218,43 +218,51 @@ def browse(
     return viewer.html(
         node_page.page(
             selection=selection,
-            choices=preset_choices(selection, knobs),
-            rows=built.rows,
-            # The thread the enrichment was read for, which is what a tail row's fetch carries.
-            thread=source,
-            # Where the chain starts: the whole session list, and this session's project. The
-            # project is a step out of the session rather than a node of it, so it stands above
-            # the chain rather than in it — a session is still the outermost node.
-            trail=node_page.Trail(
-                list_url=listing.LIST_URL,
-                project_dir=head[0]["project_dir"],
-                project_url=listing.project_link(head[0]["project_filter"]),
+            nav=node_page.Nav(
+                choices=preset_choices(selection, knobs),
+                rows=built.rows,
+                # The thread the enrichment was read for: what a tail row's fetch carries.
+                thread=source,
             ),
-            chain=built.chain,
-            facts=builders.node_facts(selection, seen.header),
-            said=node_page.Said(about, said) if about and said else None,
-            details=seen.details,
-            # The bytes behind the node: the thread's transcript, and — for a turn — the one
-            # line it was read from.
-            archived=node_page.Archived(
-                thread_url=nodes.thread_url(session_id, source), line_no=seen.record
+            body=node_page.Body(
+                facts=builders.node_facts(selection, seen.header),
+                said=node_page.Said(about, said) if about and said else None,
+                details=seen.details,
+                # The bytes behind the node: the thread's transcript, and — for a turn — the
+                # one line it was read from.
+                archived=node_page.Archived(
+                    thread_url=nodes.thread_url(session_id, source), line_no=seen.record
+                ),
             ),
-            # Where the reading order goes from here, in both directions.
-            walked_previous=walked.previous,
-            walked_next=walked.next,
-            # And where the session failed: how many failures it holds, which is what the way
-            # into the list says, beside the step to the next one where there is one.
-            tool_errors=head[0]["tool_errors"],
-            failures=errors.stepped(failed.listed, selection) if failed else None,
-            shape=seen.shape,
-            log_rows=seen.rows,
-            # The level's own size, and where in it this page sits — the heading counts the
-            # first, the control under the log reads the second.
-            total=seen.total,
-            pager=pager(selection.url, knobs, page, ceil(seen.total / knobs.log)),
+            bearings=node_page.Bearings(
+                # Where the chain starts: the whole session list, and this session's project.
+                # The project is a step out of the session rather than a node of it, so it
+                # stands above the chain rather than in it — a session is still the outermost
+                # node.
+                trail=node_page.Trail(
+                    list_url=listing.LIST_URL,
+                    project_dir=head[0]["project_dir"],
+                    project_url=listing.project_link(head[0]["project_filter"]),
+                ),
+                chain=built.chain,
+                # Where the reading order goes from here, in both directions.
+                walked=node_page.Steps(walked.previous, walked.next),
+                # And where the session failed: how many failures it holds, which is what the
+                # way into the list says, beside the step to the next one where there is one.
+                tool_errors=head[0]["tool_errors"],
+                failures=errors.stepped(failed.listed, selection) if failed else None,
+            ),
+            children=node_page.Children(
+                shape=seen.shape,
+                rows=seen.rows,
+                # The level's own size, and where in it this page sits — the heading counts the
+                # first, the control under the log reads the second.
+                total=seen.total,
+                pager=pager(selection.url, knobs, page, ceil(seen.total / knobs.log)),
+            ),
+            citations={named.value: cited(named, bound) for named, bound in ran},
             # What every href on the page carries, so a click serves the URL it displays.
             suffix=knobs.suffix,
-            citations={named.value: cited(named, bound) for named, bound in ran},
             dev=viewer.dev,
         )
     )

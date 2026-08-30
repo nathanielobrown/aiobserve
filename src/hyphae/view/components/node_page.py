@@ -67,31 +67,83 @@ class Archived(NamedTuple):
     line_no: int | None
 
 
+class Nav(NamedTuple):
+    """The NavTree side: the preset control, the one open path, and the thread it was read for.
+
+    Not `nav_tree.NavTree`, which is what building the tree produced: this is the half of it a
+    page draws, and the preset control and the thread are the page's own.
+    """
+
+    choices: Sequence[PresetChoice]
+    rows: Sequence[NavTreeRow]
+    thread: str
+
+
+class Body(NamedTuple):
+    """The node read whole: its own fields, what a pass said about it, its fat values, its bytes.
+
+    What the pane would still show if the session around it were gone — everything else the
+    page carries is about where the node sits.
+    """
+
+    facts: Facts
+    said: Said | None
+    details: Sequence[Detail]
+    archived: Archived
+
+
+class Steps(NamedTuple):
+    """Where reading in order goes: the node before this one on its level, and the one after."""
+
+    previous: Walked | None
+    next: Walked | None
+
+
+class Bearings(NamedTuple):
+    """Where the node sits, and every way off it that is not a step down into a child.
+
+    Three ways out, and going down is the NavTree's: back out of the session along the crumb
+    chain, along the level with the walk, and across to another failure with the stepper.
+    """
+
+    trail: Trail
+    chain: Sequence[Node]
+    walked: Steps
+    # How many tool calls the session failed, which is what the way into the errors page says.
+    tool_errors: int | None
+    # The failures either side of this node, where the pane is standing on one.
+    failures: Failures | None
+
+
+class Children(NamedTuple):
+    """One page of the node's children, as the log under the body reads them.
+
+    `total` is the level's own size rather than the page's: the heading counts the level, and
+    the pager under it is cut from the same number.
+    """
+
+    shape: Shape
+    rows: Sequence[Logged]
+    total: int
+    pager: Pager | None
+
+
 def page(
     *,
     selection: Node,
-    choices: Sequence[PresetChoice],
-    rows: Sequence[NavTreeRow],
-    thread: str,
-    trail: Trail,
-    chain: Sequence[Node],
-    facts: Facts,
-    said: Said | None,
-    details: Sequence[Detail],
-    archived: Archived,
-    walked_previous: Walked | None,
-    walked_next: Walked | None,
-    tool_errors: int | None,
-    failures: Failures | None,
-    shape: Shape,
-    log_rows: Sequence[Logged],
-    total: int,
-    pager: Pager | None,
-    suffix: str,
+    nav: Nav,
+    body: Body,
+    bearings: Bearings,
+    children: Children,
     citations: Mapping[str, Cited],
+    suffix: str,
     dev: bool,
 ) -> Html:
-    """The whole document: the NavTree, the grip between the columns, and the reading pane."""
+    """The whole document: the NavTree, the grip between the columns, and the reading pane.
+
+    `selection` is the one input every part reads — it names the tab, heads the crumb chain,
+    and titles the body — so it stands apart from the four groups around it.
+    """
     return layout.page(
         tab_title=f"{selection.icon} {selection.tab_title} · hyphae",
         scripts=_SCRIPTS,
@@ -106,9 +158,9 @@ def page(
                     # budget (`.claude/rules/viewer-ui.md`).
                     htpy.div(PANE_SWAP, id="nav-tree-rows")[
                         [
-                            nav_tree.presets(choices=choices),
+                            nav_tree.presets(choices=nav.choices),
                             htpy.ul(".rows")[
-                                nav_tree.lines(rows=rows, suffix=suffix, thread=thread)
+                                nav_tree.lines(rows=nav.rows, suffix=suffix, thread=nav.thread)
                             ],
                         ]
                     ]
@@ -125,29 +177,38 @@ def page(
                 ),
                 htpy.article(id="reading-pane")[
                     [
-                        _crumbs(selection=selection, trail=trail, chain=chain, suffix=suffix),
-                        node_body.body(node=selection, facts=facts, suffix=suffix),
+                        _crumbs(
+                            selection=selection,
+                            trail=bearings.trail,
+                            chain=bearings.chain,
+                            suffix=suffix,
+                        ),
+                        node_body.body(node=selection, facts=body.facts, suffix=suffix),
                         # What an enrichment pass said about this node, where a pass reached it.
-                        parts.summary(enrichment=said.enrichment, lines=said.lines)
-                        if said
+                        parts.summary(enrichment=body.said.enrichment, lines=body.said.lines)
+                        if body.said
                         else None,
                         # The node's own values, cut to the pane's width, each with the way to
                         # the whole of it.
-                        [parts.detail(item=item) for item in details],
-                        _raw(archived=archived),
+                        [parts.detail(item=item) for item in body.details],
+                        _raw(archived=body.archived),
                         logs.log(
-                            shape=shape,
-                            rows=log_rows,
-                            total=total,
+                            shape=children.shape,
+                            rows=children.rows,
+                            total=children.total,
                             suffix=suffix,
-                            pager=pager,
+                            pager=children.pager,
                             opens=True,
                         ),
-                        _walk(previous=walked_previous, following=walked_next, suffix=suffix),
+                        _walk(
+                            previous=bearings.walked.previous,
+                            following=bearings.walked.next,
+                            suffix=suffix,
+                        ),
                         _stepper(
                             session_id=selection.session_id,
-                            tool_errors=tool_errors,
-                            failures=failures,
+                            tool_errors=bearings.tool_errors,
+                            failures=bearings.failures,
                             suffix=suffix,
                         ),
                         # What produced the page, last in the pane rather than under the
