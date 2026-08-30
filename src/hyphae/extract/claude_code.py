@@ -15,16 +15,16 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from hyphae.extract.layout import DEFAULT_PROJECTS_ROOT, find_sessions
-from hyphae.extract.session_files import (
-    _agent_runs,
-    _classify,
-    _offload_file,
+from hyphae.extract.session_files import _agent_runs, _classify, _offload_file, _replays
+from hyphae.extract.transcript import (
+    _parse,
+    _pr_links,
+    _raw_record,
     _read,
-    _replays,
     _resolve_duplicates,
+    _session,
     _workflow_launches,
 )
-from hyphae.extract.transcript import _parse, _pr_links, _raw_record, _session
 from hyphae.model import MAIN_SOURCE, SessionTrace
 from hyphae.pipeline import SessionSource
 from hyphae.projects import encode_project_path
