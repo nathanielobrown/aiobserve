@@ -37,6 +37,28 @@ pub fn nothing() -> Markup {
     Raw::dangerously_create(String::new())
 }
 
+/// One plain string as markup, escaped: the way a value the store holds joins a rendered title.
+///
+/// Everything a component interpolates is escaped by `rsx!` already. This is for the one place
+/// that composes markup outside a template — a title's tail, standing after the rendered words
+/// (`crate::nodes::Node::title`).
+pub fn text(value: &str) -> Markup {
+    // XSS SAFETY: `escape` is the markupsafe spelling of the same entities, applied here.
+    Raw::dangerously_create(escape(value))
+}
+
+/// Several pieces of markup, one after the other.
+pub fn joined(pieces: impl IntoIterator<Item = Markup>) -> Markup {
+    // XSS SAFETY: every piece is markup already; concatenation adds nothing.
+    Raw::dangerously_create(
+        pieces
+            .into_iter()
+            .map(Raw::into_inner)
+            .collect::<Vec<_>>()
+            .concat(),
+    )
+}
+
 /// The schemes a rendered URL may carry into an `href`. Everything else a transcript can
 /// write there — `javascript:`, `data:`, `file:` — is shown as text instead.
 /// [`crate::inline_markdown`] reads it too: one answer to where a browser may be pointed.

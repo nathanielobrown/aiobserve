@@ -7,6 +7,8 @@
 pub mod cuts;
 pub mod format;
 pub mod inline_markdown;
+pub mod knobs;
 pub mod labels;
+pub mod nodes;
 pub mod render;
 pub mod store;
