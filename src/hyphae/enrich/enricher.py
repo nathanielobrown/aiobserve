@@ -5,7 +5,7 @@ succeeded one is not — there is no resume state to keep, and nothing to clean 
 crash.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 from hyphae.enrich.client import BatchClient, EnrichRequest, Failed, Succeeded
@@ -46,22 +46,28 @@ class EnrichmentFailed(Exception):
 def plan(
     store: EnrichmentStore, model: str, *, project: str | None, limit: int | None
 ) -> list[PlannedItem]:
-    """Every item a run would send now — an upper bound, for a dry run.
+    """Every item a run would send now, in the order it would send them — for a dry run.
 
-    Hash-stale items plus every ancestor of one: a child's new description restates its
-    parents' prompts, and no read can tell in advance whether the new description will differ
-    from the old. A child re-described in the same words stops the cascade there and costs
-    less than this quotes.
+    The rounds a real pass makes, against a model that answers everything and fails nothing:
+    what comes back is the list `enrich` sends under the same limit, so the operator approves
+    the pass they pay for.
+
+    An upper bound in one respect: a described item is counted as restating every prompt above
+    it, because nothing writes and there is no answer to compare. A child re-described in the
+    same words stops the cascade there and costs less than this quotes.
     """
     parents = store.item_parents(project)
-    planned: dict[str, PlannedItem] = {}
-    reached: set[str] = set()
-    for level in ROUND_ORDER:
-        entries = _plan_level(store, model, level, project=project)
-        planned |= entries
-        for key in store.stale_keys(level, {key: entry.stamp for key, entry in entries.items()}):
-            reached |= {key, *_ancestors(key, parents)}
-    return [entry for key, entry in planned.items() if key in reached][:limit]
+    quoted: list[PlannedItem] = []
+
+    def describe(sending: list[PlannedItem]) -> _Outcome:
+        quoted.extend(sending)
+        return _Outcome(
+            failures=[],
+            restated={key for entry in sending for key in _ancestors(entry.item.key, parents)},
+        )
+
+    _pass(store, model, project=project, limit=limit, describe=describe)
+    return quoted
 
 
 def enrich(
@@ -79,36 +85,75 @@ def enrich(
     would look identical until the day a description changed.
     """
     swept = store.sweep_zombies()
+    enriched = 0
+    failures: list[ItemFailure] = []
+
+    def describe(sending: list[PlannedItem]) -> _Outcome:
+        nonlocal enriched
+        count, round_failures = _round(store, client, sending)
+        enriched += count
+        failures.extend(round_failures)
+        # Nothing is declared restated here: the upserts are on disk, so the next round
+        # re-reads and re-hashes its items and sees for itself which prompts moved.
+        return _Outcome(failures=round_failures, restated=set())
+
+    _pass(store, client.model, project=project, limit=limit, describe=describe)
+    if failures:
+        raise EnrichmentFailed(failures)
+    return EnrichReport(swept=swept, enriched=enriched)
+
+
+@dataclass(frozen=True)
+class _Outcome:
+    """What one round did with its items: what failed, and what it leaves stale above."""
+
+    failures: list[ItemFailure]
+    # Items whose prompts now restate a description this round wrote. Empty for a real pass,
+    # which reads the new descriptions back out of the store instead of predicting them.
+    restated: set[str]
+
+
+def _pass(
+    store: EnrichmentStore,
+    model: str,
+    *,
+    project: str | None,
+    limit: int | None,
+    describe: Callable[[list[PlannedItem]], _Outcome],
+) -> None:
+    """The rounds one pass makes, and what each of them is about to be asked.
+
+    Shared by `enrich` and `plan` so a dry run cannot walk staleness by rules of its own:
+    `describe` is the only difference between quoting a round and paying for it.
+    """
     parents = store.item_parents(project)
     rounds: list[tuple[Level, set[str] | None]] = [
         (Level.agent_run, keys) for keys in _rounds(parents)
     ]
-    # None: every item of the level. Turns and sessions are one round each — no turn embeds
+    # None: every item of the level. Every level above the runs is one round — no turn embeds
     # another turn, and no session embeds another session.
-    rounds += [(Level.turn, None), (Level.session, None)]
-    enriched, remaining = 0, limit
-    failures: list[ItemFailure] = []
+    rounds += [(level, None) for level in ROUND_ORDER if level is not Level.agent_run]
+    remaining = limit
     # Items whose prompts embed something that failed. Writing one bakes a hole into a
     # description that the hash then calls current forever — the one failure a rerun cannot
     # heal, so a blocked item writes nothing and stays stale.
     blocked: set[str] = set()
+    restated: set[str] = set()
     for level, keys in rounds:
         if remaining is not None and remaining <= 0:
             break
-        entries = _plan_level(store, client.model, level, project=project)
-        stale = store.stale_keys(level, {key: entry.stamp for key, entry in entries.items()})
+        entries = _plan_level(store, model, level, project=project)
+        stale = set(store.stale_keys(level, {key: entry.stamp for key, entry in entries.items()}))
         sending = [
-            entries[key] for key in stale if key not in blocked and (keys is None or key in keys)
-        ]
-        count, round_failures = _round(store, client, sending[:remaining])
-        enriched += count
-        remaining = remaining - len(sending[:remaining]) if remaining is not None else None
-        for failure in round_failures:
+            entry
+            for key, entry in entries.items()
+            if key in stale | restated and key not in blocked and (keys is None or key in keys)
+        ][:remaining]
+        outcome = describe(sending)
+        for failure in outcome.failures:
             blocked |= _ancestors(failure.key, parents)
-        failures += round_failures
-    if failures:
-        raise EnrichmentFailed(failures)
-    return EnrichReport(swept=swept, enriched=enriched)
+        restated |= outcome.restated
+        remaining = remaining - len(sending) if remaining is not None else None
 
 
 def _plan_level(

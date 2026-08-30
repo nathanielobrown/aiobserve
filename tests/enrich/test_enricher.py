@@ -19,7 +19,7 @@ from hyphae.enrich.client import (
     Failed,
     Succeeded,
 )
-from hyphae.enrich.enricher import EnrichmentFailed, EnrichReport, enrich
+from hyphae.enrich.enricher import EnrichmentFailed, EnrichReport, enrich, plan
 from hyphae.enrich.items import Level
 from hyphae.enrich.levels import LEVELS, ROUND_ORDER, render
 from hyphae.enrich.prompts import input_hash
@@ -356,6 +356,31 @@ def test_rounds_send_children_before_parents(forest: EnrichmentStore) -> None:
         # else in it embeds.
         {item.key for item in forest.session_items()},
     ]
+
+
+def test_a_dry_run_names_exactly_the_items_a_run_sends(forest: EnrichmentStore) -> None:
+    """A plan under a limit lists the very items a pass under that limit sends, in order.
+
+    The dry run is the only thing between an operator and a paid pass. Planning by rules of
+    its own quoted the store's first N items while the pass spent its N on the deepest round
+    first — so the operator approved one list and paid for another.
+    """
+    # If the three-session forest — four rounds deep — is planned under a limit that runs
+    # out partway through the second round...
+    limit = 4
+    planned = [entry.item.key for entry in plan(forest, MODEL, project=None, limit=limit)]
+    # ...then a pass under the same limit asks about exactly those keys, in that order...
+    client = FakeClient()
+    enrich(forest, client, limit=limit)
+    assert client.keys == planned
+    # ...which is the whole first round — every leaf run — and one item of the second, not
+    # the first four items of the level the store reads first.
+    assert set(planned[:3]) == {
+        key_of(forest, SPINE_LEAF),
+        key_of(forest, ORIGIN_RUN),
+        key_of(forest, TEAM_RUN),
+    }
+    assert planned[3] in {key_of(forest, SPINE_RUN), key_of(forest, AUDITOR_RUN)}
 
 
 def test_a_rootless_run_is_a_root(forest: EnrichmentStore) -> None:
