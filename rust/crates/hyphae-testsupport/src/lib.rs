@@ -9,6 +9,8 @@
 //! It replaces the three copies of `tests/common/mod.rs` that drifted apart between the
 //! extract, store and view crates.
 
+/// What a page the viewer serves may weigh.
+pub mod budgets;
 pub mod cache;
 pub mod corpus;
 /// The digest over the sources that decide a stored row — shared with `build.rs`, which
