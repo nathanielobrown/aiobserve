@@ -65,4 +65,7 @@ SELECT
     max(enriched_at) AS last_enriched_at
 FROM item
 GROUP BY period, level, category, outcome, model, prompt_version, taxonomy_version
-ORDER BY period, level, items DESC, category NULLS FIRST, outcome;
+-- Every grouping column, so the order is total: a tie the sort broke by whichever thread
+-- finished first would make the rows a report quotes unreproducible.
+ORDER BY period, level, items DESC, category NULLS FIRST, outcome,
+    enrichment_model, prompt_version, taxonomy_version;
