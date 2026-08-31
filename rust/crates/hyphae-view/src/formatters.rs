@@ -75,6 +75,29 @@ pub struct Formatted {
     pub words: String,
 }
 
+/// Every tool name the registry has a rule for.
+///
+/// The rules are a `match`, which cannot be asked what it holds — so a sweep that wants to know
+/// which recorded tools take a rule and which fall through to the shape rule reads it here. The
+/// two are held together by `tests/formatters.rs`, which names each of these against a filled
+/// input.
+pub const NAMED: [&str; 14] = [
+    "Read",
+    "Write",
+    "Edit",
+    "Bash",
+    "Agent",
+    "Skill",
+    "SendMessage",
+    "Grep",
+    "Glob",
+    "WebFetch",
+    "WebSearch",
+    "ToolSearch",
+    "PushNotification",
+    "TodoWrite",
+];
+
 /// What one tool call is called: its tool's own rule, else the shape of its input.
 pub fn name_tool(name: &str, fields: Fields<'_>) -> Formatted {
     formatted(name, fields).unwrap_or_else(|| Formatted {

@@ -15,6 +15,7 @@ use hyphae_store::queries::{DETAIL_CHARS, HEADER_CHARS, NAV_CHARS};
 use hyphae_testsupport::html::Markup;
 use hyphae_testsupport::nav_trees::{self, Levels};
 use hyphae_testsupport::served::Served;
+use hyphae_testsupport::tools;
 use hyphae_view::format::cut;
 use hyphae_view::nodes::{Kind, LEAD_SEPARATOR};
 use hyphae_view::store::{Page, page_rows};
@@ -358,17 +359,6 @@ fn titled(store: &Store, session_id: &str) -> BTreeMap<String, (String, String)>
     said
 }
 
-/// The tools the fixture corpus records that the viewer names by their own field, restated from
-/// the design rather than read off the viewer's own formatter table.
-const MARKS: [(&str, &str); 6] = [
-    ("Read", "📖"),
-    ("Bash", "⚡"),
-    ("Agent", "👉"),
-    ("SendMessage", "📬"),
-    ("ToolSearch", "🧰"),
-    ("PushNotification", "🔔"),
-];
-
 /// What a tool that names its own calls is called, or nothing where it carried nothing to name it
 /// by and falls back to the shape rule.
 fn named(
@@ -427,12 +417,7 @@ fn named(
     if words.is_empty() {
         return None;
     }
-    let mark = MARKS
-        .iter()
-        .find(|(held, _)| *held == name)
-        .expect("every named rule has a mark")
-        .1;
-    Some(format!("{mark} {words}"))
+    Some(format!("{} {words}", tools::glyph(name)))
 }
 
 /// What a tool call the viewer knows no rule for is called, restated from its input.

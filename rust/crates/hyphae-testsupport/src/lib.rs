@@ -30,3 +30,5 @@ pub mod rows;
 /// Which page to fetch: one node of every kind, and one level of every shape a log has.
 pub mod selections;
 pub mod served;
+/// The tools the fixture corpus records under a name the viewer names its calls by.
+pub mod tools;
