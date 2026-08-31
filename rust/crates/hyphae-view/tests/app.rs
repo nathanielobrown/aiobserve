@@ -17,13 +17,13 @@ use regex::Regex;
 use serde_json::Value;
 
 use hyphae_store::{Param, queries};
-use hyphae_testsupport::corpus;
 use hyphae_testsupport::html::Markup;
 use hyphae_testsupport::landmarks::{
     BASH_TOOL, DENSE_CALL, DENSE_CALL_TURN, DENSE_TOOL, FORK_ORIGIN, FORK_ORIGIN_RUN, MAIN,
     MISSING, SLASH_TURN, SPINE, SPINE_RUN,
 };
 use hyphae_testsupport::rows;
+use hyphae_testsupport::selections;
 use hyphae_testsupport::served::Served;
 use hyphae_view::nodes::Kind;
 
@@ -303,7 +303,7 @@ async fn every_asset_a_page_asks_for_is_one_the_viewer_ships() {
     let served = Served::enriched();
     let offsite = Regex::new(r#"(?:src|href)="(\w+:)?//[^"]*""#).expect("a pattern");
     let mut swept = 0;
-    for url in scenario_urls() {
+    for url in selections::scenarios().into_values() {
         let (status, page) = served.page(&url).await;
         assert_eq!(status, StatusCode::OK, "{url}");
         // Every `src` and `href` the page writes is a path on this server...
@@ -316,25 +316,6 @@ async fn every_asset_a_page_asks_for_is_one_the_viewer_ships() {
         swept += 1;
     }
     assert!(swept > 1, "the scenario file named no page to sweep");
-}
-
-/// Every scenario URL, as the browser tier reads them.
-///
-/// `tests/e2e/routes.json` is generated from `tests/view/scenarios.py`, so reading it here is what
-/// keeps this tier and the browser tier naming the same pages.
-fn scenario_urls() -> Vec<String> {
-    let text = std::fs::read_to_string(corpus::repo().join("tests/e2e/routes.json"))
-        .expect("the generated route file is committed");
-    serde_json::from_str::<Vec<Value>>(&text)
-        .expect("the route file is a list of entries")
-        .iter()
-        .map(|entry| {
-            entry["url"]
-                .as_str()
-                .expect("every route entry carries a url")
-                .to_owned()
-        })
-        .collect()
 }
 
 #[tokio::test]

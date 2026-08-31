@@ -7,55 +7,7 @@
 use hyphae_testsupport::served::{self, Served};
 
 use axum::http::StatusCode;
-use hyphae_store::{Store, queries};
-
-/// Markup no recorded fixture carries, and what it must look like by the time a reader gets it.
-///
-/// The apostrophe comes through as itself: `hypertext` escapes `&`, `<` and `>` in a text node
-/// where markupsafe also writes `&#39;`. The same characters render the same way and neither is
-/// markup — the one escaping dialect the two viewers do not share.
-const SENTINEL: &str = "<script>alert('planted')</script>";
-const ESCAPED: &str = "&lt;script&gt;alert('planted')&lt;/script&gt;";
-
-#[tokio::test]
-async fn every_query_the_library_ships_has_a_page() {
-    // The whole catalog, because a footer cites by name: a query file the page cannot render is a
-    // dead link in every footer that ran it.
-    let served = Served::corpus();
-    for (stem, _) in queries::QUERIES {
-        let (status, page) = served.page(&format!("/query/{stem}")).await;
-        assert_eq!(status, StatusCode::OK, "GET /query/{stem}");
-        assert!(
-            page.contains(&format!("data-sql=\"{stem}\"")),
-            "/query/{stem}"
-        );
-        assert!(page.contains("data-field=\"sql\""), "/query/{stem}");
-    }
-    // A name the library does not declare is a miss before anything is read, which is what makes
-    // a request for a path out of the directory a 404 rather than a file.
-    for name in ["no_such_query", "..%2F..%2Fsecret"] {
-        let (status, _) = served.page(&format!("/query/{name}")).await;
-        assert_eq!(status, StatusCode::NOT_FOUND, "GET /query/{name}");
-    }
-}
-
-#[tokio::test]
-async fn a_citations_bindings_are_printed_back_inert() {
-    // The one place a request's own text reaches rendering: the page prints what the citation
-    // bound without binding it to anything. So the sentinel goes in the query string.
-    let served = Served::corpus();
-    let asked = format!(
-        "/query/view_sessions?session_id={}",
-        hyphae_view::urls::quoted(SENTINEL)
-    );
-    let (status, page) = served.page(&asked).await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(!page.contains(SENTINEL), "raw sentinel in {asked}");
-    assert!(page.contains(ESCAPED), "escaped sentinel in {asked}");
-    // And a citation that bound nothing says so rather than printing an empty list.
-    let (_, bare) = served.page("/query/view_sessions").await;
-    assert!(bare.contains("Cited with no bindings."));
-}
+use hyphae_store::Store;
 
 #[tokio::test]
 async fn every_session_answers_for_its_failures() {

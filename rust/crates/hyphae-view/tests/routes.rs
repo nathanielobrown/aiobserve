@@ -11,12 +11,9 @@ use hyphae_testsupport::served::Served;
 
 use axum::http::StatusCode;
 use hyphae_store::Store;
+use hyphae_testsupport::html::SENTINEL;
 use hyphae_view::app::CSP;
 use serde_json::Value;
-
-/// Markup no fixture carries: a transcript can hold anything an agent read, and the only way to
-/// see what a page does with a `<script>` is to plant one.
-const SENTINEL: &str = "<script>alert('planted')</script>";
 
 /// The one escaped form hypertext, the markdown renderer and the attribute writer agree on.
 const ESCAPED: &str = "&lt;script&gt;alert(";

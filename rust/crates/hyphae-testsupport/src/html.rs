@@ -451,6 +451,17 @@ pub fn classed(html: &str) -> BTreeSet<String> {
         .collect()
 }
 
+/// Markup no recorded fixture carries: a transcript can hold anything an agent read, and the only
+/// way to see what a page does with a `<script>` is to plant one.
+pub const SENTINEL: &str = "<script>alert('planted')</script>";
+
+/// The sentinel as a reader must get it back.
+///
+/// The apostrophe comes through as itself: `hypertext` escapes `&`, `<` and `>` in a text node
+/// where markupsafe also writes `&#39;`. The same characters render the same way and neither is
+/// markup — the one escaping dialect the two viewers do not share.
+pub const ESCAPED: &str = "&lt;script&gt;alert('planted')&lt;/script&gt;";
+
 /// What every list citation says about the display cut, which the viewer composes around the
 /// query the same way it composes the paging: re-running the file alone answers whole values.
 pub fn cut() -> String {

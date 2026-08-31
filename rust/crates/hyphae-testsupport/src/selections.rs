@@ -6,6 +6,7 @@
 //! shared crate rather than one test's helpers, so every tier that sweeps the kinds sweeps the
 //! same list — the twin of `tests/view/selections.py`.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use hyphae_store::Store;
@@ -261,4 +262,28 @@ fn filled(db: &Path, sql: &str, template: &str) -> String {
         );
     }
     url
+}
+
+/// Every page the viewer serves, one URL each, keyed by the route it fills in.
+///
+/// `tests/e2e/routes.json` is generated from `tests/view/scenarios.py`, so reading it here is what
+/// keeps this tier and the browser tier naming the same pages — and the route is the key because
+/// what a sweep leaves out it leaves out by shape: fragments carry no footer, the query page is
+/// where a citation goes rather than a page that makes one.
+pub fn scenarios() -> BTreeMap<String, String> {
+    let text = std::fs::read_to_string(crate::corpus::repo().join("tests/e2e/routes.json"))
+        .expect("the generated route file is committed");
+    serde_json::from_str::<Vec<serde_json::Value>>(&text)
+        .expect("the route file is a list of entries")
+        .iter()
+        .map(|entry| {
+            let read = |key: &str| {
+                entry[key]
+                    .as_str()
+                    .unwrap_or_else(|| panic!("every route entry carries a {key}"))
+                    .to_owned()
+            };
+            (read("route"), read("url"))
+        })
+        .collect()
 }
