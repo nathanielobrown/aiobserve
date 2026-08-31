@@ -12,8 +12,11 @@ that position rather than against a literal, and what makes `UNCITED` the only p
 can be left out of both tables.
 """
 
+import json
 import sys
 from enum import StrEnum
+from pathlib import Path
+from types import ModuleType
 from typing import NamedTuple
 
 from hyphae.analyze import queries
@@ -21,6 +24,15 @@ from hyphae.view import bounds, nodes
 from hyphae.view.knobs import KNOB_DEFAULTS
 from tests.view import budgets
 from tools import text
+
+ROOT = Path(__file__).resolve().parent.parent
+# The same numbers as data, for the implementation that cannot import them
+# (`plans/rust-prototype/full-port.md`). Derived from the modules the four tables read rather
+# than from a second list, so a bound the prose leaves out is in here all the same.
+REGISTRY = ROOT / "rust" / "metadata" / "bounds.json"
+# What a failing staleness check tells the reader to run.
+REGISTRY_ARG = "registry"
+COMMAND = f"uv run python -m tools.gen_bounds {REGISTRY_ARG}"
 
 # Where a cited name is looked up. `bounds.py` names every page size beside its ceiling and
 # re-exports the widths the queries declare; a width it does not re-export is read here from
@@ -354,10 +366,57 @@ def generate(table: Table) -> str:
     )
 
 
+def plain(module: ModuleType) -> dict[str, int]:
+    """Every plain number a module declares, in the order it declares them.
+
+    `type(value) is int` rather than `isinstance`, so a `Bound` — a `NamedTuple` of two of
+    them — is not counted as one number, and neither is a flag.
+    """
+    return {
+        name: value
+        for name, value in vars(module).items()
+        if not name.startswith("_") and type(value) is int
+    }
+
+
+def registry() -> str:
+    """Every number that bounds a page, for the implementation that cannot import them.
+
+    Four sections, because a reader binds against all four: what a URL naming no knob is
+    served at, the sizes that carry a ceiling, the ones that are a single number, and the
+    widths the query library declares beside the parameters that bind them.
+    """
+    written = {
+        "knobs": {
+            knob: value.value if isinstance(value, nodes.Preset) else value
+            for knob, value in KNOB_DEFAULTS.items()
+        },
+        "bounds": {
+            name: {"default": value.default, "ceiling": value.ceiling}
+            for name, value in vars(bounds).items()
+            if isinstance(value, bounds.Bound)
+        },
+        "sizes": plain(bounds),
+        "widths": plain(queries),
+    }
+    return json.dumps(written, indent=2) + "\n"
+
+
+def write(path: Path) -> None:
+    """Write the registry, creating its directory if the tree does not hold one yet."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(registry())
+
+
 def main() -> None:
-    """Print the table named by the one argument, as the four cog blocks spell it."""
+    """Print the table named by the one argument, or write the registry when it names that."""
+    named = " | ".join([*(table.value for table in Table), REGISTRY_ARG])
     if len(sys.argv) != 2:
-        raise SystemExit(f"name one table: {' | '.join(table.value for table in Table)}")
+        raise SystemExit(f"name one of: {named}")
+    if sys.argv[1] == REGISTRY_ARG:
+        write(REGISTRY)
+        print(f"wrote {REGISTRY.relative_to(ROOT)}")
+        return
     print(generate(Table(sys.argv[1])))
 
 
