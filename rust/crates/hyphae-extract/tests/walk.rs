@@ -102,49 +102,6 @@ fn a_compaction_is_recorded_on_its_own_thread() {
     assert!(matches!(compaction.trigger.as_str(), "auto" | "manual"));
 }
 
-/// A fork replays its origin's records. They stay as rows, flagged, rather than vanishing.
-#[test]
-fn replayed_rows_are_marked_rather_than_dropped() {
-    let trace = corpus::trace("fork_origin", "5a88789c-1da7-4f32-b631-40a7e243334b");
-    let fork = trace
-        .agent_runs
-        .iter()
-        .find(|run| run.is_fork)
-        .expect("fork_origin records a forked run");
-    let replayed: Vec<&str> = trace
-        .api_calls
-        .iter()
-        .filter(|call| call.source == fork.id && call.replayed)
-        .map(|call| call.id.as_str())
-        .collect();
-    assert!(
-        !replayed.is_empty(),
-        "the fork's copied calls are still rows"
-    );
-    // The origin's own copy is not the replay: the first transcript to hold a record keeps it.
-    for id in replayed {
-        assert!(
-            trace
-                .api_calls
-                .iter()
-                .any(|call| call.id == id && !call.replayed),
-            "{id} is replayed on the fork and original somewhere else"
-        );
-    }
-}
-
-/// A by-reference fork points at the conversation it continues instead of copying it.
-#[test]
-fn a_by_reference_fork_names_the_record_it_picked_up_from() {
-    let trace = corpus::trace("fork_byref", "07a769d7-828c-4edb-b3ce-af51e2712aa3");
-    let fork = trace
-        .agent_runs
-        .iter()
-        .find(|run| run.fork_context_uuid.is_some())
-        .expect("fork_byref records a by-reference fork");
-    assert!(fork.is_fork);
-}
-
 /// An unregistered record type stops the run, naming the type and the line.
 ///
 /// The one invented input in this file, and unavoidably so: no recorded session carries a

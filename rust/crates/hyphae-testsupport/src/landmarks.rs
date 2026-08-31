@@ -17,6 +17,9 @@ pub const MYCELIA: &str = "/Users/nob/repos/mycelia";
 pub const HOME: &str = "/Users/nob";
 /// The source name of a session's own thread.
 pub const MAIN: &str = "main";
+/// The tripwire planted in every `invented/` fixture's broken line, standing for whatever a
+/// transcript holds: no crash message and no warning may carry it. Invented, not recorded.
+pub const SECRET: &str = "SUPER-SECRET-PAYLOAD-9f2a";
 /// An id that matches nothing, in the shape a session id has. Every "the store does not hold
 /// it" leaf asks for this one, whatever kind of id the route takes.
 pub const MISSING: &str = "00000000-0000-0000-0000-000000000000";

@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use hyphae_extract::sessions::encode_project_path;
 use hyphae_store::{Store, schema};
 use hyphae_testsupport::corpus::repo;
-use hyphae_testsupport::landmarks::{TEAMMATE, TEAMMATE_RUN};
+use hyphae_testsupport::landmarks::{SECRET, TEAMMATE, TEAMMATE_RUN};
 
 /// The binary under test, built by cargo before this file runs.
 const HP: &str = env!("CARGO_BIN_EXE_hp");
@@ -297,16 +297,23 @@ fn view_refuses_a_locked_store_before_it_binds() {
 /// subagent transcripts sit in a directory beside its own file, and leaving them behind
 /// would plant a session that delegated nothing.
 fn planted_project(scratch: &Path, fixture: &str) -> (std::path::PathBuf, std::path::PathBuf) {
-    let project = scratch.join("repo");
-    std::fs::create_dir_all(&project).expect("the project directory is writable");
-    let root = scratch.join("projects");
-    let recorded = root.join(encode_project_path(&project));
-    std::fs::create_dir_all(&recorded).expect("the session directory is writable");
+    let (project, root, recorded) = projects_root(scratch);
     copy_tree(&repo().join("tests/fixtures").join(fixture), &recorded);
     // The README naming the fixture's source session is documentation, and a file the walk
     // would refuse to place.
     std::fs::remove_file(recorded.join("README.md")).expect("every fixture has a README");
     (project, root)
+}
+
+/// An empty projects root: the working directory a planted session claims to have run in,
+/// the root above it, and the directory the transcripts go in.
+fn projects_root(scratch: &Path) -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
+    let project = scratch.join("repo");
+    std::fs::create_dir_all(&project).expect("the project directory is writable");
+    let root = scratch.join("projects");
+    let recorded = root.join(encode_project_path(&project));
+    std::fs::create_dir_all(&recorded).expect("the session directory is writable");
+    (project, root, recorded)
 }
 
 /// Copy a directory's whole contents into `into`, which must exist.
@@ -477,4 +484,53 @@ fn an_orphan_agent_run_is_announced_on_stderr() {
     assert!(done.status.success(), "{said}");
     assert!(said.contains(TEAMMATE_RUN), "{said}");
     assert!(said.contains(TEAMMATE), "{said}");
+}
+
+/// A file Claude Code is still appending to costs its last line and nothing else.
+///
+/// The rows that survive are asserted in `hyphae-extract`'s
+/// `a_transcript_still_being_written_drops_only_its_last_line`. What only a spawned process
+/// can read is the warning, which has to name the line without quoting what the line held —
+/// a transcript can hold anything the agent read.
+#[test]
+fn a_truncated_tail_is_a_warning_that_quotes_nothing() {
+    let scratch = tempfile::tempdir().expect("a tempdir");
+    let db = scratch.path().join("traces.duckdb");
+    // Invented, and unavoidably so: a recorded fixture cannot hold a half-written line and
+    // stay a recording. The broken line carries a tripwire the warning must not repeat.
+    let (project, root, recorded) = projects_root(scratch.path());
+    let stem = "invented-truncated-tail";
+    let from = repo()
+        .join("tests/fixtures/invented")
+        .join(format!("{stem}.jsonl"));
+    std::fs::copy(&from, recorded.join(format!("{stem}.jsonl"))).expect("the fixture copies");
+    // The broken line cuts off mid-payload, so the tripwire is only half there. The end of
+    // what it did write stands for the record's content: a warning quoting any of the line
+    // would carry it.
+    let text = std::fs::read_to_string(&from).expect("the fixture is readable");
+    let written = text
+        .lines()
+        .next_back()
+        .expect("the fixture ends on the broken line")
+        .to_owned();
+    let quoted = &written[written.len() - 24..];
+
+    let done = Command::new(HP)
+        .args([
+            "extract".as_ref(),
+            project.as_os_str(),
+            "--projects-root".as_ref(),
+            root.as_os_str(),
+            "--db".as_ref(),
+            db.as_os_str(),
+        ])
+        .output()
+        .expect("hp runs");
+
+    let said = String::from_utf8_lossy(&done.stderr);
+    assert!(done.status.success(), "{said}");
+    assert!(said.contains("dropped an incomplete final line"), "{said}");
+    assert!(said.contains("(3)"), "the warning names the line: {said}");
+    assert!(!said.contains(SECRET), "{said}");
+    assert!(!said.contains(quoted), "{said}");
 }
