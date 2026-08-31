@@ -1,5 +1,5 @@
 ---
-source: crates/hyphae-view/tests/nav_tree.rs
+source: crates/hyphae-view/tests/exhibits.rs
 expression: rows
 ---
 <li class="row node session f10" data-depth="0" data-nav-tree="session:4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b" data-selected="session:4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b" aria-current="true"><span class="peek" hx-get="/fragment/numbers/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b" hx-select="unset" hx-select-oob="unset" hx-push-url="false" hx-trigger="mouseenter from:closest li once delay:200ms, focusin from:closest li once" hx-target="this" hx-swap="beforeend"></span><a href="/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b" hx-get="/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"><span class="icon" aria-hidden="true">❖</span><span data-field="title">fixture-title-2</span><span class="secondary"><span class="badge s10" data-field="cost_usd">$2.88</span>/<span class="badge s10" data-field="total_usd">$3.07</span></span></a></li>

@@ -20,6 +20,8 @@ pub mod html;
 pub mod landmarks;
 /// The bounds and enrichment numbers Python owns, compiled in from the generated JSON.
 pub mod metadata;
+/// Building the level the store says a NavTree should hold, and reading the one it drew.
+pub mod nav_trees;
 /// The enrichment rows a partial pass would have left behind.
 pub mod planting;
 pub mod rows;

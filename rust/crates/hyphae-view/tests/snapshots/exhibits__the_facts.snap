@@ -1,5 +1,5 @@
 ---
-source: crates/hyphae-view/tests/nav_tree.rs
+source: crates/hyphae-view/tests/exhibits.rs
 expression: "element(&page, \"<dl class=\\\"facts\", \"</dl>\")"
 ---
 <dl class="facts"><div><dt>Turn</dt> <dd data-field="turn_index">1</dd></div><div><dt>Started</dt> <dd data-field="started_at">10:44:27</dd></div><div><dt>Replayed</dt> <dd data-field="replayed">False</dd></div><div><dt>API calls</dt> <dd data-field="api_calls">1</dd></div><div><dt>Tool calls</dt> <dd data-field="tool_calls">3</dd></div><div><dt>Tool errors</dt> <dd data-field="tool_errors">0</dd></div><div><dt>Cost</dt> <dd data-field="cost_usd">$0.44</dd></div><div><dt>Unpriced calls</dt> <dd data-field="unpriced_api_calls">0</dd></div></dl>
