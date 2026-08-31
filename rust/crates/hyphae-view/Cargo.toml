@@ -36,3 +36,5 @@ regex.workspace = true
 html-escape.workspace = true
 # `mise.toml`'s task lines: the other half of the shell the stylesheet sweep reads.
 toml.workspace = true
+# The query manifest's own map type, named where a leaf annotates it.
+indexmap.workspace = true

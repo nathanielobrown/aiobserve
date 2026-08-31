@@ -6,7 +6,7 @@
 //! the declared exception and are held to it here too. What a *served* page weighs is priced
 //! against the budgets, which are not ported yet.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::sync::LazyLock;
 
 use duckdb::Connection;
@@ -14,6 +14,7 @@ use duckdb::types::Value;
 use hyphae_store::manifest::{self, QueryMeta};
 use hyphae_store::{macros, queries};
 use hyphae_view::store::{Fragment, Page, Query, Whole};
+use indexmap::IndexMap;
 use regex::Regex;
 
 /// The columns a transcript can make arbitrarily large. Spelled by name because the scan is a
@@ -405,7 +406,7 @@ fn every_page_size_in_a_viewer_query_is_a_bound_parameter() {
     // the rule rather than a list of the parameters that exist today. A query landing with a
     // literal `LIMIT 100` is a size nobody can bind down to reach its boundary in a test, and
     // nobody can bind up when a real corpus needs more.
-    let shipped: &BTreeMap<String, QueryMeta> = manifest::manifest();
+    let shipped: &IndexMap<String, QueryMeta> = manifest::manifest();
     for (name, meta) in shipped {
         if !name.starts_with(queries::VIEW_PREFIX) {
             continue;

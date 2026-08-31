@@ -82,3 +82,75 @@ fn both_scopes_reach_this_side() {
         }
     }
 }
+
+/// Where `name` first appears as a JSON key indented `indent` spaces.
+///
+/// The file is pretty-printed two spaces per level, so a query is a key at 2 and a parameter
+/// one at 6. Reading the committed text is the point: parsing it the way the crate does could
+/// only ever agree with itself.
+fn key_at(text: &str, name: &str, indent: usize) -> usize {
+    let key = format!("\n{}\"{name}\":", " ".repeat(indent));
+    text.find(&key)
+        .unwrap_or_else(|| panic!("`{name}` is not a key at indent {indent}"))
+}
+
+/// The manifest keeps the order `manifest.py` declared, queries and parameters alike.
+///
+/// Load-bearing rather than tidy. A citation line writes its bindings out in the order the
+/// query declares them, and the refusal for an unknown name lists every query in the order
+/// the module holds them — so a map that sorted on the way in would put both lines out of
+/// step with Python's, and a parity diff would report every multi-parameter query.
+#[test]
+fn the_manifest_keeps_the_order_python_declared() {
+    let text = manifest::MANIFEST_JSON;
+    let declared: Vec<&str> = manifest::manifest().keys().map(String::as_str).collect();
+
+    // Against a file that happened to be alphabetical, a sorting map would pass both halves
+    // below. Each half is worth only as much as the disagreement it could see.
+    let alphabetical = {
+        let mut sorted = declared.clone();
+        sorted.sort_unstable();
+        sorted
+    };
+    assert_ne!(
+        declared, alphabetical,
+        "the library declares in sorted order"
+    );
+
+    let mut starts: Vec<(usize, &str)> = declared
+        .iter()
+        .map(|name| (key_at(text, name, 2), *name))
+        .collect();
+    let mut in_file = starts.clone();
+    in_file.sort_unstable();
+    let in_file: Vec<&str> = in_file.into_iter().map(|(_, name)| name).collect();
+    assert_eq!(declared, in_file, "the queries are out of the file's order");
+
+    // A parameter name repeats across the library, so each is looked for inside its own
+    // query's block — from its key to the next query's.
+    starts.sort_unstable();
+    starts.push((text.len(), ""));
+    let mut unsorted = 0;
+    for pair in starts.windows(2) {
+        let [(from, name), (to, _)] = pair else {
+            unreachable!("windows(2) yields pairs")
+        };
+        let block = &text[*from..*to];
+        let params: Vec<&str> = manifest::entry(name)
+            .params
+            .keys()
+            .map(String::as_str)
+            .collect();
+        let mut found: Vec<(usize, &str)> = params
+            .iter()
+            .map(|parameter| (key_at(block, parameter, 6), *parameter))
+            .collect();
+        found.sort_unstable();
+        let found: Vec<&str> = found.into_iter().map(|(_, parameter)| parameter).collect();
+        assert_eq!(params, found, "{name}'s parameters are out of order");
+        let mut alphabetical = params.clone();
+        alphabetical.sort_unstable();
+        unsorted += usize::from(params != alphabetical);
+    }
+    assert!(unsorted > 0, "no query declares its parameters unsorted");
+}

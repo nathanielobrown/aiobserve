@@ -1186,6 +1186,7 @@ dependencies = [
  "hyphae-extract",
  "hyphae-model",
  "hyphae-testsupport",
+ "indexmap",
  "serde",
  "serde_json",
  "tempfile",
@@ -1227,6 +1228,7 @@ dependencies = [
  "hyphae-extract",
  "hyphae-store",
  "hyphae-testsupport",
+ "indexmap",
  "insta",
  "markdown-it",
  "regex",
@@ -1282,6 +1284,8 @@ checksum = "07aa2048142242915a31d35844fb311e0e53fcca590c3a0a40dcf1b841fa09eb"
 dependencies = [
  "equivalent",
  "hashbrown 0.17.1",
+ "serde",
+ "serde_core",
 ]
 
 [[package]]

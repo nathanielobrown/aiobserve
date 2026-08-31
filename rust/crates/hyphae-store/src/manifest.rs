@@ -10,10 +10,10 @@
 //! where both can be read; this side gates that the file covers the catalog it ships
 //! (`tests/manifest.rs`).
 
-use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
 use chrono::NaiveDate;
+use indexmap::IndexMap;
 use serde::Deserialize;
 
 use crate::Param;
@@ -88,12 +88,17 @@ impl ParamSpec {
 #[derive(Debug, Clone, Deserialize)]
 pub struct QueryMeta {
     pub scope: Scope,
-    pub params: BTreeMap<String, ParamSpec>,
+    pub params: IndexMap<String, ParamSpec>,
 }
 
-/// The manifest, parsed once per process.
-pub fn manifest() -> &'static BTreeMap<String, QueryMeta> {
-    static PARSED: LazyLock<BTreeMap<String, QueryMeta>> = LazyLock::new(|| {
+/// Every query the library declares, parsed once per process.
+///
+/// Order-preserving, and that is load-bearing rather than tidy: a citation writes the
+/// bindings out in the order the manifest declares them, and the refusal for an unknown name
+/// lists the queries in the order `manifest.py` holds them. Sorted here, both lines would
+/// read differently on the two sides of a parity diff.
+pub fn manifest() -> &'static IndexMap<String, QueryMeta> {
+    static PARSED: LazyLock<IndexMap<String, QueryMeta>> = LazyLock::new(|| {
         serde_json::from_str(MANIFEST_JSON).expect("the generated query manifest parses")
     });
     &PARSED

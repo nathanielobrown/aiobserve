@@ -41,6 +41,10 @@ sha2 = "0.10"
 # The query-string knobs a node-page URL carries; axum's `Query` extractor deserializes them.
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+# The same order-preserving map `preserve_order` already pulls in, named directly: the query
+# manifest's declaration order is what a citation line prints, so the typed side of the
+# bridge cannot sort it.
+indexmap = { version = "2", features = ["serde"] }
 # Snapshots of the ids and parents the walk produced, reviewed once and then pinned.
 insta = "1"
 # The `hp` binary's CLI. `derive` is the only feature the commands need.
