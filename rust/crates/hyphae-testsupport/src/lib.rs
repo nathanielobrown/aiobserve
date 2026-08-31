@@ -25,4 +25,6 @@ pub mod nav_trees;
 /// The enrichment rows a partial pass would have left behind.
 pub mod planting;
 pub mod rows;
+/// Which page to fetch: one node of every kind, and one level of every shape a log has.
+pub mod selections;
 pub mod served;
