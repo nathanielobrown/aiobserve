@@ -1,0 +1,18 @@
+[package]
+name = "hyphae-analyze"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+hyphae-store.workspace = true
+# `project_predicate` and `resolve_project`: what `--project` means is the extractor's rule,
+# and a corpus scoped by a second copy of it would not be the corpus that was extracted.
+hyphae-extract.workspace = true
+chrono.workspace = true
+# Bindings in declaration order — a citation writes them out in the order they were declared.
+indexmap.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+hyphae-testsupport.workspace = true

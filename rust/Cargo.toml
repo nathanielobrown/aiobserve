@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/hp",
+    "crates/hyphae-analyze",
     "crates/hyphae-enrich",
     "crates/hyphae-extract",
     "crates/hyphae-model",
@@ -18,6 +19,7 @@ publish = false
 [workspace.dependencies]
 # The crates, by path: the workspace is the only consumer and nothing here is published.
 hyphae-model = { path = "crates/hyphae-model" }
+hyphae-analyze = { path = "crates/hyphae-analyze" }
 hyphae-extract = { path = "crates/hyphae-extract" }
 hyphae-enrich = { path = "crates/hyphae-enrich" }
 hyphae-store = { path = "crates/hyphae-store" }

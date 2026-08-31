@@ -1013,10 +1013,14 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "hyphae-analyze",
  "hyphae-extract",
+ "hyphae-model",
  "hyphae-store",
  "hyphae-testsupport",
  "hyphae-view",
+ "indexmap",
+ "serde_json",
  "tempfile",
  "tokio",
 ]
@@ -1140,6 +1144,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "hyphae-analyze"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "hyphae-extract",
+ "hyphae-store",
+ "hyphae-testsupport",
+ "indexmap",
+ "thiserror",
 ]
 
 [[package]]

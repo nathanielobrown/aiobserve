@@ -28,6 +28,8 @@ pub const WRITER_CRATES: &[&str] = &[
 pub const NON_WRITERS: &[&str] = &[
     // The CLI shell over the crates above; it writes nothing a store holds by itself.
     "hp",
+    // Read-only too: the runner opens read-only, and its corpus relations are TEMP views.
+    "hyphae-analyze",
     // Read-only by construction: every store it opens, it opens read-only.
     "hyphae-view",
 ];
