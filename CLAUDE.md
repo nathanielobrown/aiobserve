@@ -27,7 +27,7 @@ Use `mise` to run project tasks. `uv` owns the Python environment.
 - Run any individual task listed in `mise.toml` with `mise run <task>`. Ruff formats and lints Python, which is what a viewer page is made of (`docs/ui-development.md`); Pyrefly checks types; aigarden holds the docs to `aigarden.toml` and splices their generated blocks (`docs/documentation.md`)
 - Run `mise run diagram-check <file>` to validate Mermaid and `mise run mutate` to score the suite against mutants (`.claude/rules/testing.md`)
 - Run `mise run e2e` to drive the viewer's pages in a real Chromium; it is out of `check` because it needs a browser (`docs/ui-development.md`)
-- Run `mise run rust-check` to gate the Rust prototype under `rust/` — format, clippy, and its suite; it is out of `check` because CI installs no Rust toolchain. One leaf shells into `uv` to plant the Python tier's enrichment rows and diff them against Rust's; set `HYPHAE_SKIP_PYTHON_PARITY` where there is no Python environment
+- Run `mise run rust-check` to gate the Rust port under `rust/` — format, clippy, and its suite; it is out of `check` because CI installs no Rust toolchain. One leaf shells into `uv` to plant the Python tier's enrichment rows and diff them against Rust's; set `HYPHAE_SKIP_PYTHON_PARITY` where there is no Python environment
 
 Put `mise` flags before the task name. `mise run check --force` passes `--force` to the task, where it does nothing.
 
@@ -46,7 +46,7 @@ src/hyphae/               Analyze AI coding agents from their telemetry
   pipeline.py             The seams: what an extractor and an exporter owe each other, and the loop that drives them
 tests/                    The suite, mirroring the package layout; fixtures are recorded sessions, and `gallery/` serves them as pages (`docs/ui-development.md`)
 tools/                    The repo's own generators: what the code already owns, written back out for another reader
-rust/                     The Rust conversion prototype: a cargo workspace whose crates mirror the Python packages one-for-one (`plans/rust-prototype/design.md`)
+rust/                     The Rust port: a cargo workspace whose crates mirror the Python packages one-for-one, under a gate of its own (`plans/rust-prototype/full-port.md`)
 docs/
   analysis.md             Follow this process to turn the trace store into evidence-backed findings about how an AI coding agent behaved on a project
   schema.md               Every Claude Code telemetry field hyphae reads, what it means, and the recording that proves it

@@ -75,8 +75,8 @@ ENTRIES = (
     Entry(
         "rust/",
         Words(
-            "The Rust conversion prototype: a cargo workspace whose crates mirror the Python "
-            "packages one-for-one (`plans/rust-prototype/design.md`)"
+            "The Rust port: a cargo workspace whose crates mirror the Python packages "
+            "one-for-one, under a gate of its own (`plans/rust-prototype/full-port.md`)"
         ),
     ),
     Entry("docs/", None),

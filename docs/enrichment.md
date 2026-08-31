@@ -128,6 +128,8 @@ Both changes deliberately make stored rows stale:
 - After changing a level's instructions, bump `PROMPT_VERSION[level]` in `src/hyphae/enrich/prompts.py`. The content hash cannot see the instructions
 - After adding, renaming, or redefining a taxonomy member, bump `TAXONOMY_VERSION`. The model classifies from these definitions, so the change re-describes every level
 
+Either edit also moves `rust/metadata/enrichment.json`, which carries the stamps and the prompt material: run `uv run python -m tools.gen_enrichment` after it, or the leaf that regenerates and compares bytes reds.
+
 A run-level prompt bump cascades through later rounds. Price it with `--dry-run` before starting the pass.
 
 ## The design records the tradeoffs

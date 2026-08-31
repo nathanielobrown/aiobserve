@@ -203,7 +203,7 @@ no_proxy='*' uv run mutmut run --max-children 1 "$@"
 """
 
 [tasks.rust-check]
-description = "Every gate the Rust prototype has: format, lint, and the suite under rust/"
+description = "Every gate the Rust port has: format, lint, and the suite under rust/"
 # The Rust half's whole gate in one command, for the reason `check-fast` is one command: a gate
 # you have to remember three parts of gets run in two. Deliberately NOT a dependency of
 # `check` — `check.yml` installs Python and node and no Rust toolchain, so folding it in would
