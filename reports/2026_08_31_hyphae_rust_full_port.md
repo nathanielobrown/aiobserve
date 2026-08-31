@@ -2,7 +2,7 @@
 
 The port is done. Everything `reports/2026_08_30_hyphae_rust_prototype.md` left in Python — enrichment writing, OTLP export, `hp view --dev`, the analysis library, the store's read side — is now in Rust, and every one of the Python tier's 2,027 test ids has a disposition. This report carries three things the prototype could not: what each suite costs when you run it, where each Python test went, and what the port found in production code that both languages share. The design and its as-built amendments are `plans/rust-prototype/full-port.md`; this report does not restate them.
 
-The price, since it is the question the prototype deferred: ten agent slices over two calendar days. The branch carries 114 commits (`git log --oneline 4cf891f..HEAD`, the prototype report's commit to the branch head): the ten slices, plus the fixes a pre-push audit called for. That is the conversion of the whole tier, not the prototype.
+The price, since it is the question the prototype deferred: ten agent slices over two calendar days. The branch carries the ten slices plus the fixes a pre-push audit called for; `git log --oneline 4cf891f..HEAD` (the prototype report's commit to the branch head) counts them. That is the conversion of the whole tier, not the prototype.
 
 Every number below was measured on one machine — Apple M5 Max, 18 cores, 128 GB, macOS — against this repository's fixture corpus, warm, with nothing else of mine running. Each is the median of three runs. This measures two suites on this hardware, not two languages.
 
