@@ -2,9 +2,11 @@
 //!
 //! It holds the enrichment schema, the item shapes a prompt is rendered from, the store that
 //! reads enrichable items out and writes accepted answers back, the render that turns an item
-//! into prompt text, and the screen every model answer passes before a row is written. `src/hyphae/enrich/` stays the authority for
+//! into prompt text, what a pass over them would cost, and the screen every model answer passes
+//! before a row is written. `src/hyphae/enrich/` stays the authority for
 //! everything here until the Python pass retires.
 
+pub mod cost;
 pub mod items;
 pub mod prompts;
 /// The `EnrichmentStore` reads, in their own file: `store` is over the length budget with

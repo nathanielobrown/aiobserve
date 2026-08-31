@@ -384,7 +384,10 @@ fn non_empty(value: Option<&str>) -> Option<&str> {
 }
 
 /// How long a string is to every limit here — code points, as the Python side counts them.
-fn width(text: &str) -> usize {
+///
+/// Public because a budget is a claim about the same unit: a caller checking a render against
+/// `total`, or pricing one, has to count what the cap counted.
+pub fn width(text: &str) -> usize {
     text.chars().count()
 }
 
