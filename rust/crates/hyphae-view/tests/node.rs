@@ -9,7 +9,7 @@ use hyphae_testsupport::landmarks::{ANCESTOR, DENSE_TURN, MAIN, MISSING, SPINE};
 use hyphae_testsupport::marks::mark;
 use hyphae_testsupport::rows;
 use hyphae_testsupport::selections::{KINDS, node_url, pages, turn_url};
-use hyphae_testsupport::served::Served;
+use hyphae_testsupport::served::{self, Served};
 
 use std::collections::BTreeSet;
 
@@ -359,5 +359,35 @@ async fn every_kind_renders_a_body_and_every_shape_a_log() {
         } else {
             assert!(logged.contains(shape.word()), "no log lists {shape}");
         }
+    }
+}
+
+#[tokio::test]
+async fn every_session_in_the_corpus_gets_a_page() {
+    // The whole fixture corpus, not one hand-picked session: a kind of session the walk handles
+    // and the page does not is exactly the failure this sweep is for.
+    let served = Served::corpus();
+    let ids = served::session_ids(&served.db());
+    assert!(
+        !ids.is_empty(),
+        "the fixture corpus put sessions in a store"
+    );
+    for id in &ids {
+        let (status, page) = served.page(&format!("/session/{id}")).await;
+        assert_eq!(status, StatusCode::OK, "GET /session/{id}");
+        // The two halves of a node page arrive in one response, which is what a click re-fetches.
+        assert!(
+            page.contains("id=\"nav-tree-rows\""),
+            "NavTree in /session/{id}"
+        );
+        assert!(
+            page.contains("id=\"reading-pane\""),
+            "pane in /session/{id}"
+        );
+        // The session's own row is the one the NavTree opens on, and the pane is reading it.
+        assert!(
+            page.contains("aria-current=\"true\""),
+            "selection in /session/{id}"
+        );
     }
 }

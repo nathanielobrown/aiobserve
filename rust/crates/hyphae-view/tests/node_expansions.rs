@@ -3,17 +3,21 @@
 //! The pane's log lists a child as a row with a View button, and the button fetches the same body
 //! the child's own page wraps. What the wrapper adds — the crumbs, the tree, the walk, the
 //! previews — is what an expansion must not, so these leaves read the two renders against each
-//! other rather than against a fixture.
+//! other rather than against a fixture. The mount is an htmx fetch rather than a page, so the
+//! last two leaves ask for it by hand: what it refuses is as much of its contract as what it
+//! serves.
 
 use hyphae_testsupport::html::Markup;
 use hyphae_testsupport::landmarks::ANCESTOR;
 use hyphae_testsupport::marks::mark;
 use hyphae_testsupport::selections::{KINDS, level_url, node_url};
-use hyphae_testsupport::served::Served;
+use hyphae_testsupport::served::{self, Served};
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 use axum::http::StatusCode;
+use hyphae_store::Store;
 use hyphae_view::columns::Shape;
 use hyphae_view::labels::label;
 use hyphae_view::nodes::BODY_URL;
@@ -236,5 +240,102 @@ async fn a_call_opened_in_its_turn_lists_the_tools_it_called() {
         opened
             .reads("data-log", "tools")
             .starts_with(&format!("{count} tools"))
+    );
+}
+
+/// One row per kind a children log lists: the kind, and the URL its View button fetches.
+fn openable(db: &Path) -> Vec<(&'static str, String)> {
+    let store = Store::open_read_only(db).expect("the store opens read only");
+    let mut found = Vec::new();
+    for (kind, table) in [
+        ("turn", "turns"),
+        ("call", "api_calls"),
+        ("tool", "tool_calls"),
+    ] {
+        let rows = store
+            .fetch(
+                &format!("SELECT session_id, source, id FROM {table} ORDER BY 1, 2, 3 LIMIT 1"),
+                &[],
+            )
+            .expect("the store answers");
+        let row = rows
+            .first()
+            .unwrap_or_else(|| panic!("the corpus has a {kind}"));
+        found.push((
+            kind,
+            format!(
+                "/fragment/body/session/{}/thread/{}/{kind}/{}",
+                row.str("session_id").expect("a session id"),
+                row.str("source").expect("a thread"),
+                row.str("id").expect("a node id"),
+            ),
+        ));
+    }
+    let rows = store
+        .fetch(
+            "SELECT session_id, id FROM agent_runs ORDER BY 1, 2 LIMIT 1",
+            &[],
+        )
+        .expect("the store answers");
+    let row = rows.first().expect("the corpus has an agent run");
+    found.push((
+        "run",
+        format!(
+            "/fragment/body/session/{}/run/{}",
+            row.str("session_id").expect("a session id"),
+            row.str("id").expect("a run id"),
+        ),
+    ));
+    found
+}
+
+#[tokio::test]
+async fn every_kind_a_log_lists_opens_a_body_that_opens_nothing_further() {
+    let served = Served::corpus();
+    for (kind, url) in openable(&served.db()) {
+        let (status, fragment) = served.page(&url).await;
+        assert_eq!(status, StatusCode::OK, "GET {url}");
+        // The body arrives as a row of the log it was opened in, marked with its own kind...
+        assert!(
+            fragment.contains(&format!("data-expansion=\"{kind}\"")),
+            "{url} mounts a {kind} body"
+        );
+        // ...carrying the way to the node's own page, which is where a reader goes for more...
+        assert!(fragment.contains("class=\"children\""), "{url} links out");
+        // ...and no View button anywhere inside it: an expansion opens no expansion.
+        assert!(!fragment.contains("data-view="), "{url} opens another body");
+        // What it ran is cited on the fragment itself, the way a page's footer cites.
+        assert!(
+            fragment.contains("class=\"citations\""),
+            "{url} cites its queries"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_body_is_asked_for_by_a_kind_and_an_id_the_store_holds() {
+    let served = Served::corpus();
+    let (session_id, _) = served::busiest_session(&served.db());
+    // A kind no children log lists — the session's own body is the page, not an expansion.
+    for kind in ["session", "compaction", "nonesuch"] {
+        let url = format!("/fragment/body/session/{session_id}/thread/main/{kind}/whatever");
+        assert_eq!(
+            served.page(&url).await.0,
+            StatusCode::NOT_FOUND,
+            "GET {url}"
+        );
+    }
+    // A kind that is listed, with an id the store does not hold.
+    let url = format!("/fragment/body/session/{session_id}/thread/main/turn/not-a-turn");
+    assert_eq!(
+        served.page(&url).await.0,
+        StatusCode::NOT_FOUND,
+        "GET {url}"
+    );
+    let url = format!("/fragment/body/session/{session_id}/run/not-a-run");
+    assert_eq!(
+        served.page(&url).await.0,
+        StatusCode::NOT_FOUND,
+        "GET {url}"
     );
 }

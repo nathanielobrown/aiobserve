@@ -9,6 +9,7 @@ use hyphae_testsupport::served::Served;
 
 use axum::http::StatusCode;
 use hyphae_store::Store;
+use hyphae_view::app::CSP;
 use serde_json::Value;
 
 /// Markup no fixture carries: a transcript can hold anything an agent read, and the only way to
@@ -108,5 +109,24 @@ async fn planted_markup_arrives_inert_on_every_route() {
         if printing.contains(&field(&entry, "group")) {
             assert!(page.contains(ESCAPED), "no escaped sentinel in {route}");
         }
+    }
+}
+
+#[tokio::test]
+async fn a_response_that_is_not_a_page_still_carries_the_content_security_policy() {
+    // The route sweep asserts the header over every page; these are the responses no route file
+    // names — a refusal, a static file, a miss — where dropping it would go unseen.
+    let served = Served::corpus();
+    for path in [
+        "/session/no-such-session",
+        "/static/style.css",
+        "/nothing/here",
+    ] {
+        let response = served.get(path).await;
+        assert_eq!(
+            response.headers()["content-security-policy"],
+            CSP,
+            "GET {path}"
+        );
     }
 }

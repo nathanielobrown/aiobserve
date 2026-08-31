@@ -44,6 +44,18 @@ impl Markup {
         }
     }
 
+    /// Read one served table row: the fragment a children log's View button swaps in.
+    ///
+    /// A bare `<tr>` is dropped on the way in — the parser reads a document, and outside a table
+    /// there is nowhere to put a row — so the wrapper is what lets a scoped reader see the row and
+    /// the cell it spans. What `served` returns is still the bytes the route sent.
+    pub fn row(served: &str) -> Self {
+        Self {
+            served: served.to_owned(),
+            dom: Html::parse_document(&format!("<table>{served}</table>")),
+        }
+    }
+
     /// The bytes the page was served as, for a leaf that asserts on the document itself.
     pub fn served(&self) -> &str {
         &self.served

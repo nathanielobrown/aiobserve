@@ -6,12 +6,13 @@
 
 use std::collections::BTreeMap;
 
+use axum::http::StatusCode;
 use hyphae_store::{Row, Value};
 
 use hyphae_testsupport::html::Markup;
 use hyphae_testsupport::landmarks::{MAIN, SPINE, SPINE_RUN};
 use hyphae_testsupport::nav_trees::{Levels, mounts, spilled, url};
-use hyphae_testsupport::served::Served;
+use hyphae_testsupport::served::{self, Served};
 use hyphae_view::enrichment::Descriptions;
 use hyphae_view::knobs;
 use hyphae_view::nav_tree::{self, Corpus};
@@ -117,7 +118,7 @@ async fn a_tail_row_stands_the_rest_of_its_level_where_it_stands() {
     // ...and what it fetches is the level less the window, at the depth the row sits at: the rows
     // the reader could not see, ready to stand where the row that counted them stands.
     let (status, rest) = served.page(&fetch["hx-get"]).await;
-    assert_eq!(status, axum::http::StatusCode::OK);
+    assert_eq!(status, StatusCode::OK);
     let rest = Markup::of(&rest);
     let expected: Vec<(usize, String)> = level
         .iter()
@@ -166,6 +167,79 @@ async fn a_tail_row_stands_the_rest_of_its_level_where_it_stands() {
             .await;
         assert_eq!(status.as_u16(), answer, "depth {depth}");
     }
+}
+
+#[tokio::test]
+async fn a_tail_row_fetches_the_rest_of_its_level_and_no_row_twice() {
+    let served = Served::corpus();
+    let (session_id, turns) = served::busiest_session(&served.db());
+    assert!(turns > 2, "the widest fixture thread has a level to cut");
+    // The session's first level, drawn at a cap of one: the NavTree shows one turn and a tail row
+    // saying how many it left out, and that row's own fetch is what this asks for.
+    let (status, page) = served.page(&format!("/session/{session_id}?kin=1")).await;
+    assert_eq!(status, StatusCode::OK);
+    // How many the window left out, read off the row itself: the level is the thread's turns and
+    // whatever bucket the transcript needed, so the tail row is the only thing that knows.
+    let cut = counted(&page);
+    assert!(
+        cut as i64 >= turns - 1,
+        "the level's tail row counts what it left out"
+    );
+    let (status, rest) = served
+        .page(&format!(
+            "/fragment/kin/session/{session_id}/session/{session_id}?kin=1&thread=main&depth=1"
+        ))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    // Exactly what the tail row said. The rows an agent run adds under each come with them, one
+    // level deeper, so the level itself is the rows standing where the tail row stood.
+    let rows = rest.matches("data-depth=\"1\"").count();
+    assert_eq!(rows, cut, "the spill is the level less the window");
+    // And no row the window already drew: the two halves of one split do not overlap.
+    for drawn in keys(&page) {
+        assert!(!rest.contains(&drawn), "{drawn} is drawn twice");
+    }
+}
+
+#[tokio::test]
+async fn a_level_is_only_spilled_where_a_nav_tree_row_could_stand() {
+    let served = Served::corpus();
+    let (session_id, _) = served::busiest_session(&served.db());
+    let at = format!("/fragment/kin/session/{session_id}/session/{session_id}");
+    // A depth outside the NavTree's is the reader's mistake, answered before anything is read.
+    for depth in ["0", "-1", "99"] {
+        let url = format!("{at}?thread=main&depth={depth}");
+        assert_eq!(
+            served.page(&url).await.0,
+            StatusCode::BAD_REQUEST,
+            "GET {url}"
+        );
+    }
+    // Neither the thread nor the depth has a default: these rows are going somewhere in a NavTree
+    // that already exists, and only the row that asked knows where.
+    for asked in ["", "?thread=main", "?depth=1"] {
+        let url = format!("{at}{asked}");
+        assert_eq!(
+            served.page(&url).await.0,
+            StatusCode::BAD_REQUEST,
+            "GET {url}"
+        );
+    }
+    // A kind no node is, on either mount.
+    let url =
+        format!("/fragment/kin/session/{session_id}/nonesuch/{session_id}?thread=main&depth=1");
+    assert_eq!(
+        served.page(&url).await.0,
+        StatusCode::NOT_FOUND,
+        "GET {url}"
+    );
+    let url =
+        format!("/fragment/kin/session/{session_id}/thread/main/nonesuch/x?thread=main&depth=1");
+    assert_eq!(
+        served.page(&url).await.0,
+        StatusCode::NOT_FOUND,
+        "GET {url}"
+    );
 }
 
 #[tokio::test]
@@ -365,4 +439,25 @@ fn built(runs: Vec<Row>) -> Corpus {
         described: Descriptions::default(),
         source: MAIN.to_owned(),
     }
+}
+
+/// How many children a NavTree's one tail row says its level left out.
+fn counted(page: &str) -> usize {
+    let at = page
+        .find("data-field=\"cut\">")
+        .expect("the level was cut, so a tail row stands under it");
+    let rest = &page[at + "data-field=\"cut\">".len()..];
+    rest[..rest.find('<').expect("the count closes")]
+        .parse()
+        .expect("a tail row counts in digits")
+}
+
+/// Every node key the NavTree drew a row for.
+fn keys(page: &str) -> Vec<String> {
+    page.match_indices("data-nav-tree=\"")
+        .map(|(at, mark)| {
+            let rest = &page[at + mark.len()..];
+            rest[..rest.find('"').expect("the attribute closes")].to_owned()
+        })
+        .collect()
 }
