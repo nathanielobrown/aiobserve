@@ -3,13 +3,15 @@
 //! The contracts of `docs/viewer-bounds.md`: the children log's paging, the knobs a page carries
 //! back into its own links, and the cut a preview makes against the fetch that undoes it.
 
-use hyphae_testsupport::corpus;
 use hyphae_testsupport::served::{self, Served};
+use hyphae_testsupport::{corpus, metadata};
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use axum::http::StatusCode;
 use hyphae_store::Store;
+use hyphae_view::knobs;
+use hyphae_view::nodes::Preset;
 use serde_json::Value;
 
 /// An id no fixture holds, so every key a node URL carries can be missed one at a time.
@@ -243,4 +245,129 @@ fn a_tool(db: &std::path::Path) -> (String, String, String) {
         row.str("source").expect("a thread").to_owned(),
         row.str("id").expect("a tool call id").to_owned(),
     )
+}
+
+/// Every ceiling and size this crate declares is the number `view/bounds.py` declares.
+///
+/// `knobs.rs` is a hand port of two Python modules, and nothing about a wrong number here
+/// looks wrong: a page served at a ceiling Python retired renders, cites, and passes every
+/// leaf above it. The bridged registry is what closes that — the same numbers as data, from
+/// the module that owns them (`plans/rust-prototype/full-port.md`).
+///
+/// A `Bound` is compared whole. Pooling its two numbers would let a default and a ceiling
+/// trade places, which is a page served at a size no payload sweep priced.
+#[test]
+fn every_bound_the_viewer_declares_is_the_number_python_declares() {
+    let ceilings: BTreeMap<&str, &knobs::Bound> = BTreeMap::from([
+        ("KIN", &knobs::KIN),
+        ("LOG", &knobs::LOG),
+        ("DETAIL", &knobs::DETAIL),
+        ("RECORDS", &knobs::RECORDS),
+        ("CHUNK", &knobs::CHUNK),
+        ("SESSIONS", &knobs::SESSIONS),
+        ("PROJECTS", &knobs::PROJECTS),
+        ("ERRORS", &knobs::ERRORS),
+    ]);
+    for (name, bound) in &ceilings {
+        let python = metadata::bound(name);
+        assert_eq!(
+            (bound.default, bound.ceiling),
+            (python.default, python.ceiling),
+            "{name}"
+        );
+    }
+    // The plain sizes, which no URL carries and so nothing refuses at: a wrong one is a page
+    // that renders, just not the page the ceiling was priced against.
+    let sizes: BTreeMap<&str, i64> = BTreeMap::from([
+        ("DEPTH", knobs::DEPTH as i64),
+        ("INDENT_CHARS", knobs::INDENT_CHARS as i64),
+        ("HIGHLIGHT_CHARS", knobs::HIGHLIGHT_CHARS as i64),
+        ("CURSORLESS_TURNS", knobs::CURSORLESS_TURNS as i64),
+        ("OPENED_RECORD_CHARS", knobs::OPENED_RECORD_CHARS as i64),
+    ]);
+    for (name, size) in &sizes {
+        assert_eq!(*size, metadata::size(name), "{name}");
+    }
+    // The ratchet: nothing `knobs.rs` declares is missing from the two tables above, and
+    // nothing Python declares is unaccounted for on this side.
+    let named: BTreeSet<&str> = ceilings.keys().chain(sizes.keys()).copied().collect();
+    assert_eq!(
+        declared_here(),
+        named,
+        "a bound this crate declares is unchecked"
+    );
+    let registry = metadata::bounds();
+    let python: BTreeSet<&str> = registry
+        .bounds
+        .keys()
+        .chain(registry.sizes.keys())
+        .map(String::as_str)
+        .collect();
+    let elsewhere: BTreeSet<&str> = BOUND_ELSEWHERE.iter().copied().collect();
+    assert_eq!(
+        &python - &named,
+        elsewhere,
+        "a Python bound is neither ported nor named"
+    );
+}
+
+/// The bounds `bounds.py` declares that this crate holds somewhere other than `knobs.rs`.
+const BOUND_ELSEWHERE: &[&str] = &[
+    // A re-export of the query width, which `hyphae-store` declares and its own leaf checks.
+    "LOG_CHARS",
+    // The arithmetic behind the node page's payload ceiling, which lives in the Python
+    // tier's `tests/view/budgets.py`; nothing on this side weighs a page yet.
+    "NAV_TREE_ROW_BYTES",
+];
+
+/// Every bound and plain size `knobs.rs` declares, read off the source it declares them in.
+///
+/// Rust has no reflection over its own constants, so the ratchet reads the file. Only the
+/// names — what they are worth is asserted from the constants themselves.
+fn declared_here() -> BTreeSet<&'static str> {
+    static SOURCE: &str = include_str!("../src/knobs.rs");
+    SOURCE
+        .lines()
+        .filter_map(|line| line.strip_prefix("pub const "))
+        .filter_map(|rest| rest.split_once(": "))
+        .filter(|(_, typed)| typed.starts_with("Bound") || typed.starts_with("usize"))
+        .map(|(name, _)| name)
+        .collect()
+}
+
+/// A URL naming no knob is served at Python's defaults, and a link back omits exactly those.
+///
+/// The other half of the knob contract, and the half a constant comparison cannot reach: what
+/// [`knobs::knobs`] leaves out of a link is what a reader who typed nothing gets, so a default
+/// that drifted from `view/knobs.py` would mint links to a page Python serves differently
+/// (`docs/viewer-bounds.md`).
+#[test]
+fn a_link_omits_exactly_the_knobs_python_serves_by_default() {
+    let defaults = &metadata::bounds().knobs;
+    let numbered = |knob: &str| defaults[knob].as_i64().expect("a size default is a number");
+    assert_eq!(defaults["nav"], Value::from(Preset::Full.word()));
+    let (kin, log, detail) = (numbered("kin"), numbered("log"), numbered("detail"));
+    assert_eq!(
+        knobs::knobs(Preset::Full, kin, log, detail),
+        "",
+        "a page at Python's defaults mints a bare link",
+    );
+    // And each one named on its own the moment it is not the default, so the suffix is not
+    // empty for some other reason.
+    assert_eq!(
+        knobs::knobs(Preset::Agents, kin, log, detail),
+        "?nav=agents"
+    );
+    assert_eq!(
+        knobs::knobs(Preset::Full, kin - 1, log, detail),
+        format!("?kin={}", kin - 1)
+    );
+    assert_eq!(
+        knobs::knobs(Preset::Full, kin, log - 1, detail),
+        format!("?log={}", log - 1)
+    );
+    assert_eq!(
+        knobs::knobs(Preset::Full, kin, log, detail - 1),
+        format!("?detail={}", detail - 1)
+    );
 }
