@@ -3,8 +3,8 @@
 //! The contracts of `docs/viewer-bounds.md`: the children log's paging, the knobs a page carries
 //! back into its own links, and the cut a preview makes against the fetch that undoes it.
 
-use hyphae_testsupport::served::{self, Served};
 use hyphae_testsupport::metadata;
+use hyphae_testsupport::served::{self, Served};
 
 use std::collections::{BTreeMap, BTreeSet};
 
