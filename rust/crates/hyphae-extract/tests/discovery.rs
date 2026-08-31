@@ -145,8 +145,12 @@ fn a_subagent_transcript_hangs_off_its_session_rather_than_being_one() {
     std::fs::create_dir_all(&workflow).expect("the subagent tree is writable");
     for path in [
         subagents.join("agent-aaa.jsonl"),
+        // What a run leaves beside its transcript: the two readings below are told apart by
+        // what each keeps, rather than by there being nothing else to drop.
+        subagents.join(format!("agent-aaa{}", sessions::META_SUFFIX)),
         subagents.join("agent-bbb.jsonl"),
         workflow.join("agent-ccc.jsonl"),
+        workflow.join(sessions::JOURNAL_NAME),
     ] {
         std::fs::write(&path, "").expect("a subagent transcript");
     }
@@ -157,11 +161,25 @@ fn a_subagent_transcript_hangs_off_its_session_rather_than_being_one() {
         found.iter().map(|s| s.id.as_str()).collect::<Vec<&str>>(),
         ["parent-session"]
     );
-    // ...and all three transcripts hang off it, however deep, after its own.
+    // ...every file under it hangs off it, however deep, after its own...
     assert_eq!(
         found[0].files().expect("the session's files are readable"),
         [
             found[0].transcript.clone(),
+            subagents.join("agent-aaa.jsonl"),
+            subagents.join(format!("agent-aaa{}", sessions::META_SUFFIX)),
+            subagents.join("agent-bbb.jsonl"),
+            workflow.join("agent-ccc.jsonl"),
+            workflow.join(sessions::JOURNAL_NAME),
+        ]
+    );
+    // ...and the count `hp sessions` prints is the transcripts among them: three runs, however
+    // deep, and neither the meta a run wrote nor the workflow's own journal.
+    assert_eq!(
+        found[0]
+            .subagent_transcripts()
+            .expect("the subagent tree is readable"),
+        [
             subagents.join("agent-aaa.jsonl"),
             subagents.join("agent-bbb.jsonl"),
             workflow.join("agent-ccc.jsonl"),
@@ -179,6 +197,13 @@ fn a_session_that_spawned_nothing_has_only_its_transcript() {
     assert_eq!(
         found[0].files().expect("the session's files are readable"),
         [found[0].transcript.clone()]
+    );
+    // No `subagents/` directory at all: an empty listing, not an error about a missing path.
+    assert_eq!(
+        found[0]
+            .subagent_transcripts()
+            .expect("a session with no subagents is not an error"),
+        Vec::<PathBuf>::new()
     );
 }
 
