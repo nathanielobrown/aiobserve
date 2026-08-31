@@ -20,8 +20,8 @@ serde.workspace = true
 serde_json.workspace = true
 # `input_hash`: the staleness digest over one rendered prompt.
 sha2.workspace = true
+# The temp directory every `claude` call runs in, and scratch copies of the cached corpus.
+tempfile.workspace = true
 
 [dev-dependencies]
 hyphae-testsupport.workspace = true
-# Scratch copies of the cached corpus: enrichment opens a store for writing.
-tempfile.workspace = true

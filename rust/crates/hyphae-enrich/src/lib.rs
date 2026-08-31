@@ -6,17 +6,23 @@
 //! before a row is written. `src/hyphae/enrich/` stays the authority for
 //! everything here until the Python pass retires.
 
+pub mod client;
 pub mod cost;
 pub mod items;
 pub mod prompts;
 /// The `EnrichmentStore` reads, in their own file: `store` is over the length budget with
 /// them in it, and they are the half that only assembles items.
 mod read;
+/// The one door to a real process: what the production runner spawns and a fake stands in for.
+pub mod runner;
 pub mod schema;
 pub mod store;
 pub mod taxonomy;
 pub mod validation;
 
+pub use client::{
+    Answer, BatchClient, CliClient, EnrichRequest, Interrupt, RoundError, build_env, preflight,
+};
 pub use items::{
     AgentRunItem, ApiCallRow, Item, RunSection, SessionChild, SessionItem, ToolCallRow, TurnItem,
     level_of,

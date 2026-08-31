@@ -16,6 +16,8 @@ pub mod corpus;
 /// The digest over the sources that decide a stored row — shared with `build.rs`, which
 /// `include!`s this module rather than depending on the crate it is building.
 pub mod digest;
+/// The faked `claude` every client leaf drives, over the envelopes `tests/enrich/` recorded.
+pub mod fake_cli;
 /// Reading a served page back the way a browser and htmx would.
 pub mod html;
 /// The recorded rows every tier names, and why each one is worth naming.
