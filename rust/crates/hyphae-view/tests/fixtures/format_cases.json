@@ -68,6 +68,11 @@
       "signed": "+1,234"
     },
     {
+      "value": 1234567,
+      "count": "1,234,567",
+      "signed": "+1,234,567"
+    },
+    {
       "value": 1000000,
       "count": "1,000,000",
       "signed": "+1,000,000"
@@ -122,6 +127,10 @@
       "shown": "2m 05s"
     },
     {
+      "value": 252000,
+      "shown": "4m 12s"
+    },
+    {
       "value": 3599999,
       "shown": "59m 59s"
     },
@@ -132,6 +141,10 @@
     {
       "value": 7500000,
       "shown": "2h 05m"
+    },
+    {
+      "value": 86400000,
+      "shown": "24h 00m"
     }
   ],
   "shares": [
@@ -164,6 +177,18 @@
       "whole": 8.0,
       "share": "12.5%",
       "percent": "100.0%"
+    },
+    {
+      "part": 1.0,
+      "whole": 45.0,
+      "share": "2.2%",
+      "percent": "100.0%"
+    },
+    {
+      "part": 1.0,
+      "whole": 1.0,
+      "share": "100.0%",
+      "percent": "100.0%"
     }
   ],
   "paths": [
@@ -191,6 +216,11 @@
       "value": "/Users/someone/repos/hyphae",
       "home": "",
       "shown": "/Users/someone/repos/hyphae"
+    },
+    {
+      "value": "/Users",
+      "home": "/Users/someone",
+      "shown": "/Users"
     }
   ],
   "now": "2026-08-30T12:00:00+00:00",
@@ -204,12 +234,20 @@
       "shown": "just now"
     },
     {
+      "before_ms": 59000,
+      "shown": "just now"
+    },
+    {
       "before_ms": 60000,
       "shown": "1m ago"
     },
     {
       "before_ms": 90000,
       "shown": "1m ago"
+    },
+    {
+      "before_ms": 3599000,
+      "shown": "59m ago"
     },
     {
       "before_ms": 3600000,
@@ -220,12 +258,24 @@
       "shown": "2h ago"
     },
     {
+      "before_ms": 86399000,
+      "shown": "23h ago"
+    },
+    {
       "before_ms": 86400000,
       "shown": "1d ago"
     },
     {
+      "before_ms": 259200000,
+      "shown": "3d ago"
+    },
+    {
       "before_ms": 300000000,
       "shown": "3d ago"
+    },
+    {
+      "before_ms": 34560000000,
+      "shown": "400d ago"
     },
     {
       "before_ms": -5000,
@@ -242,6 +292,11 @@
       "value": "2026-01-01T00:00:00+00:00",
       "when": "2026-01-01 00:00",
       "clock": "00:00:00"
+    },
+    {
+      "value": "2026-08-15T09:05:03+00:00",
+      "when": "2026-08-15 09:05",
+      "clock": "09:05:03"
     }
   ],
   "flags": [
@@ -257,6 +312,11 @@
   "cuts": [
     {
       "value": "abcdef",
+      "size": 3,
+      "shown": "abc…"
+    },
+    {
+      "value": "abcd",
       "size": 3,
       "shown": "abc…"
     },

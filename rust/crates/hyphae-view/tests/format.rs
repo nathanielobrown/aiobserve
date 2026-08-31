@@ -149,6 +149,7 @@ fn an_absent_value_prints_the_dash() {
     // A whole of zero is a gap rather than 0%, which is the one absent case with a value in it.
     assert_eq!(fmt::share(Some(1.0), Some(0.0)), fmt::ABSENT);
     assert_eq!(fmt::share(None, Some(1.0)), fmt::ABSENT);
+    assert_eq!(fmt::share(Some(1.0), None), fmt::ABSENT);
 }
 
 /// The clock a test or the gallery freezes, which is the one thing here with no Python twin:
