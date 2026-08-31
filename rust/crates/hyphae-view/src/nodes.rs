@@ -28,7 +28,7 @@ const DECADES: f64 = 3.0;
 /// The context bar's ladder: how many steps a fill or a tip is drawn in, across the whole of
 /// the model's window. Linear, because what the bar says is fullness against a limit and a log
 /// scale draws a half-full window as a nearly full one.
-const BAR_STEPS: i64 = 20;
+pub const BAR_STEPS: i64 = 20;
 
 /// What stands between a node's lead and its words ([`Node::title`]). A lead that brackets
 /// itself says where it ends without a dash, and takes `separator` to a space.

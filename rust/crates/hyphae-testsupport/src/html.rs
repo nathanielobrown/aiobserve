@@ -13,6 +13,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::LazyLock;
 
+use hyphae_extract::pricing::CONTEXT_WINDOWS;
+use hyphae_view::nodes::BAR_STEPS;
 use regex::Regex;
 use scraper::{ElementRef, Html, Node};
 
@@ -439,6 +441,44 @@ pub fn classed(html: &str) -> BTreeSet<String> {
 /// A cost as the pages print it.
 pub fn money(amount: f64) -> String {
     format!("${amount:.2}")
+}
+
+/// Which step of the bar a token count lands on, in the model's own window.
+///
+/// The ladder restated rather than imported: `nodes` owns how a share becomes a class, and an
+/// oracle reading that would agree with it whatever it said. A fill past the window is held at the
+/// top — the window a request asked for is not a `message.model` our table can key on, so a call
+/// above it is drawn full rather than given a scale of its own.
+pub fn step(tokens: Option<i64>, model: &str) -> Option<i64> {
+    let tokens = tokens?;
+    // A model outside the table is a scale the oracle cannot invent, so it is a failure rather
+    // than a `None` that would agree with a bar the viewer declined to draw.
+    let (_, window) = CONTEXT_WINDOWS
+        .iter()
+        .find(|(name, _)| *name == model)
+        .unwrap_or_else(|| panic!("no window recorded for {model}"));
+    Some(((tokens as f64 / *window as f64 * BAR_STEPS as f64).round() as i64).min(BAR_STEPS))
+}
+
+/// The three edges a bar draws, from the tokens each band stands for.
+///
+/// The oracle every bar leaf is written against, and the one place the nesting rule is restated:
+/// a band is a prefix of the one that holds it, so an edge is held at the fill above it and at the
+/// base below it. Written here rather than derived from the viewer, so an implementation that let
+/// a band run past its holder has nothing to agree with.
+pub fn bands(fill: i64, prior: i64, base: Option<i64>, model: &str) -> Bar {
+    let top = step(Some(fill), model).expect("a fill lands on a step");
+    let grounded = base.map(|tokens| step(Some(tokens), model).unwrap_or(0).min(top));
+    Bar {
+        fill: Some(top),
+        prior: Some(
+            step(Some(prior), model)
+                .unwrap_or(0)
+                .min(top)
+                .max(grounded.unwrap_or(0)),
+        ),
+        base: grounded,
+    }
 }
 
 /// A count as the pages print it: thousands separated.
