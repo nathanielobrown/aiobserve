@@ -13,21 +13,14 @@
 use std::io::{Read as _, Write as _};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
 use hyphae_store::{Store, schema};
-use hyphae_testsupport::corpus::repo;
 
 mod common;
 
-use common::{HP, spawn};
-
-/// How long a leaf waits for a spawned process to reach the state it is waiting for. Long
-/// enough for a cold `uv run` to resolve an environment, and short enough to stay inside the
-/// 30 seconds `tests/conftest.py:_HOLDER` holds the store lock for — a wait that outlived the
-/// holder would report whatever the viewer said after it let go.
-const PATIENCE: Duration = Duration::from_secs(20);
+use common::{HP, PATIENCE, holding, spawn};
 
 /// A store with the schema and nothing in it — enough for `hp view` to open and serve.
 fn empty_store(path: &Path) {
@@ -80,50 +73,6 @@ fn until(port: u16, path: &str, status: u16, why: &str) -> String {
         std::thread::sleep(Duration::from_millis(50));
     }
     panic!("{why}: {path} answered {last}, not {status}");
-}
-
-/// Wait until `signal` exists, or fail — a child that died first says why on the way out.
-fn touched(signal: &Path, child: &mut Child, why: &str) {
-    let deadline = Instant::now() + PATIENCE;
-    while !signal.exists() {
-        if let Some(status) = child.try_wait().expect("the child's state is readable") {
-            let mut said = String::new();
-            if let Some(stderr) = child.stderr.as_mut() {
-                let _ = stderr.read_to_string(&mut said);
-            }
-            panic!("{why}: the process exited {status} — {said}");
-        }
-        assert!(
-            Instant::now() < deadline,
-            "{why}: nothing happened in {PATIENCE:?}"
-        );
-        std::thread::sleep(Duration::from_millis(50));
-    }
-}
-
-/// Hold `db`'s write lock from another process, and the file that lets go of it.
-///
-/// The holder is Python's own `tests/conftest.py:locked` — the extractor that takes this lock
-/// in production is the Python one, and the store file is the seam the two implementations
-/// share. It signals through a file rather than being polled by an open: a read-only open
-/// takes a shared read lock and DuckDB refuses a write open under one, so polling by opening
-/// would kill the holder it waited for.
-fn holding(db: &Path, scratch: &Path) -> (Child, std::path::PathBuf) {
-    let taken = scratch.join("taken");
-    let release = scratch.join("release");
-    let mut holder = Command::new("uv")
-        .args(["run", "--project"])
-        .arg(repo())
-        .args(["python", "-c", HOLD])
-        .arg(db)
-        .arg(&taken)
-        .arg(&release)
-        .current_dir(repo())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("uv runs the lock holder");
-    touched(&taken, &mut holder, "nothing took the store's write lock");
-    (holder, release)
 }
 
 /// A spawned process killed when the leaf that started it ends, whatever it ended with.
@@ -300,19 +249,3 @@ fn a_locked_store_answers_503_and_recovers() {
     until(port, "/", 200, "the viewer never recovered");
     holder.wait().expect("the holder exits");
 }
-
-/// The lock holder, run by `uv`: take the store's write lock, say so, and hold it until told.
-const HOLD: &str = r#"
-import pathlib, sys, time
-sys.path.insert(0, str(pathlib.Path.cwd()))
-from tests.conftest import locked
-
-db, taken, release = (pathlib.Path(argument) for argument in sys.argv[1:4])
-with locked(db):
-    taken.touch()
-    # `locked` holds for 30 seconds and lets go on its own, so this only has to outlive the
-    # two requests the leaf makes; the deadline is what stops a killed test leaving a holder.
-    deadline = time.monotonic() + 30
-    while not release.exists() and time.monotonic() < deadline:
-        time.sleep(0.05)
-"#;
