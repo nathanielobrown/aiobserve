@@ -4,6 +4,8 @@
 //! what keeps this tier and the browser tier naming the same pages: a page one of them forgets
 //! is a page the other still asks for.
 
+use std::collections::BTreeMap;
+
 use hyphae_testsupport::corpus;
 use hyphae_testsupport::html::Markup;
 use hyphae_testsupport::landmarks::SPINE;
@@ -163,4 +165,43 @@ async fn a_pr_link_is_a_link_only_when_a_browser_should_follow_it() {
     // ...and the other reaches no href at all, while still being shown for what it is.
     assert!(markup.inside("data-pr", unfollowable, "href").is_empty());
     assert!(page.contains("javascript:alert(&#39;planted&#39;)"));
+}
+
+/// Every entry names its page in words and belongs to one of the gallery's headings.
+///
+/// The rest of the tier sweeps the URLs; this reads the two fields nothing else forces. A title is
+/// the gallery's link text and the browser tier's snapshot name, so an entry without one is a page
+/// nobody can name.
+#[test]
+fn every_scenario_says_what_its_page_shows_and_where_it_is_listed() {
+    let entries = routes();
+    assert!(!entries.is_empty(), "the route file names no page");
+    for entry in &entries {
+        let route = field(entry, "route");
+        assert!(!field(entry, "title").trim().is_empty(), "{route}");
+        // ADAPTED: the Python reads the enum member itself — a bare string would pass an
+        // `in Group` check — but the generator flattens it to its value on the way into this
+        // file. What is left to hold here is that every entry names a heading at all; that the
+        // headings are a closed set stays the Python tier's, where the enum lives.
+        assert!(!field(entry, "group").trim().is_empty(), "{route}");
+    }
+}
+
+/// One title, one page.
+///
+/// A title is Chromatic's snapshot name as well as the gallery's link, and a collision there is
+/// invisible: two pages quietly baseline against each other instead of failing.
+#[test]
+fn no_two_scenarios_share_a_title() {
+    let mut counted: BTreeMap<&str, usize> = BTreeMap::new();
+    let entries = routes();
+    for entry in &entries {
+        *counted.entry(field(entry, "title")).or_default() += 1;
+    }
+    let shared: Vec<&str> = counted
+        .iter()
+        .filter(|(_, seen)| **seen > 1)
+        .map(|(title, _)| *title)
+        .collect();
+    assert_eq!(shared, Vec::<&str>::new());
 }
