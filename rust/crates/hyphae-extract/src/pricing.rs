@@ -175,3 +175,29 @@ pub fn compute_cost(model: &str, tokens: &TokenUsage) -> Option<f64> {
     let summed = charged.input + charged.output + charged.cache_read + charged.cache_write;
     Some(summed / PER_MILLION)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{CONTEXT_WINDOWS, PRICES, SYNTHETIC_MODEL};
+
+    /// The two tables answer one census, so a model we can cost is a model we can size.
+    ///
+    /// The placeholder is the exception and the only one: a `<synthetic>` record is Claude
+    /// Code writing in its own voice, so it has a price — nothing — and no context window at
+    /// all. Any other model in one table and not the other is a bar the viewer silently stops
+    /// drawing, or a window nothing ever looks up. A unit test rather than a leaf beside the
+    /// rest in `tests/pricing.rs`, `PRICES` being private to this module.
+    #[test]
+    fn every_model_we_price_declares_the_window_it_answers_in() {
+        let mut priced: Vec<&str> = PRICES
+            .iter()
+            .map(|(model, _)| *model)
+            .filter(|model| *model != SYNTHETIC_MODEL)
+            .collect();
+        let mut sized: Vec<&str> = CONTEXT_WINDOWS.iter().map(|(model, _)| *model).collect();
+        priced.sort_unstable();
+        sized.sort_unstable();
+        assert_eq!(priced, sized);
+        assert!(CONTEXT_WINDOWS.iter().all(|(_, window)| *window > 0));
+    }
+}
