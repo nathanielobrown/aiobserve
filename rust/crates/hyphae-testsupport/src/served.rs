@@ -68,21 +68,33 @@ impl Served {
 
     /// One GET, answered. The router is cloned per call because `oneshot` consumes the service.
     pub async fn get(&self, path: &str) -> Response<Body> {
+        self.sent(path, &[]).await
+    }
+
+    /// One GET carrying headers, for the leaves that ask what htmx's own request changes.
+    pub async fn sent(&self, path: &str, headers: &[(&str, &str)]) -> Response<Body> {
+        let mut request = Request::builder().uri(path);
+        for (name, value) in headers {
+            request = request.header(*name, *value);
+        }
         self.app
             .clone()
-            .oneshot(
-                Request::builder()
-                    .uri(path)
-                    .body(Body::empty())
-                    .expect("a GET with no body"),
-            )
+            .oneshot(request.body(Body::empty()).expect("a GET with no body"))
             .await
             .expect("the router answers")
     }
 
+    /// One GET's status and body text, sent with headers.
+    pub async fn page_sent(&self, path: &str, headers: &[(&str, &str)]) -> (StatusCode, String) {
+        Self::read(self.sent(path, headers).await).await
+    }
+
     /// One GET's status and body text, which is what most leaves assert over.
     pub async fn page(&self, path: &str) -> (StatusCode, String) {
-        let response = self.get(path).await;
+        Self::read(self.get(path).await).await
+    }
+
+    async fn read(response: Response<Body>) -> (StatusCode, String) {
         let status = response.status();
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await

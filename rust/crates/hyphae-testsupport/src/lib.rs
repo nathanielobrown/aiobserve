@@ -18,6 +18,8 @@ pub mod digest;
 pub mod html;
 /// The recorded rows every tier names, and why each one is worth naming.
 pub mod landmarks;
+/// The character every surface prints beside a node of each kind.
+pub mod marks;
 /// The bounds and enrichment numbers Python owns, compiled in from the generated JSON.
 pub mod metadata;
 /// Building the level the store says a NavTree should hold, and reading the one it drew.

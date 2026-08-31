@@ -21,6 +21,18 @@ pub enum Shape {
 }
 
 impl Shape {
+    /// Every shape there is, for a sweep that has to answer for each one.
+    ///
+    /// The runtime half of what the checker's exhaustiveness promises: a shape added here with no
+    /// arm behind it lists no rows, and a sweep over a served corpus is what catches that.
+    pub const ALL: [Self; 5] = [
+        Self::Turns,
+        Self::Calls,
+        Self::Tools,
+        Self::Runs,
+        Self::None,
+    ];
+
     /// The word the log's `data-` attributes and its heading spell this shape with.
     pub fn word(self) -> &'static str {
         match self {

@@ -138,6 +138,74 @@ pub const LEVELS: [(&str, &str, &str, &str); 6] = [
     ),
 ];
 
+/// Every page one store can serve — the list, and every node of every session it holds.
+///
+/// One URL per node the NavTree can reach, read from the store the way the routes read it, so a
+/// sweep over this list is a sweep over the whole viewer rather than over the two pages that used
+/// to exist. Every URL here answers 200: the two buckets are included only where the store has
+/// something to put in them, because an empty bucket is a node that is not there.
+pub fn pages(db: &Path) -> Vec<String> {
+    let store = Store::open_read_only(db).expect("the store opens read only");
+    let all = |sql: &str| store.fetch(sql, &[]).expect("the store answers");
+    let mut urls = vec!["/".to_owned()];
+    for row in all("SELECT id FROM sessions") {
+        urls.push(format!("/session/{}", row.str("id").expect("a session id")));
+    }
+    // A run's own id is the thread it ran on, so its URL says it once; everything else hangs off
+    // the thread it was recorded on.
+    for row in all("SELECT session_id, id FROM live_agent_runs") {
+        urls.push(format!(
+            "/session/{}/run/{}",
+            row.str("session_id").expect("a session id"),
+            row.str("id").expect("a run id"),
+        ));
+    }
+    for (kind, table) in [
+        ("turn", "live_turns"),
+        ("call", "live_api_calls"),
+        ("tool", "live_tool_calls"),
+        ("compaction", "live_compactions"),
+    ] {
+        for row in all(&format!("SELECT session_id, source, id FROM {table}")) {
+            urls.push(format!(
+                "/session/{}/thread/{}/{kind}/{}",
+                row.str("session_id").expect("a session id"),
+                row.str("source").expect("a thread"),
+                row.str("id").expect("a node id"),
+            ));
+        }
+    }
+    // A thread's unattributed bucket exists where one of its calls answers no turn *of that
+    // thread* — a fork replays calls whose `turn_id` names a turn of the thread it forked from.
+    for row in all(
+        "SELECT DISTINCT c.session_id, c.source FROM live_api_calls c \
+         LEFT JOIN live_turns t ON t.session_id = c.session_id AND t.source = c.source \
+           AND t.id = c.turn_id \
+         WHERE t.id IS NULL",
+    ) {
+        urls.push(format!(
+            "/session/{}/thread/{}/unattributed",
+            row.str("session_id").expect("a session id"),
+            row.str("source").expect("a thread"),
+        ));
+    }
+    // And the session's unattached bucket exists where a run's spawning call resolves to nothing
+    // at all, which is the join `view_runs` makes, failing.
+    for row in all("SELECT DISTINCT a.session_id FROM live_agent_runs a \
+         LEFT JOIN live_tool_calls tc ON tc.session_id = a.session_id \
+           AND tc.id = a.tool_use_id AND tc.source <> a.id \
+         LEFT JOIN live_api_calls c ON c.session_id = a.session_id AND c.source = tc.source \
+           AND c.id = tc.api_call_id \
+         WHERE c.id IS NULL")
+    {
+        urls.push(format!(
+            "/session/{}/unattached",
+            row.str("session_id").expect("a session id"),
+        ));
+    }
+    urls
+}
+
 /// The URL of one recorded node of `kind`, whichever the store answers with.
 pub fn node_url(db: &Path, kind: &str) -> String {
     let (_, sql, shape) = KINDS

@@ -5,8 +5,31 @@
 //! transcript is one `assert_eq!` away from putting prompts, tool output and file contents
 //! into CI.
 
+use std::path::Path;
+
 use duckdb::types::Value;
-use hyphae_store::{Store, schema};
+use hyphae_store::{Param, Row, Store, schema};
+
+/// The one row a query the test wrote answers with, off a store opened for the asking.
+///
+/// The port of `tests/view/conftest.py`'s `one`: a leaf names the node it is about in SQL rather
+/// than pinning an id, so a re-recorded fixture moves the selection instead of reddening the
+/// tier. Panics where the query answered with nothing — a leaf whose subject left the corpus is
+/// not a leaf that should quietly pass.
+pub fn one(db: &Path, sql: &str, params: &[(&str, Param)]) -> Row {
+    all(db, sql, params)
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| panic!("the corpus holds a row for {sql}"))
+}
+
+/// Every row a query the test wrote answers with.
+pub fn all(db: &Path, sql: &str, params: &[(&str, Param)]) -> Vec<Row> {
+    let store = Store::open_read_only(db).expect("the store opens read only");
+    store
+        .fetch(sql, params)
+        .unwrap_or_else(|error| panic!("the store answers {sql}: {error}"))
+}
 
 /// Every row one session owns in one table, in the crate's own column order.
 pub fn session_rows(store: &Store, session_id: &str, table: &str) -> Vec<Vec<Value>> {
