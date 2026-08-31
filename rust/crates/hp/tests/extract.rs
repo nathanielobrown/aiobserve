@@ -47,8 +47,14 @@ fn extract_over_a_root_with_no_sessions_names_the_directory() {
     assert!(!said.ok, "extracting nothing should fail: {}", said.stderr);
     // Both halves of the answer: which project was asked for, and where hp looked for it.
     let complained = &said.stderr;
-    assert!(complained.contains(&project.display().to_string()), "{complained}");
-    assert!(complained.contains(&root.display().to_string()), "{complained}");
+    assert!(
+        complained.contains(&project.display().to_string()),
+        "{complained}"
+    );
+    assert!(
+        complained.contains(&root.display().to_string()),
+        "{complained}"
+    );
 }
 
 /// A Claude Code projects root on disk, the project that addresses it, and the store an
