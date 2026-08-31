@@ -94,6 +94,14 @@ assertions via `ExportTraceServiceRequest::decode`. The clock is an injected tra
 `{ monotonic, sleep }`: `TestClock` records requested sleeps and advances; `RefusingClock`
 panics on any sleep, so pacing and backoff tests cost zero wall time.
 
+*(As built, slice 8: the production client is `reqwest::blocking`, which this paragraph
+rejects — the rejection priced in dragging the async tree into the workspace, and
+`hyphae-view` had already paid it, while reqwest shares the view test client's TLS and header
+handling; the network ban follows the shipped dependency. And where Python's CLI test
+monkeypatches `cli.OtlpExporter` to capture its keyword arguments, the flags-to-config seam is
+`export::shipping(&Args, &dyn Clock) -> Shipping` — a pure function a leaf reads whole, so a
+flag the wiring drops still fails somewhere.)*
+
 **Analyze runner.** New crate `hyphae-analyze` (select, bind from the manifest JSON, cite). `hp`
 subcommands refactor into library functions with a three-channel seam — capsys carries three
 things, not one: the CSV on stdout, the citation on stderr (asserted apart by the analyze and
@@ -108,6 +116,13 @@ Tests call the function over two `Vec<u8>` buffers and match the error — the i
 over spawning, whose ~100x per-test process cost the suite-speed goal cannot carry. The
 process-level fail-fast leaves keep spawning the real binary via `env!("CARGO_BIN_EXE_hp")`, as
 the existing CLI tests do.
+
+*(As built, slice 8: the seam grew a second argument. `run(args, out, err)` alone left the
+model client and the environment as process globals, so a leaf would have been decided by the
+developer's shell and the `.env` beside the checkout. `Outside { models, environ }` threads
+them through `main_with`/`run_with`; a test hands over its own map, and only
+`Outside::production()` touches the machine — loading the `.env` via `dotenvy`, a new
+workspace dependency mirroring python-dotenv.)*
 
 **Dev reload.** `notify` watcher feeding a tokio broadcast channel; the channel is the seam —
 tests publish into it and read the SSE response stream through `oneshot`, and the watched-set is
@@ -165,7 +180,11 @@ network ban names `reqwest::blocking::Client`'s constructors, not `ureq`'s — s
 reqwest, so the ban follows the dependency that shipped. `.config/nextest.toml` spells the
 120s cap as four 30s slow periods, so a leaf drifting toward it prints its elapsed time three
 times first; the one override raises `hyphae-view::bounds_node` to five minutes, because it
-renders every node of the corpus and already runs ~108s idle.)*
+renders every node of the corpus and already runs ~108s idle. Env-gated live leaves
+`return` early on an unset gate — nextest has no runtime skip, and a closed gate is the
+normal run — and past the gate they fail loud: `627c249` crashes the live-send leaf on a
+backend it cannot build, because swallowing that error gave a misconfigured gate the same
+green as a confirmed send.)*
 
 - **Snapshots**: one philosophy for the ported tier — no self-referential goldens; ported tests
   parse markup back and assert data, as `tests/view/conftest.py` does. The Python-generated
