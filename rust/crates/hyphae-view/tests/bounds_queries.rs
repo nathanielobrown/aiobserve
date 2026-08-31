@@ -440,3 +440,175 @@ fn every_fat_column_is_still_a_column() {
         assert!(named.contains(column), "{column} is no longer a column");
     }
 }
+
+/// The production default one query declares for one parameter.
+///
+/// Panics on a parameter with no default: every size below is one a bare request runs under,
+/// so a required one is a page the viewer could not serve without a knob.
+fn declared(query: &str, param: &str) -> i64 {
+    manifest::entry(query)
+        .params
+        .get(param)
+        .unwrap_or_else(|| panic!("{query} declares ${param}"))
+        .default
+        .as_ref()
+        .unwrap_or_else(|| panic!("{query}'s ${param} has a production default"))
+        .as_i64()
+        .unwrap_or_else(|| panic!("{query}'s ${param} defaults to a number"))
+}
+
+#[test]
+fn the_manifest_pins_the_production_page_sizes() {
+    // The page sizes the payload bound is computed from are the ones production runs. Every
+    // other leaf in this file scans query text, so without this the section would pass against
+    // any defaults at all — a `page_records` of 5,000 would break the bound in production with
+    // the whole tier still green.
+    //
+    // Read against the constants this crate declares rather than against literals typed again
+    // here. The manifest is generated from the Python library and the constants are held to
+    // Python's own registry (`hyphae-store/tests/queries.rs`), so the pin is the join between
+    // them: a default moved on either side of the bridge reds, and neither can move alone.
+    let sizes: [(&str, &str, i64); 30] = [
+        // One page of a thread's raw transcript, and how much of each record it previews.
+        ("view_records", "page_records", queries::PAGE_RECORDS),
+        (
+            "view_records",
+            "preview_chars",
+            queries::RECORD_PREVIEW as i64,
+        ),
+        // One chunk of an offloaded tool result.
+        ("view_offload", "chunk_chars", queries::CHUNK_CHARS),
+        // How much of a title a row of the NavTree shows. Every level cuts to the same width,
+        // whatever kind of child it holds.
+        (
+            "view_nav_tree_turns",
+            "nav_chars",
+            queries::NAV_CHARS as i64,
+        ),
+        (
+            "view_nav_tree_calls",
+            "nav_chars",
+            queries::NAV_CHARS as i64,
+        ),
+        (
+            "view_nav_tree_tools",
+            "nav_chars",
+            queries::NAV_CHARS as i64,
+        ),
+        // And how much of each string a row of the pane's children log shows, with the page it
+        // is read in. Wider than a NavTree row: a log row is a line of a table, with room for
+        // the first words of a prompt beside the numbers.
+        ("view_turn_calls", "log_chars", queries::LOG_CHARS as i64),
+        ("view_call_tools", "log_chars", queries::LOG_CHARS as i64),
+        ("view_turn_calls", "page_calls", queries::LOG_ROWS),
+        ("view_call_tools", "page_tools", queries::LOG_ROWS),
+        // A node header cuts every string it carries to a head, and the one fat value its pane
+        // previews to a detail — the four kinds that have fields of their own take the same two.
+        (
+            "view_turn_header",
+            "head_chars",
+            queries::HEADER_CHARS as i64,
+        ),
+        (
+            "view_call_header",
+            "head_chars",
+            queries::HEADER_CHARS as i64,
+        ),
+        (
+            "view_tool_header",
+            "head_chars",
+            queries::HEADER_CHARS as i64,
+        ),
+        (
+            "view_run_header",
+            "head_chars",
+            queries::HEADER_CHARS as i64,
+        ),
+        (
+            "view_turn_header",
+            "detail_chars",
+            queries::DETAIL_CHARS as i64,
+        ),
+        (
+            "view_call_header",
+            "detail_chars",
+            queries::DETAIL_CHARS as i64,
+        ),
+        (
+            "view_tool_header",
+            "detail_chars",
+            queries::DETAIL_CHARS as i64,
+        ),
+        (
+            "view_run_header",
+            "detail_chars",
+            queries::DETAIL_CHARS as i64,
+        ),
+        // The session header is the widest of the panes: two of its columns are lists that grow
+        // with the session, so it cuts the members and caps how many it shows.
+        (
+            "view_session_header",
+            "head_chars",
+            queries::HEADER_CHARS as i64,
+        ),
+        (
+            "view_session_header",
+            "item_chars",
+            queries::HEADER_ITEM_CHARS as i64,
+        ),
+        (
+            "view_session_header",
+            "head_items",
+            queries::HEADER_ITEMS as i64,
+        ),
+        // How much of a run row's and a compaction row's three columns a NavTree row shows.
+        // Both queries keep no LIMIT of their own — a report quotes the whole set — so what
+        // bounds them on a page is the NavTree's own arithmetic.
+        ("view_runs", "chip_chars", queries::CHIP_CHARS),
+        ("view_compactions", "chip_chars", queries::CHIP_CHARS),
+        // The list's rows drop the agent types a session spawned, but the query behind them
+        // still gathers the names, so a member is cut where the list cuts a skill name.
+        (
+            "view_sessions",
+            "item_chars",
+            queries::LIST_ITEM_CHARS as i64,
+        ),
+        // And how much of what a pass wrote an item shows. The taxonomy is closed and its
+        // longest member is nine characters, so the tag cut bounds a hand-edited row rather
+        // than anything a pass writes.
+        (
+            "view_enrichment",
+            "description_chars",
+            queries::ENRICHMENT_CHARS as i64,
+        ),
+        ("view_enrichment", "tag_chars", queries::TAG_CHARS as i64),
+        // The same for the list, whose project suggestions the query itself caps.
+        ("view_projects", "head_chars", queries::LIST_CHARS as i64),
+        (
+            "view_projects",
+            "head_projects",
+            queries::LIST_PROJECTS as i64,
+        ),
+        // And the landing page, whose row shows a path at the list's head and links by the
+        // whole one. How many projects it ranks is a size like the rest.
+        (
+            "view_project_rollups",
+            "head_chars",
+            queries::LIST_CHARS as i64,
+        ),
+        ("view_project_rollups", "projects", queries::PAGE_PROJECTS),
+    ];
+    for (query, param, size) in sizes {
+        assert_eq!(declared(query, param), size, "{query}'s ${param}");
+    }
+    // And the errors list, bound the same way — a session can fail arbitrarily many calls —
+    // and titled at a NavTree row's width, because each of its rows leads to a node.
+    assert_eq!(
+        declared("view_session_errors", "nav_chars"),
+        queries::NAV_CHARS as i64
+    );
+    assert_eq!(
+        declared("view_session_errors", "errors"),
+        queries::PAGE_ERRORS
+    );
+}
