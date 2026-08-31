@@ -447,7 +447,7 @@ pub fn projects_page(viewer: &Viewer) -> Result<Markup, PageError> {
         // The bindings the two window headings print, so a heading and its column read the same
         // numbers — the citation below carries them too.
         &citation::citations(&[(Page::ProjectRollups.stem(), bound)]),
-        viewer.dev,
+        viewer.dev(),
     ))
 }
 
@@ -597,7 +597,7 @@ pub fn session_list(
         pages,
         describes,
         citations: &citation::citations(&ran),
-        dev: viewer.dev,
+        dev: viewer.dev(),
     }))
 }
 

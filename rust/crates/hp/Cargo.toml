@@ -33,3 +33,8 @@ tempfile.workspace = true
 chrono.workspace = true
 # The parity leaf hands its plan to the Python CLI and reads back what each stream got.
 serde_json.workspace = true
+# Interrupting a running viewer the way Ctrl-C does: `std::process` can kill a child but not
+# signal one, and a graceful exit is only observable under the signal a person sends.
+libc = "0.2"
+# `--dev`'s reload route, named rather than spelled out in the leaf that opens it.
+hyphae-view.workspace = true

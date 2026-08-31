@@ -3,7 +3,7 @@
 //!
 //! These are the four of `src/hyphae/cli.py`'s subcommands the prototype ports. The flags they
 //! share carry that CLI's names and defaults, so a parity oracle can drive either implementation
-//! from one command line; `--no-browser` and `--dev` are out of scope and absent, not ignored
+//! from one command line; `--no-browser` is out of scope and absent, not ignored
 //! (`plans/rust-prototype/design.md`).
 //!
 //! Both refuse rather than degrade: `extract` on a project with nothing recorded under the

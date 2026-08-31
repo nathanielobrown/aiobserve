@@ -21,6 +21,10 @@ serde.workspace = true
 # Re-laying-out a stored JSON value for reading: `preserve_order` keeps the keys the session wrote.
 serde_json.workspace = true
 thiserror.workspace = true
+# `--dev`: the watcher behind the reload stream, and the stream itself.
+notify.workspace = true
+async-stream.workspace = true
+futures-core.workspace = true
 # The tokenizer behind `highlight.rs`, standing in for Pygments.
 syntect.workspace = true
 

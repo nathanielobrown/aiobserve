@@ -243,9 +243,21 @@ async fn offload_page(
 }
 
 /// One embedded asset, or the 404 every unknown path gets.
-async fn static_file(UrlPath(name): UrlPath<String>) -> Response {
+///
+/// Under `--dev` the bytes come off disk instead. They are compiled in, so a saved stylesheet
+/// would otherwise reach the browser as a message asking it to re-fetch what it already had
+/// (`crate::dev`); the compiled copy is still the fallback, so a file taken out of the checkout
+/// is a stale page rather than a 404 mid-loop.
+async fn static_file(State(viewer): State<Shared>, UrlPath(name): UrlPath<String>) -> Response {
     let Some((kind, bytes)) = statics::asset(&name) else {
         return error(StatusCode::NOT_FOUND, NOT_FOUND);
     };
-    ([(header::CONTENT_TYPE, kind)], bytes).into_response()
+    let saved = viewer
+        .dev
+        .as_ref()
+        .and_then(|statics| std::fs::read(statics.join(&name)).ok());
+    match saved {
+        Some(edited) => ([(header::CONTENT_TYPE, kind)], edited).into_response(),
+        None => ([(header::CONTENT_TYPE, kind)], bytes).into_response(),
+    }
 }

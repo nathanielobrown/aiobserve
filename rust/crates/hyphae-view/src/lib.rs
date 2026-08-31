@@ -12,6 +12,7 @@ pub mod columns;
 pub mod components;
 pub mod cuts;
 pub mod detail;
+pub mod dev;
 pub mod enrichment;
 pub mod errors;
 pub mod expansions;

@@ -159,6 +159,9 @@ pub enum Command {
         /// Which port to serve on
         #[arg(long, default_value_t = hyphae_view::app::PORT)]
         port: u16,
+        /// Reload the open page when a stylesheet or a script under `view/static` is saved
+        #[arg(long)]
+        dev: bool,
     },
 }
 
@@ -248,7 +251,7 @@ pub fn run_with(
         }
         Command::Enrich(args) => enrich::enrich(&args, outside.models, out),
         Command::ExportOtlp(args) => export::export_otlp(&args, &outside.environ, out),
-        Command::View { db, port } => Ok(view(&db, port, out)?),
+        Command::View { db, port, dev } => Ok(view(&db, port, dev, out)?),
     }
 }
 
@@ -257,10 +260,10 @@ pub fn run_with(
 /// The runtime is built here rather than by a `#[tokio::main]` on `main`, so `hp extract` —
 /// which is wholly synchronous — starts no reactor it never uses. Every refusal this can
 /// answer with happens before the bind, which is what the process-level leaves check.
-fn view(db: &Path, port: u16, _out: &mut dyn Write) -> Result<()> {
+fn view(db: &Path, port: u16, dev: bool, _out: &mut dyn Write) -> Result<()> {
     let runtime = tokio::runtime::Runtime::new().context("starting the server runtime")?;
     runtime
-        .block_on(hyphae_view::app::serve(db, port))
+        .block_on(hyphae_view::app::serve(db, port, dev))
         .map_err(|error| anyhow::anyhow!("{error}"))
 }
 

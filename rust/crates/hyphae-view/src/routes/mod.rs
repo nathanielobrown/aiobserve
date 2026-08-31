@@ -113,7 +113,9 @@ fn answered(failure: PageError) -> Response {
 
 /// The error page, which is what every handler above answers with.
 fn error(status: StatusCode, message: &str) -> Response {
-    // Never the dev page: `build_app` has no `--dev` yet, so nothing asks for the reload client.
+    // Never the dev page, in either mode: an error page is the one page the reload client does
+    // not reach, because the state that says which viewer this is never reaches this far down
+    // (`crate::dev`). A reader looking at a 404 reloads it themselves.
     let page = error_pages::error_page(status.as_u16(), message, false);
     (status, Html(page.into_inner())).into_response()
 }

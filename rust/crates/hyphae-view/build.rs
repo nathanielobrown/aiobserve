@@ -4,13 +4,11 @@
 //! htmx, the two NavTree scripts and the stylesheets stay one set of files in the repo, and a
 //! `cargo build --release` still answers with a binary that needs nothing beside it.
 //!
-//! `dev-reload.js` is left out on purpose: the prototype's server has no reload stream, so the
-//! script would poll an endpoint that does not exist (`plans/rust-prototype/design.md`).
+//! Every file in that directory, `dev-reload.js` included: `hp view --dev` puts it on each page
+//! and `hp view` serves it to whoever asks, exactly as the Python static mount does
+//! (`hyphae-view/src/dev.rs`).
 
 use std::path::Path;
-
-/// The one asset the Rust viewer does not serve.
-const DEV_ONLY: &str = "dev-reload.js";
 
 fn main() {
     let assets = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../src/hyphae/view/static");
@@ -29,7 +27,6 @@ fn main() {
                 .to_string_lossy()
                 .into_owned()
         })
-        .filter(|name| name != DEV_ONLY)
         .collect();
     names.sort();
     let mut table = String::from("pub static ASSETS: &[(&str, &str, &[u8])] = &[\n");

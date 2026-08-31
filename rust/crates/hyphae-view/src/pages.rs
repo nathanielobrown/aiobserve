@@ -45,7 +45,7 @@ pub fn errors_page(viewer: &Viewer, session_id: &str) -> Result<Markup, PageErro
         &failed.listed,
         failed.cut,
         &citation::citations(&failed.ran),
-        viewer.dev,
+        viewer.dev(),
     ))
 }
 
@@ -76,7 +76,7 @@ pub fn query_page(
         // catalog does not know the name.
         &macros::needed_by(statement),
         &bindings(asked),
-        viewer.dev,
+        viewer.dev(),
     ))
 }
 
@@ -148,7 +148,7 @@ pub fn records_page(
             size,
         },
         &citation::citations(&[(Page::Records.stem(), bound)]),
-        viewer.dev,
+        viewer.dev(),
     ))
 }
 
@@ -199,7 +199,7 @@ pub fn offload_page(
         (served < file.content_chars).then_some(served),
         size,
         &citation::citations(&[(Page::Offload.stem(), bound)]),
-        viewer.dev,
+        viewer.dev(),
     ))
 }
 

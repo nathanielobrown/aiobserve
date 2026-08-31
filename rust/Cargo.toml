@@ -84,8 +84,27 @@ anyhow = "1"
 # `oneshot` and never binds a port.
 axum = "0.8"
 # axum's runtime, and the only async in the workspace: everything else is sync, as the Python
-# viewer is.
-tokio = { version = "1", features = ["rt-multi-thread", "net", "macros"] }
+# viewer is. `signal` is what `serve` waits on — Ctrl-C is a graceful exit rather than a kill,
+# because `--dev` holds a response that never ends and the process still has to come back — and
+# `sync` carries the broadcast channel the reload stream reads.
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "net",
+    "macros",
+    "signal",
+    "sync",
+    "time",
+] }
+# The dev loop's watcher, standing in for watchfiles: the platform's own file-event API rather
+# than a poll, and the ecosystem default (`plans/rust-prototype/full-port.md`).
+notify = "8"
+# The reload stream, written as the loop it is: one `yield` per event, until the server stops.
+async-stream = "0.3"
+# The `Stream` trait that stream carries, which axum takes but does not re-export.
+futures-core = "0.3"
+# Dev-only: taking a streamed response frame by frame, which is the only way to read one that
+# never ends — the shape `TestClient` cannot express either (`tests/view/test_dev.py`).
+tokio-stream = "0.1"
 # The markup. `rsx!` checks tag and attribute names at compile time and components stay plain
 # functions.
 hypertext = { version = "0.12", features = ["htmx", "axum"] }

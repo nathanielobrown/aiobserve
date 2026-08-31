@@ -336,7 +336,7 @@ pub fn browse(
         // What every href on the page carries, so a click serves the URL it displays.
         suffix: &marks,
         citations: &citations(&ran),
-        dev: viewer.dev,
+        dev: viewer.dev(),
     }))
 }
 
