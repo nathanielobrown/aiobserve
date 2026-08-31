@@ -26,6 +26,8 @@ pub mod metadata;
 pub mod nav_trees;
 /// The enrichment rows a partial pass would have left behind.
 pub mod planting;
+/// One NavTree row's popover, fetched and read back beside the numbers the store holds.
+pub mod popovers;
 pub mod rows;
 /// Which page to fetch: one node of every kind, and one level of every shape a log has.
 pub mod selections;

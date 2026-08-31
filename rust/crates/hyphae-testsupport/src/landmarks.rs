@@ -24,6 +24,9 @@ pub const MISSING: &str = "00000000-0000-0000-0000-000000000000";
 // The two clean `invented/` fixtures are the only ones recorded under another project, which
 // is what makes the corpus predicate testable: `/invented/project` and `/repo` respectively.
 pub const INVENTED_PROJECT_SESSION: &str = "invented-no-cache-creation";
+/// That fixture's one api call: the corpus's only reply whose usage carries no cache-creation
+/// TTL split, so both split columns are NULL and the whole write prices at the 5-minute rate.
+pub const NO_TTL_SPLIT_CALL: &str = "msg_invented000000000002";
 pub const OTHER_PROJECT_SESSION: &str = "invented-truncated-tail";
 /// `fork_byref`'s fork: NULL `project_dir` and NULL `started_at`, the recorded twin of the
 /// store's zero-cost bookkeeping stubs. The corpus predicate cannot judge it either way.
