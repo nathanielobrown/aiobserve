@@ -1,0 +1,20 @@
+[package]
+name = "hyphae-enrich"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The enrichment tables live in the trace store's own file, so this crate opens one.
+hyphae-store.workspace = true
+# `project_predicate`: one spelling of "this repository and its worktrees" for every filter.
+hyphae-extract.workspace = true
+# `enriched_at` is the one column a writer stamps with the clock.
+chrono.workspace = true
+duckdb.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+hyphae-testsupport.workspace = true
+# Scratch copies of the cached corpus: enrichment opens a store for writing.
+tempfile.workspace = true

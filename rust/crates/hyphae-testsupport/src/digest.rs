@@ -8,9 +8,6 @@
 // this text is compiled twice, once at the top of a build script.
 
 /// The source trees whose bytes reach a stored row, under `rust/crates/`.
-///
-/// `hyphae-enrich` joins the list when it exists — until then the enrichment rows are
-/// Python's, and [`python_digest`] is what keys them.
 pub const WRITER_CRATES: &[&str] = &[
     // The trace an exporter walks.
     "hyphae-model/src",
@@ -18,6 +15,8 @@ pub const WRITER_CRATES: &[&str] = &[
     "hyphae-extract/src",
     // The DDL, the column lists, and every value mapping between them.
     "hyphae-store/src",
+    // The enrichment tables and the upsert that fills them.
+    "hyphae-enrich/src",
     // The corpus selection and the build recipe itself.
     "hyphae-testsupport/src",
 ];

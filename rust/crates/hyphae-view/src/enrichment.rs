@@ -8,7 +8,6 @@
 //! the pass has not reached yet: nothing beside the item.
 
 use std::collections::HashMap;
-use std::fmt;
 
 use chrono::{DateTime, Utc};
 use hyphae_store::{Param, Row, Store, queries};
@@ -16,55 +15,10 @@ use hyphae_store::{Param, Row, Store, queries};
 use crate::format::when;
 use crate::store::{Page, ViewError, page_rows};
 
-/// The three things that get an enrichment row, each with its own table and prompt.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Level {
-    Turn,
-    AgentRun,
-    Session,
-}
-
-impl Level {
-    /// The word the `level` column of every enrichment row carries.
-    pub fn word(self) -> &'static str {
-        match self {
-            Self::Turn => "turn",
-            Self::AgentRun => "agent_run",
-            Self::Session => "session",
-        }
-    }
-
-    /// The table a pass writes this level's rows to (`enrich/store.py:LEVELS`).
-    pub fn table(self) -> &'static str {
-        match self {
-            Self::Turn => "turn_enrichments",
-            Self::AgentRun => "agent_run_enrichments",
-            Self::Session => "session_enrichments",
-        }
-    }
-
-    /// What `input_hash` cannot see: the instructions and the output schema this level's rows
-    /// were written under (`enrich/prompts.py:PROMPT_VERSION`).
-    pub fn prompt_version(self) -> i64 {
-        match self {
-            Self::Turn | Self::AgentRun | Self::Session => 4,
-        }
-    }
-
-    /// Every level, for the walk that asks the catalog about all of them.
-    pub const ALL: [Self; 3] = [Self::Turn, Self::AgentRun, Self::Session];
-
-    /// The level one row names, or nothing where the column says something else.
-    fn of(word: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|level| level.word() == word)
-    }
-}
-
-impl fmt::Display for Level {
-    fn fmt(&self, into: &mut fmt::Formatter<'_>) -> fmt::Result {
-        into.write_str(self.word())
-    }
-}
+/// The three things that get an enrichment row, re-exported from the crate that writes
+/// them: `view/enrichment.py` imports `Level` from `hyphae.enrich` for the same reason, and a
+/// second copy here would drift with nothing to catch it.
+pub use hyphae_enrich::Level;
 
 /// The closed vocabularies a pass writes against (`enrich/taxonomy.py:TAXONOMY_VERSION`).
 pub const TAXONOMY_VERSION: i64 = 2;

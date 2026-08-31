@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/hp",
+    "crates/hyphae-enrich",
     "crates/hyphae-extract",
     "crates/hyphae-model",
     "crates/hyphae-store",
@@ -18,6 +19,7 @@ publish = false
 # The crates, by path: the workspace is the only consumer and nothing here is published.
 hyphae-model = { path = "crates/hyphae-model" }
 hyphae-extract = { path = "crates/hyphae-extract" }
+hyphae-enrich = { path = "crates/hyphae-enrich" }
 hyphae-store = { path = "crates/hyphae-store" }
 hyphae-view = { path = "crates/hyphae-view" }
 # Dev-only: the fixture corpus, the shared store cache, and the viewer served over one.

@@ -6,6 +6,8 @@ publish.workspace = true
 
 [dependencies]
 hyphae-store.workspace = true
+# `Level`: the enrichment levels, declared where the rows are written.
+hyphae-enrich.workspace = true
 # The popover splits a node's spend by category, off the extractor's own price table.
 hyphae-extract.workspace = true
 axum.workspace = true

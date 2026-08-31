@@ -1059,6 +1059,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyphae-enrich"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "duckdb",
+ "hyphae-extract",
+ "hyphae-store",
+ "hyphae-testsupport",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "hyphae-extract"
 version = "0.1.0"
 dependencies = [
@@ -1120,6 +1133,7 @@ dependencies = [
  "chrono",
  "duckdb",
  "hypertext",
+ "hyphae-enrich",
  "hyphae-extract",
  "hyphae-store",
  "hyphae-testsupport",

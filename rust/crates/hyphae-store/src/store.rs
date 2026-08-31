@@ -223,6 +223,21 @@ impl Store {
         Self::connect(path, config)
     }
 
+    /// Open a store an extract already wrote, taking the write lock.
+    ///
+    /// For a writer that comes after an extract — enrichment is the one there is. Creates
+    /// nothing and migrates nothing: [`Store::create`] stays the only thing that writes the
+    /// pipeline's DDL, and a store of an older vintage is refused with the remedy rather
+    /// than carried forward, as Python's `open_trace_store` would.
+    pub fn open_for_write(path: &Path) -> Result<Self, StoreError> {
+        if !path.exists() {
+            return Err(StoreError::NoStore(path.to_owned()));
+        }
+        let store = Self::connect(path, Config::default())?;
+        store.check_version()?;
+        Ok(store)
+    }
+
     fn connect(path: &Path, config: Config) -> Result<Self, StoreError> {
         let connection = Connection::open_with_flags(path, config).map_err(|error| {
             if error.to_string().contains(LOCKED) {
