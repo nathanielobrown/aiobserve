@@ -7,7 +7,7 @@ use axum::Router;
 use axum::extract::{Path as UrlPath, Query, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{MethodRouter, get};
 
 use crate::app::Shared;
 use crate::routes::{Chunk, Knobs, NOT_FOUND, error, served};
@@ -17,46 +17,65 @@ use crate::{listing, node_pages, pages, statics};
 
 /// The pages, in the order `docs/viewer.md` prints them.
 pub(crate) fn routes() -> Router<Shared> {
-    Router::new()
-        .route("/static/{name}", get(static_file))
-        .route("/", get(projects_page))
-        .route(listing::LIST_URL, get(session_list))
-        .route("/session/{session_id}", get(session_page))
-        .route(
-            "/session/{session_id}/thread/{source}/turn/{turn_id}",
+    mounted()
+        .into_iter()
+        .fold(Router::new(), |router, (path, handler)| {
+            router.route(&path, handler)
+        })
+}
+
+/// Every path this group mounts, beside the handler that answers it.
+///
+/// A `Router` cannot be asked what it holds, so the mounting is a list the router is folded out
+/// of rather than a chain: `crate::routes::paths` reads the same list the app is built from.
+pub(crate) fn mounted() -> Vec<(String, MethodRouter<Shared>)> {
+    vec![
+        ("/static/{name}".to_owned(), get(static_file)),
+        ("/".to_owned(), get(projects_page)),
+        (listing::LIST_URL.to_owned(), get(session_list)),
+        ("/session/{session_id}".to_owned(), get(session_page)),
+        (
+            "/session/{session_id}/thread/{source}/turn/{turn_id}".to_owned(),
             get(turn_page),
-        )
-        .route("/session/{session_id}/run/{run_id}", get(run_page))
-        .route(
-            "/session/{session_id}/thread/{source}/call/{api_call_id}",
+        ),
+        (
+            "/session/{session_id}/run/{run_id}".to_owned(),
+            get(run_page),
+        ),
+        (
+            "/session/{session_id}/thread/{source}/call/{api_call_id}".to_owned(),
             get(call_page),
-        )
-        .route(
-            "/session/{session_id}/thread/{source}/tool/{tool_call_id}",
+        ),
+        (
+            "/session/{session_id}/thread/{source}/tool/{tool_call_id}".to_owned(),
             get(tool_page),
-        )
-        .route(
-            "/session/{session_id}/thread/{source}/compaction/{compaction_id}",
+        ),
+        (
+            "/session/{session_id}/thread/{source}/compaction/{compaction_id}".to_owned(),
             get(compaction_page),
-        )
-        .route(
-            "/session/{session_id}/thread/{source}/unattributed",
+        ),
+        (
+            "/session/{session_id}/thread/{source}/unattributed".to_owned(),
             get(unattributed_page),
-        )
-        .route("/session/{session_id}/unattached", get(unattached_page))
-        .route("/session/{session_id}/errors", get(errors_page))
-        .route(
-            &format!("{}/{{query_name}}", crate::citation::QUERY_URL),
+        ),
+        (
+            "/session/{session_id}/unattached".to_owned(),
+            get(unattached_page),
+        ),
+        ("/session/{session_id}/errors".to_owned(), get(errors_page)),
+        (
+            format!("{}/{{query_name}}", crate::citation::QUERY_URL),
             get(query_page),
-        )
-        .route(
-            "/session/{session_id}/thread/{source}/records",
+        ),
+        (
+            "/session/{session_id}/thread/{source}/records".to_owned(),
             get(records_page),
-        )
-        .route(
-            "/session/{session_id}/offload/{*offload_name}",
+        ),
+        (
+            "/session/{session_id}/offload/{*offload_name}".to_owned(),
             get(offload_page),
-        )
+        ),
+    ]
 }
 
 /// Every project the store holds sessions for.

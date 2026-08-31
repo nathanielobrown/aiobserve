@@ -16,6 +16,19 @@ use crate::store::ViewError;
 pub mod fragments;
 pub mod pages;
 
+/// Every path the app mounts, in the order it mounts them.
+///
+/// A `Router` cannot be asked what it holds, so the two groups each declare their mounting as a
+/// list and are folded out of it. This is that list — the one the app is really built from,
+/// rather than a second copy a test would have to be kept in step with.
+pub fn paths() -> Vec<String> {
+    pages::mounted()
+        .into_iter()
+        .chain(fragments::mounted())
+        .map(|(path, _)| path)
+        .collect()
+}
+
 /// The knobs a node-page URL may carry, each absent when the reader took the default.
 #[derive(serde::Deserialize)]
 pub struct Knobs {

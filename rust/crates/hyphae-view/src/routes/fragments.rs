@@ -4,7 +4,7 @@
 use axum::Router;
 use axum::extract::{Path as UrlPath, Query, State};
 use axum::response::Response;
-use axum::routing::get;
+use axum::routing::{MethodRouter, get};
 
 use crate::app::Shared;
 use crate::routes::{Knobs, served};
@@ -12,131 +12,144 @@ use crate::{expansions, fragments};
 
 /// The fragments, in the order `docs/viewer.md` prints them.
 pub(crate) fn routes() -> Router<Shared> {
-    Router::new()
-        .route(
-            &format!(
+    mounted()
+        .into_iter()
+        .fold(Router::new(), |router, (path, handler)| {
+            router.route(&path, handler)
+        })
+}
+
+/// Every path this group mounts, beside the handler that answers it.
+///
+/// A `Router` cannot be asked what it holds, so the mounting is a list the router is folded out
+/// of rather than a chain: `crate::routes::paths` reads the same list the app is built from.
+pub(crate) fn mounted() -> Vec<(String, MethodRouter<Shared>)> {
+    vec![
+        (
+            format!(
                 "{}/session/{{session_id}}/thread/{{source}}/{{kind}}/{{node_id}}",
                 crate::nodes::BODY_URL
             ),
             get(thread_body),
-        )
-        .route(
-            &format!(
+        ),
+        (
+            format!(
                 "{}/session/{{session_id}}/{}/{{run_id}}",
                 crate::nodes::BODY_URL,
                 crate::nodes::Kind::Run.word()
             ),
             get(run_body),
-        )
-        .route(
-            &format!(
+        ),
+        (
+            format!(
                 "{}/session/{{session_id}}/thread/{{source}}/{{kind}}/{{node_id}}",
                 crate::nodes::KIN_URL
             ),
             get(node_kin),
-        )
-        .route(
-            &format!(
+        ),
+        (
+            format!(
                 "{}/session/{{session_id}}/{{kind}}/{{node_id}}",
                 crate::nodes::KIN_URL
             ),
             get(loose_kin),
-        )
-        .route(
-            &format!(
+        ),
+        (
+            format!(
                 "{}/session/{{session_id}}/thread/{{source}}/{}/{{compaction_id}}",
                 crate::nodes::NUMBERS_URL,
                 crate::nodes::Kind::Compaction.word()
             ),
             get(compaction_numbers),
-        )
-        .route(
-            &format!(
+        ),
+        (
+            format!(
                 "{}/session/{{session_id}}/thread/{{source}}/{{kind}}/{{node_id}}",
                 crate::nodes::NUMBERS_URL
             ),
             get(node_numbers),
-        )
-        .route(
-            &format!(
+        ),
+        (
+            format!(
                 "{}/session/{{session_id}}/{}/{{run_id}}",
                 crate::nodes::NUMBERS_URL,
                 crate::nodes::Kind::Run.word()
             ),
             get(run_numbers),
-        )
-        .route(
-            &format!("{}/session/{{session_id}}", crate::nodes::NUMBERS_URL),
+        ),
+        (
+            format!("{}/session/{{session_id}}", crate::nodes::NUMBERS_URL),
             get(session_numbers),
-        )
-        .route(
-            "/fragment/description/session/{session_id}/thread/{source}/turn/{turn_id}",
+        ),
+        (
+            "/fragment/description/session/{session_id}/thread/{source}/turn/{turn_id}".to_owned(),
             get(turn_description),
-        )
-        .route(
-            "/fragment/friction/session/{session_id}/thread/{source}/turn/{turn_id}",
+        ),
+        (
+            "/fragment/friction/session/{session_id}/thread/{source}/turn/{turn_id}".to_owned(),
             get(turn_friction),
-        )
-        .route(
-            "/fragment/description/session/{session_id}/run/{run_id}",
+        ),
+        (
+            "/fragment/description/session/{session_id}/run/{run_id}".to_owned(),
             get(run_description),
-        )
-        .route(
-            "/fragment/friction/session/{session_id}/run/{run_id}",
+        ),
+        (
+            "/fragment/friction/session/{session_id}/run/{run_id}".to_owned(),
             get(run_friction),
-        )
-        .route(
-            "/fragment/description/session/{session_id}",
+        ),
+        (
+            "/fragment/description/session/{session_id}".to_owned(),
             get(session_description),
-        )
-        .route(
-            "/fragment/friction/session/{session_id}",
+        ),
+        (
+            "/fragment/friction/session/{session_id}".to_owned(),
             get(session_friction),
-        )
-        .route(
-            "/fragment/text/session/{session_id}/thread/{source}/call/{api_call_id}",
+        ),
+        (
+            "/fragment/text/session/{session_id}/thread/{source}/call/{api_call_id}".to_owned(),
             get(call_text),
-        )
-        .route(
-            "/fragment/thinking/session/{session_id}/thread/{source}/call/{api_call_id}",
+        ),
+        (
+            "/fragment/thinking/session/{session_id}/thread/{source}/call/{api_call_id}".to_owned(),
             get(call_thinking),
-        )
-        .route(
-            "/fragment/record/session/{session_id}/thread/{source}/line/{line_no}",
+        ),
+        (
+            "/fragment/record/session/{session_id}/thread/{source}/line/{line_no}".to_owned(),
             get(record_value),
-        )
-        .route(
-            "/fragment/input/session/{session_id}/thread/{source}/tool/{tool_call_id}",
+        ),
+        (
+            "/fragment/input/session/{session_id}/thread/{source}/tool/{tool_call_id}".to_owned(),
             get(tool_input),
-        )
-        .route(
-            "/fragment/result/session/{session_id}/thread/{source}/tool/{tool_call_id}",
+        ),
+        (
+            "/fragment/result/session/{session_id}/thread/{source}/tool/{tool_call_id}".to_owned(),
             get(tool_result),
-        )
-        .route(
-            "/fragment/command/session/{session_id}/thread/{source}/tool/{tool_call_id}",
+        ),
+        (
+            "/fragment/command/session/{session_id}/thread/{source}/tool/{tool_call_id}".to_owned(),
             get(tool_command),
-        )
-        .route(
-            "/fragment/prompt/session/{session_id}/thread/{source}/turn/{turn_id}",
+        ),
+        (
+            "/fragment/prompt/session/{session_id}/thread/{source}/turn/{turn_id}".to_owned(),
             get(turn_prompt),
-        )
-        .route(
-            "/fragment/args/session/{session_id}/thread/{source}/turn/{turn_id}",
+        ),
+        (
+            "/fragment/args/session/{session_id}/thread/{source}/turn/{turn_id}".to_owned(),
             get(turn_command_args),
-        )
-        .route(
-            "/fragment/brief/session/{session_id}/run/{run_id}",
+        ),
+        (
+            "/fragment/brief/session/{session_id}/run/{run_id}".to_owned(),
             get(run_brief),
-        )
-        .route(
-            "/fragment/prompt/session/{session_id}/run/{run_id}",
+        ),
+        (
+            "/fragment/prompt/session/{session_id}/run/{run_id}".to_owned(),
             get(run_prompt),
-        )
-        .route(
-            "/fragment/result/session/{session_id}/run/{run_id}",
+        ),
+        (
+            "/fragment/result/session/{session_id}/run/{run_id}".to_owned(),
             get(run_result),
-        )
+        ),
+    ]
 }
 
 /// The body of a turn, an api call, or a tool call, opened in its parent's log.
