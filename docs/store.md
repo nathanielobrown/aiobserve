@@ -25,6 +25,8 @@ erDiagram
 
 A session's main thread and agent runs use the same trace tables. The `source` column distinguishes them, so `(session_id, source, id)` identifies a turn or call.
 
+The store's clock is UTC. Every timestamp is a `TIMESTAMPTZ`, and each writer and reader opens its connection with `SET TimeZone='UTC'`, so a day boundary means the same thing wherever the reader sits. A window measured back from a date is therefore a UTC day, which is what `hp query` defaults `--as-of` to.
+
 Queries use views instead of reading the trace tables directly. `_VIEWS` in `src/hyphae/export/duckdb.py` defines `live_*` views, which omit records replayed by a fork. The `corpus_*` views also omit records already stored for an earlier session. Resumed sessions copy their ancestor's records, so counting both would count the same records twice. `session_rollups` and `corpus_rollups` reduce each family to one row per session.
 
 [Enrichment](enrichment.md) adds three `*_enrichments` tables keyed one-to-one to sessions, turns, and agent runs. It also adds views that join the enrichments to those records. Until an enrichment pass writes these tables, queries against them fail with an error that says they don't exist.
