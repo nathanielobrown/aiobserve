@@ -9,6 +9,8 @@
 //!
 //! Ported from `src/hyphae/export/otlp.py`, which stays the authority.
 
+/// What a send would ship, counted without sending it.
+pub mod census;
 /// Getting the spans to a backend, and the ledger of what landed.
 pub mod delivery;
 pub mod otlp;
