@@ -302,6 +302,17 @@ figure derived from them is arithmetic on a unit mismatch.
 runs it (single process, the tier whole) against `cargo nextest run` at its default `-j`. Both
 are each harness's own operating point, so the comparison is of two suites rather than of two
 languages. Beside it, and never above it: the `-j1` median, which is the isolation model's cost
-with the machine held out; the measured harness floor, which is what `-j1` is mostly made of;
-and one sentence saying the id counts are different units. The per-subject pairs stay in the
-report as the texture the headline flattens, each labelled with the family it came from.
+with the machine held out; the measured harness floor; and one sentence saying the id counts
+are different units. The per-subject pairs stay in the report as the texture the headline
+flattens, each labelled with the family it came from.
+
+*(As built, slice 10: this section first said the harness floor "is what `-j1` is mostly made
+of". Measured, it is not, and the report should not say so. 200 empty nextest tests run in
+1.913s at `-j1`, so a test process costs **9.6 ms**; 200 tests that each open the cached corpus
+store read-only run in 6.046s, so a store open in a fresh process costs **20.7 ms** on top.
+Over 792 tests that is 7.6s of spawn — **2.5%** of the 300.7s `-j1` wall — and at most 23.9s,
+**8%**, if every test opened a store. At the default `-j` the spawn floor is 0.67s, under 1%.
+So `-j1` is expensive because the work is serialized, not because the harness is heavy: the
+isolation model's real price is the parallelism it then gives back, and the honest reading of
+the gap between 115s and 301s is 18 cores, not overhead. Report the floor as the small number
+it is.)*
