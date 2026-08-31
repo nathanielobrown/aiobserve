@@ -7,6 +7,9 @@
 //! retires.
 
 pub mod items;
+/// The `EnrichmentStore` reads, in their own file: `store` is over the length budget with
+/// them in it, and they are the half that only assembles items.
+mod read;
 pub mod schema;
 pub mod store;
 
