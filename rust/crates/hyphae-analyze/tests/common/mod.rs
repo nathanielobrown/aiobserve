@@ -16,8 +16,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use duckdb::types::Value;
-use hyphae_analyze::{QueryResult, Request};
-use hyphae_store::{Row, Store};
+use hyphae_analyze::{QueryError, QueryResult, Request};
+use hyphae_store::{Param, Row, Store};
 use hyphae_testsupport::{cache, landmarks};
 use indexmap::IndexMap;
 use tempfile::TempDir;
@@ -40,8 +40,41 @@ pub fn corpus(db: &Path, name: &str, as_of: &str, params: &[(&str, &str)]) -> Qu
     )
 }
 
+/// One query keyed to a single session, which takes neither project nor window.
+pub fn keyed(db: &Path, name: &str, params: &[(&str, &str)]) -> QueryResult {
+    run(
+        db,
+        name,
+        Request {
+            project: None,
+            since: None,
+            // Nothing keyed reads it, and the runner refuses only `--project` and `--since`
+            // here — spelled rather than left to a clock so the leaf holds still.
+            as_of: hyphae_testsupport::windows::date(hyphae_testsupport::windows::AS_OF_WHOLE),
+            params: bound(params),
+        },
+    )
+}
+
 pub fn run(db: &Path, name: &str, request: Request) -> QueryResult {
-    hyphae_analyze::run(db, name, &request).unwrap_or_else(|error| panic!("{name}: {error}"))
+    attempt(db, name, request).unwrap_or_else(|error| panic!("{name}: {error}"))
+}
+
+/// The same, for a leaf whose subject is the refusal.
+pub fn attempt(db: &Path, name: &str, request: Request) -> Result<QueryResult, QueryError> {
+    hyphae_analyze::run(db, name, &request)
+}
+
+/// One row of SQL a leaf writes itself, against a store opened read-only.
+///
+/// The independent count a query's arithmetic is checked against: a leaf that computed its
+/// expectation with the query's own SQL would agree with itself. Named parameters, as
+/// `Store::fetch` binds them.
+pub fn probe(db: &Path, sql: &str, params: &[(&str, Param)]) -> Row {
+    let store = Store::open_read_only(db).expect("the store opens");
+    let mut rows = store.fetch(sql, params).expect("the probe runs");
+    assert_eq!(rows.len(), 1, "a probe answers one row");
+    rows.remove(0)
 }
 
 fn bound(params: &[(&str, &str)]) -> IndexMap<String, String> {
