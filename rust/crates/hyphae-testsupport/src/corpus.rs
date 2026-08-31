@@ -71,6 +71,31 @@ pub fn corpus_sources() -> Vec<SessionSource> {
     corpus_transcripts().iter().map(|at| source(at)).collect()
 }
 
+/// Every fixture transcript the OTLP source filter can place — the twin of
+/// `tests/conftest.py:exportable_transcripts`.
+///
+/// `fork_byref/`'s session records no `project_dir` and holds rows, so listing a store that
+/// holds it is a crash by design. A store meant to be listed or exported leaves that one
+/// transcript out and keeps everything else.
+pub fn exportable_transcripts() -> Vec<PathBuf> {
+    corpus_transcripts()
+        .into_iter()
+        .filter(|transcript| {
+            transcript.file_stem().is_some_and(|stem| {
+                stem != std::ffi::OsStr::new(crate::landmarks::NO_PROJECT_SESSION)
+            })
+        })
+        .collect()
+}
+
+/// The exportable corpus as discovery would have handed it over.
+pub fn exportable_sources() -> Vec<SessionSource> {
+    exportable_transcripts()
+        .iter()
+        .map(|at| source(at))
+        .collect()
+}
+
 fn jsonl(directory: &Path) -> Vec<PathBuf> {
     let mut found: Vec<PathBuf> = std::fs::read_dir(directory)
         .expect("a fixture directory is readable")

@@ -67,7 +67,7 @@ impl ExtractError {
 }
 
 /// One session as discovery found it: what to read, and what state it was in.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionSource {
     pub id: String,
     /// Every file the session's records live in — the transcript, its subagent transcripts

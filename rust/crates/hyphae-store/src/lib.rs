@@ -13,6 +13,7 @@ pub mod queries;
 pub mod row;
 pub mod rows;
 pub mod schema;
+pub mod source;
 pub mod store;
 
 pub use param::Param;

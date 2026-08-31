@@ -39,6 +39,15 @@ pub fn corpus_store() -> PathBuf {
     cached("corpus", &corpus_key(), build_corpus)
 }
 
+/// The fixture corpus minus the one session the OTLP source filter refuses to place.
+///
+/// `fork_byref/`'s session carries no `project_dir` and holds rows, so
+/// `StoreSource::sessions` crashes on any store holding it — by design. A store meant to be
+/// listed or shipped leaves that one out. The twin of `tests/conftest.py:exportable_db`.
+pub fn exportable_store() -> PathBuf {
+    cached("exportable", &exportable_key(), build_exportable)
+}
+
 /// The same corpus with the enrichment rows a pass would have written. Open it read-only.
 ///
 /// [`crate::planting`] writes them, over `hyphae-enrich`'s schema and upsert. It plants a row
@@ -152,6 +161,16 @@ pub fn corpus_key() -> String {
         .expect("the fixture corpus is readable")
 }
 
+/// The same fold over the exportable corpus, which is a different selection of fixtures.
+pub fn exportable_key() -> String {
+    let files: Vec<PathBuf> = corpus::exportable_sources()
+        .into_iter()
+        .flat_map(|source| source.files)
+        .collect();
+    hyphae_extract::fingerprint(&files, &corpus::repo(), WRITER_DIGEST)
+        .expect("the fixture corpus is readable")
+}
+
 /// The corpus, and the enrichment stamps Python emits.
 ///
 /// The recipe that plants the rows is Rust now, so [`WRITER_DIGEST`] already covers it and the
@@ -178,9 +197,14 @@ pub fn fold_enriched(corpus: &str, enrichment: &str) -> String {
 /// Checkpointed before it closes: a store still carrying a write-ahead log is one a reader
 /// would have to replay, and a read-only open cannot.
 fn build_corpus(at: &Path) {
+    build_from(at, corpus::corpus_sources());
+}
+
+/// One store at `at`, holding the sessions `sources` names.
+fn build_from(at: &Path, sources: Vec<hyphae_extract::SessionSource>) {
     let store = Store::create(at).expect("a fresh store");
     let extractor = corpus::extractor();
-    for source in corpus::corpus_sources() {
+    for source in sources {
         let trace = extractor
             .extract(&source)
             .unwrap_or_else(|error| panic!("{} extracts: {error}", source.id));
@@ -192,6 +216,15 @@ fn build_corpus(at: &Path) {
         .connection()
         .execute_batch("FORCE CHECKPOINT")
         .expect("the store checkpoints before it closes");
+}
+
+/// The exportable corpus, extracted into a store at `at`.
+///
+/// Built from its own transcripts rather than by deleting a session's rows out of a copy of
+/// [`corpus_store`]: a delete would have to know every table, and one missed leaves rows the
+/// filter would still trip over.
+fn build_exportable(at: &Path) {
+    build_from(at, corpus::exportable_sources());
 }
 
 /// The corpus, copied and then planted with the rows a partial pass would have left.
