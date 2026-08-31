@@ -5,6 +5,13 @@ version.workspace = true
 publish.workspace = true
 
 [dependencies]
+# `hp query`: the runner that binds a library query and cites what it bound.
+hyphae-analyze.workspace = true
+# The one clock, for `--as-of`'s default.
+hyphae-model.workspace = true
+indexmap.workspace = true
+# `--since` and `--as-of` parse straight into the dates the runner binds.
+chrono.workspace = true
 hyphae-extract.workspace = true
 hyphae-store.workspace = true
 hyphae-view.workspace = true
@@ -19,3 +26,5 @@ hyphae-testsupport.workspace = true
 # stamped — so the tests need the store crate's own clock type.
 tempfile.workspace = true
 chrono.workspace = true
+# The parity leaf hands its plan to the Python CLI and reads back what each stream got.
+serde_json.workspace = true

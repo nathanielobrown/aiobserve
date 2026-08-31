@@ -14,9 +14,13 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use chrono::NaiveDate;
 use clap::{Parser, Subcommand};
+use hyphae_analyze::Request;
 use hyphae_extract::{Extractor, sessions};
 use hyphae_store::Store;
+
+pub mod query;
 
 /// Gitignored, so an extract never lands in a commit. The same default `hp` the Python
 /// binary uses, so both write to the same place unless told otherwise.
@@ -42,6 +46,19 @@ impl CliError {
             code: 1,
             message: message.into(),
         }
+    }
+
+    /// A refusal something else worded: its own sentence, undecorated, as Python's
+    /// `raise SystemExit(str(error))` puts it.
+    pub fn refusal_from(error: impl std::fmt::Display) -> Self {
+        Self::refusal(error.to_string())
+    }
+}
+
+impl From<std::io::Error> for CliError {
+    /// A channel that would not take what was written to it: `hp` has nowhere else to say so.
+    fn from(error: std::io::Error) -> Self {
+        Self::refusal(format!("hp: {error}"))
     }
 }
 
@@ -77,6 +94,29 @@ pub enum Command {
         /// Where to write the trace store
         #[arg(long, default_value = DEFAULT_DB)]
         db: PathBuf,
+    },
+    /// Run one library query against the trace store and print its rows and its citation
+    Query {
+        /// The query to run — a file in analyze/queries/
+        name: String,
+        /// Which trace store to read
+        #[arg(long, default_value = DEFAULT_DB)]
+        db: PathBuf,
+        /// The analyzed repository — required by a corpus query
+        #[arg(long)]
+        project: Option<PathBuf>,
+        /// Only count sessions started on or after this date (default: the whole corpus)
+        #[arg(long)]
+        since: Option<NaiveDate>,
+        /// The date the trailing window is measured back from (default: today)
+        #[arg(long)]
+        as_of: Option<NaiveDate>,
+        /// Bind one of the query's parameters, overriding its production default
+        #[arg(long, value_name = "KEY=VALUE")]
+        param: Vec<String>,
+        /// Write CSV to stdout, commentary to stderr
+        #[arg(long)]
+        csv: bool,
     },
     /// Open the trace store in a local browser
     View {
@@ -123,6 +163,23 @@ pub fn run(cli: Cli, out: &mut dyn Write, err: &mut dyn Write) -> Result<(), Cli
             projects_root,
             db,
         } => Ok(extract(&project, projects_root, &db, out, err)?),
+        Command::Query {
+            name,
+            db,
+            project,
+            since,
+            as_of,
+            param,
+            csv,
+        } => {
+            let request = Request {
+                project,
+                since,
+                as_of: as_of.unwrap_or_else(query::today),
+                params: query::params(&param)?,
+            };
+            query::query(&db, &name, &request, csv, out, err)
+        }
         Command::View { db, port } => Ok(view(&db, port, out)?),
     }
 }
