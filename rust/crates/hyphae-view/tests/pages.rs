@@ -4,7 +4,7 @@
 //! whose calls all succeeded, a thread of one record, a file shorter than a chunk are the shapes
 //! that break a page, and the corpus is discovered rather than listed.
 
-mod common;
+use hyphae_testsupport::served::{self, Served};
 
 use axum::http::StatusCode;
 use hyphae_store::{Store, queries};
@@ -21,7 +21,7 @@ const ESCAPED: &str = "&lt;script&gt;alert('planted')&lt;/script&gt;";
 async fn every_query_the_library_ships_has_a_page() {
     // The whole catalog, because a footer cites by name: a query file the page cannot render is a
     // dead link in every footer that ran it.
-    let served = common::served(|_| {});
+    let served = Served::corpus();
     for (stem, _) in queries::QUERIES {
         let (status, page) = served.page(&format!("/query/{stem}")).await;
         assert_eq!(status, StatusCode::OK, "GET /query/{stem}");
@@ -43,7 +43,7 @@ async fn every_query_the_library_ships_has_a_page() {
 async fn a_citations_bindings_are_printed_back_inert() {
     // The one place a request's own text reaches rendering: the page prints what the citation
     // bound without binding it to anything. So the sentinel goes in the query string.
-    let served = common::served(|_| {});
+    let served = Served::corpus();
     let asked = format!(
         "/query/view_sessions?session_id={}",
         hyphae_view::urls::quoted(SENTINEL)
@@ -61,10 +61,10 @@ async fn a_citations_bindings_are_printed_back_inert() {
 async fn every_session_answers_for_its_failures() {
     // Both answers are a fact about the session, and they are not the same nothing: a session
     // whose calls all succeeded is not a session the store never held.
-    let served = common::served(|_| {});
+    let served = Served::corpus();
     let mut listed = 0;
     let mut clean = 0;
-    for id in common::session_ids(&served.db()) {
+    for id in served::session_ids(&served.db()) {
         let (status, page) = served.page(&format!("/session/{id}/errors")).await;
         match status {
             StatusCode::OK => {
@@ -93,7 +93,7 @@ async fn every_session_answers_for_its_failures() {
 async fn a_threads_records_page_walks_to_its_end() {
     // Keyset paging, walked the way a reader does: each page's own "+N more" link is the only way
     // on, so a page that minted a cursor it cannot resume from stops the walk here.
-    let served = common::served(|_| {});
+    let served = Served::corpus();
     let (session_id, source) = busiest_thread(&served.db());
     let thread = format!("/session/{session_id}/thread/{source}/records");
     let mut asked = format!("{thread}?after=-1&size=3");
@@ -127,7 +127,7 @@ async fn a_threads_records_page_walks_to_its_end() {
 async fn an_offloaded_result_is_served_a_chunk_at_a_time() {
     // The one page whose content is a file rather than a row: it is read a window at a time, and
     // the walk ends when the window reaches the end rather than when a row runs out.
-    let served = common::served(|_| {});
+    let served = Served::corpus();
     let Some((session_id, name, chars)) = an_offload(&served.db()) else {
         panic!("the fixture corpus holds an offloaded tool result");
     };

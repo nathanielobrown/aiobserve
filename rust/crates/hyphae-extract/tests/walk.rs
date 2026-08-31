@@ -4,7 +4,7 @@
 //! needs a schema violation — no recorded session carries one, so it appends an invented
 //! line to a copy in a tempdir and says so.
 
-mod common;
+use hyphae_testsupport::corpus;
 
 use hyphae_extract::sessions::SessionFiles;
 use hyphae_extract::{ExtractError, SessionSource};
@@ -80,7 +80,7 @@ fn optional(value: Option<&str>) -> &str {
 fn ids_and_parents_match_the_python_extractor() {
     let dumped: Vec<String> = SNAPSHOT_FIXTURES
         .iter()
-        .flat_map(|(directory, stem)| dump(&common::trace(directory, stem)))
+        .flat_map(|(directory, stem)| dump(&corpus::trace(directory, stem)))
         .collect();
     insta::assert_snapshot!("ids_and_parents", dumped.join("\n"));
 }
@@ -88,7 +88,7 @@ fn ids_and_parents_match_the_python_extractor() {
 /// Two tools issued in one message attach to that message and keep the transcript's order.
 #[test]
 fn parallel_tool_calls_attach_to_their_own_api_call() {
-    let trace = common::trace("parallel_tools", "5f4b59fb-a9a8-4ca1-af62-a64b9d0ce515");
+    let trace = corpus::trace("parallel_tools", "5f4b59fb-a9a8-4ca1-af62-a64b9d0ce515");
     // The fixture's point: one api call issuing more than one tool.
     let batched = trace
         .api_calls
@@ -127,7 +127,7 @@ fn parallel_tool_calls_attach_to_their_own_api_call() {
 /// A subagent's transcript is its own thread, keyed by the run id rather than by `main`.
 #[test]
 fn a_subagent_transcript_becomes_its_own_thread() {
-    let trace = common::trace("spine", "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b");
+    let trace = corpus::trace("spine", "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b");
     let run = trace
         .agent_runs
         .iter()
@@ -151,7 +151,7 @@ fn a_subagent_transcript_becomes_its_own_thread() {
 /// A teammate has no spawning tool call and still gets its thread — the orphan case.
 #[test]
 fn a_teammate_thread_exists_without_a_spawning_tool_call() {
-    let trace = common::trace("teammate", "10d0349d-0705-4e23-aa64-5b1b97698b2e");
+    let trace = corpus::trace("teammate", "10d0349d-0705-4e23-aa64-5b1b97698b2e");
     let orphan = trace
         .agent_runs
         .iter()
@@ -163,7 +163,7 @@ fn a_teammate_thread_exists_without_a_spawning_tool_call() {
 /// A compaction is recorded against the thread whose context filled.
 #[test]
 fn a_compaction_is_recorded_on_its_own_thread() {
-    let trace = common::trace("compaction", "1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9");
+    let trace = corpus::trace("compaction", "1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9");
     let compaction = trace
         .compactions
         .first()
@@ -180,7 +180,7 @@ fn a_compaction_is_recorded_on_its_own_thread() {
 /// A fork replays its origin's records. They stay as rows, flagged, rather than vanishing.
 #[test]
 fn replayed_rows_are_marked_rather_than_dropped() {
-    let trace = common::trace("fork_origin", "5a88789c-1da7-4f32-b631-40a7e243334b");
+    let trace = corpus::trace("fork_origin", "5a88789c-1da7-4f32-b631-40a7e243334b");
     let fork = trace
         .agent_runs
         .iter()
@@ -211,7 +211,7 @@ fn replayed_rows_are_marked_rather_than_dropped() {
 /// A by-reference fork points at the conversation it continues instead of copying it.
 #[test]
 fn a_by_reference_fork_names_the_record_it_picked_up_from() {
-    let trace = common::trace("fork_byref", "07a769d7-828c-4edb-b3ce-af51e2712aa3");
+    let trace = corpus::trace("fork_byref", "07a769d7-828c-4edb-b3ce-af51e2712aa3");
     let fork = trace
         .agent_runs
         .iter()
@@ -231,7 +231,7 @@ fn an_unknown_record_type_stops_the_run() {
     let stem = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b";
     let copied = directory.path().join(format!("{stem}.jsonl"));
     let mut text = std::fs::read_to_string(
-        common::fixtures()
+        corpus::fixtures()
             .join("spine")
             .join(format!("{stem}.jsonl")),
     )
@@ -243,8 +243,8 @@ fn an_unknown_record_type_stops_the_run() {
     text.push('\n');
     std::fs::write(&copied, text).expect("the copy is writable");
 
-    let error = common::extractor()
-        .extract(&common::from_transcript(&copied))
+    let error = corpus::extractor()
+        .extract(&corpus::source(&copied))
         .expect_err("an unregistered type is refused");
     let ExtractError::Schema(message) = &error else {
         panic!("expected a schema error, got {error:?}");
@@ -263,7 +263,7 @@ fn an_unknown_record_type_stops_the_run() {
 /// Tool output Claude Code wrote to a file becomes an offload row the tool call points at.
 #[test]
 fn an_offloaded_tool_result_becomes_its_own_row() {
-    let trace = common::trace("offload", "7e37bb35-4dcb-4e16-85be-55ac510c168e");
+    let trace = corpus::trace("offload", "7e37bb35-4dcb-4e16-85be-55ac510c168e");
     let offload = trace
         .offload_files
         .first()
@@ -282,7 +282,7 @@ fn an_offloaded_tool_result_becomes_its_own_row() {
 /// Two records sharing a uuid stay two rows: the archive keeps both, the walk keeps both.
 #[test]
 fn a_duplicated_record_uuid_does_not_collapse_two_rows() {
-    let trace = common::trace("dup_uuid", "8ee00a94-b01a-4394-b447-b065f74b11af");
+    let trace = corpus::trace("dup_uuid", "8ee00a94-b01a-4394-b447-b065f74b11af");
     // Every line of the file is archived, duplicates included.
     let uuids: Vec<&str> = trace
         .raw_records
@@ -303,7 +303,7 @@ fn a_duplicated_record_uuid_does_not_collapse_two_rows() {
 fn discovery_finds_a_projects_sessions_with_fingerprints() {
     // The fixture directories are not encoded project paths, so this points the extractor at
     // one directly: what is under test is `files()` and the digest, not the path encoding.
-    let transcript = common::fixtures()
+    let transcript = corpus::fixtures()
         .join("spine")
         .join("4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b.jsonl");
     let session = SessionFiles {
@@ -317,6 +317,6 @@ fn discovery_finds_a_projects_sessions_with_fingerprints() {
         files.len() > 1,
         "spine records subagent transcripts beside it"
     );
-    let source: SessionSource = common::from_transcript(&transcript);
+    let source: SessionSource = corpus::source(&transcript);
     assert_eq!(source.files, files);
 }

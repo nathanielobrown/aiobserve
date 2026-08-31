@@ -6,10 +6,10 @@
 //! invents a row.
 //!
 //! Stage 1's spike read a copy of the canonical store instead, which put private transcript
-//! text one failing assertion away from the test log. `common::assert_rows_equal` is what
+//! text one failing assertion away from the test log. `rows::assert_rows_equal` is what
 //! replaced that: it names the table, row and column that differ and never the value.
 
-mod common;
+use hyphae_testsupport::{cache, corpus, rows};
 
 use chrono::NaiveDate;
 use duckdb::types::{ToSql, Value};
@@ -72,7 +72,7 @@ fn a_new_store_is_stamped_with_the_schema_version() {
 /// enrichment pass, the gallery build — opens a store this crate wrote.
 #[test]
 fn the_schema_version_tracks_the_python_one() {
-    let source = common::repo().join("src/hyphae/export/schema.py");
+    let source = corpus::repo().join("src/hyphae/export/schema.py");
     let text = std::fs::read_to_string(&source).expect("the Python schema module is readable");
     let declared: Vec<i32> = text
         .lines()
@@ -201,7 +201,7 @@ fn a_store_held_open_for_writing_reports_itself_locked() {
 
 /// The interpreter the repo's virtualenv owns, or the system one.
 fn python() -> std::path::PathBuf {
-    let venv = common::fixtures()
+    let venv = corpus::fixtures()
         .parent()
         .and_then(std::path::Path::parent)
         .expect("the repo is two levels above tests/fixtures")
@@ -217,11 +217,11 @@ fn python() -> std::path::PathBuf {
 /// comes back out of DuckDB the same values.
 #[test]
 fn the_widest_table_round_trips_through_the_appender() {
-    let (_scratch, store) = common::fixture_store();
+    let store = cache::corpus_reader();
     let session_id = representative_session(&store);
 
     // 24 columns, every one of them a scalar — the whole reason the appender can write them.
-    let written = common::session_rows(&store, &session_id, schema::WIDEST_TABLE);
+    let written = rows::session_rows(&store, &session_id, schema::WIDEST_TABLE);
     assert!(
         !written.is_empty(),
         "the probe picked a session with api calls"
@@ -232,23 +232,23 @@ fn the_widest_table_round_trips_through_the_appender() {
     // twice by the same path is the round trip the design's go/no-go asked for.
     let elsewhere = TempDir::new().unwrap();
     let copy = Store::create(&elsewhere.path().join("traces.duckdb")).unwrap();
-    let extractor = hyphae_extract::Extractor::new(common::fixtures());
-    let transcript = common::corpus_transcripts()
+    let extractor = hyphae_extract::Extractor::new(corpus::fixtures());
+    let transcript = corpus::corpus_transcripts()
         .into_iter()
         .find(|path| {
             path.file_stem()
                 .is_some_and(|stem| stem == session_id.as_str())
         })
         .expect("the probed session is one of the fixtures");
-    let source = common::source(&transcript);
+    let source = corpus::source(&transcript);
     copy.export(&extractor.extract(&source).unwrap(), &source.fingerprint)
         .unwrap();
 
     let mut carried = 0;
     for (table, _) in schema::TABLES {
-        let once = common::session_rows(&store, &session_id, table);
-        let twice = common::session_rows(&copy, &session_id, table);
-        common::assert_rows_equal(table, &once, &twice);
+        let once = rows::session_rows(&store, &session_id, table);
+        let twice = rows::session_rows(&copy, &session_id, table);
+        rows::assert_rows_equal(table, &once, &twice);
         if !once.is_empty() {
             carried += 1;
         }
@@ -264,7 +264,7 @@ fn the_widest_table_round_trips_through_the_appender() {
 /// same recording, and reads back through chrono with no zone shift.
 #[test]
 fn a_timestamptz_matches_the_instant_the_python_store_holds() {
-    let (_scratch, store) = common::fixture_store();
+    let store = cache::corpus_reader();
     let session_id = representative_session(&store);
 
     // The store's own rendering of the instant beside chrono's reading of the same column.
@@ -282,7 +282,7 @@ fn a_timestamptz_matches_the_instant_the_python_store_holds() {
 
     // And the Python exporter, over the same transcript, put the same instant there. A
     // timestamp is not private, so this one value can be compared directly.
-    let transcript = common::corpus_transcripts()
+    let transcript = corpus::corpus_transcripts()
         .into_iter()
         .find(|path| {
             path.file_stem()
@@ -309,7 +309,7 @@ fn python_started_at(transcript: &std::path::Path) -> String {
                   s = SessionSource(id=t.stem, files=tuple(f.files()), fingerprint='x'); \
                   at = ClaudeCodeExtractor().extract(s).session.started_at; \
                   print(at.strftime('%Y-%m-%d %H:%M:%S.') + f'{at.microsecond // 1000:03d}')";
-    let repo = common::fixtures()
+    let repo = corpus::fixtures()
         .parent()
         .unwrap()
         .parent()
@@ -343,25 +343,25 @@ fn python_started_at(transcript: &std::path::Path) -> String {
 /// count assertion below is per table rather than over the store as a whole.
 #[test]
 fn re_exporting_a_session_replaces_its_rows_and_touches_no_other() {
-    let (_scratch, store) = common::fixture_store();
+    let (_scratch, store) = cache::writable_corpus();
     let session_id = representative_session(&store);
-    let before = common::table_counts(&store);
+    let before = rows::table_counts(&store);
 
-    let transcript = common::corpus_transcripts()
+    let transcript = corpus::corpus_transcripts()
         .into_iter()
         .find(|path| {
             path.file_stem()
                 .is_some_and(|stem| stem == session_id.as_str())
         })
         .expect("the probed session is one of the fixtures");
-    let source = common::source(&transcript);
-    let trace = hyphae_extract::Extractor::new(common::fixtures())
+    let source = corpus::source(&transcript);
+    let trace = hyphae_extract::Extractor::new(corpus::fixtures())
         .extract(&source)
         .unwrap();
     store.export(&trace, "a-second-fingerprint").unwrap();
 
     assert_eq!(
-        common::table_counts(&store),
+        rows::table_counts(&store),
         before,
         "no table grew or shrank"
     );
@@ -386,19 +386,19 @@ fn re_exporting_a_session_replaces_its_rows_and_touches_no_other() {
 /// already emptied. Only a rollback puts the first export's rows back.
 #[test]
 fn a_refused_export_rolls_back_to_the_previous_rows() {
-    let (_scratch, store) = common::fixture_store();
+    let (_scratch, store) = cache::writable_corpus();
     let session_id = representative_session(&store);
-    let before = common::table_counts(&store);
+    let before = rows::table_counts(&store);
 
-    let transcript = common::corpus_transcripts()
+    let transcript = corpus::corpus_transcripts()
         .into_iter()
         .find(|path| {
             path.file_stem()
                 .is_some_and(|stem| stem == session_id.as_str())
         })
         .expect("the probed session is one of the fixtures");
-    let source = common::source(&transcript);
-    let mut trace = hyphae_extract::Extractor::new(common::fixtures())
+    let source = corpus::source(&transcript);
+    let mut trace = hyphae_extract::Extractor::new(corpus::fixtures())
         .extract(&source)
         .unwrap();
     // Every api call duplicated: the second copy of each collides on (session_id, source, id).
@@ -409,7 +409,7 @@ fn a_refused_export_rolls_back_to_the_previous_rows() {
         .export(&trace, "never-committed")
         .expect_err("a duplicate primary key is refused");
     assert_eq!(
-        common::table_counts(&store),
+        rows::table_counts(&store),
         before,
         "the failed export left no trace"
     );
@@ -428,9 +428,9 @@ fn a_refused_export_rolls_back_to_the_previous_rows() {
 /// exercised, because it is the shape `export/duckdb.py` uses.
 #[test]
 fn both_write_paths_put_the_same_rows_in() {
-    let (_corpus_dir, corpus) = common::fixture_store();
-    let session_id = representative_session(&corpus);
-    let written = common::session_rows(&corpus, &session_id, schema::WIDEST_TABLE);
+    let cached = cache::corpus_reader();
+    let session_id = representative_session(&cached);
+    let written = rows::session_rows(&cached, &session_id, schema::WIDEST_TABLE);
 
     let appended_dir = TempDir::new().unwrap();
     let appended = Store::create(&appended_dir.path().join("traces.duckdb")).unwrap();
@@ -444,14 +444,14 @@ fn both_write_paths_put_the_same_rows_in() {
         .insert_rows(schema::WIDEST_TABLE, &written)
         .expect("prepared INSERTs write it");
 
-    common::assert_rows_equal(
+    rows::assert_rows_equal(
         schema::WIDEST_TABLE,
-        &common::session_rows(&appended, &session_id, schema::WIDEST_TABLE),
+        &rows::session_rows(&appended, &session_id, schema::WIDEST_TABLE),
         &written,
     );
-    common::assert_rows_equal(
+    rows::assert_rows_equal(
         schema::WIDEST_TABLE,
-        &common::session_rows(&inserted, &session_id, schema::WIDEST_TABLE),
+        &rows::session_rows(&inserted, &session_id, schema::WIDEST_TABLE),
         &written,
     );
 }
@@ -464,7 +464,7 @@ fn both_write_paths_put_the_same_rows_in() {
 /// the design flagged. Reading it needs no Rust type declared for the query's result.
 #[test]
 fn a_node_page_query_reads_its_nested_struct_and_list() {
-    let (_scratch, store) = common::fixture_store();
+    let store = cache::corpus_reader();
     let session_id = representative_session(&store);
 
     // A call that went on to make tool calls, so `tools` is a struct rather than NULL.

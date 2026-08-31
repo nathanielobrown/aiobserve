@@ -3,7 +3,7 @@
 //! Real files in a tempdir, because the digest reads size and mtime — there is nothing to
 //! test without a filesystem underneath.
 
-mod common;
+use hyphae_testsupport::corpus;
 
 use std::path::{Path, PathBuf};
 
@@ -13,8 +13,8 @@ use hyphae_extract::{EXTRACTOR_VERSION, fingerprint};
 /// and their metas. Returns the copy's root and the session's files in discovery order.
 fn planted(root: &Path) -> Vec<PathBuf> {
     let stem = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b";
-    copy_tree(&common::fixtures().join("spine"), root);
-    let source = common::from_transcript(&root.join(format!("{stem}.jsonl")));
+    copy_tree(&corpus::fixtures().join("spine"), root);
+    let source = corpus::source(&root.join(format!("{stem}.jsonl")));
     source.files
 }
 
@@ -163,7 +163,7 @@ fn python(args: &[&str]) -> String {
 }
 
 fn repo() -> PathBuf {
-    common::fixtures()
+    corpus::fixtures()
         .parent()
         .expect("tests/ has a parent")
         .parent()

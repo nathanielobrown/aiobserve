@@ -3,7 +3,7 @@
 //! Both mounts are htmx fetches rather than pages, so nothing routes to them by hand: the tests
 //! read the ids out of the fixture store and ask for the fragment the page's own markup would.
 
-mod common;
+use hyphae_testsupport::served::{self, Served};
 
 use std::path::Path;
 
@@ -58,7 +58,7 @@ fn openable(db: &Path) -> Vec<(&'static str, String)> {
 
 #[tokio::test]
 async fn every_kind_a_log_lists_opens_a_body_that_opens_nothing_further() {
-    let served = common::served(|_| {});
+    let served = Served::corpus();
     for (kind, url) in openable(&served.db()) {
         let (status, fragment) = served.page(&url).await;
         assert_eq!(status, StatusCode::OK, "GET {url}");
@@ -81,8 +81,8 @@ async fn every_kind_a_log_lists_opens_a_body_that_opens_nothing_further() {
 
 #[tokio::test]
 async fn a_body_is_asked_for_by_a_kind_and_an_id_the_store_holds() {
-    let served = common::served(|_| {});
-    let (session_id, _) = common::busiest_session(&served.db());
+    let served = Served::corpus();
+    let (session_id, _) = served::busiest_session(&served.db());
     // A kind no children log lists — the session's own body is the page, not an expansion.
     for kind in ["session", "compaction", "nonesuch"] {
         let url = format!("/fragment/body/session/{session_id}/thread/main/{kind}/whatever");
@@ -109,8 +109,8 @@ async fn a_body_is_asked_for_by_a_kind_and_an_id_the_store_holds() {
 
 #[tokio::test]
 async fn a_tail_row_fetches_the_rest_of_its_level_and_no_row_twice() {
-    let served = common::served(|_| {});
-    let (session_id, turns) = common::busiest_session(&served.db());
+    let served = Served::corpus();
+    let (session_id, turns) = served::busiest_session(&served.db());
     assert!(turns > 2, "the widest fixture thread has a level to cut");
     // The session's first level, drawn at a cap of one: the NavTree shows one turn and a tail row
     // saying how many it left out, and that row's own fetch is what this asks for.
@@ -162,8 +162,8 @@ fn keys(page: &str) -> Vec<String> {
 
 #[tokio::test]
 async fn a_level_is_only_spilled_where_a_nav_tree_row_could_stand() {
-    let served = common::served(|_| {});
-    let (session_id, _) = common::busiest_session(&served.db());
+    let served = Served::corpus();
+    let (session_id, _) = served::busiest_session(&served.db());
     let at = format!("/fragment/kin/session/{session_id}/session/{session_id}");
     // A depth outside the NavTree's is the reader's mistake, answered before anything is read.
     for depth in ["0", "-1", "99"] {

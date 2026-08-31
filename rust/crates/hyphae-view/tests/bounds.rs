@@ -3,7 +3,8 @@
 //! The contracts of `docs/viewer-bounds.md`: the children log's paging, the knobs a page carries
 //! back into its own links, and the cut a preview makes against the fetch that undoes it.
 
-mod common;
+use hyphae_testsupport::corpus;
+use hyphae_testsupport::served::{self, Served};
 
 use std::collections::BTreeSet;
 
@@ -20,7 +21,7 @@ const LONG: usize = 5_000;
 
 /// The eight node-page URLs the generated route file names, one per kind.
 fn node_urls() -> Vec<(String, String)> {
-    let text = std::fs::read_to_string(common::repo().join("tests/e2e/routes.json"))
+    let text = std::fs::read_to_string(corpus::repo().join("tests/e2e/routes.json"))
         .expect("the generated route file is committed");
     serde_json::from_str::<Vec<Value>>(&text)
         .expect("the route file is a list of entries")
@@ -50,7 +51,7 @@ async fn a_node_the_store_does_not_hold_is_a_404() {
     // Every key a node URL carries is read, so a miss on any one of them is nothing. The session
     // is swapped on every kind and the node's own id on every kind that has one: a page that
     // answered on the session alone would be a page about some other session's turn.
-    let served = common::served(|_| {});
+    let served = Served::corpus();
     for (route, url) in node_urls() {
         let session_id = url.split('/').nth(2).expect("a node url names a session");
         let (gone, _) = served.page(&url.replacen(session_id, MISSING, 1)).await;
@@ -68,8 +69,8 @@ async fn every_page_of_a_level_lists_each_row_once_and_stops() {
     // The children log's window is `store::window`: an offset page over the rows that have a
     // cursor value. A cursor bug there loses rows silently rather than erroring, so the walk
     // reads every page a row at a time and holds the union against the whole level.
-    let served = common::served(|_| {});
-    let (id, turns) = common::busiest_session(&served.db());
+    let served = Served::corpus();
+    let (id, turns) = served::busiest_session(&served.db());
     assert!(turns > 1, "the corpus has a level worth paging");
     let (status, whole) = served.page(&format!("/session/{id}")).await;
     assert_eq!(status, StatusCode::OK);
@@ -96,7 +97,7 @@ async fn a_row_with_no_cursor_is_on_the_page_and_outside_the_count() {
     // A bucket stands for rows the transcript attached to nothing, so the paging query gives it
     // no cursor value and `store::cursorless_rows` is what finds it. It has to reach the NavTree
     // without joining the count the children log pages against.
-    let served = common::served(|_| {});
+    let served = Served::corpus();
     let (id, source) = bucketed(&served.db());
     let (status, page) = served.page(&format!("/session/{id}")).await;
     assert_eq!(status, StatusCode::OK);
@@ -122,7 +123,7 @@ async fn a_row_with_no_cursor_is_on_the_page_and_outside_the_count() {
 async fn a_preview_is_cut_at_the_ceiling_and_the_fetch_behind_it_is_not() {
     // The planted value is longer than the ceiling on every tool call, so whichever the route
     // file names is one whose page has to cut.
-    let served = common::served(|store: &Store| {
+    let served = Served::planted(|store: &Store| {
         store
             .connection()
             .execute("UPDATE tool_calls SET input = ?", ["x".repeat(LONG)])
@@ -160,8 +161,8 @@ async fn a_preview_is_cut_at_the_ceiling_and_the_fetch_behind_it_is_not() {
 async fn a_knob_a_page_was_asked_for_comes_back_in_the_links_it_mints() {
     // A click has to serve the URL it displays, so a page under a non-default knob carries it
     // into its own links rather than dropping the reader back to the default.
-    let served = common::served(|_| {});
-    let (id, _) = common::busiest_session(&served.db());
+    let served = Served::corpus();
+    let (id, _) = served::busiest_session(&served.db());
     // A turn's own link, which every one of the four knobs has to reach: the preset control mints
     // a link per preset whatever the page was asked for, so reading those would prove nothing.
     let under = format!("/session/{id}/thread/main/turn/");

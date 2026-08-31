@@ -10,7 +10,7 @@
 //! context bar's bands. The session is named rather than discovered — a fixture added to the
 //! corpus must not silently re-point the exhibit at another session's rows.
 
-mod common;
+use hyphae_testsupport::served::Served;
 
 /// The fixture session the Python tier calls `SPINE`: a main thread with turns, agent runs
 /// under them, and a cost on both halves — which is what draws the `$own/$total` pair.
@@ -18,7 +18,7 @@ const SPINE: &str = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b";
 
 #[tokio::test]
 async fn the_nav_tree_rows_of_a_session_page() {
-    let served = common::served(|_| {});
+    let served = Served::corpus();
     let (status, page) = served.page(&format!("/session/{SPINE}")).await;
     assert_eq!(status, axum::http::StatusCode::OK);
     // One row per line, so a diff on the snapshot names the row that changed.
@@ -39,7 +39,7 @@ async fn the_preset_control_of_a_session_page() {
     // The three links above the rows, which is where a reader switches what the tree shows. In
     // the swapped element rather than above it: that is what keeps them pointing at the node a
     // click just landed on.
-    let served = common::served(|_| {});
+    let served = Served::corpus();
     let (_, page) = served.page(&format!("/session/{SPINE}")).await;
     let at = page
         .find("<p class=\"presets\"")
@@ -57,7 +57,7 @@ async fn the_crumb_chain_and_facts_of_a_turn_page() {
     // The two things the reading pane writes above and below its heading: the way out of the
     // session, and the store fields the node is made of. Both are label registries as much as
     // markup (`src/hyphae/view/labels.py`), so a snapshot is what makes a renamed label visible.
-    let served = common::served(|_| {});
+    let served = Served::corpus();
     let (status, page) = served
         .page(&format!("/session/{SPINE}/thread/main/turn/{SPINE_TURN}"))
         .await;

@@ -10,12 +10,13 @@
 
 use std::io::{Read as _, Write as _};
 use std::net::{TcpListener, TcpStream};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use hyphae_extract::sessions::encode_project_path;
 use hyphae_store::{Store, schema};
+use hyphae_testsupport::corpus::repo;
 
 /// The binary under test, built by cargo before this file runs.
 const HP: &str = env!("CARGO_BIN_EXE_hp");
@@ -25,14 +26,6 @@ const HP: &str = env!("CARGO_BIN_EXE_hp");
 /// 30 seconds `tests/conftest.py:_HOLDER` holds the store lock for — a wait that outlived the
 /// holder would report whatever the viewer said after it let go.
 const PATIENCE: Duration = Duration::from_secs(20);
-
-/// The repository root, from this crate's own location.
-fn repo() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .canonicalize()
-        .expect("the crate sits three levels under the repository root")
-}
 
 /// A store with the schema and nothing in it — enough for `hp view` to open and serve.
 fn empty_store(path: &Path) {

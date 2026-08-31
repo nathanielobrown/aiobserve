@@ -4,7 +4,8 @@
 //! what keeps this tier and the browser tier naming the same pages: a page one of them forgets
 //! is a page the other still asks for.
 
-mod common;
+use hyphae_testsupport::corpus;
+use hyphae_testsupport::served::Served;
 
 use axum::http::StatusCode;
 use hyphae_store::Store;
@@ -19,7 +20,7 @@ const ESCAPED: &str = "&lt;script&gt;alert(";
 
 /// The generated route file, as the browser tier reads it.
 fn routes() -> Vec<Value> {
-    let text = std::fs::read_to_string(common::repo().join("tests/e2e/routes.json"))
+    let text = std::fs::read_to_string(corpus::repo().join("tests/e2e/routes.json"))
         .expect("the generated route file is committed");
     serde_json::from_str::<Vec<Value>>(&text).expect("the route file is a list of entries")
 }
@@ -34,7 +35,7 @@ fn field<'a>(entry: &'a Value, name: &str) -> &'a str {
 async fn every_route_the_browser_tier_visits_answers() {
     // The enriched store, because the description and friction fragments are 404 until a pass
     // has written to the store: an un-enriched sweep would pass while saying nothing.
-    let served = common::enriched(|_| ());
+    let served = Served::enriched();
     let mut failed = Vec::new();
     for entry in routes() {
         let (status, _) = served.page(field(&entry, "url")).await;
@@ -50,7 +51,7 @@ async fn every_route_the_browser_tier_visits_answers() {
 async fn every_route_carries_the_content_security_policy() {
     // The header is what makes the browser tier's empty-console assertion mean anything: without
     // it a page could load an inline script and nothing would notice.
-    let served = common::enriched(|_| ());
+    let served = Served::enriched();
     for entry in routes() {
         let url = field(&entry, "url");
         let response = served.get(url).await;
@@ -71,7 +72,7 @@ async fn planted_markup_arrives_inert_on_every_route() {
     // what a tool answered, a raw record, what a pass said — and then every route is read for it.
     // A component leaf cannot stand in for this: a component that wrapped a value in `Raw` would
     // bypass it, and only a served response shows that.
-    let served = common::enriched(|store: &Store| {
+    let served = Served::enriched_planted(|store: &Store| {
         for statement in [
             "UPDATE sessions SET title = ?",
             "UPDATE turns SET prompt = ?, command_args = ?",

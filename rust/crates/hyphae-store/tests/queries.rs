@@ -6,11 +6,11 @@
 
 use hyphae_store::queries;
 
-mod common;
+use hyphae_testsupport::corpus;
 
 /// The library directory Python's `load` reads out of.
 fn query_dir() -> std::path::PathBuf {
-    common::repo().join("src/hyphae/analyze/queries")
+    corpus::repo().join("src/hyphae/analyze/queries")
 }
 
 /// Every `.sql` file is in the catalog, and nothing else is.
@@ -51,7 +51,7 @@ fn an_unknown_query_name_is_refused() {
 /// The widths a viewer page binds, against the module that declares them.
 #[test]
 fn the_bound_widths_match_the_python_library() {
-    let source = std::fs::read_to_string(common::repo().join("src/hyphae/analyze/queries.py"))
+    let source = std::fs::read_to_string(corpus::repo().join("src/hyphae/analyze/queries.py"))
         .expect("the Python query module is readable");
     let declared = |name: &str| -> i64 {
         let assignment = format!("\n{name} = ");

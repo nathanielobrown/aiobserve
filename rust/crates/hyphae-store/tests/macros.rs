@@ -8,11 +8,11 @@
 use duckdb::Connection;
 use hyphae_store::macros;
 
-mod common;
+use hyphae_testsupport::corpus;
 
 /// The Python module the Rust one is a copy of.
 fn python_macros() -> String {
-    std::fs::read_to_string(common::repo().join("src/hyphae/analyze/macros.py"))
+    std::fs::read_to_string(corpus::repo().join("src/hyphae/analyze/macros.py"))
         .expect("the Python macro module is readable")
 }
 
@@ -39,7 +39,7 @@ fn literal(source: &str, name: &str) -> String {
 
 /// The price table as `extract/pricing.py` writes it, in file order.
 fn python_context_windows() -> Vec<(String, i64)> {
-    let source = std::fs::read_to_string(common::repo().join("src/hyphae/extract/pricing.py"))
+    let source = std::fs::read_to_string(corpus::repo().join("src/hyphae/extract/pricing.py"))
         .expect("the Python price table is readable");
     let at = source
         .find("CONTEXT_WINDOWS: dict[str, int] = {")

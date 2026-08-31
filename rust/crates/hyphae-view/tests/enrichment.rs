@@ -4,7 +4,7 @@
 //! printing the characters it was typed in. No fixture holds one — redaction flattened every
 //! string the corpus records — so these leaves plant it and read it back off a served page.
 
-mod common;
+use hyphae_testsupport::served::Served;
 
 use axum::http::StatusCode;
 use hyphae_store::Store;
@@ -21,7 +21,7 @@ async fn the_markdown_a_pass_wrote_renders_in_a_title_and_links_only_in_the_pane
     // A NavTree row and a crumb are each already a link to the node they name, and an `<a>`
     // inside an `<a>` is markup a browser takes apart into something neither element meant. So
     // those print the link's words, and the pane's heading, which nothing wraps, gets the anchor.
-    let served = common::enriched(|store: &Store| {
+    let served = Served::enriched_planted(|store: &Store| {
         store
             .connection()
             .execute("UPDATE turn_enrichments SET description = ?", [WRITTEN])
@@ -54,7 +54,7 @@ async fn the_markdown_a_pass_wrote_renders_in_a_title_and_links_only_in_the_pane
 async fn no_block_element_a_pass_wrote_escapes_into_a_nav_tree_row() {
     // Only the inline parser runs, so there is no rule that could open a `<p>` or a `<pre>`
     // inside a row — a row that held a block element would not be a row any more.
-    let served = common::enriched(|store: &Store| {
+    let served = Served::enriched_planted(|store: &Store| {
         store
             .connection()
             .execute("UPDATE turn_enrichments SET description = ?", [DOCUMENT])

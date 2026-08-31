@@ -3,7 +3,7 @@
 //! Everything here goes through `oneshot` rather than through a component call: the escaping
 //! sweep these leaves stand beside is in `tests/routes.rs`.
 
-mod common;
+use hyphae_testsupport::served::{self, Served};
 
 use axum::http::StatusCode;
 use hyphae_view::app::CSP;
@@ -12,8 +12,8 @@ use hyphae_view::app::CSP;
 async fn every_session_in_the_corpus_gets_a_page() {
     // The whole fixture corpus, not one hand-picked session: a kind of session the walk handles
     // and the page does not is exactly the failure this sweep is for.
-    let served = common::served(|_| {});
-    let ids = common::session_ids(&served.db());
+    let served = Served::corpus();
+    let ids = served::session_ids(&served.db());
     assert!(
         !ids.is_empty(),
         "the fixture corpus put sessions in a store"
@@ -42,7 +42,7 @@ async fn every_session_in_the_corpus_gets_a_page() {
 async fn a_response_that_is_not_a_page_still_carries_the_content_security_policy() {
     // The route sweep asserts the header over every page; these are the responses no route file
     // names — a refusal, a static file, a miss — where dropping it would go unseen.
-    let served = common::served(|_| {});
+    let served = Served::corpus();
     for path in [
         "/session/no-such-session",
         "/static/style.css",
@@ -63,8 +63,8 @@ async fn a_page_number_outside_the_level_is_answered_rather_than_served() {
     // `store::window`. Stage 3a does not draw the log's table, so what is observable here is the
     // guard rather than the rows: a page past the level's end, a page below the first, and a
     // knob outside its bounds. 3b's log rows are what make the pages differ.
-    let served = common::served(|_| {});
-    let (id, turns) = common::busiest_session(&served.db());
+    let served = Served::corpus();
+    let (id, turns) = served::busiest_session(&served.db());
     assert!(turns > 1, "the corpus has a level worth paging");
     let (first, _) = served.page(&format!("/session/{id}?log=1")).await;
     let (second, _) = served.page(&format!("/session/{id}?log=1&page=2")).await;
