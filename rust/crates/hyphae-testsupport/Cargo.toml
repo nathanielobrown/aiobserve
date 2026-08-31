@@ -14,6 +14,9 @@ hyphae-store.workspace = true
 # The enrichment tables and the upsert that plants a row in them.
 hyphae-enrich.workspace = true
 hyphae-view.workspace = true
+# Spelling a transcript timestamp the way a fixture writes it, for the leaves that assert an
+# extracted row whole.
+chrono.workspace = true
 axum.workspace = true
 duckdb.workspace = true
 tempfile.workspace = true

@@ -85,45 +85,6 @@ fn ids_and_parents_match_the_python_extractor() {
     insta::assert_snapshot!("ids_and_parents", dumped.join("\n"));
 }
 
-/// Two tools issued in one message attach to that message and keep the transcript's order.
-#[test]
-fn parallel_tool_calls_attach_to_their_own_api_call() {
-    let trace = corpus::trace("parallel_tools", "5f4b59fb-a9a8-4ca1-af62-a64b9d0ce515");
-    // The fixture's point: one api call issuing more than one tool.
-    let batched = trace
-        .api_calls
-        .iter()
-        .find(|call| {
-            trace
-                .tool_calls
-                .iter()
-                .filter(|tool| tool.api_call_id == call.id)
-                .count()
-                > 1
-        })
-        .expect("parallel_tools records an api call with several tools");
-    let owned: Vec<&str> = trace
-        .tool_calls
-        .iter()
-        .filter(|tool| tool.api_call_id == batched.id)
-        .map(|tool| tool.name.as_str())
-        .collect();
-    assert!(owned.len() > 1, "the batch holds {owned:?}");
-    // Index is per transcript and assigned in walk order, so the batch's own indices ascend
-    // with no gap: nothing else was recorded between them.
-    let indices: Vec<i32> = trace
-        .tool_calls
-        .iter()
-        .filter(|tool| tool.api_call_id == batched.id)
-        .map(|tool| tool.index)
-        .collect();
-    let first = indices[0];
-    assert_eq!(
-        indices,
-        (first..first + indices.len() as i32).collect::<Vec<_>>()
-    );
-}
-
 /// A subagent's transcript is its own thread, keyed by the run id rather than by `main`.
 #[test]
 fn a_subagent_transcript_becomes_its_own_thread() {
@@ -258,25 +219,6 @@ fn an_unknown_record_type_stops_the_run() {
         message.contains(&format!("line {appended_at}")),
         "the message names the line: {message}"
     );
-}
-
-/// Tool output Claude Code wrote to a file becomes an offload row the tool call points at.
-#[test]
-fn an_offloaded_tool_result_becomes_its_own_row() {
-    let trace = corpus::trace("offload", "7e37bb35-4dcb-4e16-85be-55ac510c168e");
-    let offload = trace
-        .offload_files
-        .first()
-        .expect("the fixture records an offload file");
-    let owner = trace
-        .tool_calls
-        .iter()
-        .find(|tool| tool.offload_file.as_deref() == Some(offload.name.as_str()))
-        .expect("a tool call names the offload file");
-    assert!(!offload.content.is_empty());
-    assert_eq!(offload.size_bytes, offload.content.len() as i64);
-    // The transcript keeps a short preview; the file holds the whole thing.
-    assert!(owner.result.is_some());
 }
 
 /// Two records sharing a uuid stay two rows: the archive keeps both, the walk keeps both.

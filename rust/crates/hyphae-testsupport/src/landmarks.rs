@@ -130,4 +130,9 @@ pub const SIBLING_SESSION: &str = "4b443ab7-98f8-4c1d-859f-9bdcafbabdd3";
 /// `dup_uuid/`: the session that records no main turn and no agent run.
 pub const DUP_UUID: &str = "8ee00a94-b01a-4394-b447-b065f74b11af";
 /// The `deep-research` user, and the only session `pr-and-document` reaches from the pool.
+/// `workflow/` records it, fanned out.
 pub const DEEP_RESEARCH_SESSION: &str = "8d930c77-9e60-4784-9885-6d4c226280f7";
+/// That fan-out: the `wf_` directory its journal is sourced by — the corpus's one `source`
+/// that is neither `main` nor an agentId — and the one agent it ran.
+pub const WORKFLOW_RUN: &str = "wf_c30cc877-997";
+pub const WORKFLOW_AGENT: &str = "a6f04bb0e6eff6013";

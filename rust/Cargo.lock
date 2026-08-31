@@ -1197,6 +1197,7 @@ name = "hyphae-testsupport"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "chrono",
  "duckdb",
  "html-escape",
  "hyphae-enrich",
