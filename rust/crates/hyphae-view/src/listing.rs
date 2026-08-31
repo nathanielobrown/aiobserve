@@ -270,10 +270,19 @@ fn lookup<'a>(table: &'a [(&str, &str)], key: &str) -> Option<&'a str> {
         .map(|(_, value)| *value)
 }
 
-/// Every query-string key the session list reads: the filters, plus what orders and pages them.
+/// What orders and pages the list, beside the filters that narrow it.
+pub const LIST_KNOBS: [&str; 4] = ["sort", "direction", "page", "size"];
+
+/// Every query-string key the session list reads, in the order a refusal names them.
+pub fn list_keys() -> Vec<&'static str> {
+    let mut keys: Vec<&str> = FILTERS.iter().map(|(key, _)| *key).collect();
+    keys.extend(LIST_KNOBS);
+    keys.sort_unstable();
+    keys
+}
+
 fn list_key(key: &str) -> bool {
-    FILTERS.iter().any(|(named, _)| *named == key)
-        || matches!(key, "sort" | "direction" | "page" | "size")
+    list_keys().contains(&key)
 }
 
 /// The filters one request asked for, each parsed as the type its predicate binds.
@@ -282,12 +291,11 @@ fn list_key(key: &str) -> bool {
 /// show the whole corpus and look like an answer. An empty value is not a filter — the list's form
 /// submits every field, so a blank one has to mean "not filtering".
 pub fn narrowing(params: &HashMap<String, String>) -> Result<Vec<(&'static str, Param)>, BadAsk> {
-    if let Some(unknown) = params.keys().find(|key| !list_key(key)) {
-        let mut keys: Vec<&str> = FILTERS.iter().map(|(key, _)| *key).collect();
-        keys.extend(["sort", "direction", "page", "size"]);
-        keys.sort_unstable();
-        let _ = unknown;
-        return Err(BadAsk(format!("The list takes {}.", keys.join(", "))));
+    if params.keys().any(|key| !list_key(key)) {
+        return Err(BadAsk(format!(
+            "The list takes {}.",
+            list_keys().join(", ")
+        )));
     }
     FILTERS
         .iter()
