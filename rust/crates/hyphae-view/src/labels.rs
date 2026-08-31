@@ -82,3 +82,11 @@ pub fn label(name: &str) -> &'static str {
         .map(|(_, said)| *said)
         .unwrap_or_else(|| panic!("no page has named the field `{name}`"))
 }
+
+/// Every field the registry names.
+///
+/// The registry is closed, and closed in both directions: [`label`] panics for a field nothing
+/// named, and this is what lets a sweep find the word here that nothing asks for.
+pub fn named() -> impl Iterator<Item = &'static str> {
+    LABELS.iter().map(|(field, _)| *field)
+}

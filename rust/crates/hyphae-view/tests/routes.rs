@@ -5,6 +5,8 @@
 //! is a page the other still asks for.
 
 use hyphae_testsupport::corpus;
+use hyphae_testsupport::html::Markup;
+use hyphae_testsupport::landmarks::SPINE;
 use hyphae_testsupport::served::Served;
 
 use axum::http::StatusCode;
@@ -129,4 +131,37 @@ async fn a_response_that_is_not_a_page_still_carries_the_content_security_policy
             "GET {path}"
         );
     }
+}
+
+#[tokio::test]
+async fn a_pr_link_is_a_link_only_when_a_browser_should_follow_it() {
+    // A session's PR links are followable URLs; anything else on that list renders as text.
+    //
+    // A `pr_url` is the one transcript value that reaches an attribute the browser acts on, so
+    // escaping alone does not settle it — an escaped `javascript:` URL is still a `javascript:`
+    // URL in an `href`. Both values are planted and invented: the recorded sessions carry PR links
+    // redaction flattened to a placeholder.
+    let followable = "https://example.test/org/repo/pull/1";
+    let unfollowable = "javascript:alert('planted')";
+    let served = Served::planted(move |store: &Store| {
+        store
+            .connection()
+            .execute(
+                "INSERT INTO pr_links VALUES \
+                 (?, 900001, 1, ?, 'planted/repo', '2026-01-01T00:00:00Z'), \
+                 (?, 900002, 2, ?, 'planted/repo', '2026-01-01T00:00:00Z')",
+                duckdb::params![SPINE, followable, SPINE, unfollowable],
+            )
+            .expect("the planted links insert");
+    });
+    let (_, page) = served.page(&format!("/session/{SPINE}")).await;
+    let markup = Markup::of(&page);
+    // The http URL is a link the reader can click...
+    assert_eq!(
+        markup.inside("data-pr", followable, "href"),
+        vec![followable.to_owned()]
+    );
+    // ...and the other reaches no href at all, while still being shown for what it is.
+    assert!(markup.inside("data-pr", unfollowable, "href").is_empty());
+    assert!(page.contains("javascript:alert(&#39;planted&#39;)"));
 }
