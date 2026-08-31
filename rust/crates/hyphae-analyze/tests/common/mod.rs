@@ -84,10 +84,16 @@ pub fn cap(query: &str, param: &str) -> usize {
 /// expectation with the query's own SQL would agree with itself. Named parameters, as
 /// `Store::fetch` binds them.
 pub fn probe(db: &Path, sql: &str, params: &[(&str, Param)]) -> Row {
-    let store = Store::open_read_only(db).expect("the store opens");
-    let mut rows = store.fetch(sql, params).expect("the probe runs");
+    let mut rows = probe_all(db, sql, params);
     assert_eq!(rows.len(), 1, "a probe answers one row");
     rows.remove(0)
+}
+
+/// The same where the answer is a list rather than a number — a leaf checking a distribution
+/// wants the values themselves, in an order it chose, not an aggregate the store computed.
+pub fn probe_all(db: &Path, sql: &str, params: &[(&str, Param)]) -> Vec<Row> {
+    let store = Store::open_read_only(db).expect("the store opens");
+    store.fetch(sql, params).expect("the probe runs")
 }
 
 fn bound(params: &[(&str, &str)]) -> IndexMap<String, String> {
