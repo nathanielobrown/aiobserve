@@ -26,7 +26,8 @@ Non-goals, deferred whole rather than half-built:
   enrichment rows the store already holds; no Rust pass writes new ones
 - **OTLP export** — `hp export-otlp` stays Python; the store seam makes that free
 - **The doc/tooling layer** — cogs, aigarden, mutation testing, the gallery, budget/bounds sweeps
-- **`hp view --dev` parity** — the prototype serves; the watch/SSE reload loop is a stretch goal
+- **`hp view --dev` parity** — the prototype serves; the watch/SSE reload loop is a stretch
+  goal. *(As built: the loop landed — `plans/rust-prototype/full-port.md` slice 9.)*
 
 ## Where it lives
 
@@ -166,7 +167,9 @@ stage shares one answer:
 - **Frozen time.** The gallery freezes `fmt.utcnow` so relative times are stable. The Rust
   server mirrors this with a test-only env var (e.g. `HYPHAE_FIXED_NOW`) read at startup
 - **No dev-reload script.** The Rust server serves without the dev script, so no `/dev/reload`
-  endpoint is needed and the console-quiet assertion holds
+  endpoint is needed and the console-quiet assertion holds. *(As built: `/dev/reload` exists,
+  behind `--dev` alone. The browser tier drives the shipped `hp view`, which carries no script
+  tag, so the assertion holds for the reason stated rather than for want of an endpoint.)*
 - **Fingerprint parity.** The Rust extractor declares its own extractor version, so
   `extract_state.fingerprint` differs from Python's by construction. The parity diff excludes
   that column, prints every exclusion it applies, and the report explains it
