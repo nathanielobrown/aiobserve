@@ -28,3 +28,7 @@ insta.workspace = true
 tempfile.workspace = true
 # The planting test writes a sentinel into the store before serving it.
 duckdb.workspace = true
+# The stylesheet and the served script are read by pattern: neither is markup to parse.
+regex.workspace = true
+# An href read out of the markup arrives with its `&` escaped; a link is compared decoded.
+html-escape.workspace = true

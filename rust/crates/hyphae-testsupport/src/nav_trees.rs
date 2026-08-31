@@ -18,7 +18,7 @@
 use std::path::Path;
 
 use hyphae_store::{Param, Store};
-use hyphae_view::nodes::{BODY_URL, KIN_URL, Kind, Preset};
+use hyphae_view::nodes::{BODY_URL, KIN_URL, Kind, Preset, meter};
 
 use crate::landmarks::{MAIN, SPINE};
 
@@ -457,6 +457,59 @@ impl Levels {
             .collect()
     }
 
+    /// What a thread's unattributed bucket gathers: its own spend, and how much went unpriced.
+    pub fn standing(&self, session_id: &str, source: &str) -> (f64, i64) {
+        self.spend(
+            "SELECT coalesce(round(sum(c.cost_usd), 4), 0) AS spent, \
+             count(*) FILTER (c.cost_usd IS NULL) AS unpriced FROM live_api_calls c \
+             LEFT JOIN live_turns t ON t.session_id = c.session_id AND t.source = c.source \
+              AND t.id = c.turn_id \
+             WHERE c.session_id = $session_id AND c.source = $source AND t.id IS NULL",
+            session_id,
+            source,
+        )
+    }
+
+    /// One run's own thread, which is what an unattached run brings to the bucket gathering it.
+    pub fn thread_spend(&self, session_id: &str, source: &str) -> (f64, i64) {
+        self.spend(
+            "SELECT coalesce(round(sum(cost_usd), 4), 0) AS spent, \
+             count(*) FILTER (cost_usd IS NULL) AS unpriced FROM live_api_calls \
+             WHERE session_id = $session_id AND source = $source",
+            session_id,
+            source,
+        )
+    }
+
+    /// What one session spent altogether, which every wash is a share of.
+    pub fn session_spend(&self, session_id: &str) -> f64 {
+        self.store
+            .fetch(
+                "SELECT coalesce(cost_usd, 0) AS spent FROM session_rollups WHERE session_id = $s",
+                &[("s", session_id.into())],
+            )
+            .expect("the store answers")
+            .first()
+            .expect("every session has a rollup")
+            .f64("spent")
+            .expect("a total")
+    }
+
+    fn spend(&self, sql: &str, session_id: &str, source: &str) -> (f64, i64) {
+        let rows = self
+            .store
+            .fetch(
+                sql,
+                &[("session_id", session_id.into()), ("source", source.into())],
+            )
+            .expect("the store answers");
+        let row = rows.first().expect("an aggregate answers one row");
+        (
+            row.f64("spent").expect("a total"),
+            row.i64("unpriced").expect("a count"),
+        )
+    }
+
     /// One `id, at` query read as keys of `kind` beside the instant each started.
     fn timed(&self, sql: &str, params: &[(&str, Param)], kind: &str) -> Vec<(String, Option<i64>)> {
         self.store
@@ -565,4 +618,41 @@ pub fn node_link(href: &str) -> bool {
     };
     rest.first()
         .is_none_or(|word| Kind::spelled(word).is_some())
+}
+
+/// One row's own half read against what the store holds on its thread, and what went unpriced.
+///
+/// The subtree half is the rollup's, and the badge leaves weigh it: what this holds is the
+/// number a row has always printed first.
+pub fn weighed(
+    page: &crate::html::Markup,
+    key: &str,
+    levels: &Levels,
+    session_id: &str,
+    cost: f64,
+    unpriced: i64,
+) {
+    let whole = levels.session_spend(session_id);
+    let badges = page.badges(key);
+    let own = badges
+        .get("cost_usd")
+        .unwrap_or_else(|| panic!("{key} draws a cost badge"));
+    assert_eq!(own.shown, crate::html::money(cost), "{key}");
+    // The wash is that spend against the session, not against the row's parent or its own
+    // children — and a session with nothing to take a share of draws every row at nothing. It
+    // rides on the value it washes rather than on the row, because the row draws two of them.
+    let share = (whole != 0.0).then_some(cost / whole);
+    assert!(
+        own.step.split_whitespace().any(|step| step == meter(share)),
+        "{key}: {}",
+        own.step
+    );
+    // A `title` inside the row is the mark on a total our price table could not complete —
+    // there where some call under the row went unpriced, and nowhere else.
+    let marks = page.inside("data-nav-tree", key, "title");
+    assert_eq!(!marks.is_empty(), unpriced != 0, "{key}");
+    assert!(
+        unpriced == 0 || marks[0].contains(&unpriced.to_string()),
+        "{key}: {marks:?}"
+    );
 }

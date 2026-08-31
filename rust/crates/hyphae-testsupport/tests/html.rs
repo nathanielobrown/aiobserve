@@ -124,6 +124,21 @@ fn a_nav_tree_row_pairs_a_depth_with_the_key_beside_it() {
     assert_eq!(markup.under("session:s"), ["turn:1", "turn:2"]);
     assert_eq!(markup.under("turn:1"), ["call:1"]);
     assert_eq!(markup.kin(), ["turn:1", "turn:2"], "under the selection");
+    // Whatever the tag's layout: how a row is laid out belongs to the component that writes it,
+    // which today names these attributes in this order and puts nothing between two of them. A
+    // third attribute standing between them is invented for exactly that reason, standing for a
+    // layout a row is free to grow into.
+    let apart = Markup::of(
+        r#"<li class="row node" data-depth="2" data-selected="turn:a" data-nav-tree="turn:a"></li>"#,
+    );
+    assert_eq!(apart.rows(), [(2, "turn:a".to_owned())]);
+    // A tail row's depth, and the next tag's key: two tags, so nothing to pair. On one line, so
+    // the `>` is the only thing that can separate them — a newline between the tags would part
+    // them on its own, whatever the pattern says about tag boundaries.
+    let tail = Markup::of(
+        r#"<li class="row more" data-depth="1" data-more="session:s"><a data-nav-tree="turn:b">"#,
+    );
+    assert!(tail.rows().is_empty(), "{:?}", tail.rows());
 }
 
 #[test]
