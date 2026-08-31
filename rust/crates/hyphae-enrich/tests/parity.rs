@@ -1,4 +1,4 @@
-//! The rows Rust plants against the rows Python plants, table by table.
+//! The rows Rust plants against the rows Python plants, and the prompts each side renders.
 //!
 //! Slice 3 moved the enriched fixture store off `tests/conftest.py:build_enriched_store` and
 //! onto [`hyphae_testsupport::planting`]. Two recipes now write what every tier that reads a
@@ -9,14 +9,15 @@
 //! `HYPHAE_SKIP_PYTHON_PARITY` on a machine with no Python environment — `mise run rust-check`
 //! is meant to work there, and this is the one leaf in the workspace that shells into `uv`.
 //!
-//! Nothing here prints a stored value: the comparison is [`rows::assert_columns_equal`], which
-//! names the table, the row and the column and stops.
+//! Nothing here prints a stored value. The row comparison is [`rows::assert_columns_equal`],
+//! which names the table, the row and the column and stops; the render comparison travels as
+//! `input_hash` alone, so a prompt built from a private transcript never leaves either process.
 
 use std::path::Path;
 use std::process::Command;
 
 use duckdb::types::Value;
-use hyphae_enrich::{Level, schema};
+use hyphae_enrich::{EnrichmentStore, Item, Level, schema};
 use hyphae_store::Store;
 use hyphae_testsupport::{cache, corpus, rows};
 
@@ -115,3 +116,125 @@ fn plant_with_python(corpus: &Path, at: &Path) {
         String::from_utf8_lossy(&run.stderr),
     );
 }
+
+/// Render every item of the corpus on both sides, and compare what each one hashes to.
+///
+/// The render is the whole input to a model call and to `input_hash`, so a divergence here is
+/// two tiers describing different things and stamping the rows as if they had not. Hashes
+/// rather than text: a prompt is assembled from a private transcript, and the digest is what
+/// makes the comparison sayable out loud.
+///
+/// The enriched store, not the bare one: a session render embeds its children's descriptions,
+/// which only the planted store has.
+#[test]
+fn every_item_renders_to_the_same_prompt_on_both_sides() {
+    if std::env::var_os(SKIP).is_some() {
+        return;
+    }
+    // Both `EnrichmentStore`s open for writing, so each side reads its own copy of the cached
+    // file rather than contending for one write lock.
+    let enriched = cache::enriched_store();
+    let (_mine, ours) = cache::writable_copy(&enriched);
+    let (_theirs, theirs) = cache::writable_copy(&enriched);
+    let mine = rendered_by_rust(&ours);
+    // Every level is represented, so a reader that handed out nothing cannot pass by matching
+    // an empty list against an empty list.
+    for level in Level::ALL {
+        let prefix = format!("{}|", level.word());
+        assert!(
+            mine.iter().any(|(key, _)| key.starts_with(&prefix)),
+            "the corpus offers no {level} to render"
+        );
+    }
+    let theirs = rendered_by_python(&theirs);
+    assert_eq!(
+        mine.len(),
+        theirs.len(),
+        "the two sides assembled a different number of items"
+    );
+    // Named one at a time rather than compared whole: a mismatched pair of lists prints every
+    // key in both, and the first divergence is the one a reader acts on.
+    for ((key, ours), (their_key, theirs)) in mine.iter().zip(&theirs) {
+        assert_eq!(key, their_key, "the two sides assembled different items");
+        assert_eq!(ours, theirs, "`{key}` renders differently on the two sides");
+    }
+}
+
+/// `key\tinput_hash` for every item this side assembles, in key order.
+fn rendered_by_rust(at: &Path) -> Vec<(String, String)> {
+    let store = EnrichmentStore::open(at).expect("the enriched store opens");
+    let items: Vec<Box<dyn Item>> = store
+        .turn_items(None)
+        .expect("the turns read")
+        .into_iter()
+        .map(|item| Box::new(item) as Box<dyn Item>)
+        .chain(
+            store
+                .run_items(None)
+                .expect("the runs read")
+                .into_iter()
+                .map(|item| Box::new(item) as Box<dyn Item>),
+        )
+        .chain(
+            store
+                .session_items(None)
+                .expect("the sessions read")
+                .into_iter()
+                .map(|item| Box::new(item) as Box<dyn Item>),
+        )
+        .collect();
+    let mut hashed: Vec<(String, String)> = items
+        .iter()
+        .map(|item| (item.key(), hyphae_enrich::input_hash(&item.render())))
+        .collect();
+    hashed.sort();
+    hashed
+}
+
+/// The same list, from the Python renders, over the copy at `at`.
+fn rendered_by_python(at: &Path) -> Vec<(String, String)> {
+    let repo = corpus::repo();
+    let run = Command::new("uv")
+        .args(["run", "--project", ".", "python", "-c", RENDER])
+        .arg(at)
+        .current_dir(&repo)
+        .env_remove("VIRTUAL_ENV")
+        .output()
+        .unwrap_or_else(|error| {
+            panic!(
+                "`uv` runs from {}: {error}. Set {SKIP} to skip",
+                repo.display()
+            )
+        });
+    assert!(
+        run.status.success(),
+        "the Python renders failed ({}). Set {SKIP} to skip them:\n{}",
+        run.status,
+        String::from_utf8_lossy(&run.stderr),
+    );
+    let mut hashed: Vec<(String, String)> = String::from_utf8(run.stdout)
+        .expect("the Python side prints text")
+        .lines()
+        .map(|line| {
+            let (key, hash) = line.split_once('\t').expect("every line is key and hash");
+            (key.to_owned(), hash.to_owned())
+        })
+        .collect();
+    hashed.sort();
+    hashed
+}
+
+/// Print what the Python tier renders each item to, as `key<TAB>input_hash`.
+///
+/// The renders themselves stay inside the process: only the digest crosses.
+const RENDER: &str = r#"
+import sys
+from pathlib import Path
+from hyphae.enrich.prompts import input_hash, render
+from hyphae.enrich.store import EnrichmentStore
+
+store = EnrichmentStore(Path(sys.argv[1]))
+for reader in (store.turn_items, store.run_items, store.session_items):
+    for item in reader():
+        print(f"{item.key}\t{input_hash(render(item))}")
+"#;

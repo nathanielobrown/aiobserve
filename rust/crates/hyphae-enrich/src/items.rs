@@ -1,9 +1,9 @@
 //! What one enrichable thing looks like once the store has assembled it.
 //!
-//! Ported from the row half of `src/hyphae/enrich/prompts.py`. The render that turns one of
-//! these into prompt text stays Python for now; what is here is the shape a row-reader
-//! produces and a writer keys on.
+//! Ported from the row half of `src/hyphae/enrich/prompts.py`; [`crate::prompts`] holds the
+//! render that turns one of these into prompt text.
 
+use crate::prompts::{self, RUN_BUDGETS, SESSION_BUDGETS, TURN_BUDGETS};
 use crate::schema::Level;
 
 /// One thing that gets one enrichment row.
@@ -12,6 +12,12 @@ pub trait Item {
 
     /// The item's primary key, in the enrichment table's column order.
     fn key_values(&self) -> Vec<String>;
+
+    /// The item as its level's prompt, at that level's default budgets.
+    ///
+    /// The enricher's one door into the renders. Call a `prompts::render_*` function directly
+    /// to pass budgets, as the tests do.
+    fn render(&self) -> String;
 
     /// The key as one string — what a request, a call log and a failure record carry.
     fn key(&self) -> String {
@@ -86,6 +92,10 @@ impl Item for TurnItem {
             self.turn_id.clone(),
         ]
     }
+
+    fn render(&self) -> String {
+        prompts::render_turn(self, &TURN_BUDGETS)
+    }
 }
 
 /// One stretch of a run's transcript: one instruction, and the calls it drove.
@@ -113,6 +123,10 @@ impl Item for AgentRunItem {
 
     fn key_values(&self) -> Vec<String> {
         vec![self.session_id.clone(), self.agent_run_id.clone()]
+    }
+
+    fn render(&self) -> String {
+        prompts::render_run(self, &RUN_BUDGETS)
     }
 }
 
@@ -182,5 +196,9 @@ impl Item for SessionItem {
 
     fn key_values(&self) -> Vec<String> {
         vec![self.session_id.clone()]
+    }
+
+    fn render(&self) -> String {
+        prompts::render_session(self, &SESSION_BUDGETS)
     }
 }

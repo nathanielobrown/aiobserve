@@ -13,7 +13,9 @@
 #![allow(dead_code)]
 
 use duckdb::params;
-use hyphae_enrich::{AgentRunItem, Enrichment, EnrichmentStore, Stamp, TurnItem};
+use hyphae_enrich::{
+    AgentRunItem, Enrichment, EnrichmentStore, Item, SessionItem, Stamp, TurnItem,
+};
 use hyphae_testsupport::{cache, metadata};
 use tempfile::TempDir;
 
@@ -34,6 +36,14 @@ pub const RESUME: &str = landmarks::RESUME;
 pub const MODEL_ONLY: &str = landmarks::MODEL_ONLY;
 pub const DUP_UUID: &str = landmarks::DUP_UUID;
 pub const WORKTREE_SESSION: &str = landmarks::WORKTREE_SESSION;
+pub const SERVER_TOOLS: &str = landmarks::SERVER_TOOLS;
+pub const TEAMMATE: &str = landmarks::TEAMMATE;
+pub const TEAMMATE_RUN: &str = landmarks::TEAMMATE_RUN;
+pub const BYREF_FORK: &str = landmarks::BYREF_FORK;
+pub const FORK_ORIGIN_RUN: &str = landmarks::FORK_ORIGIN_RUN;
+pub const FORK_RUN: &str = landmarks::FORK_RUN;
+pub const DEEP_RESEARCH_SESSION: &str = landmarks::DEEP_RESEARCH_SESSION;
+pub const WORKFLOW_AGENT: &str = landmarks::WORKFLOW_AGENT;
 
 /// `resume_pair/`'s ancestor and the plain turn its stdout record hangs off.
 pub const RESUME_ANCESTOR: &str = landmarks::ANCESTOR;
@@ -123,4 +133,85 @@ pub fn column(store: &EnrichmentStore, sql: &str) -> Vec<Option<String>> {
                 .map(str::to_owned)
         })
         .collect()
+}
+
+/// The one main turn of `session_id` whose id starts with `prefix`.
+///
+/// Each picker asserts it named exactly one item: a fixture that stops carrying the shape fails
+/// here rather than rendering something else.
+pub fn turn(store: &EnrichmentStore, session_id: &str, prefix: &str) -> TurnItem {
+    let mut found: Vec<TurnItem> = store
+        .turn_items(None)
+        .expect("the turns read")
+        .into_iter()
+        .filter(|item| item.session_id == session_id && item.turn_id.starts_with(prefix))
+        .collect();
+    assert_eq!(found.len(), 1, "{prefix} named {} turns", found.len());
+    found.remove(0)
+}
+
+/// The store's one agent run with this id.
+pub fn run(store: &EnrichmentStore, agent_run_id: &str) -> AgentRunItem {
+    let mut found: Vec<AgentRunItem> = store
+        .run_items(None)
+        .expect("the runs read")
+        .into_iter()
+        .filter(|item| item.agent_run_id == agent_run_id)
+        .collect();
+    assert_eq!(found.len(), 1, "{agent_run_id} named {} runs", found.len());
+    found.remove(0)
+}
+
+/// The store's one enrichable session with this id.
+pub fn session(store: &EnrichmentStore, session_id: &str) -> SessionItem {
+    let mut found: Vec<SessionItem> = store
+        .session_items(None)
+        .expect("the sessions read")
+        .into_iter()
+        .filter(|item| item.session_id == session_id)
+        .collect();
+    assert_eq!(
+        found.len(),
+        1,
+        "{session_id} named {} sessions",
+        found.len()
+    );
+    found.remove(0)
+}
+
+/// The render's last line — the one that says how the item ended.
+pub fn ended(rendered: &str) -> &str {
+    rendered
+        .rsplit('\n')
+        .next()
+        .expect("a render has a last line")
+}
+
+/// Enrich one item, so a render of its parent has a child description to embed.
+///
+/// `explore`/`completed` rather than [`enrichment`]'s first-of-the-vocabulary pair: a render
+/// prints the two members, so the leaves reading them name what they expect to see.
+pub fn describe(store: &EnrichmentStore, item: &dyn Item, description: &str) {
+    let vocabulary = metadata::enrichment();
+    let (category, outcome) = ("explore", "completed");
+    for member in [category, outcome] {
+        assert!(
+            vocabulary
+                .categories
+                .iter()
+                .chain(&vocabulary.outcomes)
+                .any(|held| held == member),
+            "the taxonomy no longer carries `{member}`"
+        );
+    }
+    let said = Enrichment {
+        description: description.to_owned(),
+        category: category.to_owned(),
+        outcome: outcome.to_owned(),
+        friction: None,
+    };
+    // The stamp decides re-enrichment, which no render reads.
+    store
+        .upsert(item, &said, &stamp("unused"))
+        .expect("the description writes");
 }
