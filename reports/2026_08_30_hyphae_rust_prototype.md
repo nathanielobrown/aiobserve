@@ -2,6 +2,8 @@
 
 Whether to convert hyphae to Rust, answered by building it rather than arguing about it. Branch `rust-prototype` holds a cargo workspace under `rust/`. Its `hp` binary extracts the real corpus, serves the viewer, and passes the browser tier unchanged. `plans/rust-prototype/design.md` set the three questions this report answers: does the component layer read better, what does the edit loop cost, and does one binary do the product's job.
 
+Three of its claims did not survive the full port; see [the corrections](#three-corrections-from-the-full-port) at the end.
+
 Every number below was measured on one machine (Apple silicon, macOS 25.5) against frozen copies of two real corpora. Nothing here is a benchmark of the two languages; it measures this port on this hardware.
 
 ## Scope: five pieces stayed in Python
@@ -182,3 +184,11 @@ One known wobble: `cargo nextest` reported leaky tests on two occasions (2, then
 The prototype answers all three questions in Rust's favour, within the scope it was given. The component layer reads better where it counts — the markup — at the price of ceremony around it, and the port was mechanical enough that 92 components moved under two rules. The edit loop costs 0.3s to check and about 10s to test a crate, without a linker swap, against a 231s Python gate. And one 48 MB binary extracts two real corpora with zero table diffs, 23x and 16x faster, and serves a viewer 979 URLs of which every difference from Python's is a syntax-highlighting class inside a `<pre>`.
 
 What that does not settle is the half that was never built. Enrichment writing, OTLP export, the dev reload loop, the doc tooling and store migrations are all still Python, and a graduation decision has to price them, plus the row-typing question the prototype deferred. This report is evidence that the conversion is achievable and pleasant, not that it is worth its remaining cost.
+
+## Three corrections from the full port
+
+The full port (`reports/2026_08_31_hyphae_rust_full_port.md`) falsified three of the claims above. The body stands as the record of what that pass found; these are what changed.
+
+- **The `<pre>` residue was not syntect against Pygments.** The prototype highlighted nothing: `highlight::lit` returned `syntax: None` unconditionally, a bug, so the residue was highlighting against none. The full port fixed the bug and added real highlighting — syntect behind a 39-entry table mapping TextMate scope prefixes onto the classes the shared `static/pygments.css` already paints
+- **"Nothing under `src/hyphae/` was touched" no longer holds.** The generation bridge made Python the owner of metadata Rust reads, so the full port added Python-side generators — the query manifest, the bounds registry, the enrichment stamps and vocabulary — and their freshness tests
+- **The verdict is priced now.** The port took ten agent slices over two calendar days and 108 commits (`git log --oneline 4cf891f..HEAD`). What it did not price is who ends up owning the schema; the later report ends on that
