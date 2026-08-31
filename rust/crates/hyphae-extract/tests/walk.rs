@@ -1,14 +1,12 @@
-//! The transcript walk over the recorded corpus: what each fixture's ids and parents are.
+//! The cross-language check: the ids and parents Python's extractor read from four
+//! recordings, dumped once and compared here.
 //!
-//! Two leaves that no port owns. The first is the cross-language check — the ids and parents
-//! Python's extractor read from four recordings, dumped once and compared here — and the
-//! second is discovery, the path `hp extract` takes to a session's files. What each field of
-//! an extracted row holds is `session.rs`; what the walk refuses is `refusals.rs`.
+//! The one leaf no port owns — it has no Python twin, because it is the diff between the two
+//! implementations. What each field of an extracted row holds is `session.rs`; what the walk
+//! refuses is `refusals.rs`; which files it walks over is `discovery.rs`.
 
 use hyphae_testsupport::corpus;
 
-use hyphae_extract::SessionSource;
-use hyphae_extract::sessions::SessionFiles;
 use hyphae_model::SessionTrace;
 
 /// The four fixtures the Python generator dumps, in its order.
@@ -84,27 +82,4 @@ fn ids_and_parents_match_the_python_extractor() {
         .flat_map(|(directory, stem)| dump(&corpus::trace(directory, stem)))
         .collect();
     insta::assert_snapshot!("ids_and_parents", dumped.join("\n"));
-}
-
-/// Discovery under a projects root, the path `hp extract` takes.
-#[test]
-fn discovery_finds_a_projects_sessions_with_fingerprints() {
-    // The fixture directories are not encoded project paths, so this points the extractor at
-    // one directly: what is under test is `files()` and the digest, not the path encoding.
-    let transcript = corpus::fixtures()
-        .join("spine")
-        .join("4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b.jsonl");
-    let session = SessionFiles {
-        id: "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b".to_owned(),
-        transcript: transcript.clone(),
-    };
-    let files = session.files().expect("the session's files are readable");
-    // The transcript first, then everything under its sibling directory.
-    assert_eq!(files[0], transcript);
-    assert!(
-        files.len() > 1,
-        "spine records subagent transcripts beside it"
-    );
-    let source: SessionSource = corpus::source(&transcript);
-    assert_eq!(source.files, files);
 }
