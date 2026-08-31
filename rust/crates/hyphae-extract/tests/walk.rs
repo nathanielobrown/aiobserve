@@ -1,14 +1,15 @@
 //! The transcript walk over the recorded corpus: what each fixture's ids and parents are.
 //!
-//! Every leaf here reads a redacted recording under `tests/fixtures/`, except the one that
-//! needs a schema violation — no recorded session carries one, so it appends an invented
-//! line to a copy in a tempdir and says so.
+//! Two leaves that no port owns. The first is the cross-language check — the ids and parents
+//! Python's extractor read from four recordings, dumped once and compared here — and the
+//! second is discovery, the path `hp extract` takes to a session's files. What each field of
+//! an extracted row holds is `session.rs`; what the walk refuses is `refusals.rs`.
 
 use hyphae_testsupport::corpus;
 
+use hyphae_extract::SessionSource;
 use hyphae_extract::sessions::SessionFiles;
-use hyphae_extract::{ExtractError, SessionSource};
-use hyphae_model::{MAIN_SOURCE, SessionTrace};
+use hyphae_model::SessionTrace;
 
 /// The four fixtures the Python generator dumps, in its order.
 /// `tests/snapshot_from_python.py:FIXTURES` is the authority; these two lists disagreeing is
@@ -83,82 +84,6 @@ fn ids_and_parents_match_the_python_extractor() {
         .flat_map(|(directory, stem)| dump(&corpus::trace(directory, stem)))
         .collect();
     insta::assert_snapshot!("ids_and_parents", dumped.join("\n"));
-}
-
-/// A compaction is recorded against the thread whose context filled.
-#[test]
-fn a_compaction_is_recorded_on_its_own_thread() {
-    let trace = corpus::trace("compaction", "1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9");
-    let compaction = trace
-        .compactions
-        .first()
-        .expect("the fixture records a compaction");
-    assert_eq!(compaction.source, MAIN_SOURCE);
-    assert!(
-        compaction.pre_tokens > 0,
-        "the boundary reports the context it summarised"
-    );
-    // "auto" or "manual" — a third value would be a schema change worth noticing.
-    assert!(matches!(compaction.trigger.as_str(), "auto" | "manual"));
-}
-
-/// An unregistered record type stops the run, naming the type and the line.
-///
-/// The one invented input in this file, and unavoidably so: no recorded session carries a
-/// schema violation. Only the appended line is invented — the transcript under it is the
-/// recording.
-#[test]
-fn an_unknown_record_type_stops_the_run() {
-    let directory = tempfile::tempdir().expect("a tempdir");
-    let stem = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b";
-    let copied = directory.path().join(format!("{stem}.jsonl"));
-    let mut text = std::fs::read_to_string(
-        corpus::fixtures()
-            .join("spine")
-            .join(format!("{stem}.jsonl")),
-    )
-    .expect("the fixture is readable");
-    let appended_at = text.lines().count() + 1;
-    text.push_str(
-        r#"{"type": "telepathy", "uuid": "00000000-0000-0000-0000-000000000000", "timestamp": "2026-01-01T00:00:00.000Z"}"#,
-    );
-    text.push('\n');
-    std::fs::write(&copied, text).expect("the copy is writable");
-
-    let error = corpus::extractor()
-        .extract(&corpus::source(&copied))
-        .expect_err("an unregistered type is refused");
-    let ExtractError::Schema(message) = &error else {
-        panic!("expected a schema error, got {error:?}");
-    };
-    assert!(
-        message.contains("telepathy"),
-        "the message names the type: {message}"
-    );
-    // The line number, so a reader can open the file at the offending record.
-    assert!(
-        message.contains(&format!("line {appended_at}")),
-        "the message names the line: {message}"
-    );
-}
-
-/// Two records sharing a uuid stay two rows: the archive keeps both, the walk keeps both.
-#[test]
-fn a_duplicated_record_uuid_does_not_collapse_two_rows() {
-    let trace = corpus::trace("dup_uuid", "8ee00a94-b01a-4394-b447-b065f74b11af");
-    // Every line of the file is archived, duplicates included.
-    let uuids: Vec<&str> = trace
-        .raw_records
-        .iter()
-        .filter_map(|row| row.uuid.as_deref())
-        .collect();
-    let mut unique = uuids.clone();
-    unique.sort_unstable();
-    unique.dedup();
-    assert!(
-        unique.len() < uuids.len(),
-        "the fixture records a duplicated uuid"
-    );
 }
 
 /// Discovery under a projects root, the path `hp extract` takes.
