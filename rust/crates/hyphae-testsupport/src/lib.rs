@@ -28,6 +28,8 @@ pub mod marks;
 pub mod metadata;
 /// Building the level the store says a NavTree should hold, and reading the one it drew.
 pub mod nav_trees;
+/// Reading a shipped OTLP span back, and the endpoint the delivery tier ships to.
+pub mod otlp;
 /// What an enrichment pass is driven with, and how a leaf reads back what it wrote.
 pub mod passes;
 /// The enrichment rows a partial pass would have left behind.

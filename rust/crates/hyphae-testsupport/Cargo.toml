@@ -14,6 +14,10 @@ hyphae-store.workspace = true
 # The enrichment tables and the upsert that plants a row in them.
 hyphae-enrich.workspace = true
 hyphae-view.workspace = true
+# The OTLP exporter, and the wire types the receiver decodes what it shipped with.
+hyphae-export.workspace = true
+opentelemetry-proto.workspace = true
+prost.workspace = true
 # Spelling a transcript timestamp the way a fixture writes it, for the leaves that assert an
 # extracted row whole.
 chrono.workspace = true

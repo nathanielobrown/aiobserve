@@ -32,6 +32,10 @@ pub const NON_WRITERS: &[&str] = &[
     "hyphae-analyze",
     // Read-only by construction: every store it opens, it opens read-only.
     "hyphae-view",
+    // The OTLP mapper writes to a collector, not a store. Its delivery ledger is the one
+    // exception, and it lands in whatever store the caller names — never in a cached one,
+    // which every delivery leaf copies before it writes.
+    "hyphae-export",
 ];
 
 /// The lockfile counts too: `duckdb`'s version decides the file format and `serde_json`'s

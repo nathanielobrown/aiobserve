@@ -4,6 +4,7 @@ members = [
     "crates/hp",
     "crates/hyphae-analyze",
     "crates/hyphae-enrich",
+    "crates/hyphae-export",
     "crates/hyphae-extract",
     "crates/hyphae-model",
     "crates/hyphae-store",
@@ -21,6 +22,7 @@ publish = false
 hyphae-model = { path = "crates/hyphae-model" }
 hyphae-analyze = { path = "crates/hyphae-analyze" }
 hyphae-extract = { path = "crates/hyphae-extract" }
+hyphae-export = { path = "crates/hyphae-export" }
 hyphae-enrich = { path = "crates/hyphae-enrich" }
 hyphae-store = { path = "crates/hyphae-store" }
 hyphae-view = { path = "crates/hyphae-view" }
@@ -36,8 +38,19 @@ chrono = "0.4"
 thiserror = "2"
 # Scratch stores for tests: one directory per test, removed on drop.
 tempfile = "3"
-# Digests: a session's files, and the sources that decide what a cached test store holds.
+# Digests: a session's files, the sources that decide what a cached test store holds, and
+# the span ids OTLP export derives from the store's own composite keys.
 sha2 = "0.10"
+# The OTLP wire types, as prost messages. Default features pull tonic and a gRPC stack in;
+# this exporter speaks OTLP/HTTP, so it takes the generated messages alone. `trace` is not
+# optional — the collector service types are gated behind it — and it drags the
+# `opentelemetry` API and SDK crates in as compile-time transitives.
+opentelemetry-proto = { version = "0.32", default-features = false, features = [
+    "gen-tonic-messages",
+    "trace",
+] }
+# Encoding and decoding those messages. The version prost-derives them against.
+prost = "0.14"
 # Transcript records, read as the dicts they are. `preserve_order` keeps a tool input's keys
 # in the recorded order, which is what `json.dumps` writes and what the store row must match.
 # The query-string knobs a node-page URL carries; axum's `Query` extractor deserializes them.
