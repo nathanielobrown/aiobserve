@@ -28,6 +28,8 @@ pub mod marks;
 pub mod metadata;
 /// Building the level the store says a NavTree should hold, and reading the one it drew.
 pub mod nav_trees;
+/// What an enrichment pass is driven with, and how a leaf reads back what it wrote.
+pub mod passes;
 /// The enrichment rows a partial pass would have left behind.
 pub mod planting;
 /// One NavTree row's popover, fetched and read back beside the numbers the store holds.

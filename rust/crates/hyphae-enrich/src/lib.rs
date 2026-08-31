@@ -8,6 +8,7 @@
 
 pub mod client;
 pub mod cost;
+pub mod enricher;
 pub mod items;
 pub mod prompts;
 /// The `EnrichmentStore` reads, in their own file: `store` is over the length budget with
@@ -23,6 +24,7 @@ pub mod validation;
 pub use client::{
     Answer, BatchClient, CliClient, EnrichRequest, Interrupt, RoundError, build_env, preflight,
 };
+pub use enricher::{EnrichReport, PassError, PlannedItem, ROUND_ORDER, enrich, plan};
 pub use items::{
     AgentRunItem, ApiCallRow, Item, RunSection, SessionChild, SessionItem, ToolCallRow, TurnItem,
     level_of,

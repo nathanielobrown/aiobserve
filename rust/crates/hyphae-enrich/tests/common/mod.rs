@@ -12,9 +12,11 @@
 // Each binary uses part of this, and cargo compiles it into both.
 #![allow(dead_code)]
 
+use std::collections::BTreeMap;
+
 use duckdb::params;
 use hyphae_enrich::{
-    AgentRunItem, Enrichment, EnrichmentStore, Item, SessionItem, Stamp, TurnItem,
+    AgentRunItem, Enrichment, EnrichmentStore, Item, Level, SessionItem, Stamp, TurnItem,
 };
 use hyphae_testsupport::{cache, metadata};
 use tempfile::TempDir;
@@ -214,4 +216,55 @@ pub fn describe(store: &EnrichmentStore, item: &dyn Item, description: &str) {
     store
         .upsert(item, &said, &stamp("unused"))
         .expect("the description writes");
+}
+
+/// The item ids one level's enrichment rows carry, in key order.
+pub fn stored_ids(store: &EnrichmentStore, level: Level) -> Vec<String> {
+    let last = *level.keys().last().expect("a level has a key column");
+    column(
+        store,
+        &format!("SELECT {last} FROM {} ORDER BY 1", level.table()),
+    )
+    .into_iter()
+    .map(|held| held.expect("a key column is never null"))
+    .collect()
+}
+
+/// Every enrichment row of every level: the item's own id against what it says.
+///
+/// Keyed by the id alone — one map across three tables, which is what a cascade moves through.
+pub fn described(store: &EnrichmentStore) -> BTreeMap<String, String> {
+    read_pairs(store, "description")
+}
+
+/// The same, against the input hash each row was written under.
+pub fn hashes(store: &EnrichmentStore) -> BTreeMap<String, String> {
+    read_pairs(store, "input_hash")
+}
+
+/// The same, against the moment each row was written — what a rewrite moves and a skip does not.
+pub fn written_at(store: &EnrichmentStore) -> BTreeMap<String, String> {
+    read_pairs(store, "CAST(enriched_at AS VARCHAR)")
+}
+
+fn read_pairs(store: &EnrichmentStore, said: &str) -> BTreeMap<String, String> {
+    let selects: Vec<String> = Level::ALL
+        .iter()
+        .map(|level| {
+            let last = *level.keys().last().expect("a level has a key column");
+            format!("SELECT {last} AS id, {said} AS said FROM {}", level.table())
+        })
+        .collect();
+    store
+        .store()
+        .fetch(&selects.join(" UNION ALL "), &[])
+        .expect("the rows read")
+        .iter()
+        .map(|row| {
+            (
+                row.str("id").expect("an id reads").to_owned(),
+                row.str("said").expect("a value reads").to_owned(),
+            )
+        })
+        .collect()
 }
