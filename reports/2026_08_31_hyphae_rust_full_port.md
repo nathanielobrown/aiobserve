@@ -1,8 +1,8 @@
 # 2026-08-31 — hyphae: the Rust port, finished and priced
 
-The port is done. Everything `reports/2026_08_30_hyphae_rust_prototype.md` left in Python — enrichment writing, OTLP export, `hp view --dev`, the analysis library, the store's read side — is now in Rust, and every one of the Python tier's 2,027 test ids has a disposition. This report carries three things the prototype could not: what each suite costs when you run it, where each Python test went, and what the port found in production code that both languages share. The design and its four as-built amendments are `plans/rust-prototype/full-port.md`; this report does not restate them.
+The port is done. Everything `reports/2026_08_30_hyphae_rust_prototype.md` left in Python — enrichment writing, OTLP export, `hp view --dev`, the analysis library, the store's read side — is now in Rust, and every one of the Python tier's 2,027 test ids has a disposition. This report carries three things the prototype could not: what each suite costs when you run it, where each Python test went, and what the port found in production code that both languages share. The design and its as-built amendments are `plans/rust-prototype/full-port.md`; this report does not restate them.
 
-The price, since it is the question the prototype deferred: ten agent slices over two calendar days, 108 commits (`git log --oneline 4cf891f..HEAD`, the prototype report's commit to the branch head). That is the conversion of the whole tier, not the prototype.
+The price, since it is the question the prototype deferred: ten agent slices over two calendar days. The branch carries 114 commits (`git log --oneline 4cf891f..HEAD`, the prototype report's commit to the branch head): the ten slices, plus the fixes a pre-push audit called for. That is the conversion of the whole tier, not the prototype.
 
 Every number below was measured on one machine — Apple M5 Max, 18 cores, 128 GB, macOS — against this repository's fixture corpus, warm, with nothing else of mine running. Each is the median of three runs. This measures two suites on this hardware, not two languages.
 
@@ -88,6 +88,6 @@ That last entry is half a leaf — its `--dev`/port/store half is ported — whi
 
 ## The verdict: the conversion is done, and the remaining question is ownership
 
-The prototype showed the port was achievable; this pass shows it is complete and what it cost. Ten agent slices converted the tier, the Rust suite gates in 116 s against the Python tier's 200 s, and 90% of the Python ids have a Rust counterpart named — the rest are repo furniture no port would move, plus seventeen deferrals that each name the thing they'd need.
+The prototype showed the port was achievable; this pass shows it is complete and what it cost. Ten agent slices converted the tier, the Rust suite gates in 116 s against the Python tier's 200 s, and 89.3% of the Python ids have a Rust counterpart named (88.6% under the per-leaf rule nobody has ruled on) — the rest are repo furniture no port would move, plus seventeen deferrals that each name the thing they'd need.
 
 What this pass does not settle is who owns the schema. Both tiers still run, and five cross-language leaves are what keeps them honest; retiring the Python tier would flip registry ownership and take every one of those oracles with it. Until someone decides that, the two-tier arrangement is the product, and its price is the 200 s Python wall in CI plus the Python environment two Rust leaves need.
