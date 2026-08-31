@@ -50,6 +50,28 @@ pub const INDENT_CHARS: usize = 20_000;
 /// ceiling is marked up even where its bytes run past it, which is deliberate.
 pub const HIGHLIGHT_CHARS: usize = 256_000;
 
+/// What one row of the NavTree may weigh, whole: its markup, a title of [`queries::NAV_CHARS`]
+/// characters that each escape to five bytes, and the knobs every link repeats.
+///
+/// The NavTree is what multiplies — `1 + DEPTH * (KIN + 1)` rows spend this 3,217 times, four
+/// fifths of the ceiling — so it is a price to defend rather than a knob to turn: a row that grows
+/// past it is a page over the bound, and the answer is a slimmer row.
+///
+/// Measured through the app rather than budgeted, at every title full of `&` and the longest query
+/// string a link can carry (`hyphae-view/tests/bounds_node.rs`). Pinned at exactly what it
+/// measures, with no slack, for the same reason: a byte of slack here is 3,217 bytes of page. That
+/// leaf holds it from below as well as from above, so slack cannot hide in the room the node
+/// page's ceiling keeps for this row's next addition.
+///
+/// Most of the row is its URL, written three times: the href a reader sees, the `hx-get` htmx
+/// fetches, and the popover's own path under a prefix. The click's swap is written once on
+/// `#nav-tree-rows` and inherited; the popover's cannot be, because a swap written on the row
+/// would be inherited by the link inside it — so its five attributes are spelled out on every row.
+/// The rest is the title, the mark saying what kind of node the row is, the spend beside it, and
+/// the three classes the context bar is drawn from. A store whose agent runs carry longer ids than
+/// the recorded corpus does is a re-measure.
+pub const NAV_TREE_ROW_BYTES: usize = 1703;
+
 /// The turn rows a page renders that no cursor reaches.
 ///
 /// `session_timeline` gives one — the calls that answer no turn are a single group — and the

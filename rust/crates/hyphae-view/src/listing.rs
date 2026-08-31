@@ -174,7 +174,11 @@ pub const ARIA_SORT: [(&str, &str); 2] = [("asc", "ascending"), ("desc", "descen
 ///
 /// Each cut takes one character more than the row prints, which is how the component knows a value
 /// was stopped rather than ended and marks it (`format::cut`).
-const SHOWN: &str = "SELECT * EXCLUDE (pr_urls) REPLACE (
+///
+/// Public because the arithmetic that prices one row of the list counts its cuts off this text
+/// rather than listing them, so a column added here lands in the budget
+/// (`hyphae-testsupport/src/budgets.rs`).
+pub const SHOWN: &str = "SELECT * EXCLUDE (pr_urls) REPLACE (
     substr(title, 1, $head_chars + 1) AS title,
     substr(project_dir, 1, $head_chars + 1) AS project_dir,
     list_transform(list_slice(coalesce(skills, []), 1, $head_items),

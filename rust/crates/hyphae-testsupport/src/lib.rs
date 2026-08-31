@@ -9,7 +9,7 @@
 //! It replaces the three copies of `tests/common/mod.rs` that drifted apart between the
 //! extract, store and view crates.
 
-/// What a page the viewer serves may weigh.
+/// What every page, row and mark of the viewer was measured at, and the arithmetic over it.
 pub mod budgets;
 pub mod cache;
 pub mod corpus;
