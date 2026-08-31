@@ -16,3 +16,8 @@ thiserror.workspace = true
 
 [dev-dependencies]
 hyphae-testsupport.workspace = true
+# The enrichment tables, so the sweep knows which queries need a store a pass has written to.
+hyphae-enrich.workspace = true
+# The same expressions `tests/analyze/test_queries.py` scans the SQL with, so the two rules
+# read the library the same way.
+regex.workspace = true

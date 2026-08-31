@@ -1151,10 +1151,12 @@ name = "hyphae-analyze"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "hyphae-enrich",
  "hyphae-extract",
  "hyphae-store",
  "hyphae-testsupport",
  "indexmap",
+ "regex",
  "thiserror",
 ]
 
