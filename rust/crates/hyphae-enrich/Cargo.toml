@@ -13,6 +13,11 @@ hyphae-extract.workspace = true
 chrono.workspace = true
 duckdb.workspace = true
 thiserror.workspace = true
+# The credential shapes a description is screened against, and the prompt material the
+# generation bridge carries as JSON.
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 hyphae-testsupport.workspace = true

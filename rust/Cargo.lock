@@ -1172,6 +1172,9 @@ dependencies = [
  "hyphae-extract",
  "hyphae-store",
  "hyphae-testsupport",
+ "regex",
+ "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
 ]

@@ -5,10 +5,11 @@
 //! write them out as data, and the Python tier gates the files against the modules
 //! (`plans/rust-prototype/full-port.md`).
 //!
-//! Dev-only for now, which is the honest statement of where the port stands: `hyphae-view`
-//! and `hyphae-store` still declare their own constants, and what this module buys is the
-//! leaf that reds when one of those hand copies stops matching Python. A page that *binds*
-//! from here rather than from a `const` is slice 4's to make.
+//! The bounds half is dev-only, which is the honest statement of where the port
+//! stands: `hyphae-view` and `hyphae-store` still declare their own constants, and what it
+//! buys is the leaf that reds when one of those hand copies stops matching Python. The
+//! enrichment half is not — `hyphae-enrich` renders prompts from it, so it lives there and is
+//! re-exported here for the drift leaves that were written against this module.
 
 use std::collections::BTreeMap;
 use std::sync::LazyLock;
@@ -18,8 +19,9 @@ use serde::Deserialize;
 /// The viewer's ceilings, knob defaults and query widths, as generated.
 pub const BOUNDS_JSON: &str = include_str!("../../../metadata/bounds.json");
 
-/// The enrichment stamps and the two closed vocabularies, as generated.
-pub const ENRICHMENT_JSON: &str = include_str!("../../../metadata/enrichment.json");
+/// The enrichment half, read by the crate that renders prompts from it. Re-exported rather
+/// than parsed a second time here: one file, one reader.
+pub use hyphae_enrich::taxonomy::{ENRICHMENT_JSON, LevelMeta, Metadata as Enrichment, enrichment};
 
 /// What a failing lookup tells the reader to run.
 const GEN_BOUNDS: &str = "uv run python -m tools.gen_bounds registry";
@@ -44,46 +46,10 @@ pub struct Bounds {
     pub widths: BTreeMap<String, i64>,
 }
 
-/// One enrichment level: where its rows live and what stamps them.
-#[derive(Debug, Deserialize)]
-pub struct LevelMeta {
-    /// The instructions and output schema its rows were written under.
-    pub prompt_version: i64,
-    /// The table a pass writes them to.
-    pub table: String,
-    /// The columns that key a row in that table.
-    pub keys: Vec<String>,
-    /// The view holding the items this level describes.
-    pub base: String,
-    /// The columns that key one of those items.
-    pub base_keys: Vec<String>,
-}
-
-/// What a reader of enrichment rows needs and cannot derive from the rows.
-#[derive(Debug, Deserialize)]
-pub struct Enrichment {
-    /// One entry per level, by the word its `level` column carries.
-    pub levels: BTreeMap<String, LevelMeta>,
-    /// The version of the two vocabularies below, bumped when either changes.
-    pub taxonomy_version: i64,
-    /// What kind of work it was.
-    pub categories: Vec<String>,
-    /// How it ended.
-    pub outcomes: Vec<String>,
-}
-
 /// The bounds registry, parsed once per process.
 pub fn bounds() -> &'static Bounds {
     static PARSED: LazyLock<Bounds> =
         LazyLock::new(|| serde_json::from_str(BOUNDS_JSON).expect("the bounds registry parses"));
-    &PARSED
-}
-
-/// The enrichment metadata, parsed once per process.
-pub fn enrichment() -> &'static Enrichment {
-    static PARSED: LazyLock<Enrichment> = LazyLock::new(|| {
-        serde_json::from_str(ENRICHMENT_JSON).expect("the enrichment metadata parses")
-    });
     &PARSED
 }
 

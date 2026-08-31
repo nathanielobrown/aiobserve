@@ -15,6 +15,7 @@ use hyphae_store::{Param, Row, Store, StoreError};
 
 use crate::items::Item;
 use crate::schema::{self, Level};
+use crate::validation::Enrichment;
 
 /// The `source` every main transcript's rows carry (`hyphae_model::MAIN_SOURCE`).
 pub(crate) const MAIN: &str = "main";
@@ -57,19 +58,6 @@ pub enum EnrichError {
     DuckDb(#[from] duckdb::Error),
     #[error(transparent)]
     Row(#[from] hyphae_store::RowError),
-}
-
-/// One accepted model answer about one item.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Enrichment {
-    /// One or two sentences saying what the item did.
-    pub description: String,
-    /// A member of the closed vocabulary in `enrich/taxonomy.py`, which the generation bridge
-    /// carries across as data rather than as a second Rust enum.
-    pub category: String,
-    pub outcome: String,
-    /// One line naming visible struggle. None when the records show none, the common case.
-    pub friction: Option<String>,
 }
 
 /// What a row was written under. A row is current when its stamp equals today's.
