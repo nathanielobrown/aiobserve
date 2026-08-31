@@ -269,8 +269,9 @@ fn a_request_that_leaves_this_machine_is_refused() {
 #[test]
 fn a_live_send_is_accepted() {
     // This is the only leaf that can touch auth and dataset routing at all, and it never runs
-    // green in CI. It returns unless a backend is named and its key is set, rather than
-    // faking the one thing no receiver we wrote can prove.
+    // green in CI. It returns when no backend is named, rather than faking the one thing no
+    // receiver we wrote can prove — nextest has no runtime skip, so an unset gate is a
+    // return.
     let name = std::env::var(LIVE_ENV)
         .unwrap_or_default()
         .trim()
@@ -278,10 +279,13 @@ fn a_live_send_is_accepted() {
     if name.is_empty() {
         return;
     }
+    // Past the gate the leaf is loud. A named backend that will not build is a misconfigured
+    // run, and the whole point of opening the gate was to send: swallowing the `Err` here
+    // would hand back the same green as a live send that the backend confirmed.
     let environment: HashMap<String, String> = std::env::vars().collect();
-    let Ok(backend) = named_backend(&name, &environment) else {
-        return;
-    };
+    let backend = named_backend(&name, &environment).unwrap_or_else(|error| {
+        panic!("{LIVE_ENV} names `{name}`, which this run cannot build: {error}")
+    });
     let (_scratch, store) = shipping_store();
     let clock = hyphae_export::delivery::SystemClock::new();
     // Any refusal — a status, or a nonzero `partial_success` — comes back out of `export()`,
