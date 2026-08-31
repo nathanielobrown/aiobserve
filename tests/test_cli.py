@@ -6,6 +6,8 @@ whole — a flag renamed, a default moved, or a subcommand wired to the wrong ha
 """
 
 import datetime as dt
+import time
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -22,13 +24,42 @@ from tests.test_sessions import make_projects_root
 
 PROJECT = Path("repos/mycelia")
 
+# The two zones furthest apart on the planet: UTC+14 and UTC-11, 25 hours from each other, so
+# their local dates never agree. That is what lets the zone leaf below force a disagreement at
+# any hour rather than waiting for the evenings when local time and UTC happen to differ.
+AHEAD_OF_UTC = "Pacific/Kiritimati"
+BEHIND_UTC = "Pacific/Midway"
+
+
+def _utc_today() -> dt.date:
+    """The store's own day, which is what `--as-of` defaults to — never the reader's local one."""
+    return dt.datetime.now(dt.UTC).date()
+
+
+@pytest.fixture
+def local_zone(monkeypatch: pytest.MonkeyPatch) -> Iterator[Callable[[str], None]]:
+    """Move the process's local zone for one test, and put the real one back afterwards.
+
+    `time.tzset` copies `TZ` into the C library, which monkeypatch's environment restore does
+    not reach on its own — so undo the variable first, then make the library re-read it.
+    """
+
+    def move(zone: str) -> None:
+        monkeypatch.setenv("TZ", zone)
+        time.tzset()
+
+    yield move
+    monkeypatch.undo()
+    time.tzset()
+
+
 # What each subcommand parses to when it is given nothing but the arguments it requires: the
 # whole namespace, so a flag added with no leaf here shows up as a failure rather than as an
 # untested one. A store subcommand takes `--project` as a filter over a corpus already
 # extracted; a discovery one takes it positionally, because it is the corpus. A default the
 # clock decides is the clock itself, read when the parser is built rather than when this
 # module was imported — a date pinned at import time is wrong for the run that straddles
-# midnight.
+# midnight. Which clock it reads is pinned separately below.
 SURFACES: dict[str, tuple[tuple[str, ...], dict[str, Any]]] = {
     "sessions": (
         (str(PROJECT),),
@@ -69,7 +100,7 @@ SURFACES: dict[str, tuple[tuple[str, ...], dict[str, Any]]] = {
             "db": DEFAULT_DB,
             "project": None,
             "since": None,
-            "as_of": dt.date.today,
+            "as_of": _utc_today,
             "param": [],
             "csv": False,
         },
@@ -93,6 +124,30 @@ def test_a_subcommand_parses_to_the_arguments_it_documents(name: str) -> None:
 def _read_clocks(expected: dict[str, Any]) -> dict[str, Any]:
     """The expected namespace with each clock-valued default read now."""
     return {key: value() if callable(value) else value for key, value in expected.items()}
+
+
+def test_the_as_of_default_does_not_move_with_the_reader(
+    local_zone: Callable[[str], None],
+) -> None:
+    """`--as-of` defaults to the same day wherever on the planet the reader's machine sits.
+
+    The window `$as_of` opens is measured in UTC: the runner sets the connection's zone there
+    so a corpus doesn't shift by a few hours with the reader (`analyze/runner.py`). A
+    local-date default in a zone behind UTC would put the window's upper bound — `$as_of`
+    plus a day, at UTC midnight — in the past, dropping the sessions just recorded.
+
+    The surface table above pins which day, but it reads the clock the same way twice, so on
+    its own it agrees with a local-date default every day the two spellings coincide. This
+    leaf forces them apart at any hour: the two zones sit 25 hours from each other, so their
+    local dates never agree, and a default reading the local clock cannot pass this line.
+    """
+    assert _parse_as_of(local_zone, AHEAD_OF_UTC) == _parse_as_of(local_zone, BEHIND_UTC)
+
+
+def _parse_as_of(local_zone: Callable[[str], None], zone: str) -> dt.date:
+    """What `hp query` defaults `--as-of` to with the machine sitting in `zone`."""
+    local_zone(zone)
+    return cli.build_parser().parse_args(["query", "agent_types"]).as_of
 
 
 def test_every_subcommand_the_parser_exposes_is_pinned_above() -> None:
