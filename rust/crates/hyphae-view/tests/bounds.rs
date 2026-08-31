@@ -1,7 +1,8 @@
 //! What a URL may ask for, and what comes back when it asks for too much or for nothing.
 //!
-//! The contracts of `docs/viewer-bounds.md`: the children log's paging, the knobs a page carries
-//! back into its own links, and the cut a preview makes against the fetch that undoes it.
+//! The contracts of `docs/viewer-bounds.md`: the knobs a page carries back into its own links, and
+//! the numbers this crate declares held against the ones Python declares. The children log's own
+//! paging is `node_logs.rs`; what a page weighs is not yet ported.
 
 use hyphae_testsupport::metadata;
 use hyphae_testsupport::served::{self, Served};
@@ -9,75 +10,9 @@ use hyphae_testsupport::served::{self, Served};
 use std::collections::{BTreeMap, BTreeSet};
 
 use axum::http::StatusCode;
-use hyphae_store::Store;
 use hyphae_view::knobs;
 use hyphae_view::nodes::Preset;
 use serde_json::Value;
-
-/// Every child a children log listed on one page, by the key its row carries.
-fn children(page: &str) -> Vec<String> {
-    page.match_indices("data-child=\"")
-        .map(|(at, marker)| {
-            let rest = &page[at + marker.len()..];
-            rest[..rest.find('"').expect("an attribute closes")].to_owned()
-        })
-        .collect()
-}
-
-#[tokio::test]
-async fn every_page_of_a_level_lists_each_row_once_and_stops() {
-    // The children log's window is `store::window`: an offset page over the rows that have a
-    // cursor value. A cursor bug there loses rows silently rather than erroring, so the walk
-    // reads every page a row at a time and holds the union against the whole level.
-    let served = Served::corpus();
-    let (id, turns) = served::busiest_session(&served.db());
-    assert!(turns > 1, "the corpus has a level worth paging");
-    let (status, whole) = served.page(&format!("/session/{id}")).await;
-    assert_eq!(status, StatusCode::OK);
-    let level: BTreeSet<String> = children(&whole).into_iter().collect();
-    assert_eq!(level.len() as i64, turns, "the unpaged log lists the level");
-    let mut walked = Vec::new();
-    for page in 1.. {
-        let (status, markup) = served
-            .page(&format!("/session/{id}?log=1&page={page}"))
-            .await;
-        if status == StatusCode::NOT_FOUND {
-            break;
-        }
-        assert_eq!(status, StatusCode::OK, "page {page}");
-        assert!(page < 500, "the walk terminates");
-        walked.extend(children(&markup));
-    }
-    assert_eq!(walked.len() as i64, turns, "each row on exactly one page");
-    assert_eq!(walked.iter().cloned().collect::<BTreeSet<_>>(), level);
-}
-
-#[tokio::test]
-async fn a_row_with_no_cursor_is_on_the_page_and_outside_the_count() {
-    // A bucket stands for rows the transcript attached to nothing, so the paging query gives it
-    // no cursor value and `store::cursorless_rows` is what finds it. It has to reach the NavTree
-    // without joining the count the children log pages against.
-    let served = Served::corpus();
-    let (id, source) = bucketed(&served.db());
-    let (status, page) = served.page(&format!("/session/{id}")).await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(
-        page.contains(&format!("/session/{id}/thread/{source}/unattributed")),
-        "the bucket stands in the NavTree of /session/{id}",
-    );
-    // The log counts the turns it pages over; the bucket is not one of them.
-    let counted = children(&page).len();
-    let store = Store::open_read_only(&served.db()).expect("the store opens read only");
-    let rows = store
-        .fetch(
-            "SELECT count(*) AS turns FROM turns WHERE session_id = $session_id \
-             AND source = 'main'",
-            &[("session_id", id.as_str().into())],
-        )
-        .expect("the store answers");
-    let turns = rows[0].i64("turns").expect("a turn count");
-    assert_eq!(counted as i64, turns, "the bucket is outside the count");
-}
 
 #[tokio::test]
 async fn a_knob_a_page_was_asked_for_comes_back_in_the_links_it_mints() {
@@ -115,23 +50,6 @@ fn linked(page: &str, under: &str) -> Vec<String> {
             rest[..rest.find('"').expect("an attribute closes")].to_owned()
         })
         .collect()
-}
-
-/// The session with a thread whose calls answer no turn, and that thread.
-fn bucketed(db: &std::path::Path) -> (String, String) {
-    let store = Store::open_read_only(db).expect("the store opens read only");
-    let rows = store
-        .fetch(
-            "SELECT session_id, source FROM api_calls WHERE turn_id IS NULL \
-             AND source = 'main' ORDER BY 1, 2 LIMIT 1",
-            &[],
-        )
-        .expect("the store answers");
-    let row = rows.first().expect("the corpus holds an unattributed call");
-    (
-        row.str("session_id").expect("a session id").to_owned(),
-        row.str("source").expect("a thread").to_owned(),
-    )
 }
 
 /// Every ceiling and size this crate declares is the number `view/bounds.py` declares.

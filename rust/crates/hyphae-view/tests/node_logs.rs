@@ -4,7 +4,7 @@
 //! the head says which of how many. These leaves walk every shape of log through every page it
 //! has, and read the head back off the served table rather than off the column table behind it.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use axum::http::StatusCode;
 
@@ -487,4 +487,79 @@ async fn a_log_row_opens_the_body_from_a_button_that_says_so() {
     let log = &served_html[opens[0]..];
     let log = &log[..log.find("</section>").expect("the log closes")];
     assert!(!log.contains("<details"), "{url}");
+}
+
+#[tokio::test]
+async fn every_page_of_a_level_lists_each_row_once_and_stops() {
+    // The same walk as `a_children_log_pages_by_number_and_counts_the_whole_level`, at the size
+    // production serves rather than at one row a page, and over the deepest level the corpus
+    // records: what it holds that the leaf above does not is that no recorded level overflows the
+    // log's own page, and that the walk off the end of one stops.
+    //
+    // A cursor bug in `store::window` loses rows silently rather than erroring, so the walk reads
+    // every page a row at a time and holds the union against the whole level.
+    let served = Served::corpus();
+    let (id, turns) = served::busiest_session(&served.db());
+    assert!(turns > 1, "the corpus has a level worth paging");
+    let (status, whole) = served.page(&format!("/session/{id}")).await;
+    assert_eq!(status, StatusCode::OK);
+    let level: BTreeSet<String> = Markup::of(&whole)
+        .values("data-child")
+        .into_iter()
+        .collect();
+    assert_eq!(level.len() as i64, turns, "the unpaged log lists the level");
+    let mut walked = Vec::new();
+    for page in 1.. {
+        let (status, markup) = served
+            .page(&format!("/session/{id}?log=1&page={page}"))
+            .await;
+        if status == StatusCode::NOT_FOUND {
+            break;
+        }
+        assert_eq!(status, StatusCode::OK, "page {page}");
+        assert!(page < 500, "the walk terminates");
+        walked.extend(Markup::of(&markup).values("data-child"));
+    }
+    assert_eq!(walked.len() as i64, turns, "each row on exactly one page");
+    assert_eq!(walked.iter().cloned().collect::<BTreeSet<_>>(), level);
+}
+
+#[tokio::test]
+async fn a_row_with_no_cursor_is_on_the_page_and_outside_the_count() {
+    // The other bucket, and the other half of what a bucket owes: `the_bucket_that_pages_in_memory`
+    // walks the unattached runs, and this reads the unattributed calls — rows the paging query
+    // gives no cursor value, which `store::cursorless_rows` is what finds. One has to reach the
+    // NavTree without joining the count the children log pages against.
+    let served = Served::corpus();
+    let (id, source) = unattributed(&served.db());
+    let (status, page) = served.page(&format!("/session/{id}")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        page.contains(&format!("/session/{id}/thread/{source}/unattributed")),
+        "the bucket stands in the NavTree of /session/{id}",
+    );
+    // The log counts the turns it pages over; the bucket is not one of them.
+    let counted = Markup::of(&page).values("data-child").len();
+    let turns = rows::one(
+        &served.db(),
+        "SELECT count(*) AS turns FROM turns WHERE session_id = $session AND source = 'main'",
+        &[("session", id.as_str().into())],
+    )
+    .i64("turns")
+    .expect("a turn count");
+    assert_eq!(counted as i64, turns, "the bucket is outside the count");
+}
+
+/// The session with a thread whose calls answer no turn, and that thread.
+fn unattributed(db: &std::path::Path) -> (String, String) {
+    let row = rows::one(
+        db,
+        "SELECT session_id, source FROM api_calls WHERE turn_id IS NULL \
+         AND source = 'main' ORDER BY 1, 2 LIMIT 1",
+        &[],
+    );
+    (
+        row.str("session_id").expect("a session id").to_owned(),
+        row.str("source").expect("a thread").to_owned(),
+    )
 }
