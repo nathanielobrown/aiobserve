@@ -171,7 +171,7 @@ pub const DEAR_PANE_DETAILS: usize = 3;
 /// failed tool call the step to the failure before it and the one after. Up to five of its strings
 /// are tree titles, so it moves with [`queries::NAV_CHARS`]. Pinned at what it measured:
 /// [`EXACT_PIN`] is what re-pins it.
-pub const MEASURED_NODE_CHROME: usize = 17_750;
+pub const MEASURED_NODE_CHROME: usize = 17_748;
 
 /// The parameter a string's head is cut to in the list's own composition.
 pub const LIST_HEAD: &str = "$head_chars";
