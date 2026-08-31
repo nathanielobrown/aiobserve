@@ -113,22 +113,31 @@ pub fn context_window_text() -> String {
     written
 }
 
-/// Every macro a shipped query may call, in dependency order — `tool_path` and `tool_fields`
-/// are written in terms of the ones above them. Installed as a set rather than per query:
-/// which macros a file needs is the file's business, and a connection holding some of them is
-/// a connection where a query fails on the ones it does not.
-fn definitions() -> &'static [String] {
-    static DEFINITIONS: LazyLock<Vec<String>> = LazyLock::new(|| {
-        vec![
-            SIGNATURE_LINE.to_owned(),
-            REBUILT_CONTEXT.to_owned(),
-            CONTEXT_FILL.to_owned(),
-            CONTEXT_ADDED.to_owned(),
-            context_window_text(),
-            TOOL_ASKED.to_owned(),
-            TOOL_PATH.to_owned(),
-            TOOL_FIELDS.to_owned(),
-        ]
+/// The macros a query may wrap a fat column in and still be bounded: each cuts what it reads
+/// to the width its caller passes. Public because the viewer's payload bound is held by a scan
+/// of query text (`hyphae-view/tests/bounds_queries.rs`), and a scan cannot see through a macro
+/// call — so it trusts these names, and a leaf there re-scans each body to earn that trust.
+pub const BOUNDING: [(&str, &str); 3] = [
+    ("tool_asked", TOOL_ASKED),
+    ("tool_path", TOOL_PATH),
+    ("tool_fields", TOOL_FIELDS),
+];
+
+/// Every macro a shipped query may call, by name, in dependency order — `tool_path` and
+/// `tool_fields` are written in terms of the ones above them. Installed as a set rather than
+/// per query: which macros a file needs is the file's business, and a connection holding some
+/// of them is a connection where a query fails on the ones it does not.
+fn definitions() -> &'static [(&'static str, String)] {
+    static DEFINITIONS: LazyLock<Vec<(&'static str, String)>> = LazyLock::new(|| {
+        let mut written = vec![
+            ("signature_line", SIGNATURE_LINE.to_owned()),
+            ("rebuilt_context", REBUILT_CONTEXT.to_owned()),
+            ("context_fill", CONTEXT_FILL.to_owned()),
+            ("context_added", CONTEXT_ADDED.to_owned()),
+            ("context_window", context_window_text()),
+        ];
+        written.extend(BOUNDING.map(|(name, body)| (name, body.to_owned())));
+        written
     });
     &DEFINITIONS
 }
@@ -139,7 +148,7 @@ fn definitions() -> &'static [String] {
 pub fn setup() -> String {
     let script = definitions()
         .iter()
-        .map(|definition| definition.trim())
+        .map(|(_, definition)| definition.trim())
         .collect::<Vec<_>>()
         .join(";\n");
     format!("{script};")
@@ -150,28 +159,18 @@ pub fn setup() -> String {
 /// Named by hand rather than parsed: a statement mentioning one of these in a comment gets
 /// the definitions too, which costs a reader nothing and is the safe way to be wrong.
 pub fn needed_by(sql: &str) -> String {
-    let called = NAMES.iter().any(|name| sql.contains(&format!("{name}(")));
+    let called = definitions()
+        .iter()
+        .any(|(name, _)| sql.contains(&format!("{name}(")));
     if called { setup() } else { String::new() }
 }
-
-/// What each definition above declares, for [`needed_by`] to scan for.
-const NAMES: &[&str] = &[
-    "signature_line",
-    "rebuilt_context",
-    "context_fill",
-    "context_added",
-    "context_window",
-    "tool_asked",
-    "tool_path",
-    "tool_fields",
-];
 
 /// Create the library's macros on `connection`, before any query file runs against it.
 ///
 /// Temp macros, so this works on a read-only connection: what it creates lives in the
 /// session's own catalog rather than in the store.
 pub fn install(connection: &Connection) -> duckdb::Result<()> {
-    for definition in definitions() {
+    for (_, definition) in definitions() {
         connection.execute_batch(definition)?;
     }
     Ok(())

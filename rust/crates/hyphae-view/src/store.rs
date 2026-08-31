@@ -78,6 +78,33 @@ pub enum Page {
     Offload,
 }
 
+impl Page {
+    /// Every one of them, so a sweep over the pages is a sweep over the whole set.
+    pub const ALL: [Self; 21] = [
+        Self::Sessions,
+        Self::ProjectRollups,
+        Self::Projects,
+        Self::SessionHeader,
+        Self::SessionErrors,
+        Self::RunHeader,
+        Self::TurnHeader,
+        Self::CallHeader,
+        Self::ToolHeader,
+        Self::NavTreeTurns,
+        Self::NavTreeCalls,
+        Self::NavTreeTools,
+        Self::Timeline,
+        Self::RunTimeline,
+        Self::Runs,
+        Self::Compactions,
+        Self::Enrichment,
+        Self::DescribedSessions,
+        Self::Records,
+        Self::TurnRecords,
+        Self::Offload,
+    ];
+}
+
 impl Query for Page {
     fn stem(self) -> &'static str {
         match self {
@@ -118,6 +145,17 @@ pub enum Fragment {
     Numbers,
     ToolNumbers,
     CompactionNumbers,
+}
+
+impl Fragment {
+    /// Every one of them, so a sweep over the fragments is a sweep over the whole set.
+    pub const ALL: [Self; 5] = [
+        Self::TurnCalls,
+        Self::CallTools,
+        Self::Numbers,
+        Self::ToolNumbers,
+        Self::CompactionNumbers,
+    ];
 }
 
 impl Query for Fragment {
@@ -164,6 +202,26 @@ pub enum Whole {
     TurnSaid,
     RunSaid,
     SessionSaid,
+}
+
+impl Whole {
+    /// Every one of them: the declared exceptions to the page bound, in one list.
+    pub const ALL: [Self; 14] = [
+        Self::CallText,
+        Self::CallThinking,
+        Self::ToolInput,
+        Self::ToolResult,
+        Self::ToolCommand,
+        Self::Record,
+        Self::TurnPrompt,
+        Self::TurnCommandArgs,
+        Self::RunBrief,
+        Self::RunPrompt,
+        Self::RunResult,
+        Self::TurnSaid,
+        Self::RunSaid,
+        Self::SessionSaid,
+    ];
 }
 
 impl Query for Whole {
