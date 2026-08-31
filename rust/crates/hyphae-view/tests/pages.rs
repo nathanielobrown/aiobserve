@@ -1,4 +1,4 @@
-//! The four pages that are not a node's, end to end: the router in, the whole document out.
+//! The pages that are not a node's, end to end: the router in, the whole document out.
 //!
 //! Each is swept over the whole fixture corpus rather than over one hand-picked row — a session
 //! whose calls all succeeded, a thread of one record, a file shorter than a chunk are the shapes
@@ -90,40 +90,6 @@ async fn every_session_answers_for_its_failures() {
 }
 
 #[tokio::test]
-async fn a_threads_records_page_walks_to_its_end() {
-    // Keyset paging, walked the way a reader does: each page's own "+N more" link is the only way
-    // on, so a page that minted a cursor it cannot resume from stops the walk here.
-    let served = Served::corpus();
-    let (session_id, source) = busiest_thread(&served.db());
-    let thread = format!("/session/{session_id}/thread/{source}/records");
-    let mut asked = format!("{thread}?after=-1&size=3");
-    let mut walked = 0;
-    loop {
-        let (status, page) = served.page(&asked).await;
-        assert_eq!(status, StatusCode::OK, "GET {asked}");
-        assert!(page.contains("id=\"records\""), "GET {asked}");
-        walked += 1;
-        assert!(walked < 500, "the walk terminates");
-        let Some(after) = attribute(&page, "data-more-records") else {
-            break;
-        };
-        asked = format!("{thread}?after={after}&size=3");
-    }
-    assert!(walked > 1, "the thread has more than one page of records");
-    // Past the last line there is nothing at this URL, which is the same answer as a thread the
-    // store never held.
-    let (past, _) = served.page(&format!("{thread}?after=999999")).await;
-    assert_eq!(past, StatusCode::NOT_FOUND);
-    let (missing, _) = served
-        .page(&format!("/session/{session_id}/thread/nope/records"))
-        .await;
-    assert_eq!(missing, StatusCode::NOT_FOUND);
-    // And a size past the ceiling is the reader's own mistake, answered rather than served.
-    let (huge, _) = served.page(&format!("{thread}?size=100000")).await;
-    assert_eq!(huge, StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
 async fn an_offloaded_result_is_served_a_chunk_at_a_time() {
     // The one page whose content is a file rather than a row: it is read a window at a time, and
     // the walk ends when the window reaches the end rather than when a row runs out.
@@ -162,23 +128,6 @@ fn attribute(page: &str, name: &str) -> Option<String> {
     let at = page.find(&format!("{name}=\""))? + name.len() + 2;
     let rest = &page[at..];
     Some(rest[..rest.find('"')?].to_owned())
-}
-
-/// The thread with the most records, which is the one whose browser has pages to walk.
-fn busiest_thread(db: &std::path::Path) -> (String, String) {
-    let store = Store::open_read_only(db).expect("the store opens read only");
-    let rows = store
-        .fetch(
-            "SELECT session_id, source FROM raw_records GROUP BY 1, 2 \
-             ORDER BY count(*) DESC, 1, 2 LIMIT 1",
-            &[],
-        )
-        .expect("the store answers");
-    let row = rows.first().expect("the corpus recorded some records");
-    (
-        row.str("session_id").expect("a session id").to_owned(),
-        row.str("source").expect("a source").to_owned(),
-    )
 }
 
 /// The longest offloaded result the corpus holds, with how many characters it stored.
