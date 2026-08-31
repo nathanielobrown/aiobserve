@@ -59,23 +59,34 @@ def table_ddl(ddl: str) -> str:
     )
 
 
-def declared_shape(ddl: str) -> dict[str, set[str]]:
-    """The tables a DDL creates and the columns of each, derived by running it.
+def declared_columns(ddl: str) -> dict[str, dict[str, str]]:
+    """The tables a DDL creates, each column of each, and the type DuckDB gave it.
 
     Against a scratch in-memory database, so the answer is DuckDB's rather than a second
-    copy of the schema kept by hand beside the first.
+    copy of the schema kept by hand beside the first. The types are what the Rust store's
+    cross-language leaf compares against, where a name-only answer would let one side widen
+    a column and stay green (`rust/crates/hyphae-store/tests/schema.rs`).
     """
     with duckdb.connect() as scratch:
         scratch.execute(table_ddl(ddl))
         rows = scratch.execute(
-            "SELECT c.table_name, c.column_name FROM information_schema.columns c "
+            "SELECT c.table_name, c.column_name, c.data_type FROM information_schema.columns c "
             "JOIN information_schema.tables t USING (table_catalog, table_schema, table_name) "
             "WHERE t.table_type = 'BASE TABLE'"
         ).fetchall()
-    shape: dict[str, set[str]] = {}
-    for table, column in rows:
-        shape.setdefault(table, set()).add(column)
-    return shape
+    declared: dict[str, dict[str, str]] = {}
+    for table, column, data_type in rows:
+        declared.setdefault(table, {})[column] = data_type
+    return declared
+
+
+def declared_shape(ddl: str) -> dict[str, set[str]]:
+    """The tables a DDL creates and the columns of each, without their types.
+
+    What the drift guard below compares: a store DuckDB already accepted rows into has the
+    types its own DDL gave it, so the drift a rename leaves is the only one to catch here.
+    """
+    return {table: set(columns) for table, columns in declared_columns(ddl).items()}
 
 
 def check_shape(connection: duckdb.DuckDBPyConnection, ddl: str) -> None:

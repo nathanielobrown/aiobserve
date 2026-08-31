@@ -22,6 +22,7 @@ from hyphae.export.schema import (
     SCHEMA_VERSION,
     SchemaShapeError,
     check_shape,
+    declared_columns,
     declared_shape,
     table_ddl,
 )
@@ -91,6 +92,17 @@ def test_a_declared_shape_holds_every_table_a_ddl_creates_and_none_of_its_views(
     # ...and leaves out the view the same DDL creates: a view is replaced at every open, so
     # a store cannot hold a stale one.
     assert "first_seen" not in shape
+
+    # The shape drops the types `declared_columns` carries under the same table keys. Those
+    # types are what the Rust store's cross-language leaf compares against — names alone let
+    # one side widen a column and stay green — so DuckDB's own spelling of each is pinned
+    # here, on the side that owns the DDL.
+    declared = declared_columns(TRACE_SCHEMA)
+    assert declared.keys() == shape.keys()
+    assert {table: set(columns) for table, columns in declared.items()} == shape
+    assert declared["agent_runs"]["brief"] == "VARCHAR"
+    assert declared["agent_runs"]["spawn_depth"] == "INTEGER"
+    assert declared["sessions"]["started_at"] == "TIMESTAMP WITH TIME ZONE"
 
 
 def test_a_renamed_trace_column_is_refused_with_the_table_and_column_named(db: Path) -> None:

@@ -64,7 +64,7 @@ Five cross-language mechanisms are permanent, not scaffolding:
 
 - **The enriched-store parity leaf** — `hyphae-enrich/tests/parity.rs` shells into `tests.conftest.build_enriched_store` and diffs all three enrichment tables by primary key, every column but the clock, with a vacuous-pass guard
 - **The `hp query` parity leaf** — `hp/tests/parity.rs` drives `hyphae.cli.main` in process and diffs both streams per query at production defaults. Neither leaf ever prints a stored value: a mismatch names the query, the row and the column and stops, because the corpus is recorded sessions
-- **The DDL-digest leaf** — `the_tables_a_store_creates_are_the_ones_python_declares` shells out to Python's `declared_shape` and compares table by table, so a DDL edit stays a versioned decision on both sides
+- **The DDL-digest leaf** — `the_tables_a_store_creates_are_the_ones_python_declares` shells out to Python's `declared_columns` and compares table by table, column name and type, so a DDL edit stays a versioned decision on both sides
 - **The generation bridge, gated on freshness** — Python owns the query manifest, the bounds registry and the enrichment stamps and vocabulary; three generators in `tools/` write committed JSON under `rust/metadata/` that Rust `include_str!`s, and a pytest leaf per generator regenerates into a temp directory and compares bytes
 - **The shared recorded envelopes** — both tiers read the same `tests/enrich/fixtures/*.json` (claude 2.1.221, captured 2026-08-13), so no Rust test invents a model response
 

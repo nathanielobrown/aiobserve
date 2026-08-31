@@ -8,6 +8,10 @@
 //! makes any edit a deliberate, versioned decision on that side. A second digest here would
 //! pin Rust to itself and go green through a one-sided Python edit, so the comparison is
 //! against Python's shape instead: whichever side moves, this reds.
+//!
+//! Shape is name *and* type. Names alone leave a column one side widened — `INTEGER` here
+//! against `BIGINT` there — green, and that divergence is silent until the value that needs
+//! the wider column reaches the narrower side.
 
 use std::collections::BTreeMap;
 
@@ -17,14 +21,14 @@ use tempfile::TempDir;
 
 /// What Python's trace DDL declares, derived by running it against a scratch database.
 ///
-/// Shelling out rather than keeping a copy here: `declared_shape` already answers this, and
-/// a copy is the drift the leaf exists to catch.
+/// Shelling out rather than keeping a copy here: `declared_columns` already answers this, and
+/// a copy is the drift the leaf exists to catch. Each line is `table: name type, name type`.
 fn python_shape() -> BTreeMap<String, Vec<String>> {
     let script = "import sys; sys.path.insert(0, sys.argv[1]); \
                   from hyphae.export.duckdb import _SCHEMA; \
-                  from hyphae.export.schema import declared_shape; \
-                  print('\\n'.join(f'{t}: {\",\".join(sorted(c))}' \
-                        for t, c in sorted(declared_shape(_SCHEMA).items())))";
+                  from hyphae.export.schema import declared_columns; \
+                  print('\\n'.join(f'{t}: {\", \".join(f\"{n} {d}\" for n, d in sorted(c.items()))}' \
+                        for t, c in sorted(declared_columns(_SCHEMA).items())))";
     let repo = corpus::repo();
     #[expect(
         clippy::disallowed_methods,
@@ -47,7 +51,7 @@ fn python_shape() -> BTreeMap<String, Vec<String>> {
             let (table, columns) = line.split_once(": ").expect("a table and its columns");
             (
                 table.to_owned(),
-                columns.split(',').map(str::to_owned).collect(),
+                columns.split(", ").map(str::to_owned).collect(),
             )
         })
         .collect()
@@ -63,23 +67,25 @@ fn python() -> std::path::PathBuf {
     }
 }
 
-/// The tables a Rust store holds and the columns of each, as DuckDB reports them.
+/// The tables a Rust store holds, and each column of each with its type, as DuckDB reports.
 fn rust_shape(store: &Store) -> BTreeMap<String, Vec<String>> {
     let mut shape: BTreeMap<String, Vec<String>> = BTreeMap::new();
     // `duckdb_tables()` lists tables only, which is what leaves the views out below.
     for row in store
         .fetch(
-            "SELECT table_name, column_name FROM information_schema.columns \
+            "SELECT table_name, column_name, data_type FROM information_schema.columns \
              WHERE table_name IN (SELECT table_name FROM duckdb_tables()) \
              ORDER BY table_name, column_name",
             &[],
         )
         .expect("the store reports its own columns")
     {
+        let column = row.str("column_name").expect("a name");
+        let data_type = row.str("data_type").expect("a type");
         shape
             .entry(row.str("table_name").expect("a name").to_owned())
             .or_default()
-            .push(row.str("column_name").expect("a name").to_owned());
+            .push(format!("{column} {data_type}"));
     }
     shape
 }
@@ -126,7 +132,11 @@ fn a_view_is_no_part_of_the_declared_shape() {
 
     // If a store is created, then the tables are in the shape...
     assert!(shape.contains_key("agent_runs"), "a table is in the shape");
-    assert!(shape["agent_runs"].contains(&"brief".to_owned()));
+    assert!(
+        shape["agent_runs"]
+            .iter()
+            .any(|held| held.starts_with("brief "))
+    );
     // ...and every view the same DDL built is out of it, though the store does hold them.
     for view in ["first_seen", "live_api_calls", "session_rollups"] {
         assert!(!shape.contains_key(view), "{view} is a view, not a table");
