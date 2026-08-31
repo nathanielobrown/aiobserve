@@ -1,0 +1,26 @@
+[package]
+name = "hyphae-export"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+hyphae-model.workspace = true
+# The ledger lives in the trace store, beside the fingerprints it compares against; the
+# sessions a run ships are read back out of the same connection.
+hyphae-store.workspace = true
+hyphae-extract.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+sha2.workspace = true
+opentelemetry-proto.workspace = true
+prost.workspace = true
+reqwest.workspace = true
+flate2.workspace = true
+duckdb.workspace = true
+
+[dev-dependencies]
+hyphae-testsupport.workspace = true
+# A writable copy of the cached delivery store, deleted with the leaf that took it.
+tempfile.workspace = true
+sha2.workspace = true

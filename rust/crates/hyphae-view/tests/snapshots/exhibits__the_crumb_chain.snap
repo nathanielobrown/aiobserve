@@ -1,0 +1,5 @@
+---
+source: crates/hyphae-view/tests/exhibits.rs
+expression: "crumbs.replace(&shown, \"[project]\")"
+---
+<nav class="crumbs" data-crumbs="turn" aria-label="Where this node sits"><a data-crumb-head="home" href="/sessions"><span class="icon" aria-hidden="true">🏠</span></a> <a data-crumb-head="project" href="/sessions?sort=started_at&amp;direction=desc&amp;project=%2FUsers%2Fnob%2Frepos%2Fmycelia">[project]</a> <a data-crumb="session:4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b" href="/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"><span class="icon" aria-hidden="true">❖</span> <span data-field="session">fixture-title-2</span></a> <a data-crumb="turn:30aad8e5-21f8-486d-b9d9-e118c703a5a1" href="/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b/thread/main/turn/30aad8e5-21f8-486d-b9d9-e118c703a5a1"><span class="icon" aria-hidden="true">❯</span> <span data-field="turn">/night-run [redacted]</span></a> </nav>

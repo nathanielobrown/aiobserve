@@ -1,0 +1,340 @@
+{
+  "titles": [
+    {
+      "text": "plain title",
+      "render_links": "plain title",
+      "render_plain": "plain title",
+      "cut_20": "plain title",
+      "cut_capped": "plain title…",
+      "strip": "plain title"
+    },
+    {
+      "text": "**bold** and *em* and `code`",
+      "render_links": "<strong>bold</strong> and <em>em</em> and <code>code</code>",
+      "render_plain": "<strong>bold</strong> and <em>em</em> and <code>code</code>",
+      "cut_20": "<strong>bold</strong> and <em>em</em> and <code>code</code>",
+      "cut_capped": "<strong>bold</strong> and <em>em</em> and <code>code</code>…",
+      "strip": "bold and em and code"
+    },
+    {
+      "text": "<script>alert(1)</script>",
+      "render_links": "&lt;script&gt;alert(1)&lt;/script&gt;",
+      "render_plain": "&lt;script&gt;alert(1)&lt;/script&gt;",
+      "cut_20": "&lt;script&gt;alert(1)&lt;/sc…",
+      "cut_capped": "&lt;script&gt;alert(1)&lt;/script&gt;…",
+      "strip": "<script>alert(1)</script>"
+    },
+    {
+      "text": "a \"quoted\" & <tagged> 'title'",
+      "render_links": "a &#34;quoted&#34; &amp; &lt;tagged&gt; &#39;title&#39;",
+      "render_plain": "a &#34;quoted&#34; &amp; &lt;tagged&gt; &#39;title&#39;",
+      "cut_20": "a &#34;quoted&#34; &amp; &lt;tagged…",
+      "cut_capped": "a &#34;quoted&#34; &amp; &lt;tagged&gt; &#39;title&#39;…",
+      "strip": "a \"quoted\" & <tagged> 'title'"
+    },
+    {
+      "text": "[link](https://example.com/x)",
+      "render_links": "<a href=\"https://example.com/x\">link</a>",
+      "render_plain": "link",
+      "cut_20": "link",
+      "cut_capped": "link…",
+      "strip": "link"
+    },
+    {
+      "text": "[bad](javascript:alert(1))",
+      "render_links": "[bad](javascript:alert(1))",
+      "render_plain": "[bad](javascript:alert(1))",
+      "cut_20": "[bad](javascript:ale…",
+      "cut_capped": "[bad](javascript:alert(1))…",
+      "strip": "[bad](javascript:alert(1))"
+    },
+    {
+      "text": "![alt text](https://host/px?d=1)",
+      "render_links": "<span class=\"image\">[image: alt text — https://host/px?d=1]</span>",
+      "render_plain": "<span class=\"image\">[image: alt text — https://host/px?d=1]</span>",
+      "cut_20": "<span class=\"image\">[image: alt text — h</span>…",
+      "cut_capped": "<span class=\"image\">[image: alt text — https://host/px?d=1]</span>…",
+      "strip": "[image: alt text — https://host/px?d=1]"
+    },
+    {
+      "text": "![](https://host/px)",
+      "render_links": "<span class=\"image\">[image: untitled — https://host/px]</span>",
+      "render_plain": "<span class=\"image\">[image: untitled — https://host/px]</span>",
+      "cut_20": "<span class=\"image\">[image: untitled — h</span>…",
+      "cut_capped": "<span class=\"image\">[image: untitled — https://host/px]</span>…",
+      "strip": "[image: untitled — https://host/px]"
+    },
+    {
+      "text": "# not a heading\n- not a list",
+      "render_links": "# not a heading\n- not a list",
+      "render_plain": "# not a heading\n- not a list",
+      "cut_20": "# not a heading\n- no…",
+      "cut_capped": "# not a heading\n- not a list…",
+      "strip": "# not a heading\n- not a list"
+    },
+    {
+      "text": "a\nb",
+      "render_links": "a\nb",
+      "render_plain": "a\nb",
+      "cut_20": "a\nb",
+      "cut_capped": "a\nb",
+      "strip": "a\nb"
+    },
+    {
+      "text": "line one\n\nline two",
+      "render_links": "line one\n\nline two",
+      "render_plain": "line one\n\nline two",
+      "cut_20": "line one\n\nline two",
+      "cut_capped": "line one\n\nline two…",
+      "strip": "line one\n\nline two"
+    },
+    {
+      "text": "<https://example.com>",
+      "render_links": "<a href=\"https://example.com\">https://example.com</a>",
+      "render_plain": "https://example.com",
+      "cut_20": "https://example.com",
+      "cut_capped": "https://example.com…",
+      "strip": "https://example.com"
+    },
+    {
+      "text": "*.tmp and handoff_2 stay",
+      "render_links": "*.tmp and handoff_2 stay",
+      "render_plain": "*.tmp and handoff_2 stay",
+      "cut_20": "*.tmp and handoff_2 …",
+      "cut_capped": "*.tmp and handoff_2 stay…",
+      "strip": "*.tmp and handoff_2 stay"
+    },
+    {
+      "text": "trailing **open",
+      "render_links": "trailing **open",
+      "render_plain": "trailing **open",
+      "cut_20": "trailing **open",
+      "cut_capped": "trailing…",
+      "strip": "trailing **open"
+    },
+    {
+      "text": "trailing `open",
+      "render_links": "trailing `open",
+      "render_plain": "trailing `open",
+      "cut_20": "trailing `open",
+      "cut_capped": "trailing…",
+      "strip": "trailing `open"
+    },
+    {
+      "text": "trailing [open](http://ex",
+      "render_links": "trailing [open](http://ex",
+      "render_plain": "trailing [open](http://ex",
+      "cut_20": "trailing [open](http…",
+      "cut_capped": "trailing…",
+      "strip": "trailing [open](http://ex"
+    },
+    {
+      "text": "emoji 🌱 title",
+      "render_links": "emoji 🌱 title",
+      "render_plain": "emoji 🌱 title",
+      "cut_20": "emoji 🌱 title",
+      "cut_capped": "emoji 🌱 title…",
+      "strip": "emoji 🌱 title"
+    },
+    {
+      "text": "&amp; entity",
+      "render_links": "&amp; entity",
+      "render_plain": "&amp; entity",
+      "cut_20": "&amp; entity",
+      "cut_capped": "&amp; entity…",
+      "strip": "& entity"
+    },
+    {
+      "text": "back\\*slash escape",
+      "render_links": "back*slash escape",
+      "render_plain": "back*slash escape",
+      "cut_20": "back*slash escape",
+      "cut_capped": "back*slash escape…",
+      "strip": "back*slash escape"
+    },
+    {
+      "text": "  leading and trailing spaces  ",
+      "render_links": "  leading and trailing spaces  ",
+      "render_plain": "  leading and trailing spaces  ",
+      "cut_20": "  leading and traili…",
+      "cut_capped": "  leading and trailing spaces  …",
+      "strip": "  leading and trailing spaces  "
+    },
+    {
+      "text": "tabs\tinside",
+      "render_links": "tabs\tinside",
+      "render_plain": "tabs\tinside",
+      "cut_20": "tabs\tinside",
+      "cut_capped": "tabs\tinside…",
+      "strip": "tabs\tinside"
+    },
+    {
+      "text": "a paragraph with <img src=x onerror=alert(1)> in it",
+      "render_links": "a paragraph with &lt;img src=x onerror=alert(1)&gt; in it",
+      "render_plain": "a paragraph with &lt;img src=x onerror=alert(1)&gt; in it",
+      "cut_20": "a paragraph with &lt;im…",
+      "cut_capped": "a paragraph with &lt;img src=x onerror=alert(1)&gt; in it…",
+      "strip": "a paragraph with <img src=x onerror=alert(1)> in it"
+    },
+    {
+      "text": "```\nfenced\n```",
+      "render_links": "<code>fenced</code>",
+      "render_plain": "<code>fenced</code>",
+      "cut_20": "<code>fenced</code>",
+      "cut_capped": "<code>fenced</code>…",
+      "strip": "fenced"
+    }
+  ],
+  "blocks": [
+    {
+      "text": "# Heading\n\nA paragraph with **bold**.",
+      "html": "<h1>Heading</h1>\n<p>A paragraph with <strong>bold</strong>.</p>\n",
+      "syntax": null,
+      "wall": null,
+      "shown": null
+    },
+    {
+      "text": "<script>alert(1)</script>\n\nafter",
+      "html": "<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>\n<p>after</p>\n",
+      "syntax": null,
+      "wall": null,
+      "shown": null
+    },
+    {
+      "text": "![alt](https://host/px?d=1)",
+      "html": "<p><span class=\"image\">[image: alt — https://host/px?d=1]</span></p>\n",
+      "syntax": null,
+      "wall": null,
+      "shown": null
+    },
+    {
+      "text": "[js](javascript:alert(1)) and [ok](https://example.com)",
+      "html": "<p>[js](javascript:alert(1)) and <a href=\"https://example.com\">ok</a></p>\n",
+      "syntax": null,
+      "wall": null,
+      "shown": null
+    },
+    {
+      "text": "```python\nprint('hi')\n```",
+      "html": "<pre class=\"code python\"><span class=\"nb\">print</span><span class=\"p\">(</span><span class=\"s1\">&#39;hi&#39;</span><span class=\"p\">)</span>\n</pre>\n",
+      "syntax": "python",
+      "wall": "<pre class=\"code python\">",
+      "shown": "print('hi')\n"
+    },
+    {
+      "text": "```\nplain <fence>\n```",
+      "html": "<pre class=\"code\">plain &lt;fence&gt;\n</pre>\n",
+      "syntax": null,
+      "wall": null,
+      "shown": null
+    },
+    {
+      "text": "- one\n- two",
+      "html": "<ul>\n<li>one</li>\n<li>two</li>\n</ul>\n",
+      "syntax": null,
+      "wall": null,
+      "shown": null
+    },
+    {
+      "text": "quote \"and\" ampersand & <tag>",
+      "html": "<p>quote &quot;and&quot; ampersand &amp; &lt;tag&gt;</p>\n",
+      "syntax": null,
+      "wall": null,
+      "shown": null
+    },
+    {
+      "text": "a paragraph with <img src=x onerror=alert(1)> in it",
+      "html": "<p>a paragraph with &lt;img src=x onerror=alert(1)&gt; in it</p>\n",
+      "syntax": null,
+      "wall": null,
+      "shown": null
+    },
+    {
+      "text": "see https://evil.test/path for details",
+      "html": "<p>see https://evil.test/path for details</p>\n",
+      "syntax": null,
+      "wall": null,
+      "shown": null
+    },
+    {
+      "text": "```json\n{\"a\": \"<img src=x onerror=y>\"}\n```",
+      "html": "<pre class=\"code json\"><span class=\"p\">{</span>\n  <span class=\"nt\">&quot;a&quot;</span><span class=\"p\">:</span> <span class=\"s2\">&quot;&lt;img src=x onerror=y&gt;&quot;</span>\n<span class=\"p\">}</span></pre>\n",
+      "syntax": "json",
+      "wall": "<pre class=\"code json\">",
+      "shown": "{\n  \"a\": \"<img src=x onerror=y>\"\n}"
+    },
+    {
+      "text": "```html\n{\"a\": \"<img src=x onerror=y>\"}\n```",
+      "html": "<pre class=\"code\">{&#34;a&#34;: &#34;&lt;img src=x onerror=y&gt;&#34;}\n</pre>\n",
+      "syntax": null,
+      "wall": null,
+      "shown": null
+    },
+    {
+      "text": "```rust\nx = 1\n```",
+      "html": "<pre class=\"code\">x = 1\n</pre>\n",
+      "syntax": null,
+      "wall": null,
+      "shown": null
+    },
+    {
+      "text": "```sql\nSELECT a FROM t WHERE b = '<x>' -- note\n```",
+      "html": "<pre class=\"code sql\"><span class=\"k\">SELECT</span> <span class=\"n\">a</span> <span class=\"k\">FROM</span> <span class=\"n\">t</span> <span class=\"k\">WHERE</span> <span class=\"n\">b</span> <span class=\"o\">=</span> <span class=\"s1\">&#39;&lt;x&gt;&#39;</span> <span class=\"c1\">-- note</span>\n</pre>\n",
+      "syntax": "sql",
+      "wall": "<pre class=\"code sql\">",
+      "shown": "SELECT a FROM t WHERE b = '<x>' -- note\n"
+    },
+    {
+      "text": "```sh\necho '<x>' && ls -1\n```",
+      "html": "<pre class=\"code bash\"><span class=\"nb\">echo</span> <span class=\"s1\">&#39;&lt;x&gt;&#39;</span> <span class=\"o\">&amp;&amp;</span> ls -1\n</pre>\n",
+      "syntax": "bash",
+      "wall": "<pre class=\"code bash\">",
+      "shown": "echo '<x>' && ls -1\n"
+    },
+    {
+      "text": "```md\n# Heading\n\n- an item with `code`\n```",
+      "html": "<pre class=\"code markdown\"><span class=\"gh\"># Heading</span>\n\n<span class=\"k\">-</span> an item with <span class=\"sb\">`code`</span>\n</pre>\n",
+      "syntax": "markdown",
+      "wall": "<pre class=\"code markdown\">",
+      "shown": "# Heading\n\n- an item with `code`\n"
+    }
+  ],
+  "links": [
+    {
+      "url": "https://github.com/x/y/pull/1",
+      "html": "<a href=\"https://github.com/x/y/pull/1\">https://github.com/x/y/pull/1</a>"
+    },
+    {
+      "url": "http://example.com",
+      "html": "<a href=\"http://example.com\">http://example.com</a>"
+    },
+    {
+      "url": "javascript:alert(1)",
+      "html": "javascript:alert(1)"
+    },
+    {
+      "url": "https://example.com/very/long…",
+      "html": "https://example.com/very/long…"
+    },
+    {
+      "url": "",
+      "html": ""
+    },
+    {
+      "url": "HTTP://example.test/",
+      "html": "<a href=\"HTTP://example.test/\">HTTP://example.test/</a>"
+    },
+    {
+      "url": "data:text/html,<script>alert(1)</script>",
+      "html": "data:text/html,&lt;script&gt;alert(1)&lt;/script&gt;"
+    },
+    {
+      "url": "file:///etc",
+      "html": "file:///etc"
+    },
+    {
+      "url": "https://example.test/?q=\"",
+      "html": "<a href=\"https://example.test/?q=&#34;\">https://example.test/?q=&#34;</a>"
+    }
+  ]
+}

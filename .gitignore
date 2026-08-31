@@ -37,6 +37,10 @@ mutants/
 # contains whatever the agent read. Committed reports live in reports/.
 /data/
 
+# Cargo's build directory. `rust/Cargo.lock` is committed beside it: the workspace will build
+# a binary, so the versions a build resolved are part of what the port's report rests on.
+/rust/target/
+
 # The browser tier's installed packages and what a run of it leaves behind. `mise run e2e-deps`
 # puts the first back from the committed lockfile; the rest is a failed sweep's traces.
 tests/e2e/node_modules/

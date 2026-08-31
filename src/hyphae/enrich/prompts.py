@@ -33,9 +33,13 @@ class Level(StrEnum):
 # Bump one and that level re-enriches; its parents follow through the hash.
 PROMPT_VERSION: dict[Level, int] = {Level.turn: 4, Level.agent_run: 4, Level.session: 4}
 
+# The four blocks `instructions` composes. Public because they are prompt material rather
+# than implementation: `tools/gen_enrichment.py` carries them to the other implementation,
+# which composes the same system prompt rather than holding a second copy of the prose.
+#
 # What each level is looking at. The rest of the instructions is the same everywhere, so a
 # level reads differently only where it should.
-_SUBJECT: dict[Level, str] = {
+SUBJECT: dict[Level, str] = {
     Level.turn: (
         "You are reading one turn of a coding session: what the person asked for, and what "
         "the agent did about it. Describe that turn."
@@ -50,7 +54,7 @@ _SUBJECT: dict[Level, str] = {
     ),
 }
 
-_ANSWER = """Answer with one JSON object recording what you just read, and say nothing else:
+ANSWER = """Answer with one JSON object recording what you just read, and say nothing else:
 
 - description: one or two sentences saying what was done, and to what. Name the files, \
 commands and subjects concretely. Do not judge the work, and do not restate the category
@@ -66,7 +70,7 @@ contents into the description."""
 # the sampled records read. Guidance rather than vocabulary: editing `CATEGORY_DEFINITIONS`
 # would record a taxonomy change that did not happen, and cost a `TAXONOMY_VERSION` bump that
 # would make every stored row incomparable rather than merely stale.
-_CHOOSING = """Choosing between them:
+CHOOSING = """Choosing between them:
 
 - implement over design when the item produced the working thing. design is for work that \
 produced a decision or a plan for one, even when that plan is written down
@@ -82,7 +86,7 @@ not finish. Name what did not land, and call it abandoned, not completed"""
 # Appended for `Level.session` alone. A session render is one line per child, each written by
 # an earlier pass over the records; a QC pass found the model reading those lines as a plan
 # and reporting that the session did what it set out to do.
-_RELAYING = """Each line below is another reader's description of one thing the session did. \
+RELAYING = """Each line below is another reader's description of one thing the session did. \
 Say what those lines say happened, not what the session set out to do. Do not name a result \
 no line names: if a line says a cause was found, the session found a cause — it did not fix \
 it."""
@@ -117,9 +121,9 @@ def instructions(level: Level) -> str:
             *(f"- {member}: {text}" for member, text in OUTCOME_DEFINITIONS.items()),
         ]
     )
-    parts = [_SUBJECT[level], _ANSWER, vocabulary, _CHOOSING]
+    parts = [SUBJECT[level], ANSWER, vocabulary, CHOOSING]
     if level is Level.session:
-        parts.append(_RELAYING)
+        parts.append(RELAYING)
     return "\n\n".join(parts)
 
 

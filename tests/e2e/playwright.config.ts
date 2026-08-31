@@ -4,7 +4,17 @@ import { defineConfig } from "@playwright/test";
 // default a reader may have open) — `.claude/rules/viewer-ui.md`. `mise run gallery` claims the
 // port and exits if something already holds it, so a stale server cannot be swept by mistake.
 const PORT = 8479;
-const BASE_URL = `http://127.0.0.1:${PORT}`;
+
+// The three things a second implementation of the viewer needs to move, and nothing else: the
+// specs read `routes.json` and `baseURL` and are genuinely unchanged. Unset, every one of these
+// is what it was before the seam existed — the Python gallery, at the port above.
+//
+// The Rust prototype points them at its own binary over a store the Python gallery built
+// (`plans/rust-prototype/design.md`); its readiness URL is `/` because the scenario index at
+// `/gallery` is Python's, and no spec visits it.
+const BASE_URL = process.env.HYPHAE_E2E_BASE_URL ?? `http://127.0.0.1:${PORT}`;
+const SERVER = process.env.HYPHAE_E2E_SERVER ?? `mise run gallery --port ${PORT}`;
+const READY = process.env.HYPHAE_E2E_READY ?? `${BASE_URL}/gallery`;
 
 export default defineConfig({
   testDir: "./specs",
@@ -28,9 +38,9 @@ export default defineConfig({
   // `default-src 'self'` header — the store it builds is its own, so this tier can reach no
   // private data. `cwd` is the repo root because the task runs `python -m tests.gallery.serve`.
   webServer: {
-    command: `mise run gallery --port ${PORT}`,
+    command: SERVER,
     cwd: "../..",
-    url: `${BASE_URL}/gallery`,
+    url: READY,
     reuseExistingServer: false,
     timeout: 120_000,
   },

@@ -1,0 +1,140 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/hp",
+    "crates/hyphae-analyze",
+    "crates/hyphae-enrich",
+    "crates/hyphae-export",
+    "crates/hyphae-extract",
+    "crates/hyphae-model",
+    "crates/hyphae-store",
+    "crates/hyphae-testsupport",
+    "crates/hyphae-view",
+]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+publish = false
+
+[workspace.dependencies]
+# The crates, by path: the workspace is the only consumer and nothing here is published.
+hyphae-model = { path = "crates/hyphae-model" }
+hyphae-analyze = { path = "crates/hyphae-analyze" }
+hyphae-extract = { path = "crates/hyphae-extract" }
+hyphae-export = { path = "crates/hyphae-export" }
+hyphae-enrich = { path = "crates/hyphae-enrich" }
+hyphae-store = { path = "crates/hyphae-store" }
+hyphae-view = { path = "crates/hyphae-view" }
+# Dev-only: the fixture corpus, the shared store cache, and the viewer served over one.
+hyphae-testsupport = { path = "crates/hyphae-testsupport" }
+# The store. `bundled` compiles DuckDB itself, so the binary carries no libduckdb; the
+# version tracks DuckDB releases and 1.10505.0 is DuckDB 1.5.5, the version `pyproject.toml`
+# pins — a store file is only readable by a build at or past the one that wrote it.
+duckdb = { version = "1.10505.0", features = ["bundled", "chrono"] }
+# TIMESTAMPTZ in and out of DuckDB; `DateTime<Utc>` is the only instant type this crate uses.
+chrono = "0.4"
+# Typed errors at the crate seam, per the design's `thiserror` (crates) / `anyhow` (bin) split.
+thiserror = "2"
+# Scratch stores for tests: one directory per test, removed on drop.
+tempfile = "3"
+# Digests: a session's files, the sources that decide what a cached test store holds, and
+# the span ids OTLP export derives from the store's own composite keys.
+sha2 = "0.10"
+# The OTLP wire types, as prost messages. Default features pull tonic and a gRPC stack in;
+# this exporter speaks OTLP/HTTP, so it takes the generated messages alone. `trace` is not
+# optional — the collector service types are gated behind it — and it drags the
+# `opentelemetry` API and SDK crates in as compile-time transitives.
+opentelemetry-proto = { version = "0.32", default-features = false, features = [
+    "gen-tonic-messages",
+    "trace",
+] }
+# Encoding and decoding those messages. The version prost-derives them against.
+prost = "0.14"
+# The OTLP/HTTP client. Blocking, because the delivery loop is sequential by design — there
+# is no queue to overflow — and rustls keeps the TLS a real backend needs out of the system
+# libraries. No default features: this sends one POST and reads one protobuf body.
+reqwest = { version = "0.12", default-features = false, features = [
+    "blocking",
+    "rustls-tls",
+] }
+# Gzip, over the protobuf payload. Encoded by us rather than by the client, with a fixed
+# mtime, so the same batch always encodes to the same bytes.
+flate2 = "1"
+# Transcript records, read as the dicts they are. `preserve_order` keeps a tool input's keys
+# in the recorded order, which is what `json.dumps` writes and what the store row must match.
+# The query-string knobs a node-page URL carries; axum's `Query` extractor deserializes them.
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+# The same order-preserving map `preserve_order` already pulls in, named directly: the query
+# manifest's declaration order is what a citation line prints, so the typed side of the
+# bridge cannot sort it.
+indexmap = { version = "2", features = ["serde"] }
+# Snapshots of the ids and parents the walk produced, reviewed once and then pinned.
+insta = "1"
+# The `hp` binary's CLI. `derive` is the only feature the commands need.
+clap = { version = "4", features = ["derive"] }
+# `hp export-otlp` reads its endpoint and its ingest key from a gitignored `.env`, as
+# `cli.py` does through python-dotenv.
+dotenvy = "0.15"
+# Errors at the binary, per the design's `thiserror` (crates) / `anyhow` (bin) split.
+anyhow = "1"
+
+# The viewer's web half. `Router` is a `tower::Service`, so the view tier drives it with
+# `oneshot` and never binds a port.
+axum = "0.8"
+# axum's runtime, and the only async in the workspace: everything else is sync, as the Python
+# viewer is. `signal` is what `serve` waits on — Ctrl-C is a graceful exit rather than a kill,
+# because `--dev` holds a response that never ends and the process still has to come back — and
+# `sync` carries the broadcast channel the reload stream reads.
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "net",
+    "macros",
+    "signal",
+    "sync",
+    "time",
+] }
+# The dev loop's watcher, standing in for watchfiles: the platform's own file-event API rather
+# than a poll, and the ecosystem default (`plans/rust-prototype/full-port.md`).
+notify = "8"
+# The reload stream, written as the loop it is: one `yield` per event, until the server stops.
+async-stream = "0.3"
+# The `Stream` trait that stream carries, which axum takes but does not re-export.
+futures-core = "0.3"
+# Dev-only: taking a streamed response frame by frame, which is the only way to read one that
+# never ends — the shape `TestClient` cannot express either (`tests/view/test_dev.py`).
+tokio-stream = "0.1"
+# The markup. `rsx!` checks tag and attribute names at compile time and components stay plain
+# functions.
+hypertext = { version = "0.12", features = ["htmx", "axum"] }
+# Markdown, for the prose and the titles a session wrote. The Rust port of the same
+# markdown-it the Python viewer reads with, so `view/render.py`'s settings — CommonMark, no
+# HTML passthrough, no linkify — port as settings rather than as an approximation.
+markdown-it = "0.6"
+# Driving the router without a server, the way `TestClient` drives the Python app.
+tower = { version = "0.5", features = ["util"] }
+# The highlighter's tokenizer, standing in for Pygments. Only the bundled syntax definitions and
+# the parser: `regex-fancy` keeps the build pure Rust rather than compiling oniguruma, and the
+# `html` and theme features are left out because this viewer writes its own spans and paints them
+# with the `static/pygments.css` both viewers share (`hyphae-view/src/highlight.rs`).
+syntect = { version = "5", default-features = false, features = [
+    "default-syntaxes",
+    "regex-fancy",
+] }
+
+# Reading a served page back, dev-only. `scraper` is the DOM half of the reader
+# `tests/view/conftest.py` builds on Python's `HTMLParser`; `regex` and `html-escape` are the
+# other half, because that file reads some of the page by pattern rather than by tree and a
+# regex over the served bytes sees a `<pre>`'s leading newline where a parser would drop it.
+scraper = "0.27"
+regex = "1"
+html-escape = "0.2"
+# Dev-only: reading `mise.toml`'s task lines, which are half the shell this repo runs on itself
+# and so half of what the stylesheet sweep in `hyphae-view/tests/query.rs` lexes as bash.
+toml = "0.9"
+
+[profile.dev]
+# The spike copies whole tables through DuckDB; unoptimized debug builds make that slow
+# enough to distort the timings the prototype is meant to measure.
+opt-level = 1

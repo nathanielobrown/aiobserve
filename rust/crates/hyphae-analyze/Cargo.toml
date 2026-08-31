@@ -1,0 +1,29 @@
+[package]
+name = "hyphae-analyze"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+hyphae-store.workspace = true
+# `project_predicate` and `resolve_project`: what `--project` means is the extractor's rule,
+# and a corpus scoped by a second copy of it would not be the corpus that was extracted.
+hyphae-extract.workspace = true
+chrono.workspace = true
+# Bindings in declaration order — a citation writes them out in the order they were declared.
+indexmap.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+hyphae-testsupport.workspace = true
+# The enrichment tables, so the sweep knows which queries need a store a pass has written to.
+hyphae-enrich.workspace = true
+# The same expressions `tests/analyze/test_queries.py` scans the SQL with, so the two rules
+# read the library the same way.
+regex.workspace = true
+# Reading a selected value at whatever width DuckDB answered it, and planting one on a copy
+# of the corpus store.
+duckdb.workspace = true
+tempfile.workspace = true
+# Writing a planted tool call's `input`, which the queries read back with `json_extract`.
+serde_json.workspace = true

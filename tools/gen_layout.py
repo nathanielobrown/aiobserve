@@ -72,6 +72,13 @@ ENTRIES = (
     Entry("src/hyphae/pipeline.py", Module("hyphae.pipeline")),
     Entry("tests/", Module("tests")),
     Entry("tools/", Module("tools")),
+    Entry(
+        "rust/",
+        Words(
+            "The Rust port: a cargo workspace whose crates mirror the Python packages "
+            "one-for-one, under a gate of its own (`plans/rust-prototype/full-port.md`)"
+        ),
+    ),
     Entry("docs/", None),
     Entry("docs/analysis.md", Doc("docs/analysis.md")),
     Entry("docs/schema.md", Doc("docs/schema.md")),

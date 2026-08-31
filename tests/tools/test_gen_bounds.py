@@ -4,10 +4,17 @@ The bounds prose is the viewer's payload contract, so a table that drifts from `
 from the page arithmetic is worse than no table at all. Every leaf here reads the live modules
 — none of them spells a number, and the coverage leaf makes a new bound impossible to leave
 undocumented by accident.
+
+The same numbers leave as data at the end of this file: `rust/metadata/bounds.json` is what a
+second implementation binds pages by, generated from the same modules rather than copied.
 """
+
+import json
+from pathlib import Path
 
 import pytest
 
+from hyphae.analyze import queries
 from hyphae.view import bounds, nodes
 from hyphae.view.knobs import KNOB_DEFAULTS
 from tests.tools.conftest import cells, numbers
@@ -125,3 +132,51 @@ def test_a_preset_with_no_words_crashes_the_generator(monkeypatch: pytest.Monkey
 def test_the_table_ends_without_its_own_newline(table: gen_bounds.Table) -> None:
     # `main()` prints, and the cog splice owns the framing newline.
     assert not gen_bounds.generate(table).endswith("\n")
+
+
+def test_the_checked_in_registry_is_what_the_generator_writes(tmp_path: Path) -> None:
+    # The same numbers as data, for a reader that cannot import Python: the second
+    # implementation compiles `rust/metadata/bounds.json` in rather than keeping its own copy
+    # (`plans/rust-prototype/full-port.md`). A drifted copy is a page bound by yesterday's
+    # ceiling while every leaf above stays green, so it is regenerated and compared byte for
+    # byte.
+    fresh = tmp_path / "bounds.json"
+    gen_bounds.write(fresh)
+    assert fresh.read_bytes() == gen_bounds.REGISTRY.read_bytes(), (
+        f"`{gen_bounds.REGISTRY.name}` has drifted from `view/bounds.py` —"
+        f" regenerate it with `{gen_bounds.COMMAND}`"
+    )
+
+
+def test_the_registry_carries_every_bound_the_viewer_declares() -> None:
+    # The registry is the whole of `bounds.py`, not the part a table prints: `UNCITED` excuses a
+    # bound from the prose, and a reader that binds pages still has to know it. Each is written
+    # in the shape it has — a default beside its ceiling, or a plain number.
+    written = json.loads(gen_bounds.REGISTRY.read_text())
+    assert set(written["bounds"]) | set(written["sizes"]) == gen_bounds.declared()
+    assert written["bounds"] == {
+        name: {"default": value.default, "ceiling": value.ceiling}
+        for name, value in vars(bounds).items()
+        if isinstance(value, bounds.Bound)
+    }
+    assert written["sizes"] == {
+        name: value
+        for name, value in vars(bounds).items()
+        if not name.startswith("_") and type(value) is int
+    }
+
+
+def test_the_registry_carries_the_knob_defaults_and_the_widths_a_query_binds() -> None:
+    # The other two halves of what bounds a page: what a URL naming no knob is served at, and
+    # the widths the query library declares beside the parameters that bind them. A reader with
+    # the ceilings alone would cut a title at its own number and weigh a page against ours.
+    written = json.loads(gen_bounds.REGISTRY.read_text())
+    assert written["knobs"] == {
+        knob: value.value if isinstance(value, nodes.Preset) else value
+        for knob, value in KNOB_DEFAULTS.items()
+    }
+    assert written["widths"] == {
+        name: value
+        for name, value in vars(queries).items()
+        if not name.startswith("_") and type(value) is int
+    }

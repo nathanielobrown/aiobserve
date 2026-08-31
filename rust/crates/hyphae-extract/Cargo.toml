@@ -1,0 +1,23 @@
+[package]
+name = "hyphae-extract"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+hyphae-model.workspace = true
+chrono.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+# The transcript walk reads records as JSON dicts, so the digest over a session's files is
+# the only hashing this crate does — `sha2` rather than a whole crypto stack.
+sha2.workspace = true
+# Two prompt patterns and nothing else: the leading tag of a machine-written prompt, and the
+# slash command's name and arguments.
+regex = "1"
+
+[dev-dependencies]
+# The fixture corpus and the extractor pointed at it, shared with every other crate's tests.
+hyphae-testsupport.workspace = true
+tempfile.workspace = true
+insta.workspace = true

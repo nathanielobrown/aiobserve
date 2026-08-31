@@ -1,0 +1,46 @@
+[package]
+name = "hyphae-view"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+hyphae-store.workspace = true
+# `clock`: the one clock the workspace reads, so a page and a query agree on today.
+hyphae-model.workspace = true
+# `Level`: the enrichment levels, declared where the rows are written.
+hyphae-enrich.workspace = true
+# The popover splits a node's spend by category, off the extractor's own price table.
+hyphae-extract.workspace = true
+axum.workspace = true
+tokio.workspace = true
+hypertext.workspace = true
+markdown-it.workspace = true
+chrono.workspace = true
+serde.workspace = true
+# Re-laying-out a stored JSON value for reading: `preserve_order` keeps the keys the session wrote.
+serde_json.workspace = true
+thiserror.workspace = true
+# `--dev`: the watcher behind the reload stream, and the stream itself.
+notify.workspace = true
+async-stream.workspace = true
+futures-core.workspace = true
+# The tokenizer behind `highlight.rs`, standing in for Pygments.
+syntect.workspace = true
+
+[dev-dependencies]
+# The shared store cache and the viewer served over it.
+hyphae-testsupport.workspace = true
+tower.workspace = true
+insta.workspace = true
+tempfile.workspace = true
+# The planting test writes a sentinel into the store before serving it.
+duckdb.workspace = true
+# The stylesheet and the served script are read by pattern: neither is markup to parse.
+regex.workspace = true
+# An href read out of the markup arrives with its `&` escaped; a link is compared decoded.
+html-escape.workspace = true
+# `mise.toml`'s task lines: the other half of the shell the stylesheet sweep reads.
+toml.workspace = true
+# The query manifest's own map type, named where a leaf annotates it.
+indexmap.workspace = true

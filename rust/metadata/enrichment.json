@@ -1,0 +1,100 @@
+{
+  "levels": {
+    "turn": {
+      "prompt_version": 4,
+      "table": "turn_enrichments",
+      "keys": [
+        "session_id",
+        "source",
+        "turn_id"
+      ],
+      "base": "live_turns",
+      "base_keys": [
+        "session_id",
+        "source",
+        "id"
+      ]
+    },
+    "agent_run": {
+      "prompt_version": 4,
+      "table": "agent_run_enrichments",
+      "keys": [
+        "session_id",
+        "agent_run_id"
+      ],
+      "base": "live_agent_runs",
+      "base_keys": [
+        "session_id",
+        "id"
+      ]
+    },
+    "session": {
+      "prompt_version": 4,
+      "table": "session_enrichments",
+      "keys": [
+        "session_id"
+      ],
+      "base": "describable_sessions",
+      "base_keys": [
+        "session_id"
+      ]
+    }
+  },
+  "taxonomy_version": 2,
+  "categories": [
+    "design",
+    "implement",
+    "fix_bug",
+    "refactor",
+    "test",
+    "debug",
+    "review",
+    "analyze",
+    "document",
+    "configure",
+    "vcs_ops",
+    "explore",
+    "chat",
+    "other"
+  ],
+  "outcomes": [
+    "completed",
+    "partial",
+    "failed",
+    "abandoned",
+    "unclear"
+  ],
+  "category_definitions": {
+    "design": "Deciding how something should work, before it is built.",
+    "implement": "Building something that did not exist.",
+    "fix_bug": "Making broken behaviour correct, with the fix already known.",
+    "refactor": "Changing structure without changing behaviour.",
+    "test": "Writing or fixing tests, and running suites.",
+    "debug": "Hunting the cause of a failure that already happened \u2014 reproducing, instrumenting, bisecting. Not searching a change for defects it might have.",
+    "review": "Judging a change someone else made \u2014 reading it, probing it, testing it for defects.",
+    "analyze": "Answering a question from data or code \u2014 measurement, census, findings.",
+    "document": "Writing prose: docs, comments, commit messages, reports.",
+    "configure": "Tooling, dependencies, CI, environment, editor and agent settings.",
+    "vcs_ops": "Branches, commits, rebases, PRs, merges \u2014 version control as the work.",
+    "explore": "Finding out what is there, with no change intended yet.",
+    "chat": "Conversation that drives no work: a question, an aside, an interruption.",
+    "other": "Fits none of the above. A growing share here says the taxonomy needs work."
+  },
+  "outcome_definitions": {
+    "completed": "What was asked was done.",
+    "partial": "Some of what was asked landed; the rest did not.",
+    "failed": "It was attempted and did not work.",
+    "abandoned": "Dropped before an answer \u2014 interrupted, or redirected onto something else.",
+    "unclear": "The records do not say how it ended."
+  },
+  "prompt_text": {
+    "subject": {
+      "turn": "You are reading one turn of a coding session: what the person asked for, and what the agent did about it. Describe that turn.",
+      "agent_run": "You are reading one run of a subagent: the task it was given, any later instructions, and what it did about them. Describe that run.",
+      "session": "You are reading a summary of one coding session: what it cost, and a description of each thing it did, in order. Describe the session as a whole."
+    },
+    "answer": "Answer with one JSON object recording what you just read, and say nothing else:\n\n- description: one or two sentences saying what was done, and to what. Name the files, commands and subjects concretely. Do not judge the work, and do not restate the category\n- category: exactly one of the categories below\n- outcome: exactly one of the outcomes below\n- friction: one line naming visible struggle \u2014 a command that kept failing, a wrong turn taken and undone, a tool that would not answer \u2014 or null when the records show none\n\nNever quote a credential, key or token, whatever it appears in. Never copy code or file contents into the description.",
+    "choosing": "Choosing between them:\n\n- implement over design when the item produced the working thing. design is for work that produced a decision or a plan for one, even when that plan is written down\n- configure for a turn the CLI handled by itself \u2014 /model, /effort, /clear \u2014 which changes how the agent is set up, not what it is working on\n- review over debug when the work judges a change someone else made, even while it hunts defects in that change\n- the records say how each item ended. end_turn means the model finished its answer: do not report partial or failed unless the records name what did not land\n- tool_use means the last call asked for a tool and the records stop there, so the item did not finish. Name what did not land, and call it abandoned, not completed",
+    "relaying": "Each line below is another reader's description of one thing the session did. Say what those lines say happened, not what the session set out to do. Do not name a result no line names: if a line says a cause was found, the session found a cause \u2014 it did not fix it."
+  }
+}

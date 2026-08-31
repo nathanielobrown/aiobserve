@@ -1,0 +1,29 @@
+[package]
+name = "hyphae-enrich"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The enrichment tables live in the trace store's own file, so this crate opens one.
+hyphae-store.workspace = true
+# `project_predicate`: one spelling of "this repository and its worktrees" for every filter.
+hyphae-extract.workspace = true
+# `enriched_at` is the one column a writer stamps with the clock, read through
+# `clock::utcnow()` so a test can freeze it.
+chrono.workspace = true
+hyphae-model.workspace = true
+duckdb.workspace = true
+thiserror.workspace = true
+# The credential shapes a description is screened against, and the prompt material the
+# generation bridge carries as JSON.
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# `input_hash`: the staleness digest over one rendered prompt.
+sha2.workspace = true
+# The temp directory every `claude` call runs in, and scratch copies of the cached corpus.
+tempfile.workspace = true
+
+[dev-dependencies]
+hyphae-testsupport.workspace = true

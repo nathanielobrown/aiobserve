@@ -1,0 +1,40 @@
+[package]
+name = "hp"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+# `hp enrich`: the pass, the price it quotes, and the client that spends.
+hyphae-enrich.workspace = true
+# `hp query`: the runner that binds a library query and cites what it bound.
+hyphae-analyze.workspace = true
+# The one clock, for `--as-of`'s default.
+hyphae-model.workspace = true
+indexmap.workspace = true
+# `--since` and `--as-of` parse straight into the dates the runner binds.
+chrono.workspace = true
+# `hp export-otlp`: the census, the backend registry, and the delivery loop.
+hyphae-export.workspace = true
+dotenvy.workspace = true
+hyphae-extract.workspace = true
+hyphae-store.workspace = true
+hyphae-view.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+
+[dev-dependencies]
+# The repository root, found the one way every crate's tests find it.
+hyphae-testsupport.workspace = true
+# The CLI tier runs the binary against stores in a tempdir, and reads back the timestamps it
+# stamped — so the tests need the store crate's own clock type.
+tempfile.workspace = true
+chrono.workspace = true
+# The parity leaf hands its plan to the Python CLI and reads back what each stream got.
+serde_json.workspace = true
+# Interrupting a running viewer the way Ctrl-C does: `std::process` can kill a child but not
+# signal one, and a graceful exit is only observable under the signal a person sends.
+libc = "0.2"
+# `--dev`'s reload route, named rather than spelled out in the leaf that opens it.
+hyphae-view.workspace = true

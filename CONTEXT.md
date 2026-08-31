@@ -93,7 +93,8 @@ The generators: `tools/`; how to write one and where a generated fact belongs: `
 
 - **Cog** — the splice `mise run cogs` performs: it runs the command a document names and pastes the output back into it
 - **Cog block** — one splice in one document: the two markers and the generated text between them
-- **Browser tier** — the Playwright specs under `tests/e2e/` that drive the gallery in a real Chromium; every other test the suite runs is the Python tier
+- **Browser tier** — the Playwright specs under `tests/e2e/` that drive the gallery in a real Chromium; every other test under `tests/` is the Python tier
+- **Rust tier** — the Rust port's own tests under `rust/`, gated by `mise run rust-check`; its parity leaves diff what it answers against what the Python tier does
 
 ## Qualify these words
 

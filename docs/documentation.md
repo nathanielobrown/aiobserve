@@ -14,7 +14,7 @@ Use this guide to decide where project documentation belongs and how to keep it 
 | The meaning and source of a telemetry field | Its field on a record model in `src/hyphae/extract/records/`, which `docs/schema.md` prints |
 | A table restating something the code already holds | A generator in `tools/`, spliced into the document; see [Generate a table from the code that owns it](#generate-a-table-from-the-code-that-owns-it) |
 | A picture of how parts connect or data moves | A ` ```mermaid ` block in the document that owns the topic; see [the Mermaid guide](mermaid-guide.md) |
-| A finding about an AI coding agent and its evidence | `reports/`; see [the report guide](../reports/README.md) |
+| A finding about an AI coding agent, or a judgment about hyphae itself, and its evidence | `reports/`; see [the report guide](../reports/README.md) |
 | A bug, feature, or design question that needs action | A GitHub issue |
 | A design or test plan that should remain after the change lands | `plans/<change>/`, committed on the implementing branch |
 | Scratch passed between agent runs | `handoffs/`; see [the handoff guide](handoffs.md) |

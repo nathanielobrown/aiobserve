@@ -1,0 +1,83 @@
+{
+  "knobs": {
+    "nav": "full",
+    "kin": 200,
+    "log": 100,
+    "detail": 4000
+  },
+  "bounds": {
+    "KIN": {
+      "default": 200,
+      "ceiling": 200
+    },
+    "LOG": {
+      "default": 100,
+      "ceiling": 100
+    },
+    "DETAIL": {
+      "default": 4000,
+      "ceiling": 4000
+    },
+    "RECORDS": {
+      "default": 100,
+      "ceiling": 200
+    },
+    "CHUNK": {
+      "default": 50000,
+      "ceiling": 60000
+    },
+    "SESSIONS": {
+      "default": 113,
+      "ceiling": 113
+    },
+    "PROJECTS": {
+      "default": 100,
+      "ceiling": 100
+    },
+    "ERRORS": {
+      "default": 100,
+      "ceiling": 100
+    }
+  },
+  "sizes": {
+    "OPENED_RECORD_CHARS": 15000,
+    "LOG_CHARS": 300,
+    "DEPTH": 16,
+    "CURSORLESS_TURNS": 1,
+    "INDENT_CHARS": 20000,
+    "HIGHLIGHT_CHARS": 256000,
+    "NAV_TREE_ROW_BYTES": 1703
+  },
+  "widths": {
+    "WINDOW_DAYS": 28,
+    "RAW_CHARS": 2000,
+    "ERROR_CHARS": 200,
+    "SIGNATURE_CHARS": 120,
+    "COMMAND_HEAD_CHARS": 60,
+    "LOG_ROWS": 100,
+    "PAGE_RECORDS": 100,
+    "PAGE_PROJECTS": 100,
+    "PAGE_ERRORS": 100,
+    "PAGE_RECENT_DAYS": 7,
+    "PAGE_WINDOW_DAYS": 30,
+    "CHUNK_CHARS": 50000,
+    "CHIP_CHARS": 60,
+    "MODEL_CHARS": 60,
+    "HEADER_CHARS": 100,
+    "HEADER_ITEM_CHARS": 60,
+    "HEADER_ITEMS": 5,
+    "LIST_CHARS": 100,
+    "LIST_ITEM_CHARS": 20,
+    "LIST_ITEMS": 4,
+    "LIST_CATEGORIES": 3,
+    "LIST_PROJECTS": 10,
+    "ENRICHMENT_CHARS": 200,
+    "TAG_CHARS": 20,
+    "RECORD_PREVIEW": 160,
+    "NAV_CHARS": 110,
+    "CRUMB_CHARS": 40,
+    "LOG_CHARS": 300,
+    "DETAIL_CHARS": 4000,
+    "FIRST_PAGE": -1
+  }
+}

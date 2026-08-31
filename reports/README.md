@@ -6,6 +6,8 @@ Name a report `YYYY_MM_DD_<project>_<topic>.md` — the date it was run, the pro
 
 [The analysis guide](../docs/analysis.md) is the process that produces one: how sessions are selected, how readers work, the evidence ladder a candidate has to climb, and the citation and redaction rules any transcript quote has to pass.
 
+Not every pass analyzes an agent. The Rust-port reports judge hyphae itself: what a candidate port was worth against the three questions its design set, then what the finished port cost. The rules below hold either way: a number carries the machine and the corpus that produced it, or it is a hypothesis.
+
 ## What a report has to carry
 
 - **The question** it set out to answer, and why that question was worth the pass

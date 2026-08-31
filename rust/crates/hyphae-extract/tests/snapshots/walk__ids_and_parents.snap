@@ -1,0 +1,73 @@
+---
+source: rust/crates/hyphae-extract/tests/walk.rs
+expression: dump
+---
+session 4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b
+  turn 0 main 5b848af7-f86e-4950-b474-cd98125fad24 replayed=false
+  turn 1 main 30aad8e5-21f8-486d-b9d9-e118c703a5a1 replayed=false
+  turn 2 main 818588ad-3849-48fe-a546-573163768e04 replayed=false
+  turn 3 main 8cdceb31-385c-42d4-9dae-137958b09b88 replayed=false
+  turn 0 ac461ef46b4bb8e32 6718080f-9463-41e7-9794-caab98ce43df replayed=false
+  turn 0 af6473ae437c9608d 09880a20-b326-4cb9-95c7-ef61e0b4d058 replayed=false
+  call 0 main msg_011CdmMjFXDofyYSMxYtXa5n turn=30aad8e5-21f8-486d-b9d9-e118c703a5a1 replayed=false
+  call 1 main msg_011CdmToQdxciYnDo9M2d7HN turn=818588ad-3849-48fe-a546-573163768e04 replayed=false
+  call 2 main msg_011CdmUSN7CEFrApaViphdwb turn=818588ad-3849-48fe-a546-573163768e04 replayed=false
+  call 3 main msg_011CdmUTLXigDcVRN67fErbT turn=818588ad-3849-48fe-a546-573163768e04 replayed=false
+  call 4 main msg_011Cdmz3NQtuzwN3cqYvvkuN turn=818588ad-3849-48fe-a546-573163768e04 replayed=false
+  call 5 main 03b918cc-8a2a-4891-9385-39caceac50ac turn=8cdceb31-385c-42d4-9dae-137958b09b88 replayed=false
+  call 0 ac461ef46b4bb8e32 msg_011CdmTpsWWekY9vCQNRhnDj turn=6718080f-9463-41e7-9794-caab98ce43df replayed=false
+  call 1 ac461ef46b4bb8e32 msg_011CdmTqtz6HUCRbNzv1dShd turn=6718080f-9463-41e7-9794-caab98ce43df replayed=false
+  call 0 af6473ae437c9608d msg_011CdmTt1ihvrkAq67PWXWPQ turn=09880a20-b326-4cb9-95c7-ef61e0b4d058 replayed=false
+  tool 0 main toolu_012pdUKAdn6qh1dYSBug3rr9 call=msg_011CdmMjFXDofyYSMxYtXa5n replayed=false
+  tool 1 main toolu_01GzkcnijJv7xLcXGBsKivfz call=msg_011CdmMjFXDofyYSMxYtXa5n replayed=false
+  tool 2 main toolu_01E727WAoLTAFYKwYL5J3EVH call=msg_011CdmMjFXDofyYSMxYtXa5n replayed=false
+  tool 3 main toolu_015dP3eMe5GZn7BzFipupZwS call=msg_011CdmToQdxciYnDo9M2d7HN replayed=false
+  tool 4 main toolu_013mFHM2jYQ6khnnZDCHq5Ua call=msg_011CdmUSN7CEFrApaViphdwb replayed=false
+  tool 5 main toolu_01CcyHEsu4XugVyeSfS3U8hT call=msg_011CdmUSN7CEFrApaViphdwb replayed=false
+  tool 6 main toolu_018UqB22UZkc6yAikcDQZryq call=msg_011CdmUTLXigDcVRN67fErbT replayed=false
+  tool 7 main toolu_01B6iTUMs3YrNvULzgRkwuar call=msg_011Cdmz3NQtuzwN3cqYvvkuN replayed=false
+  tool 0 ac461ef46b4bb8e32 toolu_016wTLspeMr7uobGBLFtBpD3 call=msg_011CdmTpsWWekY9vCQNRhnDj replayed=false
+  tool 1 ac461ef46b4bb8e32 toolu_01SpzLooq2oJd72pCg4Jmq6v call=msg_011CdmTqtz6HUCRbNzv1dShd replayed=false
+  tool 2 ac461ef46b4bb8e32 toolu_01Qn8ALkM2gPHtw7fzsashtY call=msg_011CdmTqtz6HUCRbNzv1dShd replayed=false
+  tool 0 af6473ae437c9608d toolu_01SzCMuLzJk8ag5BnK545sWY call=msg_011CdmTt1ihvrkAq67PWXWPQ replayed=false
+  run ac461ef46b4bb8e32 parent=None tool=toolu_015dP3eMe5GZn7BzFipupZwS depth=1
+  run af6473ae437c9608d parent=ac461ef46b4bb8e32 tool=toolu_01SpzLooq2oJd72pCg4Jmq6v depth=2
+session 5f4b59fb-a9a8-4ca1-af62-a64b9d0ce515
+  turn 0 main 6f64fdd0-3c16-4350-9cd0-ff731df16c06 replayed=false
+  turn 0 a43bfe9fc86734ff1 fbb44a8a-bf7c-44ab-bdbb-8494915efe7a replayed=false
+  turn 0 aa52d3fe48cec7f58 352c7726-2c57-49fa-bf95-5342b15cccab replayed=false
+  call 0 main msg_011Cd6RyHnMi8h4ZAceminTf turn=6f64fdd0-3c16-4350-9cd0-ff731df16c06 replayed=false
+  call 1 main msg_011Cd6SbrBGHDLxr2oKBJZCf turn=6f64fdd0-3c16-4350-9cd0-ff731df16c06 replayed=false
+  call 0 a43bfe9fc86734ff1 msg_011Cd6LVaR7cruhyZqtFW3Yb turn=fbb44a8a-bf7c-44ab-bdbb-8494915efe7a replayed=false
+  call 0 aa52d3fe48cec7f58 msg_011Cd6HBjyEswDi4ebLS7MvP turn=352c7726-2c57-49fa-bf95-5342b15cccab replayed=false
+  tool 0 main toolu_01KZDHBh9UU4G5BkzFyTgSQR call=msg_011Cd6RyHnMi8h4ZAceminTf replayed=false
+  tool 1 main toolu_01F3PEhddDpAiyXfq5ptAvzF call=msg_011Cd6RyHnMi8h4ZAceminTf replayed=false
+  tool 2 main toolu_01UYwNb8UVXv8meyLuhfywbJ call=msg_011Cd6SbrBGHDLxr2oKBJZCf replayed=false
+  tool 3 main toolu_0171bf5E4iNBfJWuhw3QCzAY call=msg_011Cd6SbrBGHDLxr2oKBJZCf replayed=false
+  tool 0 a43bfe9fc86734ff1 toolu_01U2FtuK1PFMEUC1Ka5F72uR call=msg_011Cd6LVaR7cruhyZqtFW3Yb replayed=false
+  tool 0 aa52d3fe48cec7f58 toolu_015ZbdYszQzP96pCZmJjQxoY call=msg_011Cd6HBjyEswDi4ebLS7MvP replayed=false
+  tool 1 aa52d3fe48cec7f58 toolu_01XacpzQCKLNedToQPJbJVxJ call=msg_011Cd6HBjyEswDi4ebLS7MvP replayed=false
+  run a43bfe9fc86734ff1 parent=None tool=toolu_019Vx5PvPczXRJices2t3aBE depth=1
+  run aa52d3fe48cec7f58 parent=None tool=toolu_017CMNVGsYWngqeuMUqz6cZJ depth=1
+session 10d0349d-0705-4e23-aa64-5b1b97698b2e
+  turn 0 main 97d6f3d4-2259-4760-bd75-289a685b2168 replayed=false
+  turn 0 aarchitect-5144001ac50718bc d1fb01b4-8a4a-4e6f-a383-b74e6458db0c replayed=false
+  turn 1 aarchitect-5144001ac50718bc 11b6b551-6809-4101-a6c9-b43814aea446 replayed=false
+  call 0 aarchitect-5144001ac50718bc msg_011Cd5v7SsXuCzdcrcZBVkiy turn=d1fb01b4-8a4a-4e6f-a383-b74e6458db0c replayed=false
+  call 1 aarchitect-5144001ac50718bc msg_011Cd63hRTDcEGGr3VQwYGCu turn=11b6b551-6809-4101-a6c9-b43814aea446 replayed=false
+  tool 0 aarchitect-5144001ac50718bc toolu_0113GcKjeYyWhS7UQPuHw6rK call=msg_011Cd5v7SsXuCzdcrcZBVkiy replayed=false
+  tool 1 aarchitect-5144001ac50718bc toolu_014RWa4im25fDNPXv2LnPPSK call=msg_011Cd63hRTDcEGGr3VQwYGCu replayed=false
+  run aarchitect-5144001ac50718bc parent=None tool=None depth=0
+session 1de7cf38-b28a-4c7d-9a6d-66ebe002cfa9
+  turn 0 a003de2a5c1985f71 73645dae-3b3a-48f9-9dda-7a1e7c4c5f50 replayed=false
+  call 0 main msg_01TQvK47F1A5kGtzr9GVasbp turn=None replayed=false
+  call 1 main msg_014EMRFe1JBfTQ1VoAnH6WRs turn=None replayed=false
+  call 2 main msg_01S34JFLabVpNznyQqQHwaUf turn=None replayed=false
+  call 3 main msg_01YQLTyXPwiXieFihcKBKsMS turn=None replayed=false
+  call 0 a003de2a5c1985f71 msg_018y5Tk3ffnMgTUpkKZ2sLuH turn=73645dae-3b3a-48f9-9dda-7a1e7c4c5f50 replayed=false
+  call 1 a003de2a5c1985f71 msg_01TWazptocBHx8orx1vhYYPn turn=73645dae-3b3a-48f9-9dda-7a1e7c4c5f50 replayed=false
+  tool 0 main toolu_01SPoNem3DfG8rrPuaWkDRYL call=msg_01S34JFLabVpNznyQqQHwaUf replayed=false
+  run a003de2a5c1985f71 parent=None tool=toolu_01TaqMfKVm7fYwxuQwW9okd6 depth=1
+  compaction main 459d0d29-cb67-477a-9cf1-f9bb19417c49
+  compaction main 0710fcd7-edbe-4012-bee4-89aadf04f6f2
+  compaction a003de2a5c1985f71 1c83df25-c70c-4ef1-965d-395a34f281ef

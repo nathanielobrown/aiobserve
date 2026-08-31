@@ -202,6 +202,23 @@ rm -rf mutants
 no_proxy='*' uv run mutmut run --max-children 1 "$@"
 """
 
+[tasks.rust-check]
+description = "Every gate the Rust port has: format, lint, and the suite under rust/"
+# The Rust half's whole gate in one command, for the reason `check-fast` is one command: a gate
+# you have to remember three parts of gets run in two. Deliberately NOT a dependency of
+# `check` — `check.yml` installs Python and node and no Rust toolchain, so folding it in would
+# red every CI run on a machine that cannot build it. Run it beside `check`.
+dir = "{{config_root}}/rust"
+run = [
+  "cargo fmt --all --check",
+  # `--all-targets` reaches the tests as well as the crates, and `-D warnings` is what turns
+  # clippy from advice into a gate.
+  "cargo clippy --all-targets --all-features -- -D warnings",
+  # nextest rather than `cargo test`: a process per test, which is what lets the frozen-clock
+  # leaf set an environment variable and the CLI tier spawn servers without colliding.
+  "cargo nextest run",
+]
+
 [tasks.check-fast]
 description = "Format and lint the code and the docs, and type-check — the loop to run while iterating"
 depends = ["format", "lint", "lint-docs", "typecheck"]
