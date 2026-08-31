@@ -36,3 +36,5 @@ pub mod selections;
 pub mod served;
 /// The tools the fixture corpus records under a name the viewer names its calls by.
 pub mod tools;
+/// The dates the analysis tier windows against, and the corpus counts each one covers.
+pub mod windows;
