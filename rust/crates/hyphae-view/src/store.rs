@@ -300,11 +300,10 @@ impl Reader {
     /// A read-only connection for one request, checked and dropped with the response.
     ///
     /// The version is checked per request rather than at startup because an extract can land
-    /// between two page loads.
+    /// between two page loads. The open is what checks it — every opener does, so no caller
+    /// can forget and no store reaches a query at a version this build does not read.
     pub fn connect(&self) -> Result<Store, ViewError> {
-        let store = Store::open_read_only(&self.path)?;
-        store.check_version()?;
-        Ok(store)
+        Ok(Store::open_read_only(&self.path)?)
     }
 }
 

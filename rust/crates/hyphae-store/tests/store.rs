@@ -120,27 +120,43 @@ fn a_bound_date_is_a_date_and_not_its_spelling() {
     );
 }
 
-/// A store of another vintage is refused, and the message names the version it holds.
+/// A store of another vintage is refused by every opener, naming the version it holds.
 ///
 /// Rust runs no migration: `export/duckdb.py`'s `migrate` stays the one place a store is
-/// carried forward, so the remedy here is to extract into a fresh file.
+/// carried forward, so the remedy here is to extract into a fresh file. All three openers
+/// are swept because Python checks the version on all three — `open_trace_store` runs
+/// `check_version` for a reader as well as a writer — and the read-only one is what the
+/// viewer opens with, so a store of another vintage must reach it as this refusal rather
+/// than as a binder error naming a column.
 #[test]
 fn a_store_stamped_with_another_version_is_refused() {
     let scratch = TempDir::new().unwrap();
-    let path = scratch.path().join("traces.duckdb");
-    let store = Store::create(&path).unwrap();
-    store
-        .connection()
-        .execute_batch("UPDATE meta SET schema_version = 3")
-        .unwrap();
-    drop(store);
+    // One store per opener: DuckDB caches an instance per path within a process, and a path
+    // one opener has refused is not a clean subject for the next.
+    type Opener = fn(&std::path::Path) -> Result<Store, StoreError>;
+    let openers: [(&str, Opener); 3] = [
+        ("create", Store::create),
+        ("open_for_write", Store::open_for_write),
+        ("open_read_only", Store::open_read_only),
+    ];
+    for (name, open) in openers {
+        let path = scratch.path().join(format!("{name}.duckdb"));
+        let store = Store::create(&path).unwrap();
+        store
+            .connection()
+            .execute_batch("UPDATE meta SET schema_version = 3")
+            .unwrap();
+        drop(store);
 
-    let error = Store::create(&path).expect_err("an older store is refused");
-    let StoreError::SchemaVersion { held, reads, .. } = &error else {
-        panic!("expected a schema-version error, got {error:?}");
-    };
-    assert_eq!(held, "3");
-    assert_eq!(*reads, schema::SCHEMA_VERSION);
+        let Err(error) = open(&path) else {
+            panic!("{name} opened an older store instead of refusing it");
+        };
+        let StoreError::SchemaVersion { held, reads, .. } = &error else {
+            panic!("{name}: expected a schema-version error, got {error:?}");
+        };
+        assert_eq!(held, "3", "{name} names the version the store holds");
+        assert_eq!(*reads, schema::SCHEMA_VERSION, "{name} names what it reads");
+    }
 }
 
 /// A database that is not ours is left alone rather than having our tables added to it.

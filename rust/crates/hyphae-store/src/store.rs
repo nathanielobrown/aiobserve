@@ -3,8 +3,8 @@
 //! Ported from `src/hyphae/export/duckdb.py` and the connection half of
 //! `src/hyphae/view/store.py`. What is deliberately left in Python: `migrate` and
 //! `check_shape`. The prototype writes fresh stores and reads one already at
-//! `SCHEMA_VERSION`, so [`Store::check_version`] refuses anything else rather than carrying
-//! it forward — a store that needs a migration is handed back to `hp` the Python binary.
+//! `SCHEMA_VERSION`, so every opener refuses anything else rather than carrying it forward —
+//! a store that needs a migration is handed back to `hp` the Python binary.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -123,7 +123,7 @@ impl Store {
     }
 
     /// Refuse a store this build's schema does not fit, naming the version it holds.
-    pub fn check_version(&self) -> Result<(), StoreError> {
+    fn check_version(&self) -> Result<(), StoreError> {
         let held = self.held_schema_version()?;
         if held == Some(schema::SCHEMA_VERSION) {
             return Ok(());
@@ -215,12 +215,19 @@ impl Store {
     /// Creates nothing: a path with no store behind it is a typo rather than a new store.
     /// `read_only` is not a parameter because DuckDB admits one writer at a time — a reader
     /// that takes the write lock by accident locks the viewer out.
+    ///
+    /// The version is checked here as `open_trace_store` checks it for a Python reader. A
+    /// reader cannot migrate, so a store of another vintage has to be refused with a message
+    /// naming the version — unchecked, it reaches the viewer as a binder error naming a
+    /// column, with no version and no remedy in it.
     pub fn open_read_only(path: &Path) -> Result<Self, StoreError> {
         if !path.exists() {
             return Err(StoreError::NoStore(path.to_owned()));
         }
         let config = Config::default().access_mode(duckdb::AccessMode::ReadOnly)?;
-        Self::connect(path, config)
+        let store = Self::connect(path, config)?;
+        store.check_version()?;
+        Ok(store)
     }
 
     /// Open a store an extract already wrote, taking the write lock.
