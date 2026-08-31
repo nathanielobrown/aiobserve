@@ -30,8 +30,18 @@ pub fn session_rows(store: &Store, session_id: &str, table: &str) -> Vec<Vec<Val
 
 /// Assert two row sets are equal, naming where they differ and never what differed.
 pub fn assert_rows_equal(table: &str, left: &[Vec<Value>], right: &[Vec<Value>]) {
-    assert_eq!(left.len(), right.len(), "`{table}` row count");
     let columns = schema::columns(table).expect("a table this crate declares");
+    assert_columns_equal(table, columns, left, right);
+}
+
+/// The same, over columns the caller names — for a table this crate's schema does not declare.
+pub fn assert_columns_equal(
+    table: &str,
+    columns: &[&str],
+    left: &[Vec<Value>],
+    right: &[Vec<Value>],
+) {
+    assert_eq!(left.len(), right.len(), "`{table}` row count");
     for (at, (one, other)) in left.iter().zip(right).enumerate() {
         assert_eq!(one.len(), other.len(), "`{table}` row {at} width");
         for (column, (a, b)) in columns.iter().zip(one.iter().zip(other)) {

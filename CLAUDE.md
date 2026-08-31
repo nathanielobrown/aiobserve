@@ -27,7 +27,7 @@ Use `mise` to run project tasks. `uv` owns the Python environment.
 - Run any individual task listed in `mise.toml` with `mise run <task>`. Ruff formats and lints Python, which is what a viewer page is made of (`docs/ui-development.md`); Pyrefly checks types; aigarden holds the docs to `aigarden.toml` and splices their generated blocks (`docs/documentation.md`)
 - Run `mise run diagram-check <file>` to validate Mermaid and `mise run mutate` to score the suite against mutants (`.claude/rules/testing.md`)
 - Run `mise run e2e` to drive the viewer's pages in a real Chromium; it is out of `check` because it needs a browser (`docs/ui-development.md`)
-- Run `mise run rust-check` to gate the Rust prototype under `rust/` — format, clippy, and its suite; it is out of `check` because CI installs no Rust toolchain
+- Run `mise run rust-check` to gate the Rust prototype under `rust/` — format, clippy, and its suite; it is out of `check` because CI installs no Rust toolchain. One leaf shells into `uv` to plant the Python tier's enrichment rows and diff them against Rust's; set `HYPHAE_SKIP_PYTHON_PARITY` where there is no Python environment
 
 Put `mise` flags before the task name. `mise run check --force` passes `--force` to the task, where it does nothing.
 
