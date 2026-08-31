@@ -65,6 +65,19 @@ pub fn attempt(db: &Path, name: &str, request: Request) -> Result<QueryResult, Q
     hyphae_analyze::run(db, name, &request)
 }
 
+/// The default a query declares for one of its parameters, off the generated manifest.
+///
+/// The caps a leaf checks a cell against live in Python's `analyze/queries.py` and cross the
+/// bridge as parameter defaults, so reading them here is reading the number the runner will
+/// actually bind rather than a second copy of it.
+pub fn cap(query: &str, param: &str) -> usize {
+    let declared = hyphae_store::manifest::manifest()[query].params[param]
+        .default
+        .as_ref()
+        .expect("the parameter has a default");
+    usize::try_from(declared.as_i64().expect("a numeric cap")).expect("a cap fits")
+}
+
 /// One row of SQL a leaf writes itself, against a store opened read-only.
 ///
 /// The independent count a query's arithmetic is checked against: a leaf that computed its
