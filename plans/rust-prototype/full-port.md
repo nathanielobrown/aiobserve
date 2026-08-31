@@ -8,8 +8,8 @@ in one process, and the report's claim must not let parallelism masquerade as la
 
 The constraint that decides the shape: nextest is process-per-test, so pytest's amortization —
 session-scoped stores shared across the store-reading directories (view, analyze, gallery) —
-evaporates. Today each Rust routes test rebuilds the fixture store at ~2s real / 7s user
-(measured this session); naively extended over the 776 view tests that is slower than Python.
+evaporates. Slice 1 measured the per-process rebuild of both stores at ~0.3 s and the shared
+cache removes it; the residual per-request store cost is ruled on in the amendment below.
 Everything else is a port; this is the design.
 
 ## The shared store cache
@@ -205,15 +205,17 @@ Each slice green under `mise run rust-check` before the next. The bridge precede
 that consumes it; the view tier — 86% of Python's wall time — comes as early as its inputs
 allow. Collected-ID counts per slice sum to 1,836 with no test in two slices.
 
-1. **testsupport + store cache**; convert the existing 80 tests. Oracle: nextest green, routes
-   tests fall from ~2s to milliseconds — the recorded before/after is the cache's proof
+1. **testsupport + store cache**; convert the existing 80 tests. Oracle: nextest green, and the
+   store build leaves every test process — met at `3c0eb06`: the routes leaf fell 1.75 s →
+   1.42 s, exactly the ~0.3 s build, the whole prize once the build's true size was measured
 2. **Generation bridge** (query manifest, extended `gen_bounds`, enrichment versions) + the
    Rust re-derivation leaf. Oracle: Python freshness gates green; manifest keys ↔
    `include_str!` names agree
 3. **Enrichment store + planting** (29) + the permanent planting-parity leaf. Oracle: ported
    `test_store.py` assertions and the parity diff, before any view test reads the store
 4. **View tier** (776, bounds sweep included — its registry exists since slice 2). Oracle: the
-   ported assertions; then the first timing checkpoint against pytest's 181.6s view figure
+   ported assertions; then the first timing checkpoint against pytest's 181.6s view figure,
+   under the optimized profile per the amendment below
 5. **Extract, store and pipeline remainder** (241 + `test_duckdb` 23, `test_schema` 9,
    `test_pipeline` 10, `test_sessions` 10 = 293). Oracle: ported assertions + the existing
    cross-language snapshots
@@ -241,3 +243,33 @@ allow. Collected-ID counts per slice sum to 1,836 with no test in two slices.
 - `opentelemetry-proto`'s prost types have not been decoded against bytes our encoder produced —
   no recorded OTLP bytes exist to pin the version. Settled by a ten-minute round-trip probe at
   slice 8 start; a mismatch demotes the crate to vendored `.proto` + prost-build
+
+## Amendment: the viewer keeps per-request connect
+
+Slice 1 located the view tier's real residue: production `Reader::connect()` opens a read-only
+DuckDB connection per request — ~41 ms/page under the dev profile. The fork was to keep that,
+or to cache the connection in axum state.
+
+**Ruling: keep per-request connect, in production and in the tests.** The per-request open is
+load-bearing product behavior, not an accident of porting: a DuckDB read-only connection holds
+the file's shared lock for its lifetime, an RO holder blocks every RW open, and no busy-timeout
+exists to wait on (probed, duckdb 1.5.5) — so a cached connection makes the running viewer
+block every `hp extract` until the viewer exits. Opening per request is what lets an extract
+land between two page loads, what turns a held write lock into a 503 instead of a crash, and
+what makes the schema check per-request (`view/store.py` states this contract;
+`Reader::connect` mirrors it). Rejected: a cached or pooled connection (the lock, above; and
+`duckdb-rs`'s `Connection` is not `Sync`, so it also forces a pool for a property we don't
+want), and reopen-on-mtime (restores staleness but still holds the lock between changes, so
+the extract still blocks).
+
+**Staleness:** unchanged. The Rust viewer keeps Python's semantics whole — sees a store
+rewritten underneath it, 503 on a locked store, `SchemaMoved` per request. No behavior change
+to document.
+
+**The speed claim:** both viewers pay the same per-request open, so the `-j1` headline stays
+like-with-like with nothing extra to disclose. Two obligations on slice 4: the ~41 ms is a
+dev-profile number (`opt-level = 1` reaches the bundled DuckDB), so run the timing checkpoint
+under the optimized profile the measurement protocol already pins, and re-measure the open
+there before sizing anything against it; and if per-request opens then dominate the view
+tier's wall, report that as a product cost both languages carry — never as harness overhead,
+and never trimmed in the harness by sharing a connection production wouldn't.
