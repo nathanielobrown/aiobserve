@@ -131,7 +131,7 @@ that leaf).
 The pinned-everywhere property of Python's `far_future` class patch — "a clock read added
 anywhere under a test here is pinned too" — is restored by mechanism, not discipline:
 `clippy.toml` `disallowed-methods` bans `chrono::Utc::now` and `SystemTime::now` outside the
-`utcnow()` module and the export `Clock` production impl, the same gate already banning
+`utcnow()` module and the export `Clock` production impl, the same gate that bans
 `Command`. Analyze tests then bind windows explicitly with testsupport constants ported from
 `tests/analyze/conftest.py` — `AS_OF_WHOLE = 2026-07-28` (opens the 28-day trailing window at
 2026-06-30, covering all 15 corpus sessions), `AS_OF_PARTIAL`, `AS_OF_MID` — while `FAR_FUTURE`
@@ -153,6 +153,14 @@ Export keeps the behavioral `Clock` trait above, because an env instant cannot f
   cap as pytest-timeout, plus per-test overrides for the slow-marked leaves. Warnings-as-errors
   is already `-D warnings` at compile; Rust has no runtime-warning channel to trap — the
   crash-on-unexpected extractor is the analogue
+
+*(As built, post-slice-10: both files arrived after the ten slices, not with the first. The
+network ban names `reqwest::blocking::Client`'s constructors, not `ureq`'s — slice 8 took
+reqwest, so the ban follows the dependency that shipped. `.config/nextest.toml` spells the
+120s cap as four 30s slow periods, so a leaf drifting toward it prints its elapsed time three
+times first; the one override raises `hyphae-view::bounds_node` to five minutes, because it
+renders every node of the corpus and already runs ~108s idle.)*
+
 - **Snapshots**: one philosophy for the ported tier — no self-referential goldens; ported tests
   parse markup back and assert data, as `tests/view/conftest.py` does. The Python-generated
   parity cases (`render_cases.json`, `format_cases.json`, the extract snapshots) are a different

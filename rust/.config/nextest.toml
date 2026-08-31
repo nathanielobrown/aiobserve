@@ -1,0 +1,16 @@
+# The Rust tier's runtime caps, matching what pytest-timeout gives the Python tier
+# (`pyproject.toml`: `timeout = 120`). Without this nothing kills a hung test — nextest's
+# default reports a slow leaf and then waits for it forever.
+
+[profile.default]
+# 120s hard cap, spelled as four 30s periods: the first three print "SLOW" with the elapsed
+# time, which is the warning a leaf drifting toward the cap needs, and the fourth kills it.
+slow-timeout = { period = "30s", terminate-after = 4 }
+
+# The bounds leaves render every node of the corpus and weigh the markup, so they run in
+# minutes where the rest of the tier runs in seconds: `a_node_page_of_nothing…` takes ~108s
+# on an idle machine, which the shared cap would kill on a contended one. Five minutes is a
+# hang, not a slow walk.
+[[profile.default.overrides]]
+filter = 'binary_id(hyphae-view::bounds_node)'
+slow-timeout = { period = "60s", terminate-after = 5 }

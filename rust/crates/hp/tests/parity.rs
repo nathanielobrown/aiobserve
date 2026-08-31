@@ -162,6 +162,10 @@ struct Said {
 /// Run the whole plan through the Python CLI, in the plan's own order.
 fn drive_python(db: &std::path::Path, plan: &[(String, Vec<String>, bool)]) -> Vec<Said> {
     let written = serde_json::to_string(plan).expect("the plan serializes");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the uv parity bridge: the oracle is Python's own answer"
+    )]
     let done = Command::new("uv")
         .args(["run", "--project"])
         .arg(corpus::repo())

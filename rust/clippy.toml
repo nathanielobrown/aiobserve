@@ -1,0 +1,15 @@
+# What a Rust test may not reach for, so the port keeps the properties Python got from its
+# own seams. Every entry is a path clippy resolves, not a string a grep matches, so an
+# aliased import cannot slip past. An allowed site carries
+# `#[expect(clippy::disallowed_methods, reason = "…")]` — the markers are the registry, and
+# no list of them lives here to go stale.
+disallowed-methods = [
+  # Subprocess: Python's suite spawns nothing that is not a fixture, and a spawn hidden in a
+  # leaf is a leaf that depends on the machine. Allowed at the `hp` process leaves, the
+  # `uv` bridge the parity leaves cross, and the enrichment runner's production spawn.
+  { path = "std::process::Command::new", reason = "a spawn belongs at a named seam: the hp process leaves, the uv parity bridge, or the enrichment runner" },
+  # Network: the design named ureq; as built the transport is `reqwest::blocking`, so the
+  # ban follows the dependency that shipped. Allowed only inside the delivery transport.
+  { path = "reqwest::blocking::Client::builder", reason = "the OTLP transport owns the only HTTP client; a test reaches a receiver through it" },
+  { path = "reqwest::blocking::Client::new", reason = "the OTLP transport owns the only HTTP client; a test reaches a receiver through it" },
+]

@@ -220,6 +220,10 @@ fn a_locked_store_answers_503_and_recovers() {
     // The viewer binds this port itself, so the reservation is dropped first.
     drop(held);
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "an hp process leaf: the subject is the built binary, exit code and channels included"
+    )]
     let _viewer = Spawned(
         Command::new(HP)
             .args(["view", "--db"])
@@ -266,6 +270,10 @@ fn an_open_stream_does_not_hold_the_server_open_when_it_is_interrupted() {
     // The viewer binds this port itself, so the reservation is dropped first.
     drop(held);
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "an hp process leaf: the subject is the built binary, exit code and channels included"
+    )]
     let mut viewer = Command::new(HP)
         .args(["view", "--dev", "--db"])
         .arg(&db)

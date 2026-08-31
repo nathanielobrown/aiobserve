@@ -97,6 +97,10 @@ pub fn outside<S: AsRef<OsStr>>(args: &[S], outside: &hp::Outside<'_>) -> Output
 /// wrote to the process's own stderr — `hyphae-extract` warns with `eprintln!`, which no
 /// writer this side passes in can catch.
 pub fn spawn<S: AsRef<OsStr>>(args: &[S]) -> Output {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "an hp process leaf: the subject is the built binary, exit code and channels included"
+    )]
     let done = Command::new(HP).args(args).output().expect("hp runs");
     Output {
         ok: done.status.success(),
@@ -140,6 +144,10 @@ pub fn touched(signal: &Path, child: &mut Child, why: &str) {
 pub fn holding(db: &Path, scratch: &Path) -> (Child, PathBuf) {
     let taken = scratch.join("taken");
     let release = scratch.join("release");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the uv bridge: a Python holder taking the store's write lock"
+    )]
     let mut holder = Command::new("uv")
         .args(["run", "--project"])
         .arg(repo())

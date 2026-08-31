@@ -146,6 +146,10 @@ fn python(args: &[&str]) -> String {
     } else {
         PathBuf::from("python3")
     };
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the python bridge: the oracle is the fingerprint Python computes"
+    )]
     let run = std::process::Command::new(interpreter)
         .args(args)
         .current_dir(repo())

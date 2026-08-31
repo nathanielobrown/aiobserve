@@ -94,6 +94,10 @@ fn planted(store: &Store, level: Level, columns: &[&str]) -> Vec<Vec<Value>> {
 /// Run the Python tier's own planting over `corpus`, into `at`.
 fn plant_with_python(corpus: &Path, at: &Path) {
     let repo = corpus::repo();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the uv parity bridge: the oracle is Python's own answer"
+    )]
     let run = Command::new("uv")
         .args(["run", "--project", ".", "python", "-c", PLANT])
         .arg(at)
@@ -194,6 +198,10 @@ fn rendered_by_rust(at: &Path) -> Vec<(String, String)> {
 /// The same list, from the Python renders, over the copy at `at`.
 fn rendered_by_python(at: &Path) -> Vec<(String, String)> {
     let repo = corpus::repo();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the uv parity bridge: the oracle is Python's own answer"
+    )]
     let run = Command::new("uv")
         .args(["run", "--project", ".", "python", "-c", RENDER])
         .arg(at)

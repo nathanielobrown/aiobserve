@@ -390,6 +390,10 @@ impl<'a> OtlpExporter<'a> {
     /// `SCHEMA_VERSION` and leaves migration in Python, as [`hyphae_store`] does.
     pub fn new(backend: Backend, store: &'a Store, shipping: Shipping<'a>) -> Result<Self> {
         let pacer = Pacer::new(shipping.rate, shipping.clock)?;
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the one HTTP client this workspace builds; every send crosses it"
+        )]
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs_f64(shipping.timeout))
             .build()

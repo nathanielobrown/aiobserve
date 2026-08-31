@@ -186,6 +186,10 @@ fn a_store_held_open_for_writing_reports_itself_locked() {
     let scratch = TempDir::new().unwrap();
     let path = scratch.path().join("traces.duckdb");
     // A `meta` table so the store passes for ours, since the lock is the subject here.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a second process is the only thing that can hold the file lock; this process's own re-open is answered by the instance cache"
+    )]
     let mut holder = std::process::Command::new(python())
         .args([
             "-c",
@@ -331,6 +335,10 @@ fn python_started_at(transcript: &std::path::Path) -> String {
         .parent()
         .unwrap()
         .to_owned();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the python bridge: the oracle is what Python's writer stored"
+    )]
     let run = std::process::Command::new(python())
         .args([
             "-c",
@@ -606,6 +614,10 @@ fn the_appender_refuses_a_nested_value_and_no_column_is_one() {
 ///
 /// A subprocess for the same reason the holder above is one: this process's own second open
 /// is answered by the cached instance whatever the file lock says.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the python bridge: only another process can test whether the write lock is free"
+)]
 fn lock_is_free(path: &std::path::Path) -> bool {
     std::process::Command::new(python())
         .args([

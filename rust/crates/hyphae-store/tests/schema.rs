@@ -26,6 +26,10 @@ fn python_shape() -> BTreeMap<String, Vec<String>> {
                   print('\\n'.join(f'{t}: {\",\".join(sorted(c))}' \
                         for t, c in sorted(declared_shape(_SCHEMA).items())))";
     let repo = corpus::repo();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the uv/python bridge: this leaf's oracle is Python's own DDL, which only a Python process can report"
+    )]
     let run = std::process::Command::new(python())
         .args(["-c", script, &repo.join("src").display().to_string()])
         .current_dir(&repo)

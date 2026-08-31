@@ -81,6 +81,10 @@ pub struct ProcessRunner;
 impl CliRunner for ProcessRunner {
     fn run(&self, call: &Call) -> Result<Output, CallError> {
         let (binary, arguments) = call.argv.split_first().expect("a call names a binary");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the production spawn; a test replaces this runner rather than this line"
+        )]
         let mut command = Command::new(binary);
         command
             .args(arguments)
