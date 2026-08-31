@@ -26,8 +26,19 @@ MONEY = [0.0, 0.004, 0.005, 0.015, 1.0, 12.3456, 1234.5, 0.12345]
 COUNTS = [0, 7, 999, 1000, 1234, 1234567, 1_000_000, -1, -1234, -1_000_000]
 # A millisecond either side of each seam, plus a whole day: hours do not roll over.
 DURATIONS = [
-    0, 1, 800, 999, 1000, 59_999, 60_000, 125_000, 252_000,
-    3_599_999, 3_600_000, 7_500_000, 86_400_000,
+    0,
+    1,
+    800,
+    999,
+    1000,
+    59_999,
+    60_000,
+    125_000,
+    252_000,
+    3_599_999,
+    3_600_000,
+    7_500_000,
+    86_400_000,
 ]
 # A real zero numerator prints rather than reading as a gap; a zero whole is the gap.
 SHARES = [(0.0, 1.0), (1.0, 3.0), (0.022, 1.0), (2.0, 0.0), (1.0, 8.0), (1.0, 45.0), (1.0, 1.0)]
@@ -45,8 +56,20 @@ NOW = dt.datetime(2026, 8, 30, 12, 0, 0, tzinfo=dt.UTC)
 # A second short of each unit reads as the unit below, so a list refreshed while a session
 # runs does not flicker; the negative one is clock skew, which reads as the present.
 AGOS = [
-    0, 30_000, 59_000, 60_000, 90_000, 3_599_000, 3_600_000, 7_200_000,
-    86_399_000, 86_400_000, 259_200_000, 300_000_000, 34_560_000_000, -5_000,
+    0,
+    30_000,
+    59_000,
+    60_000,
+    90_000,
+    3_599_000,
+    3_600_000,
+    7_200_000,
+    86_399_000,
+    86_400_000,
+    259_200_000,
+    300_000_000,
+    34_560_000_000,
+    -5_000,
 ]
 # Single digits throughout, so a formatter that dropped the zero padding reads differently.
 STAMPS = [
@@ -84,7 +107,14 @@ print(
             "flags": [{"value": v, "shown": fmt.flag(v)} for v in (True, False)],
             "cuts": [
                 {"value": v, "size": n, "shown": fmt.cut(v, n)}
-                for v, n in [("abcdef", 3), ("abcd", 3), ("abc", 3), ("abc", 9), ("é🌱x", 2), ("", 3)]
+                for v, n in [
+                    ("abcdef", 3),
+                    ("abcd", 3),
+                    ("abc", 3),
+                    ("abc", 9),
+                    ("é🌱x", 2),
+                    ("", 3),
+                ]
             ],
         },
         indent=2,
