@@ -1,0 +1,67 @@
+{
+  "levels": {
+    "turn": {
+      "prompt_version": 4,
+      "table": "turn_enrichments",
+      "keys": [
+        "session_id",
+        "source",
+        "turn_id"
+      ],
+      "base": "live_turns",
+      "base_keys": [
+        "session_id",
+        "source",
+        "id"
+      ]
+    },
+    "agent_run": {
+      "prompt_version": 4,
+      "table": "agent_run_enrichments",
+      "keys": [
+        "session_id",
+        "agent_run_id"
+      ],
+      "base": "live_agent_runs",
+      "base_keys": [
+        "session_id",
+        "id"
+      ]
+    },
+    "session": {
+      "prompt_version": 4,
+      "table": "session_enrichments",
+      "keys": [
+        "session_id"
+      ],
+      "base": "describable_sessions",
+      "base_keys": [
+        "session_id"
+      ]
+    }
+  },
+  "taxonomy_version": 2,
+  "categories": [
+    "design",
+    "implement",
+    "fix_bug",
+    "refactor",
+    "test",
+    "debug",
+    "review",
+    "analyze",
+    "document",
+    "configure",
+    "vcs_ops",
+    "explore",
+    "chat",
+    "other"
+  ],
+  "outcomes": [
+    "completed",
+    "partial",
+    "failed",
+    "abandoned",
+    "unclear"
+  ]
+}
