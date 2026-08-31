@@ -12,6 +12,10 @@ hyphae-extract.workspace = true
 duckdb.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
+# The query manifest, compiled in as the JSON Python generates it into
+# (`src/manifest.rs`) rather than restated here.
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 # The shared store cache, and the row helpers that compare two stores without printing one.

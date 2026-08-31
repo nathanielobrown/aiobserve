@@ -7,6 +7,7 @@
 //! everything here until the Python store retires.
 
 pub mod macros;
+pub mod manifest;
 pub mod param;
 pub mod queries;
 pub mod row;
