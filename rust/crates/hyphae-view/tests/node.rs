@@ -343,6 +343,11 @@ async fn every_kind_renders_a_body_and_every_shape_a_log() {
     for url in pages(&served.db()) {
         let (status, page) = served.page(&url).await;
         assert_eq!(status, StatusCode::OK, "GET {url}");
+        // Riding along because this is the one sweep that fetches every page: no page prints a
+        // debug spelling of an absent value. A cell over a column the store left NULL says so in
+        // the dash `tests/app_list.rs` pins, and `None` is what a component that formatted an
+        // `Option` rather than reading it would put there instead.
+        assert!(!page.contains(">None<"), "GET {url}");
         let markup = Markup::of(&page);
         bodies.extend(markup.values("data-body"));
         logged.extend(markup.values("data-log"));

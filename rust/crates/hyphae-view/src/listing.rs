@@ -160,11 +160,11 @@ fn predicate(key: &str) -> String {
 }
 
 /// The two orderings a reader can ask for, as the SQL keyword each one puts in the ORDER BY.
-const DIRECTIONS: [(&str, &str); 2] = [("asc", "ASC"), ("desc", "DESC")];
+pub const DIRECTIONS: [(&str, &str); 2] = [("asc", "ASC"), ("desc", "DESC")];
 
 /// The same two as `aria-sort` spells them. ARIA defines the tokens and `asc` is not one of them,
 /// so a heading marked with the query string's own word announces no order at all.
-const ARIA_SORT: [(&str, &str); 2] = [("asc", "ascending"), ("desc", "descending")];
+pub const ARIA_SORT: [(&str, &str); 2] = [("asc", "ascending"), ("desc", "descending")];
 
 /// What one row of the list shows of the values a transcript wrote: each string cut to a head, the
 /// skills and the agent types cut to their first few with a count of what was left, and the PR

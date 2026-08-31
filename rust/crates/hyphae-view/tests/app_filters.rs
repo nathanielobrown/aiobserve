@@ -9,8 +9,8 @@ use std::collections::BTreeSet;
 use axum::http::StatusCode;
 use regex::Regex;
 
-use hyphae_store::{Param, queries};
-use hyphae_testsupport::html::Markup;
+use hyphae_store::Param;
+use hyphae_testsupport::html::{Markup, cut};
 use hyphae_testsupport::landmarks::MYCELIA;
 use hyphae_testsupport::rows;
 use hyphae_testsupport::served::Served;
@@ -41,17 +41,6 @@ fn sample(key: &str) -> &'static str {
         .find(|(named, _)| *named == key)
         .map(|(_, value)| *value)
         .unwrap_or_else(|| panic!("no sample for the `{key}` filter"))
-}
-
-/// What every list citation says about the display cut, which the viewer composes around the query
-/// the same way it composes the paging: re-running the file alone answers whole values.
-fn cut() -> String {
-    format!(
-        "head_chars={} item_chars={} head_items={}",
-        queries::LIST_CHARS,
-        queries::LIST_ITEM_CHARS,
-        queries::LIST_ITEMS
-    )
 }
 
 /// The session ids one list page shows, in the order it showed them.

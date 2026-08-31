@@ -130,6 +130,25 @@ pub fn busiest_session(db: &Path) -> (String, i64) {
     )
 }
 
+/// Every session in the store in the list's default order: newest first, empties last.
+///
+/// A session the store gave no start sorts to the bottom whichever way the list is ordered: "the
+/// store does not know" is not a date, and a row that carries none is not the newest thing that
+/// happened.
+pub fn listed_sessions(db: &Path) -> Vec<String> {
+    let store = Store::open_read_only(db).expect("the store opens read only");
+    store
+        .fetch(
+            "SELECT session_id FROM session_rollups \
+             ORDER BY started_at DESC NULLS LAST, session_id DESC",
+            &[],
+        )
+        .expect("the store answers")
+        .iter()
+        .map(|row| row.str("session_id").expect("a session id").to_owned())
+        .collect()
+}
+
 /// Every session id the fixture corpus put in the store, sorted.
 pub fn session_ids(db: &Path) -> Vec<String> {
     let store = Store::open_read_only(db).expect("the store opens read only");

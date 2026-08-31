@@ -14,6 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::LazyLock;
 
 use hyphae_extract::pricing::CONTEXT_WINDOWS;
+use hyphae_store::queries;
 use hyphae_view::nodes::BAR_STEPS;
 use regex::Regex;
 use scraper::{ElementRef, Html, Node};
@@ -448,6 +449,17 @@ pub fn classed(html: &str) -> BTreeSet<String> {
                 .collect::<Vec<_>>()
         })
         .collect()
+}
+
+/// What every list citation says about the display cut, which the viewer composes around the
+/// query the same way it composes the paging: re-running the file alone answers whole values.
+pub fn cut() -> String {
+    format!(
+        "head_chars={} item_chars={} head_items={}",
+        queries::LIST_CHARS,
+        queries::LIST_ITEM_CHARS,
+        queries::LIST_ITEMS
+    )
 }
 
 /// A cost as the pages print it.
