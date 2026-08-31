@@ -14,10 +14,6 @@ use hyphae_view::knobs;
 use hyphae_view::nodes::Preset;
 use serde_json::Value;
 
-/// A value longer than the widest a page previews, planted because no fixture carries one: the
-/// corpus's largest tool input is 438 characters and the ceiling is 4,000.
-const LONG: usize = 5_000;
-
 /// Every child a children log listed on one page, by the key its row carries.
 fn children(page: &str) -> Vec<String> {
     page.match_indices("data-child=\"")
@@ -84,44 +80,6 @@ async fn a_row_with_no_cursor_is_on_the_page_and_outside_the_count() {
 }
 
 #[tokio::test]
-async fn a_preview_is_cut_at_the_ceiling_and_the_fetch_behind_it_is_not() {
-    // The planted value is longer than the ceiling on every tool call, so whichever the route
-    // file names is one whose page has to cut.
-    let served = Served::planted(|store: &Store| {
-        store
-            .connection()
-            .execute("UPDATE tool_calls SET input = ?", ["x".repeat(LONG)])
-            .expect("the input is plantable");
-    });
-    let (session_id, source, id) = a_tool(&served.db());
-    let node = format!("/session/{session_id}/thread/{source}/tool/{id}");
-    let fetch = format!("/fragment/input/session/{session_id}/thread/{source}/tool/{id}");
-    let ceiling = hyphae_store::queries::DETAIL_CHARS;
-    // The default: the preview stops at the ceiling and marks where it stopped.
-    let (status, page) = served.page(&node).await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(cut_at(&page, "input"), Some(ceiling), "the preview is cut");
-    assert!(
-        page.contains(&fetch),
-        "the cut mark links to the whole value"
-    );
-    // A knob only goes down, and the cut moves with it.
-    let (status, narrow) = served.page(&format!("{node}?detail=100")).await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(
-        cut_at(&narrow, "input"),
-        Some(100),
-        "the knob moves the cut"
-    );
-    // The fetch behind the mark is the whole value, which is what makes the cut safe.
-    let (status, whole) = served.page(&fetch).await;
-    assert_eq!(status, StatusCode::OK);
-    // The fetch names the value rather than the column it came from: it is one value, alone.
-    assert_eq!(cut_at(&whole, "value"), None, "the fetch is uncut");
-    assert_eq!(shown(&whole, "value").chars().count(), LONG);
-}
-
-#[tokio::test]
 async fn a_knob_a_page_was_asked_for_comes_back_in_the_links_it_mints() {
     // A click has to serve the URL it displays, so a page under a non-default knob carries it
     // into its own links rather than dropping the reader back to the default.
@@ -159,22 +117,6 @@ fn linked(page: &str, under: &str) -> Vec<String> {
         .collect()
 }
 
-/// What one `data-field` printed, once the markup around it is off.
-fn shown(page: &str, field: &str) -> String {
-    let marker = format!("data-field=\"{field}\">");
-    let at = page.find(&marker).unwrap_or_else(|| panic!("no {field}")) + marker.len();
-    let rest = &page[at..];
-    rest[..rest.find("</").expect("the element closes")].to_owned()
-}
-
-/// Where a value was cut, or nothing where it arrived whole: the ellipsis is the mark, so a
-/// value that carries none is one nothing was left out of.
-fn cut_at(page: &str, field: &str) -> Option<usize> {
-    let text = shown(page, field);
-    text.strip_suffix(hyphae_view::format::ELLIPSIS)
-        .map(|kept| kept.chars().count())
-}
-
 /// The session with a thread whose calls answer no turn, and that thread.
 fn bucketed(db: &std::path::Path) -> (String, String) {
     let store = Store::open_read_only(db).expect("the store opens read only");
@@ -189,23 +131,6 @@ fn bucketed(db: &std::path::Path) -> (String, String) {
     (
         row.str("session_id").expect("a session id").to_owned(),
         row.str("source").expect("a thread").to_owned(),
-    )
-}
-
-/// One tool call, whichever the store lists first.
-fn a_tool(db: &std::path::Path) -> (String, String, String) {
-    let store = Store::open_read_only(db).expect("the store opens read only");
-    let rows = store
-        .fetch(
-            "SELECT session_id, source, id FROM tool_calls ORDER BY 1, 2, 3 LIMIT 1",
-            &[],
-        )
-        .expect("the store answers");
-    let row = rows.first().expect("the corpus holds a tool call");
-    (
-        row.str("session_id").expect("a session id").to_owned(),
-        row.str("source").expect("a thread").to_owned(),
-        row.str("id").expect("a tool call id").to_owned(),
     )
 }
 

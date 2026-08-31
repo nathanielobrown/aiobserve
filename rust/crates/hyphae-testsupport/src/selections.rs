@@ -206,6 +206,30 @@ pub fn pages(db: &Path) -> Vec<String> {
     urls
 }
 
+/// One recorded call to `tool`: the session, the thread, and the call's id.
+///
+/// Read out of the store rather than pinned, because a tool call this tier can render is one the
+/// NavTree reaches — an id copied out of a transcript may name a record a later line replaced, and
+/// its page is a 404 an absence assertion cannot tell from an answer.
+pub fn call_to(db: &Path, tool: &str) -> (String, String, String) {
+    let store = Store::open_read_only(db).expect("the store opens read only");
+    let rows = store
+        .fetch(
+            "SELECT session_id, source, id FROM live_tool_calls WHERE name = $name \
+             ORDER BY session_id, source, id LIMIT 1",
+            &[("name", tool.into())],
+        )
+        .expect("the store answers");
+    let row = rows
+        .first()
+        .unwrap_or_else(|| panic!("the corpus records a call to {tool}"));
+    (
+        row.str("session_id").expect("a session id").to_owned(),
+        row.str("source").expect("a thread").to_owned(),
+        row.str("id").expect("a tool call id").to_owned(),
+    )
+}
+
 /// The URL of one recorded node of `kind`, whichever the store answers with.
 pub fn node_url(db: &Path, kind: &str) -> String {
     let (_, sql, shape) = KINDS
