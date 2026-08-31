@@ -2,7 +2,9 @@
 //!
 //! A page reads rows a Python pass wrote and judges them fresh or stale by versions declared on
 //! both sides. Nothing on a rendered page shows the two drifting apart, so the bridged metadata is
-//! the only thing that can say. How a description is rendered once read is `node_markdown.rs`.
+//! the only thing that can say. What the pages do with the rows is `enrichment_pages.rs`,
+//! `enrichment_words.rs` and `enrichment_absence.rs`; how a description is rendered once read is
+//! `node_markdown.rs`.
 
 use std::collections::BTreeSet;
 

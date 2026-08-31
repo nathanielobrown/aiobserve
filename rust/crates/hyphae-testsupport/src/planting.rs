@@ -9,9 +9,13 @@
 //! The last item of each level is left undescribed, which is both the gap coverage reports
 //! and the partly-enriched store the viewer has to render.
 
-use hyphae_enrich::{Enrichment, EnrichmentStore, Level, Stamp};
+use std::collections::BTreeMap;
+use std::path::Path;
 
-use crate::metadata;
+use hyphae_enrich::{Enrichment, EnrichmentStore, Level, Stamp};
+use hyphae_store::Param;
+
+use crate::{metadata, rows};
 
 /// What kind of work a planted row calls itself.
 ///
@@ -96,4 +100,47 @@ fn word(kind: &str, planted: &'static str) -> String {
         "`{planted}` is no longer a {kind} — the bridged vocabulary holds {vocabulary:?}"
     );
     planted.to_owned()
+}
+
+/// What one store says about a session's items at one level, keyed by item id.
+///
+/// Read off the enrichment tables rather than off a page, so what a page shows is checked against
+/// the rows a pass actually wrote. The twin of `tests/view/test_enrichment.py:enrichment_of`.
+pub fn written(db: &Path, level: Level, session_id: &str) -> BTreeMap<String, Said> {
+    let key = level.keys().last().expect("a level names its item column");
+    let source = if level == Level::Turn {
+        " AND source = 'main'"
+    } else {
+        ""
+    };
+    rows::all(
+        db,
+        &format!(
+            "SELECT {key}, description, category, outcome FROM {} \
+             WHERE session_id = $session{source}",
+            level.table()
+        ),
+        &[("session", Param::from(session_id))],
+    )
+    .iter()
+    .map(|row| {
+        let text = |column: &str| row.str(column).expect("a written field").to_owned();
+        (
+            text(key),
+            Said {
+                description: text("description"),
+                category: text("category"),
+                outcome: text("outcome"),
+            },
+        )
+    })
+    .collect()
+}
+
+/// The three fields of one written row a page prints beside the item it describes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Said {
+    pub description: String,
+    pub category: String,
+    pub outcome: String,
 }
