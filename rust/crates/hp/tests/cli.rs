@@ -108,6 +108,31 @@ fn touched(signal: &Path, child: &mut Child, why: &str) {
     }
 }
 
+/// Hold `db`'s write lock from another process, and the file that lets go of it.
+///
+/// The holder is Python's own `tests/conftest.py:locked` — the extractor that takes this lock
+/// in production is the Python one, and the store file is the seam the two implementations
+/// share. It signals through a file rather than being polled by an open: a read-only open
+/// takes a shared read lock and DuckDB refuses a write open under one, so polling by opening
+/// would kill the holder it waited for.
+fn holding(db: &Path, scratch: &Path) -> (Child, std::path::PathBuf) {
+    let taken = scratch.join("taken");
+    let release = scratch.join("release");
+    let mut holder = Command::new("uv")
+        .args(["run", "--project"])
+        .arg(repo())
+        .args(["python", "-c", HOLD])
+        .arg(db)
+        .arg(&taken)
+        .arg(&release)
+        .current_dir(repo())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("uv runs the lock holder");
+    touched(&taken, &mut holder, "nothing took the store's write lock");
+    (holder, release)
+}
+
 /// A spawned process killed when the leaf that started it ends, whatever it ended with.
 struct Spawned(Child);
 
@@ -232,6 +257,34 @@ fn view_refuses_a_store_at_another_schema_version_before_it_binds() {
     );
 }
 
+/// Starting against a store an extract holds refuses as well, naming the lock rather than the
+/// port — the same ordering proof again, on the check that only another process can trip.
+#[test]
+fn view_refuses_a_locked_store_before_it_binds() {
+    let scratch = tempfile::tempdir().expect("a tempdir");
+    let db = scratch.path().join("traces.duckdb");
+    empty_store(&db);
+    let (mut holder, release) = holding(&db, scratch.path());
+    let (_held, port) = held_port();
+
+    let (ok, said) = run(&[
+        "view".as_ref(),
+        "--db".as_ref(),
+        db.as_os_str(),
+        "--port".as_ref(),
+        port.to_string().as_ref(),
+    ]);
+
+    std::fs::write(&release, "").expect("the release file is writable");
+    holder.wait().expect("the holder exits");
+    assert!(!ok, "a locked store should refuse: {said}");
+    assert!(said.contains("held by another process"), "{said}");
+    assert!(
+        !said.contains("--port"),
+        "it never got as far as the port: {said}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Running
 
@@ -319,12 +372,6 @@ fn extracted_at(db: &Path) -> Vec<(String, chrono::DateTime<chrono::Utc>)> {
 }
 
 /// While an extract holds the store, a page says so and comes back once it lets go.
-///
-/// The holder is Python's own `tests/conftest.py:locked` — the extractor that takes this lock
-/// in production is the Python one, and the store file is the seam the two implementations
-/// share. It signals through a file rather than being polled by an open: a read-only open
-/// takes a shared read lock and DuckDB refuses a write open under one, so polling by opening
-/// would kill the holder it waited for.
 #[test]
 fn a_locked_store_answers_503_and_recovers() {
     let scratch = tempfile::tempdir().expect("a tempdir");
@@ -344,20 +391,7 @@ fn a_locked_store_answers_503_and_recovers() {
     );
     until(port, "/", 200, "the viewer never came up");
 
-    let taken = scratch.path().join("taken");
-    let release = scratch.path().join("release");
-    let mut holder = Command::new("uv")
-        .args(["run", "--project"])
-        .arg(repo())
-        .args(["python", "-c", HOLD])
-        .arg(&db)
-        .arg(&taken)
-        .arg(&release)
-        .current_dir(repo())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("uv runs the lock holder");
-    touched(&taken, &mut holder, "nothing took the store's write lock");
+    let (mut holder, release) = holding(&db, scratch.path());
 
     // The store is there and it will read again shortly, so the honest answer is a 503...
     let answer = until(port, "/", 503, "a locked store was not refused");
