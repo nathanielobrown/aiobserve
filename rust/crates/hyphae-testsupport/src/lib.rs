@@ -36,6 +36,8 @@ pub mod passes;
 pub mod planting;
 /// One NavTree row's popover, fetched and read back beside the numbers the store holds.
 pub mod popovers;
+/// The OTLP endpoint the delivery tier ships to, and the store it ships from.
+pub mod receiver;
 pub mod rows;
 /// Which page to fetch: one node of every kind, and one level of every shape a log has.
 pub mod selections;

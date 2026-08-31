@@ -48,6 +48,14 @@ pub fn exportable_store() -> PathBuf {
     cached("exportable", &exportable_key(), build_exportable)
 }
 
+/// The two recorded sessions of the analyzed project the export tiers ship.
+///
+/// The twin of `tests/export/conftest.py:delivered_db`. Every delivery leaf writes ledger
+/// rows, so each one takes a [`writable_copy`] of this rather than opening it.
+pub fn delivered_store() -> PathBuf {
+    cached("delivered", &delivered_key(), build_delivered)
+}
+
 /// The same corpus with the enrichment rows a pass would have written. Open it read-only.
 ///
 /// [`crate::planting`] writes them, over `hyphae-enrich`'s schema and upsert. It plants a row
@@ -171,6 +179,16 @@ pub fn exportable_key() -> String {
         .expect("the fixture corpus is readable")
 }
 
+/// The same fold over the two sessions the delivery tier ships.
+pub fn delivered_key() -> String {
+    let files: Vec<PathBuf> = delivered_sources()
+        .into_iter()
+        .flat_map(|source| source.files)
+        .collect();
+    hyphae_extract::fingerprint(&files, &corpus::repo(), WRITER_DIGEST)
+        .expect("the fixture corpus is readable")
+}
+
 /// The corpus, and the enrichment stamps Python emits.
 ///
 /// The recipe that plants the rows is Rust now, so [`WRITER_DIGEST`] already covers it and the
@@ -225,6 +243,19 @@ fn build_from(at: &Path, sources: Vec<hyphae_extract::SessionSource>) {
 /// filter would still trip over.
 fn build_exportable(at: &Path) {
     build_from(at, corpus::exportable_sources());
+}
+
+/// The two sessions, in the id order `StoreSource::sessions` lists them.
+fn delivered_sources() -> Vec<hyphae_extract::SessionSource> {
+    vec![
+        corpus::fixture_source("server_tools", crate::receiver::FIRST),
+        corpus::fixture_source("spine", crate::receiver::SECOND),
+    ]
+}
+
+/// Those two sessions, extracted into a store at `at`.
+fn build_delivered(at: &Path) {
+    build_from(at, delivered_sources());
 }
 
 /// The corpus, copied and then planted with the rows a partial pass would have left.

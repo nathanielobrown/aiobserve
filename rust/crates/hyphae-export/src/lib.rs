@@ -9,4 +9,6 @@
 //!
 //! Ported from `src/hyphae/export/otlp.py`, which stays the authority.
 
+/// Getting the spans to a backend, and the ledger of what landed.
+pub mod delivery;
 pub mod otlp;

@@ -22,6 +22,10 @@ prost.workspace = true
 # extracted row whole.
 chrono.workspace = true
 axum.workspace = true
+# The receiver is a real server on a real port, so it needs a runtime under it.
+tokio.workspace = true
+# Inflating what arrived: the exporter gzips its own payload.
+flate2.workspace = true
 duckdb.workspace = true
 tempfile.workspace = true
 tower.workspace = true

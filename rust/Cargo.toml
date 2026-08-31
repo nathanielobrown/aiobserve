@@ -51,6 +51,16 @@ opentelemetry-proto = { version = "0.32", default-features = false, features = [
 ] }
 # Encoding and decoding those messages. The version prost-derives them against.
 prost = "0.14"
+# The OTLP/HTTP client. Blocking, because the delivery loop is sequential by design — there
+# is no queue to overflow — and rustls keeps the TLS a real backend needs out of the system
+# libraries. No default features: this sends one POST and reads one protobuf body.
+reqwest = { version = "0.12", default-features = false, features = [
+    "blocking",
+    "rustls-tls",
+] }
+# Gzip, over the protobuf payload. Encoded by us rather than by the client, with a fixed
+# mtime, so the same batch always encodes to the same bytes.
+flate2 = "1"
 # Transcript records, read as the dicts they are. `preserve_order` keeps a tool input's keys
 # in the recorded order, which is what `json.dumps` writes and what the store row must match.
 # The query-string knobs a node-page URL carries; axum's `Query` extractor deserializes them.
