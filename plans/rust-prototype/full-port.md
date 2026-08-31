@@ -175,6 +175,12 @@ corpus-views rule and ports as the same static check. Class (c) = 181 collected 
 `tests/tools/` 136, `test_components.py` 32, `tests/gallery/` 10, `test_scaffolding.py` 3 —
 repo furniture and Python-source introspection with no Rust subject.
 
+*(As built, slice 10: class (c) is 191 over a 2,027-id tier, not 181 over 2,017. Slice 2's
+generation bridge added ten `tests/tools/` ids of its own — three to `test_gen_bounds.py`, and
+`test_gen_query_manifest.py` 3 and `test_gen_enrichment.py` 4, both new — so `tests/tools/` is
+146. The port grew the class it does not port, which is what a generator written in Python for
+a Rust consumer costs.)*
+
 Measurement protocol — "how fast is the suite" is answerable; "which language is faster" is not,
 without controls. Same machine, fixture corpus, warm compile and store cache (cold adds one ~2s
 cache build, stated). Report, side by side: `cargo nextest run` default `-j` (the machine and
@@ -237,6 +243,13 @@ allow. Collected-ID counts per slice sum to 1,836 with no test in two slices.
 - Mutation scoring for the Rust tier, and the registry-ownership flip a Python retirement would
   force (which takes every cross-language oracle with it)
 - The `tests/test_cli.py` timezone defect — owned by a parallel branch; not touched here
+- **`hp view --no-browser`** *(ruled at slice 10)*. `hp view` opens no browser, so the flag that
+  suppresses one has nothing to suppress. Python gets the behaviour from `webbrowser` in its
+  standard library and gets the test free by monkeypatching `cli.serve`; Rust has neither, so
+  the port would be a dependency that spawns a subprocess past the `disallowed-methods` gate,
+  plus a seam whose only caller is the leaf that reads it — for a convenience tab that no test
+  in either tier actually opens. Every other flag of all six subcommands is ported and pinned
+  (`rust/crates/hp/tests/surface.rs`). Nothing else in the repo passes `--no-browser`
 
 ## Open questions
 
@@ -273,3 +286,22 @@ under the optimized profile the measurement protocol already pins, and re-measur
 there before sizing anything against it; and if per-request opens then dominate the view
 tier's wall, report that as a product cost both languages carry — never as harness overhead,
 and never trimmed in the harness by sharing a connection production wouldn't.
+
+## Amendment: the report leads with each harness as it is actually run
+
+Ruled at slice 10, after the per-subject pairs the slices collected were laid side by side. The
+protocol above makes `nextest -j1` against single-process pytest the headline. On the evidence
+that pairing misleads, and in both directions: a store-heavy family flatters Rust, because the
+process the `-j1` figure charges it for is the one Python amortizes across a session fixture;
+a pure-function file flatters Python, because it pays no process at all and Rust pays one per
+leaf. Underneath both, the units differ — pytest counts a parametrized id, Rust counts the leaf
+that loops over the same cases, so the two "test" columns are not the same thing and a per-test
+figure derived from them is arithmetic on a unit mismatch.
+
+**Ruling: lead with what a person waiting on the suite actually waits for** — `pytest` as CI
+runs it (single process, the tier whole) against `cargo nextest run` at its default `-j`. Both
+are each harness's own operating point, so the comparison is of two suites rather than of two
+languages. Beside it, and never above it: the `-j1` median, which is the isolation model's cost
+with the machine held out; the measured harness floor, which is what `-j1` is mostly made of;
+and one sentence saying the id counts are different units. The per-subject pairs stay in the
+report as the texture the headline flattens, each labelled with the family it came from.
