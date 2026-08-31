@@ -941,6 +941,7 @@ dependencies = [
  "clap",
  "hyphae-extract",
  "hyphae-store",
+ "hyphae-testsupport",
  "hyphae-view",
  "tempfile",
  "tokio",
@@ -1063,6 +1064,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "hyphae-model",
+ "hyphae-testsupport",
  "insta",
  "regex",
  "serde_json",
@@ -1086,8 +1088,24 @@ dependencies = [
  "duckdb",
  "hyphae-extract",
  "hyphae-model",
+ "hyphae-testsupport",
  "tempfile",
  "thiserror",
+]
+
+[[package]]
+name = "hyphae-testsupport"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "duckdb",
+ "hyphae-extract",
+ "hyphae-model",
+ "hyphae-store",
+ "hyphae-view",
+ "sha2",
+ "tempfile",
+ "tower",
 ]
 
 [[package]]
@@ -1100,6 +1118,7 @@ dependencies = [
  "hypertext",
  "hyphae-extract",
  "hyphae-store",
+ "hyphae-testsupport",
  "insta",
  "markdown-it",
  "serde",

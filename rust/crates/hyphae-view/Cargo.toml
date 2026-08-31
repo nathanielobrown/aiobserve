@@ -19,6 +19,8 @@ serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+# The shared store cache and the viewer served over it.
+hyphae-testsupport.workspace = true
 tower.workspace = true
 insta.workspace = true
 tempfile.workspace = true

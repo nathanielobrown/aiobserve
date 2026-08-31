@@ -14,4 +14,6 @@ chrono.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+# The shared store cache, and the row helpers that compare two stores without printing one.
+hyphae-testsupport.workspace = true
 tempfile.workspace = true

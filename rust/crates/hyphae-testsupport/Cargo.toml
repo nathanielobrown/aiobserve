@@ -1,0 +1,23 @@
+[package]
+name = "hyphae-testsupport"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The store cache builds a corpus the way the pipeline does, and serves it the way `hp` does.
+# Every crate here dev-depends back on this one; cargo allows the cycle because the edge that
+# closes it is a dev-dependency.
+hyphae-model.workspace = true
+hyphae-extract.workspace = true
+hyphae-store.workspace = true
+hyphae-view.workspace = true
+axum.workspace = true
+duckdb.workspace = true
+tempfile.workspace = true
+tower.workspace = true
+# The cache key, and the digest `build.rs` takes over the sources behind it.
+sha2.workspace = true
+
+[build-dependencies]
+sha2.workspace = true
