@@ -148,6 +148,14 @@ pub fn of_period(result: &QueryResult, period: &str) -> Vec<Row> {
         .collect()
 }
 
+/// One counted column, whatever width DuckDB answered it at — a `SUM` over a BIGINT arrives
+/// HUGEINT, and a leaf wants the number rather than the width. Panics naming the column,
+/// because a query that stopped selecting it is the failure worth reading.
+pub fn count(row: &Row, column: &str) -> i64 {
+    row.i64(column)
+        .unwrap_or_else(|error| panic!("{column}: {error}"))
+}
+
 /// One numeric column of a row, whatever width DuckDB answered it at.
 ///
 /// A rolled-up count arrives as a HUGEINT and a rounded cost as a DOUBLE, and a leaf
