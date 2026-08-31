@@ -14,6 +14,10 @@ pub mod corpus;
 /// The digest over the sources that decide a stored row — shared with `build.rs`, which
 /// `include!`s this module rather than depending on the crate it is building.
 pub mod digest;
+/// Reading a served page back the way a browser and htmx would.
+pub mod html;
+/// The recorded rows every tier names, and why each one is worth naming.
+pub mod landmarks;
 /// The bounds and enrichment numbers Python owns, compiled in from the generated JSON.
 pub mod metadata;
 /// The enrichment rows a partial pass would have left behind.

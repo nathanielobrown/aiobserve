@@ -17,36 +17,34 @@ use hyphae_enrich::{AgentRunItem, Enrichment, EnrichmentStore, Stamp, TurnItem};
 use hyphae_testsupport::{cache, metadata};
 use tempfile::TempDir;
 
-// The recorded sessions this file names, and the runs inside them. `tests/fixtures/*/README.md`
-// names the session behind each fixture directory.
-pub const SPINE: &str = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b";
-pub const SPINE_RUN: &str = "ac461ef46b4bb8e32";
-pub const SPINE_LEAF: &str = "af6473ae437c9608d";
-/// `spine/`'s `/model` turn: the one whose stdout record the archive read exercises.
-pub const SPINE_MODEL_TURN: &str = "5b848af7-f86e-4950-b474-cd98125fad24";
-/// The line that record sits on, so a planted one can be ordered against it.
-pub const SPINE_MODEL_LINE: i64 = 8;
-/// `model_only/`: three turns the CLI answered by itself and no api call under any of them.
-pub const MODEL_ONLY: &str = "bec99999-cbb7-4d11-9a58-3ad3d0e1c8cf";
+// The recorded sessions this file names, declared once in `hyphae_testsupport::landmarks` and
+// bound here under the names this suite reads them by. Aliases rather than a `pub use`: cargo
+// compiles this module into both binaries, and a re-export the other one happens not to name is
+// an unused import.
+use hyphae_testsupport::landmarks;
+
+pub const MYCELIA: &str = landmarks::MYCELIA;
+pub const SPINE: &str = landmarks::SPINE;
+pub const SPINE_RUN: &str = landmarks::SPINE_RUN;
+pub const SPINE_LEAF: &str = landmarks::SPINE_LEAF;
+pub const SPINE_MODEL_TURN: &str = landmarks::SPINE_MODEL_TURN;
+pub const SPINE_MODEL_LINE: i64 = landmarks::SPINE_MODEL_LINE;
+pub const STOP_REASON_TURN: &str = landmarks::STOP_REASON_TURN;
+pub const RESUME: &str = landmarks::RESUME;
+pub const MODEL_ONLY: &str = landmarks::MODEL_ONLY;
+pub const DUP_UUID: &str = landmarks::DUP_UUID;
+pub const WORKTREE_SESSION: &str = landmarks::WORKTREE_SESSION;
+
 /// `resume_pair/`'s ancestor and the plain turn its stdout record hangs off.
-pub const RESUME_ANCESTOR: &str = "2352492b-1437-4427-ad51-70f35c75f663";
-pub const RESUME_PLAIN_TURN: &str = "55309e59-0fae-4ef1-9251-877e27487bda";
-/// The resume itself: every api call it holds sits under a turn its ancestor ran.
-pub const RESUME: &str = "0a76f771-5f5b-447e-852a-664fc972ea7c";
-/// The session that records no main turn and no agent run.
-pub const DUP_UUID: &str = "8ee00a94-b01a-4394-b447-b065f74b11af";
-/// The invented fixture with neither: the third session with nothing to describe, and the
-/// one the Python suite's corpus leaves out.
-pub const INVENTED_EMPTY: &str = "invented-no-cache-creation";
+pub const RESUME_ANCESTOR: &str = landmarks::ANCESTOR;
+pub const RESUME_PLAIN_TURN: &str = landmarks::DENSE_TURN;
+/// The invented fixture with neither a turn nor a run: the third session with nothing to
+/// describe, and the one the Python suite's corpus leaves out.
+pub const INVENTED_EMPTY: &str = landmarks::INVENTED_PROJECT_SESSION;
 /// A fork whose only work is a subagent's — no turn of its own, and every call under the run.
-pub const FORK_BYREF: &str = "07a769d7-828c-4edb-b3ce-af51e2712aa3";
-/// The turn whose three recorded calls stopped `end_turn`, `tool_use` and nothing.
-pub const STOP_REASON_TURN: &str = "9ae45aaa-d992-4089-a78d-f65d2f237080";
-/// The two sessions the project filter re-homes, and the project every fixture was recorded
-/// under.
-pub const WORKTREE_SESSION: &str = "0b34d1b8-ebd3-40a6-bd89-f1881e1de2ba";
-pub const NEIGHBOUR_SESSION: &str = "10d0349d-0705-4e23-aa64-5b1b97698b2e";
-pub const MYCELIA: &str = "/Users/nob/repos/mycelia";
+pub const FORK_BYREF: &str = landmarks::NO_PROJECT_SESSION;
+/// The second session the project filter re-homes.
+pub const NEIGHBOUR_SESSION: &str = landmarks::TEAMMATE;
 
 /// The sessions this corpus hands out to describe: 18 recorded, three with nothing in them.
 pub const DESCRIBABLE: usize = 13;

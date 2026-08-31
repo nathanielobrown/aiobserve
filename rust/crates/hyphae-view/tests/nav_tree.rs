@@ -10,11 +10,8 @@
 //! context bar's bands. The session is named rather than discovered — a fixture added to the
 //! corpus must not silently re-point the exhibit at another session's rows.
 
+use hyphae_testsupport::landmarks::{SLASH_TURN, SPINE};
 use hyphae_testsupport::served::Served;
-
-/// The fixture session the Python tier calls `SPINE`: a main thread with turns, agent runs
-/// under them, and a cost on both halves — which is what draws the `$own/$total` pair.
-const SPINE: &str = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b";
 
 #[tokio::test]
 async fn the_nav_tree_rows_of_a_session_page() {
@@ -48,10 +45,6 @@ async fn the_preset_control_of_a_session_page() {
     insta::assert_snapshot!(page[at..at + end].to_owned());
 }
 
-/// A turn on the spine's main thread, deep enough that its crumb chain has every link in it:
-/// home, the project, the session, the turn.
-const SPINE_TURN: &str = "30aad8e5-21f8-486d-b9d9-e118c703a5a1";
-
 #[tokio::test]
 async fn the_crumb_chain_and_facts_of_a_turn_page() {
     // The two things the reading pane writes above and below its heading: the way out of the
@@ -59,7 +52,7 @@ async fn the_crumb_chain_and_facts_of_a_turn_page() {
     // markup (`src/hyphae/view/labels.py`), so a snapshot is what makes a renamed label visible.
     let served = Served::corpus();
     let (status, page) = served
-        .page(&format!("/session/{SPINE}/thread/main/turn/{SPINE_TURN}"))
+        .page(&format!("/session/{SPINE}/thread/main/turn/{SLASH_TURN}"))
         .await;
     assert_eq!(status, axum::http::StatusCode::OK);
     // The project a crumb names is folded against whoever is reading, so the one span on this

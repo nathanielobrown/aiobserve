@@ -64,6 +64,14 @@ markdown-it = "0.6"
 # Driving the router without a server, the way `TestClient` drives the Python app.
 tower = { version = "0.5", features = ["util"] }
 
+# Reading a served page back, dev-only. `scraper` is the DOM half of the reader
+# `tests/view/conftest.py` builds on Python's `HTMLParser`; `regex` and `html-escape` are the
+# other half, because that file reads some of the page by pattern rather than by tree and a
+# regex over the served bytes sees a `<pre>`'s leading newline where a parser would drop it.
+scraper = "0.27"
+regex = "1"
+html-escape = "0.2"
+
 [profile.dev]
 # The spike copies whole tables through DuckDB; unoptimized debug builds make that slow
 # enough to distort the timings the prototype is meant to measure.
