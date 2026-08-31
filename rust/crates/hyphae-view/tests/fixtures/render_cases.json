@@ -167,6 +167,22 @@
       "cut_20": "tabs\tinside",
       "cut_capped": "tabs\tinside…",
       "strip": "tabs\tinside"
+    },
+    {
+      "text": "a paragraph with <img src=x onerror=alert(1)> in it",
+      "render_links": "a paragraph with &lt;img src=x onerror=alert(1)&gt; in it",
+      "render_plain": "a paragraph with &lt;img src=x onerror=alert(1)&gt; in it",
+      "cut_20": "a paragraph with &lt;im…",
+      "cut_capped": "a paragraph with &lt;img src=x onerror=alert(1)&gt; in it…",
+      "strip": "a paragraph with <img src=x onerror=alert(1)> in it"
+    },
+    {
+      "text": "```\nfenced\n```",
+      "render_links": "<code>fenced</code>",
+      "render_plain": "<code>fenced</code>",
+      "cut_20": "<code>fenced</code>",
+      "cut_capped": "<code>fenced</code>…",
+      "strip": "fenced"
     }
   ],
   "blocks": [
@@ -209,6 +225,31 @@
       "text": "quote \"and\" ampersand & <tag>",
       "html": "<p>quote &quot;and&quot; ampersand &amp; &lt;tag&gt;</p>\n",
       "highlighted": false
+    },
+    {
+      "text": "a paragraph with <img src=x onerror=alert(1)> in it",
+      "html": "<p>a paragraph with &lt;img src=x onerror=alert(1)&gt; in it</p>\n",
+      "highlighted": false
+    },
+    {
+      "text": "see https://evil.test/path for details",
+      "html": "<p>see https://evil.test/path for details</p>\n",
+      "highlighted": false
+    },
+    {
+      "text": "```json\n{\"a\": \"<img src=x onerror=y>\"}\n```",
+      "html": "<pre class=\"code json\"><span class=\"p\">{</span>\n  <span class=\"nt\">&quot;a&quot;</span><span class=\"p\">:</span> <span class=\"s2\">&quot;&lt;img src=x onerror=y&gt;&quot;</span>\n<span class=\"p\">}</span></pre>\n",
+      "highlighted": true
+    },
+    {
+      "text": "```html\n{\"a\": \"<img src=x onerror=y>\"}\n```",
+      "html": "<pre class=\"code\">{&#34;a&#34;: &#34;&lt;img src=x onerror=y&gt;&#34;}\n</pre>\n",
+      "highlighted": false
+    },
+    {
+      "text": "```rust\nx = 1\n```",
+      "html": "<pre class=\"code\">x = 1\n</pre>\n",
+      "highlighted": false
     }
   ],
   "links": [
@@ -231,6 +272,22 @@
     {
       "url": "",
       "html": ""
+    },
+    {
+      "url": "HTTP://example.test/",
+      "html": "<a href=\"HTTP://example.test/\">HTTP://example.test/</a>"
+    },
+    {
+      "url": "data:text/html,<script>alert(1)</script>",
+      "html": "data:text/html,&lt;script&gt;alert(1)&lt;/script&gt;"
+    },
+    {
+      "url": "file:///etc",
+      "html": "file:///etc"
+    },
+    {
+      "url": "https://example.test/?q=\"",
+      "html": "<a href=\"https://example.test/?q=&#34;\">https://example.test/?q=&#34;</a>"
     }
   ]
 }

@@ -42,6 +42,11 @@ TITLES = [
     "back\\*slash escape",
     "  leading and trailing spaces  ",
     "tabs\tinside",
+    # An inline HTML attribute is a rule of its own: block passthrough being off does not
+    # settle it, and an `onerror` handler is what rides in if it is on.
+    "a paragraph with <img src=x onerror=alert(1)> in it",
+    # A fence is a block, and no block element belongs in a line a NavTree row prints.
+    "```\nfenced\n```",
 ]
 cases = [
     {
@@ -64,6 +69,15 @@ BLOCKS = [
     "```\nplain <fence>\n```",
     "- one\n- two",
     'quote "and" ampersand & <tag>',
+    "a paragraph with <img src=x onerror=alert(1)> in it",
+    # Linkify off: text that looks like a URL is text.
+    "see https://evil.test/path for details",
+    # Both fence arms escape in different places — a lexed block by the highlighter, an
+    # unlexed one by the renderer — so the markup inside each is pinned separately.
+    '```json\n{"a": "<img src=x onerror=y>"}\n```',
+    '```html\n{"a": "<img src=x onerror=y>"}\n```',
+    # A fence naming a language with no lexer here is still a block.
+    "```rust\nx = 1\n```",
 ]
 # A fence whose language the viewer has a lexer for takes the highlighter's path, which the
 # Rust port defers. The flag lets the leaf hold the rest to parity and say what it excused.
@@ -82,6 +96,13 @@ LINKS = [
     "javascript:alert(1)",
     "https://example.com/very/long…",
     "",
+    # The scheme is read case-insensitively, so a shouted one still links...
+    "HTTP://example.test/",
+    # ...and every scheme that runs or reads something local never reaches an `href`.
+    "data:text/html,<script>alert(1)</script>",
+    "file:///etc",
+    # A quote in a URL cannot close the attribute it lands in.
+    'https://example.test/?q="',
 ]
 links = [{"url": u, "html": str(render.link(u))} for u in LINKS]
 

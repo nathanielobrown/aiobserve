@@ -187,7 +187,9 @@ impl NodeValue for PlainCode {
     fn render(&self, _node: &Node, formatter: &mut dyn Renderer) {
         formatter.cr();
         formatter.open("pre", &[("class", "code".to_owned())]);
-        formatter.text(&self.content);
+        // XSS SAFETY: escaped here rather than by `text`, whose spelling of a quote is
+        // `&quot;` — safe, but not the `&#34;` the Python viewer already serves.
+        formatter.text_raw(&escape(&self.content));
         formatter.close("pre");
         formatter.cr();
     }
