@@ -63,6 +63,14 @@ hypertext = { version = "0.12", features = ["htmx", "axum"] }
 markdown-it = "0.6"
 # Driving the router without a server, the way `TestClient` drives the Python app.
 tower = { version = "0.5", features = ["util"] }
+# The highlighter's tokenizer, standing in for Pygments. Only the bundled syntax definitions and
+# the parser: `regex-fancy` keeps the build pure Rust rather than compiling oniguruma, and the
+# `html` and theme features are left out because this viewer writes its own spans and paints them
+# with the `static/pygments.css` both viewers share (`hyphae-view/src/highlight.rs`).
+syntect = { version = "5", default-features = false, features = [
+    "default-syntaxes",
+    "regex-fancy",
+] }
 
 # Reading a served page back, dev-only. `scraper` is the DOM half of the reader
 # `tests/view/conftest.py` builds on Python's `HTMLParser`; `regex` and `html-escape` are the
@@ -71,6 +79,9 @@ tower = { version = "0.5", features = ["util"] }
 scraper = "0.27"
 regex = "1"
 html-escape = "0.2"
+# Dev-only: reading `mise.toml`'s task lines, which are half the shell this repo runs on itself
+# and so half of what the stylesheet sweep in `hyphae-view/tests/query.rs` lexes as bash.
+toml = "0.9"
 
 [profile.dev]
 # The spike copies whole tables through DuckDB; unoptimized debug builds make that slow

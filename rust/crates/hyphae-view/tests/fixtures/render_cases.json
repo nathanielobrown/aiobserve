@@ -189,67 +189,114 @@
     {
       "text": "# Heading\n\nA paragraph with **bold**.",
       "html": "<h1>Heading</h1>\n<p>A paragraph with <strong>bold</strong>.</p>\n",
-      "highlighted": false
+      "syntax": null,
+      "wall": null,
+      "shown": null
     },
     {
       "text": "<script>alert(1)</script>\n\nafter",
       "html": "<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>\n<p>after</p>\n",
-      "highlighted": false
+      "syntax": null,
+      "wall": null,
+      "shown": null
     },
     {
       "text": "![alt](https://host/px?d=1)",
       "html": "<p><span class=\"image\">[image: alt — https://host/px?d=1]</span></p>\n",
-      "highlighted": false
+      "syntax": null,
+      "wall": null,
+      "shown": null
     },
     {
       "text": "[js](javascript:alert(1)) and [ok](https://example.com)",
       "html": "<p>[js](javascript:alert(1)) and <a href=\"https://example.com\">ok</a></p>\n",
-      "highlighted": false
+      "syntax": null,
+      "wall": null,
+      "shown": null
     },
     {
       "text": "```python\nprint('hi')\n```",
       "html": "<pre class=\"code python\"><span class=\"nb\">print</span><span class=\"p\">(</span><span class=\"s1\">&#39;hi&#39;</span><span class=\"p\">)</span>\n</pre>\n",
-      "highlighted": true
+      "syntax": "python",
+      "wall": "<pre class=\"code python\">",
+      "shown": "print('hi')\n"
     },
     {
       "text": "```\nplain <fence>\n```",
       "html": "<pre class=\"code\">plain &lt;fence&gt;\n</pre>\n",
-      "highlighted": false
+      "syntax": null,
+      "wall": null,
+      "shown": null
     },
     {
       "text": "- one\n- two",
       "html": "<ul>\n<li>one</li>\n<li>two</li>\n</ul>\n",
-      "highlighted": false
+      "syntax": null,
+      "wall": null,
+      "shown": null
     },
     {
       "text": "quote \"and\" ampersand & <tag>",
       "html": "<p>quote &quot;and&quot; ampersand &amp; &lt;tag&gt;</p>\n",
-      "highlighted": false
+      "syntax": null,
+      "wall": null,
+      "shown": null
     },
     {
       "text": "a paragraph with <img src=x onerror=alert(1)> in it",
       "html": "<p>a paragraph with &lt;img src=x onerror=alert(1)&gt; in it</p>\n",
-      "highlighted": false
+      "syntax": null,
+      "wall": null,
+      "shown": null
     },
     {
       "text": "see https://evil.test/path for details",
       "html": "<p>see https://evil.test/path for details</p>\n",
-      "highlighted": false
+      "syntax": null,
+      "wall": null,
+      "shown": null
     },
     {
       "text": "```json\n{\"a\": \"<img src=x onerror=y>\"}\n```",
       "html": "<pre class=\"code json\"><span class=\"p\">{</span>\n  <span class=\"nt\">&quot;a&quot;</span><span class=\"p\">:</span> <span class=\"s2\">&quot;&lt;img src=x onerror=y&gt;&quot;</span>\n<span class=\"p\">}</span></pre>\n",
-      "highlighted": true
+      "syntax": "json",
+      "wall": "<pre class=\"code json\">",
+      "shown": "{\n  \"a\": \"<img src=x onerror=y>\"\n}"
     },
     {
       "text": "```html\n{\"a\": \"<img src=x onerror=y>\"}\n```",
       "html": "<pre class=\"code\">{&#34;a&#34;: &#34;&lt;img src=x onerror=y&gt;&#34;}\n</pre>\n",
-      "highlighted": false
+      "syntax": null,
+      "wall": null,
+      "shown": null
     },
     {
       "text": "```rust\nx = 1\n```",
       "html": "<pre class=\"code\">x = 1\n</pre>\n",
-      "highlighted": false
+      "syntax": null,
+      "wall": null,
+      "shown": null
+    },
+    {
+      "text": "```sql\nSELECT a FROM t WHERE b = '<x>' -- note\n```",
+      "html": "<pre class=\"code sql\"><span class=\"k\">SELECT</span> <span class=\"n\">a</span> <span class=\"k\">FROM</span> <span class=\"n\">t</span> <span class=\"k\">WHERE</span> <span class=\"n\">b</span> <span class=\"o\">=</span> <span class=\"s1\">&#39;&lt;x&gt;&#39;</span> <span class=\"c1\">-- note</span>\n</pre>\n",
+      "syntax": "sql",
+      "wall": "<pre class=\"code sql\">",
+      "shown": "SELECT a FROM t WHERE b = '<x>' -- note\n"
+    },
+    {
+      "text": "```sh\necho '<x>' && ls -1\n```",
+      "html": "<pre class=\"code bash\"><span class=\"nb\">echo</span> <span class=\"s1\">&#39;&lt;x&gt;&#39;</span> <span class=\"o\">&amp;&amp;</span> ls -1\n</pre>\n",
+      "syntax": "bash",
+      "wall": "<pre class=\"code bash\">",
+      "shown": "echo '<x>' && ls -1\n"
+    },
+    {
+      "text": "```md\n# Heading\n\n- an item with `code`\n```",
+      "html": "<pre class=\"code markdown\"><span class=\"gh\"># Heading</span>\n\n<span class=\"k\">-</span> an item with <span class=\"sb\">`code`</span>\n</pre>\n",
+      "syntax": "markdown",
+      "wall": "<pre class=\"code markdown\">",
+      "shown": "# Heading\n\n- an item with `code`\n"
     }
   ],
   "links": [

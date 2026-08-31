@@ -11,12 +11,9 @@ use hyphae_testsupport::served::Served;
 
 use axum::http::StatusCode;
 use hyphae_store::Store;
-use hyphae_testsupport::html::SENTINEL;
+use hyphae_testsupport::html::{SENTINEL, plain};
 use hyphae_view::app::CSP;
 use serde_json::Value;
-
-/// The one escaped form hypertext, the markdown renderer and the attribute writer agree on.
-const ESCAPED: &str = "&lt;script&gt;alert(";
 
 /// The generated route file, as the browser tier reads it.
 fn routes() -> Vec<Value> {
@@ -105,8 +102,13 @@ async fn planted_markup_arrives_inert_on_every_route() {
         let route = field(&entry, "route");
         assert_eq!(status, StatusCode::OK, "{route}");
         assert!(!page.contains("<script>alert"), "raw sentinel in {route}");
+        // Read back the way a browser would, because a route that marks its value up writes the
+        // sentinel as several spans: the characters are the claim, not the bytes around them.
         if printing.contains(&field(&entry, "group")) {
-            assert!(page.contains(ESCAPED), "no escaped sentinel in {route}");
+            assert!(
+                plain(&page).contains(SENTINEL),
+                "no sentinel text in {route}"
+            );
         }
     }
 }

@@ -1,18 +1,27 @@
-//! Code as a page shows it: a value's own syntax, and how much of the value there is.
+//! Code as a page shows it: a value's own syntax, marked by class rather than by color.
 //!
-//! Ported from `src/hyphae/view/highlight.py`, with one thing left behind. Python marks a value
-//! up with Pygments, whose classes `static/pygments.css` paints. Nothing in Rust writes those
-//! classes: `syntect` derives its own from TextMate scopes, so painting them needs a second
-//! stylesheet beside the one both viewers share. So this prototype prints every value as it was
-//! stored, which is the arm Python already takes past its ceiling and for a value that does not
-//! parse — the markup is byte-identical there and misses the spans everywhere else. `render.rs`
-//! made the same call for a fenced block in stage 3a.
+//! A syntax is here because a session writes it: the JSON a tool was passed and returned, the SQL
+//! behind a page, the shell a `Bash` call ran, the markdown a `Read` returned, and the languages a
+//! model fences a block of code in. Everything else a transcript wrote is prose, and `render.rs`
+//! renders it — marking up a file the viewer shows is a reading aid over the source, never a
+//! rendering of it: a tool result is evidence, and it prints as it was stored, character for
+//! character.
 //!
-//! What is here is the rest of the module, which is what a page's shape depends on: which syntax
-//! a file's name or a fence claims, and the JSON re-layout that makes a tool's arguments
-//! readable.
+//! Classes rather than inline colors because the policy in `app::CSP` allows no `style`
+//! attribute; `static/pygments.css` is where they are painted, and both viewers share that sheet.
+//!
+//! **The port's one deviation.** Python tokenizes with Pygments, whose short class names the sheet
+//! is written around. This crate tokenizes with `syntect`, which hands back TextMate scopes
+//! instead — so [`SCOPES`] maps those scopes onto the sheet's vocabulary and this module writes
+//! the spans itself. The class on a run of characters is the same claim about that run; the token
+//! boundaries either side of it are the tokenizer's, and are not the Python's byte for byte.
+//! `tests/highlight.rs` says which leaves that adapts and `render.rs`'s generated cases carry the
+//! exemption where a fenced block reaches here.
 
 use std::fmt;
+use std::sync::LazyLock;
+
+use syntect::parsing::{ParseState, Scope, ScopeStack, SyntaxSet};
 
 use crate::knobs::{HIGHLIGHT_CHARS, INDENT_CHARS};
 use crate::render::escape;
@@ -38,7 +47,114 @@ impl Syntax {
             Self::Python => "python",
         }
     }
+
+    /// The name syntect's bundled definitions file this syntax under.
+    ///
+    /// Its own spelling rather than the viewer's: the set is Sublime's default packages, where
+    /// bash is "Bourne Again Shell (bash)" and nothing answers to "bash".
+    fn definition(self) -> &'static str {
+        match self {
+            Self::Json => "JSON",
+            Self::Sql => "SQL",
+            Self::Bash => "Bourne Again Shell (bash)",
+            Self::Markdown => "Markdown",
+            Self::Python => "Python",
+        }
+    }
 }
+
+/// Every class this module can write, which is the image of [`SCOPES`] and nothing wider.
+///
+/// A page's byte budget prices a class at three characters
+/// (`tests/view/budgets.py:MARKED_CHAR_BYTES`), so the width of a class is a property of this
+/// viewer rather than of whatever a tokenizer was asked to read. Pygments earns that by walking an
+/// unnamed token type up to a named one; here it falls out of the table being the only source of a
+/// class at all.
+pub const PAINTED: &[&str] = &[
+    "c1", "ge", "gh", "gs", "gu", "k", "kc", "kn", "m", "mf", "mi", "nb", "nt", "nv", "o", "ow",
+    "p", "s", "s1", "s2", "sa", "sb", "sd", "se", "si", "ss",
+];
+
+/// TextMate scopes as the classes `static/pygments.css` paints.
+///
+/// A row's left side is a dotted *prefix* of a scope. Every scope on a token's stack is tried and
+/// the row matching the most atoms wins, ties going to the innermost scope — which is TextMate's
+/// own selector rule, and the reason a row can be made more specific without disturbing its
+/// neighbours. A token no row matches is written bare, which is where a SQL name belongs and where
+/// the sheet's comment already puts it.
+///
+/// Most rows read straight across. The ones that do not carry their reason.
+pub const SCOPES: &[(&str, &str)] = &[
+    // A JSON object key is a string to syntect and a *tag* to Pygments — the field name a reader
+    // scans down the left edge, which the sheet is the only place that says. The row is longer
+    // than `string.quoted.double` so it wins over it on the same token.
+    ("meta.structure.dictionary.key", "nt"),
+    // The same field-name role inside a delegated block: yaml and xml both scope it here.
+    ("entity.name.tag", "nt"),
+    ("string.quoted.double", "s2"),
+    ("string.quoted.single", "s1"),
+    ("string.quoted.backtick", "sb"),
+    // Markdown's backticked span. Pygments spells a run of inline code `sb` too, so the sheet
+    // already paints prose's code and a shell's backticks the same way.
+    ("markup.raw.inline", "sb"),
+    // A fenced block, whole. Pygments hands one to the lexer its info string names and falls back
+    // to a plain String when no lexer answers to it; syntect's Markdown embeds nothing, so every
+    // fence takes that fallback and the fence line goes with the block it opens.
+    ("markup.raw.code-fence", "s"),
+    ("string", "s"),
+    ("constant.character.escape", "se"),
+    // The `{…}` inside an f-string, and the `f` in front of it: Pygments' String.Interpol and
+    // String.Affix, which are the two pieces of a formatted string that are not the string.
+    ("meta.interpolation", "si"),
+    ("storage.type.string", "sa"),
+    // A quoted identifier — SQL's `"column"`, a Ruby-style symbol. Pygments' String.Symbol.
+    ("constant.other.symbol", "ss"),
+    ("entity.name.constant", "ss"),
+    // SQL is the language where double quotes name a thing rather than quote a value, and
+    // Pygments spells that difference the same way. The row is longer than the string one above,
+    // so it takes the token back for SQL alone.
+    ("string.quoted.double.sql", "ss"),
+    ("constant.numeric.integer", "mi"),
+    ("constant.numeric.float", "mf"),
+    ("constant.numeric", "m"),
+    // `true`, `false`, `null`, `None`: a keyword that is a value. Pygments' Keyword.Constant.
+    ("constant.language", "kc"),
+    ("variable.other", "nv"),
+    // An `import` line is Pygments' Keyword.Namespace, which the sheet paints like any keyword.
+    ("keyword.control.import", "kn"),
+    // Python's `and` / `or` / `not` / `in` are words, and Pygments classes them Operator.Word. The
+    // row names the language because a shell's `&&` scopes as a logical operator too and is
+    // punctuation to read, not a word.
+    ("keyword.operator.logical.python", "ow"),
+    ("keyword.operator", "o"),
+    ("keyword", "k"),
+    // What a language ships rather than what a statement says: SQL's aggregates, a shell's `cd`
+    // and `export`, Python's `int` and `str`. Pygments' Name.Builtin.
+    ("support.function", "nb"),
+    ("support.type", "nb"),
+    ("storage.modifier", "nb"),
+    // `def`, `class`, `lambda`: syntect files them under storage, Pygments under Keyword.
+    ("storage.type", "k"),
+    ("markup.heading.1", "gh"),
+    ("markup.heading", "gu"),
+    ("markup.bold", "gs"),
+    ("markup.italic", "ge"),
+    // A bullet is the structure of a list rather than a word in it, and Pygments marks it with the
+    // keyword class. The row stops at `.bullet` so an item's own text stays unclassed.
+    ("markup.list.unnumbered.bullet", "k"),
+    ("markup.list.numbered.bullet", "k"),
+    // A docstring is a string to Pygments (String.Doc) and a comment to syntect. `sd` follows
+    // Pygments; the sheet paints neither, so a docstring reads in the body color either way.
+    ("comment.block.documentation", "sd"),
+    ("comment", "c1"),
+    // Only the punctuation that stands *between* things. `punctuation.definition` is deliberately
+    // absent: it is the scope on a string's own quotes, a heading's `#` and a comment's `--`, and
+    // leaving it out is what lets those characters fall through to the construct they open.
+    ("punctuation.section", "p"),
+    ("punctuation.separator", "p"),
+    ("punctuation.terminator", "p"),
+    ("punctuation.accessor", "p"),
+];
 
 impl fmt::Display for Syntax {
     fn fmt(&self, into: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -117,10 +233,12 @@ fn found(table: &[(&str, Syntax)], named: &str) -> Option<Syntax> {
         .map(|(_, syntax)| *syntax)
 }
 
-/// One value ready for a `<pre>`: escaped, and re-laid-out where it is JSON.
+/// One value ready for a `<pre>`: marked up in `syntax`, or printed as it was stored.
 ///
-/// Past [`HIGHLIGHT_CHARS`] the value says how long it is, so a reader knows the plainness is
-/// deliberate rather than a value that happens to look unmarked.
+/// Past [`HIGHLIGHT_CHARS`] the value comes back plain and says how long it is. The ceiling is
+/// characters rather than bytes on purpose: it guards the tokenizer's time and the markup's
+/// inflation — a span per token multiplies a value about fourfold — and neither of those is
+/// counted in bytes. A multibyte value under the ceiling is still marked up.
 pub fn lit(value: Option<&str>, syntax: Syntax) -> Lit {
     let Some(value) = value.filter(|held| !held.is_empty()) else {
         return Lit {
@@ -134,16 +252,178 @@ pub fn lit(value: Option<&str>, syntax: Syntax) -> Lit {
     } else {
         (value.to_owned(), true)
     };
-    let over = if known && text.chars().count() > HIGHLIGHT_CHARS {
-        text.chars().count() as i64
-    } else {
-        0
-    };
-    Lit {
-        html: escape(&text),
-        syntax: None,
-        over,
+    if !known {
+        return Lit {
+            html: escape(&text),
+            syntax: None,
+            over: 0,
+        };
     }
+    let length = text.chars().count();
+    if length > HIGHLIGHT_CHARS {
+        return Lit {
+            html: escape(&text),
+            syntax: None,
+            over: length as i64,
+        };
+    }
+    Lit {
+        html: marked(&text, syntax),
+        syntax: Some(syntax),
+        over: 0,
+    }
+}
+
+/// The bundled syntax definitions, unpacked once for the life of the process.
+fn syntaxes() -> &'static SyntaxSet {
+    static SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
+    &SET
+}
+
+/// [`SCOPES`] with each prefix parsed once, beside how many atoms it is long.
+fn rows() -> &'static [(Scope, usize, &'static str)] {
+    static ROWS: LazyLock<Vec<(Scope, usize, &'static str)>> = LazyLock::new(|| {
+        SCOPES
+            .iter()
+            .map(|(prefix, class)| {
+                let scope = Scope::new(prefix).expect("every row names a scope syntect can hold");
+                (scope, prefix.split('.').count(), *class)
+            })
+            .collect()
+    });
+    &ROWS
+}
+
+/// The class one token earns, or `None` where it is written out bare.
+///
+/// There is no row for whitespace, which is deliberate: Pygments wraps every run of it in a
+/// `<span class="w">` the sheet paints nothing, and on the widest query this repo ships that is
+/// 10 KB of markup in 35 KB of output. Here the space *between* constructs sits at a syntax's root
+/// scope, which no row matches, so it is written bare — while the space *inside* one is part of
+/// the construct and keeps its class, as it is in Pygments' markup too.
+fn class(stack: &[Scope]) -> Option<&'static str> {
+    let mut best: Option<(usize, &'static str)> = None;
+    for scope in stack {
+        for (prefix, width, class) in rows() {
+            // The innermost scope wins a tie, which is why the comparison is not strict: the
+            // stack is walked outermost first.
+            if prefix.is_prefix_of(*scope) && best.is_none_or(|(held, _)| *width >= held) {
+                best = Some((*width, class));
+            }
+        }
+    }
+    best.map(|(_, class)| class)
+}
+
+/// The line-number gutter Claude Code writes down the left of a file it read — `12\t`, one per
+/// line — as the bytes it occupies, or `None` where the line carries none.
+///
+/// It is not part of the file: a tokenizer that meets it reads a different language, where a
+/// heading whose `#` follows a number is no longer a heading.
+fn gutter(line: &str) -> Option<usize> {
+    let spaced = line.len() - line.trim_start_matches([' ', '\t']).len();
+    let digits = line[spaced..]
+        .bytes()
+        .take_while(u8::is_ascii_digit)
+        .count();
+    (digits > 0 && line.as_bytes().get(spaced + digits) == Some(&b'\t'))
+        .then_some(spaced + digits + 1)
+}
+
+/// A value marked up: in one pass, or a line at a time behind a `Read` result's gutter.
+///
+/// Reading line by line is what peeling the gutter costs — a tokenizer reading one line forgets
+/// what the line before it opened — so it is done only for a value whose first line is numbered,
+/// and the numbers are classed as the gutter they are. They hold digits and a tab by construction,
+/// so there is nothing in them to escape.
+fn marked(text: &str, syntax: Syntax) -> String {
+    let mut lines = text.split_inclusive('\n');
+    let Some(first) = lines.next() else {
+        return String::new();
+    };
+    if gutter(first).is_none() {
+        return run(text, syntax);
+    }
+    let mut written = String::with_capacity(text.len() * 2);
+    for line in text.split_inclusive('\n') {
+        // What is left once the gutter is its own span: the whole line when there is none.
+        let cut = gutter(line).unwrap_or(0);
+        if cut > 0 {
+            written.push_str(r#"<span class="lineno">"#);
+            written.push_str(&line[..cut]);
+            written.push_str("</span>");
+        }
+        written.push_str(&run(&line[cut..], syntax));
+    }
+    written
+}
+
+/// The class one chunk of a line wears.
+///
+/// A line ending wears none, so no span crosses a line. Pygments' formatter closes every open span
+/// at a newline and this keeps the two markups the same shape — a construct that runs to the end of
+/// its line, a heading above all, would otherwise wrap a newline it is not part of.
+fn worn(stack: &[Scope], chunk: &str) -> Option<&'static str> {
+    if chunk.chars().all(|held| held == '\n' || held == '\r') {
+        return None;
+    }
+    class(stack)
+}
+
+/// One stretch of text through the tokenizer, ending where the stretch ended.
+///
+/// Adjacent tokens of one class are written as one span. Pygments' formatter does the same inside
+/// a token and not across them, and a run of characters that share a class is one claim about
+/// those characters however many pieces the tokenizer cut them into.
+fn run(text: &str, syntax: Syntax) -> String {
+    if text.is_empty() {
+        return String::new();
+    }
+    let set = syntaxes();
+    let definition = set
+        .find_syntax_by_name(syntax.definition())
+        .expect("syntect's default set holds every syntax this viewer names");
+    let mut state = ParseState::new(definition);
+    let mut stack = ScopeStack::new();
+    let mut pieces: Vec<(Option<&'static str>, &str)> = Vec::new();
+    for line in text.split_inclusive('\n') {
+        let ops = state
+            .parse_line(line, set)
+            .expect("syntect reads a line of the syntax it was given");
+        let mut at = 0usize;
+        for (index, operation) in ops {
+            if index > at {
+                pieces.push((worn(stack.as_slice(), &line[at..index]), &line[at..index]));
+            }
+            at = index;
+            stack
+                .apply(&operation)
+                .expect("syntect's own scope operations balance");
+        }
+        if at < line.len() {
+            pieces.push((worn(stack.as_slice(), &line[at..]), &line[at..]));
+        }
+    }
+    let mut written = String::with_capacity(text.len() * 2);
+    let mut open: Option<&'static str> = None;
+    for (wearing, chunk) in pieces {
+        if wearing != open {
+            if open.is_some() {
+                written.push_str("</span>");
+            }
+            if let Some(name) = wearing {
+                written.push_str(r#"<span class=""#);
+                written.push_str(name);
+                written.push_str(r#"">"#);
+            }
+            open = wearing;
+        }
+        written.push_str(&escape(chunk));
+    }
+    if open.is_some() {
+        written.push_str("</span>");
+    }
+    written
 }
 
 /// A stored JSON value indented for reading, and whether it was JSON at all.

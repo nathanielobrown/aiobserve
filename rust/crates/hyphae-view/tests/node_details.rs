@@ -239,19 +239,14 @@ async fn a_pane_reads_what_a_person_or_a_model_wrote_as_the_markdown_it_was_writ
     for (field, page, fetch) in previewed {
         let (_, served) = written.page(&page).await;
         let pane = Markup::of(&served).prose(field);
-        // The heading is a heading and the list is a list...
+        // The heading is a heading, the list is a list, and the fenced block is marked up in the
+        // language a lexer read it as — the same lexer the viewer reads code with...
         assert!(pane.contains("<h1>The task</h1>"), "{field}");
         assert_eq!(pane.matches("<li>").count(), 2, "{field}");
+        assert!(pane.contains("<pre class=\"code python\">"), "{field}");
         // ...so none of the marks a reader wrote are left standing in the text.
         assert!(!plain(&pane).contains('#'), "{field}");
         assert!(!plain(&pane).contains("```"), "{field}");
-        // The fenced block lands in the same `<pre>` the rest of the viewer prints code in. Python
-        // adds the language to the class — `code python` — off the lexer that read it. This
-        // prototype writes no lexer's classes, so it writes no language either: a `<pre>` wearing
-        // `code python` with nothing painted under it would claim a marking that never happened.
-        // The syntax the fence claimed is still read (`highlight::by_fence`); what is missing is
-        // the painting, which is the gap `test_highlight.py` owns.
-        assert!(pane.contains("<pre class=\"code\">"), "{field}");
         // And the value the fetch brings back is rendered the same, because it is the same value:
         // this prompt fits the pane's width, so the head is the whole of it.
         let (_, opened) = written.page(&fetch).await;

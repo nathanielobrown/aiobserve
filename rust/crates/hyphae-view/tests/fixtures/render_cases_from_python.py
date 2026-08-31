@@ -11,7 +11,9 @@ The inputs are written rather than lifted from the corpus on purpose: what has t
 what a *hostile* title does, and no recorded session wrote one.
 """
 
+import html
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -78,17 +80,45 @@ BLOCKS = [
     '```html\n{"a": "<img src=x onerror=y>"}\n```',
     # A fence naming a language with no lexer here is still a block.
     "```rust\nx = 1\n```",
+    # One fence per syntax the viewer marks up, so what the Rust port excuses is bounded by
+    # syntax rather than by a count: a highlighter that lost a language would still pass a
+    # count. The short spellings, because those are what a model types.
+    "```sql\nSELECT a FROM t WHERE b = '<x>' -- note\n```",
+    "```sh\necho '<x>' && ls -1\n```",
+    "```md\n# Heading\n\n- an item with `code`\n```",
 ]
-# A fence whose language the viewer has a lexer for takes the highlighter's path, which the
-# Rust port defers. The flag lets the leaf hold the rest to parity and say what it excused.
-blocks = [
-    {
-        "text": t,
-        "html": str(render.markdown(t)),
-        "highlighted": bool(highlight.by_fence(t.split("\n", 1)[0].removeprefix("```"))),
+
+
+def _shown(markup: str) -> str:
+    """What a browser shows of a run of markup: the tags dropped, the escapes undone."""
+    return html.unescape(re.sub(r"<[^>]*>", "", markup))
+
+
+def _block(text: str) -> dict[str, str | None]:
+    """One block case, with the highlighter's arm named where it took one.
+
+    A fence whose language this viewer has a lexer for is the one place the two ports part. Both
+    mark the block up; Pygments and syntect draw the token boundaries differently, so the markup
+    inside the `<pre>` is not comparable byte for byte and `syntax` is what excuses it. What still
+    is comparable travels with the case: the wall the `<pre>` opens with, which says which
+    highlighter arm ran, and the characters a reader sees inside it — which for JSON is the
+    re-laid-out value rather than the stored one, so the check is not free.
+    """
+    rendered = str(render.markdown(text))
+    syntax = highlight.by_fence(text.split("\n", 1)[0].removeprefix("```"))
+    if syntax is None:
+        return {"text": text, "html": rendered, "syntax": None, "wall": None, "shown": None}
+    wall, _, rest = rendered.partition(">")
+    return {
+        "text": text,
+        "html": rendered,
+        "syntax": str(syntax),
+        "wall": wall + ">",
+        "shown": _shown(rest.removesuffix("</pre>\n")),
     }
-    for t in BLOCKS
-]
+
+
+blocks = [_block(t) for t in BLOCKS]
 
 LINKS = [
     "https://github.com/x/y/pull/1",

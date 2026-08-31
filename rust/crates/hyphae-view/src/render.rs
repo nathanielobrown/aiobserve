@@ -23,6 +23,7 @@ use markdown_it::plugins::cmark::inline::image::Image;
 use markdown_it::{MarkdownIt, Node, NodeValue, Renderer};
 
 use crate::format::ELLIPSIS;
+use crate::highlight;
 
 /// HTML a component prints as it stands.
 ///
@@ -154,8 +155,9 @@ fn inert(tree: &mut Node) {
             node.replace(Placeholder { shown });
         } else if let Some(fence) = node.cast::<CodeFence>() {
             let content = fence.content.clone();
+            let syntax = highlight::by_fence(Some(&fence.info));
             node.children.clear();
-            node.replace(PlainCode { content });
+            node.replace(Fenced { content, syntax });
         }
     });
 }
@@ -177,19 +179,39 @@ impl NodeValue for Placeholder {
     }
 }
 
-/// A fenced block in the same `<pre>` the rest of the viewer prints code in.
+/// A fenced block as the code the fence says it is, in the same `<pre>` the rest of the viewer
+/// prints code in.
+///
+/// A block whose language this viewer has no syntax for is escaped here instead, and so is one
+/// past the highlighter's ceiling — the class says what was marked up rather than what the fence
+/// claimed. JSON is re-laid-out for reading, the way every other JSON on a page is.
 #[derive(Debug)]
-struct PlainCode {
+struct Fenced {
     content: String,
+    syntax: Option<highlight::Syntax>,
 }
 
-impl NodeValue for PlainCode {
+impl NodeValue for Fenced {
     fn render(&self, _node: &Node, formatter: &mut dyn Renderer) {
+        let shown = self
+            .syntax
+            .map(|syntax| highlight::lit(Some(&self.content), syntax))
+            .filter(|lit| lit.syntax.is_some());
         formatter.cr();
-        formatter.open("pre", &[("class", "code".to_owned())]);
-        // XSS SAFETY: escaped here rather than by `text`, whose spelling of a quote is
-        // `&quot;` — safe, but not the `&#34;` the Python viewer already serves.
-        formatter.text_raw(&escape(&self.content));
+        // XSS SAFETY: both arms escape before `text_raw` — the marked-up one inside
+        // `highlight::lit`, the plain one here — rather than leaving it to `text`, whose spelling
+        // of a quote is `&quot;`: safe, but not the `&#34;` the Python viewer already serves.
+        match shown {
+            Some(lit) => {
+                let word = lit.syntax.expect("the arm filtered on it").word();
+                formatter.open("pre", &[("class", format!("code {word}"))]);
+                formatter.text_raw(&lit.html);
+            }
+            None => {
+                formatter.open("pre", &[("class", "code".to_owned())]);
+                formatter.text_raw(&escape(&self.content));
+            }
+        }
         formatter.close("pre");
         formatter.cr();
     }

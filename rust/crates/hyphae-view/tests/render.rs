@@ -4,9 +4,12 @@
 //! expected side is generated from `hyphae.view` rather than typed here. The cases live in
 //! `tests/fixtures/render_cases.json`; `render_cases_from_python.py` beside it writes them.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 
+use hyphae_testsupport::html::{classed, plain};
+use hyphae_view::highlight::PAINTED;
 use hyphae_view::{inline_markdown, render};
 use serde_json::Value;
 
@@ -72,28 +75,38 @@ fn a_title_renders_the_way_the_python_viewer_renders_it() {
 #[test]
 fn a_block_of_prose_renders_the_way_the_python_viewer_renders_it() {
     let cases = cases();
-    let mut excused = 0;
+    let mut excused = BTreeSet::new();
     for case in cases["blocks"].as_array().expect("blocks is a list") {
         let text = field(case, "text");
         let shown = render::markdown(Some(text)).into_inner();
-        // A fence whose language the Python has a lexer for takes the highlighter's path,
-        // which this crate does not have yet. It renders as the escaped `<pre class="code">`
-        // the Python itself serves for a language with no lexer — so what is excused here is
-        // the marking up, not the escaping.
-        if case["highlighted"] == true {
-            excused += 1;
-            assert!(
-                shown.starts_with("<pre class=\"code\">"),
-                "unhighlighted for {text:?}"
-            );
-            assert!(!shown.contains("<span"), "nothing marked up for {text:?}");
+        // A fence whose language either viewer has a highlighter for is the one place the two
+        // ports part: Pygments and syntect draw the token boundaries differently, so the spans
+        // inside the `<pre>` are not comparable byte for byte. The generator carries that
+        // exemption and names the syntax it covers, which is what stops it widening quietly.
+        let Some(syntax) = case["syntax"].as_str() else {
+            assert_eq!(shown, field(case, "html"), "markdown differs for {text:?}");
             continue;
+        };
+        excused.insert(syntax.to_owned());
+        // The wall says which arm ran, so a block that fell through to the escaped one — a
+        // fence this port cannot lex, or one past the ceiling — fails here rather than
+        // passing as an exemption.
+        let wall = field(case, "wall");
+        assert!(shown.starts_with(wall), "{syntax}: {shown} wants {wall}");
+        assert!(shown.ends_with("</pre>\n"), "{syntax}: {shown}");
+        // ...the characters a reader sees are the Python's, which for JSON means the value
+        // re-laid-out for reading rather than the one the fence held...
+        let inside = shown[wall.len()..].trim_end_matches("</pre>\n");
+        assert_eq!(plain(inside), field(case, "shown"), "{syntax}: {shown}");
+        // ...and every class is one the shared stylesheet knows.
+        for name in classed(inside) {
+            assert!(PAINTED.contains(&name.as_str()), "{syntax}: {name}");
         }
-        assert_eq!(shown, field(case, "html"), "markdown differs for {text:?}");
     }
     assert_eq!(
-        excused, 2,
-        "the two lexed fences stand for the highlighter, and both are still in the set"
+        excused,
+        BTreeSet::from_iter(["bash", "json", "markdown", "python", "sql"].map(str::to_owned)),
+        "every syntax the viewer marks up has a fence in the set, and nothing else is excused"
     );
 }
 

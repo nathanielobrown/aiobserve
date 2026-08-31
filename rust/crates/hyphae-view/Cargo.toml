@@ -19,6 +19,8 @@ serde.workspace = true
 # Re-laying-out a stored JSON value for reading: `preserve_order` keeps the keys the session wrote.
 serde_json.workspace = true
 thiserror.workspace = true
+# The tokenizer behind `highlight.rs`, standing in for Pygments.
+syntect.workspace = true
 
 [dev-dependencies]
 # The shared store cache and the viewer served over it.
@@ -32,3 +34,5 @@ duckdb.workspace = true
 regex.workspace = true
 # An href read out of the markup arrives with its `&` escaped; a link is compared decoded.
 html-escape.workspace = true
+# `mise.toml`'s task lines: the other half of the shell the stylesheet sweep reads.
+toml.workspace = true

@@ -344,11 +344,10 @@ async fn the_sheet_paints_only_classes_the_highlighter_can_emit() {
     // The docs are swept twice, the second time behind the line numbers a `Read` result carries,
     // so what a reader sees of a file is what the sweep saw.
     //
-    // **This is the gap, stated.** `highlight::lit` escapes and re-lays out, and paints nothing
-    // (`highlight.rs` says why), so the sweep emits no class at all and the sheet is painting a
-    // vocabulary this build cannot write. The assertion below is what is true today; when the
-    // highlighter lands it becomes `painted ⊆ emitted` over the same material, and this leaf is
-    // the one that has to fail first.
+    // The sheet is the shared one, and this port writes its spans off a table of TextMate scopes
+    // rather than off Pygments' token names (`highlight::SCOPES`) — so the sweep is also what
+    // says the table reaches every rule the sheet has. A class the table can no longer write is
+    // a rule nobody can see fail, in either viewer.
     let served = Served::corpus();
     let (status, sheet) = served.page("/static/pygments.css").await;
     assert_eq!(status, StatusCode::OK);
@@ -402,7 +401,7 @@ async fn the_sheet_paints_only_classes_the_highlighter_can_emit() {
     for command in commands() {
         sweep(&command, Syntax::Bash);
     }
-    // Every syntax the viewer names read real material of its own, and none of it was painted.
+    // Every syntax the viewer names read real material of its own.
     let read: BTreeSet<&str> = swept
         .iter()
         .filter(|(_, count)| **count > 0)
@@ -412,7 +411,8 @@ async fn the_sheet_paints_only_classes_the_highlighter_can_emit() {
         read,
         BTreeSet::from(["bash", "json", "markdown", "python", "sql"])
     );
-    assert_eq!(emitted, BTreeSet::new(), "{swept:?}");
+    let missing: Vec<&String> = painted.difference(&emitted).collect();
+    assert!(missing.is_empty(), "painted but never written: {missing:?}");
 }
 
 /// One file behind the line-number gutter the `Read` tool writes down its left.
@@ -441,17 +441,33 @@ fn shipped(directory: &str, suffix: &str) -> Vec<PathBuf> {
     found
 }
 
-/// Every shell script this repo runs on itself.
-///
-/// The hooks only. Python sweeps `mise.toml`'s task lines too, and reaching them from here means a
-/// TOML parser this workspace does not otherwise carry — for material of the same syntax the hooks
-/// already supply. Worth adding when the highlighter lands and the sweep starts deciding
-/// something; not for a set this build proves empty.
+/// Every shell command this repo runs on itself: its task lines and its hook scripts.
 fn commands() -> Vec<String> {
-    shipped(".claude/hooks", "sh")
-        .iter()
-        .map(|path| std::fs::read_to_string(path).expect("a hook reads"))
-        .collect()
+    let text = std::fs::read_to_string(corpus::repo().join("mise.toml")).expect("mise.toml reads");
+    let config: toml::Table = toml::from_str(&text).expect("mise.toml parses");
+    let tasks = config["tasks"]
+        .as_table()
+        .expect("mise.toml declares tasks");
+    let mut found: Vec<String> = Vec::new();
+    for task in tasks.values() {
+        // A task's `run` is one command or a list of them, and a task that declares none — an
+        // alias, a `depends`-only step — contributes nothing rather than an empty string.
+        match task.get("run") {
+            Some(toml::Value::String(line)) => found.push(line.clone()),
+            Some(toml::Value::Array(lines)) => found.extend(
+                lines
+                    .iter()
+                    .map(|line| line.as_str().expect("a run line is a string").to_owned()),
+            ),
+            _ => {}
+        }
+    }
+    found.extend(
+        shipped(".claude/hooks", "sh")
+            .iter()
+            .map(|path| std::fs::read_to_string(path).expect("a hook reads")),
+    );
+    found
 }
 
 #[tokio::test]

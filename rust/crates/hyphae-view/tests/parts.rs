@@ -232,9 +232,13 @@ fn a_detail_reads_its_head_the_one_way_its_row_said_the_value_was_written() {
         ..line("brief", "Read **schema.md**.", 0)
     }));
     let stored = served(parts::detail(&line("result", "plain output", 0)));
-    // The syntax the row named re-lays the value out for reading rather than printing the one
-    // line the store holds. The `code json` wall and the lexer's classes under it arrive with
-    // the highlighter itself, which `view::highlight` does not paint yet.
+    // The syntax the row named is markup the highlighter paints, and the block wears its name.
+    assert_eq!(Read::of(&lit_up).walled("input"), "code json");
+    assert!(
+        !html::classed(&Read::of(&lit_up).block("input")).is_empty(),
+        "{lit_up}"
+    );
+    // It also re-lays the value out for reading rather than printing the one line the store holds.
     assert_eq!(
         html::plain(&Read::of(&lit_up).block("input")),
         "{\n  \"a\": 1\n}"

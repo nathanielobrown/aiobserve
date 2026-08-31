@@ -92,20 +92,29 @@ async fn a_bash_call_reads_the_command_it_ran_as_a_shell_reads_it() {
     let markup = Markup::of(&page);
     // Every character the store holds is still there to read back...
     assert_eq!(plain(&markup.block("command")), COMMAND);
-    // ...and nothing paints it, because nothing in this viewer paints anything. Python asks a
-    // shell lexer here and reads `cd` back as a builtin and `&&` as an operator; the ask is
-    // ported (`Syntax::Bash` reaches `highlight::lit`) and the answer is not, so what the page
-    // serves is the command as stored. This absence is the gap, held still so that closing it
-    // reddens here rather than passing unnoticed.
-    assert!(!markup.block("command").contains("<span"));
-    assert_eq!(markup.walled("command"), "");
-    // The whole of it has a route of its own, serving the same characters — the syntax is spelled
-    // once for the preview and once for the fetch, so the fetch is read for the mark too. A route
-    // that fell back to JSON would serve the command as a JSON string.
+    // ...and a shell's own words are marked as what they are: `cd` a builtin, `&&` an operator.
+    // Which classes those are is `view::highlight`'s business; that the pane asked for a shell
+    // rather than for JSON is this leaf's.
+    let marked = markup.block("command");
+    assert!(marked.contains(r#"<span class="nb">cd</span>"#), "{marked}");
+    assert!(
+        marked.contains(r#"<span class="o">&amp;&amp;</span>"#),
+        "{marked}"
+    );
+    // The whole of it has a route of its own, marked up the same way — the syntax is spelled once
+    // for the preview and once for the fetch, so the fetch is read for the mark too. A route that
+    // fell back to JSON would serve the command as a JSON string.
     let (status, served) = ran.page(&format!("/fragment/command{at}")).await;
     assert_eq!(status, StatusCode::OK);
     let served = Markup::of(&served);
     assert_eq!(plain(&served.block("value")), COMMAND);
+    assert!(
+        served
+            .block("value")
+            .contains(r#"<span class="nb">cd</span>"#),
+        "{}",
+        served.block("value")
+    );
     assert_eq!(served.values("data-detail"), ["command"]);
     // And the input is still on the page as the record: the command is a reading of it.
     let input: serde_json::Value =
@@ -257,20 +266,19 @@ async fn a_result_no_file_names_is_json_where_it_parses_and_the_stored_character
     let (status, page) = answered.page(&at).await;
     assert_eq!(status, StatusCode::OK);
     let markup = Markup::of(&page);
-    // Read as the JSON it is, and indented for reading: the store holds one line and a reader
-    // opening a result wants the shape of it. Python paints it too, and says so in the `<pre>`'s
-    // class; here the class is empty because nothing was painted.
+    // Marked up as the JSON it is, and indented for reading: the store holds one line and a
+    // reader opening a result wants the shape of it.
+    assert_eq!(markup.walled("result"), "code json");
     let shown = plain(&markup.block("result"));
     assert_eq!(
         serde_json::from_str::<serde_json::Value>(&shown).expect("the result is JSON"),
         serde_json::from_str::<serde_json::Value>(ONE_LINE).expect("the plant is JSON"),
     );
     assert!(shown.contains('\n'));
-    assert_eq!(markup.walled("result"), "");
     // And the fetch that replaces the preview reads the same way, off the same rule.
     let (_, served) = answered.page(&fetch).await;
     let served = Markup::of(&served);
-    assert_eq!(served.walled("value"), markup.walled("result"));
+    assert_eq!(served.walled("value"), "code json");
     assert_eq!(
         classed(&served.block("value")),
         classed(&markup.block("result"))

@@ -4,8 +4,9 @@
 //! the library's rule rather than the viewer's: an upgrade that changed it would change every
 //! page at once and no page test would say which rule moved.
 
+use hyphae_store::queries;
 use hyphae_view::components::parts;
-use hyphae_view::highlight::Syntax;
+use hyphae_view::highlight::{Syntax, lit};
 
 #[test]
 fn an_attribute_is_escaped_even_when_its_value_is_already_markup() {
@@ -21,10 +22,19 @@ fn an_attribute_is_escaped_even_when_its_value_is_already_markup() {
 }
 
 #[test]
-fn a_value_a_component_marked_up_reaches_the_page_as_markup() {
-    // The other half: what the highlighter wrote is elements by the time it is a child, so a
-    // component that escaped it again would print a reader the tags.
-    let served = parts::code("a < b", Syntax::Sql, "value").into_inner();
-    assert!(served.contains("a &lt; b"), "{served}");
-    assert!(served.contains("<pre data-field=\"value\""), "{served}");
+fn a_markup_child_reaches_the_page_as_the_markup_its_producer_made() {
+    // The other half of the rule: what `highlight::lit` marked up is not escaped again.
+    //
+    // Real material, and the material this component actually renders in production — a query
+    // file this build ships, marked up by the producer the query page hands to it. A hand-built
+    // `Markup` would prove that the library honours the type; this proves the producer still
+    // makes one.
+    let statement = queries::load("view_sessions");
+    let shown = lit(Some(statement), Syntax::Sql);
+    // The producer really made markup out of it, so there is something here to escape...
+    assert!(shown.html.contains("<span"), "{}", shown.html);
+    // ...and every byte of it reaches the page as markup rather than as visible tag text.
+    let served = parts::code(statement, Syntax::Sql, "sql").into_inner();
+    assert!(served.contains(&shown.html), "{served}");
+    assert!(!served.contains("&lt;span"), "{served}");
 }
