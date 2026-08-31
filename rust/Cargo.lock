@@ -1323,6 +1323,7 @@ dependencies = [
  "chrono",
  "duckdb",
  "hyphae-extract",
+ "hyphae-model",
  "hyphae-store",
  "hyphae-testsupport",
  "regex",

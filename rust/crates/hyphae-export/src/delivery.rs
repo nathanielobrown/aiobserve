@@ -16,7 +16,6 @@ use std::io::Write as _;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use chrono::Utc;
 use hyphae_store::source::{SourceError, StoreSource};
 use hyphae_store::{Store, StoreError};
 use opentelemetry_proto::tonic::collector::trace::v1::{
@@ -450,7 +449,7 @@ impl<'a> OtlpExporter<'a> {
                 fingerprint,
                 MAPPER_VERSION,
                 sent as i64,
-                Utc::now(),
+                hyphae_model::clock::utcnow(),
             ],
         )?;
         Ok(())

@@ -9,8 +9,10 @@ publish.workspace = true
 hyphae-store.workspace = true
 # `project_predicate`: one spelling of "this repository and its worktrees" for every filter.
 hyphae-extract.workspace = true
-# `enriched_at` is the one column a writer stamps with the clock.
+# `enriched_at` is the one column a writer stamps with the clock, read through
+# `clock::utcnow()` so a test can freeze it.
 chrono.workspace = true
+hyphae-model.workspace = true
 duckdb.workspace = true
 thiserror.workspace = true
 # The credential shapes a description is screened against, and the prompt material the

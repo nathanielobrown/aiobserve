@@ -141,6 +141,12 @@ the sweep.
 
 Export keeps the behavioral `Clock` trait above, because an env instant cannot fake `sleep`.
 
+*(As built, post-slice-10: the ban needs no allowance for the export `Clock` impl — it paces
+off `Instant`, which is monotonic and not what the ban names. Every stored timestamp reads the
+seam: `extracted_at`, `enriched_at` and `delivered_at` all took the raw clock until the ban
+went in and found them. What is allowed is the seam's own fallthrough and four test leaves
+whose oracle is the real clock.)*
+
 ## Guards, timeouts, snapshots
 
 - **Subprocess/network guards**: `rust/clippy.toml` `disallowed-methods` bans

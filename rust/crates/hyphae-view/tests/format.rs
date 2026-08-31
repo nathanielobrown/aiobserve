@@ -144,7 +144,12 @@ fn an_absent_value_prints_the_dash() {
     assert_eq!(fmt::when(None), fmt::ABSENT);
     assert_eq!(fmt::clock(None), fmt::ABSENT);
     assert_eq!(fmt::duration(None), fmt::ABSENT);
-    assert_eq!(fmt::ago(None, Utc::now()), fmt::ABSENT);
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the real clock: this leaf asserts the absent-value case, which no instant changes"
+    )]
+    let now = Utc::now();
+    assert_eq!(fmt::ago(None, now), fmt::ABSENT);
     assert_eq!(fmt::percent(None), fmt::ABSENT);
     // A whole of zero is a gap rather than 0%, which is the one absent case with a value in it.
     assert_eq!(fmt::share(Some(1.0), Some(0.0)), fmt::ABSENT);

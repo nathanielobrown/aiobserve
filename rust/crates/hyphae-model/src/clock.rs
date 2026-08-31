@@ -62,6 +62,10 @@ pub fn freeze(instant: DateTime<Utc>) {
 /// The current instant, in the store's zone — the one place anything asks for it.
 pub fn utcnow() -> DateTime<Utc> {
     match OVERRIDE.load(Ordering::Relaxed) {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the one real clock read in the workspace; this function is the seam"
+        )]
         UNSET => FROM_ENV.unwrap_or_else(Utc::now),
         micros => Utc
             .timestamp_micros(micros)

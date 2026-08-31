@@ -12,4 +12,9 @@ disallowed-methods = [
   # ban follows the dependency that shipped. Allowed only inside the delivery transport.
   { path = "reqwest::blocking::Client::builder", reason = "the OTLP transport owns the only HTTP client; a test reaches a receiver through it" },
   { path = "reqwest::blocking::Client::new", reason = "the OTLP transport owns the only HTTP client; a test reaches a receiver through it" },
+  # The wall clock: `hyphae_model::clock::utcnow()` is the one read, so a frozen clock
+  # reaches everything downstream of it. This is what restores the pinned-everywhere
+  # property Python got from patching a module its tests import.
+  { path = "chrono::Utc::now", reason = "read the clock through hyphae_model::clock::utcnow(), which a test can freeze" },
+  { path = "std::time::SystemTime::now", reason = "read the clock through hyphae_model::clock::utcnow(), which a test can freeze" },
 ]

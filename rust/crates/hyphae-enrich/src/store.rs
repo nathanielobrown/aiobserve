@@ -8,7 +8,6 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use chrono::Utc;
 use duckdb::Connection;
 use hyphae_extract::sessions::project_predicate;
 use hyphae_store::{Param, Row, Store, StoreError};
@@ -201,7 +200,7 @@ impl EnrichmentStore {
         bound.push(Box::new(stamp.prompt_version));
         bound.push(Box::new(stamp.taxonomy_version));
         bound.push(Box::new(stamp.model.clone()));
-        bound.push(Box::new(Utc::now()));
+        bound.push(Box::new(hyphae_model::clock::utcnow()));
         let references: Vec<&dyn duckdb::ToSql> =
             bound.iter().map(std::convert::AsRef::as_ref).collect();
         self.connection().execute(

@@ -252,6 +252,10 @@ async fn the_windows_count_the_sessions_inside_the_window_the_page_cites() {
     // in 2026-08 and its windows go empty as the wall clock moves, which would leave this leaf
     // asserting zero against zero. One session inside both windows, one inside the longer only,
     // and one outside both, so each boundary is exercised from the near side and the far.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the real clock: the leaf plants rows relative to now and reads them back through it"
+    )]
     let now = Utc::now();
     // A copy of a recorded session per offset, so a planted row carries a real session's numbers
     // and the clock is the only invented part of it.
@@ -366,7 +370,12 @@ async fn the_page_cites_the_query_and_the_window_it_ran() {
     let served = Served::corpus();
     let bindings = cited(&landing(&served).await, Page::ProjectRollups);
     let as_of: chrono::NaiveDate = bindings["as_of"].parse().expect("an ISO day");
-    assert!(as_of <= Utc::now().date_naive());
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the real clock is the oracle: the page's `as_of` must not be in the future"
+    )]
+    let today = Utc::now().date_naive();
+    assert!(as_of <= today);
     assert_eq!(bindings["projects"], knobs::PROJECTS.default.to_string());
     // And the two windows the columns are headed with, which are bindings like the rest.
     assert_eq!(bindings[RECENT_DAYS], "7");

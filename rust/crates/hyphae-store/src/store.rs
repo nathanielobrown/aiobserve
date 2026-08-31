@@ -9,10 +9,10 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use chrono::Utc;
 use duckdb::types::{ToSql, Value};
 use duckdb::{Config, Connection};
 use hyphae_model::SessionTrace;
+use hyphae_model::clock;
 
 use crate::param::Param;
 use crate::row::Row;
@@ -179,7 +179,7 @@ impl Store {
     pub fn export(&self, trace: &SessionTrace, fingerprint: &str) -> Result<(), StoreError> {
         let session_id = &trace.session.id;
         let batches = rows::of(trace);
-        let state = rows::extract_state(trace, fingerprint, Utc::now());
+        let state = rows::extract_state(trace, fingerprint, clock::utcnow());
         self.connection.execute_batch("BEGIN TRANSACTION")?;
         let outcome = (|| -> Result<(), StoreError> {
             for (table, _) in schema::TABLES {

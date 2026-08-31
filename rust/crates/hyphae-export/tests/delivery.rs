@@ -108,6 +108,10 @@ fn a_confirmed_session_records_one_delivery_row() {
     let receiver = Receiver::start();
     let (_scratch, store) = shipping_store();
     let clock = TestClock::default();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the real clock is the oracle: `delivered_at` has to fall between two live reads"
+    )]
     let before = Utc::now();
     deliver(&store, sentinel_backend(&receiver), Shipping::new(&clock)).expect("both ship");
     let fingerprints = store.fingerprints().expect("the extract state reads back");
@@ -117,7 +121,12 @@ fn a_confirmed_session_records_one_delivery_row() {
     for row in delivery_rows(&store) {
         assert_eq!(row.fingerprint, fingerprints[&row.session_id]);
         assert_eq!(row.mapper_version, MAPPER_VERSION);
-        assert!(before <= row.delivered_at && row.delivered_at <= Utc::now());
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the real clock is the oracle: `delivered_at` has to fall between two live reads"
+        )]
+        let after = Utc::now();
+        assert!(before <= row.delivered_at && row.delivered_at <= after);
         assert_eq!(
             row.spans_sent as usize,
             emitted(&trace_of(&store, &row.session_id)).len()
