@@ -22,7 +22,7 @@ use crate::render::Markup;
 /// How a cost badge is drawn: the steps it has, and how many decades of share they cover. A
 /// session's cheapest turn and its dearest are three orders of magnitude apart, so the scale
 /// is logarithmic — a linear one would paint every row but the dearest alike.
-const STEPS: i32 = 10;
+pub const STEPS: i32 = 10;
 const DECADES: f64 = 3.0;
 
 /// The context bar's ladder: how many steps a fill or a tip is drawn in, across the whole of
