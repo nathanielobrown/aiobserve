@@ -8,16 +8,24 @@ not a table spliced into a document.
 `hyphae/enrich/` stays the one owner. What crosses is what a reader of the rows needs and
 cannot derive: the stamps that decide whether a row is current, the table each level lives in,
 and the two closed vocabularies a row is written in (`plans/rust-prototype/full-port.md`).
-What each member *means* does not cross — the definitions are prompt material, written for the
-classifier, and a second copy of that prose would drift with no reader to catch it.
+The prompt material crosses too, and for the same reason: the other implementation renders
+the same system prompt, and prose it hand-copied would drift a word at a time. What crosses is
+the material — the per-member definitions and the four blocks `instructions` composes — never
+the rendered result, so the other side's own leaves still hold its composition to this order.
 """
 
 import json
 from pathlib import Path
 
-from hyphae.enrich.prompts import PROMPT_VERSION, Level
+from hyphae.enrich.prompts import ANSWER, CHOOSING, PROMPT_VERSION, RELAYING, SUBJECT, Level
 from hyphae.enrich.store import LEVELS
-from hyphae.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
+from hyphae.enrich.taxonomy import (
+    CATEGORY_DEFINITIONS,
+    OUTCOME_DEFINITIONS,
+    TAXONOMY_VERSION,
+    Category,
+    Outcome,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 ENRICHMENT = ROOT / "rust" / "metadata" / "enrichment.json"
@@ -46,12 +54,26 @@ def level(named: Level) -> dict[str, object]:
 
 
 def generate() -> str:
-    """The whole file: the levels in enum order, then the vocabularies and their version."""
+    """The whole file: the levels in enum order, the vocabularies, and the prompt material.
+
+    The member lists stay beside the definition maps rather than being read off their keys:
+    the lists are what fixes declaration order for a reader whose JSON parser sorts.
+    """
     written = {
         "levels": {named.value: level(named) for named in Level},
         "taxonomy_version": TAXONOMY_VERSION,
         "categories": [category.value for category in Category],
         "outcomes": [outcome.value for outcome in Outcome],
+        "category_definitions": {
+            category.value: CATEGORY_DEFINITIONS[category] for category in Category
+        },
+        "outcome_definitions": {outcome.value: OUTCOME_DEFINITIONS[outcome] for outcome in Outcome},
+        "prompt_text": {
+            "subject": {named.value: SUBJECT[named] for named in Level},
+            "answer": ANSWER,
+            "choosing": CHOOSING,
+            "relaying": RELAYING,
+        },
     }
     return json.dumps(written, indent=2) + "\n"
 

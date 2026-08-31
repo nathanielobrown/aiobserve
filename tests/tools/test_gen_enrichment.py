@@ -10,9 +10,15 @@ viewer calling stale rows current, so the file is regenerated here and compared 
 import json
 from pathlib import Path
 
-from hyphae.enrich.prompts import PROMPT_VERSION, Level
+from hyphae.enrich.prompts import ANSWER, CHOOSING, PROMPT_VERSION, RELAYING, SUBJECT, Level
 from hyphae.enrich.store import LEVELS
-from hyphae.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
+from hyphae.enrich.taxonomy import (
+    CATEGORY_DEFINITIONS,
+    OUTCOME_DEFINITIONS,
+    TAXONOMY_VERSION,
+    Category,
+    Outcome,
+)
 from tools import gen_enrichment
 
 
@@ -64,3 +70,31 @@ def test_both_closed_vocabularies_reach_the_file_whole_beside_their_version() ->
     assert written["outcomes"] == [outcome.value for outcome in Outcome]
     # ...and the version that says which vocabulary a stored row was written against.
     assert written["taxonomy_version"] == TAXONOMY_VERSION
+
+
+def test_the_prompt_material_crosses_whole_so_no_second_copy_of_it_exists() -> None:
+    """Every block `instructions` composes, and every member's definition, as data.
+
+    A second implementation renders the same system prompt, and prose it hand-copied would
+    drift a word at a time with nothing comparing the halves. What crosses is the material,
+    not the render: the other side composes it itself, and its own leaves hold that
+    composition to the same order this one uses.
+    """
+    # If the file is read back as data...
+    written = json.loads(gen_enrichment.ENRICHMENT.read_text())
+    # ...then every member of both vocabularies carries the one-line definition the prompt is
+    # written from — a member the classifier is never told about is one it will not use...
+    assert written["category_definitions"] == {
+        category.value: CATEGORY_DEFINITIONS[category] for category in Category
+    }
+    assert written["outcome_definitions"] == {
+        outcome.value: OUTCOME_DEFINITIONS[outcome] for outcome in Outcome
+    }
+    # ...and the four blocks of prose, each under the name `instructions` knows it by: one
+    # subject per level, and the three that are the same everywhere except `relaying`.
+    assert written["prompt_text"] == {
+        "subject": {level.value: SUBJECT[level] for level in Level},
+        "answer": ANSWER,
+        "choosing": CHOOSING,
+        "relaying": RELAYING,
+    }
