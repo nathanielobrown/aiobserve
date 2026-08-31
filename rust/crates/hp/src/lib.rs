@@ -10,6 +10,7 @@
 //! with `eprintln!` from inside `hyphae-extract`, so the two leaves that read a warning
 //! spawn the binary. Everything else runs in process.
 
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -21,13 +22,14 @@ use hyphae_extract::{Extractor, sessions};
 use hyphae_store::Store;
 
 pub mod enrich;
+pub mod export;
 pub mod query;
 
 pub use enrich::{ClaudeCli, Models};
 
 /// Gitignored, so an extract never lands in a commit. The same default `hp` the Python
 /// binary uses, so both write to the same place unless told otherwise.
-const DEFAULT_DB: &str = "data/traces.duckdb";
+pub(crate) const DEFAULT_DB: &str = "data/traces.duckdb";
 
 /// A refusal: exactly what goes to stderr, and what the process should exit with.
 ///
@@ -78,6 +80,30 @@ impl From<anyhow::Error> for CliError {
     }
 }
 
+/// What a run reaches outside itself, in one place a test can build for itself.
+///
+/// Two doors: the model client `hp enrich` opens, and the environment `hp export-otlp` reads
+/// its backend and its key from. Production takes both from the machine; a test hands over
+/// its own, so no leaf is decided by a developer's shell or the `.env` beside the checkout.
+pub struct Outside<'a> {
+    pub models: &'a dyn Models,
+    pub environ: HashMap<String, String>,
+}
+
+impl Outside<'static> {
+    /// The real doors: a `claude` on the `PATH`, and the process environment under a `.env`.
+    ///
+    /// The `.env` is where the ingest key lives, so it is read before the environment is
+    /// collected. A checkout without one is the normal case, not a failure.
+    pub fn production() -> Self {
+        dotenvy::dotenv().ok();
+        Self {
+            models: &ClaudeCli,
+            environ: std::env::vars().collect(),
+        }
+    }
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "hp", about = "Analyze AI coding agents from their telemetry")]
 pub struct Cli {
@@ -123,6 +149,8 @@ pub enum Command {
         #[arg(long)]
         csv: bool,
     },
+    /// Ship a project's sessions to an OTLP backend as spans
+    ExportOtlp(export::Args),
     /// Open the trace store in a local browser
     View {
         /// Which trace store to read
@@ -144,16 +172,16 @@ where
     I: IntoIterator<Item = T>,
     T: Into<std::ffi::OsString> + Clone,
 {
-    main_with(argv, &ClaudeCli, out, err)
+    main_with(argv, &Outside::production(), out, err)
 }
 
-/// The same, against a stand-in for the two doors `hp enrich` opens onto a real model.
+/// The same, against doors the caller supplies — the seam every test in this tier runs on.
 ///
 /// # Errors
 /// As [`main`] does.
 pub fn main_with<I, T>(
     argv: I,
-    models: &dyn Models,
+    outside: &Outside<'_>,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> Result<(), CliError>
@@ -174,7 +202,7 @@ where
             });
         }
     };
-    run_with(parsed, models, out, err)
+    run_with(parsed, outside, out, err)
 }
 
 /// Run one already-parsed command line.
@@ -182,16 +210,16 @@ where
 /// # Errors
 /// As [`main`] does.
 pub fn run(cli: Cli, out: &mut dyn Write, err: &mut dyn Write) -> Result<(), CliError> {
-    run_with(cli, &ClaudeCli, out, err)
+    run_with(cli, &Outside::production(), out, err)
 }
 
-/// The same, against a stand-in for the two doors `hp enrich` opens onto a real model.
+/// The same, against doors the caller supplies — the seam every test in this tier runs on.
 ///
 /// # Errors
 /// As [`main`] does.
 pub fn run_with(
     cli: Cli,
-    models: &dyn Models,
+    outside: &Outside<'_>,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> Result<(), CliError> {
@@ -218,7 +246,8 @@ pub fn run_with(
             };
             query::query(&db, &name, &request, csv, out, err)
         }
-        Command::Enrich(args) => enrich::enrich(&args, models, out),
+        Command::Enrich(args) => enrich::enrich(&args, outside.models, out),
+        Command::ExportOtlp(args) => export::export_otlp(&args, &outside.environ, out),
         Command::View { db, port } => Ok(view(&db, port, out)?),
     }
 }

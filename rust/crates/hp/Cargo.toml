@@ -14,6 +14,9 @@ hyphae-model.workspace = true
 indexmap.workspace = true
 # `--since` and `--as-of` parse straight into the dates the runner binds.
 chrono.workspace = true
+# `hp export-otlp`: the census, the backend registry, and the delivery loop.
+hyphae-export.workspace = true
+dotenvy.workspace = true
 hyphae-extract.workspace = true
 hyphae-store.workspace = true
 hyphae-view.workspace = true

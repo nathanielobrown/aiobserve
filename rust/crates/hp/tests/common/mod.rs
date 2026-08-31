@@ -6,6 +6,7 @@
 
 #![allow(dead_code)]
 
+use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
@@ -37,15 +38,43 @@ pub fn hp<S: AsRef<OsStr>>(args: &[S]) -> Output {
     hp_with(args, &hp::ClaudeCli)
 }
 
+/// The same, with the environment `hp export-otlp` reads its backend and its key from.
+///
+/// The port of monkeypatching `cli.load_dotenv`: a leaf names every variable it wants, and a
+/// developer's shell or `.env` supplies nothing.
+pub fn hp_env<S: AsRef<OsStr>>(args: &[S], environ: &HashMap<String, String>) -> Output {
+    outside(
+        args,
+        &hp::Outside {
+            models: &hp::ClaudeCli,
+            environ: environ.clone(),
+        },
+    )
+}
+
 /// The same, against a stand-in for the two doors `hp enrich` opens onto a real model.
 ///
 /// The port of monkeypatching `cli.preflight` and `cli.build_client`: no leaf here starts a
 /// `claude`, and one that forgot to pass a fake would have to name [`hp::ClaudeCli`] to do it.
 pub fn hp_with<S: AsRef<OsStr>>(args: &[S], models: &dyn hp::Models) -> Output {
+    outside(
+        args,
+        &hp::Outside {
+            models,
+            environ: HashMap::new(),
+        },
+    )
+}
+
+/// `hp <args>` in this process against doors the caller built — what the two above wrap.
+///
+/// The environment is whatever the caller put in it, never the process's own: an export leaf
+/// that forgot to configure one refuses for want of a backend rather than shipping somewhere.
+pub fn outside<S: AsRef<OsStr>>(args: &[S], outside: &hp::Outside<'_>) -> Output {
     let mut argv: Vec<std::ffi::OsString> = vec!["hp".into()];
     argv.extend(args.iter().map(|arg| arg.as_ref().to_owned()));
     let (mut out, mut err) = (Vec::new(), Vec::new());
-    let answer = hp::main_with(argv, models, &mut out, &mut err);
+    let answer = hp::main_with(argv, outside, &mut out, &mut err);
     let mut stderr = String::from_utf8_lossy(&err).into_owned();
     let ok = match answer {
         Ok(()) => true,

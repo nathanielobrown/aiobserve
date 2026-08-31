@@ -74,6 +74,9 @@ indexmap = { version = "2", features = ["serde"] }
 insta = "1"
 # The `hp` binary's CLI. `derive` is the only feature the commands need.
 clap = { version = "4", features = ["derive"] }
+# `hp export-otlp` reads its endpoint and its ingest key from a gitignored `.env`, as
+# `cli.py` does through python-dotenv.
+dotenvy = "0.15"
 # Errors at the binary, per the design's `thiserror` (crates) / `anyhow` (bin) split.
 anyhow = "1"
 
