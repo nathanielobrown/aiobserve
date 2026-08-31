@@ -21,3 +21,7 @@ hyphae-enrich.workspace = true
 # The same expressions `tests/analyze/test_queries.py` scans the SQL with, so the two rules
 # read the library the same way.
 regex.workspace = true
+# Reading a selected value at whatever width DuckDB answered it, and planting one on a copy
+# of the corpus store.
+duckdb.workspace = true
+tempfile.workspace = true

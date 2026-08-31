@@ -16,6 +16,17 @@ pub const FAR_FUTURE: &str = "2030-01-01";
 /// `landmarks::NON_CORPUS` names. Measured by `hp query sessions --project`.
 pub const MYCELIA_SESSIONS: usize = 15;
 
+/// The corpus by ISO week: five unevenly filled weeks between 2026-06-30 and 2026-07-27,
+/// summing to [`MYCELIA_SESSIONS`]. `2026-W30` holds two because `model_only/` — the
+/// recording that carries a turn and no api call — landed there.
+pub const WEEKS: &[(&str, usize)] = &[
+    ("2026-W27", 4),
+    ("2026-W28", 4),
+    ("2026-W29", 4),
+    ("2026-W30", 2),
+    ("2026-W31", 1),
+];
+
 /// An `$as_of` whose trailing 28 days opens at 2026-06-30 and covers the whole corpus.
 pub const AS_OF_WHOLE: &str = "2026-07-28";
 /// An `$as_of` past the corpus: the window opens at 2026-07-10 and covers eight sessions.

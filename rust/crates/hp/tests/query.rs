@@ -245,6 +245,23 @@ fn as_of_defaults_to_today() {
         citation.contains(&format!("as_of={}", windows::FAR_FUTURE)),
         "{citation}"
     );
+
+    // And that default is what a windowed query answers about, so a leaf or a report that
+    // leaves `--as-of` unbound is reading the 28 days ending *now*: green while the
+    // recordings are recent, red the morning they fall out of it. Years past the corpus the
+    // window reaches none of them, so the grouping writes no window row at all — the loud
+    // shape, rather than a quietly smaller number.
+    let counts = run(
+        "session_counts",
+        &["--project", landmarks::MYCELIA, "--csv"],
+    );
+    assert!(!column(&counts, "period").contains(&"trailing_window".to_owned()));
+    // ...while the corpus row, which no window touches, still holds every recording: the
+    // store is what it always was, and only the date it is read at moved.
+    assert_eq!(
+        column(&counts, "sessions"),
+        vec![windows::MYCELIA_SESSIONS.to_string()]
+    );
 }
 
 #[test]
