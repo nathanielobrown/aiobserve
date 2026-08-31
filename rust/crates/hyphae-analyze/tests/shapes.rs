@@ -95,9 +95,6 @@ const PLANTED_EDIT_CALLS: i64 = 4;
 const EDITING_AT_OR_BELOW: &str = "solo-editing";
 const EDITING_ABOVE: &str = "mixed";
 
-/// Every agent definition the corpus spawned a run under.
-const AGENT_TYPES: usize = 7;
-
 /// The skills the recorded corpus attributes api calls to, as `(api_calls, sessions)`. No
 /// fixture records a `Skill` tool call, so every one of these is invoked zero times — the
 /// halves of this query are independent, which is the reason it joins them rather than reading
@@ -281,7 +278,7 @@ fn an_agent_types_numbers_are_the_runs_own_thread_not_its_subtree() {
     let rows = key(&rows_of(&db, "agent_types", &[]), "agent_type");
     // Every recorded run is counted once, under the definition that ran it, so `runs` cannot
     // hide a fan-out...
-    assert_eq!(rows.len(), AGENT_TYPES);
+    assert_eq!(rows.len(), windows::AGENT_TYPES);
     let runs: i64 = rows
         .values()
         .map(|row| row.i64("runs").expect("a count"))

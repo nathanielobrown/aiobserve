@@ -27,6 +27,14 @@ pub const WEEKS: &[(&str, usize)] = &[
     ("2026-W31", 1),
 ];
 
+/// Distinct `agent_type`s across the corpus's 11 agent runs.
+pub const AGENT_TYPES: usize = 7;
+
+/// Of the in-window sessions, the ones with any turn or agent run — the pool a selection
+/// draws from, at each of the two `$as_of` values below.
+pub const POOL_AT_WHOLE: usize = 12;
+pub const POOL_AT_PARTIAL: usize = 6;
+
 /// An `$as_of` whose trailing 28 days opens at 2026-06-30 and covers the whole corpus.
 pub const AS_OF_WHOLE: &str = "2026-07-28";
 /// An `$as_of` past the corpus: the window opens at 2026-07-10 and covers eight sessions.

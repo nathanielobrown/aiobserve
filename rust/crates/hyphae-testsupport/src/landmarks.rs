@@ -71,6 +71,11 @@ pub const RESUME_LONG_RECORD: i64 = 5;
 /// The session `RESUME` resumed, and one of the two pool sessions that compacted.
 pub const ANCESTOR: &str = "2352492b-1437-4427-ad51-70f35c75f663";
 
+/// The mycelia sessions `corpus_rollups` credits with no turns and no agent runs, so no
+/// stratum may reach them. One of them compacted, which is what makes the exclusion visible:
+/// a pool drawn on metrics alone would rank it.
+pub const NO_WORK_SESSIONS: &[&str] = &[RESUME, "8ee00a94-b01a-4394-b447-b065f74b11af"];
+
 /// `server_tools/`, which carries an agent-source api call under no turn.
 pub const SERVER_TOOLS: &str = "088d63aa-71d3-4108-965e-5147e3eaddbd";
 pub const SERVER_TOOLS_RUN: &str = "a3b37063695183556";
