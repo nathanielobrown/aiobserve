@@ -6,7 +6,7 @@
 //! output must be — there is no recorded session to draw them from. The readers below turn the
 //! store back into the keys and stamps a leaf asserts on.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;
 
 use hyphae_enrich::client::{Answer, BatchClient, EnrichRequest, RoundError};
@@ -14,6 +14,7 @@ use hyphae_enrich::{EnrichmentStore, Item, Level};
 use serde_json::{Map, Value, json};
 
 use crate::fake_cli::MODEL;
+use crate::landmarks::{SPINE, SPINE_LEAF};
 
 /// An invented credential, in a shape the screen knows, for the answer that must be refused.
 pub const FAKE_SECRET: &str = "AKIAIOSFODNN7EXAMPLE";
@@ -167,6 +168,62 @@ pub fn level_keys(store: &EnrichmentStore, level: Level) -> Vec<String> {
         .iter()
         .map(|item| item.key())
         .collect()
+}
+
+/// Rename a tool call of `spine/`'s leaf run — the smallest edit only that run's prompt sees.
+///
+/// The call is read out of the store rather than named: a fixture edit that renumbered it would
+/// otherwise leave this silently renaming nothing.
+pub fn rename_a_leaf_tool(store: &EnrichmentStore) {
+    let changed = store
+        .connection()
+        .execute(
+            "UPDATE tool_calls SET name = name || '-renamed'
+             WHERE session_id = ? AND source = ?
+               AND id = (SELECT min(id) FROM tool_calls WHERE session_id = ? AND source = ?)",
+            duckdb::params![SPINE, SPINE_LEAF, SPINE, SPINE_LEAF],
+        )
+        .expect("the tool call renames");
+    assert_eq!(changed, 1, "the leaf run holds no tool call to rename");
+}
+
+/// Every enrichment row of every level: the item's own id against one column of what it says.
+///
+/// Keyed by the id alone — one map across the three tables, which is what a cascade moves
+/// through, and what lets two stores be compared in a single assert.
+pub fn read_pairs(store: &EnrichmentStore, said: &str) -> BTreeMap<String, String> {
+    let selects: Vec<String> = Level::ALL
+        .iter()
+        .map(|level| {
+            let last = *level.keys().last().expect("a level has a key column");
+            format!("SELECT {last} AS id, {said} AS said FROM {}", level.table())
+        })
+        .collect();
+    store
+        .store()
+        .fetch(&selects.join(" UNION ALL "), &[])
+        .expect("the rows read")
+        .iter()
+        .map(|row| {
+            (
+                row.str("id").expect("an id reads").to_owned(),
+                row.str("said").expect("a value reads").to_owned(),
+            )
+        })
+        .collect()
+}
+
+/// Every row against everything a second pass over the same store would reproduce.
+///
+/// `enriched_at` is left out by construction rather than filtered afterwards: it is the one
+/// column two runs cannot agree on, and naming the rest is what makes the comparison a
+/// statement about the pass.
+pub fn written(store: &EnrichmentStore) -> BTreeMap<String, String> {
+    read_pairs(
+        store,
+        "concat_ws('|', description, category, outcome, coalesce(friction, ''),
+                   input_hash, prompt_version, taxonomy_version, model)",
+    )
 }
 
 fn keyed(store: &EnrichmentStore, level: Level, matches: impl Fn(&dyn Item) -> bool) -> String {

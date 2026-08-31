@@ -18,7 +18,7 @@ use duckdb::params;
 use hyphae_enrich::{
     AgentRunItem, Enrichment, EnrichmentStore, Item, Level, SessionItem, Stamp, TurnItem,
 };
-use hyphae_testsupport::{cache, metadata};
+use hyphae_testsupport::{cache, metadata, passes};
 use tempfile::TempDir;
 
 // The recorded sessions this file names, declared once in `hyphae_testsupport::landmarks` and
@@ -248,23 +248,5 @@ pub fn written_at(store: &EnrichmentStore) -> BTreeMap<String, String> {
 }
 
 fn read_pairs(store: &EnrichmentStore, said: &str) -> BTreeMap<String, String> {
-    let selects: Vec<String> = Level::ALL
-        .iter()
-        .map(|level| {
-            let last = *level.keys().last().expect("a level has a key column");
-            format!("SELECT {last} AS id, {said} AS said FROM {}", level.table())
-        })
-        .collect();
-    store
-        .store()
-        .fetch(&selects.join(" UNION ALL "), &[])
-        .expect("the rows read")
-        .iter()
-        .map(|row| {
-            (
-                row.str("id").expect("an id reads").to_owned(),
-                row.str("said").expect("a value reads").to_owned(),
-            )
-        })
-        .collect()
+    passes::read_pairs(store, said)
 }

@@ -5,6 +5,8 @@ version.workspace = true
 publish.workspace = true
 
 [dependencies]
+# `hp enrich`: the pass, the price it quotes, and the client that spends.
+hyphae-enrich.workspace = true
 # `hp query`: the runner that binds a library query and cites what it bound.
 hyphae-analyze.workspace = true
 # The one clock, for `--as-of`'s default.

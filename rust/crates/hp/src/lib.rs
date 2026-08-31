@@ -20,7 +20,10 @@ use hyphae_analyze::Request;
 use hyphae_extract::{Extractor, sessions};
 use hyphae_store::Store;
 
+pub mod enrich;
 pub mod query;
+
+pub use enrich::{ClaudeCli, Models};
 
 /// Gitignored, so an extract never lands in a commit. The same default `hp` the Python
 /// binary uses, so both write to the same place unless told otherwise.
@@ -95,6 +98,8 @@ pub enum Command {
         #[arg(long, default_value = DEFAULT_DB)]
         db: PathBuf,
     },
+    /// Describe the extracted sessions with an AI model
+    Enrich(enrich::Args),
     /// Run one library query against the trace store and print its rows and its citation
     Query {
         /// The query to run — a file in analyze/queries/
@@ -139,6 +144,23 @@ where
     I: IntoIterator<Item = T>,
     T: Into<std::ffi::OsString> + Clone,
 {
+    main_with(argv, &ClaudeCli, out, err)
+}
+
+/// The same, against a stand-in for the two doors `hp enrich` opens onto a real model.
+///
+/// # Errors
+/// As [`main`] does.
+pub fn main_with<I, T>(
+    argv: I,
+    models: &dyn Models,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<(), CliError>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<std::ffi::OsString> + Clone,
+{
     let parsed = match Cli::try_parse_from(argv) {
         Ok(parsed) => parsed,
         Err(answer) if !answer.use_stderr() => {
@@ -152,11 +174,27 @@ where
             });
         }
     };
-    run(parsed, out, err)
+    run_with(parsed, models, out, err)
 }
 
 /// Run one already-parsed command line.
+///
+/// # Errors
+/// As [`main`] does.
 pub fn run(cli: Cli, out: &mut dyn Write, err: &mut dyn Write) -> Result<(), CliError> {
+    run_with(cli, &ClaudeCli, out, err)
+}
+
+/// The same, against a stand-in for the two doors `hp enrich` opens onto a real model.
+///
+/// # Errors
+/// As [`main`] does.
+pub fn run_with(
+    cli: Cli,
+    models: &dyn Models,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<(), CliError> {
     match cli.command {
         Command::Extract {
             project,
@@ -180,6 +218,7 @@ pub fn run(cli: Cli, out: &mut dyn Write, err: &mut dyn Write) -> Result<(), Cli
             };
             query::query(&db, &name, &request, csv, out, err)
         }
+        Command::Enrich(args) => enrich::enrich(&args, models, out),
         Command::View { db, port } => Ok(view(&db, port, out)?),
     }
 }

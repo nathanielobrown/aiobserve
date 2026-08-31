@@ -367,7 +367,10 @@ fn duration(ms: Option<i64>) -> String {
 }
 
 /// A count with the separators Python's `:,` writes, so the two renders hash alike.
-fn thousands(count: i64) -> String {
+///
+/// Public because a dry run's quote is printed under the same format string, and a second
+/// grouping routine is a second thing to get wrong.
+pub fn thousands(count: i64) -> String {
     let digits = count.unsigned_abs().to_string();
     let grouped: Vec<String> = digits
         .as_bytes()

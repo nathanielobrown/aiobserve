@@ -17,7 +17,8 @@ use hyphae_enrich::enricher::{EnrichReport, PassError, enrich};
 use hyphae_enrich::{EnrichmentStore, FailureKind, Item, Level};
 use hyphae_testsupport::fake_cli::{MODEL, OTHER_MODEL};
 use hyphae_testsupport::passes::{
-    FAKE_CATEGORY, FAKE_SECRET, FakeClient, level_keys, run_key, session_key, succeeding, turn_key,
+    FAKE_CATEGORY, FAKE_SECRET, FakeClient, level_keys, rename_a_leaf_tool, run_key, session_key,
+    succeeding, turn_key,
 };
 use serde_json::json;
 
@@ -328,23 +329,6 @@ fn bump(store: &EnrichmentStore, level: Level, column: &str) {
         .connection()
         .execute(&format!("UPDATE {} SET {column} = 99", level.table()), [])
         .expect("the stored version moves");
-}
-
-/// Rename a tool call of `spine/`'s leaf run — the smallest edit only that run's prompt sees.
-///
-/// The call is read out of the store rather than named: a fixture edit that renumbered it would
-/// otherwise leave this silently renaming nothing.
-fn rename_a_leaf_tool(store: &EnrichmentStore) {
-    let changed = store
-        .connection()
-        .execute(
-            "UPDATE tool_calls SET name = name || '-renamed'
-             WHERE session_id = ? AND source = ?
-               AND id = (SELECT min(id) FROM tool_calls WHERE session_id = ? AND source = ?)",
-            duckdb::params![SPINE, SPINE_LEAF, SPINE, SPINE_LEAF],
-        )
-        .expect("the tool call renames");
-    assert_eq!(changed, 1, "the leaf run holds no tool call to rename");
 }
 
 /// The client was asked about every enrichable item, once each.

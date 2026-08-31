@@ -1,6 +1,7 @@
-//! `hp` — the prototype's command line: `extract` writes the trace store, `view` serves it.
+//! `hp` — the prototype's command line: `extract` writes the trace store, `enrich` describes
+//! it, `query` reads it and `view` serves it.
 //!
-//! These are the two of `src/hyphae/cli.py`'s subcommands the prototype ports. The flags they
+//! These are the four of `src/hyphae/cli.py`'s subcommands the prototype ports. The flags they
 //! share carry that CLI's names and defaults, so a parity oracle can drive either implementation
 //! from one command line; `--no-browser` and `--dev` are out of scope and absent, not ignored
 //! (`plans/rust-prototype/design.md`).

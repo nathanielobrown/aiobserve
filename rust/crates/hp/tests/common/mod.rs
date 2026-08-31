@@ -27,10 +27,18 @@ pub struct Output {
 /// The seam the whole CLI tier sits on: a subcommand is a function taking two writers, so a
 /// leaf that is not about the process boundary costs a function call rather than a spawn.
 pub fn hp<S: AsRef<OsStr>>(args: &[S]) -> Output {
+    hp_with(args, &hp::ClaudeCli)
+}
+
+/// The same, against a stand-in for the two doors `hp enrich` opens onto a real model.
+///
+/// The port of monkeypatching `cli.preflight` and `cli.build_client`: no leaf here starts a
+/// `claude`, and one that forgot to pass a fake would have to name [`hp::ClaudeCli`] to do it.
+pub fn hp_with<S: AsRef<OsStr>>(args: &[S], models: &dyn hp::Models) -> Output {
     let mut argv: Vec<std::ffi::OsString> = vec!["hp".into()];
     argv.extend(args.iter().map(|arg| arg.as_ref().to_owned()));
     let (mut out, mut err) = (Vec::new(), Vec::new());
-    let answer = hp::main(argv, &mut out, &mut err);
+    let answer = hp::main_with(argv, models, &mut out, &mut err);
     let mut stderr = String::from_utf8_lossy(&err).into_owned();
     let ok = match answer {
         Ok(()) => true,
