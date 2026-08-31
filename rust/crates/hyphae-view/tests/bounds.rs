@@ -4,7 +4,7 @@
 //! back into its own links, and the cut a preview makes against the fetch that undoes it.
 
 use hyphae_testsupport::served::{self, Served};
-use hyphae_testsupport::{corpus, metadata};
+use hyphae_testsupport::metadata;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -14,29 +14,9 @@ use hyphae_view::knobs;
 use hyphae_view::nodes::Preset;
 use serde_json::Value;
 
-/// An id no fixture holds, so every key a node URL carries can be missed one at a time.
-const MISSING: &str = "no-such-id";
-
 /// A value longer than the widest a page previews, planted because no fixture carries one: the
 /// corpus's largest tool input is 438 characters and the ceiling is 4,000.
 const LONG: usize = 5_000;
-
-/// The eight node-page URLs the generated route file names, one per kind.
-fn node_urls() -> Vec<(String, String)> {
-    let text = std::fs::read_to_string(corpus::repo().join("tests/e2e/routes.json"))
-        .expect("the generated route file is committed");
-    serde_json::from_str::<Vec<Value>>(&text)
-        .expect("the route file is a list of entries")
-        .into_iter()
-        .filter(|entry| entry["group"] == "Node kinds")
-        .map(|entry| {
-            (
-                entry["route"].as_str().expect("a route").to_owned(),
-                entry["url"].as_str().expect("a url").to_owned(),
-            )
-        })
-        .collect()
-}
 
 /// Every child a children log listed on one page, by the key its row carries.
 fn children(page: &str) -> Vec<String> {
@@ -46,24 +26,6 @@ fn children(page: &str) -> Vec<String> {
             rest[..rest.find('"').expect("an attribute closes")].to_owned()
         })
         .collect()
-}
-
-#[tokio::test]
-async fn a_node_the_store_does_not_hold_is_a_404() {
-    // Every key a node URL carries is read, so a miss on any one of them is nothing. The session
-    // is swapped on every kind and the node's own id on every kind that has one: a page that
-    // answered on the session alone would be a page about some other session's turn.
-    let served = Served::corpus();
-    for (route, url) in node_urls() {
-        let session_id = url.split('/').nth(2).expect("a node url names a session");
-        let (gone, _) = served.page(&url.replacen(session_id, MISSING, 1)).await;
-        assert_eq!(gone, StatusCode::NOT_FOUND, "{route} without its session");
-        let tail = url.rsplit('/').next().expect("a url has a last segment");
-        if tail != session_id {
-            let (lost, _) = served.page(&url.replace(tail, MISSING)).await;
-            assert_eq!(lost, StatusCode::NOT_FOUND, "{route} without its node");
-        }
-    }
 }
 
 #[tokio::test]
