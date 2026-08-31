@@ -11,6 +11,8 @@ publish.workspace = true
 hyphae-model.workspace = true
 hyphae-extract.workspace = true
 hyphae-store.workspace = true
+# The enrichment tables and the upsert that plants a row in them.
+hyphae-enrich.workspace = true
 hyphae-view.workspace = true
 axum.workspace = true
 duckdb.workspace = true

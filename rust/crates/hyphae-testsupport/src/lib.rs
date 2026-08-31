@@ -16,5 +16,7 @@ pub mod corpus;
 pub mod digest;
 /// The bounds and enrichment numbers Python owns, compiled in from the generated JSON.
 pub mod metadata;
+/// The enrichment rows a partial pass would have left behind.
+pub mod planting;
 pub mod rows;
 pub mod served;

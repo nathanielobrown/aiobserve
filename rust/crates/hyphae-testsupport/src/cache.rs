@@ -15,10 +15,11 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use hyphae_enrich::EnrichmentStore;
 use hyphae_store::Store;
 use tempfile::TempDir;
 
-use crate::{corpus, digest, metadata};
+use crate::{corpus, metadata};
 
 /// The digest `build.rs` took over the sources that write a store.
 pub const WRITER_DIGEST: &str = env!("HYPHAE_WRITER_DIGEST");
@@ -40,10 +41,10 @@ pub fn corpus_store() -> PathBuf {
 
 /// The same corpus with the enrichment rows a pass would have written. Open it read-only.
 ///
-/// No Rust code writes one yet: the enrichment schema and its views belong to the Python
-/// pass, so this shells out to `tests/conftest.py:build_enriched_store` — the same function
-/// `tests/gallery/serve.py` builds the browser tier's copy with. It plants a row on all but
-/// the last item of each level, which is the partly-enriched shape a page has to render.
+/// [`crate::planting`] writes them, over `hyphae-enrich`'s schema and upsert. It plants a row
+/// on all but the last item of each level, which is the partly-enriched shape a page has to
+/// render, and `tests/conftest.py:build_enriched_store` plants the Python tier's copy the same
+/// way — `hyphae-enrich/tests/parity.rs` is what holds the two together.
 pub fn enriched_store() -> PathBuf {
     let corpus = corpus_store();
     cached("enriched", &enriched_key(), |at| {
@@ -151,26 +152,21 @@ pub fn corpus_key() -> String {
         .expect("the fixture corpus is readable")
 }
 
-/// The corpus, the enrichment stamps Python emits, and the Python that plants the rows.
+/// The corpus, and the enrichment stamps Python emits.
 ///
-/// The stamps come across the generation bridge ([`crate::metadata`]) because a prompt or
-/// taxonomy bump changes what a row says with no corpus byte moved. They are folded *beside*
-/// the content digest rather than instead of it: Python still writes these rows, and a change
-/// to the planting recipe in `tests/conftest.py` need not bump a version. The digest half
-/// retires when `hyphae-enrich` writes them and joins [`digest::WRITER_CRATES`].
+/// The recipe that plants the rows is Rust now, so [`WRITER_DIGEST`] already covers it and the
+/// corpus key carries it. The stamps still have to be folded in on their own: they come across
+/// the generation bridge ([`crate::metadata`]) as JSON, which no `.rs` digest can see, and a
+/// prompt or taxonomy bump changes what a row says with no corpus byte moved.
 pub fn enriched_key() -> String {
-    fold_enriched(
-        &corpus_key(),
-        metadata::ENRICHMENT_JSON,
-        &digest::python_digest(&corpus::repo()),
-    )
+    fold_enriched(&corpus_key(), metadata::ENRICHMENT_JSON)
 }
 
-/// The three parts of the enriched key, folded — a function so the claim above is probeable.
-pub fn fold_enriched(corpus: &str, enrichment: &str, python: &str) -> String {
+/// The two parts of the enriched key, folded — a function so the claim above is probeable.
+pub fn fold_enriched(corpus: &str, enrichment: &str) -> String {
     use sha2::Digest as _;
     let mut digest = sha2::Sha256::new();
-    for part in [corpus.as_bytes(), enrichment.as_bytes(), python.as_bytes()] {
+    for part in [corpus.as_bytes(), enrichment.as_bytes()] {
         digest.update((part.len() as u64).to_le_bytes());
         digest.update(part);
     }
@@ -198,28 +194,13 @@ fn build_corpus(at: &Path) {
         .expect("the store checkpoints before it closes");
 }
 
-/// The enrichment rows, written by the Python pass that owns their schema.
+/// The corpus, copied and then planted with the rows a partial pass would have left.
 fn build_enriched(corpus: &Path, at: &Path) {
-    let repo = corpus::repo();
-    let script = format!(
-        "import sys; sys.path.insert(0, {repo:?}); \
-         from tests.conftest import build_enriched_store; \
-         build_enriched_store(__import__('pathlib').Path({at:?}), \
-         corpus=__import__('pathlib').Path({corpus:?}))",
-        repo = repo.to_string_lossy(),
-        at = at.to_string_lossy(),
-        corpus = corpus.to_string_lossy(),
-    );
-    let done = std::process::Command::new("uv")
-        .args(["run", "--project"])
-        .arg(&repo)
-        .args(["python", "-c", &script])
-        .current_dir(&repo)
-        .output()
-        .expect("uv runs the enrichment pass that owns the schema");
-    assert!(
-        done.status.success(),
-        "the enrichment pass failed: {}",
-        String::from_utf8_lossy(&done.stderr)
-    );
+    std::fs::copy(corpus, at).expect("the cached corpus copies");
+    let store = EnrichmentStore::open(at).expect("the copy opens for enrichment");
+    crate::planting::plant(&store);
+    store
+        .connection()
+        .execute_batch("FORCE CHECKPOINT")
+        .expect("the store checkpoints before it closes");
 }

@@ -36,14 +36,6 @@ pub const NON_WRITERS: &[&str] = &[
 /// `preserve_order` decides a stored JSON value's key order, and neither is a source edit.
 pub const WRITER_LOCK: &str = "rust/Cargo.lock";
 
-/// The Python that owns the enrichment rows: its schema, vocabularies and planting recipe.
-///
-/// The generation bridge folds the emitted versions in beside this rather than in place of
-/// it: `PROMPT_VERSION` is hand-bumped and a planting change need not touch it, so while
-/// Python writes these rows a content digest is still the honest half of the key
-/// (`cache::fold_enriched`).
-pub const ENRICHMENT_SOURCES: &[&str] = &["src/hyphae/enrich", "tests/conftest.py"];
-
 /// Everything under `rust/` that decides a stored row, digested by content.
 ///
 /// Content and not mtime, so two clones of one commit land on the same key. The *fixtures*
@@ -55,20 +47,6 @@ pub fn writer_digest(repo: &std::path::Path) -> String {
         paths.extend(sources(&repo.join("rust/crates").join(crate_dir), "rs"));
     }
     paths.push(repo.join(WRITER_LOCK));
-    over_contents(&paths, repo)
-}
-
-/// The same, over the Python that writes the enrichment half of a store.
-pub fn python_digest(repo: &std::path::Path) -> String {
-    let mut paths = Vec::new();
-    for source in ENRICHMENT_SOURCES {
-        let at = repo.join(source);
-        if at.is_dir() {
-            paths.extend(sources(&at, "py"));
-        } else {
-            paths.push(at);
-        }
-    }
     over_contents(&paths, repo)
 }
 

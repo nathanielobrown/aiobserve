@@ -191,7 +191,7 @@ fn modified(path: &Path) -> std::time::SystemTime {
 #[test]
 fn the_enriched_key_moves_when_a_bridged_enrichment_stamp_bumps() {
     let live: Value = serde_json::from_str(metadata::ENRICHMENT_JSON).expect("the metadata parses");
-    let folded = |written: &Value| cache::fold_enriched("corpus", &written.to_string(), "python");
+    let folded = |written: &Value| cache::fold_enriched("corpus", &written.to_string());
     let base = folded(&live);
     let mut taxonomy = live.clone();
     taxonomy["taxonomy_version"] = (metadata::enrichment().taxonomy_version + 1).into();
@@ -212,29 +212,26 @@ fn the_enriched_key_moves_when_a_bridged_enrichment_stamp_bumps() {
     }
 }
 
-/// The other two things the enriched store's bytes depend on still move the key.
+/// The corpus underneath the enrichment rows still moves the key.
 ///
-/// The stamps are what the bridge adds, not what it replaces: the corpus underneath and the
-/// Python that plants the rows both decide the same file, and a planting recipe can change
-/// with no version to bump. Dropping either half would trade one blind spot for another.
+/// The stamps are what the bridge adds, not what it replaces. The other half is the corpus
+/// key, which now carries the planting recipe too: `hyphae-enrich/src` and
+/// `hyphae-testsupport/src` are both in [`digest::WRITER_CRATES`], so an edit to what a
+/// planted row says moves [`cache::corpus_key`] and the enriched key with it. That is what
+/// retired the content digest over `src/hyphae/enrich` this fold used to carry.
 #[test]
-fn the_enriched_key_still_folds_the_corpus_and_the_python_that_plants_the_rows() {
-    let key = |corpus: &str, python: &str| {
-        cache::fold_enriched(corpus, metadata::ENRICHMENT_JSON, python)
-    };
-    let base = key("corpus", "python");
-    assert_ne!(key("moved", "python"), base, "the corpus key");
-    assert_ne!(key("corpus", "moved"), base, "the Python writer digest");
+fn the_enriched_key_still_folds_the_corpus_the_rows_are_planted_over() {
+    let key = |corpus: &str| cache::fold_enriched(corpus, metadata::ENRICHMENT_JSON);
+    assert_ne!(key("moved"), key("corpus"), "the corpus key");
     // And the wiring: the key the cache directory is named with is that fold over the live
-    // three. A `enriched_key` that stopped reading the bridge would pass every leaf above.
+    // two. An `enriched_key` that stopped reading the bridge would pass every leaf above.
     assert_eq!(
         cache::enriched_key(),
-        cache::fold_enriched(
-            &cache::corpus_key(),
-            metadata::ENRICHMENT_JSON,
-            &digest::python_digest(&corpus::repo()),
-        ),
+        cache::fold_enriched(&cache::corpus_key(), metadata::ENRICHMENT_JSON),
     );
+    // The recipe is inside the corpus key rather than beside it, so name the crate that has
+    // to stay in the digest for that to be true.
+    assert!(digest::WRITER_CRATES.contains(&"hyphae-testsupport/src"));
 }
 
 /// Every crate in the workspace either writes a stored row or is named as one that does not.
