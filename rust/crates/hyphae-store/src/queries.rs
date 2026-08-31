@@ -88,7 +88,14 @@ pub const PAGE_PROJECTS: i64 = 100;
 /// How many of a session's failed tool calls its errors page lists.
 pub const PAGE_ERRORS: i64 = 100;
 
+/// The trailing window every corpus count is reported in beside the full corpus. Fixed, not
+/// decayed: a window is a filter a reader can re-run and argue with.
+pub const WINDOW_DAYS: i64 = 28;
+
 /// The two trailing windows the landing page counts a project in, beside its whole history.
+/// Not [`WINDOW_DAYS`], which is what a report's counts are quoted in and four weeks long so
+/// a weekly rhythm cannot bias them; these are what a reader scanning for what is running
+/// lately means, and the page heads its columns from them.
 pub const PAGE_RECENT_DAYS: i64 = 7;
 pub const PAGE_WINDOW_DAYS: i64 = 30;
 

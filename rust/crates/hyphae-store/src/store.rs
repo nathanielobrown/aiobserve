@@ -279,23 +279,38 @@ impl Store {
     /// Values come back as `duckdb::types::Value`, nested `LIST` and `STRUCT` included, so a
     /// query the SQL library owns needs no Rust type declared for its result.
     pub fn fetch(&self, sql: &str, params: &[(&str, Param)]) -> Result<Vec<Row>, StoreError> {
+        Ok(self.fetch_shape(sql, params)?.1)
+    }
+
+    /// The same, with the column names the statement answers with beside the rows.
+    ///
+    /// A result of no rows still has a shape, and a caller writing CSV owes its reader the
+    /// header whether or not anything matched — Python reads it off `cursor.description`,
+    /// which is populated by the execute rather than by a row.
+    pub fn fetch_shape(
+        &self,
+        sql: &str,
+        params: &[(&str, Param)],
+    ) -> Result<(Vec<String>, Vec<Row>), StoreError> {
         let bound = params
             .iter()
             .map(|(name, value)| (*name, value as &dyn ToSql))
             .collect::<Vec<_>>();
         let mut statement = self.connection.prepare(sql)?;
         let mut answered = statement.query(bound.as_slice())?;
+        // The shape is known once the statement has run, and asking before it has panics.
+        let columns = answered
+            .as_ref()
+            .expect("a statement that has been queried names its columns")
+            .column_names();
         let mut rows = Vec::new();
-        // Column names come off the first row: DuckDB knows the result's shape only once the
-        // statement has run.
         while let Some(answer) = answered.next()? {
-            let columns = answer.as_ref().column_names();
             let values = (0..columns.len())
                 .map(|at| answer.get::<usize, Value>(at))
                 .collect::<duckdb::Result<Vec<_>>>()?;
-            rows.push(Row::new(columns, values));
+            rows.push(Row::new(columns.clone(), values));
         }
-        Ok(rows)
+        Ok((columns, rows))
     }
 
     /// Write the same rows through prepared `INSERT` statements — the fallback path.

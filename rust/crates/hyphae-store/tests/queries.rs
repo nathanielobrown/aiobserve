@@ -92,6 +92,7 @@ fn the_bound_widths_match_the_python_library() {
         ("MODEL_CHARS", queries::MODEL_CHARS),
         ("CHIP_CHARS", queries::CHIP_CHARS),
         ("FIRST_PAGE", queries::FIRST_PAGE),
+        ("WINDOW_DAYS", queries::WINDOW_DAYS),
     ]);
     for (name, bound) in &checked {
         assert_eq!(*bound, metadata::width(name), "{name}");
@@ -128,7 +129,6 @@ const UNPORTED: &[&str] = &[
     "ERROR_CHARS",
     "RAW_CHARS",
     "SIGNATURE_CHARS",
-    "WINDOW_DAYS",
 ];
 
 /// Every numeric width `queries.rs` declares, read off the source it declares them in.
