@@ -5,11 +5,14 @@
 //! things that makes safe: a key that moves whenever the stored bytes would, and one build
 //! however many processes ask at once.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use hyphae_testsupport::{cache, corpus, digest};
+use serde_json::Value;
+
+use hyphae_testsupport::{cache, corpus, digest, metadata};
 
 /// The digest compiled into the crate is recomputed from the sources it claims to cover.
 ///
@@ -176,4 +179,100 @@ fn modified(path: &Path) -> std::time::SystemTime {
         .expect("the cached store is there")
         .modified()
         .expect("the platform reports a modification time")
+}
+
+/// The enriched store's key folds the stamps Python emits, and moves when either bumps.
+///
+/// This is the leaf the bridge exists for. A pass writes `prompt_version` and
+/// `taxonomy_version` onto every row, and a bump changes what a store holds without touching
+/// a byte of the corpus — so a key blind to them serves yesterday's enrichment to every test
+/// that opens the cache, green. The fold is a pure function so the claim can be probed rather
+/// than asserted: bump a stamp in a copy of the compiled-in JSON and the key has to move.
+#[test]
+fn the_enriched_key_moves_when_a_bridged_enrichment_stamp_bumps() {
+    let live: Value = serde_json::from_str(metadata::ENRICHMENT_JSON).expect("the metadata parses");
+    let folded = |written: &Value| cache::fold_enriched("corpus", &written.to_string(), "python");
+    let base = folded(&live);
+    let mut taxonomy = live.clone();
+    taxonomy["taxonomy_version"] = (metadata::enrichment().taxonomy_version + 1).into();
+    assert_ne!(
+        folded(&taxonomy),
+        base,
+        "a taxonomy bump leaves the key where it was"
+    );
+    // And per level, since each carries its own prompt and only one may move.
+    for (word, level) in &metadata::enrichment().levels {
+        let mut prompt = live.clone();
+        prompt["levels"][word]["prompt_version"] = (level.prompt_version + 1).into();
+        assert_ne!(
+            folded(&prompt),
+            base,
+            "a `{word}` prompt bump leaves the key where it was"
+        );
+    }
+}
+
+/// The other two things the enriched store's bytes depend on still move the key.
+///
+/// The stamps are what the bridge adds, not what it replaces: the corpus underneath and the
+/// Python that plants the rows both decide the same file, and a planting recipe can change
+/// with no version to bump. Dropping either half would trade one blind spot for another.
+#[test]
+fn the_enriched_key_still_folds_the_corpus_and_the_python_that_plants_the_rows() {
+    let key = |corpus: &str, python: &str| {
+        cache::fold_enriched(corpus, metadata::ENRICHMENT_JSON, python)
+    };
+    let base = key("corpus", "python");
+    assert_ne!(key("moved", "python"), base, "the corpus key");
+    assert_ne!(key("corpus", "moved"), base, "the Python writer digest");
+    // And the wiring: the key the cache directory is named with is that fold over the live
+    // three. A `enriched_key` that stopped reading the bridge would pass every leaf above.
+    assert_eq!(
+        cache::enriched_key(),
+        cache::fold_enriched(
+            &cache::corpus_key(),
+            metadata::ENRICHMENT_JSON,
+            &digest::python_digest(&corpus::repo()),
+        ),
+    );
+}
+
+/// Every crate in the workspace either writes a stored row or is named as one that does not.
+///
+/// The ratchet fact (3) of the slice-1 handoff asks for: `hyphae-enrich` has to join
+/// [`digest::WRITER_CRATES`] the day it exists, and nothing else would notice if it did not —
+/// a new writer outside the digest leaves the cache hitting on bytes an older writer wrote.
+/// Silence is what this takes away: a crate is a writer, or it is excused by name here.
+#[test]
+fn every_crate_writes_a_stored_row_or_is_named_as_one_that_does_not() {
+    let crates = corpus::repo().join("rust/crates");
+    let present: BTreeSet<String> = std::fs::read_dir(&crates)
+        .expect("the workspace crates are readable")
+        .map(|entry| entry.expect("the entry is readable").path())
+        .filter(|path| path.is_dir())
+        .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    let writers: BTreeSet<&str> = digest::WRITER_CRATES
+        .iter()
+        .map(|source| source.split('/').next().expect("a crate directory"))
+        .collect();
+    let excused: BTreeSet<&str> = digest::NON_WRITERS.iter().copied().collect();
+    for name in &present {
+        assert!(
+            writers.contains(name.as_str()) || excused.contains(name.as_str()),
+            "`{name}` is neither in WRITER_CRATES nor named in NON_WRITERS: say which it is, \
+             because a writer outside the digest is a stale cache nothing reds on",
+        );
+    }
+    // And the other direction: a deleted crate takes its entry with it, and no crate is both.
+    for named in writers.union(&excused) {
+        assert!(
+            present.contains(*named),
+            "`{named}` is named but no such crate exists"
+        );
+    }
+    assert!(
+        writers.is_disjoint(&excused),
+        "a crate is a writer or it is not"
+    );
 }

@@ -22,15 +22,27 @@ pub const WRITER_CRATES: &[&str] = &[
     "hyphae-testsupport/src",
 ];
 
+/// The crates whose sources cannot change a stored row, so the digest leaves them out.
+///
+/// The other half of [`WRITER_CRATES`]: between them they name every crate in the workspace,
+/// which is what makes a new one impossible to leave unclassified (`tests/cache.rs`).
+pub const NON_WRITERS: &[&str] = &[
+    // The CLI shell over the crates above; it writes nothing a store holds by itself.
+    "hp",
+    // Read-only by construction: every store it opens, it opens read-only.
+    "hyphae-view",
+];
+
 /// The lockfile counts too: `duckdb`'s version decides the file format and `serde_json`'s
 /// `preserve_order` decides a stored JSON value's key order, and neither is a source edit.
 pub const WRITER_LOCK: &str = "rust/Cargo.lock";
 
 /// The Python that owns the enrichment rows: its schema, vocabularies and planting recipe.
 ///
-/// Slice 2's generation bridge replaces this with the versions it emits; until then a
-/// content digest is the honest key, because `PROMPT_VERSION` is hand-bumped and a planting
-/// change need not touch it.
+/// The generation bridge folds the emitted versions in beside this rather than in place of
+/// it: `PROMPT_VERSION` is hand-bumped and a planting change need not touch it, so while
+/// Python writes these rows a content digest is still the honest half of the key
+/// (`cache::fold_enriched`).
 pub const ENRICHMENT_SOURCES: &[&str] = &["src/hyphae/enrich", "tests/conftest.py"];
 
 /// Everything under `rust/` that decides a stored row, digested by content.

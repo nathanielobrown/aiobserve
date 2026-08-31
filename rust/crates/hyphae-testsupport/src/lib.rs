@@ -14,5 +14,7 @@ pub mod corpus;
 /// The digest over the sources that decide a stored row — shared with `build.rs`, which
 /// `include!`s this module rather than depending on the crate it is building.
 pub mod digest;
+/// The bounds and enrichment numbers Python owns, compiled in from the generated JSON.
+pub mod metadata;
 pub mod rows;
 pub mod served;

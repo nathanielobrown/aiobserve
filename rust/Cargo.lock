@@ -1105,6 +1105,8 @@ dependencies = [
  "hyphae-model",
  "hyphae-store",
  "hyphae-view",
+ "serde",
+ "serde_json",
  "sha2",
  "tempfile",
  "tower",

@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 use hyphae_store::Store;
 use tempfile::TempDir;
 
-use crate::{corpus, digest};
+use crate::{corpus, digest, metadata};
 
 /// The digest `build.rs` took over the sources that write a store.
 pub const WRITER_DIGEST: &str = env!("HYPHAE_WRITER_DIGEST");
@@ -146,17 +146,34 @@ fn wait_for(store: &Path, sentinel: &Path) {
 /// already uses to decide re-extraction, reused rather than restated; its `version` argument
 /// is the slot the writer digest goes in. Fixture mtimes mean a fresh clone or worktree
 /// misses cold — correct, just noisy.
-fn corpus_key() -> String {
+pub fn corpus_key() -> String {
     hyphae_extract::fingerprint(&corpus_files(), &corpus::repo(), WRITER_DIGEST)
         .expect("the fixture corpus is readable")
 }
 
-/// The corpus key, plus the Python that writes the enrichment rows over it.
-fn enriched_key() -> String {
+/// The corpus, the enrichment stamps Python emits, and the Python that plants the rows.
+///
+/// The stamps come across the generation bridge ([`crate::metadata`]) because a prompt or
+/// taxonomy bump changes what a row says with no corpus byte moved. They are folded *beside*
+/// the content digest rather than instead of it: Python still writes these rows, and a change
+/// to the planting recipe in `tests/conftest.py` need not bump a version. The digest half
+/// retires when `hyphae-enrich` writes them and joins [`digest::WRITER_CRATES`].
+pub fn enriched_key() -> String {
+    fold_enriched(
+        &corpus_key(),
+        metadata::ENRICHMENT_JSON,
+        &digest::python_digest(&corpus::repo()),
+    )
+}
+
+/// The three parts of the enriched key, folded — a function so the claim above is probeable.
+pub fn fold_enriched(corpus: &str, enrichment: &str, python: &str) -> String {
     use sha2::Digest as _;
     let mut digest = sha2::Sha256::new();
-    digest.update(corpus_key().as_bytes());
-    digest.update(digest::python_digest(&corpus::repo()).as_bytes());
+    for part in [corpus.as_bytes(), enrichment.as_bytes(), python.as_bytes()] {
+        digest.update((part.len() as u64).to_le_bytes());
+        digest.update(part);
+    }
     format!("{:x}", digest.finalize())
 }
 

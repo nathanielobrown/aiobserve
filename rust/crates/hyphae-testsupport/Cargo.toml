@@ -18,6 +18,9 @@ tempfile.workspace = true
 tower.workspace = true
 # The cache key, and the digest `build.rs` takes over the sources behind it.
 sha2.workspace = true
+# The generated metadata registries, read back out of the JSON they cross as.
+serde.workspace = true
+serde_json.workspace = true
 
 [build-dependencies]
 sha2.workspace = true
