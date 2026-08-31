@@ -152,8 +152,8 @@ fn an_absent_value_prints_the_dash() {
     assert_eq!(fmt::share(Some(1.0), None), fmt::ABSENT);
 }
 
-/// The clock a test or the gallery freezes, which is the one thing here with no Python twin:
-/// the Python patches `fmt.utcnow` after import, and a compiled server has no such seam.
+/// The clock the gallery freezes, which is the one thing here with no Python twin: the
+/// Python patches `fmt.utcnow` after import, and a compiled server has no such seam.
 ///
 /// Its own process, which is what nextest gives every leaf — the clock is read once and a
 /// second test setting the variable afterwards would find it already answered.

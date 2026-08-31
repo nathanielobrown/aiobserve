@@ -1226,6 +1226,7 @@ dependencies = [
  "hypertext",
  "hyphae-enrich",
  "hyphae-extract",
+ "hyphae-model",
  "hyphae-store",
  "hyphae-testsupport",
  "indexmap",

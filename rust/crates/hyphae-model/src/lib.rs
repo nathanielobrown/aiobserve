@@ -12,6 +12,8 @@
 //! (`hyphae_store::schema::TABLES`); a field moved here without moving there is caught by
 //! `Store::check_columns`.
 
+pub mod clock;
+
 use chrono::{DateTime, Utc};
 
 /// The `source` value for records that came from the session's own transcript rather than
