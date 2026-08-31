@@ -585,3 +585,72 @@ fn the_appender_refuses_a_nested_value_and_no_column_is_one() {
         }
     }
 }
+
+/// Whether another process can take `path`'s write lock — so nothing here still holds it.
+///
+/// A subprocess for the same reason the holder above is one: this process's own second open
+/// is answered by the cached instance whatever the file lock says.
+fn lock_is_free(path: &std::path::Path) -> bool {
+    std::process::Command::new(python())
+        .args([
+            "-c",
+            "import duckdb, sys; duckdb.connect(sys.argv[1]).execute('SELECT 1')",
+            &path.display().to_string(),
+        ])
+        .output()
+        .expect("the taker process runs")
+        .status
+        .success()
+}
+
+/// A way to leave a store this code cannot read.
+type MakeUnreadable = fn(&std::path::Path);
+/// One of the ways a caller opens a store for writing.
+type OpenStore = fn(&std::path::Path) -> Result<Store, StoreError>;
+
+/// However a store is opened and whatever makes it unreadable, refusing it frees the file.
+///
+/// Half the contract is invisible in the file: an opener that fails hands nothing back, so
+/// nothing the caller holds can close the connection. Were it parked in the error, or leaked,
+/// DuckDB's single-writer lock would go with it — and the next process to open the store
+/// would be refused for a reason that has nothing to do with the store.
+#[test]
+fn a_refused_store_keeps_none_of_its_lock() {
+    let scratch = TempDir::new().unwrap();
+    // A store of a vintage the current view DDL cannot bind against, and someone else's
+    // database. Each opener gets its own file: a path this process has already opened is
+    // answered by the cached instance rather than by the file.
+    let unreadable: [(&str, MakeUnreadable); 2] = [
+        ("old-schema", |path| {
+            let store = Store::create(path).expect("a fresh store");
+            store
+                .connection()
+                .execute_batch("UPDATE meta SET schema_version = 3")
+                .expect("the stamp is rewritten");
+        }),
+        ("foreign", |path| {
+            duckdb::Connection::open(path)
+                .expect("a database")
+                .execute_batch("CREATE TABLE inventory (sku VARCHAR)")
+                .expect("someone else's table");
+        }),
+    ];
+    let openers: [(&str, OpenStore); 2] =
+        [("create", Store::create), ("write", Store::open_for_write)];
+
+    for (vintage, write_store) in unreadable {
+        for (opening, open_store) in openers {
+            // If an unreadable store is refused, and its caller keeps the error to report —
+            // a live process, not one exiting on the spot...
+            let path = scratch.path().join(format!("{vintage}-{opening}.duckdb"));
+            write_store(&path);
+            let refused = open_store(&path).expect_err("an unreadable store is refused");
+
+            // ...then nothing here still holds the file.
+            assert!(
+                lock_is_free(&path),
+                "{vintage} refused by {opening} kept the write lock: {refused:?}"
+            );
+        }
+    }
+}
