@@ -7,8 +7,9 @@
 //! handed back from the cache on re-open and its file lock is never re-checked — an
 //! in-process holder would be testing the harness.
 //!
-//! The twin is `tests/view/test_lifecycle.py`, which asks the Python viewer the same things.
-//! `hp extract` at the same level is `extract.rs`.
+//! The twin is `tests/view/test_lifecycle.py`, which asks the Python viewer the same things;
+//! the interrupt leaf's twin is `tests/view/test_dev.py`. `hp extract` at the same level is
+//! `extract.rs`.
 
 use std::io::{Read as _, Write as _};
 use std::net::{TcpListener, TcpStream};
@@ -248,4 +249,84 @@ fn a_locked_store_answers_503_and_recovers() {
     std::fs::write(&release, "").expect("the release file is writable");
     until(port, "/", 200, "the viewer never recovered");
     holder.wait().expect("the holder exits");
+}
+
+/// Ctrl-C ends a dev viewer that has a browser listening on the reload stream.
+///
+/// The one place a graceful exit is observable: a router can be asked what its stream does when
+/// the server stops (`hyphae-view/tests/dev.rs`), and only a process can be asked whether the
+/// server stops at all. An SSE response has no last chunk, so an exit that waited for every
+/// in-flight response would never return — `serve` ends the streams instead of waiting them out.
+#[test]
+fn an_open_stream_does_not_hold_the_server_open_when_it_is_interrupted() {
+    let scratch = tempfile::tempdir().expect("a tempdir");
+    let db = scratch.path().join("traces.duckdb");
+    empty_store(&db);
+    let (held, port) = held_port();
+    // The viewer binds this port itself, so the reservation is dropped first.
+    drop(held);
+
+    let mut viewer = Command::new(HP)
+        .args(["view", "--dev", "--db"])
+        .arg(&db)
+        .args(["--port", &port.to_string()])
+        .spawn()
+        .expect("hp view --dev starts");
+    until(port, "/", 200, "the dev viewer never came up");
+
+    // With a reader on the stream, the way a browser with the page open is...
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("the stream connects");
+    stream
+        .write_all(
+            format!(
+                "GET {} HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+                hyphae_view::dev::RELOAD_URL
+            )
+            .as_bytes(),
+        )
+        .expect("the request goes out");
+    stream
+        .set_read_timeout(Some(PATIENCE))
+        .expect("a read deadline");
+    let mut head = [0_u8; 64];
+    let read = stream.read(&mut head).expect("the response head arrives");
+    assert!(
+        String::from_utf8_lossy(&head[..read]).contains("200"),
+        "the stream is open: {}",
+        String::from_utf8_lossy(&head[..read])
+    );
+
+    // ...an interrupt still reaps the process, rather than waiting on a response that never
+    // completes. The signal a person sends, not a kill: a killed process proves nothing about
+    // what its exit path does.
+    interrupt(&viewer);
+    let status = reaped(&mut viewer);
+    assert!(
+        status.success(),
+        "an interrupted dev viewer exits: {status}"
+    );
+}
+
+/// Send `child` the signal Ctrl-C sends.
+fn interrupt(child: &Child) {
+    let pid = i32::try_from(child.id()).expect("a pid fits");
+    // The one call in this tier that has to go through libc: `Child` can kill but not signal.
+    let sent = unsafe { libc::kill(pid, libc::SIGINT) };
+    assert_eq!(sent, 0, "the interrupt was delivered");
+}
+
+/// Wait for `child` to exit, or say how long it was given — a hang is the failure this guards.
+fn reaped(child: &mut Child) -> std::process::ExitStatus {
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        if let Some(status) = child.try_wait().expect("the child's state is readable") {
+            return status;
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("the interrupted viewer was still running after {PATIENCE:?}");
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
 }
