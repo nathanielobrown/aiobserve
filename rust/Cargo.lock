@@ -1158,6 +1158,7 @@ dependencies = [
  "hyphae-testsupport",
  "indexmap",
  "regex",
+ "serde_json",
  "tempfile",
  "thiserror",
 ]

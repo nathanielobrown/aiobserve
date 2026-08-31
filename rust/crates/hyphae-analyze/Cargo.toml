@@ -25,3 +25,5 @@ regex.workspace = true
 # of the corpus store.
 duckdb.workspace = true
 tempfile.workspace = true
+# Writing a planted tool call's `input`, which the queries read back with `json_extract`.
+serde_json.workspace = true

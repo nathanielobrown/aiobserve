@@ -68,8 +68,14 @@ pub fn planted(plant: impl FnOnce(&Store)) -> (TempDir, PathBuf) {
 /// Panics on a repeated key: a query answering twice for one period or one week is the shape
 /// several leaves here exist to catch, and keeping the last row would hide it.
 pub fn by(result: &QueryResult, column: &str) -> BTreeMap<String, Row> {
+    key(&result.rows, column)
+}
+
+/// The same over rows a caller has already narrowed — the shape a query answering in both
+/// periods needs, since one directory or disposition appears once per period.
+pub fn key(rows: &[Row], column: &str) -> BTreeMap<String, Row> {
     let mut keyed = BTreeMap::new();
-    for row in &result.rows {
+    for row in rows {
         let key = row.str(column).expect("the key column is text").to_owned();
         assert!(
             keyed.insert(key.clone(), row.clone()).is_none(),
@@ -77,6 +83,17 @@ pub fn by(result: &QueryResult, column: &str) -> BTreeMap<String, Row> {
         );
     }
     keyed
+}
+
+/// The rows of one period. A corpus query answers in two — the whole corpus and the trailing
+/// window — and a leaf asking about counts means one of them.
+pub fn of_period(result: &QueryResult, period: &str) -> Vec<Row> {
+    result
+        .rows
+        .iter()
+        .filter(|row| row.str("period").expect("a period column") == period)
+        .cloned()
+        .collect()
 }
 
 /// One numeric column of a row, whatever width DuckDB answered it at.
