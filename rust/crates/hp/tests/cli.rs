@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 use hyphae_extract::sessions::encode_project_path;
 use hyphae_store::{Store, schema};
 use hyphae_testsupport::corpus::repo;
+use hyphae_testsupport::landmarks::{TEAMMATE, TEAMMATE_RUN};
 
 /// The binary under test, built by cargo before this file runs.
 const HP: &str = env!("CARGO_BIN_EXE_hp");
@@ -288,30 +289,47 @@ fn view_refuses_a_locked_store_before_it_binds() {
 // ---------------------------------------------------------------------------
 // Running
 
+/// A fixture directory planted as a projects root `hp extract` can be pointed at.
+///
+/// Returns the working directory the session claims to have run in and the root above it.
+/// Claude Code names a project's directory after that working directory, so the tree has to
+/// be named the way discovery will look for it. The fixture is copied whole — a session's
+/// subagent transcripts sit in a directory beside its own file, and leaving them behind
+/// would plant a session that delegated nothing.
+fn planted_project(scratch: &Path, fixture: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+    let project = scratch.join("repo");
+    std::fs::create_dir_all(&project).expect("the project directory is writable");
+    let root = scratch.join("projects");
+    let recorded = root.join(encode_project_path(&project));
+    std::fs::create_dir_all(&recorded).expect("the session directory is writable");
+    copy_tree(&repo().join("tests/fixtures").join(fixture), &recorded);
+    // The README naming the fixture's source session is documentation, and a file the walk
+    // would refuse to place.
+    std::fs::remove_file(recorded.join("README.md")).expect("every fixture has a README");
+    (project, root)
+}
+
+/// Copy a directory's whole contents into `into`, which must exist.
+fn copy_tree(from: &Path, into: &Path) {
+    for entry in std::fs::read_dir(from).expect("the directory is readable") {
+        let source = entry.expect("the entry is readable").path();
+        let target = into.join(source.file_name().expect("a path has a name"));
+        if source.is_dir() {
+            std::fs::create_dir_all(&target).expect("the directory is writable");
+            copy_tree(&source, &target);
+        } else {
+            std::fs::copy(&source, &target).expect("the fixture copies");
+        }
+    }
+}
+
 /// The fingerprint's whole purpose, at the level a person sees it: a second run over an
 /// untouched tree reads nothing again.
 #[test]
 fn extract_run_twice_re_extracts_nothing() {
     let scratch = tempfile::tempdir().expect("a tempdir");
     let db = scratch.path().join("traces.duckdb");
-    let project = scratch.path().join("repo");
-    std::fs::create_dir_all(&project).expect("the project directory is writable");
-    // Claude Code names a project's directory after its working directory, so the tree this
-    // plants has to be named the way discovery will look for it.
-    let root = scratch.path().join("projects");
-    let recorded = root.join(encode_project_path(&project));
-    std::fs::create_dir_all(&recorded).expect("the session directory is writable");
-    for entry in std::fs::read_dir(repo().join("tests/fixtures/spine")).expect("spine is readable")
-    {
-        let from = entry.expect("the entry is readable").path();
-        if from.is_file() {
-            std::fs::copy(
-                &from,
-                recorded.join(from.file_name().expect("a file has a name")),
-            )
-            .expect("the fixture copies");
-        }
-    }
+    let (project, root) = planted_project(scratch.path(), "spine");
 
     let extract: Vec<&std::ffi::OsStr> = vec![
         "extract".as_ref(),
@@ -427,3 +445,36 @@ with locked(db):
     while not release.exists() and time.monotonic() < deadline:
         time.sleep(0.05)
 "#;
+
+/// A run with no spawning tool call is announced rather than dropped.
+///
+/// The rows it produces are asserted in `hyphae-extract`'s
+/// `a_teammate_run_is_an_orphan_and_says_so`; the announcement goes to stderr, which only a
+/// spawned process can read. Dropping such a run silently would hide a whole delegated
+/// workload — the prior importer reported 100% direct tool calls that way.
+#[test]
+fn an_orphan_agent_run_is_announced_on_stderr() {
+    let scratch = tempfile::tempdir().expect("a tempdir");
+    let db = scratch.path().join("traces.duckdb");
+    // If a session ran a long-lived teammate, whose meta names no spawning call...
+    let (project, root) = planted_project(scratch.path(), "teammate");
+
+    let done = Command::new(HP)
+        .args([
+            "extract".as_ref(),
+            project.as_os_str(),
+            "--projects-root".as_ref(),
+            root.as_os_str(),
+            "--db".as_ref(),
+            db.as_os_str(),
+        ])
+        .output()
+        .expect("hp runs");
+
+    // ...then the extraction succeeds, and says which run in which session had no call
+    // behind it, so the gap can be looked up rather than guessed at.
+    let said = String::from_utf8_lossy(&done.stderr);
+    assert!(done.status.success(), "{said}");
+    assert!(said.contains(TEAMMATE_RUN), "{said}");
+    assert!(said.contains(TEAMMATE), "{said}");
+}

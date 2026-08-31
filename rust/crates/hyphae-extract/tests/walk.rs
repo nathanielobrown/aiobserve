@@ -85,42 +85,6 @@ fn ids_and_parents_match_the_python_extractor() {
     insta::assert_snapshot!("ids_and_parents", dumped.join("\n"));
 }
 
-/// A subagent's transcript is its own thread, keyed by the run id rather than by `main`.
-#[test]
-fn a_subagent_transcript_becomes_its_own_thread() {
-    let trace = corpus::trace("spine", "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b");
-    let run = trace
-        .agent_runs
-        .iter()
-        .find(|run| run.tool_use_id.is_some())
-        .expect("spine's runs were spawned by tool calls");
-    // The run's own work carries its id as `source`, not the session's `main`.
-    assert!(
-        trace.turns.iter().any(|turn| turn.source == run.id),
-        "the run's thread holds turns"
-    );
-    assert!(trace.api_calls.iter().any(|call| call.source == run.id));
-    // And the tool call that asked for it is on the spawning thread, pointing back.
-    let spawner = trace
-        .tool_calls
-        .iter()
-        .find(|tool| Some(&tool.id) == run.tool_use_id.as_ref())
-        .expect("the spawning tool call is in the same trace");
-    assert_ne!(spawner.source, run.id);
-}
-
-/// A teammate has no spawning tool call and still gets its thread — the orphan case.
-#[test]
-fn a_teammate_thread_exists_without_a_spawning_tool_call() {
-    let trace = corpus::trace("teammate", "10d0349d-0705-4e23-aa64-5b1b97698b2e");
-    let orphan = trace
-        .agent_runs
-        .iter()
-        .find(|run| run.tool_use_id.is_none())
-        .expect("teammate records a run the team mechanism started");
-    assert!(trace.turns.iter().any(|turn| turn.source == orphan.id));
-}
-
 /// A compaction is recorded against the thread whose context filled.
 #[test]
 fn a_compaction_is_recorded_on_its_own_thread() {
