@@ -54,7 +54,7 @@ impl Models for ClaudeCli {
 /// What `hp enrich` takes, in the flag names and defaults `cli.py:_enrich_arguments` gives
 /// them — declared here rather than beside the other subcommands so the six live next to the
 /// one function that reads them.
-#[derive(clap::Args, Debug)]
+#[derive(clap::Args, Debug, PartialEq)]
 pub struct Args {
     /// The trace store
     #[arg(long, default_value = crate::DEFAULT_DB)]

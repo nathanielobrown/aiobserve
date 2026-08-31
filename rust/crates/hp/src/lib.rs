@@ -29,7 +29,7 @@ pub use enrich::{ClaudeCli, Models};
 
 /// Gitignored, so an extract never lands in a commit. The same default `hp` the Python
 /// binary uses, so both write to the same place unless told otherwise.
-pub(crate) const DEFAULT_DB: &str = "data/traces.duckdb";
+pub const DEFAULT_DB: &str = "data/traces.duckdb";
 
 /// A refusal: exactly what goes to stderr, and what the process should exit with.
 ///
@@ -111,8 +111,18 @@ pub struct Cli {
     pub command: Command,
 }
 
-#[derive(Subcommand, Debug)]
+/// `PartialEq` so one leaf can pin the whole surface: `tests/surface.rs` compares a parsed
+/// command against a struct literal, which is what makes a flag added with no test a failure.
+#[derive(Subcommand, Debug, PartialEq)]
 pub enum Command {
+    /// List the sessions recorded for a project
+    Sessions {
+        /// Path to the analyzed repository
+        project: PathBuf,
+        /// Where Claude Code keeps transcripts (default: ~/.claude/projects)
+        #[arg(long)]
+        projects_root: Option<PathBuf>,
+    },
     /// Parse a project's transcripts into the trace store, skipping what has not changed
     Extract {
         /// Path to the analyzed repository
@@ -227,6 +237,10 @@ pub fn run_with(
     err: &mut dyn Write,
 ) -> Result<(), CliError> {
     match cli.command {
+        Command::Sessions {
+            project,
+            projects_root,
+        } => Ok(sessions(&project, projects_root, out)?),
         Command::Extract {
             project,
             projects_root,
@@ -265,6 +279,24 @@ fn view(db: &Path, port: u16, dev: bool, _out: &mut dyn Write) -> Result<()> {
     runtime
         .block_on(hyphae_view::app::serve(db, port, dev))
         .map_err(|error| anyhow::anyhow!("{error}"))
+}
+
+/// `hp sessions`: a project's transcripts on disk, with the subagents each session spawned.
+///
+/// The one subcommand that opens no store — it walks the projects root instead, so it answers
+/// before anything has been extracted.
+fn sessions(project: &Path, projects_root: Option<PathBuf>, out: &mut dyn Write) -> Result<()> {
+    let projects_root = projects_root.unwrap_or_else(sessions::default_projects_root);
+    for session in sessions::find_sessions(project, &projects_root)? {
+        let subagents = session.subagent_transcripts()?.len();
+        writeln!(
+            out,
+            "{}\t{subagents} subagent(s)\t{}",
+            session.id,
+            session.transcript.display()
+        )?;
+    }
+    Ok(())
 }
 
 /// The `refresh` loop of `src/hyphae/pipeline.py`: ask what is on disk, skip what the store

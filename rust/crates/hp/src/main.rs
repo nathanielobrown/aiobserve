@@ -1,10 +1,11 @@
-//! `hp` — the prototype's command line: `extract` writes the trace store, `enrich` describes
-//! it, `query` reads it and `view` serves it.
+//! `hp` — the prototype's command line: `sessions` lists what was recorded, `extract` writes the
+//! trace store, `enrich` describes it, `query` reads it, `export-otlp` ships it and `view` serves
+//! it.
 //!
-//! These are the four of `src/hyphae/cli.py`'s subcommands the prototype ports. The flags they
-//! share carry that CLI's names and defaults, so a parity oracle can drive either implementation
-//! from one command line; `--no-browser` is out of scope and absent, not ignored
-//! (`plans/rust-prototype/design.md`).
+//! All six of `src/hyphae/cli.py`'s subcommands, carrying that CLI's flag names and defaults so a
+//! parity oracle can drive either implementation from one command line. `hp view` takes no
+//! `--no-browser`, because it opens no browser — the one flag of the six the port leaves out
+//! (`plans/rust-prototype/full-port.md`). `tests/surface.rs` is what pins the rest.
 //!
 //! Both refuse rather than degrade: `extract` on a project with nothing recorded under the
 //! projects root, `view` on a missing store, a store at another schema version, or a held

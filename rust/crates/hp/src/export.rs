@@ -24,7 +24,7 @@ use crate::{CliError, DEFAULT_DB};
 
 /// What `hp export-otlp` takes. Every flag that shapes or paces a send is here, and
 /// [`shipping`] is the one place they become what the exporter reads.
-#[derive(ClapArgs, Debug)]
+#[derive(ClapArgs, Debug, PartialEq)]
 pub struct Args {
     /// Path to the analyzed repository
     pub project: PathBuf,

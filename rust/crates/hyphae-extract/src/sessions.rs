@@ -137,6 +137,28 @@ impl SessionFiles {
         files.extend(walked);
         Ok(files)
     }
+
+    /// Every subagent transcript this session spawned, sorted by path.
+    ///
+    /// A subagent's work is part of the session but is recorded separately, so any accounting
+    /// over a session that ignores these undercounts it. Empty for a session that spawned none.
+    ///
+    /// The walk is recursive rather than one directory deep: a parallel fan-out nests its agents
+    /// under `subagents/workflows/wf_<id>/`. Unlike [`crate::session_files::classify`] it places
+    /// nothing — a file it does not recognise is skipped rather than refused, because this
+    /// answers "what did it spawn", not "what will be read".
+    pub fn subagent_transcripts(&self) -> Result<Vec<PathBuf>> {
+        let mut found = Vec::new();
+        walk(&self.directory().join(SUBAGENTS_DIR), &mut found)?;
+        found.retain(|path| {
+            path.file_name().is_some_and(|name| {
+                let name = name.to_string_lossy();
+                name.starts_with(AGENT_PREFIX) && name.ends_with(TRANSCRIPT_SUFFIX)
+            })
+        });
+        found.sort();
+        Ok(found)
+    }
 }
 
 /// Every file under `directory`, however deep. A missing directory contributes nothing.
