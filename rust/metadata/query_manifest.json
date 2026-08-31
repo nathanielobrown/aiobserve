@@ -1,0 +1,1267 @@
+{
+  "agent_compactions": {
+    "scope": "corpus",
+    "params": {}
+  },
+  "agent_types": {
+    "scope": "corpus",
+    "params": {}
+  },
+  "co_occurrence": {
+    "scope": "corpus",
+    "params": {
+      "min_sessions": {
+        "type": "integer",
+        "required": false,
+        "default": 3
+      }
+    }
+  },
+  "context_reloads": {
+    "scope": "corpus",
+    "params": {
+      "min_rebuilt_tokens": {
+        "type": "integer",
+        "required": false,
+        "default": 20000
+      },
+      "min_rebuilt_pct": {
+        "type": "integer",
+        "required": false,
+        "default": 90
+      },
+      "idle_seconds": {
+        "type": "integer",
+        "required": false,
+        "default": 300
+      }
+    }
+  },
+  "idle_gaps": {
+    "scope": "corpus",
+    "params": {
+      "min_idle_seconds": {
+        "type": "integer",
+        "required": false,
+        "default": 300
+      },
+      "min_rebuilt_tokens": {
+        "type": "integer",
+        "required": false,
+        "default": 20000
+      },
+      "min_rebuilt_pct": {
+        "type": "integer",
+        "required": false,
+        "default": 90
+      }
+    }
+  },
+  "reload_cost_split": {
+    "scope": "corpus",
+    "params": {
+      "short_gap_seconds": {
+        "type": "integer",
+        "required": true,
+        "default": null
+      },
+      "min_idle_seconds": {
+        "type": "integer",
+        "required": false,
+        "default": 300
+      },
+      "min_rebuilt_tokens": {
+        "type": "integer",
+        "required": false,
+        "default": 20000
+      },
+      "min_rebuilt_pct": {
+        "type": "integer",
+        "required": false,
+        "default": 90
+      }
+    }
+  },
+  "command_failures": {
+    "scope": "corpus",
+    "params": {
+      "mentions": {
+        "type": "text",
+        "required": false,
+        "default": null
+      },
+      "min_occurrences": {
+        "type": "integer",
+        "required": false,
+        "default": 5
+      },
+      "head_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 60
+      },
+      "signature_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 120
+      }
+    }
+  },
+  "cost_distribution": {
+    "scope": "corpus",
+    "params": {}
+  },
+  "enrichment_coverage": {
+    "scope": "corpus",
+    "params": {}
+  },
+  "enrichment_digest": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "level": {
+        "type": "text",
+        "required": false,
+        "default": null
+      }
+    }
+  },
+  "error_records": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": false,
+        "default": null
+      },
+      "max_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 200
+      }
+    }
+  },
+  "error_signatures": {
+    "scope": "corpus",
+    "params": {
+      "signature": {
+        "type": "text",
+        "required": false,
+        "default": null
+      },
+      "min_occurrences": {
+        "type": "integer",
+        "required": false,
+        "default": 5
+      },
+      "signature_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 120
+      }
+    }
+  },
+  "missing_file_recovery": {
+    "scope": "corpus",
+    "params": {
+      "within_calls": {
+        "type": "integer",
+        "required": false,
+        "default": 1
+      },
+      "missing": {
+        "type": "text",
+        "required": false,
+        "default": null
+      }
+    }
+  },
+  "path_failures": {
+    "scope": "corpus",
+    "params": {
+      "min_occurrences": {
+        "type": "integer",
+        "required": false,
+        "default": 5
+      },
+      "tail_segments": {
+        "type": "integer",
+        "required": false,
+        "default": 1
+      }
+    }
+  },
+  "records_slice": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "first_line": {
+        "type": "integer",
+        "required": true,
+        "default": null
+      },
+      "last_line": {
+        "type": "integer",
+        "required": true,
+        "default": null
+      },
+      "max_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 2000
+      }
+    }
+  },
+  "run_timeline": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "log_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 300
+      }
+    }
+  },
+  "select_runs": {
+    "scope": "corpus",
+    "params": {
+      "runs_per_stratum": {
+        "type": "integer",
+        "required": false,
+        "default": 1
+      },
+      "min_runs": {
+        "type": "integer",
+        "required": false,
+        "default": 5
+      }
+    }
+  },
+  "select_enrichments": {
+    "scope": "corpus",
+    "params": {
+      "level": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "per_category": {
+        "type": "integer",
+        "required": false,
+        "default": 2
+      },
+      "seed": {
+        "type": "text",
+        "required": false,
+        "default": "hyphae"
+      }
+    }
+  },
+  "select_sessions": {
+    "scope": "corpus",
+    "params": {
+      "cost_quota": {
+        "type": "integer",
+        "required": false,
+        "default": 8
+      },
+      "error_quota": {
+        "type": "integer",
+        "required": false,
+        "default": 5
+      },
+      "compaction_quota": {
+        "type": "integer",
+        "required": false,
+        "default": 4
+      },
+      "discovery_quota": {
+        "type": "integer",
+        "required": false,
+        "default": 8
+      },
+      "skill_threshold": {
+        "type": "integer",
+        "required": false,
+        "default": 5
+      },
+      "seed": {
+        "type": "text",
+        "required": false,
+        "default": "hyphae"
+      },
+      "min_api_calls": {
+        "type": "integer",
+        "required": false,
+        "default": 1
+      },
+      "min_discovery_api_calls": {
+        "type": "integer",
+        "required": false,
+        "default": 10
+      }
+    }
+  },
+  "session_counts": {
+    "scope": "corpus",
+    "params": {}
+  },
+  "session_timeline": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "log_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 300
+      }
+    }
+  },
+  "session_overview": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      }
+    }
+  },
+  "session_shapes": {
+    "scope": "corpus",
+    "params": {
+      "skill_share_pct": {
+        "type": "integer",
+        "required": false,
+        "default": 50
+      },
+      "delegating_runs": {
+        "type": "integer",
+        "required": false,
+        "default": 3
+      },
+      "editing_calls": {
+        "type": "integer",
+        "required": false,
+        "default": 5
+      },
+      "busy_tool_calls": {
+        "type": "integer",
+        "required": false,
+        "default": 5
+      }
+    }
+  },
+  "sessions": {
+    "scope": "corpus",
+    "params": {}
+  },
+  "skill_activity": {
+    "scope": "corpus",
+    "params": {}
+  },
+  "slash_commands": {
+    "scope": "corpus",
+    "params": {}
+  },
+  "tool_failures": {
+    "scope": "corpus",
+    "params": {}
+  },
+  "view_call_text": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "api_call_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      }
+    }
+  },
+  "view_call_thinking": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "api_call_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      }
+    }
+  },
+  "view_call_tools": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "api_call_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "skipped": {
+        "type": "integer",
+        "required": false,
+        "default": 0
+      },
+      "page_tools": {
+        "type": "integer",
+        "required": false,
+        "default": 100
+      },
+      "log_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 300
+      }
+    }
+  },
+  "view_call_header": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "api_call_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "head_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 100
+      },
+      "detail_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 4000
+      }
+    }
+  },
+  "view_described_sessions": {
+    "scope": "keyed",
+    "params": {
+      "head_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 100
+      },
+      "tag_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 20
+      },
+      "kind_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 20
+      },
+      "head_kinds": {
+        "type": "integer",
+        "required": false,
+        "default": 3
+      }
+    }
+  },
+  "view_enrichment": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "description_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 200
+      },
+      "tag_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 20
+      },
+      "head_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 100
+      }
+    }
+  },
+  "view_turn_said": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "turn_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      }
+    }
+  },
+  "view_run_said": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "run_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      }
+    }
+  },
+  "view_session_said": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      }
+    }
+  },
+  "view_compactions": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "chip_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 60
+      }
+    }
+  },
+  "view_run_header": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "run_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "head_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 100
+      },
+      "detail_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 4000
+      }
+    }
+  },
+  "view_run_brief": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "run_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      }
+    }
+  },
+  "view_run_prompt": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "run_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      }
+    }
+  },
+  "view_run_result": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "run_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      }
+    }
+  },
+  "view_numbers": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "node_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "kind": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "model_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 60
+      }
+    }
+  },
+  "view_numbers_compaction": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "compaction_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "chip_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 60
+      }
+    }
+  },
+  "view_numbers_tool": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "tool_call_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "item_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 60
+      },
+      "head_items": {
+        "type": "integer",
+        "required": false,
+        "default": 5
+      }
+    }
+  },
+  "view_offload": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "name": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "after_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 0
+      },
+      "chunk_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 50000
+      }
+    }
+  },
+  "view_project_rollups": {
+    "scope": "keyed",
+    "params": {
+      "as_of": {
+        "type": "date",
+        "required": true,
+        "default": null
+      },
+      "recent_days": {
+        "type": "integer",
+        "required": false,
+        "default": 7
+      },
+      "window_days": {
+        "type": "integer",
+        "required": false,
+        "default": 30
+      },
+      "head_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 100
+      },
+      "projects": {
+        "type": "integer",
+        "required": false,
+        "default": 100
+      }
+    }
+  },
+  "view_projects": {
+    "scope": "keyed",
+    "params": {
+      "head_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 100
+      },
+      "head_projects": {
+        "type": "integer",
+        "required": false,
+        "default": 10
+      }
+    }
+  },
+  "view_record": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "line_no": {
+        "type": "integer",
+        "required": true,
+        "default": null
+      }
+    }
+  },
+  "view_records": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "after": {
+        "type": "integer",
+        "required": false,
+        "default": -1
+      },
+      "page_records": {
+        "type": "integer",
+        "required": false,
+        "default": 100
+      },
+      "preview_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 160
+      }
+    }
+  },
+  "view_runs": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "chip_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 60
+      }
+    }
+  },
+  "view_session_header": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "head_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 100
+      },
+      "item_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 60
+      },
+      "head_items": {
+        "type": "integer",
+        "required": false,
+        "default": 5
+      }
+    }
+  },
+  "view_session_errors": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "nav_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 110
+      },
+      "errors": {
+        "type": "integer",
+        "required": false,
+        "default": 100
+      }
+    }
+  },
+  "view_sessions": {
+    "scope": "keyed",
+    "params": {
+      "item_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 20
+      }
+    }
+  },
+  "view_tool_header": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "tool_call_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "head_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 100
+      },
+      "detail_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 4000
+      }
+    }
+  },
+  "view_tool_command": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "tool_call_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      }
+    }
+  },
+  "view_tool_input": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "tool_call_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      }
+    }
+  },
+  "view_tool_result": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "tool_call_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "head_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 100
+      }
+    }
+  },
+  "view_nav_tree_calls": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "turn_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "nav_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 110
+      }
+    }
+  },
+  "view_nav_tree_tools": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "api_call_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "turn_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "nav_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 110
+      }
+    }
+  },
+  "view_nav_tree_turns": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "nav_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 110
+      }
+    }
+  },
+  "view_turn_calls": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "turn_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "skipped": {
+        "type": "integer",
+        "required": false,
+        "default": 0
+      },
+      "page_calls": {
+        "type": "integer",
+        "required": false,
+        "default": 100
+      },
+      "log_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 300
+      }
+    }
+  },
+  "view_turn_command_args": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "turn_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      }
+    }
+  },
+  "view_turn_header": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "turn_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "head_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 100
+      },
+      "detail_chars": {
+        "type": "integer",
+        "required": false,
+        "default": 4000
+      }
+    }
+  },
+  "view_turn_prompt": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "turn_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      }
+    }
+  },
+  "view_turn_records": {
+    "scope": "keyed",
+    "params": {
+      "session_id": {
+        "type": "text",
+        "required": true,
+        "default": null
+      },
+      "source": {
+        "type": "text",
+        "required": true,
+        "default": null
+      }
+    }
+  },
+  "weekly_trend": {
+    "scope": "corpus",
+    "params": {}
+  }
+}
