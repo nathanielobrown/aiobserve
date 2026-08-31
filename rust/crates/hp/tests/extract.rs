@@ -2,14 +2,16 @@
 //!
 //! The port of `tests/test_pipeline.py`. Python drives `refresh()` directly and reads the
 //! `extracted` and `skipped` lists it returns; the Rust loop is `hp`'s own `extract`, so every
-//! leaf here spawns the binary and reads the line it printed instead. Two of Python's leaves
-//! have no twin here: there is no second entry point to compare the CLI against, and a Rust
-//! `const` cannot be monkeypatched, so nothing can bump the extractor version under a store.
+//! leaf here runs the command line and reads the line it printed instead. In process, over two
+//! buffers — the exceptions are the two leaves that read a warning, which `hyphae-extract`
+//! writes to the process's own stderr with `eprintln!`. Two of Python's leaves have no twin
+//! here: there is no second entry point to compare the CLI against, and a Rust `const` cannot
+//! be monkeypatched, so nothing can bump the extractor version under a store.
 //!
 //! What `hp view` refuses to start on is `cli.rs`.
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use hyphae_extract::Extractor;
 use hyphae_extract::sessions::{AGENT_PREFIX, META_SUFFIX, SUBAGENTS_DIR, encode_project_path};
@@ -21,7 +23,7 @@ use hyphae_testsupport::landmarks::{
 
 mod common;
 
-use common::{HP, run};
+use common::{hp, spawn};
 
 /// A project nothing was ever recorded for is a typo far more often than an empty corpus, so
 /// it is an error naming both paths rather than a run that extracts nothing.
@@ -33,7 +35,7 @@ fn extract_over_a_root_with_no_sessions_names_the_directory() {
     std::fs::create_dir_all(&root).expect("the projects root is writable");
     std::fs::create_dir_all(&project).expect("the project directory is writable");
 
-    let (ok, said) = run(&[
+    let said = hp(&[
         "extract".as_ref(),
         project.as_os_str(),
         "--projects-root".as_ref(),
@@ -42,10 +44,11 @@ fn extract_over_a_root_with_no_sessions_names_the_directory() {
         scratch.path().join("traces.duckdb").as_os_str(),
     ]);
 
-    assert!(!ok, "extracting nothing should fail: {said}");
+    assert!(!said.ok, "extracting nothing should fail: {}", said.stderr);
     // Both halves of the answer: which project was asked for, and where hp looked for it.
-    assert!(said.contains(&project.display().to_string()), "{said}");
-    assert!(said.contains(&root.display().to_string()), "{said}");
+    let complained = &said.stderr;
+    assert!(complained.contains(&project.display().to_string()), "{complained}");
+    assert!(complained.contains(&root.display().to_string()), "{complained}");
 }
 
 /// A Claude Code projects root on disk, the project that addresses it, and the store an
@@ -106,41 +109,41 @@ impl Corpus {
         transcript
     }
 
-    /// `hp extract` over this corpus into `db`: whether it succeeded, and what it said on
-    /// stdout and on stderr.
-    fn extract_into(&self, db: &Path) -> (bool, String, String) {
-        let done = Command::new(HP)
-            .args([
-                "extract".as_ref(),
-                self.project.as_os_str(),
-                "--projects-root".as_ref(),
-                self.root.as_os_str(),
-                "--db".as_ref(),
-                db.as_os_str(),
-            ])
-            .output()
-            .expect("hp runs");
-        (
-            done.status.success(),
-            String::from_utf8_lossy(&done.stdout).into_owned(),
-            String::from_utf8_lossy(&done.stderr).into_owned(),
-        )
+    /// The command line one extract over this corpus into `db` is.
+    fn command<'a>(&'a self, db: &'a Path) -> [&'a OsStr; 6] {
+        [
+            "extract".as_ref(),
+            self.project.as_os_str(),
+            "--projects-root".as_ref(),
+            self.root.as_os_str(),
+            "--db".as_ref(),
+            db.as_os_str(),
+        ]
+    }
+
+    /// `hp extract` over this corpus into `db`, in process: what it said on each stream.
+    fn extract_into(&self, db: &Path) -> common::Output {
+        hp(&self.command(db))
     }
 
     /// One extract into this corpus's own store, which must succeed: the line it printed.
     ///
     /// That line is what Python reads off `refresh()`'s `extracted` and `skipped` lists.
     fn extract(&self) -> String {
-        let (ok, said, complained) = self.extract_into(&self.db);
-        assert!(ok, "{complained}");
-        said
+        let said = self.extract_into(&self.db);
+        assert!(said.ok, "{}", said.stderr);
+        said.stdout
     }
 
-    /// The same run, read for what it warned about on the way rather than what it counted.
+    /// The same run as a real process, read for what it warned about on the way.
+    ///
+    /// Spawned because the warning is one `hyphae-extract` writes with `eprintln!` from
+    /// inside the walk: the process's own stderr is the channel under test, and no writer
+    /// passed in from here can see it.
     fn warnings(&self) -> String {
-        let (ok, _, complained) = self.extract_into(&self.db);
-        assert!(ok, "{complained}");
-        complained
+        let said = spawn(&self.command(&self.db));
+        assert!(said.ok, "{}", said.stderr);
+        said.stderr
     }
 }
 
@@ -331,8 +334,8 @@ fn a_grown_session_is_replaced_rather_than_appended() {
 
     // ...then the store matches one built from scratch over the grown file, table for table.
     let fresh = scratch.path().join("fresh.duckdb");
-    let (ok, _, complained) = corpus.extract_into(&fresh);
-    assert!(ok, "{complained}");
+    let said = corpus.extract_into(&fresh);
+    assert!(said.ok, "{}", said.stderr);
     for name in ["sessions", "turns", "api_calls", "raw_records"] {
         assert_eq!(
             table(&corpus.db, name, SPINE),

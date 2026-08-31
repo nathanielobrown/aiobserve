@@ -8,109 +8,22 @@
 //! Both refuse rather than degrade: `extract` on a project with nothing recorded under the
 //! projects root, `view` on a missing store, a store at another schema version, or a held
 //! port — the store checks run before the bind, so the message names the store, not the socket.
+//!
+//! The commands themselves are the library beside this file, which owns nothing but the
+//! process: the real streams in, and a [`hp::CliError`] out as a line on stderr and a status.
 
-use std::path::PathBuf;
+use std::io::Write;
 use std::process::ExitCode;
 
-use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
-use hyphae_extract::{Extractor, sessions};
-use hyphae_store::Store;
-
-/// Gitignored, so an extract never lands in a commit. The same default `hp` the Python
-/// binary uses, so both write to the same place unless told otherwise.
-const DEFAULT_DB: &str = "data/traces.duckdb";
-
-#[derive(Parser)]
-#[command(name = "hp", about = "Analyze AI coding agents from their telemetry")]
-struct Cli {
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(Subcommand)]
-enum Command {
-    /// Parse a project's transcripts into the trace store, skipping what has not changed
-    Extract {
-        /// Path to the analyzed repository
-        project: PathBuf,
-        /// Where Claude Code keeps transcripts (default: ~/.claude/projects)
-        #[arg(long)]
-        projects_root: Option<PathBuf>,
-        /// Where to write the trace store
-        #[arg(long, default_value = DEFAULT_DB)]
-        db: PathBuf,
-    },
-    /// Open the trace store in a local browser
-    View {
-        /// Which trace store to read
-        #[arg(long, default_value = DEFAULT_DB)]
-        db: PathBuf,
-        /// Which port to serve on
-        #[arg(long, default_value_t = hyphae_view::app::PORT)]
-        port: u16,
-    },
-}
-
 fn main() -> ExitCode {
-    match run() {
+    let mut out = std::io::stdout().lock();
+    let mut err = std::io::stderr().lock();
+    match hp::main(std::env::args_os(), &mut out, &mut err) {
         Ok(()) => ExitCode::SUCCESS,
-        // `{:#}` prints the whole chain on one line: what failed, then why.
-        Err(error) => {
-            eprintln!("hp: {error:#}");
-            ExitCode::FAILURE
+        Err(refusal) => {
+            // Verbatim: the message already carries whatever prefix its kind wants.
+            let _ = writeln!(err, "{refusal}");
+            ExitCode::from(refusal.code)
         }
     }
-}
-
-fn run() -> Result<()> {
-    match Cli::parse().command {
-        Command::Extract {
-            project,
-            projects_root,
-            db,
-        } => extract(&project, projects_root, &db),
-        Command::View { db, port } => view(&db, port),
-    }
-}
-
-/// `hp view`: the viewer over one store, until interrupted.
-///
-/// The runtime is built here rather than by a `#[tokio::main]` on `main`, so `hp extract` — which
-/// is wholly synchronous — starts no reactor it never uses.
-fn view(db: &std::path::Path, port: u16) -> Result<()> {
-    let runtime = tokio::runtime::Runtime::new().context("starting the server runtime")?;
-    runtime
-        .block_on(hyphae_view::app::serve(db, port))
-        .map_err(|error| anyhow::anyhow!("{error}"))
-}
-
-/// The `refresh` loop of `src/hyphae/pipeline.py`: ask what is on disk, skip what the store
-/// already holds at the same fingerprint, and replace the rest.
-fn extract(
-    project: &std::path::Path,
-    projects_root: Option<PathBuf>,
-    db: &std::path::Path,
-) -> Result<()> {
-    let projects_root = projects_root.unwrap_or_else(sessions::default_projects_root);
-    let extractor = Extractor::new(projects_root);
-    let store = Store::create(db).with_context(|| format!("opening {}", db.display()))?;
-    let held = store.fingerprints()?;
-    let (mut extracted, mut skipped) = (0usize, 0usize);
-    for source in extractor.sessions(project)? {
-        if held
-            .get(&source.id)
-            .is_some_and(|known| *known == source.fingerprint)
-        {
-            skipped += 1;
-            continue;
-        }
-        let trace = extractor
-            .extract(&source)
-            .with_context(|| format!("session {}", source.id))?;
-        store.export(&trace, &source.fingerprint)?;
-        extracted += 1;
-    }
-    println!("{extracted} session(s) extracted, {skipped} unchanged");
-    Ok(())
 }

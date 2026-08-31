@@ -21,7 +21,7 @@ use hyphae_testsupport::corpus::repo;
 
 mod common;
 
-use common::{HP, run};
+use common::{HP, spawn};
 
 /// How long a leaf waits for a spawned process to reach the state it is waiting for. Long
 /// enough for a cold `uv run` to resolve an environment, and short enough to stay inside the
@@ -147,13 +147,14 @@ fn view_refuses_a_port_something_else_holds() {
     empty_store(&db);
     let (_held, port) = held_port();
 
-    let (ok, said) = run(&[
+    let said = spawn(&[
         "view".as_ref(),
         "--db".as_ref(),
         db.as_os_str(),
         "--port".as_ref(),
         port.to_string().as_ref(),
     ]);
+    let (ok, said) = (said.ok, said.stderr);
 
     assert!(!ok, "a taken port should refuse: {said}");
     assert!(said.contains(&port.to_string()), "{said}");
@@ -172,13 +173,14 @@ fn view_refuses_a_store_that_is_not_there_before_it_binds() {
     let missing = scratch.path().join("nothing.duckdb");
     let (_held, port) = held_port();
 
-    let (ok, said) = run(&[
+    let said = spawn(&[
         "view".as_ref(),
         "--db".as_ref(),
         missing.as_os_str(),
         "--port".as_ref(),
         port.to_string().as_ref(),
     ]);
+    let (ok, said) = (said.ok, said.stderr);
 
     assert!(!ok, "a missing store should refuse: {said}");
     assert!(said.contains(&missing.display().to_string()), "{said}");
@@ -206,13 +208,14 @@ fn view_refuses_a_store_at_another_schema_version_before_it_binds() {
     }
     let (_held, port) = held_port();
 
-    let (ok, said) = run(&[
+    let said = spawn(&[
         "view".as_ref(),
         "--db".as_ref(),
         db.as_os_str(),
         "--port".as_ref(),
         port.to_string().as_ref(),
     ]);
+    let (ok, said) = (said.ok, said.stderr);
 
     assert!(!ok, "an older store should refuse: {said}");
     assert!(
@@ -235,7 +238,7 @@ fn view_refuses_a_locked_store_before_it_binds() {
     let (mut holder, release) = holding(&db, scratch.path());
     let (_held, port) = held_port();
 
-    let (ok, said) = run(&[
+    let said = spawn(&[
         "view".as_ref(),
         "--db".as_ref(),
         db.as_os_str(),
@@ -245,6 +248,7 @@ fn view_refuses_a_locked_store_before_it_binds() {
 
     std::fs::write(&release, "").expect("the release file is writable");
     holder.wait().expect("the holder exits");
+    let (ok, said) = (said.ok, said.stderr);
     assert!(!ok, "a locked store should refuse: {said}");
     assert!(said.contains("held by another process"), "{said}");
     assert!(
