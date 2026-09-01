@@ -332,6 +332,10 @@ def test_a_context_bar_is_drawn_by_three_families_of_class_one_rule_spends(
         rf"\s*var\(--edge-fill, 0%\) {thick};",
         body,
     ), body
+    # And the number that name stands for. How thick a bar reads is eyeballed on the gallery the
+    # way its colours are (`.claude/rules/viewer-ui.md`), so this pins the value rather than
+    # justifying it: nothing else in either tier fails when the bar changes height.
+    assert re.search(r"--ctx-height: 3px;", style), style
     # Widths are edges and colours are bands, so the two vocabularies never collide. Each band
     # is a role a kind may take over, named in the order the layers stack: the context the
     # session opened on, under what stood before the node, under the node's own share.
