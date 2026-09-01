@@ -9,10 +9,6 @@ plus a fresh-interpreter probe where an in-process answer is already spoiled.
 
 Every scan carries a companion assertion. A rule that finds nothing passes, and a tree that
 moved out from under it is exactly how it comes to find nothing.
-
-The leaves marked `xfail` are the ones the move has not reached yet. Each names the slice that
-lands it and is strict, so it reds the day it starts passing: a slice takes its own marker out,
-and no rule quietly arrives unread.
 """
 
 import ast
@@ -49,8 +45,10 @@ KINDS = ("routes", "markup")
 UNNAMED = frozenset({"logic.py", "utils.py", "helpers.py", "common.py", "misc.py"})
 
 # What a module may reach: an import goes down a layer or sideways, never up. The layers, from
-# the top: the server, then the pages, then what every page shares, then the store and the
-# sizes, and `text/` under all of it.
+# the top: the server, then the pages, then what every page shares, then the store, and under
+# all of it the two leaves — how one value prints, and the sizes it prints to. `bounds` is a
+# leaf beside `text/` rather than above it because `highlight` and `inline_markdown` read their
+# cuts from it, and a cut is a size (`design.md`, "Decisions").
 SERVER, PAGE, SHARED, BASE, LEAF = 4, 3, 2, 1, 0
 
 # The modules of each layer by name, for the ones that are not decided by their directory.
@@ -68,8 +66,8 @@ LAYERED = {
     "builders": SHARED,
     "detail": SHARED,
     "store": BASE,
-    "bounds": BASE,
     "manifest": BASE,
+    "bounds": LEAF,
 }
 
 # Import the named modules in a fresh interpreter and report which web frameworks came in with
@@ -162,10 +160,12 @@ def layer(module: str) -> int:
 
 
 def page_packages() -> list[Path]:
-    """Every page package on the tree, discovered rather than listed."""
-    return sorted(
-        at.parent for at in sources(PAGES) if at.name == "__init__.py" and at.parent != PAGES
-    )
+    """Every page package on the tree, discovered rather than listed.
+
+    A directory of `pages/` and not any package under one: the node page holds a `routes/` and a
+    `markup/` of its own, and those are kinds of that page rather than pages beside it.
+    """
+    return sorted(at.parent for at in PAGES.glob("*/__init__.py"))
 
 
 def kind_of(page: Path, path: Path) -> str:
@@ -175,12 +175,16 @@ def kind_of(page: Path, path: Path) -> str:
 
 
 def markup_modules() -> list[Path]:
-    """Every page's markup, whether the page writes a `markup.py` or a `markup/`."""
+    """Every module of markup a page holds, whether it writes a `markup.py` or a `markup/`.
+
+    A `markup/` package's `__init__.py` is left out the way `test_components.py:MODULES` leaves
+    the components package's out: it says what the package is and defines no component.
+    """
     return [
         path
         for page in page_packages()
         for path in sources(page)
-        if kind_of(page, path) == "markup"
+        if kind_of(page, path) == "markup" and path.name != "__init__.py"
     ]
 
 
@@ -199,7 +203,6 @@ def frameworks(names: Sequence[str]) -> str:
 # --- Rule 1: what a file's name says about what is inside it -------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="the last page package lands in slice 6")
 def test_every_page_the_viewer_serves_has_a_package_of_its_own() -> None:
     """The pages the glossary names are the packages on the tree, one for one.
 
@@ -313,7 +316,6 @@ def test_no_page_package_imports_a_sibling_page() -> None:
 # --- Rule 3: downward only -----------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="the layers are not all in place until slice 6")
 def test_no_import_inside_the_viewer_points_up_a_layer() -> None:
     """The layers hold: pages over the shared view-models, over the store, over `text/`.
 

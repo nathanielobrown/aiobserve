@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient
 
 from hyphae.analyze import queries
 from hyphae.model import MAIN_SOURCE
-from hyphae.view import bounds, nav_tree
+from hyphae.view import bounds
 from hyphae.view.app import build_app
 from hyphae.view.enrichment import Descriptions
 from hyphae.view.nodes import (
@@ -30,6 +30,7 @@ from hyphae.view.nodes import (
     Preset,
     Ref,
 )
+from hyphae.view.pages.node import nav_tree
 from tests.conftest import MAIN, SPINE, SPINE_RUN
 from tests.view.conftest import (
     SPAWNS,

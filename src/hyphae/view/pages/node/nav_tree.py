@@ -35,7 +35,6 @@ from hyphae.view.builders import (
     unattributed_node,
 )
 from hyphae.view.citation import Ran
-from hyphae.view.components.nav_tree import NavTreeRow
 from hyphae.view.enrichment import Descriptions
 from hyphae.view.nodes import (
     Kind,
@@ -44,6 +43,7 @@ from hyphae.view.nodes import (
     Preset,
     Ref,
 )
+from hyphae.view.pages.node.markup.nav_tree import NavTreeRow
 from hyphae.view.store import (
     TURN_CURSOR,
     Library,

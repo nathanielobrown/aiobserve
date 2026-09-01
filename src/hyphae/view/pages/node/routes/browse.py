@@ -17,21 +17,22 @@ from fastapi.responses import Response
 
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
-from hyphae.view import builders, failures, links, nav_tree, nodes, reads, walk
+from hyphae.view import builders, failures, links, nodes
 from hyphae.view.citation import Ran, cited
-from hyphae.view.columns import Shape
-from hyphae.view.components import node_page
-from hyphae.view.components.logs import Logged
 from hyphae.view.deps import Viewer
 from hyphae.view.detail import Detail, enrichment_lines
 from hyphae.view.enrichment import Descriptions, Enrichment, described
-from hyphae.view.knobs import (
+from hyphae.view.nodes import Kind, Ref
+from hyphae.view.pages.node import nav_tree, reads, walk
+from hyphae.view.pages.node.columns import Shape
+from hyphae.view.pages.node.knobs import (
     Knobs,
     pager,
     preset_choices,
     skipped,
 )
-from hyphae.view.nodes import Kind, Ref
+from hyphae.view.pages.node.markup import page as node_page
+from hyphae.view.pages.node.markup.logs import Logged
 from hyphae.view.store import (
     Fragment,
     Listed,

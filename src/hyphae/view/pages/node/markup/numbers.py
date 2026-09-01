@@ -12,7 +12,7 @@ from typing import NamedTuple
 import htpy
 
 from hyphae.view.components import Html, parts
-from hyphae.view.numbers import Breakout, Charge
+from hyphae.view.pages.node.numbers import Breakout, Charge
 from hyphae.view.text import format as fmt
 
 

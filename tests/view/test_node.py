@@ -18,8 +18,8 @@ from fastapi.testclient import TestClient
 
 from hyphae.analyze import queries
 from hyphae.view.app import build_app
-from hyphae.view.columns import COLUMNS, Shape
 from hyphae.view.nodes import BODY_URL, Kind
+from hyphae.view.pages.node.columns import COLUMNS, Shape
 from hyphae.view.text import format as fmt
 from hyphae.view.text.format import ELLIPSIS
 from hyphae.view.text.labels import label

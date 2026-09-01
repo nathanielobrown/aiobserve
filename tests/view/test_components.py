@@ -30,7 +30,8 @@ from markupsafe import Markup
 import hyphae.view
 import hyphae.view.components
 from hyphae.analyze import queries
-from hyphae.view.components import layout, logs, nav_tree, parts
+from hyphae.view.components import layout, parts
+from hyphae.view.pages.node.markup import logs, nav_tree
 from hyphae.view.text.highlight import Syntax, lit
 
 COMPONENTS = Path(hyphae.view.components.__file__).parent

@@ -12,19 +12,21 @@ from typing import NamedTuple
 import htpy
 
 from hyphae.view.citation import Cited
-from hyphae.view.columns import Shape
-from hyphae.view.components import Html, citation, layout, logs, nav_tree, node_body, parts
-from hyphae.view.components.logs import Logged
-from hyphae.view.components.nav_tree import PANE_SWAP, NavTreeRow, PresetChoice
-from hyphae.view.components.node_body import Facts
+from hyphae.view.components import Html, citation, layout, parts
 from hyphae.view.components.parts import Pager
 from hyphae.view.detail import Detail, EnrichmentLines
 from hyphae.view.enrichment import Enrichment
 from hyphae.view.failures import Step as Failures
 from hyphae.view.nodes import Node
+from hyphae.view.pages.node.columns import Shape
+from hyphae.view.pages.node.markup import body as node_body
+from hyphae.view.pages.node.markup import logs, nav_tree
+from hyphae.view.pages.node.markup.body import Facts
+from hyphae.view.pages.node.markup.logs import Logged
+from hyphae.view.pages.node.markup.nav_tree import PANE_SWAP, NavTreeRow, PresetChoice
+from hyphae.view.pages.node.walk import Step as Walked
 from hyphae.view.text import cuts
 from hyphae.view.text import format as fmt
-from hyphae.view.walk import Step as Walked
 
 # The two scripts only this page needs: what no stylesheet can reach — where the tree opens,
 # where a popover stands, and the NavTree width a reader sets by dragging. The width is not a

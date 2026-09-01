@@ -11,9 +11,9 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from hyphae.view.columns import COLUMNS, Shape
-from hyphae.view.knobs import numbered
 from hyphae.view.nodes import BODY_URL
+from hyphae.view.pages.node.columns import COLUMNS, Shape
+from hyphae.view.pages.node.knobs import numbered
 from hyphae.view.text.labels import label
 from tests.view.conftest import (
     fields,

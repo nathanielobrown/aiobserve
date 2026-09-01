@@ -18,7 +18,7 @@ from typing import NamedTuple
 
 from hyphae.analyze import queries
 from hyphae.view import bounds, nodes
-from hyphae.view.knobs import KNOB_DEFAULTS, Knobs
+from hyphae.view.pages.node.knobs import KNOB_DEFAULTS, Knobs
 from tests.view import budgets
 from tools import text
 

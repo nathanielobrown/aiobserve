@@ -17,10 +17,10 @@ from urllib.parse import quote
 import htpy
 
 from hyphae.view.citation import Cited
-from hyphae.view.columns import Shape, spanned
 from hyphae.view.components import Html, citation, parts
-from hyphae.view.components.logs import Logged, log
 from hyphae.view.nodes import Node, run_url
+from hyphae.view.pages.node.columns import Shape, spanned
+from hyphae.view.pages.node.markup.logs import Logged, log
 from hyphae.view.text import cuts, render
 from hyphae.view.text import format as fmt
 

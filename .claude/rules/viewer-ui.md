@@ -2,6 +2,7 @@
 description: Viewer UI conventions
 paths:
   - "src/hyphae/view/components/**/*.py"
+  - "src/hyphae/view/pages/**/*.py"
   - "src/hyphae/view/static/*.css"
   - "src/hyphae/view/static/*.js"
   - "src/hyphae/view/*.py"
@@ -15,9 +16,9 @@ The viewer is server-rendered [htpy](https://htpy.dev) — one typed Python func
 
 # One body, two mounts
 
-A node's body is one function, `src/hyphae/view/components/node_body.py`'s `body`, mounted twice:
+A node's body is one function, `src/hyphae/view/pages/node/markup/body.py`'s `body`, mounted twice:
 
-- Its **full view**, `src/hyphae/view/components/node_page.py`, wraps the body with the NavTree, the crumbs above it, its enrichment, its previewed values, its children log, and prev/next
+- Its **full view**, `src/hyphae/view/pages/node/markup/page.py`, wraps the body with the NavTree, the crumbs above it, its enrichment, its previewed values, its children log, and prev/next
 - Its **expansion**, the same module's `expansion`, is the body alone — opened in a log row while the reader stays on the parent
 
 Render a node's facts in that function and nowhere else. A pane and a NavTree row that disagree tell a reader two stories about one node.
@@ -32,7 +33,7 @@ Print `Node.nav_tree_title`, `tab_title`, `crumb_title`, `log_title` or `pane_ti
 
 # Naming and formatting live in Python; SQL ships fields
 
-A query hands the page the fields a name is read off, and Python composes what the reader sees. `tool_names.name_tool` is the only place a tool call is named, `src/hyphae/view/nodes.py` the only place a node is, `src/hyphae/view/numbers.py` the only place a dollar is split, and `src/hyphae/view/text/cuts.py` the only place a value is cut to the width its surface prints it at — so a fact printed on two surfaces was derived once.
+A query hands the page the fields a name is read off, and Python composes what the reader sees. `tool_names.name_tool` is the only place a tool call is named, `src/hyphae/view/nodes.py` the only place a node is, `src/hyphae/view/pages/node/numbers.py` the only place a dollar is split, and `src/hyphae/view/text/cuts.py` the only place a value is cut to the width its surface prints it at — so a fact printed on two surfaces was derived once.
 
 A `view_*.sql` that builds a string is a second naming system, and the two drift apart in the direction nobody is looking: SQL cannot dispatch on a tool's name without a `CASE` arm per tool, so the tool nobody wrote an arm for goes unnamed rather than falling back. What SQL owns instead is the reading a page cannot afford: a fat column is cut to the width its caller asked for before it leaves the store (`src/hyphae/analyze/macros.py`).
 
@@ -54,7 +55,7 @@ A tool's own glyph is not one of these marks and does not go through `parts.mark
 
 # A NavTree row is priced, not budgeted
 
-`bounds.NAV_TREE_ROW_BYTES` is measured through the app, pinned with no slack, and spent 3,217 times on the worst page. An attribute added to `src/hyphae/view/components/nav_tree.py`'s row is that many bytes of page, so re-measure with `tests/view/test_bounds__node.py` rather than guessing — the pin fails first, which is the point.
+`bounds.NAV_TREE_ROW_BYTES` is measured through the app, pinned with no slack, and spent 3,217 times on the worst page. An attribute added to `src/hyphae/view/pages/node/markup/nav_tree.py`'s row is that many bytes of page, so re-measure with `tests/view/test_bounds__node.py` rather than guessing — the pin fails first, which is the point.
 
 Link where you fetch: a row's `href` and its `hx-get` are the same URL, and both carry the page's knob suffix, so a click, a paste, and a bookmark serve the same bytes. The mount an expansion opens through carries it too, so the fragment's own links come back under the preset the reader was in.
 
@@ -64,7 +65,7 @@ A link that moves the reader without leaving the page carries six attributes, an
 
 htmx reads all but `hx-get` off the closest ancestor carrying one, so the NavTree writes the five shared ones on `#nav-tree-rows` and a row's link carries only the URL. A children log writes them out per row instead: the body toggle beside each link is an `hx-get` that must not swap the pane, so a hoisted attribute would have to be undone on it — a line per row either way. `test_every_link_that_swaps_the_pane_lands_the_pane_in_the_pane` reads both mounts the way htmx resolves them, inheritance and all.
 
-A fetch that is not a pane swap rides an element of its own beside the link. The popover a NavTree row fetches overrides every attribute `#nav-tree-rows` writes, and htmx walks up from whatever fetched: written on the `<li>`, those overrides would reach the link inside it and the click would stop swapping the pane. `hx-disinherit` is not the way out, because it stops the walk rather than skipping a level of it. So the trigger is a span of its own next to the link, and `hx-trigger`'s `from:closest li` keeps the row as the thing a reader points at (`src/hyphae/view/components/nav_tree.py`).
+A fetch that is not a pane swap rides an element of its own beside the link. The popover a NavTree row fetches overrides every attribute `#nav-tree-rows` writes, and htmx walks up from whatever fetched: written on the `<li>`, those overrides would reach the link inside it and the click would stop swapping the pane. `hx-disinherit` is not the way out, because it stops the walk rather than skipping a level of it. So the trigger is a span of its own next to the link, and `hx-trigger`'s `from:closest li` keeps the row as the thing a reader points at (`src/hyphae/view/pages/node/markup/nav_tree.py`).
 
 A served-HTML test reads the attributes; only a browser reads what they do. `tests/e2e/specs/htmx.spec.ts` clicks a row and reads where the pane landed, and points and tabs at a row for its popover. Witnessed by hand in a real Chromium on 2026-08-26, against `mise run gallery --port 9061` — never 8477, which is a live viewer — in both colour schemes:
 
@@ -98,7 +99,7 @@ Put it inside `#nav-tree-rows` rather than adding a second out-of-band target: a
 
 The frame is a column exactly the viewport's height: the masthead takes what it needs, and what sits under it takes the rest and scrolls inside itself. Every page but the node browser scrolls `main`. The node page gives its whole content box to `#browser` and hands the scroll down to the two columns, so the NavTree and the reading pane each carry a scrollbar and neither the window nor `main` carries one.
 
-That is why the citation footer of a node page renders inside `#reading-pane`, last, rather than under the document (`src/hyphae/view/components/node_page.py`): a footer outside both columns would sit below a fold nobody can reach. It also means a click brings the new node's citations with it, since the swap takes `#reading-pane` out of the response. `test_the_citation_footer_scrolls_with_the_pane_it_cites` pins the containment.
+That is why the citation footer of a node page renders inside `#reading-pane`, last, rather than under the document (`src/hyphae/view/pages/node/markup/page.py`): a footer outside both columns would sit below a fold nobody can reach. It also means a click brings the new node's citations with it, since the swap takes `#reading-pane` out of the response. `test_the_citation_footer_scrolls_with_the_pane_it_cites` pins the containment.
 
 Size a pane against the room its parent gave it — `height: 100%` under a grid row of `minmax(0, 1fr)` — and not against `100vh`, which measures the window and forgets the masthead.
 

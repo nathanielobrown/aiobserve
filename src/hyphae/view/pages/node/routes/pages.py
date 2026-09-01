@@ -13,22 +13,23 @@ from fastapi.responses import Response
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.model import MAIN_SOURCE
-from hyphae.view import builders, nav_tree, nodes, reads
-from hyphae.view.browse import (
+from hyphae.view import builders, nodes
+from hyphae.view.deps import KnobsDep, ViewerDep
+from hyphae.view.detail import detail_of, details
+from hyphae.view.nodes import Kind, Ref
+from hyphae.view.pages.node import nav_tree, reads
+from hyphae.view.pages.node.columns import Shape
+from hyphae.view.pages.node.knobs import (
+    skipped,
+    sliced,
+)
+from hyphae.view.pages.node.routes.browse import (
     Seen,
     browse,
     call_log,
     run_log,
     turn_log,
 )
-from hyphae.view.columns import Shape
-from hyphae.view.deps import KnobsDep, ViewerDep
-from hyphae.view.detail import detail_of, details
-from hyphae.view.knobs import (
-    skipped,
-    sliced,
-)
-from hyphae.view.nodes import Kind, Ref
 from hyphae.view.store import (
     TURN_CURSOR,
     Fragment,

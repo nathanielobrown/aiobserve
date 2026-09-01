@@ -21,10 +21,10 @@ from typing import NamedTuple, assert_never
 
 import htpy
 
-from hyphae.view.columns import COLUMNS, Column, Shape, css
 from hyphae.view.components import Html, parts
-from hyphae.view.components.nav_tree import PANE_SWAP
 from hyphae.view.nodes import Node
+from hyphae.view.pages.node.columns import COLUMNS, Column, Shape, css
+from hyphae.view.pages.node.markup.nav_tree import PANE_SWAP
 from hyphae.view.text import cuts
 from hyphae.view.text import format as fmt
 from hyphae.view.text.labels import label

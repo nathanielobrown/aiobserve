@@ -12,8 +12,8 @@ from typing import NamedTuple
 from urllib.parse import urlencode
 
 from hyphae.view import bounds, nodes
-from hyphae.view.components.nav_tree import PresetChoice
 from hyphae.view.components.parts import Pager, Step
+from hyphae.view.pages.node.markup.nav_tree import PresetChoice
 from hyphae.view.store import Listed, Row
 
 

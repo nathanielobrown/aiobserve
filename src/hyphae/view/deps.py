@@ -26,7 +26,7 @@ from fastapi.responses import HTMLResponse
 from hyphae.view import bounds, nodes
 from hyphae.view.components import Html
 from hyphae.view.components import error as error_markup
-from hyphae.view.knobs import Knobs
+from hyphae.view.pages.node.knobs import Knobs
 from hyphae.view.store import open_store
 
 

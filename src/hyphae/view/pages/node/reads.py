@@ -12,9 +12,10 @@ same wherever it is read, and only what a row is *shown as* is this page's own.
 from typing import NamedTuple
 
 from hyphae.view.builders import tool_about, tool_titles
-from hyphae.view.columns import Shape
-from hyphae.view.components import logs, node_body, numbers, values
 from hyphae.view.nodes import Kind, Node
+from hyphae.view.pages.node.columns import Shape
+from hyphae.view.pages.node.markup import body as node_body
+from hyphae.view.pages.node.markup import logs, numbers, values
 from hyphae.view.store import Row
 
 
