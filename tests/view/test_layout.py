@@ -51,13 +51,15 @@ UNNAMED = frozenset({"logic.py", "utils.py", "helpers.py", "common.py", "misc.py
 # cuts from it, and a cut is a size (`design.md`, "Decisions").
 SERVER, PAGE, SHARED, BASE, LEAF = 4, 3, 2, 1, 0
 
-# The modules of each layer by name, for the ones that are not decided by their directory.
-# Anything else at the top level is a page's presenter that has not moved yet, so it is read at
-# the page layer — which is what makes an edge the move is meant to delete fail here today.
+# The modules of each layer by name, for the ones that are not decided by their directory. The
+# top level has no default: a module that lands there and is not listed reds `layer()`, because
+# guessing a layer for it is how an edge nobody meant to allow becomes sideways and legal.
 LAYERED = {
     "app": SERVER,
     "dev": SERVER,
-    "deps": PAGE,
+    # Under every page rather than one page's: the `Viewer`, a request's read-only connection,
+    # and `checked`. Shared is also what makes an import of a page from here point up and red.
+    "deps": SHARED,
     "nodes": SHARED,
     "enrichment": SHARED,
     "citation": SHARED,
@@ -156,16 +158,19 @@ def layer(module: str) -> int:
         return SHARED
     if head == "pages":
         return PAGE
-    return LAYERED.get(module, PAGE)
+    assert module in LAYERED, f"`view/{module}.py` sits at the top level and names no layer"
+    return LAYERED[module]
 
 
 def page_packages() -> list[Path]:
     """Every page package on the tree, discovered rather than listed.
 
     A directory of `pages/` and not any package under one: the node page holds a `routes/` and a
-    `markup/` of its own, and those are kinds of that page rather than pages beside it.
+    `markup/` of its own, and those are kinds of that page rather than pages beside it. Every
+    directory, not every package — a page that lost its `__init__.py` would otherwise drop out
+    of the discovery instead of failing it.
     """
-    return sorted(at.parent for at in PAGES.glob("*/__init__.py"))
+    return sorted(at for at in PAGES.iterdir() if at.is_dir() and not at.name.startswith("_"))
 
 
 def kind_of(page: Path, path: Path) -> str:
@@ -210,7 +215,10 @@ def test_every_page_the_viewer_serves_has_a_package_of_its_own() -> None:
     finds, so a `pages/` that emptied or moved would leave them all passing on nothing. This is
     the leaf that says the discovery found the viewer.
     """
-    assert {page.name for page in page_packages()} == set(PAGE_NAMES)
+    found = page_packages()
+    assert {page.name for page in found} == set(PAGE_NAMES)
+    # And each is a package, which is what the leaves below import it by.
+    assert [page.name for page in found if not (page / "__init__.py").is_file()] == []
 
 
 @pytest.mark.parametrize("page", page_packages(), ids=lambda page: page.name)
@@ -247,11 +255,14 @@ def test_every_page_package_holds_one_routes_kind_and_one_markup_kind(page: Path
 
 def test_only_a_markup_module_imports_htpy() -> None:
     """Markup is written in one file of a page, so a change to what a page shows has one home."""
-    naming = {path for path in sources(PAGES) if "htpy" in named(path)}
-    # The scan found the pages' markup...
-    assert naming, "no module under `pages/` imports htpy"
-    # ...and every file that names htpy is one whose name says it holds markup.
-    assert naming == set(markup_modules())
+    naming = {path for path in sources(VIEW) if "htpy" in named(path)}
+    # The scan found markup...
+    assert naming, "no module in the viewer imports htpy"
+    # ...every page's markup writes some...
+    assert set(markup_modules()) <= naming
+    # ...and nothing else in the package names htpy at all, shared layer included: the whole
+    # viewer is read, so a new top-level module writing markup reds here rather than escaping.
+    assert naming <= set(test_components.SOURCES)
 
 
 def test_no_module_of_a_page_is_named_for_nothing() -> None:
