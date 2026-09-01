@@ -23,10 +23,10 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
-from hyphae.view import format as fmt
 from hyphae.view.app import DEV_SHUTDOWN_SECONDS, HOST, build_app, claim
 from hyphae.view.components import Html, layout
 from hyphae.view.store import open_store
+from hyphae.view.text import format as fmt
 from tests.conftest import build_enriched_store
 from tests.view.scenarios import SCENARIOS, Group, Scenario
 
@@ -72,7 +72,7 @@ def gallery(store: Path) -> FastAPI:
 
     Freezes this process's clock to `corpus_now(store)` first — always, with no way to ask for
     otherwise — so two openings a week apart serve the same page. `fmt.utcnow` is the viewer's
-    one clock and the seam written for this (`view/format.py`); the setattr outlives the app it
+    one clock and the seam written for this (`view/text/format.py`); the setattr outlives the app it
     is built for, so a test that builds a gallery puts the real one back.
     """
     frozen = corpus_now(store)

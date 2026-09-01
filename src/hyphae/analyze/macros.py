@@ -67,7 +67,7 @@ call.cache_creation_tokens + call.input_tokens + call.output_tokens
 """
 
 # The cut protocol itself: a value to the width its column prints, plus the one character
-# that says it was stopped rather than ended — what `view/format.py:cut` reads to mark it.
+# that says it was stopped rather than ended — what `view/text/format.py:cut` reads to mark it.
 # A name rather than a spelling, because the library wrote it out fifty times and a query
 # that forgot the `+ 1` served a value cut where nothing could say so. The sites that cut
 # *at* the width are the exceptions now, and they are closed vocabularies whose members are
@@ -92,7 +92,7 @@ CASE WHEN json_valid(input)
 # anything else, so a column of absolute paths is a column of identical prefixes, and the part
 # that tells them apart is the tail. Cutting first would spend the width on the prefix and then
 # throw the prefix away — every relativized path would saturate short of the width, where
-# nothing downstream can mark it (`view/format.py:cut` marks at the width, not below it).
+# nothing downstream can mark it (`view/text/format.py:cut` marks at the width, not below it).
 # So the inner read asks for the prefix on top of the width, and the strip gives back exactly
 # the one-past-the-width the cut protocol wants. A path outside the project — or a session with
 # no `project_dir` — takes the absolute arm at the plain width.
@@ -121,7 +121,7 @@ _CONTEXT_WINDOW = (
     + "END\n"
 )
 
-# What a tool call carried, for the rules that name one (`view/tool_names.py`) — one struct
+# What a tool call carried, for the rules that name one (`view/text/tool_names.py`) — one struct
 # rather than a column apiece, so a query adds the whole set with one expression and a
 # formatter reads what it needs by name.
 # Extraction only: which member a tool reads is the registry's business, and keeping the
@@ -133,7 +133,7 @@ _CONTEXT_WINDOW = (
 # tool no rule names and whose input carried nothing any rule reads.
 # `query` and `message` were read off session `4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b` (Claude
 # Code 2.1.221), which is what `ToolSearch` and `PushNotification` name their calls by
-# (`view/tool_names.py`) and the recording `tests/fixtures/spine` is cut from.
+# (`view/text/tool_names.py`) and the recording `tests/fixtures/spine` is cut from.
 _TOOL_FIELDS = """
 CREATE OR REPLACE TEMP MACRO tool_fields(input, project_dir, addressed, chars) AS {
     'path': tool_path(input, project_dir, chars),

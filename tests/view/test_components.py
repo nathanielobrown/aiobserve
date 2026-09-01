@@ -30,8 +30,9 @@ from markupsafe import Markup
 import hyphae.view
 import hyphae.view.components
 from hyphae.analyze import queries
-from hyphae.view.components import layout, logs, nav_tree, parts
-from hyphae.view.highlight import Syntax, lit
+from hyphae.view.components import layout, parts
+from hyphae.view.pages.node.markup import logs, nav_tree
+from hyphae.view.text.highlight import Syntax, lit
 
 COMPONENTS = Path(hyphae.view.components.__file__).parent
 VIEW = Path(hyphae.view.__file__).parent
@@ -39,16 +40,31 @@ VIEW = Path(hyphae.view.__file__).parent
 # This checkout, for the config the narrowing is declared in: tests/view/… → the root.
 REPO = Path(__file__).resolve().parents[2]
 
-# The one path pyrefly is allowed to check less of, and the one kind it may stop checking there.
-NARROWED = "src/hyphae/view/components/**"
+# The paths pyrefly is allowed to check less of, in the order `pyproject.toml` declares them,
+# and the one kind it may stop checking there. Three because markup is written in three places:
+# the shared package, and each page's own `markup.py` or `markup/`.
+NARROWED = [
+    "src/hyphae/view/pages/*/markup.py",
+    "src/hyphae/view/pages/*/markup/**",
+    "src/hyphae/view/components/**",
+]
 # The one page composed outside the package: the gallery index, which nests htpy the same way.
 GALLERY = "tests/gallery/**"
 UNCHECKED = {"bad-index": False}
 
+# Every file these rules are read over: the shared components package, and each page's own
+# markup, whether the page writes a `markup.py` or a `markup/` (`tests/view/test_layout.py`
+# holds that this list reaches every one of them).
+PAGES = VIEW / "pages"
+SOURCES = sorted(
+    list(COMPONENTS.rglob("*.py"))
+    + [path for page in PAGES.glob("*/") for path in sorted(page.glob("markup.py"))]
+    + [path for page in PAGES.glob("*/") for path in sorted((page / "markup").rglob("*.py"))]
+)
+
 # Every module that defines components. `__init__.py` holds the package's rules and the one
 # type they are written in, so it is scanned for markup but never asked for a signature.
-MODULES = sorted(path for path in COMPONENTS.rglob("*.py") if path.name != "__init__.py")
-SOURCES = sorted(COMPONENTS.rglob("*.py"))
+MODULES = [path for path in SOURCES if path.name != "__init__.py"]
 
 # The names that make the one thing htpy will not escape. A component may hand a `Markup` in as
 # a child and may never write one into an attribute, because htpy escapes an attribute value
@@ -245,14 +261,15 @@ def test_no_component_constructs_markup() -> None:
     """Components consume the escape hatch and never open one, so escaping stays in four files.
 
     htpy escapes every string it renders. A `Markup` is the only opt-out, and keeping its
-    construction outside this package is what makes "escaped unless `view/render.py`,
+    construction outside this package is what makes "escaped unless `view/text/render.py`,
     `highlight.py`, `inline_markdown.py` or `nodes.py` said otherwise" a rule a reader can check.
     """
     # Nothing under `components/` builds one...
     assert [path.name for path in SOURCES if "Markup(" in path.read_text()] == []
     # ...and the four modules that do still do, so the scan above found nothing because the
-    # package holds the line rather than because `Markup` was renamed out from under it.
-    makers = {path.name for path in VIEW.glob("*.py") if "Markup(" in path.read_text()}
+    # package holds the line rather than because `Markup` was renamed out from under it. The
+    # whole package is walked: three of the four print one value and live in `view/text/`.
+    makers = {path.name for path in VIEW.rglob("*.py") if "Markup(" in path.read_text()}
     assert set(PRODUCER_MODULES) <= makers
 
 
@@ -397,14 +414,14 @@ def test_the_only_check_this_package_is_excused_is_the_one_htpy_forces() -> None
     """
     declared = tomllib.loads((REPO / "pyproject.toml").read_text())["tool"]["pyrefly"]
     scoped = {sub["matches"]: sub.get("errors", {}) for sub in declared["sub-config"]}
-    # Exactly the one kind, over exactly the components package...
-    assert scoped[NARROWED] == UNCHECKED
+    # Exactly the one kind, over exactly the markup paths...
+    assert [scoped[matched] for matched in NARROWED] == [UNCHECKED] * len(NARROWED)
     # ...and no other narrowing reaches shipped code at all.
-    assert [matched for matched in scoped if matched.startswith("src/")] == [NARROWED]
+    assert [matched for matched in scoped if matched.startswith("src/")] == NARROWED
     # htpy's bug reaches one page written outside the package too, and that is the whole list:
     # a third path excused for it is a component composed somewhere a component should not be.
     excused = {matched for matched, errors in scoped.items() if errors.get("bad-index") is False}
-    assert excused == {NARROWED, GALLERY}
+    assert excused == {*NARROWED, GALLERY}
     # A per-line escape would be the other way to buy the same quiet, and none is taken.
     assert [path.name for path in SOURCES if "pyrefly: ignore" in path.read_text()] == []
 
@@ -420,7 +437,8 @@ def test_the_narrowing_still_has_the_reason_it_was_taken_for(tmp_path: Path) -> 
     # A nesting still cannot be decided, under a project that turns nothing off...
     assert "bad-index" in checked(NESTED, tmp_path), (
         "pyrefly now decides htpy's recursive `Node` alias. Delete the "
-        f"`[[tool.pyrefly.sub-config]]` matching `{NARROWED}` from `pyproject.toml`, re-run "
+        "`[[tool.pyrefly.sub-config]]` blocks that turn off `bad-index` in `pyproject.toml`, "
+        "re-run "
         "`mise run typecheck`, and delete this leaf."
     )
     # ...and the same call with a child pyrefly has never had trouble with is clean, so what

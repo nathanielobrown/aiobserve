@@ -16,15 +16,12 @@ from fastapi.testclient import TestClient
 
 from hyphae.analyze import manifest, queries
 from hyphae.view import bounds
-from hyphae.view import format as fmt
 from hyphae.view.app import build_app
-from hyphae.view.format import ABSENT
-from hyphae.view.listing import (
-    ARIA_SORT,
-    DEFAULT_DIRECTION,
-    DEFAULT_SORT,
-)
+from hyphae.view.links import DEFAULT_DIRECTION, DEFAULT_SORT
+from hyphae.view.pages.sessions.routes import ARIA_SORT
 from hyphae.view.store import DIRECTIONS, SORTS, Page
+from hyphae.view.text import format as fmt
+from hyphae.view.text.format import ABSENT
 from tests.conftest import (
     NO_PROJECT_SESSION,
     SPINE,
@@ -89,7 +86,7 @@ def test_the_list_holds_every_session_with_its_own_numbers(
     assert row["compactions"] == counted(compactions)
     # ...the stacked cells, whose secondary is the texture the recompose demoted rather than
     # dropped: what the errors were a rate of, what the spend bought, how long of the wall
-    # clock was work. `tests/view/test_format.py` owns what each of these strings looks like;
+    # clock was work. `tests/view/text/test_format.py` owns what each of these strings looks like;
     # this leaf owns which of the session's values reaches which cell.
     assert (row["error_rate"], row["tool_errors"]) == (fmt.share(errors, tool_calls), str(errors))
     assert (row["cost_usd"], row["output_tokens"]) == (money(cost), counted(tokens))

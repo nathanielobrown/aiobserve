@@ -1,6 +1,6 @@
 """The header above a node: the store's own facts about it, labelled in words.
 
-A fact is printed under the word `view/labels.py` gives its column, so a page and a log column
+A fact is printed under the word `view/text/labels.py` gives its column, so a page and a log column
 call one store column the same thing. The lists among them — the skills a session used, the PRs
 it touched — say when they cut what they hold, and a PR is a link only where a browser can
 follow one.
@@ -14,11 +14,10 @@ from fastapi.testclient import TestClient
 
 from hyphae.analyze import queries
 from hyphae.view import app as view_app
-from hyphae.view import columns as view_columns
-from hyphae.view import components
-from hyphae.view import format as fmt
 from hyphae.view.app import build_app
-from hyphae.view.labels import LABELS
+from hyphae.view.pages.node import columns as view_columns
+from hyphae.view.text import format as fmt
+from hyphae.view.text.labels import LABELS
 from tests.conftest import (
     MAIN,
     SPINE,
@@ -94,7 +93,7 @@ def test_every_fact_a_header_asks_for_has_a_label() -> None:
 
     A header field with no label would reach a reader as a column name, which is the thing
     `LABELS` exists to stop, and an entry nothing asks for is a word nobody sees. Read off the
-    components, the panes and the log's column table rather than listed here, so a fact added
+    markup, the panes and the log's column table rather than listed here, so a fact added
     to any of them lands in this check. The panes are a source because a previewed value is
     labelled by the name the route passed it under, which no component names; the column table
     is one because a children log heads itself from a variable, which no regex over a source
@@ -108,7 +107,7 @@ def test_every_fact_a_header_asks_for_has_a_label() -> None:
     """
     asked = {
         name
-        for path in Path(components.__file__).parent.rglob("*.py")
+        for path in Path(view_app.__file__).parent.rglob("*.py")
         for name in re.findall(
             r"""(?:fact|label)(?:led)?\(\s*(?:name=)?["']([a-z_]+)""", path.read_text()
         )
@@ -118,10 +117,11 @@ def test_every_fact_a_header_asks_for_has_a_label() -> None:
         for path in Path(view_app.__file__).parent.rglob("*.py")
         for name in re.findall(r'detail_of\(\s*name="([a-z_]+)"', path.read_text())
     }
-    # Both scans walk the package rather than one directory of it, and both have to find
-    # something: a scan that matched nothing would agree with the registry by saying nothing,
-    # so a `detail_of` call that moved under `components/` — where the first glob used not to
-    # reach — would drop out of the check instead of reding it.
+    # Both scans walk the whole view package rather than one directory of it, and both have to
+    # find something: a scan that matched nothing would agree with the registry by saying
+    # nothing, so a `fact()` or a `detail_of()` call that moved into a page's own markup —
+    # where a glob over `components/` alone no longer reaches — would drop out of the check
+    # instead of reding it.
     assert asked, "no component asks for a label, so the registry has no subject"
     assert previewed, "no pane previews a value, so half this check has no subject"
     headed = {column.field for shape in view_columns.COLUMNS.values() for column in shape}

@@ -6,8 +6,8 @@ two buckets that hold what attaches to nothing. Each has a page of its own, so e
 title, one URL and one share of the spend, minted here and nowhere else: a NavTree row, a crumb
 and a pane all read the same node.
 
-`view/builders.py` turns a store row into one and `view/nav_tree.py` builds the levels out of
-them; this module is the vocabulary they are built in.
+`view/builders.py` turns a store row into one and `view/pages/node/nav_tree.py` builds the
+levels out of them; this module is the vocabulary they are built in.
 """
 
 import math
@@ -19,10 +19,9 @@ from typing import NamedTuple
 from markupsafe import Markup
 
 from hyphae.analyze import queries
-from hyphae.view import inline_markdown
-from hyphae.view.columns import CALL_ICON, COLUMNS, RUN_ICON, TOOL_ICON, Shape
-from hyphae.view.format import cut
 from hyphae.view.store import Row
+from hyphae.view.text import inline_markdown
+from hyphae.view.text.format import cut
 
 # How a cost badge is drawn: the steps it has, and how many decades of share they cover. A
 # session's cheapest turn and its dearest are three orders of magnitude apart, so the scale is
@@ -89,29 +88,13 @@ BUCKET_ICON = "∅"
 GLYPHS: dict[Kind, str] = {
     Kind.SESSION: "❖",
     Kind.TURN: "❯",
-    Kind.RUN: RUN_ICON,
-    Kind.CALL: CALL_ICON,
-    Kind.TOOL: TOOL_ICON,
+    Kind.RUN: "◎",
+    Kind.CALL: "⇄",
+    Kind.TOOL: "⚒",
     Kind.COMPACTION: "⊟",
     Kind.UNATTRIBUTED: BUCKET_ICON,
     Kind.UNATTACHED: BUCKET_ICON,
 }
-
-# Which shape of log lists a kind. For the one reader that knows a child and needs its
-# parent's table: an expansion arrives as a row of the log it opens under, and that row spans
-# the log's columns. A kind lists in one shape of log wherever it lists at all, which is what
-# makes the width answerable from the child alone.
-LISTED: dict[Kind, Shape] = {
-    Kind.TURN: Shape.TURNS,
-    Kind.CALL: Shape.CALLS,
-    Kind.TOOL: Shape.TOOLS,
-    Kind.RUN: Shape.RUNS,
-}
-
-
-def spanned(kind: str) -> int:
-    """How many columns the log listing a node of `kind` has, for a row that spans them."""
-    return len(COLUMNS[LISTED[Kind(kind)]])
 
 
 class Preset(StrEnum):
@@ -193,10 +176,10 @@ class Ref:
 class Ledger:
     """What one session spent, and what the runs under each of its nodes cost.
 
-    Read once per page (`view/browse.py`) and handed to every node built for it: a badge's
-    first half is what the node's own thread spent, its second that plus what `under` holds
-    for the node, and both are washed against `whole`. A node absent from `under` has no run
-    below it and draws one number.
+    Read once per page (`view/pages/node/routes/browse.py`) and handed to every node built for
+    it: a badge's first half is what the node's own thread spent, its second that plus what
+    `under` holds for the node, and both are washed against `whole`. A node absent from `under`
+    has no run below it and draws one number.
     """
 
     # What the session spent, the basis every share on the page is a share of.
@@ -325,12 +308,6 @@ def run_url(session_id: str, run_id: str) -> str:
     return f"{session_url(session_id)}/run/{run_id}"
 
 
-# Where the session list is served, and the way out of every session. Written here with the
-# viewer's other mount points because the route, the link builder and the form the page writes
-# all have to agree: `/` is the projects landing, and a link that still points there drops the
-# sort and the filters the request composed.
-LIST_URL = "/sessions"
-
 # Where a node's body alone is served from, written once: the routes in `view/app.py` answer
 # what `Node.expansion` mints. A fragment path is its node's path under a prefix, so the two
 # say the same thing about where a node sits.
@@ -360,7 +337,7 @@ class Node:
     # What the node is called, before any surface cuts it: the model's description where a
     # pass wrote one, else what the session called it. Every query that composes it comes
     # back one character past the width it was cut to, so a name that fills a row is one the
-    # reader can tell was stopped (`view/format.py:cut`).
+    # reader can tell was stopped (`view/text/format.py:cut`).
     words: str
     # What it cost and what everything under it did, with the share each is washed at
     # (`_spend`), beside how many calls under it our price table could not price: a total
@@ -380,7 +357,7 @@ class Node:
     # glyph beside the title marks. Three kinds can be: a session, a turn and a run.
     enriched: bool = False
     # Whether the tool call came back an error. Only ever True for a `Kind.TOOL` node: it is
-    # the column the NavTree's mark and the errors list (`view/errors.py`) are both read from.
+    # the column the NavTree's mark and the errors list (`view/failures.py`) are both read from.
     is_error: bool = False
     # What every cut of the title keeps, printed after the words: how many of each tool an api
     # call went on to invoke after the first (`call_node`). A surface cuts the words to its
@@ -427,7 +404,7 @@ class Node:
 
         The width is spent on what a reader sees: a description written in markdown is rendered
         rather than printed, so its syntax costs the surface nothing
-        (`view/inline_markdown.py`). Which is why `source_cap` comes too — the width the query
+        (`view/text/inline_markdown.py`). Which is why `source_cap` comes too — the width the query
         cut the words at is then the only thing that knows a line with room to spare was still
         stopped. `links` is the surface's own answer — see `pane_title`.
         """
@@ -517,8 +494,8 @@ class Node:
         strings at this width or wider — a tool header's input comes back at a preview's,
         because the same pane previews it — so a title is cut here and marked where the query
         left more behind. A pane names its node from the header it read rather than from the
-        NavTree row it stands on (`view/browse.py:TITLED`) — the NavTree cuts at a row's
-        width, which would head a turn with a third of the prompt it is about.
+        NavTree row it stands on (`view/pages/node/routes/browse.py:TITLED`) — the NavTree cuts
+        at a row's width, which would head a turn with a third of the prompt it is about.
 
         The one surface a link in a title becomes an `<a>` on: every other one prints its
         title inside a link already, and an `<a>` inside an `<a>` is markup a browser undoes.

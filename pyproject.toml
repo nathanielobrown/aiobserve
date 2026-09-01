@@ -17,9 +17,9 @@ dependencies = [
   # behaviour was read off and pinned in `tests/view/test_components.py`.
   "htpy>=26.5",
   # Renders a transcript's markdown with HTML passthrough and the image rule off — see
-  # `view/render.py`, which is the only place the reader is configured.
+  # `view/text/render.py`, which is the only place the reader is configured.
   "markdown-it-py>=3.0",
-  # `Markup`, the one opt-out from htpy's escaping: `view/render.py` returns HTML it escaped
+  # `Markup`, the one opt-out from htpy's escaping: `view/text/render.py` returns HTML it escaped
   # itself, and htpy passes a `Markup` child through untouched.
   "markupsafe>=3.0",
   # The OTLP wire types only — `TracesData` and `ExportTraceServiceResponse`. Deliberately
@@ -28,7 +28,7 @@ dependencies = [
   "opentelemetry-proto>=1.30",
   # POSTs the OTLP batches, and the viewer's test client rides on it.
   "httpx>=0.28",
-  # Highlights the JSON a tool wrote and the SQL behind a page (`view/highlight.py`). Class
+  # Highlights the JSON a tool wrote and the SQL behind a page (`view/text/highlight.py`). Class
   # names only, never inline styles: the viewer's CSP allows no `style` attribute.
   "pygments>=2.19",
   # Describes Claude Code's raw record shapes in `extract/records/` — field descriptions and
@@ -134,7 +134,7 @@ select = [
 # runtime — and we don't import `annotations` from `__future__`), and COM/Q (the formatter
 # owns commas and quotes).
 ignore = [
-  # Our SQL is assembled from module constants and closed sets — `view/listing.py` documents
+  # Our SQL is assembled from module constants and closed sets — `view/pages/sessions/routes.py` documents
   # the membership check that guards the one request-shaped composition, and every value a
   # request supplies is bound as a parameter. The rule sees only the f-string.
   "S608",
@@ -337,6 +337,21 @@ implicit-any-parameter = false
 # This lifts the rule off the whole tree, fixtures included — but a fixture's return type is
 # what the tests taking it read, and every fixture here annotates one already.
 unannotated-return = false
+
+# A page's own markup, which is markup written the same way and hits the same htpy bug. Two
+# globs because a page writes either `markup.py` or a `markup/` package, never both
+# (`tests/view/test_layout.py`); everything else under `pages/` stays fully checked.
+[[tool.pyrefly.sub-config]]
+matches = "src/hyphae/view/pages/*/markup.py"
+
+[tool.pyrefly.sub-config.errors]
+bad-index = false
+
+[[tool.pyrefly.sub-config]]
+matches = "src/hyphae/view/pages/*/markup/**"
+
+[tool.pyrefly.sub-config.errors]
+bad-index = false
 
 # The viewer's components, where one error kind is off and everything else pyrefly does stays on.
 [[tool.pyrefly.sub-config]]

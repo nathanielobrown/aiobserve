@@ -2,7 +2,7 @@
 
 `hp view` opens the trace store in a local browser. Everything a session recorded is a node with a page of its own — the session, its turns, the runs it spawned, the api calls, the tool calls, the compactions between them — and you read one node at a time, with a NavTree beside it showing where that node sits. Copy the URL of anything you want to cite.
 
-The server binds only to `127.0.0.1`, opens the store read-only, and serves only vendored assets. Run `hp view --help` for flags. [The node-browser design](../plans/viewer-node-browser/design.md) holds the choices behind the NavTree, [the viewer-polish design](../plans/viewer-polish/design.md) the ones behind what a row measures and the columns it sits in, and [the trace-viewer design](../plans/trace-viewer/design.md) the ones behind the pages around them. [URLs and page bounds](viewer-bounds.md) covers what a URL may ask for and what a page is allowed to weigh, and [node titles and marks](viewer-titles.md) what every surface calls a node. A page is Python: `src/hyphae/view/components/` builds it with htpy, under the rules in `.claude/rules/viewer-ui.md`, and [the UI development loop](ui-development.md) is how to edit one and watch the page: `--dev` reloads the open page on save, and `mise run gallery` serves the scenarios the tests pin.
+The server binds only to `127.0.0.1`, opens the store read-only, and serves only vendored assets. Run `hp view --help` for flags. [The node-browser design](../plans/viewer-node-browser/design.md) holds the choices behind the NavTree, [the viewer-polish design](../plans/viewer-polish/design.md) the ones behind what a row measures and the columns it sits in, and [the trace-viewer design](../plans/trace-viewer/design.md) the ones behind the pages around them. [URLs and page bounds](viewer-bounds.md) covers what a URL may ask for and what a page is allowed to weigh, and [node titles and marks](viewer-titles.md) what every surface calls a node. A page is Python: each page is a package under `src/hyphae/view/pages/` building its markup with htpy, under the rules in `.claude/rules/viewer-ui.md`, and [the UI development loop](ui-development.md) is how to edit one and watch the page: `--dev` reloads the open page on save, and `mise run gallery` serves the scenarios the tests pin.
 
 ## Follow a session down to any record it holds
 
@@ -54,7 +54,7 @@ Solid edges lead to pages with their own URLs. Dotted edges fetch a fragment int
 | An offload file | `/session/{session_id}/offload/{offload_name:path}` | One chunk of a tool result Claude Code wrote to a file beside the transcript |
 <!-- aigarden:end -->
 
-`build_app` in `src/hyphae/view/app.py` mounts one route module per subject, fragments included, and the table above is read back off the app it builds. Nothing renders in the reading pane that a cold GET of its own URL doesn't render whole, NavTree and all.
+`build_app` in `src/hyphae/view/app.py` extends the routes of one package per page onto the app, fragments included, and the table above is read back off the app it builds. Nothing renders in the reading pane that a cold GET of its own URL doesn't render whole, NavTree and all.
 
 ## The landing page counts projects
 

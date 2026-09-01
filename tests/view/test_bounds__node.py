@@ -16,7 +16,7 @@ from hyphae.analyze import queries
 from hyphae.extract.pricing import MODELS
 from hyphae.view import bounds, nodes
 from hyphae.view.app import build_app
-from hyphae.view.format import ELLIPSIS
+from hyphae.view.text.format import ELLIPSIS
 from tests.view.budgets import (
     DEAR_PANE_DETAILS,
     DESCRIBED_AT_EVERY_CAP,

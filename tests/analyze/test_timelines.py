@@ -32,7 +32,7 @@ from tests.conftest import (
 UNATTRIBUTED = "(unattributed)"
 # The caps the design sets: a timeline's prompt cell, a raw record slice, an error's text. The
 # prompt is the one a page prints, so it comes back one character past its cut — that extra
-# character is what tells whoever prints it that the prompt went on (`view/format.py:cut`).
+# character is what tells whoever prints it that the prompt went on (`view/text/format.py:cut`).
 PROMPT_CAP = queries.LOG_CHARS + 1
 RAW_CAP = 2000
 ERROR_CAP = 200

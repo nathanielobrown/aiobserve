@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from hyphae.analyze import queries
 from hyphae.view import nodes
 from hyphae.view.app import build_app
-from hyphae.view.format import ELLIPSIS
+from hyphae.view.text.format import ELLIPSIS
 from tests.conftest import (
     ANCESTOR,
     DENSE_TOOL,
@@ -202,7 +202,8 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     assert len(reached) == 6
     # A whole column wide and marked as stopped there — but not a run of `x` alone: a tool the
     # viewer names by its own field leads its title with that tool's glyph
-    # (`view/tool_names.py:FORMATTERS`), and the glyph is spent out of the width like any character.
+    # (`view/text/tool_names.py:FORMATTERS`), and the glyph is spent out of the width like any
+    # character.
     for value in reached:
         assert len(value) == queries.LOG_CHARS + len(ELLIPSIS), value
         assert value.endswith("x" + ELLIPSIS), value

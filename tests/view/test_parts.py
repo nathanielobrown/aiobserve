@@ -23,7 +23,7 @@ from hyphae.view.citation import cited
 from hyphae.view.components import citation, parts
 from hyphae.view.detail import Detail, EnrichmentLines
 from hyphae.view.enrichment import GLYPH, TAXONOMY_VERSION, Enrichment
-from hyphae.view.highlight import Syntax
+from hyphae.view.text.highlight import Syntax
 from tests.conftest import SPINE
 from tests.view.conftest import block, classed, plain, prose, values, walled
 
@@ -184,7 +184,7 @@ def test_a_fact_that_opts_out_of_the_cut_keeps_the_count_of_what_its_query_left(
 
 
 def test_prose_renders_the_markdown_a_session_wrote_rather_than_printing_it() -> None:
-    """`view/render.py` owns the escaping, and its `Markup` reaches the page as markup.
+    """`view/text/render.py` owns the escaping, and its `Markup` reaches the page as markup.
 
     The other half of the rule the package holds: a component constructs no `Markup` and
     consumes the ones the four producers make.

@@ -1,6 +1,6 @@
 -- One turn, whole: what was asked, when, and what answering it took. The header of a turn's
 -- node page, so what was typed is cut one character past `$detail_chars` — the protocol
--- `view/format.py:cut` reads — with its whole length beside it, and a pane shows the head,
+-- `view/text/format.py:cut` reads — with its whole length beside it, and a pane shows the head,
 -- marks it as cut and says how much more there is (`view_turn_prompt` has the rest).
 WITH call AS (
     SELECT * FROM live_api_calls

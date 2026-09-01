@@ -48,7 +48,7 @@ class Page(StrEnum):
     PROJECTS = "view_projects"
     SESSION_HEADER = "view_session_header"
     # Every failed tool call of one session, across every thread — the one page the NavTree
-    # cannot lead to, because a failure is scattered rather than nested (`view/errors.py`).
+    # cannot lead to, because a failure is scattered rather than nested (`view/failures.py`).
     SESSION_ERRORS = "view_session_errors"
     # One node read whole, the header of its own page. One per kind that has fields of its
     # own; a bucket has none, and a compaction reads out of `view_compactions`.
@@ -134,6 +134,20 @@ class Value(StrEnum):
 
 # Any of the three, for the fetch helper they share.
 Library = Page | Fragment | Value
+
+
+def header_bound(session_id: str) -> dict[str, ParamValue]:
+    """What `Page.SESSION_HEADER` binds for one session, named once for every reader of it.
+
+    A node page reads the row whole; the errors page reads it only to word a 404, but both
+    have to bind the same params or a change to one silently stops answering for the other.
+    """
+    return {
+        "session_id": session_id,
+        "head_chars": queries.HEADER_CHARS,
+        "item_chars": queries.HEADER_ITEM_CHARS,
+        "head_items": queries.HEADER_ITEMS,
+    }
 
 
 class SchemaMoved(Exception):
@@ -271,9 +285,9 @@ def cursorless_rows(
 # The session list's own composition, which is the other case `window` names: a `?sort=` column
 # and a filter predicate cannot be bound parameters, so the library query stays the citable core
 # and what follows wraps it. `SORTS`, `FILTERS` and `DIRECTIONS` are closed, so a key outside
-# them is a `KeyError` here and a 400 at the route (`view/listing.py`) and never a fragment of
-# SQL — every value a request supplied binds as a parameter, and no request text reaches DuckDB
-# as text.
+# them is a `KeyError` here and a 400 at the route (`view/pages/sessions/routes.py`) and never
+# a fragment of SQL — every value a request supplied binds as a parameter, and no request text
+# reaches DuckDB as text.
 
 # What the session list can be sorted by: a column of `view_sessions`, mapped to its header
 # label. A closed dictionary, and the only place a request's `sort` value is ever looked up —
@@ -338,7 +352,7 @@ DIRECTIONS: dict[str, str] = {"asc": "ASC", "desc": "DESC"}
 # and applied outside the window, so it cuts the rows one page shows and nothing else.
 #
 # The `cut` macro takes one character more than the row prints, which is how the component
-# knows a value was stopped rather than ended and marks it (`view/format.py:cut`). It is a
+# knows a value was stopped rather than ended and marks it (`view/text/format.py:cut`). It is a
 # macro of the library, so this runs only on a connection `macros.install` has seen — which
 # `open_store` above is, and so is every fixture that reaches here.
 SHOWN = """SELECT * EXCLUDE (pr_urls) REPLACE (
@@ -353,7 +367,7 @@ SHOWN = """SELECT * EXCLUDE (pr_urls) REPLACE (
 
 # How many rows past the page the list reads: enough to know whether there is another page,
 # never enough to show one. `sorted_sessions` is the only place it is spent, and the citation
-# under the page quotes the size the reader asked for instead (`view/listing.py`).
+# under the page quotes the size the reader asked for instead (`view/pages/sessions/routes.py`).
 PAGER_PROBE = 1
 
 # What the description joined to a page of the list cuts its own strings to. Bound by the query
@@ -371,8 +385,8 @@ def list_bound(page: int, size: int, filters: Mapping[str, ParamValue]) -> dict[
     """What one page of the session list binds: its window, its row cut, and its filters.
 
     Read twice — by the query below, and by the citation the page prints under it
-    (`view/listing.py`) — because a citation that drifted from its query is a false citation.
-    The one difference between the two is the query's `PAGER_PROBE`, added where it is spent.
+    (`view/pages/sessions/routes.py`) — because a citation that drifted from its query is a
+    false citation. The one difference is the query's `PAGER_PROBE`, added where it is spent.
     """
     return {
         "limit": size,

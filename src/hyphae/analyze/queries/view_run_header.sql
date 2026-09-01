@@ -13,7 +13,7 @@ SELECT
     -- what it holds — an agent definition is named by whoever writes it.
     cut(a.agent_type, $head_chars) AS agent_type,
     -- The task brief, cut one character past a pane's width — the protocol
-    -- `view/format.py:cut` reads — with its whole length beside it; the rest is fetched as
+    -- `view/text/format.py:cut` reads — with its whole length beside it; the rest is fetched as
     -- one value (`view_run_brief`).
     cut(a.brief, $detail_chars) AS brief,
     length(a.brief) AS brief_chars,

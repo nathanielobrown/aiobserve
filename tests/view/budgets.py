@@ -14,9 +14,9 @@ from markupsafe import escape
 
 from hyphae.analyze import queries
 from hyphae.view import bounds, nodes
-from hyphae.view.format import ELLIPSIS
-from hyphae.view.knobs import Knobs
+from hyphae.view.pages.node.knobs import Knobs
 from hyphae.view.store import SHOWN, Page
+from hyphae.view.text.format import ELLIPSIS
 from tests.view.conftest import (
     Statement,
 )
@@ -255,10 +255,10 @@ MEASURED_LOG_ROW_MARKUP = 1_500
 # character past it. Three is the widest row there is: an api call's row is the model that
 # answered, the head of what it said, and the tools it went on to call; a tool row is the
 # tool's name, the head of what it was asked, and the command that head describes. A turn row
-# prints one and a run two. Listed rather than counted off `view/columns.py:COLUMNS`, because
-# most of those columns are a number or a stamp; what keeps the number honest is the leaf at
-# the bottom of this file, which plants every string a row can print past its cut and weighs
-# the row.
+# prints one and a run two. Listed rather than counted off
+# `view/pages/node/columns.py:COLUMNS`, because most of those columns are a number or a stamp;
+# what keeps the number honest is the leaf at the bottom of this file, which plants every
+# string a row can print past its cut and weighs the row.
 LOG_ROW_STRINGS = 3
 # What the control under a children log costs, with both of its links rendered: the nav around
 # them, the place between them, and two copies of the node's own URL carrying the page's knobs
@@ -343,7 +343,7 @@ MARK_BYTES = len(ELLIPSIS.encode())
 # reason — what a lexer makes a token of is a property of the lexer, and a value every character
 # of which is its own token costs the lot.
 #
-# The class is three characters because `view/highlight.py:_ShortClasses` holds it there. Left
+# The class is three characters because `view/text/highlight.py:_ShortClasses` holds it there. Left
 # alone the formatter joins a name for every step up to a token type Pygments has a name for
 # (`l l-Scalar l-Scalar-Plain`, 25 characters), and those types are reachable — the markdown
 # lexer hands a fenced block to whatever lexer the fence names. `test_highlight.py:

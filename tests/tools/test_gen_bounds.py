@@ -9,7 +9,7 @@ undocumented by accident.
 import pytest
 
 from hyphae.view import bounds, nodes
-from hyphae.view.knobs import Knobs
+from hyphae.view.pages.node.knobs import Knobs
 from tests.tools.conftest import cells, numbers
 from tests.view import budgets
 from tools import gen_bounds

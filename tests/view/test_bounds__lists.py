@@ -19,8 +19,8 @@ from hyphae.analyze.queries import ParamValue
 from hyphae.enrich.taxonomy import Category, Outcome
 from hyphae.view import bounds
 from hyphae.view.app import build_app
-from hyphae.view.format import ELLIPSIS
 from hyphae.view.store import TURN_CURSOR, Page, cursorless_rows
+from hyphae.view.text.format import ELLIPSIS
 from tests.conftest import (
     FORK_ORIGIN,
     RESUME,

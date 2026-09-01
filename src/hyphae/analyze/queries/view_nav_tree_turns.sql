@@ -1,10 +1,10 @@
 -- One thread's turns in outline: a row per turn, with what to call it and what it cost.
 -- The rows of one level of the NavTree beside a node page, so a row is deliberately thinner
 -- than `session_timeline`'s: one title head at `$nav_chars` + 1 — the cut protocol
--- `view/format.py:cut` reads — one cost, and how much of that
+-- `view/text/format.py:cut` reads — one cost, and how much of that
 -- cost our price table could not price. `$source` is the thread — `main` for a session's
 -- own, a run's id for a run's — which is what makes one query serve every level that holds
--- turns. Unlimited on purpose: the NavTree caps a level in the composition (`view/nav_tree.py`),
+-- turns. Unlimited on purpose: the NavTree caps a level in the composition (`view/pages/node/nav_tree.py`),
 -- where the cap has to keep the row the open path goes through whatever else it cuts.
 WITH spend AS (
     SELECT

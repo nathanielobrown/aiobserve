@@ -10,9 +10,10 @@ from typing import NamedTuple, assert_never
 
 from hyphae.analyze import queries
 from hyphae.enrich.items import Level
-from hyphae.view import format as fmt
-from hyphae.view import highlight, nodes
+from hyphae.view import nodes
 from hyphae.view.enrichment import Enrichment
+from hyphae.view.text import format as fmt
+from hyphae.view.text import highlight
 
 
 class Detail(NamedTuple):

@@ -60,11 +60,11 @@ from tests.view.conftest import (
     inside,
     one,
 )
-from tests.view.scenarios import SCENARIOS
 
 # The pages that carry a footer, and the reader of one citation line: both are the citation
 # tier's, and what the production sizes are read off here.
-from tests.view.test_query import CITING, bound
+from tests.view.pages.query.test_query import CITING, bound
+from tests.view.scenarios import SCENARIOS
 
 # What a query may wrap a fat column in and still be bounded: a fixed-width prefix of it, a
 # count of what it holds, the check that it parses, the window the model it names answers in,
@@ -182,7 +182,7 @@ _FIELD_KEYS = tuple(
 def test_every_macro_the_scan_trusts_answers_one_character_past_the_width() -> None:
     """Each bounding macro is run at three widths and asked how much it gives back.
 
-    The scan's trust is a bound; this is the protocol on top of it (`view/format.py:cut`
+    The scan's trust is a bound; this is the protocol on top of it (`view/text/format.py:cut`
     marks a value that came back longer than the width, so a macro that saturates *under* the
     width serves a silently truncated value, and one that saturates over it serves a fat
     column). Every arm gets a value far past the widest width, so each answer is a saturation
@@ -339,9 +339,9 @@ def test_the_pages_run_at_the_production_sizes(client: TestClient) -> None:
     # Two queries no page cites, because a fragment carries no footer: the enrichment block a
     # node page fetches, and the filter suggestions above the session list. What binds them is
     # pinned at the constant the composing module reads instead (`view/enrichment.py`,
-    # `view/listing.py`). The enrichment taxonomy is closed and its longest member is nine
-    # characters (`enrich/taxonomy.py`), so the tag cut bounds a hand-edited row rather than
-    # anything a pass writes.
+    # `view/pages/sessions/routes.py`). The enrichment taxonomy is closed and its longest
+    # member is nine characters (`enrich/taxonomy.py`), so the tag cut bounds a hand-edited row
+    # rather than anything a pass writes.
     assert (queries.ENRICHMENT_CHARS, queries.TAG_CHARS) == (200, 20)
     assert (queries.LIST_CHARS, queries.LIST_ITEM_CHARS, queries.LIST_ITEMS) == (100, 20, 4)
     assert queries.LIST_PROJECTS == 10

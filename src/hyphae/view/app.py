@@ -2,8 +2,8 @@
 
 `build_app(db_path)` returns a FastAPI app over one store. It mounts the statics, answers a
 locked or moved store with a page rather than a stack trace, puts the `Viewer` on `app.state`
-for the dependencies in `view/deps.py`, and registers each route module's router in turn — the
-two lists, the node pages, the pages that are not a node's, the expansions, and the fragments.
+for the dependencies in `view/deps.py`, and extends one page package's routes onto the app in
+turn — the two lists, the node page, then the four pages that are not a node's.
 
 Nothing the viewer serves writes: every request opens its own read-only connection
 (`view/store.py`), checks the store's schema version, renders, and closes. That is what lets an
@@ -28,14 +28,14 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from hyphae.export.duckdb import StoreLocked
-from hyphae.view import (
-    expansions,
-    fragments,
-    listing,
-    node_pages,
-    pages,
-)
 from hyphae.view.deps import Viewer
+from hyphae.view.pages.errors import routes as errors
+from hyphae.view.pages.node import routes as node
+from hyphae.view.pages.offload import routes as offload
+from hyphae.view.pages.projects import routes as projects
+from hyphae.view.pages.query import routes as query
+from hyphae.view.pages.records import routes as records
+from hyphae.view.pages.sessions import routes as sessions
 from hyphae.view.store import (
     SchemaMoved,
     open_store,
@@ -120,11 +120,13 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
     # Extended rather than `include_router`: FastAPI keeps an included router nested under
     # one opaque route object, and `tools/gen_routes.py` and the payload sweep both read
     # `app.routes` expecting the routes themselves (`tests/view/test_dev.py` says so too).
-    app.router.routes.extend(listing.router.routes)
-    app.router.routes.extend(node_pages.router.routes)
-    app.router.routes.extend(pages.router.routes)
-    app.router.routes.extend(expansions.router.routes)
-    app.router.routes.extend(fragments.router.routes)
+    app.router.routes.extend(projects.router.routes)
+    app.router.routes.extend(sessions.router.routes)
+    app.router.routes.extend(node.router.routes)
+    app.router.routes.extend(errors.router.routes)
+    app.router.routes.extend(query.router.routes)
+    app.router.routes.extend(records.router.routes)
+    app.router.routes.extend(offload.router.routes)
     return app
 
 

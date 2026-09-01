@@ -19,8 +19,8 @@ from hyphae.analyze.queries import ParamValue
 from hyphae.enrich.items import Level
 from hyphae.enrich.levels import LEVELS
 from hyphae.enrich.taxonomy import TAXONOMY_VERSION
-from hyphae.view.format import when
 from hyphae.view.store import Page, page_rows
+from hyphae.view.text.format import when
 
 # The enrichment tables, by the level whose rows they hold. Read off the level map rather than
 # listed, so a fourth level is asked about here too.
@@ -42,7 +42,7 @@ class Enrichment(NamedTuple):
     # The turn, run or session the description is about — what keys the block on the page.
     item_id: str
     # The head the pane prints, one character past the width — the cut-and-mark protocol every
-    # other fat value rides (`view/format.py:cut`) — beside how long the whole line runs, which
+    # other fat value rides (`view/text/format.py:cut`) — beside how long the whole line runs, which
     # is what the fetch behind the mark offers.
     description: str
     description_chars: int

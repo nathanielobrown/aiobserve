@@ -22,7 +22,6 @@ from typing import NamedTuple
 import duckdb
 
 from hyphae.model import MAIN_SOURCE
-from hyphae.view.format import money
 from hyphae.view.nodes import (
     BODY_URL,
     KIN_URL,
@@ -30,6 +29,7 @@ from hyphae.view.nodes import (
     Preset,
     meter,
 )
+from hyphae.view.text.format import money
 from tests.conftest import MAIN, SPINE
 from tests.view.conftest import (
     SPAWNS,

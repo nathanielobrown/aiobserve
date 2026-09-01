@@ -48,15 +48,16 @@ Model-written descriptions beside the telemetry: `docs/enrichment.md`; the vocab
 
 ## Viewer pages
 
-What each page shows and cites: `docs/viewer.md`; the routes: the modules `src/hyphae/view/app.py` mounts, one per subject.
+What each page shows and cites: `docs/viewer.md`; the code: one package per page under `src/hyphae/view/pages/`, whose routes `src/hyphae/view/app.py` extends onto the app.
 
-- **Component** — one typed function building part of a page's markup with htpy; a page is Python, not a template (`src/hyphae/view/components/`)
+- **Component** — one typed function building part of a page's markup with htpy; a page is Python, not a template (a page's own `markup`, over the shared `src/hyphae/view/components/`)
 - **Projects page** — `/`, the landing page: every project and its recent sessions
 - **Session list** — `/sessions`: the filter form above one page of sessions
 - **Node page** — the one page shape every node kind shares: NavTree beside reading pane
 - **Errors page** — every failed tool call of a session, on every thread, in order
 - **Records page** — one thread's raw records, verbatim
 - **Query page** — the SQL behind a page; every footer cites one
+- **Offload page** — one chunk of an offload file, at the URL a tool call's body links to
 - **Scenario** — one page of the fixture corpus by name: a URL, a title and a group, pinned in `tests/view/scenarios.py`
 - **Gallery** — the scenarios served as pages for UI work (`docs/ui-development.md`)
 
@@ -78,7 +79,7 @@ What each page shows and cites: `docs/viewer.md`; the routes: the modules `src/h
 - **Reading pane** — the right column, reading one node whole
 - **Body** — one node's rendered content: title, facts, enrichment, details; the reading pane holds one, an expansion another
 - **Crumb chain** — the line above the reading pane: the way out of the session — home, then the project — then every ancestor down to the node
-- **Facts** — the labelled store fields under the title; the label registry is `src/hyphae/view/labels.py`
+- **Facts** — the labelled store fields under the title; the label registry is `src/hyphae/view/text/labels.py`
 - **Enrichment block** — what a pass wrote about the node: description, tags, friction, behind the `✨` glyph
 - **Detail** — a fat value the reading pane previews, cut at 4,000 characters with the rest a fetch away (`?detail=`)
 - **Children log** — the paged table of one kind of child under the details (`?log=`)
@@ -105,4 +106,4 @@ Each means several things until qualified.
 - **Run** — an *agent run*; a person-started iteration is a *pass*
 - **Description** — an enrichment's summary; what the spawner typed for an agent run is its *brief* (the store column `brief`, the reading pane's label: "Task brief")
 - **Model** — say which: the model that *answered* a call, the alias a run *asked for*, or the model that *wrote* an enrichment
-- **Cut** — a string shortened to a width, carrying one character past it so the page can mark it (the `cut` SQL macro, `view/format.py:cut`); the count a limit left off is *dropped*, printed as "+N more"
+- **Cut** — a string shortened to a width, carrying one character past it so the page can mark it (the `cut` SQL macro, `view/text/format.py:cut`); the count a limit left off is *dropped*, printed as "+N more"
