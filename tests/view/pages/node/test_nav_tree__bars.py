@@ -304,7 +304,7 @@ def test_a_context_bar_is_drawn_by_three_families_of_class_one_rule_spends(
     """
     style = re.sub(r"/\*.*?\*/", "", viewer_css(client), flags=re.DOTALL)
     steps = list(range(BAR_STEPS + 1))
-    for family, prop in (("f", "--ctx-fill"), ("p", "--ctx-prior"), ("b", "--ctx-base")):
+    for family, prop in (("f", "--edge-fill"), ("p", "--edge-prior"), ("b", "--edge-base")):
         widths = {
             int(step): int(width)
             for step, width in re.findall(rf"li\.node\.{family}(\d+) \{{ {prop}: (\d+)%", style)
@@ -320,23 +320,24 @@ def test_a_context_bar_is_drawn_by_three_families_of_class_one_rule_spends(
     # sees between two edges is the band the second one opens.
     ((selector, body),) = re.findall(r"(li\.node:is\([^)]*\)) > a \{([^}]*)\}", style)
     assert re.search(
-        r"var\(--ctx-base, 0%\) 3px,\s*var\(--ctx-prior, 0%\) 3px,"
-        r"\s*var\(--ctx-fill, 0%\) 3px,\s*100% 3px",
+        r"var\(--edge-base, 0%\) 3px,\s*var\(--edge-prior, 0%\) 3px,"
+        r"\s*var\(--edge-fill, 0%\) 3px,\s*100% 3px",
         body,
     ), body
-    # The tip's own colour is the one thing a kind may take over, so it is a property with the
-    # accent as its default rather than a colour written into the layer.
-    assert re.findall(r"var\(--(faint|dim|ctx-tip|line)", body) == [
-        "faint",
-        "faint",
-        "dim",
-        "dim",
-        "ctx-tip",
-        "ctx-tip",
-        "line",
-        "line",
+    # Widths are edges and colours are bands, so the two vocabularies never collide. Each band
+    # is a role a kind may take over, named in the order the layers stack — the session's own
+    # ground under what stood before the node under the node's own share — and the track under
+    # all three is the only layer no kind may repaint.
+    assert re.findall(r"linear-gradient\(var\((--[\w-]+)", body) == [
+        "--band-base",
+        "--band-past",
+        "--band-added",
+        "--line",
     ], body
-    assert body.count("var(--ctx-tip, var(--mark))") == 2, body
+    # A role is a property with today's token as its default rather than a colour written into
+    # the layer, so a kind override is one line and an unclaimed band paints itself.
+    for role, token in (("base", "faint"), ("past", "dim"), ("added", "mark")):
+        assert body.count(f"var(--band-{role}, var(--{token}))") == 2, (role, body)
     # Every fill class the markup can carry is named by that rule, and so is the mark a run
     # whose thread compacted carries: a step outside it would set a width nothing reads.
     assert sorted(int(step) for step in re.findall(r"\.f(\d+)", selector)) == steps, selector
@@ -361,7 +362,7 @@ def test_a_run_a_compaction_and_a_maxed_thread_each_take_the_tip_in_a_colour_of_
     schemes — a token a dark page leaves unset is a band that vanishes for half the readers.
     """
     style = re.sub(r"/\*.*?\*/", "", viewer_css(client), flags=re.DOTALL)
-    tips = dict(re.findall(r"li\.node\.(\w+) > a \{[^}]*--ctx-tip: var\((--[\w-]+)\)", style))
+    tips = dict(re.findall(r"li\.node\.(\w+) > a \{[^}]*--band-added: var\((--[\w-]+)\)", style))
     assert tips.keys() == {"run", "compaction", "maxed"}, tips
     # Three hues, none of them the accent a turn or a call draws its tip in.
     assert len(set(tips.values())) == len(tips) and "--mark" not in tips.values(), tips
@@ -374,7 +375,7 @@ def test_a_run_a_compaction_and_a_maxed_thread_each_take_the_tip_in_a_colour_of_
             if selector == "maxed"
         ]
     )
-    assert "--ctx-fill: 100%" in maxed and "--ctx-prior: 0%" in maxed, maxed
+    assert "--edge-fill: 100%" in maxed and "--edge-prior: 0%" in maxed, maxed
     # And every token the bar spends is defined for both schemes, light and dark alike.
     dark = one_of(re.findall(r"@media \(prefers-color-scheme: dark\) \{([^}]*)\}", style))
     for token in {*tips.values(), "--faint", "--dim", "--mark", "--line"}:
