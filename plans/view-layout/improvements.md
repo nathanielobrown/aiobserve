@@ -26,7 +26,7 @@ the two were landed in one pass because `pages.py` and `pages/` cannot coexist).
 
 ## Seeded from the design pass
 
-- `src/hyphae/view/knobs.py:23` — `checked` raises `HTTPException` from a presenter module; a route concern living below the routes. Design lifts it to `deps.py`. **Done** in `5c70faf`, with `viewed`, `Knobs.asked` and `KnobsDep`: see "Found during the move"
+- `src/hyphae/view/knobs.py:23` — `checked` raises `HTTPException` from a presenter module; a route concern living below the routes. Design lifts it to `deps.py`. **Done** in `5c70faf`, with `viewed`, `Knobs.asked` and `KnobsDep`. Slice 6 moved the three of them on again, out of `deps.py` and into the node page's own `pages/node/routes/knobs.py` (`1d25cc3`): the four-knob parsing is the node page's, and `deps.py` was becoming one page's. `checked` stayed, because the two lists and the records browser bound their sizes with it
 - `src/hyphae/view/nodes.py:23` — the shared node model imports `columns`, a children-log module, for the kind icons; the dependency points up. Design moves the icons into `nodes.GLYPHS`
 - `src/hyphae/view/components/listing.py:191` — `Described` beside `enrichment.py`'s model of what a pass wrote; check whether both describe the same fact. **Closed at slice 4, no change**: they are not one fact. `enrichment.Enrichment` is what a pass wrote about a node — level, item, chars, friction, model, versions — and is read by the node page. `Described` is three strings a session-list row prints. It has no second reader, so under "view-models live in markup" it stays in `pages/sessions/markup.py:31`
 - `src/hyphae/view/components/listing.py` (489 lines) — holds both list pages; the split into `projects/` and `sessions/` should leave no helper shared between them, or that helper belongs in `components/parts.py`. **Closed at slice 4**: the split left no helper shared. `LIST_URL`, `list_url` and `project_link` were the one thing both halves read, and they went to the new shared `view/links.py` (`83bc613`), not to `components/parts.py` — they mint a URL, which is not markup
@@ -88,7 +88,8 @@ the two were landed in one pass because `pages.py` and `pages/` cannot coexist).
   `Refused(status, message)` that `browse`, `checked`, `viewed` and `routes/details.fetched`
   raise and one handler in `app.py` translates. That would let `browse` be a presenter, and is
   the same change four call sites want; it is bigger than a slice-6 cleanup and touches the
-  error contract, so it is a decision rather than a tidy-up
+  error contract, so it is a decision rather than a tidy-up. **Not implemented on this branch**
+  — `rg Refused src/hyphae/view` finds nothing, and any account saying it was coined is wrong
 - `src/hyphae/view/failures.py:49` — `failures.failures(connection, session_id)` at the two
   call sites, a stutter the rename made. The design pinned the module's names, so this is left:
   the fix is a verb for the function, not another word for the module
@@ -117,3 +118,22 @@ the two were landed in one pass because `pages.py` and `pages/` cannot coexist).
   `test_layout.py:LAYERED`. `bounds` imports nothing inside the viewer and `highlight` and
   `inline_markdown` read their cuts from it, which is what the design says a size is; the
   alternative was an exemption inside the rule-3 loop, which would have hidden a real edge
+
+## Tightened after the audit
+
+The adversarial audit found three ways a future module could slip a rule in `test_layout.py`
+while violating none today. All three are closed, each with a mutant that survived the old
+scan and dies against the new one:
+
+- `layer()` defaulted an unlisted top-level module to the page layer, so a new one importing
+  `pages.*` would have read as a legal sideways edge. The top level now has no default, and
+  `deps` is named `SHARED` rather than `PAGE` — which is what it is, and what makes an import
+  of a page from it point up. Mutant: drop `links` from `LAYERED`
+- `page_packages()` discovered by `__init__.py`, so a page directory that was a namespace
+  package would have dropped out of the discovery rather than failed it — including out of the
+  framework probe. It discovers directories now, and the companion leaf asserts each is a
+  package. Mutant: a `pages/scratch/markup.py` with no `__init__.py`
+- the htpy scan read `pages/` alone, so a new top-level module writing markup would have
+  escaped both this file and `test_components.py`, whose producer companion asserts a subset.
+  It reads the whole viewer and holds every file that names htpy to the set the components
+  rules cover. Mutant: `import htpy` in `links.py`
