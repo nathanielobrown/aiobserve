@@ -77,14 +77,15 @@ A served-HTML test reads the attributes; only a browser reads what they do. `tes
 
 # A colour on a bar is judged on the gallery
 
-The context bar paints a track and three bands over it, and the outermost band takes its colour from the row's kind (`src/hyphae/view/static/nav-tree.css`). None of it is text, so no contrast ratio settles it. What a test holds is that the edges nest, that a run, a compaction and a maxed row each take a different tip, and that every token the bar spends is defined in both schemes. Which purple, which green, and how far the base band reads from the track are eyeballed.
+The context bar paints three bands and nothing under them, and a row's kind repaints a band (`src/hyphae/view/static/nav-tree.css`; the palette is in `tokens.css`). None of it is text, so no contrast ratio settles it. What a test holds is that the edges nest, that a thread, a compaction and a maxed row each leave the ramp where they should, and that every colour the bar spends is defined in both schemes. Which navy, which green, and whether the gray stays under the blue are eyeballed.
 
-Witnessed in a real Chromium on 2026-08-28 against `mise run gallery --port 9063` — never 8477, which is a live viewer — in both colour schemes at 1400×900:
+Witnessed in a real Chromium on 2026-09-01 against `mise run gallery --port 8493` — never 8477, which is a live viewer — in both colour schemes at 1400×900:
 
-- A turn's base band read as a grey stub before its accent tip, and a run's tip read as purple beside it, so a thread is told apart from a turn at a glance
-- A compaction drew a short dim head and a long green band: the window it kept, then the window it gave back
-- The run whose own thread compacted drew the full width in the alarm, red in light and salmon in dark, and no other row on the page did
-- The base band is the quietest thing on the row in both schemes, which is what it is for, and it clears the track it sits on
+- A turn ran dark to bright along the row: navy for the context the session opened on, then the bright tip for what the turn added. The medium band between them stayed covered on every turn in the fixture corpus, whose base and prior edges round to the same twentieth; a call, whose base edge is zero, drew medium then bright
+- A session and a run drew one muted gray over the whole bar, quiet enough that reading down the column follows the blue and the threads are ground under it
+- A compaction drew a short medium head and a long green band: the window it kept, then the window it gave back
+- The run whose own thread compacted drew the full width in that same gray, and the red compaction badge beside it was the only alarm on the row
+- Nothing was painted past the fill edge, so a bar ends where the window did and a row that draws no bar shows bare paper
 - The console stayed empty
 
 The compaction badge a run's row carries is judged beside the cost badge it stands next to. Witnessed in a real Chromium on 2026-08-28 against `mise run gallery --port 8492` — never 8477, which is a live viewer — at 1400×900: it drew the alarm at full strength with paper on it in light and ink on salmon in dark, against cost badges that are washes, so the count does not read as one more number in the row's money.

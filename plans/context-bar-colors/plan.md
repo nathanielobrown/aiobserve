@@ -29,6 +29,8 @@ CONTEXT.md                            changed: *Band* gains the thread band; *Co
 plans/context-bar-colors/             kept: this plan and the two prototype pages are the record
 ```
 
+**As built,** `style.css` had already split into eight per-concern sheets (`b899c7b`): the palette went to `tokens.css`, the paint rule and the kind overrides to `nav-tree.css`, and the bar's tests to `tests/view/pages/node/test_nav_tree__bars.py`. The seam held — `tests/view/conftest.py:viewer_css` joins every sheet, so a rule that moves between files moves nowhere a test can see.
+
 ## Key contracts
 
 The palette, one block in `:root` and one in the dark media block. These are the values the prototype was chosen on; the comment on each is the fact the token stands for:
@@ -80,5 +82,5 @@ Then `mise run e2e`; the Chromatic baseline will change on every node page, and 
 
 ## Open questions
 
-- Whether the base band should reach calls (above). Settled by looking at the gallery after slice 2 and deciding whether the column reads as one graph without it
+- Whether the base band should reach calls (above). Settled by looking at the gallery after slice 2 and deciding whether the column reads as one graph without it. **As built,** the column reads as one graph — every bar shares an origin and a scale — but the base band carries a meaning only on a turn: a call's past band runs from zero over the same span its parent turn draws as base, so the two name the same context differently
 - `.claude/rules/viewer-ui.md` records the port the witnessing used and the date; use a port that is not 8477 (a live viewer) and say which
