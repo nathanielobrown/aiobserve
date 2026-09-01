@@ -60,11 +60,11 @@ from tests.view.conftest import (
     inside,
     one,
 )
-from tests.view.scenarios import SCENARIOS
 
 # The pages that carry a footer, and the reader of one citation line: both are the citation
 # tier's, and what the production sizes are read off here.
-from tests.view.test_query import CITING, bound
+from tests.view.pages.query.test_query import CITING, bound
+from tests.view.scenarios import SCENARIOS
 
 # What a query may wrap a fat column in and still be bounded: a fixed-width prefix of it, a
 # count of what it holds, the check that it parses, the window the model it names answers in,

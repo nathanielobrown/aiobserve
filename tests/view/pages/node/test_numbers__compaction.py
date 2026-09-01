@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from hyphae.view.nodes import NUMBERS_URL, Kind
 from tests.conftest import COMPACTED, COMPACTED_BOUNDARY, MAIN
 from tests.view.conftest import one, values, wired
-from tests.view.test_numbers import popover, popped
+from tests.view.pages.node.test_numbers import popover, popped
 
 # Where the corpus's first recorded compaction is fetched from, and the key its row carries.
 PATH = f"/session/{COMPACTED}/thread/{MAIN}/{Kind.COMPACTION}/{COMPACTED_BOUNDARY}"

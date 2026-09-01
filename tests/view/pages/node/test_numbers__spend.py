@@ -26,7 +26,7 @@ from tests.conftest import (
     SPINE_RUN,
 )
 from tests.view.conftest import SPAWNS, badges, fields, money, one, pages, values, washes
-from tests.view.test_numbers import CHARGES, amount, charged, misread, popover, popped
+from tests.view.pages.node.test_numbers import CHARGES, amount, charged, misread, popover, popped
 
 # The fields of the breakout, which only a node with agent runs below it draws: the two lines
 # and the share printed on the first of them.

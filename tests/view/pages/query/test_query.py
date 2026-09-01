@@ -25,8 +25,8 @@ from tests.conftest import SPINE
 from tests.view.conftest import block, classed, fields, inside, plain, values
 from tests.view.scenarios import SCENARIOS
 
-# This checkout, for the files the stylesheet gate reads: tests/view/test_query.py → the root.
-REPO = Path(__file__).resolve().parents[2]
+# This checkout, for the files the stylesheet gate reads: tests/view/pages/query/… → the root.
+REPO = Path(__file__).resolve().parents[4]
 
 # Every page the viewer serves, one URL each, off the route map the route sweep keeps total
 # (`tests/view/scenarios.py:SCENARIOS`). Listing them by hand read as coverage and was not: a
