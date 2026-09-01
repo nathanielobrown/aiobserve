@@ -16,9 +16,14 @@
   --bad: #b3261e;    /* a tool call that failed, a run that ran its window out */
   /* The context bar's palette; the rule that spends it is in `nav-tree.css`, under "The
      context bar". Three blues run dark → bright along a bar so growth reads left to right; a
-     thread's whole window is one gray; a compaction's freed span is the one green. */
+     thread's whole window is one gray; a compaction's freed span is the one green.
+     The middle blue covers a different span on each kind that draws it, because each kind's
+     query measures its own: a turn's is the conversation between the opening context and the
+     turn, a call's runs from zero and so takes the opening context in with it, and a
+     compaction's is the window the compaction left (`analyze/queries/view_compactions.sql`).
+     Only a turn's is read against the base band. */
   --ctx-base: #1c3f8f;    /* the context the session opened on, under a turn's bands */
-  --ctx-past: #3a6fd8;    /* what stood before the node */
+  --ctx-past: #3a6fd8;    /* what stood before the node — a different span on each kind, above */
   --ctx-added: #4aa3ff;   /* what the node added: the tip */
   --ctx-freed: #1f8a4c;   /* what a compaction gave back */
   --ctx-thread: #b0b0bb;  /* a session's or a run's whole window, maxed or not */

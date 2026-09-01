@@ -79,9 +79,9 @@ A served-HTML test reads the attributes; only a browser reads what they do. `tes
 
 The context bar paints three bands and nothing under them, and a row's kind repaints a band (`src/hyphae/view/static/nav-tree.css`; the palette is in `tokens.css`). None of it is text, so no contrast ratio settles it. What a test holds is that the edges nest, that a thread, a compaction and a maxed row each leave the ramp where they should, and that every colour the bar spends is defined in both schemes. Which navy, which green, and whether the gray stays under the blue are eyeballed.
 
-Witnessed in a real Chromium on 2026-09-01 against `mise run gallery --port 8493` — never 8477, which is a live viewer — in both colour schemes at 1400×900:
+Witnessed in a real Chromium on 2026-09-01 against `mise run gallery --port 8494` — never 8477, which is a live viewer — in both colour schemes at 1400×900:
 
-- A turn ran dark to bright along the row: navy for the context the session opened on, then the bright tip for what the turn added. The medium band between them stayed covered on every turn in the fixture corpus, whose base and prior edges round to the same twentieth; a call, whose base edge is zero, drew medium then bright
+- A turn ran dark to bright along the row: navy for the context the session opened on, then the bright tip for what the turn added. The medium band between them stayed covered on every turn in the fixture corpus that carries a base, each one's prior edge landing on that base's own step. Two rows drew it: a call, whose base edge is zero, and one turn on a session the fixtures record no `main` call for, which leaves its base NULL and the row without a base class. No row in this corpus draws all three bands, so the ramp has not been seen whole here
 - A session and a run drew one muted gray over the whole bar, quiet enough that reading down the column follows the blue and the threads are ground under it
 - A compaction drew a short medium head and a long green band: the window it kept, then the window it gave back
 - The run whose own thread compacted drew the full width in that same gray, and the red compaction badge beside it was the only alarm on the row
