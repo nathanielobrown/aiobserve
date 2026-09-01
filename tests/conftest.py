@@ -10,21 +10,22 @@ import shutil
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Generator, Iterable
+from collections.abc import Callable, Generator, Iterable, Sequence
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from hyphae.enrich.prompts import PROMPT_VERSION, Level
+from hyphae.enrich.items import Level
+from hyphae.enrich.levels import LEVELS
 from hyphae.enrich.store import EnrichmentStore, Stamp
 from hyphae.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
 from hyphae.enrich.validation import Enrichment
-from hyphae.export.duckdb import DuckDbExporter
-from hyphae.extract.claude_code import ClaudeCodeExtractor
+from hyphae.export.duckdb import DuckDbExporter, open_trace_store
+from hyphae.extract.claude_code import ClaudeCodeExtractor, ClaudeCodeSource
+from hyphae.extract.layout import SessionFiles
 from hyphae.model import SessionTrace
-from hyphae.pipeline import SessionSource
-from hyphae.sessions import SessionFiles
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -35,8 +36,8 @@ MYCELIA = "/Users/nob/repos/mycelia"
 # the machine the corpus was recorded on. Named here so a leaf can say who is reading.
 HOME = "/Users/nob"
 
-# The six transcripts under `invented/` that carry unknown record shapes crash on export by
-# design, so the corpus takes the two that do not by name. They are the only fixtures
+# The seven transcripts under `invented/` that carry a shape the extractor refuses crash on
+# export by design, so the corpus takes the two that do not by name. They are the only fixtures
 # recorded under another project, which is what makes the corpus predicate testable.
 CLEAN_INVENTED = ("invented-no-cache-creation", "invented-truncated-tail")
 # `/invented/project` and `/repo` respectively — outside the corpus whatever `--project` says.
@@ -102,6 +103,10 @@ ANCESTOR = "2352492b-1437-4427-ad51-70f35c75f663"
 FORK_ORIGIN = "5a88789c-1da7-4f32-b631-40a7e243334b"
 FORK_ORIGIN_RUN = "acbc29008a04b9702"
 FORK_RUN = "a61a059e3610e6fb4"
+# The compaction both of those transcripts hold: `FORK_ORIGIN_RUN` recorded it and the fork
+# copied it in with the rest of the prefix, so the fork's copy is the corpus's one replayed
+# compaction (`tests/fixtures/fork_origin/README.md`).
+FORK_COMPACTION = "53858e9c-25e4-48a6-95d3-7f9baa5946de"
 BYREF_FORK = "afa3946951a08a798"
 REGISTRY_ZOO = "registry-zoo-0000-0000-0000-000000000000"
 # The pool session no other leaf asserts on, so a copied store can strip its api calls and
@@ -154,9 +159,9 @@ PLANTED_OUTCOMES = (Outcome.completed, Outcome.partial, Outcome.failed)
 PLANTED_OUTCOME_RUN = 3
 PLANTED_MODELS = ("claude-haiku-4-5-20251001", "claude-sonnet-4-5-20250929")
 
-SourceFactory = Callable[[str, str], SessionSource]
+SourceFactory = Callable[[str, str], ClaudeCodeSource]
 TraceFactory = Callable[[str, str], SessionTrace]
-PlantedFactory = Callable[[str, str, dict[str, str]], SessionSource]
+PlantedFactory = Callable[[str, str, dict[str, str]], ClaudeCodeSource]
 
 
 def fixture_transcripts(*directories: str) -> tuple[Path, ...]:
@@ -176,13 +181,11 @@ def build_store(path: Path, transcripts: Iterable[Path]) -> None:
     costs an extraction per transcript — build once per test session and copy the file for
     any test that plants or deletes rows.
     """
-    with DuckDbExporter(path) as exporter:
-        for transcript in transcripts:
-            session = SessionFiles(id=transcript.stem, transcript=transcript)
-            source = SessionSource(
-                id=transcript.stem, files=tuple(session.files()), fingerprint="fixture"
-            )
-            exporter.export(ClaudeCodeExtractor().extract(source), source.fingerprint)
+    exporter = DuckDbExporter(path, wait=NO_WAIT)
+    for transcript in transcripts:
+        session = SessionFiles(id=transcript.stem, transcript=transcript)
+        source = ClaudeCodeSource(id=session.id, fingerprint="fixture", files=session)
+        exporter.export(ClaudeCodeExtractor().extract(source), source.fingerprint)
 
 
 def corpus_transcripts() -> tuple[Path, ...]:
@@ -206,16 +209,25 @@ def exportable_transcripts() -> tuple[Path, ...]:
     )
 
 
-# What a writer does to the store: opens it read-write, says so, and holds it. The connection
-# has to stay referenced — an unnamed one is freed at once, and the lock goes with it. The
-# holder announces the lock by touching a file rather than leaving the waiter to look, because
-# every way of looking takes a lock of its own (see `locked`).
+# What a test opening a store passes for the opener's lock budget. Nothing else holds a
+# temporary store, so waiting would only turn a bug into a pause: a test that finds the file
+# locked wants to say so at once, naming whatever process took it.
+NO_WAIT = 0.0
+
+# What a writer does to the store: opens it read-write, says so, and holds it for the seconds
+# it was told to. The connection has to stay referenced — an unnamed one is freed at once, and
+# the lock goes with it. The holder announces the lock by touching a file rather than leaving
+# the waiter to look, because every way of looking takes a lock of its own (see `locked`).
 _HOLDER = (
     "import duckdb, pathlib, sys, time;"
     " held = duckdb.connect(sys.argv[1]);"
     " pathlib.Path(sys.argv[2]).touch();"
-    " time.sleep(30)"
+    " time.sleep(float(sys.argv[3]))"
 )
+
+# How long the holder keeps the lock when the block does not name a shorter hold: longer than
+# any test's block, so `locked()`'s exit is what ends it.
+HOLD_UNTIL_STOPPED = 30.0
 
 # How long to wait for that subprocess to take the lock before giving up on the test.
 LOCK_TIMEOUT = 10.0
@@ -242,32 +254,49 @@ def stop(holder: "subprocess.Popen[bytes]", *, patience: float) -> None:
         holder.wait(timeout=patience)
 
 
-# What another process does to check the lock is free: takes it and lets go.
-_TAKER = "import duckdb, sys; duckdb.connect(sys.argv[1]).close()"
+def stored_rows(path: Path, sql: str, parameters: Sequence[object] = ()) -> list[tuple[Any, ...]]:
+    """Every row this query finds in the store on disk, read the way a viewer page reads it.
+
+    The exporter holds no connection between writes, so a test that wants to see what one
+    wrote opens the file for itself.
+    """
+    with open_trace_store(path, read_only=True, wait=NO_WAIT) as connection:
+        return connection.execute(sql, list(parameters)).fetchall()
 
 
-def lock_is_free(path: Path) -> bool:
-    """Whether another process can take `path`'s write lock — so nothing here still holds it.
+# What another process does to check a store: opens it as told and lets go.
+_TAKER = "import duckdb, sys; duckdb.connect(sys.argv[1], read_only=sys.argv[2] == 'read').close()"
+
+
+def opens_elsewhere(path: Path, *, read_only: bool) -> bool:
+    """Whether another process can open `path` right now — as a reader, or for write.
 
     A subprocess for the same reason `locked()` uses one: this process's own second open
-    succeeds whatever the file lock says, so an in-process check answers nothing.
+    succeeds whatever the file lock says, so an in-process check answers nothing. Read-only
+    is the question a viewer page asks; for write is the one that says nothing here still
+    holds the file.
     """
-    taker = subprocess.run(
-        [sys.executable, "-c", _TAKER, str(path)],
+    prober = subprocess.run(
+        [sys.executable, "-c", _TAKER, str(path), "read" if read_only else "write"],
         capture_output=True,
         timeout=LOCK_TIMEOUT,
         check=False,
     )
-    return taker.returncode == 0
+    return prober.returncode == 0
 
 
 @contextmanager
-def locked(path: Path) -> Generator[None]:
+def locked(path: Path, *, hold: float = HOLD_UNTIL_STOPPED) -> Generator["subprocess.Popen[bytes]"]:
     """Hold a store's write lock from another process for the length of the block.
 
     A subprocess, not a second connection here: DuckDB answers the same process's second
     open differently from the file lock it takes across processes, so an in-process holder
-    tests the wrong failure.
+    tests the wrong failure. The holder is yielded so a test can name the pid an error
+    message is supposed to carry.
+
+    Pass `hold` to let go partway through the block instead — that is how a test whose
+    subject is the waiting gets a writer that finishes while a caller is queued behind it,
+    with no thread of its own.
 
     The wait for the holder never opens the store. A read-only open takes a shared read
     lock, and DuckDB refuses a write open while one is held — so a wait that polled by
@@ -278,7 +307,7 @@ def locked(path: Path) -> Generator[None]:
     signal = path.with_name(f"{path.name}.locked")
     signal.unlink(missing_ok=True)
     holder = subprocess.Popen(
-        [sys.executable, "-c", _HOLDER, str(path), str(signal)], stderr=subprocess.PIPE
+        [sys.executable, "-c", _HOLDER, str(path), str(signal), str(hold)], stderr=subprocess.PIPE
     )
     try:
         deadline = time.monotonic() + LOCK_TIMEOUT
@@ -289,7 +318,7 @@ def locked(path: Path) -> Generator[None]:
             if time.monotonic() > deadline:
                 pytest.fail(f"nothing took the lock on {path} within {LOCK_TIMEOUT}s")
             time.sleep(0.05)
-        yield
+        yield holder
     finally:
         stop(holder, patience=TERMINATE_TIMEOUT)
         if holder.stderr is not None:
@@ -380,7 +409,7 @@ def planted_stamp(level: Level, index: int) -> Stamp:
         # A version behind on every fifth row: the stamp breakdown splits on the model and on
         # the prompt version, axes that moved together could not say which, and the viewer's
         # stale tag needs a row on each side of the current version.
-        prompt_version=PROMPT_VERSION[level] - (1 if index % 5 == 0 else 0),
+        prompt_version=LEVELS[level].prompt_version - (1 if index % 5 == 0 else 0),
         taxonomy_version=TAXONOMY_VERSION,
         model=PLANTED_MODELS[index % len(PLANTED_MODELS)],
     )
@@ -388,21 +417,15 @@ def planted_stamp(level: Level, index: int) -> Stamp:
 
 @pytest.fixture
 def fixture_source() -> SourceFactory:
-    """Build a `SessionSource` over one fixture session, the way `sessions()` would.
-
-    The whole session directory, not just the transcript: subagent transcripts, workflow
-    journals and offloaded tool outputs are part of the session, and a builder that
-    skipped them would let a test pass on files the real pipeline never sees.
+    """Build a `ClaudeCodeSource` over one fixture session, the way `sessions()` would.
 
     Fingerprints belong to discovery, not parsing, so the value here is a placeholder —
     `extract()` never reads it.
     """
 
-    def build(directory: str, stem: str) -> SessionSource:
+    def build(directory: str, stem: str) -> ClaudeCodeSource:
         session = SessionFiles(id=stem, transcript=FIXTURES / directory / f"{stem}.jsonl")
-        return SessionSource(
-            id=stem, files=tuple(session.files()), fingerprint="fixture-fingerprint"
-        )
+        return ClaudeCodeSource(id=stem, fingerprint="fixture-fingerprint", files=session)
 
     return build
 
@@ -415,7 +438,7 @@ def planted_source(tmp_path: Path) -> PlantedFactory:
     the point — they stand for layouts Claude Code writes, or might write next.
     """
 
-    def build(directory: str, stem: str, files: dict[str, str]) -> SessionSource:
+    def build(directory: str, stem: str, files: dict[str, str]) -> ClaudeCodeSource:
         transcript = tmp_path / f"{stem}.jsonl"
         shutil.copy(FIXTURES / directory / transcript.name, transcript)
         for relative, content in files.items():
@@ -423,7 +446,7 @@ def planted_source(tmp_path: Path) -> PlantedFactory:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content)
         session = SessionFiles(id=stem, transcript=transcript)
-        return SessionSource(id=stem, files=tuple(session.files()), fingerprint="planted")
+        return ClaudeCodeSource(id=stem, fingerprint="planted", files=session)
 
     return build
 

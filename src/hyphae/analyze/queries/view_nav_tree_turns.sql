@@ -43,9 +43,9 @@ SELECT
     -- The three columns a turn's title is read from, in order: the command a turn ran and what
     -- followed it, else the prompt — which for a slash turn is the `<command-…>` wrapper
     -- Claude Code put around it, and says nothing in the width of a NavTree.
-    substr(t.prompt, 1, $nav_chars + 1) AS prompt,
-    substr(t.command_name, 1, $nav_chars + 1) AS command_name,
-    substr(t.command_args, 1, $nav_chars + 1) AS command_args,
+    cut(t.prompt, $nav_chars) AS prompt,
+    cut(t.command_name, $nav_chars) AS command_name,
+    cut(t.command_args, $nav_chars) AS command_args,
     -- When it started, which is what the compactions of the same thread interleave against.
     t.started_at,
     coalesce(s.cost_usd, 0) AS cost_usd,

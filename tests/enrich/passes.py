@@ -16,10 +16,7 @@ from hyphae.enrich.client import (
     Result,
     Succeeded,
 )
-from hyphae.enrich.prompts import (
-    AgentRunItem,
-    TurnItem,
-)
+from hyphae.enrich.items import AgentRunItem, TurnItem
 from hyphae.enrich.store import EnrichmentStore
 from tests.enrich.conftest import (
     MODEL,

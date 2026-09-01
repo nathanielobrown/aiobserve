@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, ConfigDict
 
-from hyphae.extract.record_types import ContentBlock
+from hyphae.extract.records.registry import ContentBlock
 
 # The fixtures the claims below cite, spelled the way a reader would type them.
 COMPACTION = "tests/fixtures/compaction/"

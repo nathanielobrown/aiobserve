@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 import pytest
 
 from hyphae.extract.claude_code import ClaudeCodeExtractor
-from hyphae.extract.record_types import TranscriptSchemaError
+from hyphae.extract.errors import TranscriptSchemaError
 from hyphae.model import MAIN_SOURCE, ApiCall, PrLink, Session, Turn
 from tests.conftest import SourceFactory
 
@@ -63,7 +63,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
         ended_at=at("2026-08-06T18:41:14.084"),
         # ...and active time is the sum of the two `system/turn_duration` records, 206872 + 12713.
         active_ms=219585,
-        transcript_path=str(source.files[0]),
+        transcript_path=str(source.files.transcript),
         # ...the title is the *last* `custom-title`, and a later `ai-title` does not
         # displace it: a hand-written name outranks a generated one...
         title="fixture-title-2",
@@ -592,6 +592,26 @@ def test_a_novel_prompt_tag_crashes(fixture_source: SourceFactory):
 
     message = str(excinfo.value)
     assert "sparkle-notice" in message
+    assert "SUPER-SECRET-PAYLOAD-9f2a" not in message
+
+
+def test_a_record_with_no_timestamp_crashes_naming_the_kind_it_was(
+    fixture_source: SourceFactory,
+):
+    """The crash names the record kind that was missing a timestamp, not a guess at it.
+
+    INVENTED fixture — of the 678,793 records on the recording machine that reach this raise,
+    none is missing a timestamp, so it has no recorded example (`fixtures/invented/README.md`).
+    The message is the whole value of a fail-fast crash, and eight parse paths reach it:
+    compactions, pr links, api calls and tool calls among them.
+    """
+    with pytest.raises(TranscriptSchemaError) as excinfo:
+        ClaudeCodeExtractor().extract(fixture_source("invented", "invented-no-timestamp"))
+
+    message = str(excinfo.value)
+    assert "pr-link" in message and "line 2" in message
+    # The old message called every one of them a prompt, and this record is not one.
+    assert "prompt" not in message
     assert "SUPER-SECRET-PAYLOAD-9f2a" not in message
 
 

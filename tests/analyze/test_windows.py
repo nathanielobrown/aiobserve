@@ -13,9 +13,8 @@ from pathlib import Path
 import pytest
 
 from hyphae.export.duckdb import DuckDbExporter
-from hyphae.extract.claude_code import ClaudeCodeExtractor
-from hyphae.pipeline import SessionSource
-from hyphae.sessions import SessionFiles
+from hyphae.extract.claude_code import ClaudeCodeExtractor, ClaudeCodeSource
+from hyphae.extract.layout import SessionFiles
 from tests.analyze.conftest import (
     AS_OF_MID,
     AS_OF_PARTIAL,
@@ -29,7 +28,7 @@ from tests.analyze.conftest import (
     QueryRunner,
     query,
 )
-from tests.conftest import FIXTURES, MYCELIA, NO_PROJECT_SESSION
+from tests.conftest import FIXTURES, MYCELIA, NO_PROJECT_SESSION, NO_WAIT
 
 CORPUS = "corpus"
 TRAILING = "trailing_window"
@@ -153,12 +152,10 @@ def undated_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Pat
     path.write_bytes(corpus_db.read_bytes())
     transcript = FIXTURES / "fork_byref" / f"{NO_PROJECT_SESSION}.jsonl"
     session = SessionFiles(id=NO_PROJECT_SESSION, transcript=transcript)
-    source = SessionSource(
-        id=NO_PROJECT_SESSION, files=tuple(session.files()), fingerprint="planted"
-    )
-    with DuckDbExporter(path) as exporter:
-        trace = ClaudeCodeExtractor().extract(source)
-        exporter.export(replace(trace, session=replace(trace.session, project_dir=MYCELIA)), "p")
+    source = ClaudeCodeSource(id=NO_PROJECT_SESSION, fingerprint="planted", files=session)
+    exporter = DuckDbExporter(path, wait=NO_WAIT)
+    trace = ClaudeCodeExtractor().extract(source)
+    exporter.export(replace(trace, session=replace(trace.session, project_dir=MYCELIA)), "p")
     return path
 
 

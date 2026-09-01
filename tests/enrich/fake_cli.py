@@ -89,6 +89,8 @@ class Reply:
     """One scripted `claude` invocation: what it writes, or what it raises instead."""
 
     stdout: str = ""
+    # What the CLI wrote on its diagnostic stream, which is the only stream a failure keeps.
+    stderr: str = ""
     returncode: int = 0
     # A hung process, as `subprocess.run` reports one.
     raises: BaseException | None = None
@@ -113,6 +115,20 @@ def succeeds() -> Reply:
 def errors() -> Reply:
     """The recorded logged-out call: exit 1, `is_error`, no answer."""
     return Reply(stdout=json.dumps(recorded("envelope_logged_out")), returncode=1)
+
+
+def refused(stdout: str = "") -> Reply:
+    """The recorded refusal: exit 1, one line on stderr, and nothing on stdout.
+
+    What `claude` writes when it is passed a flag it does not take — the shape a CLI version
+    bump takes, and the one that fails every item of a round identically. `stdout` plants an
+    answer beside it (invented), for the leaves that prove no failure quotes that stream.
+    """
+    return Reply(
+        stdout=stdout,
+        stderr=(FIXTURES / "stderr_unknown_option.txt").read_text(),
+        returncode=1,
+    )
 
 
 def hangs() -> Reply:
@@ -159,7 +175,9 @@ class FakeCli:
             reply = self.replies[key]
             if reply.raises is not None:
                 raise reply.raises
-            return subprocess.CompletedProcess(list(argv), reply.returncode, reply.stdout, "")
+            return subprocess.CompletedProcess(
+                list(argv), reply.returncode, reply.stdout, reply.stderr
+            )
         finally:
             with self._lock:
                 self._live -= 1

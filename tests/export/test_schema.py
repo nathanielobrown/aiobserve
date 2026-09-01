@@ -7,6 +7,7 @@ behind when a column is renamed and the version is not bumped.
 
 import hashlib
 import os
+from dataclasses import fields
 from pathlib import Path
 
 import duckdb
@@ -15,7 +16,7 @@ import pytest
 from hyphae.enrich.store import _SCHEMA as ENRICHMENT_SCHEMA
 from hyphae.enrich.store import EnrichmentStore
 from hyphae.export.duckdb import _SCHEMA as TRACE_SCHEMA
-from hyphae.export.duckdb import DuckDbExporter, open_trace_store
+from hyphae.export.duckdb import TABLES, DuckDbExporter, open_trace_store
 from hyphae.export.otlp_delivery import _DELIVERY_SCHEMA as DELIVERY_SCHEMA
 from hyphae.export.otlp_delivery import Backend, OtlpExporter
 from hyphae.export.schema import (
@@ -25,7 +26,7 @@ from hyphae.export.schema import (
     declared_shape,
     table_ddl,
 )
-from tests.conftest import lock_is_free
+from tests.conftest import NO_WAIT, opens_elsewhere
 
 
 @pytest.fixture
@@ -41,7 +42,7 @@ DDL_OWNERS = [
     pytest.param(
         "hyphae.export.duckdb",
         TRACE_SCHEMA,
-        "3ad5fcdd81d080db3ebb6dbcc93a32bf133fbc29d02bc6469d3490306bcbfd91",
+        "7252a61c6ebbf68580bf2136854843f4d2f546dadb82e1172fa44535d00178a8",
         id="trace",
     ),
     pytest.param(
@@ -79,6 +80,26 @@ def test_no_owners_tables_can_change_without_the_schema_version(
     )
 
 
+@pytest.mark.parametrize("table", list(TABLES), ids=list(TABLES))
+def test_a_tables_ddl_columns_are_exactly_its_models_fields(table: str) -> None:
+    """The insert and the read both build their column lists from the model's fields.
+
+    `DuckDbExporter._insert` names `fields(spec.model)` and inserts positionally, and
+    `StoreSource._read` selects the same names back — so a DDL column with no field is a
+    column nothing ever writes, and a field with no column crashes at the first export. Both
+    sides are hand-written on purpose: generating the DDL from the dataclasses would lose the
+    column comments that say what each one means. This is what ties them instead, and it
+    covers `raw_records` and `offload_files`, which the round-trip leaf only counts.
+    """
+    spec = TABLES[table]
+    columns = declared_shape(TRACE_SCHEMA)[table]
+    assert columns == {field.name for field in fields(spec.model)}
+    # And the two columns the registry names for itself are columns: the one a session's rows
+    # are found by, and the ones they come back ordered by. Nothing else reads these, so a
+    # typo in either would only show up as a binder error at the next export.
+    assert {spec.session_key, *spec.order} <= columns
+
+
 def test_a_declared_shape_holds_every_table_a_ddl_creates_and_none_of_its_views() -> None:
     """The shape is derived by running the DDL, so nothing hand-written can drift from it."""
     shape = declared_shape(TRACE_SCHEMA)
@@ -88,9 +109,9 @@ def test_a_declared_shape_holds_every_table_a_ddl_creates_and_none_of_its_views(
     assert "description" not in shape["agent_runs"]
     assert shape.keys() >= {"sessions", "turns", "api_calls", "agent_runs", "meta"}
 
-    # ...and leaves out the view the same DDL creates: a view is replaced at every open, so
-    # a store cannot hold a stale one.
-    assert "first_seen" not in shape
+    # ...and leaves out the views an owner declares beside its tables: a view is rebuilt at
+    # every open, so a store cannot hold a stale one.
+    assert "enriched_turns" not in declared_shape(ENRICHMENT_SCHEMA)
 
 
 def test_a_renamed_trace_column_is_refused_with_the_table_and_column_named(db: Path) -> None:
@@ -101,13 +122,14 @@ def test_a_renamed_trace_column_is_refused_with_the_table_and_column_named(db: P
     reached the operator was a binder error naming a column, with no version and no remedy.
     """
     # If a store's `agent_runs` no longer holds the column the DDL declares...
-    with DuckDbExporter(db) as exporter:
-        exporter.connection.execute("ALTER TABLE agent_runs RENAME brief TO description")
+    DuckDbExporter(db, wait=NO_WAIT)
+    with duckdb.connect(str(db)) as drifted:
+        drifted.execute("ALTER TABLE agent_runs RENAME brief TO description")
 
     # ...then opening it says which table drifted, which column each side has, and where to
     # read before touching an archive.
     with pytest.raises(SchemaShapeError) as refused:
-        DuckDbExporter(db)
+        DuckDbExporter(db, wait=NO_WAIT)
     message = str(refused.value)
     assert "agent_runs" in message
     assert "description" in message and "brief" in message
@@ -121,7 +143,7 @@ def test_a_renamed_enrichment_column_is_refused_the_same_way(db: Path) -> None:
     open with `Binder Error: Table "e" does not have a column named "friction"`.
     """
     # If the enrichment tables exist and one of them has drifted from its DDL...
-    DuckDbExporter(db).close()
+    DuckDbExporter(db, wait=NO_WAIT)
     EnrichmentStore(db).close()
     with duckdb.connect(str(db)) as connection:
         connection.execute("ALTER TABLE turn_enrichments RENAME friction TO struggle")
@@ -134,18 +156,19 @@ def test_a_renamed_enrichment_column_is_refused_the_same_way(db: Path) -> None:
 
     # ...and lets go of the file, which a refusal holding DuckDB's single writer lock would
     # not: nothing was handed back, so no `with` block will ever close it.
-    assert lock_is_free(db), f"the refusal kept the write lock: {refused.value}"
+    assert opens_elsewhere(db, read_only=False), f"the refusal kept the write lock: {refused.value}"
 
 
 def test_a_renamed_delivery_column_is_refused_the_same_way(db: Path) -> None:
     """The third owner: the OTLP delivery ledger, which lives in the same file."""
     backend = Backend(name="test", endpoint="http://127.0.0.1:1/v1/traces")
-    with DuckDbExporter(db) as exporter:
-        OtlpExporter(backend, exporter.connection).close()
-        exporter.connection.execute("ALTER TABLE otlp_delivery RENAME spans_sent TO spans")
+    DuckDbExporter(db, wait=NO_WAIT)
+    with duckdb.connect(str(db)) as connection:
+        OtlpExporter(backend, connection).close()
+        connection.execute("ALTER TABLE otlp_delivery RENAME spans_sent TO spans")
 
         with pytest.raises(SchemaShapeError) as refused:
-            OtlpExporter(backend, exporter.connection)
+            OtlpExporter(backend, connection)
     assert "otlp_delivery" in str(refused.value)
     assert "spans_sent" in str(refused.value)
 
@@ -156,20 +179,19 @@ def test_a_table_a_ddl_declares_but_the_store_lacks_is_not_drift(db: Path) -> No
     Absence is the normal state of a fresh store, so the guard has to read it as "nothing to
     compare" rather than as drift — otherwise no store could be opened until every layer had.
     """
-    with DuckDbExporter(db) as exporter:
+    DuckDbExporter(db, wait=NO_WAIT)
+    with open_trace_store(db, read_only=True, wait=NO_WAIT) as connection:
         tables = {
             name
-            for (name,) in exporter.connection.execute(
-                "SELECT table_name FROM duckdb_tables()"
-            ).fetchall()
+            for (name,) in connection.execute("SELECT table_name FROM duckdb_tables()").fetchall()
         }
         # If the store holds none of another owner's tables...
         assert not tables & (declared_shape(ENRICHMENT_SCHEMA).keys())
         assert not tables & (declared_shape(DELIVERY_SCHEMA).keys())
 
         # ...then checking those DDLs against it passes.
-        check_shape(exporter.connection, ENRICHMENT_SCHEMA)
-        check_shape(exporter.connection, DELIVERY_SCHEMA)
+        check_shape(connection, ENRICHMENT_SCHEMA)
+        check_shape(connection, DELIVERY_SCHEMA)
 
 
 # Names a real trace store for the opt-in check below. Off by default: the store holds
@@ -188,9 +210,6 @@ def test_the_real_archive_matches_every_owners_ddl() -> None:
     only copy of every pruned session (`docs/store.md`).
     """
     archive = Path(os.environ[LIVE_STORE])
-    connection = open_trace_store(archive, read_only=True)
-    try:
+    with open_trace_store(archive, read_only=True, wait=NO_WAIT) as connection:
         for ddl in (TRACE_SCHEMA, ENRICHMENT_SCHEMA, DELIVERY_SCHEMA):
             check_shape(connection, ddl)
-    finally:
-        connection.close()

@@ -103,6 +103,56 @@ def unpriced(*, calls: int | None) -> Html | None:
     return htpy.sup(title=f"{fmt.count(calls)} call(s) at a model our price table lacks")["*"]
 
 
+class Step(NamedTuple):
+    """One side of a pager: where the link goes, and what it is called there.
+
+    The words belong to the sequence rather than to the control: a children log steps to the
+    previous page, and the session list — newest first — steps to a newer one.
+    """
+
+    href: str
+    words: str
+
+
+class Pager(NamedTuple):
+    """Where a page sits in a sequence, and the way to either side of it.
+
+    `field` names the words between the links for a reader looking for them: a log's `place`
+    is which page of how many, the list's `range` which sessions of the store.
+    """
+
+    field: str
+    words: str
+    previous: Step | None
+    next: Step | None
+
+
+def pager(*, name: str, pages: Pager) -> Html:
+    """The control that turns a page, wherever a page is turned.
+
+    `name` tells one pager from another where a page carries more than one — the list's two,
+    above and below its table — including for a reader who hears them rather than sees where
+    they sit. Plain links, because turning a page is a page load.
+
+    The three controls are inline and no rule holds them apart, so each link carries the space
+    that separates it from the words: htpy writes nothing between elements, and a pager without
+    them reads as one word.
+    """
+    return htpy.nav(".pager", data_pager=name, aria_label=f"{name} pager")[
+        [
+            htpy.fragment[
+                [htpy.a(data_page="previous", href=pages.previous.href)[pages.previous.words], " "]
+            ]
+            if pages.previous
+            else None,
+            htpy.span(data_field=pages.field)[pages.words],
+            htpy.fragment[[" ", htpy.a(data_page="next", href=pages.next.href)[pages.next.words]]]
+            if pages.next
+            else None,
+        ]
+    ]
+
+
 def badge(*, step: str, field: str, value: float) -> Html:
     """One half of a NavTree row's cost: the number, and the step standing for its share.
 

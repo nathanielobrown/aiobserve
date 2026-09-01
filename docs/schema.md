@@ -14,7 +14,7 @@ The transcript-field tables under the next heading are generated. A field's mean
 
 ## Transcript records are typed JSON objects
 
-A transcript stores one JSON object per line. Each object has a `type`. `hyphae.extract.record_types` registers every type it has seen and the readers crash on unknown types. Treat that registry—not the tables below—as the current census.
+A transcript stores one JSON object per line. Each object has a `type`. `hyphae.extract.records.registry` registers every type it has seen and the readers crash on unknown types. Treat that registry—not the tables below—as the current census.
 
 ### Record identity and session context
 
@@ -27,7 +27,7 @@ A transcript stores one JSON object per line. Each object has a `type`. `hyphae.
 | `uuid` | `user`, `assistant`, `system` | The record id within its file. It is not unique: rewinding can write new records under existing uuids, and the extractor keeps the last | `tests/fixtures/dup_uuid/`, CC 2.1.211 — five uuids twice each |
 | `parentUuid` | `user`, `assistant`, `system` | The record this one answers, or null at the start of a thread. A `<local-command-stdout>` record points at the command turn whose output it is | `tests/fixtures/spine/`, CC 2.1.221 |
 | `timestamp` | `user`, `assistant`, `system`, `pr-link` | A UTC ISO-8601 timestamp with a `Z` suffix. File order is not timestamp order; adjacent records can move backward by one millisecond | `tests/fixtures/spine/`, CC 2.1.221 |
-| `cwd` | `user`, `assistant`, `system` | The project directory, absolute and symlink-free. Resolve a command-line path before matching it — `hyphae.sessions.resolve_project` does. Early bookkeeping records omit it, so reading only the first record yields nulls | `tests/fixtures/spine/`, CC 2.1.221 — the first three records have none |
+| `cwd` | `user`, `assistant`, `system` | The project directory, absolute and symlink-free. Resolve a command-line path before matching it — `hyphae.projects.resolve_project` does. Early bookkeeping records omit it, so reading only the first record yields nulls | `tests/fixtures/spine/`, CC 2.1.221 — the first three records have none |
 | `gitBranch` | `user`, `assistant`, `system` | The branch checked out when the record was written | `tests/fixtures/spine/`, CC 2.1.221 |
 | `version` | `user`, `assistant`, `system` | The Claude Code version that wrote the record, and the version every schema claim here is dated by | `tests/fixtures/spine/`, CC 2.1.221 |
 | `entrypoint` | `user`, `assistant`, `system` | How the session was launched, such as `cli` | `tests/fixtures/spine/`, CC 2.1.221; absent from `tests/fixtures/legacy_entrypoint/`, CC 1.0.128 — the oldest corpus transcripts |
@@ -193,7 +193,7 @@ String values can contain raw U+2028 and U+2029 separators. Python's `splitlines
 ## Session data comes from three places
 
 - `~/.claude/projects/<encoded-cwd>/<session-id>.jsonl` stores one session transcript as one JSON object per line
-- `~/.claude/projects/<encoded-cwd>/<session-id>/` stores the session directory described below; `hyphae.sessions` walks this tree
+- `~/.claude/projects/<encoded-cwd>/<session-id>/` stores the session directory described below; `hyphae.extract.layout` walks this tree
 - Claude Code's OpenTelemetry export provides a thinner live schema and is enabled per machine, not per repository
 
 Claude Code forms `<encoded-cwd>` by replacing each `/` in the working directory with `-`: `~/repos/mycelia` becomes `-Users-nob-repos-mycelia`. This tree is shared across Claude accounts because `~/.claude-black/projects` is a symlink to `~/.claude/projects`. A transcript path therefore does not identify the account that wrote it.
@@ -280,7 +280,7 @@ All 52 observed fork metas pair `isFork: true` with `agentType: "fork"` (scanned
 | `fork-context-ref` | 26 | The file copies no records. The opening record names `parentSessionId`, `parentLastUuid`, and `contextLength`; work begins mid-conversation |
 | `user` or `system` | 26 | The file copies the parent's records verbatim, including uuids and timestamps, then appends the fork's work |
 
-A copied record then appears in two files. The corpus contains 51 overlapping transcript pairs, each with a fork on one side; 25 are fork-to-fork, where one fork copies another's work. Attribute each record to the transcript that ran it first. Keep later copies but mark them `replayed`, so the archive retains what each file recorded without double-counting the work. This rule marks 1,617 records across nine sessions as replays. None appears in a non-fork transcript; such a replay would show that the ordering chose the wrong origin.
+A copy is the original but for `agentId`, which each file rewrites to its own: of the 2,006 pairs of records that share a uuid across two transcripts of one session, on this machine's twelve such sessions, every pair differs there and no pair differs only elsewhere (scanned 2026-08-30). A copied record then appears in two files. The corpus contains 51 overlapping transcript pairs, each with a fork on one side; 25 are fork-to-fork, where one fork copies another's work. Attribute each record to the transcript that ran it first. Keep later copies but mark them `replayed`, so the archive retains what each file recorded without double-counting the work. This rule marks 1,617 records across nine sessions as replays. None appears in a non-fork transcript; such a replay would show that the ordering chose the wrong origin.
 
 Order transcripts by `(spawnDepth, first timestamp, agentId)`, with the main transcript first. Depth must lead because a copied-history fork begins with its parent's timestamp. Of 51 overlapping pairs, 46 tie on the first timestamp; breaking those ties by agent id would wrongly assign 335 records from six original transcripts to their forks. A fork is spawned by the transcript it copies and is therefore deeper.
 

@@ -161,7 +161,7 @@ class Context(NamedTuple):
     # How much of that fill the node itself put there. None where the question does not
     # arise — a session, which has nothing before it to have added to.
     added: int | None
-    # The window that call's model answers in (`extract/pricing.py:CONTEXT_WINDOWS`).
+    # The window that call's model answers in (`extract/pricing.py:MODELS`).
     window: int
     # The context the session opened on: what its first main-thread call sent before a word had
     # been said — the system prompt, the project's instructions, the tools' definitions. Only a
@@ -324,6 +324,12 @@ def run_url(session_id: str, run_id: str) -> str:
     """
     return f"{session_url(session_id)}/run/{run_id}"
 
+
+# Where the session list is served, and the way out of every session. Written here with the
+# viewer's other mount points because the route, the link builder and the form the page writes
+# all have to agree: `/` is the projects landing, and a link that still points there drops the
+# sort and the filters the request composed.
+LIST_URL = "/sessions"
 
 # Where a node's body alone is served from, written once: the routes in `view/app.py` answer
 # what `Node.expansion` mints. A fragment path is its node's path under a prefix, so the two
@@ -668,7 +674,7 @@ def _bar_step(tokens: int, window: int) -> int:
     """Which step of the bar a token count lands on, held at the top where it runs past one.
 
     A request can ask for a larger window than the model's own, and the reply names the model
-    either way (`extract/pricing.py:CONTEXT_WINDOWS`) — so a fill above the window is drawn
+    either way (`extract/pricing.py:MODELS`) — so a fill above the window is drawn
     full rather than given a scale the table cannot see.
     """
     return min(round(tokens / window * BAR_STEPS), BAR_STEPS)

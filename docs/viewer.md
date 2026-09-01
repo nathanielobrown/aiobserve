@@ -133,12 +133,13 @@ The reading pane prints the first 200 characters of a description or friction li
 
 A store that has never been enriched has none of the enrichment tables. The viewer then shows no enrichment fields, and cites no enrichment query. An item the current pass has not reached looks the same.
 
-## Extracts and page loads can contend for the store
+## Extracts and page loads share the store
 
-The viewer closes its database connection after each request, leaving `hp extract` free to take DuckDB's write lock while the viewer is idle. Neither side retries a collision:
+The viewer closes its database connection after each request, and `hp extract` holds the file only while it writes one session, so the two run together ([the store guide](store.md)). What each does when it lands on the other's lock:
 
-- If an extract starts while a page request holds the store, the extract fails with DuckDB's lock error. Reload the page, then run the extract again
-- If a page loads while an extract holds the lock, the viewer returns 503 and says the store is being written. Reload after the writer releases the lock
-- If a re-extract changes the schema while the viewer runs, the viewer returns 503 with the schema version this build expects. Restart the viewer
+- If a page loads while an extract is writing, it waits up to a second and then answers. Only a writer still holding the store after that turns into a 503 saying the store is being written; reload once the writer is done
+- If an extract starts while a page request holds the store, it waits up to ten seconds. Past that it stops, naming the store and the process holding it
+- `hp enrich` and `hp export-otlp` are the writers that do hold the store: each keeps it for its whole run, so every page is a 503 until the pass ends
+- If a re-extract changes the schema while the viewer runs, the viewer returns 503 naming both versions and the one action that fits the store on disk — migrate it by opening it for write, or extract into a fresh one. Restart the viewer afterwards
 
 The viewer fails at startup if the store is missing, its schema is unsupported, or the port is already in use.

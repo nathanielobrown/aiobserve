@@ -19,15 +19,12 @@ import pytest
 
 from hyphae import cli
 from hyphae.export.duckdb import DuckDbExporter
-from hyphae.extract.claude_code import ClaudeCodeExtractor
-from hyphae.pipeline import SessionSource
-from hyphae.sessions import SessionFiles
+from hyphae.extract.claude_code import ClaudeCodeExtractor, ClaudeCodeSource
+from hyphae.extract.layout import SessionFiles
 from tests.conftest import (
-    ANCESTOR,
     FIXTURES,
-    FORK_ORIGIN,
-    FORK_ORIGIN_RUN,
     MYCELIA,
+    NO_WAIT,
     RESUME,
     SIBLING_SESSION,
     WORKTREE_SESSION,
@@ -79,7 +76,6 @@ def far_future(monkeypatch: pytest.MonkeyPatch) -> None:
 NO_WORK_SESSIONS = (RESUME, "8ee00a94-b01a-4394-b447-b065f74b11af")
 
 # The id the planted agent-run compaction carries, so no first-seen twin can own it.
-PLANTED_COMPACTION = "planted-compaction"
 
 # Measured on 2026-08-27: of the in-window sessions, the ones with any turn or agent run.
 POOL_AT_WHOLE = 12
@@ -176,30 +172,6 @@ def enriched_query(enriched_db: Path, capsys: pytest.CaptureFixture[str]) -> Que
 
 
 @pytest.fixture(scope="session")
-def planted_run_compaction_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """The corpus plus a copy of a recorded main-thread compaction, moved onto an agent run.
-
-    Invented placement, and it stays invented for one reader: `compaction/`'s run is the only
-    recorded run compaction, and its session has a single run, so nothing there contrasts two
-    runs of one session. A copy under a new id rather than a move, so the recorded compaction
-    stays where it was recorded and the `corpus_*` first-seen rule has no twin to prefer.
-    """
-    path = tmp_path_factory.mktemp("run_compaction") / "traces.duckdb"
-    path.write_bytes(corpus_db.read_bytes())
-    connection = duckdb.connect(str(path))
-    try:
-        connection.execute(
-            """INSERT INTO compactions
-               SELECT ?, ?, ?, timestamp, trigger, pre_tokens, post_tokens, duration_ms
-               FROM compactions WHERE session_id = ? LIMIT 1""",
-            [PLANTED_COMPACTION, FORK_ORIGIN, FORK_ORIGIN_RUN, ANCESTOR],
-        )
-    finally:
-        connection.close()
-    return path
-
-
-@pytest.fixture(scope="session")
 def worktree_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     """The corpus plus two sessions whose `project_dir` is planted, not recorded.
 
@@ -209,15 +181,15 @@ def worktree_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Pa
     """
     path = tmp_path_factory.mktemp("worktree") / "traces.duckdb"
     path.write_bytes(corpus_db.read_bytes())
-    with DuckDbExporter(path) as exporter:
-        for directory, stem, project_dir in (
-            ("legacy_title", WORKTREE_SESSION, f"{MYCELIA}/.claude/worktrees/planted"),
-            ("legacy_entrypoint", SIBLING_SESSION, f"{MYCELIA}-old"),
-        ):
-            transcript = FIXTURES / directory / f"{stem}.jsonl"
-            session = SessionFiles(id=stem, transcript=transcript)
-            source = SessionSource(id=stem, files=tuple(session.files()), fingerprint="planted")
-            trace = ClaudeCodeExtractor().extract(source)
-            trace = replace(trace, session=replace(trace.session, project_dir=project_dir))
-            exporter.export(trace, source.fingerprint)
+    exporter = DuckDbExporter(path, wait=NO_WAIT)
+    for directory, stem, project_dir in (
+        ("legacy_title", WORKTREE_SESSION, f"{MYCELIA}/.claude/worktrees/planted"),
+        ("legacy_entrypoint", SIBLING_SESSION, f"{MYCELIA}-old"),
+    ):
+        transcript = FIXTURES / directory / f"{stem}.jsonl"
+        session = SessionFiles(id=stem, transcript=transcript)
+        source = ClaudeCodeSource(id=stem, fingerprint="planted", files=session)
+        trace = ClaudeCodeExtractor().extract(source)
+        trace = replace(trace, session=replace(trace.session, project_dir=project_dir))
+        exporter.export(trace, source.fingerprint)
     return path

@@ -7,12 +7,13 @@ on is itself a contract a piped analysis depends on.
 
 import datetime as dt
 from pathlib import Path
+from typing import cast
 
 import duckdb
 import pytest
 
 from hyphae.analyze import manifest, queries
-from hyphae.export.schema import SCHEMA_VERSION
+from hyphae.export.schema import MIGRATE_REMEDY, SCHEMA_MISMATCH_REMEDY, SCHEMA_VERSION
 from tests.analyze.conftest import AS_OF_PARTIAL, MYCELIA_SESSIONS, Output, QueryRunner, query
 from tests.conftest import (
     MAIN,
@@ -150,6 +151,28 @@ def test_the_production_defaults_run_unless_a_param_overrides_one(run_query: Que
     assert len(overridden.csv_rows()[1][-1]) == 50
 
 
+def test_the_listing_names_every_query_with_its_scope_and_what_it_needs_bound(
+    run_query: QueryRunner,
+) -> None:
+    """`--list` is the library's directory: a reader picks a name off it and knows what to bind.
+
+    Read off the registry rather than written down, so a query that ships is a line here
+    whichever half of the manifest declared it. The viewer's half declares no defaults — a
+    size belongs to the surface that prints it (`view/manifest.py`) — so for those queries
+    this is the only place a caller finds out what a bare run is missing.
+    """
+    printed = run_query("--list").stdout.splitlines()
+    listed = {line.split()[0]: line.split()[1:] for line in printed}
+    # One line per query, and the names are the registry's...
+    assert len(printed) == len(manifest.QUERIES)
+    assert set(listed) == set(manifest.QUERIES)
+    # ...each carrying the scope, which is what says whether `--project` is wanted...
+    assert listed["agent_types"] == ["corpus"]
+    # ...and the parameters with no default, in the order the manifest declares them.
+    assert listed["view_runs"] == ["keyed", "session_id", "chip_chars"]
+    assert listed["records_slice"] == ["keyed", "session_id", "source", "first_line", "last_line"]
+
+
 def test_an_unknown_query_or_parameter_names_what_it_did_not_recognize(
     run_query: QueryRunner,
 ) -> None:
@@ -163,8 +186,52 @@ def test_an_unknown_query_or_parameter_names_what_it_did_not_recognize(
         run_query("sessions", "--project", MYCELIA, "--param", "nonsense=1")
 
 
-def test_a_store_from_another_schema_is_refused_and_sends_the_reader_to_the_guide(
-    corpus_db: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+def test_a_parameter_type_nothing_binds_is_refused_rather_than_bound_to_null(
+    corpus_db: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A `ParamType` the binder does not parse is an error, not a silent SQL NULL.
+
+    A fourth type is a plausible next change — a boolean, a list — and the match that parses
+    one covered three arms and then fell off the end, which in Python hands back `None`. The
+    query would have run with NULL where the reader's value belonged, and the citation would
+    have reported it as bound: a wrong answer with nothing marking it.
+
+    Planted rather than added to the enum, because what this holds is the arm that catches a
+    member this build knows nothing about.
+    """
+    monkeypatch.setattr(queries, "QUERY_DIR", tmp_path)
+    monkeypatch.setitem(
+        manifest.QUERIES,
+        "planted",
+        queries.Query(
+            scope=queries.Scope.KEYED,
+            params={
+                "flag": queries.Param(
+                    type=cast(queries.ParamType, "boolean"), default=queries.REQUIRED
+                )
+            },
+        ),
+    )
+    (tmp_path / "planted.sql").write_text("SELECT $flag AS flag")
+    # The refusal names the type it could not bind, so the fix is the binder and not the call.
+    with pytest.raises(SystemExit, match="boolean"):
+        query(corpus_db, capsys, "planted", "--param", "flag=true")
+
+
+@pytest.mark.parametrize(
+    ("held", "remedy"),
+    # One vintage a write open would carry forward, and one nothing reaches.
+    [
+        (SCHEMA_VERSION - 1, MIGRATE_REMEDY),
+        (SCHEMA_VERSION + 1, SCHEMA_MISMATCH_REMEDY),
+    ],
+    ids=["migratable", "unreachable"],
+)
+def test_a_store_from_another_schema_is_refused_with_the_remedy_that_fits_it(
+    corpus_db: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], held: int, remedy: str
 ) -> None:
     """A store these queries were not written against is refused, with what to do about it."""
     # If the store holds a schema version this build does not read — stamped onto a copy,
@@ -172,12 +239,27 @@ def test_a_store_from_another_schema_is_refused_and_sends_the_reader_to_the_guid
     path = tmp_path / "traces.duckdb"
     path.write_bytes(corpus_db.read_bytes())
     with duckdb.connect(str(path)) as connection:
-        connection.execute("UPDATE meta SET schema_version = ?", [SCHEMA_VERSION - 1])
-    # ...then the query refuses rather than reading tables it may not understand, and points
-    # at the store guide — a reader told to delete the store instead can destroy the only
-    # copy of a session Claude Code has since pruned from disk.
-    with pytest.raises(SystemExit, match=r"docs/store\.md"):
+        connection.execute("UPDATE meta SET schema_version = ?", [held])
+    # ...then the query refuses rather than reading tables it may not understand, and names
+    # the one action that fits this store. A reader told to extract into a fresh one when a
+    # migration would have done can destroy the only copy of a session Claude Code pruned.
+    with pytest.raises(SystemExit) as refused:
         query(path, capsys, "sessions", "--project", MYCELIA)
+    assert remedy in str(refused.value)
+
+
+def test_a_db_path_with_no_store_behind_it_names_the_path(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A typo in `--db` is the runner's error to report, not DuckDB's to raise."""
+    # If `--db` names a path nothing extracted to — the store is never created by a reader...
+    missing = tmp_path / "nothing.duckdb"
+    # ...then the command exits saying which path and what to run, rather than crashing out
+    # of the opener with an I/O error naming a file the operator never asked about.
+    with pytest.raises(SystemExit) as refused:
+        query(missing, capsys, "sessions", "--project", MYCELIA)
+    assert str(missing) in str(refused.value)
+    assert "hp extract" in str(refused.value)
 
 
 def test_the_store_is_opened_read_only(

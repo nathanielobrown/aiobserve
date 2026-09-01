@@ -12,6 +12,8 @@ from typing import Any, NamedTuple
 
 from dotenv import load_dotenv
 
+from hyphae.analyze.manifest import QUERIES
+from hyphae.analyze.queries import REQUIRED
 from hyphae.analyze.runner import QueryError, Result, run
 from hyphae.enrich.client import (
     DEFAULT_CONCURRENCY,
@@ -21,10 +23,11 @@ from hyphae.enrich.client import (
     preflight,
 )
 from hyphae.enrich.cost import Prompt, estimate
-from hyphae.enrich.enricher import ROUND_ORDER, PlannedItem, enrich, plan
+from hyphae.enrich.enricher import PlannedItem, enrich, plan
+from hyphae.enrich.levels import ROUND_ORDER
 from hyphae.enrich.store import EnrichmentStore
-from hyphae.export.duckdb import DuckDbExporter, open_trace_store
-from hyphae.export.otlp import DEFAULT_MAX_CHARS, TextPolicy
+from hyphae.export.duckdb import CLI_WAIT, DuckDbExporter, open_trace_store
+from hyphae.export.otlp import DEFAULT_MAX_CHARS, TextPolicy, census_project
 from hyphae.export.otlp_delivery import (
     BACKEND_NAMES,
     DEFAULT_RATE,
@@ -32,13 +35,13 @@ from hyphae.export.otlp_delivery import (
     GENERIC,
     ConfigurationError,
     OtlpExporter,
-    census,
     named_backend,
 )
 from hyphae.extract.claude_code import ClaudeCodeExtractor
+from hyphae.extract.layout import DEFAULT_PROJECTS_ROOT, find_sessions
 from hyphae.extract.store import StoreSource, UnknownProjectError
 from hyphae.pipeline import refresh
-from hyphae.sessions import DEFAULT_PROJECTS_ROOT, find_sessions, resolve_project
+from hyphae.projects import resolve_project
 from hyphae.view.app import PORT, serve
 
 # Gitignored, so an extract never lands in a commit.
@@ -89,8 +92,8 @@ def _sessions(args: argparse.Namespace) -> None:
 def _extract(args: argparse.Namespace) -> None:
     """Parse a project's transcripts into the trace store, skipping what has not changed."""
     extractor = ClaudeCodeExtractor(projects_root=args.projects_root)
-    with DuckDbExporter(args.db) as exporter:
-        result = refresh(args.project, extractor=extractor, exporter=exporter)
+    exporter = DuckDbExporter(args.db, wait=CLI_WAIT)
+    result = refresh(args.project, extractor=extractor, exporter=exporter)
     print(f"{len(result.extracted)} session(s) extracted, {len(result.skipped)} unchanged")
 
 
@@ -119,8 +122,30 @@ def _view_arguments(subcommand: argparse.ArgumentParser) -> None:
     )
 
 
+def _query_listing() -> str:
+    """Every query in the library: its name, its scope, and what a caller has to bind.
+
+    Read off the registry, so a query that ships is a line here whichever half of the
+    manifest declared it. Only the parameters with no default are listed — they are what a
+    run refuses without — and every viewer query takes several (`view/manifest.py`).
+    """
+    width = max(len(name) for name in QUERIES)
+    lines = []
+    for name, query in sorted(QUERIES.items()):
+        needed = " ".join(
+            parameter for parameter, spec in query.params.items() if spec.default is REQUIRED
+        )
+        lines.append(f"{name:<{width}}  {query.scope:<6}  {needed}".rstrip())
+    return "\n".join(lines)
+
+
 def _query(args: argparse.Namespace) -> None:
     """Run one library query and print its citation, its commentary, and its rows."""
+    if args.list:
+        print(_query_listing())
+        return
+    if args.name is None:
+        raise SystemExit("hp query takes the name of a query, or --list to see them")
     try:
         params = dict(pair.split("=", 1) for pair in args.param)
     except ValueError:
@@ -153,7 +178,7 @@ def _query(args: argparse.Namespace) -> None:
 
 
 def _query_arguments(subcommand: argparse.ArgumentParser) -> None:
-    subcommand.add_argument("name", help="The query to run — a file in analyze/queries/")
+    subcommand.add_argument("name", nargs="?", help="The query to run — a file in analyze/queries/")
     _add_db_argument(subcommand, "The trace store")
     subcommand.add_argument(
         "--project", type=Path, help="The analyzed repository — required by a corpus query"
@@ -180,6 +205,11 @@ def _query_arguments(subcommand: argparse.ArgumentParser) -> None:
     )
     subcommand.add_argument(
         "--csv", action="store_true", help="Write CSV to stdout, commentary to stderr"
+    )
+    subcommand.add_argument(
+        "--list",
+        action="store_true",
+        help="List every query with its scope and the parameters it needs bound",
     )
 
 
@@ -266,14 +296,13 @@ def _export_otlp(args: argparse.Namespace) -> None:
             raise SystemExit(str(error)) from error
         # One connection for both halves — DuckDB admits a single writer, and the exporter
         # needs to write its ledger into the store the source is reading.
-        connection = open_trace_store(args.db, read_only=False)
-        try:
-            with OtlpExporter(
+        with (
+            open_trace_store(args.db, read_only=False, wait=CLI_WAIT) as connection,
+            OtlpExporter(
                 backend, connection, service_name=args.service_name, text=text, rate=args.rate
-            ) as exporter:
-                result = refresh(args.project, extractor=StoreSource(connection), exporter=exporter)
-        finally:
-            connection.close()
+            ) as exporter,
+        ):
+            result = refresh(args.project, extractor=StoreSource(connection), exporter=exporter)
     except UnknownProjectError as error:
         raise SystemExit(str(error)) from error
     print(f"{len(result.extracted)} session(s) exported, {len(result.skipped)} unchanged")
@@ -281,17 +310,10 @@ def _export_otlp(args: argparse.Namespace) -> None:
 
 def _census_otlp(args: argparse.Namespace, text: TextPolicy) -> None:
     """Say what a send would ship, without a backend, a key, or the store's write lock."""
-    connection = open_trace_store(args.db, read_only=True)
-    try:
-        source = StoreSource(connection)
-        counts = census(
-            (source.extract(session) for session in source.sessions(args.project)), text
-        )
-    finally:
-        connection.close()
-    # The compaction count is broken out because it is the one number the store cannot be
-    # queried for: `live_compactions` keeps the copies a fork inherited and the mapper's
-    # replay rule drops them.
+    with open_trace_store(args.db, read_only=True, wait=CLI_WAIT) as connection:
+        counts = census_project(args.project, extractor=StoreSource(connection), text=text)
+    # The compaction count is broken out because a compaction is where a session's account
+    # of itself gets lossy, so how many ship is worth seeing before an hour of sending.
     print(
         f"{counts.sessions} session(s) and {counts.spans} span(s) would ship, "
         f"{counts.compactions} of them compactions — nothing sent"

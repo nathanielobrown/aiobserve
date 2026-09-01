@@ -65,6 +65,9 @@ class ItemFailure:
 
     key: str
     kind: FailureKind
+    # What the transport said about this failure, where it said anything: the CLI's own
+    # stderr, capped (`client.Failed.diagnostic`). Never the answer stream.
+    diagnostic: str | None = None
 
 
 class InvalidOutput(Exception):

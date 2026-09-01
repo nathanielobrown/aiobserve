@@ -14,10 +14,10 @@ SELECT
     -- answers no turn of this thread, which puts it in this thread's unattributed bucket.
     t.api_call_id,
     n.id AS turn_id,
-    substr(t.name, 1, $head_chars + 1) AS name,
+    cut(t.name, $head_chars) AS name,
     -- And what the input carried under the names the tools the viewer knows name their calls
     -- by, so a `Read` row reads as a path and a `Bash` row as the command it ran
-    -- (`view/formatters.py:FORMATTERS`). Every member cut to the same width as the title above.
+    -- (`view/tool_names.py:FORMATTERS`). Every member cut to the same width as the title above.
     tool_fields(t.input, s.project_dir, ad.agent_type, $head_chars) AS fields,
     t.server_side,
     t.is_error,
@@ -31,10 +31,10 @@ SELECT
     t.started_at,
     t.ended_at,
     date_diff('millisecond', t.started_at, t.ended_at) AS wall_ms,
-    substr(t.input, 1, $detail_chars + 1) AS input,
+    cut(t.input, $detail_chars) AS input,
     length(t.input) AS input_chars,
     -- NULL where the tool returned nothing at all, which is not the same as returning "".
-    substr(t.result, 1, $detail_chars + 1) AS result_head,
+    cut(t.result, $detail_chars) AS result_head,
     length(t.result) AS result_chars,
     -- What a `Bash` call ran, as a value of its own: the input holds it escaped onto one line
     -- among the call's other arguments, and a shell command is the thing a reader opened the
@@ -42,7 +42,7 @@ SELECT
     -- claims to be shell — and guarded like every other read of `input`, which is whatever
     -- the transcript held and raises `json_extract_string` when it is not JSON.
     CASE WHEN t.name = 'Bash' AND json_valid(t.input)
-         THEN substr(json_extract_string(t.input, '$.command'), 1, $detail_chars + 1)
+         THEN cut(json_extract_string(t.input, '$.command'), $detail_chars)
          END AS command,
     CASE WHEN t.name = 'Bash' AND json_valid(t.input)
          THEN length(json_extract_string(t.input, '$.command'))
@@ -70,7 +70,7 @@ LEFT JOIN live_agent_runs a
 LEFT JOIN sessions s ON s.id = t.session_id
 -- Who a `SendMessage` addressed, where `to` held an agent run's id rather than a name the
 -- caller typed: one lookup, LEFT so a name that matches no run comes back NULL and the row
--- prints what was recorded (`view/formatters.py:_send_message`).
+-- prints what was recorded (`view/tool_names.py:_send_message`).
 LEFT JOIN live_agent_runs ad
     ON ad.session_id = t.session_id AND ad.id = tool_asked(t.input, 'to', $head_chars)
 WHERE t.session_id = $session_id AND t.source = $source AND t.id = $tool_call_id;

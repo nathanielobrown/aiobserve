@@ -5,19 +5,20 @@ the recorded fixtures, so `refresh()` walks a real directory rather than a stub.
 """
 
 import shutil
-from collections.abc import Iterator
+import time
 from pathlib import Path
 
 import pytest
 
 from hyphae import cli
-from hyphae.export.duckdb import DuckDbExporter
+from hyphae.export.duckdb import DuckDbExporter, StoreLocked
 from hyphae.extract import claude_code
 from hyphae.extract.claude_code import ClaudeCodeExtractor
 from hyphae.model import SessionTrace
 from hyphae.pipeline import Extractor, SessionSource, refresh
-from hyphae.sessions import encode_project_path
-from tests.conftest import FIXTURES
+from hyphae.projects import encode_project_path
+from tests.conftest import FIXTURES, NO_WAIT, locked, opens_elsewhere, stored_rows
+from tests.export.test_duckdb__locking import BRIEF_HOLD, IMPATIENT
 
 SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"
 DUPS = "8ee00a94-b01a-4394-b447-b065f74b11af"
@@ -71,6 +72,27 @@ class CountingExtractor:
         return self.wrapped.extract(source)
 
 
+class ProbingExtractor:
+    """Wraps an extractor to ask, before each parse, whether a reader could open the store.
+
+    The question has to come from another process: DuckDB answers this process's own second
+    open out of its instance cache, not from the file lock it takes across processes
+    (`tests/conftest.opens_elsewhere`).
+    """
+
+    def __init__(self, wrapped: Extractor, db: Path) -> None:
+        self.wrapped = wrapped
+        self.db = db
+        self.readable: list[bool] = []
+
+    def sessions(self, project: Path) -> list[SessionSource]:
+        return self.wrapped.sessions(project)
+
+    def extract(self, source: SessionSource) -> SessionTrace:
+        self.readable.append(self.db.exists() and opens_elsewhere(self.db, read_only=True))
+        return self.wrapped.extract(source)
+
+
 @pytest.fixture
 def corpus(tmp_path: Path) -> Corpus:
     project = tmp_path / "repo"
@@ -79,16 +101,15 @@ def corpus(tmp_path: Path) -> Corpus:
 
 
 @pytest.fixture
-def exporter(tmp_path: Path) -> Iterator[DuckDbExporter]:
-    with DuckDbExporter(tmp_path / "traces.duckdb") as open_exporter:
-        yield open_exporter
+def exporter(tmp_path: Path) -> DuckDbExporter:
+    return DuckDbExporter(tmp_path / "traces.duckdb", wait=NO_WAIT)
 
 
 def table(exporter: DuckDbExporter, name: str, session: str) -> list[tuple[object, ...]]:
     key = "id" if name == "sessions" else "session_id"
-    return exporter.connection.execute(
-        f"SELECT * FROM {name} WHERE {key} = ? ORDER BY 1, 2, 3", [session]
-    ).fetchall()
+    return stored_rows(
+        exporter.path, f"SELECT * FROM {name} WHERE {key} = ? ORDER BY 1, 2, 3", [session]
+    )
 
 
 def test_a_refresh_ingests_every_session_it_finds(corpus: Corpus, exporter: DuckDbExporter):
@@ -119,7 +140,7 @@ def test_an_unchanged_corpus_is_not_re_extracted(corpus: Corpus, exporter: DuckD
     corpus.add("spine", SPINE)
     extractor = CountingExtractor(corpus.extractor())
     refresh(corpus.project, extractor=extractor, exporter=exporter)
-    stamped = exporter.connection.execute("SELECT extracted_at FROM extract_state").fetchall()
+    stamped = stored_rows(exporter.path, "SELECT extracted_at FROM extract_state")
 
     # If nothing on disk changed...
     result = refresh(corpus.project, extractor=extractor, exporter=exporter)
@@ -128,9 +149,7 @@ def test_an_unchanged_corpus_is_not_re_extracted(corpus: Corpus, exporter: DuckD
     # row saying when it ran is untouched.
     assert (result.extracted, result.skipped) == ([], [SPINE])
     assert extractor.extracted == [SPINE]
-    assert exporter.connection.execute("SELECT extracted_at FROM extract_state").fetchall() == (
-        stamped
-    )
+    assert stored_rows(exporter.path, "SELECT extracted_at FROM extract_state") == (stamped)
 
 
 def test_a_grown_session_is_replaced_rather_than_appended(
@@ -154,10 +173,10 @@ def test_a_grown_session_is_replaced_rather_than_appended(
     refresh(corpus.project, extractor=extractor, exporter=exporter)
 
     # ...then the store matches one built from scratch over the grown file, table for table.
-    with DuckDbExporter(tmp_path / "fresh.duckdb") as fresh:
-        refresh(corpus.project, extractor=extractor, exporter=fresh)
-        for name in ("sessions", "turns", "api_calls", "raw_records"):
-            assert table(exporter, name, SPINE) == table(fresh, name, SPINE)
+    fresh = DuckDbExporter(tmp_path / "fresh.duckdb", wait=NO_WAIT)
+    refresh(corpus.project, extractor=extractor, exporter=fresh)
+    for name in ("sessions", "turns", "api_calls", "raw_records"):
+        assert table(exporter, name, SPINE) == table(fresh, name, SPINE)
     assert len(table(exporter, "turns", SPINE)) == 6
 
 
@@ -179,10 +198,11 @@ def test_a_session_caught_mid_write_heals_on_the_next_refresh(
 
     # ...then the records before it are stored and the half one is not...
     def archived() -> int:
-        row = exporter.connection.execute(
-            "SELECT count(*) FROM raw_records WHERE session_id = ? AND source = 'main'", [SPINE]
-        ).fetchone()
-        assert row is not None
+        (row,) = stored_rows(
+            exporter.path,
+            "SELECT count(*) FROM raw_records WHERE session_id = ? AND source = 'main'",
+            [SPINE],
+        )
         return row[0]
 
     assert archived() == 22
@@ -238,9 +258,9 @@ def test_a_changed_offload_file_re_extracts_its_session(corpus: Corpus, exporter
 
     # ...then the session is parsed again, and the store holds the file as it now reads.
     assert result.extracted == [OFFLOAD]
-    assert exporter.connection.execute(
-        "SELECT content, size_bytes FROM offload_files"
-    ).fetchall() == [("[redacted] — a shorter output than before", offloaded.stat().st_size)]
+    assert stored_rows(exporter.path, "SELECT content, size_bytes FROM offload_files") == [
+        ("[redacted] — a shorter output than before", offloaded.stat().st_size)
+    ]
 
 
 def test_a_bumped_extractor_version_re_extracts_everything(
@@ -286,13 +306,36 @@ def test_a_pruned_session_keeps_its_rows(corpus: Corpus, exporter: DuckDbExporte
     assert table(exporter, "raw_records", DUPS) == before
 
 
+def test_an_extract_leaves_the_store_readable_between_sessions(
+    corpus: Corpus, exporter: DuckDbExporter
+):
+    """A viewer can read the store while an extract is running.
+
+    The whole point of the exporter opening per operation: an extract spends most of its
+    time parsing, and a reader that arrives during the parse should not have to wait out
+    the run. The load-bearing probe is the second one — it lands after a session has
+    already been written, which is exactly when a run that held its connection would still
+    be holding it.
+    """
+    # If a two-session extract is asked, at each parse, whether another process can read...
+    corpus.add("spine", SPINE)
+    corpus.add("dup_uuid", DUPS)
+    extractor = ProbingExtractor(corpus.extractor(), exporter.path)
+
+    result = refresh(corpus.project, extractor=extractor, exporter=exporter)
+
+    # ...then the answer is yes both times, and both sessions still land.
+    assert sorted(result.extracted) == sorted([DUPS, SPINE])
+    assert extractor.readable == [True, True]
+
+
 def test_the_cli_extract_command_writes_the_same_store(corpus: Corpus, tmp_path: Path):
     """`hp extract` drives the same pipeline the API does."""
     corpus.add("spine", SPINE)
     through_api = tmp_path / "api.duckdb"
-    with DuckDbExporter(through_api) as exporter:
-        refresh(corpus.project, extractor=corpus.extractor(), exporter=exporter)
-        expected = table(exporter, "turns", SPINE)
+    exporter = DuckDbExporter(through_api, wait=NO_WAIT)
+    refresh(corpus.project, extractor=corpus.extractor(), exporter=exporter)
+    expected = table(exporter, "turns", SPINE)
 
     # If the CLI runs over the same corpus...
     through_cli = tmp_path / "cli.duckdb"
@@ -306,8 +349,68 @@ def test_the_cli_extract_command_writes_the_same_store(corpus: Corpus, tmp_path:
     )
 
     # ...then it leaves the same rows behind.
-    with DuckDbExporter(through_cli) as exporter:
-        assert table(exporter, "turns", SPINE) == expected
+    exporter = DuckDbExporter(through_cli, wait=NO_WAIT)
+    assert table(exporter, "turns", SPINE) == expected
+
+
+def test_an_extract_waits_out_a_holder_and_then_writes(corpus: Corpus, tmp_path: Path):
+    """An extract that lands while something else holds the store queues behind it.
+
+    The direction an operator meets first: `hp extract` typed while a page is being served.
+    It used to fail on sight; now it waits out the request and writes.
+    """
+    corpus.add("spine", SPINE)
+    db = tmp_path / "traces.duckdb"
+    # The store has to exist before another process can hold it.
+    DuckDbExporter(db, wait=NO_WAIT)
+
+    # If someone else lets go of the store partway through the extract's first open...
+    with locked(db, hold=BRIEF_HOLD):
+        started = time.monotonic()
+        cli.main(
+            "extract",
+            str(corpus.project),
+            "--db",
+            str(db),
+            "--projects-root",
+            str(corpus.root),
+        )
+        waited = time.monotonic() - started
+
+    # ...then the extract queued for it, and wrote the session it was asked for.
+    assert waited >= BRIEF_HOLD / 2
+    assert stored_rows(db, "SELECT id FROM sessions") == [(SPINE,)]
+
+
+def test_an_extract_gives_up_on_a_squatter_and_names_it(
+    corpus: Corpus, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """An extract that cannot have the store fails saying who has it, rather than hanging.
+
+    The other direction of the wait: `hp extract` queues for `CLI_WAIT` and then stops. A
+    budget that ran out has to leave an operator something to act on, so the process holding
+    the file is named — DuckDB's own line, kept.
+    """
+    corpus.add("spine", SPINE)
+    db = tmp_path / "traces.duckdb"
+    # The store has to exist before another process can hold it.
+    DuckDbExporter(db, wait=NO_WAIT)
+    monkeypatch.setattr(cli, "CLI_WAIT", IMPATIENT)
+
+    # If someone else is holding the store for longer than the extract will wait...
+    with locked(db) as holder, pytest.raises(StoreLocked) as refused:
+        cli.main(
+            "extract",
+            str(corpus.project),
+            "--db",
+            str(db),
+            "--projects-root",
+            str(corpus.root),
+        )
+
+    # ...then it says which store, and which process to go and look at.
+    assert str(db) in str(refused.value)
+    assert str(holder.pid) in str(refused.value)
 
 
 def test_a_session_source_carries_every_file_it_owns(corpus: Corpus):
@@ -321,4 +424,4 @@ def test_a_session_source_carries_every_file_it_owns(corpus: Corpus):
 
     # An offloaded tool result is part of the session, so it reaches the fingerprint and,
     # from slice 2 on, the parser.
-    assert offloaded in source.files
+    assert offloaded in source.files.files()

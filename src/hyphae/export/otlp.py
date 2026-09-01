@@ -1,4 +1,4 @@
-"""Shipping the store's sessions to an OTLP backend: span shaping and checked delivery.
+"""What a session becomes on the wire: the span shaping, and the census that counts it.
 
 One trace per session, ids derived from the store's own composite keys, so re-sending a
 session lands on the spans it landed on last time. That is the whole delivery promise:
@@ -12,6 +12,7 @@ party publishes it, so prompts, model text, tool arguments and results stay home
 
 import datetime as dt
 import hashlib
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -32,6 +33,7 @@ from hyphae.model import (
     ToolCall,
     Turn,
 )
+from hyphae.pipeline import Extractor, SessionSource
 
 # The span-shaping version. A row in `otlp_delivery` recorded under an older one is treated
 # as undelivered, so a shaping change re-sends the corpus the way an extractor upgrade
@@ -122,9 +124,8 @@ def session_spans(trace: SessionTrace, text: TextPolicy = METADATA_ONLY) -> list
     """Every span one session becomes, root first.
 
     Replayed rows emit nothing: a fork's copy of its parent's transcript would double-count
-    in every backend aggregation. Compactions carry no such flag, so `copied_compaction`
-    derives one. A tool call that started a subagent becomes that subagent's span rather than
-    a span of its own.
+    in every backend aggregation. A tool call that started a subagent becomes that subagent's
+    span rather than a span of its own.
     """
     session = trace.session
     if session.started_at is None or session.ended_at is None:
@@ -150,7 +151,7 @@ def session_spans(trace: SessionTrace, text: TextPolicy = METADATA_ONLY) -> list
         *(
             _compaction_span(session, compaction)
             for compaction in trace.compactions
-            if not copied_compaction(compaction, runs.get(compaction.source))
+            if not compaction.replayed
         ),
     ]
     return [_root_span(trace, children, text), *children]
@@ -179,6 +180,44 @@ def session_resource(session: Session, service_name: str | None) -> resource_pb2
             }
         )
     )
+
+
+@dataclass(frozen=True)
+class Census:
+    """What a run would ship, counted by shaping every session and sending nothing."""
+
+    sessions: int
+    spans: int
+    # Compactions shipped: what `live_compactions` holds, since the mapper and the view
+    # both read the extractor's `replayed` flag.
+    compactions: int
+
+
+def census(traces: Iterable[SessionTrace], text: TextPolicy = METADATA_ONLY) -> Census:
+    """Count what a send would put on the wire, without sending it.
+
+    Shapes each session exactly as `export()` does, so the total is the mapper's own answer
+    rather than a SQL approximation of it.
+    """
+    sessions = spans = compactions = 0
+    for trace in traces:
+        shaped = session_spans(trace, text)
+        sessions += 1
+        spans += len(shaped)
+        compactions += sum(1 for span in shaped if span.name == COMPACTION_SPAN)
+    return Census(sessions=sessions, spans=spans, compactions=compactions)
+
+
+def census_project[SourceT: SessionSource](
+    project: Path, *, extractor: Extractor[SourceT], text: TextPolicy = METADATA_ONLY
+) -> Census:
+    """Count what a run against `project` would ship, shaping every session and sending none.
+
+    The dry run's half of `pipeline.refresh`: the same extractor, driven the same way, with
+    no fingerprint diff in front of it — a census counts the whole selection, not the part
+    that moved since the last send.
+    """
+    return census((extractor.extract(source) for source in extractor.sessions(project)), text)
 
 
 class TimelessSessionError(Exception):
@@ -451,39 +490,6 @@ def _compaction_span(session: Session, compaction: Compaction) -> trace_pb2.Span
             "logfire.msg": f"compaction {compaction.trigger}",
         },
     )
-
-
-def copied_compaction(compaction: Compaction, run: AgentRun | None) -> bool:
-    """Whether a compaction is one a fork copied in with its prefix, and so ships no span.
-
-    `compactions` carries no `replayed` column, so the rule reads the same prefix shape the
-    extractor's flags read: `AgentRun.started_at` is by contract the first record no earlier
-    transcript already held, so anything in a fork at or before it came from the parent. A
-    tie is a copy — a fork cannot compact at the instant of its own first record, and when
-    the copied prefix ends at the compaction the two share a millisecond.
-
-    `run` is the run a compaction's `source` names, or None on the main thread, which comes
-    first in the extractor's ordering and can hold no copies.
-    """
-    if run is None:
-        return False
-    if not run.is_fork:
-        if run.started_at is not None and compaction.timestamp < run.started_at:
-            raise CompactionBeforeRunError(
-                f"Compaction {compaction.id} of session {compaction.session_id} is timestamped "
-                f"{compaction.timestamp.isoformat()}, before its non-fork run "
-                f"{compaction.source} started at {run.started_at.isoformat()}. Only a fork can "
-                f"hold a copy, so this is schema drift."
-            )
-        return False
-    # It copied everything it holds, so nothing in it is its own.
-    if run.started_at is None:
-        return True
-    return compaction.timestamp <= run.started_at
-
-
-class CompactionBeforeRunError(Exception):
-    """A compaction predates the run that recorded it, where no copied prefix explains it."""
 
 
 def _text(policy: TextPolicy, value: str | None) -> str | None:

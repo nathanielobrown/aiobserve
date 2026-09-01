@@ -1,15 +1,18 @@
-"""What one transcript's lines say: the readers that turn records into entities.
+"""What one transcript holds: the file read into lines, and what those lines say.
 
 One thread at a time — the session's own transcript or a subagent's — and no knowledge of
-which files make up a session (`extract/session_files.py`) or of how a refresh is driven
-(`extract/claude_code.py`). `_parse` is the entry: lines in, turns, api calls, tool calls and
-compactions out.
+which files make up a session (`extract/layout.py`) or of how a refresh is driven
+(`extract/claude_code.py`). What a record *is* lives here and nowhere else: `read_lines` parses a
+file into lines and rejects any shape outside the registries, `resolve_duplicates` collapses a
+uuid the file wrote twice, and `parse` turns what survives into turns, api calls, tool calls
+and compactions.
 
 Every field name these readers reach for is Claude Code's own, and the meaning of each is
 declared on a model in `extract/records/` with the session that proved it (`docs/schema.md`).
 """
 
 import json
+import logging
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
@@ -17,8 +20,9 @@ from datetime import datetime
 from pathlib import Path, PurePath
 from typing import Any, NamedTuple
 
+from hyphae.extract.errors import TranscriptSchemaError
 from hyphae.extract.pricing import SYNTHETIC_MODEL, TokenUsage, compute_cost
-from hyphae.extract.record_types import (
+from hyphae.extract.records.registry import (
     AdvisorResult,
     ArchiveRecordType,
     ContentBlock,
@@ -26,7 +30,6 @@ from hyphae.extract.record_types import (
     RecordType,
     ResultBlock,
     SystemSubtype,
-    TranscriptSchemaError,
     TurnTag,
 )
 from hyphae.model import (
@@ -46,17 +49,24 @@ _LEADING_TAG = re.compile(r"<([A-Za-z0-9_-]+)(?=[\s>])")
 _COMMAND_NAME = re.compile(r"<command-name>(.*?)</command-name>", re.DOTALL)
 _COMMAND_ARGS = re.compile(r"<command-args>(.*?)</command-args>", re.DOTALL)
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
-class _Line:
+class Line:
     """One line of a transcript, parsed but not yet interpreted."""
 
     line_no: int
     record: dict[str, Any]
     raw: str
 
+    @property
+    def uuid(self) -> str | None:
+        """The record's own id, absent on the bookkeeping types — a documented absence."""
+        return self.record.get("uuid")
 
-class _Parsed(NamedTuple):
+
+class Parsed(NamedTuple):
     """What one transcript — the session's own or a subagent's — yielded."""
 
     turns: list[Turn]
@@ -85,18 +95,75 @@ class _Prompt:
     command_args: str | None
 
 
-def _parse(lines: list[_Line], session_id: str, source: str, replayed: set[int]) -> _Parsed:
+def read_lines(path: Path, session_id: str) -> list[Line]:
+    """Every line of a transcript, parsed as JSON.
+
+    Split on "\\n" rather than `splitlines()`: real records contain U+2028 and U+2029
+    inside string values, which `splitlines()` treats as line breaks and so cuts records
+    in half.
+
+    A transcript read while Claude Code is writing it can end mid-record. That last line is
+    dropped with a warning, because the session is live rather than corrupt and the next
+    refresh will pick it up whole. Anywhere earlier, unparseable JSON is real damage and
+    stops the run.
+    """
+    raws = path.read_text().split("\n")
+    lines = []
+    for line_no, raw in enumerate(raws, start=1):
+        if not raw.strip():
+            continue
+        try:
+            record = json.loads(raw)
+        except json.JSONDecodeError as error:
+            if any(later.strip() for later in raws[line_no:]):
+                raise TranscriptSchemaError(
+                    f"Unparseable record in session {session_id}, line {line_no}"
+                ) from error
+            logger.warning(
+                "Session %s: dropped an incomplete final line (%d), still being written",
+                session_id,
+                line_no,
+            )
+            continue
+        _check_type(record, session_id, line_no)
+        lines.append(Line(line_no=line_no, record=record, raw=raw))
+    return lines
+
+
+def resolve_duplicates(lines: list[Line], session_id: str) -> list[Line]:
+    """Collapse repeated uuids to their last occurrence.
+
+    A rewind or an in-file fork rewrites a record's envelope under the uuid it already
+    used. The last write is the state the session continued from. A rewrite that changes
+    what was *said* is a different animal and stops the run.
+    """
+    last_at: dict[str, int] = {}
+    for index, line in enumerate(lines):
+        # Bookkeeping types carry no uuid — a documented absence, and nothing to dedup.
+        if line.uuid is None:
+            continue
+        if line.uuid in last_at and _content(lines[last_at[line.uuid]]) != _content(line):
+            raise TranscriptSchemaError(
+                f"Duplicate uuid {line.uuid} with differing message content in session "
+                f"{session_id}, lines {lines[last_at[line.uuid]].line_no} and {line.line_no}"
+            )
+        last_at[line.uuid] = index
+    survivors = set(last_at.values())
+    return [line for index, line in enumerate(lines) if line.uuid is None or index in survivors]
+
+
+def parse(lines: list[Line], session_id: str, source: str, replayed: set[int]) -> Parsed:
     """Turns, calls and tools from one transcript, keyed to the source that wrote it.
 
     `replayed` holds the line numbers this transcript copied from an earlier one; a row
     opened by such a line is a replay of that transcript's work.
     """
     turns, turn_by_line = _turns(lines, session_id, source, replayed)
-    return _Parsed(
+    return Parsed(
         turns=turns,
         api_calls=_api_calls(lines, turn_by_line, session_id, source, replayed),
         tool_calls=_tool_calls(lines, session_id, source, replayed),
-        compactions=_compactions(lines, session_id, source),
+        compactions=_compactions(lines, session_id, source, replayed),
     )
 
 
@@ -124,36 +191,37 @@ def _check_type(record: dict[str, Any], session_id: str, line_no: int) -> None:
             )
 
 
-def _content(line: _Line) -> Any:
+def _content(line: Line) -> Any:
     """What the record said, if it said anything — the one field a duplicate may not change."""
     message = line.record.get("message")
     return message.get("content") if isinstance(message, dict) else None
 
 
-def _raw_record(session_id: str, source: str, line: _Line) -> RawRecord:
+def raw_record(session_id: str, source: str, line: Line) -> RawRecord:
+    """One line as the archive keeps it: the whole text, plus the fields a query filters on."""
     return RawRecord(
         session_id=session_id,
         source=source,
         line_no=line.line_no,
-        uuid=line.record.get("uuid"),
-        timestamp=_timestamp(line.record),
+        uuid=line.uuid,
+        timestamp=timestamp_of(line.record),
         type=line.record["type"],
         raw=line.raw,
     )
 
 
-def _timestamp(record: dict[str, Any]) -> datetime | None:
+def timestamp_of(record: dict[str, Any]) -> datetime | None:
     """A record's timestamp. Absent on the bookkeeping types, which carry no time at all."""
     moment = record.get("timestamp")
     return datetime.fromisoformat(moment) if moment else None
 
 
-def _session(lines: list[_Line], session_id: str, transcript: Path) -> Session:
+def session_of(lines: list[Line], session_id: str, transcript: Path) -> Session:
     """Session metadata, gathered from the records that carry it."""
     # The file opens on bookkeeping records with no `cwd`, so the first record that has
     # one is what says where this session ran.
     context = next((line.record for line in lines if "cwd" in line.record), None)
-    moments = [t for t in (_timestamp(line.record) for line in lines) if t is not None]
+    moments = [t for t in (timestamp_of(line.record) for line in lines) if t is not None]
     active_ms = sum(
         line.record["durationMs"]
         for line in lines
@@ -181,13 +249,15 @@ def _session(lines: list[_Line], session_id: str, transcript: Path) -> Session:
     )
 
 
-def _last_field(lines: list[_Line], kind: RecordType, field: str) -> str | None:
+def _last_field(lines: list[Line], kind: RecordType, field: str) -> str | None:
     """The last value of a single-field record type, or None when the file holds none."""
     values = [line.record[field] for line in lines if line.record["type"] == kind]
     return values[-1] if values else None
 
 
-def _compactions(lines: list[_Line], session_id: str, source: str) -> list[Compaction]:
+def _compactions(
+    lines: list[Line], session_id: str, source: str, replayed: set[int]
+) -> list[Compaction]:
     """Every point this transcript summarised itself to free context.
 
     Each boundary is written alongside the summary that replaced the history, so one row
@@ -203,6 +273,7 @@ def _compactions(lines: list[_Line], session_id: str, source: str) -> list[Compa
             pre_tokens=line.record["compactMetadata"]["preTokens"],
             post_tokens=line.record["compactMetadata"]["postTokens"],
             duration_ms=line.record["compactMetadata"]["durationMs"],
+            replayed=line.line_no in replayed,
         )
         for line in lines
         if line.record["type"] == RecordType.SYSTEM
@@ -210,7 +281,7 @@ def _compactions(lines: list[_Line], session_id: str, source: str) -> list[Compa
     ]
 
 
-def _pr_links(lines: list[_Line], session_id: str) -> list[PrLink]:
+def pr_links(lines: list[Line], session_id: str) -> list[PrLink]:
     """Every pull request the session recorded touching.
 
     These records carry no uuid, and a session that pushes repeatedly links the same PR
@@ -230,8 +301,39 @@ def _pr_links(lines: list[_Line], session_id: str) -> list[PrLink]:
     ]
 
 
+def fork_context(lines: list[Line]) -> str | None:
+    """The record a by-reference fork continues from, when its file opens on one.
+
+    Only that variant carries it: a fork that copied its history states the same thing by
+    holding the records themselves. Every one of the 25 in the corpus leads the file
+    (scanned 2026-08-07), but the search does not depend on that.
+    """
+    for line in lines:
+        if line.record["type"] == RecordType.FORK_CONTEXT_REF:
+            return line.record["parentLastUuid"]
+    return None
+
+
+def workflow_launches(lines: list[Line]) -> dict[str, str]:
+    """Which tool call launched each fan-out: `runId` from the result, to its call's id.
+
+    A `Workflow` call answers with the run it started, and the run id is the name of the
+    directory its agents write into — the only join between a fan-out's transcripts and the
+    call that asked for them.
+    """
+    launches = {}
+    for line in lines:
+        details = line.record.get("toolUseResult")
+        if not isinstance(details, dict) or "runId" not in details:
+            continue
+        for block in line.record["message"]["content"]:
+            if block["type"] == ContentBlock.TOOL_RESULT:
+                launches[details["runId"]] = block["tool_use_id"]
+    return launches
+
+
 def _turns(
-    lines: list[_Line], session_id: str, source: str, replayed: set[int]
+    lines: list[Line], session_id: str, source: str, replayed: set[int]
 ) -> tuple[list[Turn], dict[int, str | None]]:
     """The session's turns, and which turn each line belongs to.
 
@@ -263,23 +365,27 @@ def _turns(
                 )
             )
         turn_by_line[line.line_no] = open_turn
-        moment = _timestamp(line.record)
+        moment = timestamp_of(line.record)
         if open_turn is not None and moment is not None:
             spans[open_turn].append(moment)
     # Every span holds at least the prompt's own timestamp, which the loop above required.
     return [replace(turn, ended_at=max(spans[turn.id])) for turn in turns], turn_by_line
 
 
-def _required_timestamp(line: _Line, session_id: str) -> datetime:
-    moment = _timestamp(line.record)
+def _required_timestamp(line: Line, session_id: str) -> datetime:
+    """The record's timestamp, for the entities that cannot be placed in time without one."""
+    moment = timestamp_of(line.record)
     if moment is None:
+        # The kind comes off the record rather than the caller: eight parse paths reach
+        # here, and a caller naming the wrong one sends the reader to the wrong records.
         raise TranscriptSchemaError(
-            f"Session {session_id}, line {line.line_no}: a prompt record with no timestamp"
+            f"Session {session_id}, line {line.line_no}: "
+            f"a {line.record['type']} record with no timestamp"
         )
     return moment
 
 
-def _prompt(line: _Line, session_id: str, source: str) -> _Prompt | None:
+def _prompt(line: Line, session_id: str, source: str) -> _Prompt | None:
     """Whether this record opens a turn, and the prompt if it does.
 
     The filters run before the tag registry: `isMeta` records carry tags of their own that
@@ -335,7 +441,7 @@ def _captured(pattern: re.Pattern[str], content: str) -> str | None:
 
 
 def _api_calls(
-    lines: list[_Line],
+    lines: list[Line],
     turn_by_line: dict[int, str | None],
     session_id: str,
     source: str,
@@ -347,8 +453,8 @@ def _api_calls(
     by `parentUuid`, interleaved with the tool results they triggered. Two thirds of the
     messages in the corpus span several records, so grouping is not optional.
     """
-    at_uuid = {line.record["uuid"]: line for line in lines if line.record.get("uuid")}
-    chunks: dict[str, list[_Line]] = {}
+    at_uuid = {line.uuid: line for line in lines if line.uuid}
+    chunks: dict[str, list[Line]] = {}
     for line in lines:
         if line.record["type"] != RecordType.ASSISTANT:
             continue
@@ -405,7 +511,7 @@ def _api_calls(
     return calls
 
 
-def _fallback_from(group: Iterable[_Line]) -> str | None:
+def _fallback_from(group: Iterable[Line]) -> str | None:
     """The model this message was first asked of, when Claude Code retried on another.
 
     A `fallback` block names both ends; the one that answered is already `message.model`,
@@ -419,7 +525,7 @@ def _fallback_from(group: Iterable[_Line]) -> str | None:
 
 
 def _tool_calls(
-    lines: list[_Line], session_id: str, source: str, replayed: set[int]
+    lines: list[Line], session_id: str, source: str, replayed: set[int]
 ) -> list[ToolCall]:
     """Every tool the transcript asked for, paired with the record that answered it.
 
@@ -476,7 +582,7 @@ def _tool_calls(
     return calls
 
 
-def _tool_results(lines: list[_Line], session_id: str) -> dict[str, _Result]:
+def _tool_results(lines: list[Line], session_id: str) -> dict[str, _Result]:
     """What each tool said back, keyed by the call it answered.
 
     A rewind can record an answer twice under one call id; the later record wins, as it
@@ -502,12 +608,12 @@ def _tool_results(lines: list[_Line], session_id: str) -> dict[str, _Result]:
                 # Absent on most results — absence means the tool succeeded.
                 is_error=bool(block.get("is_error")),
                 offload_file=PurePath(path).name if path else None,
-                ended_at=_timestamp(record),
+                ended_at=timestamp_of(record),
             )
     return results
 
 
-def _advisor_results(lines: list[_Line], session_id: str) -> dict[str, _Result]:
+def _advisor_results(lines: list[Line], session_id: str) -> dict[str, _Result]:
     """What each server-side tool said back, keyed by the call it answered.
 
     Unlike a local tool, the answer rides inside the same assistant message as the request,
@@ -532,7 +638,7 @@ def _advisor_results(lines: list[_Line], session_id: str) -> dict[str, _Result]:
                 text=content["error_code"] if error else None,
                 is_error=error,
                 offload_file=None,
-                ended_at=_timestamp(line.record),
+                ended_at=timestamp_of(line.record),
             )
     return results
 
@@ -553,7 +659,7 @@ def _result_text(content: Any, session_id: str, line_no: int) -> str:
     return "".join(parts)
 
 
-def _blocks(group: Iterable[_Line], kind: ContentBlock, field: str) -> str:
+def _blocks(group: Iterable[Line], kind: ContentBlock, field: str) -> str:
     """Every block of one kind across a message's records, concatenated in order.
 
     `field` is the block's own key for the text it carries, which is not the kind: a

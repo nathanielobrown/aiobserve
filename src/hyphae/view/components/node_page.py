@@ -6,6 +6,7 @@ a click serve the same bytes.
 """
 
 from collections.abc import Mapping, Sequence
+from enum import StrEnum
 from typing import NamedTuple
 
 import htpy
@@ -15,9 +16,10 @@ from hyphae.view import format as fmt
 from hyphae.view.citation import Cited
 from hyphae.view.columns import Shape
 from hyphae.view.components import Html, citation, layout, logs, nav_tree, node_body, parts
-from hyphae.view.components.logs import Logged, Pager
+from hyphae.view.components.logs import Logged
 from hyphae.view.components.nav_tree import PANE_SWAP, NavTreeRow, PresetChoice
 from hyphae.view.components.node_body import Facts
+from hyphae.view.components.parts import Pager
 from hyphae.view.detail import Detail, EnrichmentLines
 from hyphae.view.enrichment import Enrichment
 from hyphae.view.errors import Step as Failures
@@ -66,31 +68,83 @@ class Archived(NamedTuple):
     line_no: int | None
 
 
+class Nav(NamedTuple):
+    """The NavTree side: the preset control, the one open path, and the thread it was read for.
+
+    Not `nav_tree.NavTree`, which is what building the tree produced: this is the half of it a
+    page draws, and the preset control and the thread are the page's own.
+    """
+
+    choices: Sequence[PresetChoice]
+    rows: Sequence[NavTreeRow]
+    thread: str
+
+
+class Body(NamedTuple):
+    """The node read whole: its own fields, what a pass said about it, its fat values, its bytes.
+
+    What the pane would still show if the session around it were gone — everything else the
+    page carries is about where the node sits.
+    """
+
+    facts: Facts
+    said: Said | None
+    details: Sequence[Detail]
+    archived: Archived
+
+
+class Steps(NamedTuple):
+    """Where reading in order goes: the node before this one on its level, and the one after."""
+
+    previous: Walked | None
+    next: Walked | None
+
+
+class Bearings(NamedTuple):
+    """Where the node sits, and every way off it that is not a step down into a child.
+
+    Three ways out, and going down is the NavTree's: back out of the session along the crumb
+    chain, along the level with the walk, and across to another failure with the stepper.
+    """
+
+    trail: Trail
+    chain: Sequence[Node]
+    walked: Steps
+    # How many tool calls the session failed, which is what the way into the errors page says.
+    tool_errors: int | None
+    # The failures either side of this node, where the pane is standing on one.
+    failures: Failures | None
+
+
+class Children(NamedTuple):
+    """One page of the node's children, as the log under the body reads them.
+
+    `total` is the level's own size rather than the page's: the heading counts the level, and
+    the pager under it is cut from the same number.
+    """
+
+    shape: Shape
+    rows: Sequence[Logged]
+    total: int
+    pager: Pager | None
+
+
 def page(
     *,
     selection: Node,
-    choices: Sequence[PresetChoice],
-    rows: Sequence[NavTreeRow],
-    thread: str,
-    trail: Trail,
-    chain: Sequence[Node],
-    facts: Facts,
-    said: Said | None,
-    details: Sequence[Detail],
-    archived: Archived,
-    walked_previous: Walked | None,
-    walked_next: Walked | None,
-    tool_errors: int | None,
-    failures: Failures | None,
-    shape: Shape,
-    log_rows: Sequence[Logged],
-    total: int,
-    pager: Pager | None,
-    suffix: str,
+    nav: Nav,
+    body: Body,
+    bearings: Bearings,
+    children: Children,
     citations: Mapping[str, Cited],
+    suffix: str,
     dev: bool,
 ) -> Html:
-    """The whole document: the NavTree, the grip between the columns, and the reading pane."""
+    """The whole document: the NavTree, the grip between the columns, and the reading pane.
+
+    `selection` is the one input every part reads — it names the tab, heads the crumb chain,
+    and titles the body — so it stands apart from the four groups around it.
+    """
     return layout.page(
         tab_title=f"{selection.icon} {selection.tab_title} · hyphae",
         scripts=_SCRIPTS,
@@ -105,9 +159,9 @@ def page(
                     # budget (`.claude/rules/viewer-ui.md`).
                     htpy.div(PANE_SWAP, id="nav-tree-rows")[
                         [
-                            nav_tree.presets(choices=choices),
+                            nav_tree.presets(choices=nav.choices),
                             htpy.ul(".rows")[
-                                nav_tree.lines(rows=rows, suffix=suffix, thread=thread)
+                                nav_tree.lines(rows=nav.rows, suffix=suffix, thread=nav.thread)
                             ],
                         ]
                     ]
@@ -124,29 +178,38 @@ def page(
                 ),
                 htpy.article(id="reading-pane")[
                     [
-                        _crumbs(selection=selection, trail=trail, chain=chain, suffix=suffix),
-                        node_body.body(node=selection, facts=facts, suffix=suffix),
+                        _crumbs(
+                            selection=selection,
+                            trail=bearings.trail,
+                            chain=bearings.chain,
+                            suffix=suffix,
+                        ),
+                        node_body.body(node=selection, facts=body.facts, suffix=suffix),
                         # What an enrichment pass said about this node, where a pass reached it.
-                        parts.summary(enrichment=said.enrichment, lines=said.lines)
-                        if said
+                        parts.summary(enrichment=body.said.enrichment, lines=body.said.lines)
+                        if body.said
                         else None,
                         # The node's own values, cut to the pane's width, each with the way to
                         # the whole of it.
-                        [parts.detail(item=item) for item in details],
-                        _raw(archived=archived),
+                        [parts.detail(item=item) for item in body.details],
+                        _raw(archived=body.archived),
                         logs.log(
-                            shape=shape,
-                            rows=log_rows,
-                            total=total,
+                            shape=children.shape,
+                            rows=children.rows,
+                            total=children.total,
                             suffix=suffix,
-                            pager=pager,
+                            pager=children.pager,
                             opens=True,
                         ),
-                        _walk(previous=walked_previous, following=walked_next, suffix=suffix),
+                        _walk(
+                            previous=bearings.walked.previous,
+                            following=bearings.walked.next,
+                            suffix=suffix,
+                        ),
                         _stepper(
                             session_id=selection.session_id,
-                            tool_errors=tool_errors,
-                            failures=failures,
+                            tool_errors=bearings.tool_errors,
+                            failures=bearings.failures,
                             suffix=suffix,
                         ),
                         # What produced the page, last in the pane rather than under the
@@ -243,6 +306,18 @@ def _raw(*, archived: Archived) -> Html:
     ]
 
 
+class Way(StrEnum):
+    """Which of the two ways a control points, and the value it writes into the markup.
+
+    The walk and the error stepper both put one control on each side of the pane, and both
+    lean on which side it is: the arrow leads on the way back and trails on the way on, and
+    the stylesheet pushes each to its own margin off this value.
+    """
+
+    PREVIOUS = "previous"
+    NEXT = "next"
+
+
 def _walk(*, previous: Walked | None, following: Walked | None, suffix: str) -> Html:
     """Reading in order, along the level the reader is standing on.
 
@@ -254,13 +329,16 @@ def _walk(*, previous: Walked | None, following: Walked | None, suffix: str) -> 
     return htpy.nav(".walk", PANE_SWAP, aria_label="Read in order")[
         [
             _step(
-                step=previous, way="previous", arrow="↑" if previous.climbed else "←", suffix=suffix
+                step=previous,
+                way=Way.PREVIOUS,
+                arrow="↑" if previous.climbed else "←",
+                suffix=suffix,
             )
             if previous
             else None,
             _step(
                 step=following,
-                way="next",
+                way=Way.NEXT,
                 arrow="↑" if following.climbed else "→",
                 suffix=suffix,
             )
@@ -270,7 +348,7 @@ def _walk(*, previous: Walked | None, following: Walked | None, suffix: str) -> 
     ]
 
 
-def _step(*, step: Walked, way: str, arrow: str, suffix: str) -> Html:
+def _step(*, step: Walked, way: Way, arrow: str, suffix: str) -> Html:
     """One control of the walk: where it goes, and whether taking it leaves the level."""
     named: list[Html | str | None] = [
         parts.glyph(enriched=step.node.enriched),
@@ -285,7 +363,7 @@ def _step(*, step: Walked, way: str, arrow: str, suffix: str) -> Html:
         data_node=step.node.key,
         data_climb=way if step.climbed else None,
         hx_get=f"{step.node.url}{suffix}",
-    )[[arrow, " ", *named] if way == "previous" else [*named, " ", arrow]]
+    )[[arrow, " ", *named] if way is Way.PREVIOUS else [*named, " ", arrow]]
 
 
 def _stepper(
@@ -303,22 +381,22 @@ def _stepper(
         return None
     return htpy.nav(".error-stepper", aria_label="Where this session failed")[
         [
-            _failure(node=failures.previous, way="previous", suffix=suffix)
+            _failure(node=failures.previous, way=Way.PREVIOUS, suffix=suffix)
             if failures and failures.previous
             else None,
             htpy.a(data_step="all", href=f"/session/{session_id}/errors")[
                 [htpy.span(data_field="tool_errors")[fmt.count(tool_errors)], " tool error(s)"]
             ],
-            _failure(node=failures.next, way="next", suffix=suffix)
+            _failure(node=failures.next, way=Way.NEXT, suffix=suffix)
             if failures and failures.next
             else None,
         ]
     ]
 
 
-def _failure(*, node: Node, way: str, suffix: str) -> Html:
+def _failure(*, node: Node, way: Way, suffix: str) -> Html:
     """One step of the error stepper: the failure read before this one, or the one after."""
     named = htpy.span(data_field="title")[node.nav_tree_title]
     return htpy.a(data_step=way, data_node=node.key, href=f"{node.url}{suffix}")[
-        ["← ", named] if way == "previous" else [named, " →"]
+        ["← ", named] if way is Way.PREVIOUS else [named, " →"]
     ]

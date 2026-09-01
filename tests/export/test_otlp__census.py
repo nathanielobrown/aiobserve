@@ -4,7 +4,6 @@ The count is the one number an operator sees before spending an hour and a backe
 quota, so it has to be the mapper's own answer rather than a convenient approximation of it.
 """
 
-import datetime as dt
 import os
 import shutil
 from collections.abc import Iterator
@@ -14,11 +13,10 @@ import duckdb
 import pytest
 
 from hyphae.export.duckdb import open_trace_store
-from hyphae.export.otlp import SpanKey, session_spans, span_id
-from hyphae.export.otlp_delivery import AmbiguousCompactionError, census
+from hyphae.export.otlp import SpanKey, census, census_project, session_spans, span_id
 from hyphae.extract.store import StoreSource
 from hyphae.model import SessionTrace
-from tests.conftest import FORK_ORIGIN, FORK_RUN, MYCELIA, SPINE, SPINE_RUN
+from tests.conftest import FORK_COMPACTION, FORK_RUN, MYCELIA, NO_WAIT, SPINE, SPINE_RUN
 
 # The store a dry run reads when one is named, mirroring the pipeline plan's census pattern:
 # the leaf skips rather than inventing a corpus, since no fixture set is the real one.
@@ -29,9 +27,7 @@ CORPUS_PROJECT_ENV = "HYPHAE_CENSUS_PROJECT"
 # What the mapper emits per session, spelled independently in SQL. Kept as the formula rather
 # than today's total so the leaf does not rot as fixtures land: one root per shipped session,
 # every live turn and api call, every live tool call *no run named as its launch*, every agent
-# run, and every compaction that survives the copied-prefix replay rule — a fork-source
-# compaction at or before its run's `started_at`, or in a fork run that started at no recorded
-# time, is a copy.
+# run, and every compaction no fork replayed.
 #
 # The two middle terms are where a plausible formula goes wrong. Suppression is keyed by tool
 # call *id*, so a run whose call the session records twice suppresses both rows, and a
@@ -48,23 +44,7 @@ SELECT
         SELECT 1 FROM agent_runs run
         WHERE run.session_id = call.session_id AND run.tool_use_id = call.id))
   + (SELECT count(*) FROM agent_runs WHERE session_id IN $ids)
-  + (SELECT count(*) FROM compactions compaction
-     LEFT JOIN agent_runs run
-       ON run.session_id = compaction.session_id AND run.id = compaction.source
-     WHERE compaction.session_id IN $ids
-       AND (run.id IS NULL OR NOT run.is_fork
-            OR (run.started_at IS NOT NULL AND compaction.timestamp > run.started_at)))
-"""
-
-# Planted, synthetic: no recorded fixture holds a fork-source compaction, and the shape this
-# tier is about is a fork that copied one out of its parent's transcript. `FORK_RUN` is the
-# corpus's one fork run, and it started at this recorded instant.
-FORK_STARTED_AT = dt.datetime(2026, 7, 21, 22, 5, 3, 221000, tzinfo=dt.UTC)
-PLANTED_COMPACTION = "planted-compaction-0000-0000-000000000000"
-PLANT = """
-INSERT INTO compactions VALUES
-    (?, ?, 'main', ?, 'auto', 100, 10, 5),
-    (?, ?, ?, ?, 'auto', 100, 10, 5)
+  + (SELECT count(*) FROM compactions WHERE session_id IN $ids AND NOT replayed)
 """
 
 
@@ -95,20 +75,20 @@ def counted(exportable_db: Path, tmp_path: Path) -> Iterator[duckdb.DuckDBPyConn
     """The exportable corpus, writable, so a leaf can plant the shape no fixture records."""
     path = tmp_path / "traces.duckdb"
     shutil.copyfile(exportable_db, path)
-    connection = open_trace_store(path, read_only=False)
-    yield connection
-    connection.close()
+    with open_trace_store(path, read_only=False, wait=NO_WAIT) as connection:
+        yield connection
 
 
 def test_the_census_counts_what_the_mapper_would_ship(
     counted: duckdb.DuckDBPyConnection,
 ) -> None:
     """The dry run's span total is the number a real send would put on the wire."""
-    # If every shipped session is shaped...
-    shipped = traces(counted)
-    counts = census(shipped)
+    # If a project's whole selection is counted the way a dry run counts it — the extractor
+    # `refresh` would drive, with no fingerprint diff in front of it...
+    counts = census_project(Path(MYCELIA), extractor=StoreSource(counted))
     # ...then the census agrees with the shapes themselves, session for session and span for
     # span...
+    shipped = traces(counted)
     assert counts.sessions == len(shipped)
     assert counts.spans == sum(len(session_spans(trace)) for trace in shipped)
     # ...and with the store's own rows read through the mapping formula, which is the check
@@ -116,60 +96,25 @@ def test_the_census_counts_what_the_mapper_would_ship(
     assert counts.spans == mapping_true(counted, shipped)
 
 
-def test_the_compaction_term_follows_the_mapper_not_the_rollup_view(
+def test_the_compaction_term_and_the_store_agree_on_a_fork_copy(
     counted: duckdb.DuckDBPyConnection,
 ) -> None:
-    """A compaction a fork copied is counted by neither the census nor a send."""
-    # If a session's compaction also appears under its fork's source, timestamped inside the
-    # prefix that fork copied — planted, since no recorded fixture holds one...
-    before = census(traces(counted)).compactions
-    counted.execute(
-        PLANT,
-        [
-            PLANTED_COMPACTION,
-            FORK_ORIGIN,
-            FORK_STARTED_AT - dt.timedelta(hours=1),
-            PLANTED_COMPACTION,
-            FORK_ORIGIN,
-            FORK_RUN,
-            FORK_STARTED_AT - dt.timedelta(minutes=1),
-        ],
+    """A compaction a fork copied is counted once by the census and once by the store."""
+    # If the corpus holds the session whose fork copied a compaction out of the transcript it
+    # forked, so the base table holds that record twice...
+    held = scalar(counted, "SELECT count(*) FROM compactions WHERE id = ?", [FORK_COMPACTION])
+    assert held == 2
+    # ...then the census counts the live one and drops the copy, because that is what a send
+    # does...
+    counts = census(traces(counted))
+    assert counts.compactions == scalar(counted, "SELECT count(*) FROM live_compactions")
+    # ...and the fork's copy is what each of them left out.
+    assert (
+        scalar(
+            counted, "SELECT count(*) FROM compactions WHERE replayed AND source = ?", [FORK_RUN]
+        )
+        == 1
     )
-    # ...then `live_compactions` returns both copies. Its `_COUNTED` comment claims the table
-    # is replay-free, and a compaction carries no `replayed` flag to make that true...
-    view = scalar(counted, "SELECT count(*) FROM live_compactions")
-    assert view == scalar(counted, "SELECT count(*) FROM compactions")
-    # ...while the census counts the original and drops the copy, because that is what the
-    # send does. Reading the view here would over-report by every fork copy in the corpus.
-    assert census(traces(counted)).compactions == before + 1
-    assert view == before + 2
-
-
-def test_a_duplicated_compaction_with_two_live_copies_crashes_the_census(
-    counted: duckdb.DuckDBPyConnection,
-) -> None:
-    """A compaction the copied-prefix rule cannot separate stops the run rather than guessing."""
-    # If the same planted copy is timestamped *after* the fork's first own record, the rule
-    # reads both copies as live and the session would ship one compaction as two spans...
-    counted.execute(
-        PLANT,
-        [
-            PLANTED_COMPACTION,
-            FORK_ORIGIN,
-            FORK_STARTED_AT - dt.timedelta(hours=1),
-            PLANTED_COMPACTION,
-            FORK_ORIGIN,
-            FORK_RUN,
-            FORK_STARTED_AT + dt.timedelta(minutes=1),
-        ],
-    )
-    # ...so the census crashes, naming the session and the id an operator has to look at.
-    # Every duplicated group in the canonical corpus keeps exactly one live copy today; this
-    # is the guard for the day a fork shape lands that the rule cannot separate.
-    with pytest.raises(AmbiguousCompactionError) as raised:
-        census(traces(counted))
-    assert FORK_ORIGIN in str(raised.value)
-    assert PLANTED_COMPACTION in str(raised.value)
 
 
 @pytest.mark.slow  # Shapes a whole real corpus — hundreds of sessions, read from disk.
@@ -181,12 +126,9 @@ def test_the_census_holds_over_a_real_corpus() -> None:
     named = os.environ.get(CORPUS_ENV, "").strip()
     if not named:
         pytest.skip(f"{CORPUS_ENV} names no trace store to census")
-    connection = open_trace_store(Path(named), read_only=True)
-    try:
+    with open_trace_store(Path(named), read_only=True, wait=NO_WAIT) as connection:
         shipped = traces(connection, Path(os.environ.get(CORPUS_PROJECT_ENV, MYCELIA)))
         assert census(shipped).spans == mapping_true(connection, shipped)
-    finally:
-        connection.close()
 
 
 # Planted, synthetic: no recorded fixture holds a workflow fan-out, and the canonical corpus

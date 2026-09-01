@@ -8,6 +8,7 @@ that its file does not define: `project_sessions`, the temp table holding the se
 
 import datetime as dt
 from collections.abc import Mapping
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -16,12 +17,9 @@ import duckdb
 
 from hyphae.analyze import macros, manifest, queries
 from hyphae.analyze.queries import NoDefault, ParamType, ParamValue, Scope
-from hyphae.export.schema import (
-    SCHEMA_MISMATCH_REMEDY,
-    SCHEMA_VERSION,
-    held_schema_version,
-)
-from hyphae.sessions import project_predicate, resolve_project
+from hyphae.export.duckdb import CLI_WAIT, StoreLocked, open_trace_store
+from hyphae.export.schema import SchemaVersionError
+from hyphae.projects import project_predicate, resolve_project
 
 # The sessions `--project` selects, and the window flag every corpus query reads. Written
 # here rather than in each query file so that a query cannot scope itself differently from
@@ -110,12 +108,15 @@ def run(
             f"{name} is keyed to one session: --project and --since mean nothing to it"
         )
 
-    connection = duckdb.connect(str(db), read_only=True)
+    # The store's one opener, which checks the version and builds the views this code reads.
+    # Its refusals are translated here rather than let through: everything `hp query` reports
+    # arrives as a `QueryError`, whichever part of the request it came from.
+    opened = ExitStack()
     try:
-        # Timestamps went in as UTC; a window measured in the machine's local zone would
-        # move the corpus by a few hours depending on where the reader sits.
-        connection.execute("SET TimeZone='UTC'")
-        _check_schema(db, connection)
+        connection = opened.enter_context(open_trace_store(db, read_only=True, wait=CLI_WAIT))
+    except (FileNotFoundError, SchemaVersionError, StoreLocked) as error:
+        raise QueryError(str(error)) from error
+    with opened:
         macros.install(connection)
         cited: dict[str, ParamValue] = {}
         unplaceable = None
@@ -133,8 +134,6 @@ def run(
             rows=cursor.fetchall(),
             unplaceable_sessions=unplaceable,
         )
-    finally:
-        connection.close()
 
 
 def _build_project_sessions(
@@ -186,15 +185,10 @@ def _parse(parameter: str, type_: ParamType, text: str) -> ParamValue:
                 return int(text)
             case ParamType.DATE:
                 return dt.date.fromisoformat(text)
+            case _:
+                # A type this function has no arm for. Falling off the end of a match hands
+                # back None, which DuckDB binds as SQL NULL and the citation reports as
+                # bound — a wrong answer with nothing marking it, so a fourth type stops here.
+                raise QueryError(f"--param {parameter}: nothing binds a {type_} parameter")
     except ValueError as error:
         raise QueryError(f"--param {parameter}={text} is not a {type_}: {error}") from error
-
-
-def _check_schema(db: Path, connection: duckdb.DuckDBPyConnection) -> None:
-    """Refuse a store this build's queries were not written against."""
-    held = held_schema_version(connection)
-    if held != SCHEMA_VERSION:
-        raise QueryError(
-            f"{db} holds schema version {held or 'nothing'}, these queries read "
-            f"{SCHEMA_VERSION}. {SCHEMA_MISMATCH_REMEDY}"
-        )

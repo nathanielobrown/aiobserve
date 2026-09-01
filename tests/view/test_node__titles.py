@@ -1,6 +1,6 @@
 """The one name a node carries wherever it is printed.
 
-A tool call is named once, in Python, out of the fields the store ships (`view/formatters.py`),
+A tool call is named once, in Python, out of the fields the store ships (`view/tool_names.py`),
 and every surface that prints it — the pane heading, the NavTree row, the crumb, the parent's
 log row, the errors list, the api-call row above it — prints that one string cut to its own
 width. These leaves read the string back off each of those surfaces and check they agree.
@@ -13,7 +13,7 @@ import duckdb
 from fastapi.testclient import TestClient
 
 from hyphae.analyze import macros, queries
-from hyphae.view import formatters, nodes
+from hyphae.view import nodes, tool_names
 from hyphae.view.app import build_app
 from hyphae.view.format import ELLIPSIS, cut
 from hyphae.view.nodes import LEAD_SEPARATOR
@@ -143,7 +143,7 @@ def test_one_tool_call_is_titled_the_same_way_wherever_it_is_named(
 
 # The tools the fixture corpus records under a name the registry knows, each with the glyph
 # that leads its rows and the input field its title is read from. Restated from
-# `plans/viewer-polish/design.md` rather than read off `view/formatters.py:FORMATTERS`, which is the
+# `plans/viewer-polish/design.md` rather than read off `view/tool_names.py:FORMATTERS`, which is the
 # thing under test. The six names not here have no recorded call to serve, and the leaf below
 # says so out loud.
 RECORDED_FORMATTERS = {
@@ -200,12 +200,12 @@ def test_every_registered_tool_the_corpus_records_agrees_across_its_surfaces(
             assert project == MYCELIA and f"{project}/" in given
             assert whole == f"{glyph} {json.loads(given)[field][len(project) + 1 :]}"
     # Which of the registry's names this corpus records: the six above and no others. The
-    # rest are proven by the unit table in `test_formatters.py` alone, over inputs no fixture
+    # rest are proven by the unit table in `test_tool_names.py` alone, over inputs no fixture
     # holds — so a fixture that gains a `Grep` call reds this line rather than going unread.
     recorded = {
         name for (name,) in store.execute("SELECT DISTINCT name FROM live_tool_calls").fetchall()
     }
-    assert recorded & set(formatters.FORMATTERS) == set(RECORDED_FORMATTERS)
+    assert recorded & set(tool_names.FORMATTERS) == set(RECORDED_FORMATTERS)
 
 
 def test_a_tool_the_registry_does_not_name_keeps_the_title_the_store_composed(
@@ -225,7 +225,7 @@ def test_a_tool_the_registry_does_not_name_keeps_the_title_the_store_composed(
     """
     reading = duckdb.connect(str(corpus_db), read_only=True)
     macros.install(reading)
-    known = sorted(formatters.FORMATTERS)
+    known = sorted(tool_names.FORMATTERS)
     unnamed = reading.execute(
         "SELECT t.session_id, t.source, t.id, t.name,"
         "       tool_path(t.input, s.project_dir, ?),"
@@ -317,7 +317,7 @@ def test_an_api_call_that_answered_with_tool_calls_is_named_by_what_it_called(
     the agreement: the pane's heading, the NavTree row beside it and the browser tab print one
     string, because one derivation composes it from two queries at two widths.
     """
-    known = sorted(formatters.FORMATTERS)
+    known = sorted(tool_names.FORMATTERS)
     registered = f"({', '.join('?' * len(known))})"
     session_id, source, call_id, turn_id, model = one(
         store,

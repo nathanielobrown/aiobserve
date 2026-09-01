@@ -17,7 +17,8 @@ import htpy
 import pytest
 
 from hyphae.analyze import queries
-from hyphae.enrich.prompts import PROMPT_VERSION, Level
+from hyphae.enrich.items import Level
+from hyphae.enrich.levels import LEVELS
 from hyphae.view.citation import cited
 from hyphae.view.components import citation, parts
 from hyphae.view.detail import Detail, EnrichmentLines
@@ -41,7 +42,7 @@ def described() -> Enrichment:
         friction_chars=None,
         model="claude-opus-4",
         enriched_at=dt.datetime(2026, 3, 1, tzinfo=dt.UTC),
-        prompt_version=PROMPT_VERSION[Level.turn],
+        prompt_version=LEVELS[Level.turn].prompt_version,
         taxonomy_version=TAXONOMY_VERSION,
     )
 

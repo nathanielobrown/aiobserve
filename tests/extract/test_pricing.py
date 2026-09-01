@@ -9,8 +9,7 @@ asserting a constant against itself proves nothing. `pricing.py` records the che
 import pytest
 
 from hyphae.extract.pricing import (
-    CONTEXT_WINDOWS,
-    PRICES,
+    MODELS,
     SYNTHETIC_MODEL,
     TokenUsage,
     compute_cost,
@@ -106,13 +105,15 @@ def test_a_synthetic_reply_costs_zero():
     assert compute_cost(SYNTHETIC_MODEL, SPINE_SPLIT) == 0.0
 
 
-def test_every_model_we_price_declares_the_window_it_answers_in():
-    """The two tables answer one census, so a model we can cost is a model we can size.
+def test_the_placeholder_is_the_only_model_that_declares_no_context_window():
+    """One spec per model, so a model we can cost is a model we can size.
 
     The placeholder is the exception and the only one: a `<synthetic>` record is Claude Code
     writing in its own voice, so it has a price — nothing — and no context window at all. Any
-    other model in one table and not the other is a bar the viewer silently stops drawing, or
-    a window nothing ever looks up.
+    other model without a window is a bar the viewer silently stops drawing.
     """
-    assert set(CONTEXT_WINDOWS) == set(PRICES) - {SYNTHETIC_MODEL}
-    assert all(window > 0 for window in CONTEXT_WINDOWS.values())
+    unsized = {model for model, spec in MODELS.items() if spec.context_window is None}
+    assert unsized == {SYNTHETIC_MODEL}
+    # And every window the table does state is a scale a bar can be drawn against.
+    windows = [spec.context_window for spec in MODELS.values() if spec.context_window is not None]
+    assert windows and all(window > 0 for window in windows)

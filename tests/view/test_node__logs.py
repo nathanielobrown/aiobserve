@@ -29,6 +29,10 @@ from tests.view.selections import (
     node_url,
 )
 
+# One cell of a log, and the class it carries — the attributes htpy writes in that order, and
+# no class at all where the column declares none.
+CELL = re.compile(r'<td data-column="([^"]+)"(?: class="([^"]+)")?')
+
 
 @pytest.mark.parametrize("parent", list(LEVELS))
 def test_every_shape_of_log_serves_the_page_asked_for_and_counts_its_level(
@@ -227,6 +231,13 @@ def test_every_children_log_heads_the_columns_its_rows_fill(
     assert inside(page, "data-columns", shape, "scope") == ["col"] * len(named), url
     assert headed == {
         column.field: f"{column.icon} {label(column.field)}" for column in COLUMNS[Shape(shape)]
+    }, url
+    # ...each cell wearing the class its own column declares, which is what right-aligns a
+    # number and keeps a time on one line. Read off the served cells against `COLUMNS`, so a
+    # cell given a class the column table does not give it fails here rather than quietly
+    # stopping being aligned.
+    assert dict(CELL.findall(page)) == {
+        column.field: column.css for column in COLUMNS[Shape(shape)]
     }, url
     # ...and every row fills every one of them, so no cell sits under a heading not its own.
     children = values(page, "data-child")

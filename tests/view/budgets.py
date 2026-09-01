@@ -15,9 +15,8 @@ from markupsafe import escape
 from hyphae.analyze import queries
 from hyphae.view import bounds, nodes
 from hyphae.view.format import ELLIPSIS
-from hyphae.view.knobs import knobs
-from hyphae.view.listing import SHOWN
-from hyphae.view.store import Page
+from hyphae.view.knobs import Knobs
+from hyphae.view.store import SHOWN, Page
 from tests.view.conftest import (
     Statement,
 )
@@ -451,12 +450,12 @@ def worst_knob_bytes() -> int:
     So the arithmetic prices the dearest row any size produces against the most rows any size
     produces — one size cannot do both, and the gap is 57 KB of an allowance kept whole.
     """
-    marks = knobs(
+    marks = Knobs(
         max(nodes.Preset, key=len),
         bounds.KIN.ceiling - 1,
         bounds.LOG.ceiling - 1,
         bounds.DETAIL.ceiling - 1,
-    )
+    ).suffix
     return len(escape(marks).encode())
 
 

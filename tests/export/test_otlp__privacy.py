@@ -18,7 +18,7 @@ from opentelemetry.proto.trace.v1 import trace_pb2
 
 from hyphae.export.duckdb import open_trace_store
 from hyphae.export.otlp import TextPolicy
-from tests.conftest import MYCELIA
+from tests.conftest import MYCELIA, NO_WAIT
 from tests.export.conftest import Receiver, any_value, deliver
 
 # Every column holding text the agent or the user wrote, and a distinct planted value for
@@ -47,16 +47,15 @@ def planted(exportable_db: Path, tmp_path: Path) -> Iterator[duckdb.DuckDBPyConn
     """The exportable corpus with a sentinel in every excluded column of every row."""
     path = tmp_path / "planted.duckdb"
     path.write_bytes(exportable_db.read_bytes())
-    connection = open_trace_store(path, read_only=False)
-    for (table, column), sentinel in EXCLUDED.items():
-        # A column with no rows would make its sentinel unfalsifiable, so each one is
-        # checked to have landed somewhere.
-        connection.execute(f'UPDATE {table} SET "{column}" = ?', [sentinel])
-        assert connection.execute(
-            f'SELECT count(*) FROM {table} WHERE "{column}" = ?', [sentinel]
-        ).fetchone() != (0,), f"nothing to plant {sentinel} onto"
-    yield connection
-    connection.close()
+    with open_trace_store(path, read_only=False, wait=NO_WAIT) as connection:
+        for (table, column), sentinel in EXCLUDED.items():
+            # A column with no rows would make its sentinel unfalsifiable, so each one is
+            # checked to have landed somewhere.
+            connection.execute(f'UPDATE {table} SET "{column}" = ?', [sentinel])
+            assert connection.execute(
+                f'SELECT count(*) FROM {table} WHERE "{column}" = ?', [sentinel]
+            ).fetchone() != (0,), f"nothing to plant {sentinel} onto"
+        yield connection
 
 
 def values(spans: list[trace_pb2.Span], key: str) -> list[Any]:

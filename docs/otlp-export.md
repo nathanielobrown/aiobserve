@@ -10,7 +10,7 @@ hp export-otlp /path/to/repo --db data/traces.duckdb --dry-run
 
 A dry run shapes every selected session with the same mapper used by a real export. It reports the session and span counts, including compactions, without configuring a backend or key. It opens the store read-only, writes no delivery records, and sends no requests.
 
-The mapper must count compactions because the store's `live_compactions` view retains copies inherited by forks while the exporter drops them. If the mapper cannot tell which copy is live, the dry run fails instead of reporting a count that a real export would not match.
+Compactions are broken out because a compaction is where a session's account of itself gets lossy, so how many will ship is worth seeing before an hour of sending. The count matches `live_compactions`: the mapper and the view both read the `replayed` flag the extractor set.
 
 Use the result to check the backend's ingest quota and estimate the run time at your chosen `--rate`.
 
@@ -20,7 +20,7 @@ The exporter reads the store, not Claude Code's transcript files. It can therefo
 
 The project argument selects sessions by their recorded working directory. The command expands `~` and resolves relative paths before matching. It stops if the store holds no session for that project, which catches a mistyped path instead of reporting a successful export of nothing.
 
-A real export reads sessions and writes its delivery ledger through one DuckDB connection. DuckDB admits one writer, so `export-otlp` cannot run beside `extract` or `enrich`; a second writer fails at the store lock before sending anything.
+A real export reads sessions and writes its delivery ledger through one DuckDB connection, held for the whole run. DuckDB admits one writer, so nothing else can write while an export runs: an `extract` or `enrich` beside it queues for the store and then gives up naming the process holding it ([the store guide](store.md)).
 
 ## Configure one destination
 

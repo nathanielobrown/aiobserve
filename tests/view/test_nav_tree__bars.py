@@ -13,7 +13,7 @@ from typing import NamedTuple
 import duckdb
 from fastapi.testclient import TestClient
 
-from hyphae.extract.pricing import CONTEXT_WINDOWS, SYNTHETIC_MODEL
+from hyphae.extract.pricing import MODELS, SYNTHETIC_MODEL
 from hyphae.view.app import build_app
 from hyphae.view.nodes import (
     BAR_STEPS,
@@ -260,9 +260,9 @@ def test_a_context_bar_fills_linearly_and_stops_at_a_full_window(
     with nothing but the input it sent, which is the whole of what it added — so the fill is
     read back against a band of its own that begins at nothing.
     """
-    window = CONTEXT_WINDOWS[
-        one(store, "SELECT model FROM live_api_calls WHERE session_id = ? LIMIT 1", [SPINE])[0]
-    ]
+    model = one(store, "SELECT model FROM live_api_calls WHERE session_id = ? LIMIT 1", [SPINE])[0]
+    window = MODELS[model].context_window
+    assert window is not None, model
     # A twentieth of the window, half of it, and three times it — the last of which is a call
     # the store can hold and the bar cannot draw past its own end.
     ladder = {window // BAR_STEPS: 1, window // 2: BAR_STEPS // 2, window * 3: BAR_STEPS}
@@ -457,7 +457,8 @@ def test_a_turns_bar_stands_on_the_context_the_session_opened_on(
         ' ORDER BY "index" LIMIT 1',
         [ANCESTOR, MAIN],
     )
-    assert inherited[0] > CONTEXT_WINDOWS[inherited[1]], inherited
+    window = MODELS[inherited[1]].context_window
+    assert window is not None and inherited[0] > window, inherited
     resumed = client.get(f"/session/{ANCESTOR}").text
     turns = [
         bar(resumed, key)
@@ -491,7 +492,8 @@ def test_a_turn_that_gave_the_window_back_draws_no_band_of_its_own(
         " LIMIT 1",
         [SPINE, MAIN],
     )
-    window = CONTEXT_WINDOWS[model]
+    window = MODELS[model].context_window
+    assert window is not None, model
     path = plant(
         (
             "UPDATE api_calls SET cache_read_tokens = ? WHERE session_id = ? AND turn_id = ?",

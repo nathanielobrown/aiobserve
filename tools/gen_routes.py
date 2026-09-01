@@ -73,8 +73,8 @@ def built_app() -> FastAPI:
     """
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "routes.duckdb"
-        with DuckDbExporter(path):
-            pass
+        # No budget to queue: nothing else can be holding a file this call just made.
+        DuckDbExporter(path, wait=0)
         return build_app(path)
 
 

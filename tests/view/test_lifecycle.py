@@ -10,6 +10,7 @@ The third is the viewer's own: a component that raises halfway down a page. It i
 
 import shutil
 import socket
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -17,15 +18,28 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from hyphae.export.schema import SCHEMA_VERSION
+from hyphae.export.duckdb import StoreLocked
+from hyphae.export.schema import MIGRATE_REMEDY, SCHEMA_MISMATCH_REMEDY, SCHEMA_VERSION
 from hyphae.view.app import CSP, build_app, serve
 from hyphae.view.components import parts
-from hyphae.view.store import SchemaMoved, StoreLocked
-from tests.conftest import locked
+from hyphae.view.nodes import NUMBERS_URL
+from hyphae.view.store import SchemaMoved
+from tests.conftest import SPINE, locked
 from tests.view.conftest import fields
 
 # Markup a half-rendered page would carry, distinctive enough to find anywhere in a response.
 HALF = "<!--rendered-before-the-component-exploded-->"
+
+# The two ways a request reaches the store, because the refusal has to come back the same page
+# either way. A page opens it inside the handler and closes it before rendering; a fragment
+# takes the connection as a dependency (`view/deps.py`), so the open happens before the handler
+# runs at all and the exception is raised inside FastAPI's dependency resolution rather than in
+# the route body.
+REACHES = {"page": "/", "fragment": f"{NUMBERS_URL}/session/{SPINE}"}
+
+# How long the writer below holds the store before letting go on its own — well inside the
+# second a page will wait (`export/duckdb.PAGE_WAIT`), and what the test costs the suite.
+BRIEF_HOLD = 0.4
 
 
 @pytest.fixture
@@ -36,10 +50,29 @@ def copy(corpus_db: Path, tmp_path: Path) -> Path:
     return path
 
 
-def test_a_locked_store_answers_503(copy: Path) -> None:
+@pytest.mark.parametrize("path", REACHES.values(), ids=REACHES)
+def test_a_page_waits_out_a_short_writer(copy: Path, path: str) -> None:
+    """A page that lands mid-extract waits for the writer rather than refusing on sight.
+
+    An extract takes the lock per session now, for tens of milliseconds each, so the hold a
+    page is likely to meet is far shorter than the second it will wait (`docs/store.md`).
+    """
+    with TestClient(build_app(copy)) as client, locked(copy, hold=BRIEF_HOLD):
+        started = time.monotonic()
+        response = client.get(path)
+        waited = time.monotonic() - started
+    # The reader gets its page, not the 503 the same hold used to earn...
+    assert response.status_code == 200
+    # ...and it got there by queueing: halved because the holder may have been asleep for up
+    # to one of `locked()`'s 50 ms polls before this test's clock started.
+    assert waited >= BRIEF_HOLD / 2
+
+
+@pytest.mark.parametrize("path", REACHES.values(), ids=REACHES)
+def test_a_locked_store_answers_503(copy: Path, path: str) -> None:
     """While an extract holds the store, a page says so instead of failing."""
     with TestClient(build_app(copy)) as client, locked(copy):
-        response = client.get("/")
+        response = client.get(path)
     # A 503 is the honest answer: the store is there, and it will read again shortly...
     assert response.status_code == 503
     assert "holds the trace store" in fields(response.text, "id", "error")["message"]
@@ -47,21 +80,40 @@ def test_a_locked_store_answers_503(copy: Path) -> None:
     assert response.headers["content-security-policy"] == CSP
     # The viewer serves again once the writer lets go.
     with TestClient(build_app(copy)) as client:
-        assert client.get("/").status_code == 200
+        assert client.get(path).status_code == 200
 
 
-def test_a_store_replaced_under_the_viewer_is_caught_per_request(copy: Path) -> None:
+@pytest.mark.parametrize(
+    ("held", "remedy"),
+    # A store this build is too old for: nothing carries it back, so the reader is sent to the
+    # guide rather than to `rm`. And one this build is a migration ahead of, which a write
+    # open would carry forward — the case the viewer cannot fix itself but can name.
+    [
+        (SCHEMA_VERSION + 1, SCHEMA_MISMATCH_REMEDY),
+        (SCHEMA_VERSION - 1, MIGRATE_REMEDY),
+    ],
+    ids=["newer", "migratable"],
+)
+@pytest.mark.parametrize("path", REACHES.values(), ids=REACHES)
+def test_a_store_replaced_under_the_viewer_is_caught_per_request(
+    copy: Path, held: int, remedy: str, path: str
+) -> None:
     """A re-extract between two page loads is refused rather than half-read."""
     with TestClient(build_app(copy)) as client:
-        assert client.get("/").status_code == 200
+        assert client.get(path).status_code == 200
         # The store the viewer started against is gone: this is what a schema bump plus a
         # fresh extract looks like from inside a running viewer.
         connection = duckdb.connect(str(copy))
-        connection.execute("UPDATE meta SET schema_version = ?", [SCHEMA_VERSION + 1])
+        connection.execute("UPDATE meta SET schema_version = ?", [held])
         connection.close()
-        response = client.get("/")
+        response = client.get(path)
     assert response.status_code == 503
-    assert str(SCHEMA_VERSION) in fields(response.text, "id", "error")["message"]
+    # The page names both versions, and the one thing to do about this store in particular —
+    # a reader told to extract into a fresh store when a migration would have carried this
+    # one forward can throw away the only copy of a pruned session.
+    message = fields(response.text, "id", "error")["message"]
+    assert str(SCHEMA_VERSION) in message and str(held) in message
+    assert remedy in message
 
 
 def test_a_store_this_build_cannot_read_is_refused_at_launch(copy: Path) -> None:
@@ -75,8 +127,12 @@ def test_a_store_this_build_cannot_read_is_refused_at_launch(copy: Path) -> None
 
 def test_a_store_that_is_not_there_is_refused_at_launch(tmp_path: Path) -> None:
     """A typo in `--db` is an error at startup, not an empty session list."""
-    with pytest.raises(duckdb.IOException):
-        build_app(tmp_path / "nothing.duckdb")
+    missing = tmp_path / "nothing.duckdb"
+    # Named as a missing store rather than as DuckDB's own I/O failure: the viewer creates
+    # nothing, so the only thing wrong is the path.
+    with pytest.raises(FileNotFoundError) as refused:
+        build_app(missing)
+    assert str(missing) in str(refused.value)
 
 
 def test_a_locked_store_is_refused_at_launch(copy: Path) -> None:

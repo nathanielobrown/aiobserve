@@ -14,11 +14,11 @@ SELECT
     t.source,
     t.id AS tool_call_id,
     -- What the tool was called, beside the fields its title is composed out of — which is what
-    -- tells two failures of one tool apart in the width of a row (`view/formatters.py`).
-    substr(t.name, 1, $nav_chars + 1) AS name,
+    -- tells two failures of one tool apart in the width of a row (`view/tool_names.py`).
+    cut(t.name, $nav_chars) AS name,
     -- And what the input carried under the names the tools the viewer knows name their calls
     -- by, so a `Read` row reads as a path and a `Bash` row as the command it ran
-    -- (`view/formatters.py:FORMATTERS`). Every member cut to the same width as the title above.
+    -- (`view/tool_names.py:FORMATTERS`). Every member cut to the same width as the title above.
     tool_fields(t.input, s.project_dir, ad.agent_type, $nav_chars) AS fields,
     -- Constant true under this filter, and selected anyway: a tool node carries the flag
     -- wherever it is built from, so every query behind one answers the same columns.
@@ -26,14 +26,14 @@ SELECT
     t.started_at,
     -- How many the session failed in all, counted before the LIMIT bites, so a page that
     -- showed the first `$errors` can say how many it left rather than reading as the whole.
-    count(*) OVER () AS matched_errors
+    count(*) OVER () AS matched_rows
 FROM live_tool_calls t
 -- What a path in the title is read against. LEFT joined, so a tool call whose session row is
 -- missing is a row titled with an absolute path rather than a failure the list drops.
 LEFT JOIN sessions s ON s.id = t.session_id
 -- Who a `SendMessage` addressed, where `to` held an agent run's id rather than a name the
 -- caller typed: one lookup, LEFT so a name that matches no run comes back NULL and the row
--- prints what was recorded (`view/formatters.py:_send_message`).
+-- prints what was recorded (`view/tool_names.py:_send_message`).
 LEFT JOIN live_agent_runs ad
     ON ad.session_id = t.session_id AND ad.id = tool_asked(t.input, 'to', $nav_chars)
 WHERE t.session_id = $session_id

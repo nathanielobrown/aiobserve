@@ -251,6 +251,10 @@ class Compaction:
     pre_tokens: int
     post_tokens: int
     duration_ms: int
+    # This transcript is a fork replaying a compaction its parent recorded. The row stays --
+    # the fork's file holds it -- but every rollup counts it under the first transcript to
+    # hold it.
+    replayed: bool
 
 
 @dataclass(frozen=True)

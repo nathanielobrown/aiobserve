@@ -9,12 +9,14 @@ is stale and it compares each item's `Stamp` against the one on disk.
 """
 
 import datetime as dt
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
+from typing import Any
 
-from hyphae.enrich.prompts import (
+from hyphae.enrich.items import (
     AgentRunItem,
     ApiCallRow,
     Item,
@@ -24,12 +26,14 @@ from hyphae.enrich.prompts import (
     SessionItem,
     ToolCallRow,
     TurnItem,
+    item_key,
 )
+from hyphae.enrich.levels import LEVELS
 from hyphae.enrich.validation import Enrichment
-from hyphae.export.duckdb import open_trace_store
+from hyphae.export.duckdb import CLI_WAIT, open_trace_store
 from hyphae.export.schema import check_shape
 from hyphae.model import MAIN_SOURCE
-from hyphae.sessions import project_predicate
+from hyphae.projects import project_predicate
 
 # Every enrichment table holds the same columns; only the primary key differs.
 _ENRICHMENT_COLUMNS = """
@@ -97,46 +101,6 @@ LEFT JOIN session_enrichments e ON e.session_id = r.session_id;
 """
 
 
-@dataclass(frozen=True)
-class LevelSpec:
-    """Where one level's rows live, and what makes one of them an orphan."""
-
-    table: str
-    # The enrichment table's primary key columns, in order.
-    keys: tuple[str, ...]
-    # The view holding the rows enrichment describes, and the columns matching `keys`.
-    base: str
-    base_keys: tuple[str, ...]
-
-
-# Closed set: a level added here without a table above cannot be written, and a table added
-# without a level here would never be swept.
-LEVELS: dict[Level, LevelSpec] = {
-    Level.turn: LevelSpec(
-        table="turn_enrichments",
-        keys=("session_id", "source", "turn_id"),
-        # `live_turns`, not `turns`: a fork's replay of another transcript's turn is a copy,
-        # and the turn it copied is enriched under the transcript that ran it.
-        base="live_turns",
-        base_keys=("session_id", "source", "id"),
-    ),
-    Level.agent_run: LevelSpec(
-        table="agent_run_enrichments",
-        keys=("session_id", "agent_run_id"),
-        base="live_agent_runs",
-        base_keys=("session_id", "id"),
-    ),
-    Level.session: LevelSpec(
-        table="session_enrichments",
-        keys=("session_id",),
-        # `describable_sessions`, not `sessions`: a row for a session the pass will never
-        # refresh again is a zombie by the same definition as one whose session is gone, and
-        # 45 such rows are already on disk from before the gate existed.
-        base="describable_sessions",
-        base_keys=("session_id",),
-    ),
-}
-
 _PAYLOAD_COLUMNS = (
     "description",
     "category",
@@ -162,14 +126,9 @@ _STDOUT_TAG = "local-command-stdout"
 _STDOUT_BODY = f"(?s)<{_STDOUT_TAG}>(.*)</{_STDOUT_TAG}>"
 
 
-def _project_clause(project: str | None) -> str:
-    """Narrows a query already joined to `sessions s` to one analyzed repository."""
-    return f" AND {project_predicate('s.project_dir')}" if project is not None else ""
-
-
-def _project_parameters(project: str | None) -> list[str]:
-    """What `_project_clause` binds: the path twice, once per placeholder in the predicate."""
-    return [project, project] if project is not None else []
+# Where a project-scoped query narrows to one repository. `EnrichmentStore._select` writes the
+# clause here and binds what it needs; nothing else may write either half.
+_PROJECT_SCOPE = "{project}"
 
 
 @dataclass(frozen=True)
@@ -204,8 +163,13 @@ class EnrichmentStore:
         self.path = path
         # Enrichment reads the pipeline's views by name and column, so a store another schema
         # wrote is not one this code can enrich, and it opens on the same terms as every
-        # other reader: nothing is created at a path that holds no store.
-        self.connection = open_trace_store(path, read_only=False)
+        # other reader: nothing is created at a path that holds no store. The store outlives
+        # any one `with` block of the opener's, so it holds the block open on a stack and
+        # closes it in `close()`.
+        self._open = ExitStack()
+        self.connection = self._open.enter_context(
+            open_trace_store(path, read_only=False, wait=CLI_WAIT)
+        )
         try:
             # Before the DDL: an enrichment table that drifted from it would otherwise be
             # left alone by `CREATE TABLE IF NOT EXISTS` and fail at the first read below.
@@ -214,7 +178,7 @@ class EnrichmentStore:
         except Exception:
             # Nothing was handed out, so no `with` block will close it, and the write lock
             # would outlive the refusal.
-            self.connection.close()
+            self._open.close()
             raise
 
     def __enter__(self) -> "EnrichmentStore":
@@ -229,7 +193,26 @@ class EnrichmentStore:
         self.close()
 
     def close(self) -> None:
-        self.connection.close()
+        self._open.close()
+
+    def _select(self, sql: str, project: str | None, *extra: object) -> list[tuple[Any, ...]]:
+        """Run one project-scoped read: every row, with `_PROJECT_SCOPE` narrowed and bound.
+
+        The clause and the parameters it binds cannot be written apart here, which is the
+        point: a query carrying the clause with nothing bound raises, but one carrying the
+        parameters with no clause answers about the whole corpus under a project's name — and
+        nothing downstream can tell that answer from the right one.
+
+        `extra` binds after the scope's parameters, so the mark stands before any other `?`.
+        """
+        if _PROJECT_SCOPE not in sql:
+            raise ValueError(f"a project-scoped query must mark its scope with {_PROJECT_SCOPE}")
+        clause = f" AND {project_predicate('s.project_dir')}" if project is not None else ""
+        # The predicate holds two placeholders, and binds the same path in both.
+        scope = [project, project] if project is not None else []
+        return self.connection.execute(
+            sql.replace(_PROJECT_SCOPE, clause), [*scope, *extra]
+        ).fetchall()
 
     def turn_items(self, project: str | None = None) -> list[TurnItem]:
         """Every enrichable main turn, each carrying the api and tool calls it drove.
@@ -237,14 +220,14 @@ class EnrichmentStore:
         `project` filters by the analyzed repository's resolved path, taking its worktrees
         with it (`sessions.project_predicate`); None takes every session in the store.
         """
-        turns = self.connection.execute(
+        turns = self._select(
             f"""SELECT t.session_id, t.source, t.id, t."index", t.prompt,
                        t.command_name, t.command_args
                 FROM live_turns t JOIN sessions s ON s.id = t.session_id
-                WHERE {_source_clause("t", main=True)}{_project_clause(project)}
+                WHERE {_source_clause("t", main=True)}{_PROJECT_SCOPE}
                 ORDER BY t.session_id, t."index" """,
-            _project_parameters(project),
-        ).fetchall()
+            project,
+        )
         calls = self._api_calls(main=True, project=project)
         results = self._command_results(project=project)
         by_turn: dict[tuple[str, str, str], list[ApiCallRow]] = {}
@@ -275,7 +258,7 @@ class EnrichmentStore:
         this build cannot classify raises rather than reading as either.
         """
         results: dict[tuple[str, str, str], str] = {}
-        for session_id, source, turn_id, line_no, body, readable in self.connection.execute(
+        for session_id, source, turn_id, line_no, body, readable in self._select(
             f"""WITH carriers AS (
                     SELECT r.session_id, r.source, t.id AS turn_id, r.line_no,
                            -- The two recorded carriers: a `user` record holds the output in
@@ -292,7 +275,7 @@ class EnrichmentStore:
                     JOIN sessions s ON s.id = r.session_id
                     WHERE r.raw LIKE '%<{_STDOUT_TAG}>%'
                       AND t.command_name IS NOT NULL
-                      AND {_source_clause("t", main=True)}{_project_clause(project)}
+                      AND {_source_clause("t", main=True)}{_PROJECT_SCOPE}
                 )
                 SELECT session_id, source, turn_id, line_no,
                        regexp_extract(carrier, ?, 1) AS body,
@@ -301,8 +284,10 @@ class EnrichmentStore:
                        coalesce(regexp_matches(carrier, ?), false) AS readable
                 FROM carriers
                 ORDER BY session_id, source, turn_id, line_no""",
-            [*_project_parameters(project), _STDOUT_BODY, _STDOUT_BODY],
-        ).fetchall():
+            project,
+            _STDOUT_BODY,
+            _STDOUT_BODY,
+        ):
             if not readable:
                 raise ValueError(
                     f"session {session_id} source {source} line {line_no} archives a command "
@@ -322,20 +307,20 @@ class EnrichmentStore:
         section: they are a fork's work on a conversation another transcript opened, and the
         turn its records replay is that other transcript's, not this run's.
         """
-        runs = self.connection.execute(
+        runs = self._select(
             f"""SELECT r.session_id, r.id, r.agent_type
                 FROM live_agent_runs r JOIN sessions s ON s.id = r.session_id
-                WHERE true{_project_clause(project)} ORDER BY r.session_id, r.id""",
-            _project_parameters(project),
-        ).fetchall()
+                WHERE true{_PROJECT_SCOPE} ORDER BY r.session_id, r.id""",
+            project,
+        )
         turns: dict[tuple[str, str], list[tuple[str, str]]] = {}
-        for session_id, source, turn_id, prompt in self.connection.execute(
+        for session_id, source, turn_id, prompt in self._select(
             f"""SELECT t.session_id, t.source, t.id, t.prompt
                 FROM live_turns t JOIN sessions s ON s.id = t.session_id
-                WHERE {_source_clause("t", main=False)}{_project_clause(project)}
+                WHERE {_source_clause("t", main=False)}{_PROJECT_SCOPE}
                 ORDER BY t.session_id, t.source, t."index" """,
-            _project_parameters(project),
-        ).fetchall():
+            project,
+        ):
             turns.setdefault((session_id, source), []).append((turn_id, prompt))
         calls = self._api_calls(main=False, project=project)
         items: list[AgentRunItem] = []
@@ -390,7 +375,7 @@ class EnrichmentStore:
             result,
             is_error,
             incomplete,
-        ) in self.connection.execute(
+        ) in self._select(
             f"""SELECT c.session_id, c.source, c.api_call_id, c.id, c.name, c.input, c.result,
                        c.is_error, c.incomplete
                 FROM live_tool_calls c
@@ -398,10 +383,10 @@ class EnrichmentStore:
                   ON a.session_id = c.session_id AND a.source = c.source
                  AND a.id = c.api_call_id
                 JOIN sessions s ON s.id = c.session_id
-                WHERE {_source_clause("c", main=main)}{_project_clause(project)}
+                WHERE {_source_clause("c", main=main)}{_PROJECT_SCOPE}
                 ORDER BY c.session_id, c.source, c."index" """,
-            _project_parameters(project),
-        ).fetchall():
+            project,
+        ):
             tools.setdefault((session_id, source, api_call_id), []).append(
                 ToolCallRow(
                     name=name,
@@ -413,13 +398,13 @@ class EnrichmentStore:
                 )
             )
         calls: dict[tuple[str, str], list[tuple[str | None, ApiCallRow]]] = {}
-        for session_id, source, turn_id, api_call_id, text, stop_reason in self.connection.execute(
+        for session_id, source, turn_id, api_call_id, text, stop_reason in self._select(
             f"""SELECT a.session_id, a.source, a.turn_id, a.id, a.text, a.stop_reason
                 FROM live_api_calls a JOIN sessions s ON s.id = a.session_id
-                WHERE {_source_clause("a", main=main)}{_project_clause(project)}
+                WHERE {_source_clause("a", main=main)}{_PROJECT_SCOPE}
                 ORDER BY a.session_id, a.source, a."index" """,
-            _project_parameters(project),
-        ).fetchall():
+            project,
+        ):
             calls.setdefault((session_id, source), []).append(
                 (
                     turn_id,
@@ -484,15 +469,15 @@ class EnrichmentStore:
                 cache_read_tokens,
                 cache_creation_tokens,
                 cost_usd,
-            ) in self.connection.execute(
+            ) in self._select(
                 f"""SELECT r.session_id, s.title, s.git_branch, r.wall_ms, r.active_ms,
                            r.input_tokens, r.output_tokens, r.cache_read_tokens,
                            r.cache_creation_tokens, r.cost_usd
                     FROM describable_sessions r JOIN sessions s ON s.id = r.session_id
-                    WHERE true{_project_clause(project)}
+                    WHERE true{_PROJECT_SCOPE}
                     ORDER BY r.session_id""",
-                _project_parameters(project),
-            ).fetchall()
+                project,
+            )
         ]
 
     def _session_children(self, project: str | None) -> dict[str, list[SessionChild]]:
@@ -508,26 +493,26 @@ class EnrichmentStore:
         }
         rows = [
             (session_id, started_at, SessionChild(Level.turn, None, *enrichment))
-            for session_id, started_at, *enrichment in self.connection.execute(
+            for session_id, started_at, *enrichment in self._select(
                 f"""SELECT t.session_id, t.started_at, e.description, e.category, e.outcome
                     FROM live_turns t JOIN sessions s ON s.id = t.session_id
                     LEFT JOIN turn_enrichments e
                       ON e.session_id = t.session_id AND e.source = t.source AND e.turn_id = t.id
-                    WHERE {_source_clause("t", main=True)}{_project_clause(project)}""",
-                _project_parameters(project),
-            ).fetchall()
+                    WHERE {_source_clause("t", main=True)}{_PROJECT_SCOPE}""",
+                project,
+            )
         ]
         rows += [
             (session_id, started_at, SessionChild(Level.agent_run, agent_type, *enrichment))
-            for session_id, run_id, agent_type, started_at, *enrichment in self.connection.execute(
+            for session_id, run_id, agent_type, started_at, *enrichment in self._select(
                 f"""SELECT r.session_id, r.id, r.agent_type, r.started_at,
                            e.description, e.category, e.outcome
                     FROM live_agent_runs r JOIN sessions s ON s.id = r.session_id
                     LEFT JOIN agent_run_enrichments e
                       ON e.session_id = r.session_id AND e.agent_run_id = r.id
-                    WHERE true{_project_clause(project)}""",
-                _project_parameters(project),
-            ).fetchall()
+                    WHERE true{_PROJECT_SCOPE}""",
+                project,
+            )
             if (session_id, run_id) in direct
         ]
         children: dict[str, list[SessionChild]] = {}
@@ -536,13 +521,13 @@ class EnrichmentStore:
         return children
 
     def items(self, level: Level, project: str | None = None) -> list[Item]:
-        """Every enrichable item of one level. The enricher's one door into the store."""
-        readers = {
-            Level.turn: self.turn_items,
-            Level.agent_run: self.run_items,
-            Level.session: self.session_items,
-        }
-        return list(readers[level](project))
+        """Every enrichable item of one level. The enricher's one door into the store.
+
+        The reader is the method `enrich/levels.py` names for the level; `turn_items`,
+        `run_items` and `session_items` are public because the tests read one level directly.
+        """
+        reader: Callable[[str | None], list[Item]] = getattr(self, LEVELS[level].reader)
+        return list(reader(project))
 
     def _run_links(self, project: str | None) -> list[RunLink]:
         """Each agent run against whatever spawned it, by both rules the records offer.
@@ -554,7 +539,7 @@ class EnrichmentStore:
         Ordering cannot be right for a tree with a gap in it, so a run naming a parent run the
         store does not hold crashes here rather than being treated as a root.
         """
-        rows = self.connection.execute(
+        rows = self._select(
             f"""SELECT r.session_id, r.id, r.parent_agent_id, c.source, a.turn_id
                 FROM live_agent_runs r
                 JOIN sessions s ON s.id = r.session_id
@@ -565,9 +550,9 @@ class EnrichmentStore:
                 LEFT JOIN live_api_calls a
                   ON a.session_id = c.session_id AND a.source = c.source
                  AND a.id = c.api_call_id
-                WHERE true{_project_clause(project)}""",
-            _project_parameters(project),
-        ).fetchall()
+                WHERE true{_PROJECT_SCOPE}""",
+            project,
+        )
         held = {(session_id, run_id) for session_id, run_id, *_ in rows}
         links: list[RunLink] = []
         for session_id, run_id, parent_agent_id, source, turn_id in rows:
@@ -602,19 +587,19 @@ class EnrichmentStore:
         parents: dict[str, str | None] = {}
         for link in self._run_links(project):
             if link.parent_run is not None:
-                parent = f"{Level.agent_run}|{link.session_id}|{link.parent_run}"
+                parent = item_key(Level.agent_run, link.session_id, link.parent_run)
             elif link.parent_turn is not None:
-                parent = f"{Level.turn}|{link.session_id}|{MAIN_SOURCE}|{link.parent_turn}"
+                parent = item_key(Level.turn, link.session_id, MAIN_SOURCE, link.parent_turn)
             else:
-                parent = f"{Level.session}|{link.session_id}"
-            parents[f"{Level.agent_run}|{link.session_id}|{link.run_id}"] = parent
-        for session_id, turn_id in self.connection.execute(
+                parent = item_key(Level.session, link.session_id)
+            parents[item_key(Level.agent_run, link.session_id, link.run_id)] = parent
+        for session_id, turn_id in self._select(
             f"""SELECT t.session_id, t.id FROM live_turns t JOIN sessions s ON s.id = t.session_id
-                WHERE {_source_clause("t", main=True)}{_project_clause(project)}""",
-            _project_parameters(project),
-        ).fetchall():
-            parents[f"{Level.turn}|{session_id}|{MAIN_SOURCE}|{turn_id}"] = (
-                f"{Level.session}|{session_id}"
+                WHERE {_source_clause("t", main=True)}{_PROJECT_SCOPE}""",
+            project,
+        ):
+            parents[item_key(Level.turn, session_id, MAIN_SOURCE, turn_id)] = item_key(
+                Level.session, session_id
             )
         return parents
 
@@ -635,7 +620,7 @@ class EnrichmentStore:
             f" FROM {spec.table}"
         ).fetchall()
         width = len(spec.keys)
-        return {"|".join((level, *row[:width])): Stamp(*row[width:]) for row in rows}
+        return {item_key(level, *row[:width]): Stamp(*row[width:]) for row in rows}
 
     def upsert(self, item: Item, enrichment: Enrichment, stamp: Stamp) -> None:
         """Write one item's enrichment, replacing whatever the key held before."""

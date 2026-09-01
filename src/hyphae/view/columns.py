@@ -103,3 +103,16 @@ COLUMNS: dict[Shape, tuple[Column, ...]] = {
         Column("body", "⌄"),
     ),
 }
+
+
+# The class each shape's cells carry, keyed by the field the cell prints. Built off the table
+# above rather than written again beside the cells: a row spelling its own classes could
+# right-align a column its own heading does not, and nothing would say which of the two is wrong.
+_CSS: dict[Shape, dict[str, str]] = {
+    shape: {column.field: column.css for column in columns} for shape, columns in COLUMNS.items()
+}
+
+
+def css(shape: Shape, field: str) -> str:
+    """The class one cell wears, off the column heading it."""
+    return _CSS[shape][field]

@@ -9,28 +9,22 @@ what it writes, what makes an item stale, and how a new description travels up.
 import json
 import subprocess
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from hyphae import cli
 from hyphae.enrich.client import (
+    CliClient,
     Failed,
     Succeeded,
 )
-from hyphae.enrich.enricher import (
-    ROUND_ORDER,
-    EnrichmentFailed,
-    EnrichReport,
-    enrich,
-)
-from hyphae.enrich.prompts import (
-    PROMPT_VERSION,
-    Level,
-    input_hash,
-    render_turn,
-)
-from hyphae.enrich.store import LEVELS, EnrichmentStore
+from hyphae.enrich.enricher import EnrichmentFailed, EnrichReport, enrich, plan
+from hyphae.enrich.items import Level
+from hyphae.enrich.levels import LEVELS, ROUND_ORDER, render
+from hyphae.enrich.prompts import input_hash
+from hyphae.enrich.store import EnrichmentStore
 from hyphae.enrich.taxonomy import TAXONOMY_VERSION
 from hyphae.enrich.validation import FailureKind
 from tests.conftest import MODEL_ONLY, build_store, fixture_transcripts
@@ -84,13 +78,28 @@ def forest(forest_store: Path, tmp_path: Path) -> Iterator[EnrichmentStore]:
         yield opened
 
 
-def test_every_level_the_store_can_write_gets_a_round() -> None:
-    """A pass describes all three levels — a level with no round would be described by nothing.
+def test_every_level_is_declared_whole_and_described_bottom_up(store: EnrichmentStore) -> None:
+    """Each level's entry names a reader that exists, a renderer that takes its items, a table.
 
-    The rounds are ordered bottom-up and the store's levels are a closed set, so the two are
-    the same members read for different reasons; only their equality is checked here.
+    One registry declares all of it (`enrich/levels.py`), so this is what stands in for the
+    checks the seven separate maps used to owe each other: a level naming a reader no store
+    has, or a renderer belonging to another level, would be found here rather than partway
+    through a paid pass.
     """
-    assert set(ROUND_ORDER) == set(LEVELS)
+    # If every level the store can write is read through its own entry...
+    for level, spec in LEVELS.items():
+        items = store.items(level)
+        # ...then the entry's reader is a method of the store, and it hands back that level's
+        # items — never another level's, which is what a copied entry would produce...
+        assert {item.level for item in items} == {level}
+        # ...each of which renders through the entry's renderer, at the entry's budgets...
+        for item in items:
+            assert render(item) == spec.renderer(item, spec.budgets)
+        # ...and the table it names is one the store created.
+        assert store.connection.execute(f"SELECT count(*) FROM {spec.table}").fetchone()
+    # The order is the whole cascade: a run's description reaches the turn that spawned it,
+    # and both reach the session, because the rounds run in this order and no other.
+    assert (Level.agent_run, Level.turn, Level.session) == ROUND_ORDER
 
 
 def test_a_run_writes_a_row_for_every_stale_item(store: EnrichmentStore) -> None:
@@ -122,8 +131,8 @@ def test_a_run_writes_a_row_for_every_stale_item(store: EnrichmentStore) -> None
             "test",
             "completed",
             None,
-            input_hash(render_turn(item)),
-            PROMPT_VERSION[Level.turn],
+            input_hash(render(item)),
+            LEVELS[Level.turn].prompt_version,
             TAXONOMY_VERSION,
             MODEL,
         )
@@ -186,7 +195,7 @@ def test_a_prompt_version_bump_re_enriches_the_level(
     """Changing the instructions the hash cannot see re-enriches everything they cover."""
     enrich(store, FakeClient())
     # If the turn level's prompt version moves — an instruction or output-schema edit...
-    monkeypatch.setitem(PROMPT_VERSION, Level.turn, 99)
+    monkeypatch.setitem(LEVELS, Level.turn, replace(LEVELS[Level.turn], prompt_version=99))
     client = FakeClient()
     enrich(store, client)
     # ...then every turn is re-sent, and every row records the new version.
@@ -327,6 +336,35 @@ def test_the_auth_blob_never_reaches_the_output(
     assert [blob in said for blob in blobs] == [False] * 3
 
 
+def test_a_run_the_cli_refuses_names_what_the_cli_said(
+    forest: EnrichmentStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A round the CLI refuses carries its stderr into the crash, and never its stdout.
+
+    The refusal recorded here is a flag the installed CLI does not take — the shape a version
+    bump takes, and the one that fails every item of a run identically. Without the tail, an
+    operator whose whole pass failed reads a list of keys and the word `api_error`.
+    """
+    refused = (FIXTURES / "stderr_unknown_option.txt").read_text()
+    # Invented, standing for the answer stream: a render's transcript text comes back on
+    # stdout, so nothing from stdout may reach a summary, an error or a log.
+    answered = "SENTINEL-stdout private transcript text"
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 1, answered, refused),
+    )
+    # If a real client runs a pass against a CLI that refuses every call...
+    with pytest.raises(EnrichmentFailed) as failure:
+        enrich(forest, CliClient(MODEL, concurrency=1))
+    said = str(failure.value)
+    # ...then the crash says what the CLI said, once rather than once per failed item...
+    assert said.count(refused.strip()) == 1
+    assert said.count(str(FailureKind.api_error)) > 1
+    # ...and nothing the CLI wrote on stdout is anywhere in it.
+    assert answered not in said
+
+
 def test_rounds_send_children_before_parents(forest: EnrichmentStore) -> None:
     """Every run is described after the runs it spawned, and every main turn after both.
 
@@ -348,6 +386,36 @@ def test_rounds_send_children_before_parents(forest: EnrichmentStore) -> None:
         # else in it embeds.
         {item.key for item in forest.session_items()},
     ]
+
+
+def test_a_dry_run_names_exactly_the_items_a_run_sends(forest: EnrichmentStore) -> None:
+    """A plan under a limit lists the very items a pass under that limit sends, in order.
+
+    The dry run is the only thing between an operator and a paid pass. Planning by rules of
+    its own quoted the store's first N items while the pass spent its N on the deepest round
+    first — so the operator approved one list and paid for another.
+    """
+    # If the three-session forest — four rounds deep — is planned under a limit that runs
+    # out partway through the second round...
+    limit = 4
+    planned = [entry.item.key for entry in plan(forest, MODEL, project=None, limit=limit)]
+    # ...then a pass under the same limit asks about exactly those keys, in that order...
+    client = FakeClient()
+    enrich(forest, client, limit=limit)
+    assert client.keys == planned
+    # ...four items and no more. The second round holds two stale runs, so the limit stops
+    # inside it: what pins the round being cut to what is left rather than sent whole. A pass
+    # that overshoots here spends past the quote the operator approved — and `plan` and
+    # `enrich` share one derivation, so the equality above holds however far it overshoots...
+    assert len(planned) == limit
+    # ...and they are the whole first round — every leaf run — and one item of the second, not
+    # the first four items of the level the store reads first.
+    assert set(planned[:3]) == {
+        key_of(forest, SPINE_LEAF),
+        key_of(forest, ORIGIN_RUN),
+        key_of(forest, TEAM_RUN),
+    }
+    assert planned[3] in {key_of(forest, SPINE_RUN), key_of(forest, AUDITOR_RUN)}
 
 
 def test_a_rootless_run_is_a_root(forest: EnrichmentStore) -> None:

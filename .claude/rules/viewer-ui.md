@@ -31,7 +31,7 @@ Print `Node.nav_tree_title`, `tab_title`, `crumb_title`, `log_title` or `pane_ti
 
 # Naming and formatting live in Python; SQL ships fields
 
-A query hands the page the fields a name is read off, and Python composes what the reader sees. `formatters.name_tool` is the only place a tool call is named, `src/hyphae/view/nodes.py` the only place a node is, `src/hyphae/view/numbers.py` the only place a dollar is split, and `src/hyphae/view/cuts.py` the only place a value is cut to the width its surface prints it at — so a fact printed on two surfaces was derived once.
+A query hands the page the fields a name is read off, and Python composes what the reader sees. `tool_names.name_tool` is the only place a tool call is named, `src/hyphae/view/nodes.py` the only place a node is, `src/hyphae/view/numbers.py` the only place a dollar is split, and `src/hyphae/view/cuts.py` the only place a value is cut to the width its surface prints it at — so a fact printed on two surfaces was derived once.
 
 A `view_*.sql` that builds a string is a second naming system, and the two drift apart in the direction nobody is looking: SQL cannot dispatch on a tool's name without a `CASE` arm per tool, so the tool nobody wrote an arm for goes unnamed rather than falling back. What SQL owns instead is the reading a page cannot afford: a fat column is cut to the width its caller asked for before it leaves the store (`src/hyphae/analyze/macros.py`).
 
@@ -49,7 +49,7 @@ Where a title repeats — a NavTree row, a crumb, a log row, a walk control — 
 
 Every mark saying what a thing *is* — the kind of node a surface names, and the kind a children log's column is about — goes through `parts.mark(character)`, whose character comes from `nodes.GLYPHS` or a `Column` — the one place those characters are written, so a mark cannot mean one thing in a table and another in the NavTree. It is `aria-hidden` and carries no `title`: the word it stands for is already in the markup beside it (`docs/viewer-titles.md`). The `<title>` element is the one place a mark goes in bare, because it is text and has no markup to hide it in.
 
-A tool's own glyph is not one of these marks and does not go through `parts.mark`. It stands in for the tool's name inside the title's words (`src/hyphae/view/formatters.py`), so it rides as text wherever the title does — including a children log, which heads the lead in a column of its own and would drop a mark written there.
+A tool's own glyph is not one of these marks and does not go through `parts.mark`. It stands in for the tool's name inside the title's words (`src/hyphae/view/tool_names.py`), so it rides as text wherever the title does — including a children log, which heads the lead in a column of its own and would drop a mark written there.
 
 # A NavTree row is priced, not budgeted
 
@@ -189,6 +189,8 @@ Elements are written `htpy.div[...]`, never `from htpy import div`: the prefix i
 # A cut value goes through the filter that marks it
 
 A string its query cut arrives one character past the width it is printed at, and the filter that prints it cuts it back and marks where the rest was left behind (`src/hyphae/view/format.py:cut`): `line` for a children log's row, `head` and `member` for a header, `short` and `item` for a row of the session list. Print such a value bare and a reader cannot tell a name that ended from one that was stopped. A title arrives marked already, at whichever of the four widths `src/hyphae/view/nodes.py` cut it to.
+
+The query is the other half of that protocol: a value a page prints is cut by the `cut` macro, which stops one character past the width so the filter has something to find (`src/hyphae/analyze/macros.py`). A hand-spelled `substr(value, 1, $width)` stops *at* it and leaves nothing to mark. Every one the library keeps on purpose is named with its reason in `tests/analyze/test_queries.py:HAND_CUTS`, held by set equality, so a new one fails there rather than reaching a page as a value that looks whole.
 
 A closed vocabulary is the one thing cut without a mark: a taxonomy value is bound at `queries.TAG_CHARS` because a page whose size is arithmetic needs every width named, not because any member reaches it (`src/hyphae/enrich/taxonomy.py`). `parts.counted` takes `mark_cuts=False` for those, and a mark there would claim a name went on when nothing was left behind.
 

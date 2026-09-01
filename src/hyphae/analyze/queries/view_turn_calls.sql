@@ -20,12 +20,12 @@ SELECT
     c.id AS api_call_id,
     -- The two model names, cut like every other string a repeated row shows: what an api
     -- request carried is Claude Code's to lengthen, and a call row rides a page of a hundred.
-    substr(c.model, 1, $log_chars + 1) AS model,
+    cut(c.model, $log_chars) AS model,
     substr(c.fallback_from, 1, $log_chars) AS fallback_from,
     -- What the call itself said, at the width of the column that prints it. The row's own
     -- words: a call that answered with tool calls and nothing else has none, and the model
     -- beside it is what the row is named by.
-    substr(c.text, 1, $log_chars + 1) AS text_head,
+    cut(c.text, $log_chars) AS text_head,
     c.effort,
     c.stop_reason,
     c.attribution_skill,
@@ -65,7 +65,7 @@ SELECT
     ) AS called_tools,
     -- How many calls the turn holds in all, counted before the LIMIT bites, so the page
     -- knows how many pages there are without a second query.
-    count(*) OVER () AS matched_api_calls
+    count(*) OVER () AS matched_rows
 FROM live_api_calls c
 LEFT JOIN live_turns t
     ON t.session_id = c.session_id AND t.source = c.source AND t.id = c.turn_id

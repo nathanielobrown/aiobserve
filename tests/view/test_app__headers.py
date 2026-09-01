@@ -116,7 +116,7 @@ def test_every_fact_a_header_asks_for_has_a_label() -> None:
     previewed = {
         name
         for path in Path(view_app.__file__).parent.rglob("*.py")
-        for name in re.findall(r'detail_of\(\s*"([a-z_]+)"', path.read_text())
+        for name in re.findall(r'detail_of\(\s*name="([a-z_]+)"', path.read_text())
     }
     # Both scans walk the package rather than one directory of it, and both have to find
     # something: a scan that matched nothing would agree with the registry by saying nothing,

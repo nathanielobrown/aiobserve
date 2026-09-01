@@ -1,8 +1,8 @@
 """The store's two lists: the projects landing, and the session list under its filter form.
 
 Both are tables of one row per thing, so both are built the same way — a typed row in, a `<tr>`
-out. What each row prints is what its type carries; the composition behind them, and the links
-they mint, are `view/listing.py`'s.
+out. What each row prints is what its type carries; the links they mint are `view/listing.py`'s,
+and the SQL behind them `view/store.py`'s.
 """
 
 import datetime as dt
@@ -15,11 +15,7 @@ from hyphae.view import cuts
 from hyphae.view import format as fmt
 from hyphae.view.citation import Cited
 from hyphae.view.components import Html, citation, layout, parts
-
-# Where the list is served. Named here because the route, the link builder and the form the
-# page writes all have to agree: `/` is the projects landing, and a link that still points
-# there drops the sort and the filters the request composed.
-LIST_URL = "/sessions"
+from hyphae.view.nodes import LIST_URL
 
 
 class Control(NamedTuple):
@@ -153,10 +149,16 @@ def _project_name(*, row: ProjectRow) -> Html:
     the head this page shows is text: a link carrying a cut path lands on nothing. The sessions
     naming no directory are text for a different reason — there is no project to open, and
     `?project=` matches no session at all.
+
+    Cut like a session-list row's path, and for the same reason: the query hands back one
+    character past the width, and a path too long to link is the one a reader most needs the
+    mark on — the row it lands on is the one with no link to explain itself.
     """
     if row.link:
-        return htpy.a(data_field="project_dir", href=row.link)[cuts.project_path(row.project_dir)]
-    shown = cuts.project_path(row.project_dir) if row.project_dir else "(no project)"
+        return htpy.a(data_field="project_dir", href=row.link)[
+            cuts.project_path(cuts.short(row.project_dir))
+        ]
+    shown = cuts.project_path(cuts.short(row.project_dir)) if row.project_dir else "(no project)"
     return htpy.span(data_field="project_dir")[shown]
 
 
@@ -266,6 +268,7 @@ def sessions_page(
     whether the list carries a work column: an empty one over a store no pass has touched is a
     claim the store cannot support. The same pager stands above and below the table.
     """
+    turning = _turning(pages)
     return layout.page(
         tab_title="Sessions — hyphae",
         scripts=None,
@@ -279,7 +282,7 @@ def sessions_page(
                 htpy.datalist(id="project-names")[
                     [htpy.option(value=project) for project in projects]
                 ],
-                _pager(place="top", pages=pages),
+                parts.pager(name="top", pages=turning),
                 htpy.table(id="sessions")[
                     [
                         htpy.thead[
@@ -297,7 +300,7 @@ def sessions_page(
                         htpy.tbody[[_session(row=row, describes=describes) for row in rows]],
                     ]
                 ],
-                _pager(place="bottom", pages=pages),
+                parts.pager(name="bottom", pages=turning),
             ]
         ],
         footer=citation.footer(citations=citations),
@@ -347,32 +350,23 @@ def _heading(*, heading: Heading, sort: str, aria: str) -> Html:
     )[htpy.a(href=heading.url)[heading.label]]
 
 
-def _pager(*, place: str, pages: Pages) -> Html:
-    """The controls the list carries above and below the table.
+def _turning(pages: Pages) -> parts.Pager:
+    """The list's paging as the shared control prints it, built once for the two that show it.
 
-    `place` tells the two apart — including for a reader who hears them rather than seeing
-    where they sit.
-
-    The three controls are inline and no rule holds them apart, so each link carries the space
-    that separates it from the range: htpy writes nothing between elements, and a pager without
-    them reads as one word.
+    The words between the links are the sessions this page holds rather than which page of how
+    many it is: a reader tiling a store by paging through it is counting rows, and the list has
+    no last page to number against — the query reads one row past the page, never the rest.
     """
     last = pages.first + pages.shown - 1
-    return htpy.nav(".pager", data_pager=place, aria_label=f"{place} pager")[
-        [
-            htpy.fragment[[htpy.a(data_page="previous", href=pages.previous)["← newer page"], " "]]
-            if pages.previous
-            else None,
-            htpy.span(data_field="range")[
-                f"Sessions {fmt.count(pages.first)}–{fmt.count(last)}"
-                if pages.shown
-                else "No sessions"
-            ],
-            htpy.fragment[[" ", htpy.a(data_page="next", href=pages.next)["older page →"]]]
-            if pages.next
-            else None,
-        ]
-    ]
+    return parts.Pager(
+        field="range",
+        words=(
+            f"Sessions {fmt.count(pages.first)}–{fmt.count(last)}" if pages.shown else "No sessions"
+        ),
+        # Newest first, so the page before this one holds newer sessions.
+        previous=parts.Step(pages.previous, "← newer page") if pages.previous else None,
+        next=parts.Step(pages.next, "older page →") if pages.next else None,
+    )
 
 
 def _session(*, row: SessionRow, describes: bool) -> Html:

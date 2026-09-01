@@ -12,25 +12,24 @@ from math import ceil
 from typing import NamedTuple
 
 import duckdb
-from fastapi import HTTPException, Request
+from fastapi import HTTPException
 from fastapi.responses import Response
 
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
-from hyphae.view import bounds, builders, errors, listing, nav_tree, nodes, walk
+from hyphae.view import builders, errors, listing, nav_tree, nodes, walk
 from hyphae.view.citation import cited
 from hyphae.view.columns import Shape
 from hyphae.view.components import node_page
 from hyphae.view.components.logs import Logged
+from hyphae.view.deps import Viewer
 from hyphae.view.detail import Detail, enrichment_lines
 from hyphae.view.enrichment import Descriptions, Enrichment, described
 from hyphae.view.knobs import (
-    checked,
-    knobs,
+    Knobs,
     pager,
     preset_choices,
     skipped,
-    viewed,
 )
 from hyphae.view.nodes import Kind, Ref
 from hyphae.view.store import (
@@ -42,7 +41,6 @@ from hyphae.view.store import (
     open_store,
     page_rows,
 )
-from hyphae.view.viewer import Viewer
 
 
 class Seen(NamedTuple):
@@ -126,13 +124,9 @@ def header_bound(session_id: str) -> dict[str, ParamValue]:
 
 def browse(
     viewer: Viewer,
-    request: Request,
     session_id: str,
     source: str,
-    nav: str,
-    kin: int,
-    log: int,
-    detail: int,
+    knobs: Knobs,
     page: int,
     read: Reader,
 ) -> Response:
@@ -144,10 +138,6 @@ def browse(
     prompt. What differs per kind is `read`, which answers the node's own header, where it
     sits, and what its children log lists, and 404s when the node is not in the store.
     """
-    preset = viewed(nav)
-    checked(kin, bounds.KIN.ceiling)
-    checked(log, bounds.LOG.ceiling)
-    checked(detail, bounds.DETAIL.ceiling)
     # A page number below the first is a bad ask like a size outside its bounds, and is
     # answered the same way: no level has such a page, so what is wrong is the number and
     # not the node the URL names. Asked before anything is read — it would otherwise bind
@@ -183,8 +173,8 @@ def browse(
             corpus,
             builders.session_node(head[0], corpus.held, corpus.described),
             nav_tree.ancestry(corpus, seen.trail),
-            preset,
-            kin,
+            knobs.nav,
+            knobs.kin,
         )
         # What the reader reads before and after this node, off the same open path. Read
         # inside the request's own connection because it asks the store for levels the
@@ -223,49 +213,56 @@ def browse(
     # pages do not run this one.
     if failed is not None:
         ran.extend(failed.ran)
-    marks = knobs(preset, kin, log, detail)
     about = described_node(corpus.described, selection)
     said = enrichment_lines(about, session_id, source)
     return viewer.html(
         node_page.page(
             selection=selection,
-            choices=preset_choices(selection, preset, kin, log, detail),
-            rows=built.rows,
-            # The thread the enrichment was read for, which is what a tail row's fetch carries.
-            thread=source,
-            # Where the chain starts: the whole session list, and this session's project. The
-            # project is a step out of the session rather than a node of it, so it stands above
-            # the chain rather than in it — a session is still the outermost node.
-            trail=node_page.Trail(
-                list_url=listing.LIST_URL,
-                project_dir=head[0]["project_dir"],
-                project_url=listing.project_link(head[0]["project_filter"]),
+            nav=node_page.Nav(
+                choices=preset_choices(selection, knobs),
+                rows=built.rows,
+                # The thread the enrichment was read for: what a tail row's fetch carries.
+                thread=source,
             ),
-            chain=built.chain,
-            facts=builders.node_facts(selection, seen.header),
-            said=node_page.Said(about, said) if about and said else None,
-            details=seen.details,
-            # The bytes behind the node: the thread's transcript, and — for a turn — the one
-            # line it was read from.
-            archived=node_page.Archived(
-                thread_url=nodes.thread_url(session_id, source), line_no=seen.record
+            body=node_page.Body(
+                facts=builders.node_facts(selection, seen.header),
+                said=node_page.Said(about, said) if about and said else None,
+                details=seen.details,
+                # The bytes behind the node: the thread's transcript, and — for a turn — the
+                # one line it was read from.
+                archived=node_page.Archived(
+                    thread_url=nodes.thread_url(session_id, source), line_no=seen.record
+                ),
             ),
-            # Where the reading order goes from here, in both directions.
-            walked_previous=walked.previous,
-            walked_next=walked.next,
-            # And where the session failed: how many failures it holds, which is what the way
-            # into the list says, beside the step to the next one where there is one.
-            tool_errors=head[0]["tool_errors"],
-            failures=errors.stepped(failed.listed, selection) if failed else None,
-            shape=seen.shape,
-            log_rows=seen.rows,
-            # The level's own size, and where in it this page sits — the heading counts the
-            # first, the control under the log reads the second.
-            total=seen.total,
-            pager=pager(selection.url, marks, page, ceil(seen.total / log)),
-            # What every href on the page carries, so a click serves the URL it displays.
-            suffix=marks,
+            bearings=node_page.Bearings(
+                # Where the chain starts: the whole session list, and this session's project.
+                # The project is a step out of the session rather than a node of it, so it
+                # stands above the chain rather than in it — a session is still the outermost
+                # node.
+                trail=node_page.Trail(
+                    list_url=nodes.LIST_URL,
+                    project_dir=head[0]["project_dir"],
+                    project_url=listing.project_link(head[0]["project_filter"]),
+                ),
+                chain=built.chain,
+                # Where the reading order goes from here, in both directions.
+                walked=node_page.Steps(walked.previous, walked.next),
+                # And where the session failed: how many failures it holds, which is what the
+                # way into the list says, beside the step to the next one where there is one.
+                tool_errors=head[0]["tool_errors"],
+                failures=errors.stepped(failed.listed, selection) if failed else None,
+            ),
+            children=node_page.Children(
+                shape=seen.shape,
+                rows=seen.rows,
+                # The level's own size, and where in it this page sits — the heading counts the
+                # first, the control under the log reads the second.
+                total=seen.total,
+                pager=pager(selection.url, knobs, page, ceil(seen.total / knobs.log)),
+            ),
             citations={named.value: cited(named, bound) for named, bound in ran},
+            # What every href on the page carries, so a click serves the URL it displays.
+            suffix=knobs.suffix,
             dev=viewer.dev,
         )
     )
@@ -310,7 +307,7 @@ def call_log(
         "page_calls": log,
         "log_chars": queries.LOG_CHARS,
     }
-    calls = listed(page_rows(connection, Fragment.TURN_CALLS, **bound), "matched_api_calls")
+    calls = listed(page_rows(connection, Fragment.TURN_CALLS, **bound))
     rows = [
         builders.logged(
             Shape.CALLS, builders.call_node(corpus.session_id, source, row, corpus.held), row

@@ -1,54 +1,31 @@
-"""What each level sends the model: the rows it is built from, and the text they render to.
+"""What every level sends the model: the shared instructions, and each level's render.
 
-The renders are pure — rows in, prompt text out — so their evidence is a real store built
-from the recorded fixtures rather than a client and a network. Every size limit is a
-parameter with a default here, because a redacted fixture is two orders of magnitude short
-of the real budgets and elision could not otherwise be tested at all.
+The renders are pure — items in (`enrich/items.py`), prompt text out — so their evidence is a
+real store built from the recorded fixtures rather than a client and a network. Every size
+limit is a parameter rather than a constant read here, because a redacted fixture is two
+orders of magnitude short of the real budgets and elision could not otherwise be tested at
+all; `enrich/levels.py` holds the budgets a pass really runs on.
 """
 
 import hashlib
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
-from enum import StrEnum
-from typing import override
 
+from hyphae.enrich.items import (
+    AgentRunItem,
+    ApiCallRow,
+    Budgets,
+    SessionChild,
+    SessionItem,
+    ToolCallRow,
+    TurnItem,
+)
 from hyphae.enrich.taxonomy import (
     CATEGORY_DEFINITIONS,
     OUTCOME_DEFINITIONS,
     Category,
     Outcome,
 )
-
-
-class Level(StrEnum):
-    """The three things that get an enrichment row, each with its own table and prompt."""
-
-    turn = "turn"
-    agent_run = "agent_run"
-    session = "session"
-
-
-# Per level, covering what `input_hash` cannot see: the instructions and the output schema.
-# Bump one and that level re-enriches; its parents follow through the hash.
-PROMPT_VERSION: dict[Level, int] = {Level.turn: 4, Level.agent_run: 4, Level.session: 4}
-
-# What each level is looking at. The rest of the instructions is the same everywhere, so a
-# level reads differently only where it should.
-_SUBJECT: dict[Level, str] = {
-    Level.turn: (
-        "You are reading one turn of a coding session: what the person asked for, and what "
-        "the agent did about it. Describe that turn."
-    ),
-    Level.agent_run: (
-        "You are reading one run of a subagent: the task it was given, any later "
-        "instructions, and what it did about them. Describe that run."
-    ),
-    Level.session: (
-        "You are reading a summary of one coding session: what it cost, and a description of "
-        "each thing it did, in order. Describe the session as a whole."
-    ),
-}
 
 _ANSWER = """Answer with one JSON object recording what you just read, and say nothing else:
 
@@ -79,17 +56,17 @@ report partial or failed unless the records name what did not land
 - tool_use means the last call asked for a tool and the records stop there, so the item did \
 not finish. Name what did not land, and call it abandoned, not completed"""
 
-# Appended for `Level.session` alone. A session render is one line per child, each written by
-# an earlier pass over the records; a QC pass found the model reading those lines as a plan
-# and reporting that the session did what it set out to do.
-_RELAYING = """Each line below is another reader's description of one thing the session did. \
+# A session render is one line per child, each written by an earlier pass over the records; a
+# QC pass found the model reading those lines as a plan and reporting that the session did
+# what it set out to do. Carried by `Level.session` alone, which `enrich/levels.py` says.
+RELAYING = """Each line below is another reader's description of one thing the session did. \
 Say what those lines say happened, not what the session set out to do. Do not name a result \
 no line names: if a line says a cause was found, the session found a cause — it did not fix \
 it."""
 
 # The output contract itself: passed to `--json-schema`, so the model cannot answer out of
-# vocabulary in the first place. An edit here is a `PROMPT_VERSION` bump, since `input_hash`
-# cannot see it.
+# vocabulary in the first place. An edit here is a `prompt_version` bump on every level,
+# since `input_hash` cannot see it.
 OUTPUT_SCHEMA: dict[str, object] = {
     "type": "object",
     "properties": {
@@ -106,8 +83,12 @@ OUTPUT_SCHEMA: dict[str, object] = {
 }
 
 
-def instructions(level: Level) -> str:
-    """The system prompt for one level. Versioned by `PROMPT_VERSION`, not by `input_hash`."""
+def instructions(subject: str, *riders: str) -> str:
+    """The system prompt: what to read, how to answer, the vocabulary, and how to choose.
+
+    `subject` says what the level is looking at and `riders` are the paragraphs it alone
+    carries; `enrich/levels.py` holds both. Everything between them is the same at every level.
+    """
     vocabulary = "\n".join(
         [
             "Categories:",
@@ -117,74 +98,7 @@ def instructions(level: Level) -> str:
             *(f"- {member}: {text}" for member, text in OUTCOME_DEFINITIONS.items()),
         ]
     )
-    parts = [_SUBJECT[level], _ANSWER, vocabulary, _CHOOSING]
-    if level is Level.session:
-        parts.append(_RELAYING)
-    return "\n\n".join(parts)
-
-
-@dataclass(frozen=True)
-class Budgets:
-    """Every size limit one render obeys, in characters.
-
-    Passed rather than read from a constant so the elision paths can be exercised: every
-    string in a redacted fixture is ten characters long, so no recorded row comes within two
-    orders of magnitude of `total`.
-    """
-
-    # The whole rendered prompt. Differs per level, so there is no sensible default.
-    total: int
-    prompt: int = 4_000
-    # The assistant's text per api call. Enough for the narration, not for a file dump.
-    text: int = 1_500
-    # The head of a tool's input — the file read, the command run, the URL fetched.
-    input_head: int = 120
-    # The tail of a *failed* tool result. No other result content travels at all.
-    error_tail: int = 300
-    # A slash command's own printed output — for most command turns, the whole of what
-    # happened. 315 of the 316 recorded bodies fit it; the median is 71 characters.
-    command_result: int = 2_000
-
-
-TURN_BUDGETS = Budgets(total=30_000)
-# The same cap: a run holds the same kind of work a main turn does, and 209 of 2,458 recorded
-# runs reach it.
-RUN_BUDGETS = Budgets(total=30_000)
-# Smaller: a session carries one line per child rather than a transcript. Sessions average 3.1
-# children and the longest recorded one has 92.
-SESSION_BUDGETS = Budgets(total=24_000)
-
-
-@dataclass(frozen=True)
-class ToolCallRow:
-    """One tool call as a prompt sees it: what was asked, and how big the answer was.
-
-    The result text itself never travels — 390 MB corpus-wide — except the tail of a failed
-    one, which is where friction shows.
-    """
-
-    name: str
-    input: str
-    # None when the call was never answered, which is what `incomplete` means.
-    result: str | None
-    is_error: bool
-    incomplete: bool
-    # The description of the agent run this call spawned — the one way a child's work
-    # reaches a parent's prompt. None when the call spawned nothing, when the run it spawned
-    # is not enriched yet, and when the run is the one being rendered: a fork's transcript
-    # holds a copy of its own spawning call, and a run does not embed itself.
-    spawned: str | None
-
-
-@dataclass(frozen=True)
-class ApiCallRow:
-    """One model response and the tools it asked for. `thinking` is deliberately absent."""
-
-    text: str
-    # Why generation stopped, as recorded. None is a real recorded state — 26 of the 69 stop
-    # reasons in the fixtures are null — and renders as "not recorded", never as absence.
-    stop_reason: str | None
-    tool_calls: tuple[ToolCallRow, ...]
+    return "\n\n".join([subject, _ANSWER, vocabulary, _CHOOSING, *riders])
 
 
 def _ended_line(calls: Sequence[ApiCallRow]) -> str:
@@ -197,58 +111,6 @@ def _ended_line(calls: Sequence[ApiCallRow]) -> str:
         return "## Ended: no model response"
     reason = calls[-1].stop_reason
     return f"## Ended: {reason if reason is not None else 'not recorded'}"
-
-
-class Item:
-    """One thing that gets one enrichment row."""
-
-    @property
-    def level(self) -> Level:
-        raise NotImplementedError
-
-    @property
-    def key_values(self) -> tuple[str, ...]:
-        """The item's primary key, in the enrichment table's column order."""
-        raise NotImplementedError
-
-    @property
-    def key(self) -> str:
-        """The key as one string — what a request, a call log, and a failure record carry."""
-        return "|".join((self.level, *self.key_values))
-
-
-def level_of(key: str) -> Level:
-    """The level of an item key, so a caller holding keys alone can still tell them apart."""
-    return Level(key.split("|", 1)[0])
-
-
-@dataclass(frozen=True)
-class TurnItem(Item):
-    """One main turn: the prompt a person wrote, and the work it drove."""
-
-    session_id: str
-    source: str
-    turn_id: str
-    index: int
-    # As recorded, tags included. A slash turn renders `command_name`/`command_args` instead.
-    prompt: str
-    command_name: str | None
-    command_args: str | None
-    # What the CLI itself printed for a slash command. None means no record archived an
-    # answer; "" means one did and it printed nothing. Most command turns drive no model
-    # response, so this is the only thing the render can say about what happened.
-    command_result: str | None
-    api_calls: tuple[ApiCallRow, ...]
-
-    @property
-    @override
-    def level(self) -> Level:
-        return Level.turn
-
-    @property
-    @override
-    def key_values(self) -> tuple[str, ...]:
-        return (self.session_id, self.source, self.turn_id)
 
 
 def _command_result_block(result: str | None, budgets: Budgets) -> str:
@@ -264,7 +126,7 @@ def _command_result_block(result: str | None, budgets: Budgets) -> str:
     return f"## Command result\n{_cap(result, budgets.command_result)}"
 
 
-def render_turn(item: TurnItem, budgets: Budgets = TURN_BUDGETS) -> str:
+def render_turn(item: TurnItem, budgets: Budgets) -> str:
     """One main turn as the model sees it: what was asked, and what the session then did."""
     head = ["# Main turn", ""]
     if item.command_name is not None:
@@ -287,37 +149,7 @@ def render_turn(item: TurnItem, budgets: Budgets = TURN_BUDGETS) -> str:
     return _fit("\n".join(head), lines, budgets.total)
 
 
-@dataclass(frozen=True)
-class RunSection:
-    """One stretch of a run's transcript: one instruction, and the calls it drove."""
-
-    # None for the calls a run made before any turn of its own — a fork continuing a
-    # conversation whose prompt lives in another transcript.
-    prompt: str | None
-    api_calls: tuple[ApiCallRow, ...]
-
-
-@dataclass(frozen=True)
-class AgentRunItem(Item):
-    """One subagent run: what it was asked, in sequence, and what it did about it."""
-
-    session_id: str
-    agent_run_id: str
-    agent_type: str
-    sections: tuple[RunSection, ...]
-
-    @property
-    @override
-    def level(self) -> Level:
-        return Level.agent_run
-
-    @property
-    @override
-    def key_values(self) -> tuple[str, ...]:
-        return (self.session_id, self.agent_run_id)
-
-
-def render_run(item: AgentRunItem, budgets: Budgets = RUN_BUDGETS) -> str:
+def render_run(item: AgentRunItem, budgets: Budgets) -> str:
     """One agent run as the model sees it: every instruction it got, and the work each drove.
 
     The title and the run's first section survive any budget; the sequence after them elides.
@@ -348,56 +180,7 @@ def render_run(item: AgentRunItem, budgets: Budgets = RUN_BUDGETS) -> str:
     return _fit("\n".join(head), lines, budgets.total)
 
 
-@dataclass(frozen=True)
-class SessionChild:
-    """One thing a session did, as that thing's own enrichment described it.
-
-    No transcript text reaches a session prompt: a child that has not been described yet
-    renders as undescribed, which moves the session's hash again once it has been.
-    """
-
-    # `turn` for a main turn, `agent_run` for a run nothing else in the session embeds.
-    level: Level
-    # The run's type — `architect`, `Explore`. None for a main turn.
-    agent_type: str | None
-    description: str | None
-    category: str | None
-    outcome: str | None
-
-
-@dataclass(frozen=True)
-class SessionItem(Item):
-    """One whole session: what it cost, and what its children were described as doing."""
-
-    session_id: str
-    # As Claude Code recorded them; either can be absent from an older transcript.
-    title: str | None
-    git_branch: str | None
-    # Wall time is the whole span, gaps included; active is what Claude Code reported working.
-    # Wall is None when the session's records carry no end.
-    wall_ms: int | None
-    active_ms: int | None
-    input_tokens: int
-    output_tokens: int
-    cache_read_tokens: int
-    cache_creation_tokens: int
-    # Sums only the api calls the extractor could price.
-    cost_usd: float
-    # The session's main turns and its rootless runs, in the order they started.
-    children: tuple[SessionChild, ...]
-
-    @property
-    @override
-    def level(self) -> Level:
-        return Level.session
-
-    @property
-    @override
-    def key_values(self) -> tuple[str, ...]:
-        return (self.session_id,)
-
-
-def render_session(item: SessionItem, budgets: Budgets = SESSION_BUDGETS) -> str:
+def render_session(item: SessionItem, budgets: Budgets) -> str:
     """One session as the model sees it: what it cost, and a line per thing it did."""
     head = [
         f"# Session: {item.title or 'untitled'}",
@@ -414,27 +197,11 @@ def render_session(item: SessionItem, budgets: Budgets = SESSION_BUDGETS) -> str
     return _fit("\n".join(head), [_child_line(child) for child in item.children], budgets.total)
 
 
-def render(item: Item) -> str:
-    """One item as its level's prompt, at that level's default budgets.
-
-    The enricher's one door into the renders. Take a `render_*` function directly to pass
-    budgets, as the tests do.
-    """
-    match item:
-        case TurnItem():
-            return render_turn(item)
-        case AgentRunItem():
-            return render_run(item)
-        case SessionItem():
-            return render_session(item)
-    raise ValueError(f"nothing renders a {type(item).__name__}")
-
-
 def input_hash(rendered: str) -> str:
     """The staleness hash: the rendered content and nothing else.
 
-    Not the instructions and not the output schema — `PROMPT_VERSION` covers those, so an
-    instruction edit does not have to pretend the content changed.
+    Not the instructions and not the output schema — a level's `prompt_version` covers those,
+    so an instruction edit does not have to pretend the content changed.
     """
     return hashlib.sha256(rendered.encode()).hexdigest()
 

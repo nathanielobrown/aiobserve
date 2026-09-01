@@ -11,9 +11,10 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from hyphae.enrich.prompts import Level, TurnItem
+from hyphae.enrich.items import Level, TurnItem, item_key, level_of
 from hyphae.enrich.store import EnrichmentStore, Stamp
 from hyphae.export.schema import SchemaVersionError
+from hyphae.model import MAIN_SOURCE
 from tests.conftest import MODEL_ONLY, MYCELIA, build_store, fixture_transcripts
 from tests.enrich.conftest import (
     DUP_UUID,
@@ -245,6 +246,40 @@ def test_a_project_filter_narrows_the_items(fixture_db: Path, mutable_db: Path) 
     assert [item.command_result for item in scoped if item.command_result] != []
 
 
+def test_every_reader_narrows_to_the_project_it_was_given(mutable_db: Path) -> None:
+    """Every read that takes a project drops the other repositories' sessions, at every level.
+
+    A query that carried the filter without binding it would raise, but one that dropped the
+    filter and kept the binding answers about the whole corpus under a project's name — a
+    wrong-corpus number nothing downstream can tell from a right one.
+    """
+    # If one recorded session is planted under a neighbouring checkout — a path sharing this
+    # project's prefix, which the filter must not annex (the path invented, the session
+    # recorded)...
+    with EnrichmentStore(mutable_db) as store:
+        store.connection.execute(
+            "UPDATE sessions SET project_dir = ? WHERE id = ?", [f"{MYCELIA}-old", TEAMMATE]
+        )
+        # ...then every reader that takes a project reads the project's own items, and none
+        # of them the neighbour's.
+        for scoped, whole in (
+            (store.turn_items(MYCELIA), store.turn_items()),
+            (store.run_items(MYCELIA), store.run_items()),
+            (store.session_items(MYCELIA), store.session_items()),
+        ):
+            kept = {item.session_id for item in scoped}
+            assert TEAMMATE not in kept, "kept the neighbouring checkout's session"
+            assert scoped, "narrowed to nothing"
+            # The filter only drops sessions: what it keeps is what the unscoped read built.
+            assert scoped == [item for item in whole if item.session_id in kept]
+            assert len(scoped) < len(whole), "returned the whole corpus"
+        # The parent links narrow with them: a link the scoped items cannot name is a parent
+        # the pass would send a request for and never write a row from.
+        parents = store.item_parents(MYCELIA)
+        assert parents and len(parents) < len(store.item_parents())
+        assert TEAMMATE not in {key.split("|")[1] for key in parents}
+
+
 def test_a_run_naming_no_parent_agent_hangs_off_the_transcript_that_spawned_it(
     mutable_db: Path,
 ) -> None:
@@ -269,6 +304,43 @@ def test_a_run_naming_no_parent_agent_hangs_off_the_transcript_that_spawned_it(
     assert parents[f"{Level.agent_run}|{SPINE}|{SPINE_LEAF}"] == (
         f"{Level.agent_run}|{SPINE}|{SPINE_RUN}"
     )
+
+
+def test_an_item_key_and_a_parent_link_are_written_in_one_format(fixture_db: Path) -> None:
+    """Every key an item mints and every link `item_parents` writes are the same format.
+
+    Nothing checks the two against each other at runtime: build a key one way here and read it
+    another way there and no error follows — the planned items simply never match a stored
+    stamp, so every item is enriched again on every pass and every parent link points at an
+    item that does not exist.
+    """
+    with EnrichmentStore(fixture_db) as store:
+        items = {level: store.items(level) for level in Level}
+        turns = store.turn_items()
+        parents = store.item_parents()
+        rows = store.connection.execute("SELECT id FROM sessions").fetchall()
+    sessions = {row[0] for row in rows}
+    # A key is its level and its key values joined, and it reads back as that level...
+    for level, level_items in items.items():
+        assert level_items, f"the fixtures hold no {level} to key"
+        for item in level_items:
+            assert item.key == item_key(item.level, *item.key_values)
+            assert level_of(item.key) is level
+    # ...including a main turn, whose `source` sits in the middle of a four-field key.
+    assert MAIN_SOURCE in {item.source for item in turns}
+
+    # The links are keyed by the items the readers return: every run and every main turn...
+    assert set(parents) == {item.key for item in (*items[Level.agent_run], *items[Level.turn])}
+    linked = [key for key in parents.values() if key is not None]
+    assert len(linked) == len(parents), "every run and turn names the item that embeds it"
+    named = {level: [key for key in linked if level_of(key) is level] for level in Level}
+    # ...and each names a run or a main turn the store holds...
+    assert set(named[Level.agent_run]) <= {item.key for item in items[Level.agent_run]}
+    assert set(named[Level.turn]) <= {item.key for item in items[Level.turn]}
+    # ...or the session that ran it, the root every chain ends at.
+    assert {key.split("|", 1)[1] for key in named[Level.session]} <= sessions
+    # All three parent shapes occur here, so no arm of the check above is vacuous.
+    assert all(named[level] for level in Level)
 
 
 def test_the_tables_survive_a_re_export(mutable_db: Path) -> None:

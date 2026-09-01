@@ -147,7 +147,6 @@ CHUNK_CHARS = 50_000
 # trigger. The corpus maxima are 60, 22 and 15 characters, but a maximum is an observation:
 # a page whose size is arithmetic needs the number bound, not noticed.
 CHIP_CHARS = 60
-CHIP_CHARS_PARAM = Param(type=ParamType.INTEGER, default=CHIP_CHARS)
 
 # How much of a model name the popover prints, and the width its per-model token groups are
 # keyed at. Wide enough that nothing our price table names is cut — the longest key is 24
@@ -165,7 +164,7 @@ HEADER_ITEM_CHARS = 60
 HEADER_ITEMS = 5
 
 # The same three for one row of the session list, which the viewer composes rather than the
-# query (`view/listing.py`): the list's filters read the whole values. 100 covers the longest
+# query (`view/store.py:SHOWN`): the list's filters read the whole values. 100 covers the longest
 # title the canonical store holds (81) and its longest project path (58); 4 skills of 20 cover
 # the busiest session recorded, whose longest skill name is 18. A skill name is not a PR url,
 # which is why the header's 60 does not carry over — the list multiplies its row by the page.
@@ -202,7 +201,6 @@ RECORD_PREVIEW = 160
 # of a drag and not a wrap. It prices every row of the NavTree
 # (`view/bounds.py:NAV_TREE_ROW_BYTES`).
 NAV_CHARS = 110
-NAV_CHARS_PARAM = Param(type=ParamType.INTEGER, default=NAV_CHARS)
 
 # How much of a title one crumb of a crumb chain carries. A chain is up to sixteen links laid
 # across one line above the pane (`view/bounds.py:DEPTH`), so a crumb is a place to click and
@@ -223,15 +221,10 @@ LOG_CHARS_PARAM = Param(type=ParamType.INTEGER, default=LOG_CHARS)
 # repeated row, because it is not repeated — one node, one value, and the whole of it is a
 # click away (`view/store.py`'s per-value queries). `?detail=` only goes down.
 DETAIL_CHARS = 4_000
-DETAIL_CHARS_PARAM = Param(type=ParamType.INTEGER, default=DETAIL_CHARS)
 
 # The keyset cursor before the first row: "the last index already shown", and indexes start
-# at 0. Defaulted to it, so a bare invocation of a paging query returns its first page.
+# at 0, so this is what a page asking for the first one binds.
 FIRST_PAGE = -1
-AFTER = Param(type=ParamType.INTEGER, default=FIRST_PAGE)
-# The other way a query skips what a reader has already seen: how many rows lie before this
-# page of a numbered set. Defaulted to none, so a bare invocation returns page one.
-SKIPPED = Param(type=ParamType.INTEGER, default=0)
 
 # What every seeded draw hashes its keys with. Any fixed value serves; what matters is that
 # the citation carries it, so a draw can be re-run — and rotated when a read wants new ground.

@@ -329,7 +329,7 @@ def test_calls_run_in_a_temp_cwd(fake: Install) -> None:
     """Items run outside every extractable project, so a stray session cannot be re-ingested."""
     cli = fake({content_of("item-0"): succeeds()})
     CliClient(MODEL).submit(requests_for("item-0"))
-    # `sessions.py` keys the projects directory on the cwd, so a temp cwd is the control.
+    # `projects.py` keys the projects directory on the cwd, so a temp cwd is the control.
     cwd = Path(cli.calls[0]["cwd"])
     assert cwd.is_relative_to(tempfile.gettempdir())
     assert cwd != Path.cwd()

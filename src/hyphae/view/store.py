@@ -8,10 +8,15 @@ The three enums are the viewer's whole query catalog, split by what a query is a
 select: a page or a fragment truncates every fat column in SQL, and a per-value query is the
 declared exception. Naming a query in one of them is what puts it in reach of the payload
 scans (`tests/view/test_bounds.py`), so the union is also the checklist.
+
+The SQL a page composes around one of those queries is here too, and nowhere else: `window`
+for a numbered page of a query that limits nothing itself, and the session list's sort, filter
+and cut below it. A route reads rows; it does not build SQL.
 """
 
 from collections.abc import Generator, Mapping
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -20,11 +25,9 @@ import duckdb
 
 from hyphae.analyze import macros, queries
 from hyphae.analyze.queries import ParamValue
-from hyphae.export.schema import SCHEMA_VERSION, held_schema_version
-
-# DuckDB's wording when another process holds the store's write lock. Matched on text
-# because the exception type it arrives as covers every other I/O failure too.
-_LOCKED = "Conflicting lock is held"
+from hyphae.export.duckdb import PAGE_WAIT, open_trace_store
+from hyphae.export.schema import SchemaVersionError
+from hyphae.projects import project_predicate
 
 Row = dict[str, Any]
 
@@ -133,10 +136,6 @@ class Value(StrEnum):
 Library = Page | Fragment | Value
 
 
-class StoreLocked(Exception):
-    """Another process holds the store's write lock, so this request cannot read it."""
-
-
 class SchemaMoved(Exception):
     """The store's schema version is not the one this build reads."""
 
@@ -145,28 +144,24 @@ class SchemaMoved(Exception):
 def open_store(db_path: Path) -> Generator[duckdb.DuckDBPyConnection]:
     """A read-only connection for one request, checked and closed.
 
-    Raises `StoreLocked` when a writer holds the file and `SchemaMoved` when the store was
-    re-created under the running viewer; both are checked per request rather than at startup
-    because an extract can land between two page loads.
+    The store's one opener (`export/duckdb.py`), told how long a page may hang, with the
+    viewer's own refusal over it: `SchemaMoved` when the store moved under the running
+    viewer. That is checked per request rather than at startup because an extract can land
+    between two page loads, and so is the opener's own `StoreLocked`, which the request
+    reaches only after waiting `PAGE_WAIT` for the writer. Only the open is translated — an
+    error a page raises while reading is the page's own.
     """
+    opened = ExitStack()
     try:
-        connection = duckdb.connect(str(db_path), read_only=True)
-    except duckdb.IOException as error:
-        if _LOCKED in str(error):
-            raise StoreLocked(str(db_path)) from error
-        raise
-    try:
-        # Timestamps went in as UTC; a page rendered in the machine's local zone would print
-        # times that no citation of the same rows reproduces.
-        connection.execute("SET TimeZone='UTC'")
+        connection = opened.enter_context(open_trace_store(db_path, read_only=True, wait=PAGE_WAIT))
+    except SchemaVersionError as error:
+        # Carried whole: the opener already picked the remedy that fits this store, and a
+        # reader sent to a fresh one where a migration would have done can lose a session.
+        raise SchemaMoved(str(error)) from error
+    with opened:
         # The library's shared SQL functions, which several of the queries below call by name.
         macros.install(connection)
-        held = held_schema_version(connection)
-        if held != SCHEMA_VERSION:
-            raise SchemaMoved(f"{held or 'nothing'}")
         yield connection
-    finally:
-        connection.close()
 
 
 def fetch(
@@ -210,8 +205,11 @@ class Listed(NamedTuple):
     total: int
 
 
-# What the composed window counts its pre-LIMIT matches into. A name of the composition and
-# not of any library query, which is what lets the query stay unlimited and citable.
+# The one name for how many rows matched before a LIMIT bit, wherever that count is computed:
+# by the query itself where it limits its own rows, and by `window` where it limits nothing and
+# the viewer wraps it. One name is what lets a route read the count without knowing which query
+# it came from — and the two ways of computing it never meet, because a query that limits itself
+# is never one `window` wraps.
 MATCHED_ROWS = "matched_rows"
 
 
@@ -230,8 +228,8 @@ def window(
 ) -> Listed:
     """One numbered page of a library query that limits nothing itself.
 
-    The session list's composition (`view/listing.py`) for the other case: a query whose
-    whole result a report quotes cannot carry a viewer's LIMIT, so the viewer wraps it. Rows
+    The session list's composition below is the other case: a query whose whole result a
+    report quotes cannot carry a viewer's LIMIT, so the viewer wraps it. Rows
     come back ordered by `cursor`, which is a column name this package supplies — never
     request text — while `skipped` and `size` bind. A row the query gives no cursor value is
     outside every page and outside the count (`cursorless_rows`).
@@ -242,23 +240,7 @@ def window(
         f" WHERE {cursor} IS NOT NULL ORDER BY {cursor} LIMIT $size OFFSET $skipped",
         {"skipped": skipped, "size": size, **bindings},
     )
-    return listed(rows, MATCHED_ROWS)
-
-
-def thread_outline(
-    connection: duckdb.DuckDBPyConnection, page: Library, cursor: str, **bindings: ParamValue
-) -> list[Row]:
-    """A whole thread in outline — a timeline's rows, id and cursor and clock only.
-
-    Two questions need the thread and not the page: which runs the session could place, and
-    which page each compaction falls on. Both are cheap here because the projection is three
-    scalars; neither can be answered from a window without changing what the answer means.
-    """
-    return fetch(
-        connection,
-        f"SELECT turn_id, {cursor}, started_at FROM ({_core(page)}) ORDER BY {cursor} NULLS LAST",
-        bindings,
-    )
+    return listed(rows)
 
 
 def cursorless_rows(
@@ -286,24 +268,211 @@ def cursorless_rows(
     return rows
 
 
-def listed(rows: list[Row], matched: str) -> Listed:
+# The session list's own composition, which is the other case `window` names: a `?sort=` column
+# and a filter predicate cannot be bound parameters, so the library query stays the citable core
+# and what follows wraps it. `SORTS`, `FILTERS` and `DIRECTIONS` are closed, so a key outside
+# them is a `KeyError` here and a 400 at the route (`view/listing.py`) and never a fragment of
+# SQL — every value a request supplied binds as a parameter, and no request text reaches DuckDB
+# as text.
+
+# What the session list can be sorted by: a column of `view_sessions`, mapped to its header
+# label. A closed dictionary, and the only place a request's `sort` value is ever looked up —
+# an unknown key is a 400, never a fragment of SQL. `tests/view/test_app__list.py` checks every
+# key against the columns the query returns. Output tokens and active time are not here: they
+# ride the row as the second line of the cost and wall cells, and a column nobody ranks a
+# corpus by is texture rather than a heading.
+SORTS: dict[str, str] = {
+    "started_at": "Started",
+    "title": "Session",
+    "project_dir": "Project",
+    "turns": "Turns",
+    "api_calls": "Calls",
+    "tool_calls": "Tools",
+    "compactions": "Compactions",
+    # By the count, though the cell shows the rate: one tool call that failed is a session at
+    # 100%, and not the session a reader sorting by errors is looking for.
+    "tool_errors": "Errors",
+    "cost_usd": "Cost",
+    "wall_ms": "Wall",
+    "agent_runs": "Subagents",
+}
+
+
+@dataclass(frozen=True)
+class Filter:
+    """One way the session list can be narrowed, as the two halves that make it safe."""
+
+    # The predicate composed into the WHERE, naming its own bound parameter and nothing else.
+    # It reads a column of `view_sessions`, which is what the composition wraps.
+    predicate: str
+    # What a request's value has to parse as before it can bind. A value that will not parse
+    # is a 400, so the type is also the only vetting a filter value gets.
+    type: queries.ParamType
+
+
+# What the session list can be narrowed by, per query-string key. Closed, like `SORTS`: a key
+# outside it is a 400, and a key inside it contributes a fixed predicate and a bound value —
+# request text never becomes SQL. Composed in this order, so the WHERE and the citation read
+# the same whatever order a URL happened to put them in.
+FILTERS: dict[str, Filter] = {
+    # A path prefix, not a path: a worktree checkout sits under the repository it was cut
+    # from, so filtering by a project has to hold its worktrees' sessions the way the CLI's
+    # `--project` does. One statement of the rule, in `hyphae.projects`.
+    "project": Filter(project_predicate("project_dir", "$project"), queries.ParamType.TEXT),
+    "since": Filter("started_at >= $since", queries.ParamType.DATE),
+    # Inclusive of the day named: someone asking for sessions until the 7th means the 7th.
+    "until": Filter("started_at < $until + INTERVAL 1 DAY", queries.ParamType.DATE),
+    "skill": Filter("list_contains(skills, $skill)", queries.ParamType.TEXT),
+    # A floor rather than a flag, so `errors=1` reads "any" and a larger number "at least".
+    "errors": Filter("tool_errors >= $errors", queries.ParamType.INTEGER),
+}
+
+# The two orderings a reader can ask for, as the SQL keyword each one puts in the ORDER BY.
+DIRECTIONS: dict[str, str] = {"asc": "ASC", "desc": "DESC"}
+
+# What one row of the list shows of the values a transcript wrote: each string cut to a head,
+# the skills and the agent types cut to their first few with a count of what was left, and the
+# PR links the page has no column for dropped. Composed here rather than in the query because
+# the list's filters read the whole values — a `project` matched against a cut path would miss
+# every session under a longer one, and a `skill` outside the first few would find nothing —
+# and applied outside the window, so it cuts the rows one page shows and nothing else.
+#
+# The `cut` macro takes one character more than the row prints, which is how the component
+# knows a value was stopped rather than ended and marks it (`view/format.py:cut`). It is a
+# macro of the library, so this runs only on a connection `macros.install` has seen — which
+# `open_store` above is, and so is every fixture that reaches here.
+SHOWN = """SELECT * EXCLUDE (pr_urls) REPLACE (
+    cut(title, $head_chars) AS title,
+    cut(project_dir, $head_chars) AS project_dir,
+    list_transform(list_slice(coalesce(skills, []), 1, $head_items),
+        name -> cut(name, $item_chars)) AS skills,
+    list_slice(coalesce(agent_types, []), 1, $head_items) AS agent_types
+), greatest(len(coalesce(skills, [])) - $head_items, 0) AS skills_cut,
+   greatest(len(coalesce(agent_types, [])) - $head_items, 0) AS agent_types_cut FROM"""
+
+
+# How many rows past the page the list reads: enough to know whether there is another page,
+# never enough to show one. `sorted_sessions` is the only place it is spent, and the citation
+# under the page quotes the size the reader asked for instead (`view/listing.py`).
+PAGER_PROBE = 1
+
+# What the description joined to a page of the list cuts its own strings to. Bound by the query
+# when there is an enrichment pass to join, and cited on its own when there is — the same four
+# values either way, because a citation is what its page ran.
+DESCRIBED_BOUND: dict[str, ParamValue] = {
+    "head_chars": queries.LIST_CHARS,
+    "tag_chars": queries.TAG_CHARS,
+    "kind_chars": queries.TAG_CHARS,
+    "head_kinds": queries.LIST_CATEGORIES,
+}
+
+
+def list_bound(page: int, size: int, filters: Mapping[str, ParamValue]) -> dict[str, ParamValue]:
+    """What one page of the session list binds: its window, its row cut, and its filters.
+
+    Read twice — by the query below, and by the citation the page prints under it
+    (`view/listing.py`) — because a citation that drifted from its query is a false citation.
+    The one difference between the two is the query's `PAGER_PROBE`, added where it is spent.
+    """
+    return {
+        "limit": size,
+        "offset": (page - 1) * size,
+        "head_chars": queries.LIST_CHARS,
+        "item_chars": queries.LIST_ITEM_CHARS,
+        "head_items": queries.LIST_ITEMS,
+        **filters,
+    }
+
+
+class Listing(NamedTuple):
+    """One page of the session list, and whether the store holds another after it."""
+
+    rows: list[Row]
+    more: bool
+
+
+def sorted_sessions(
+    connection: duckdb.DuckDBPyConnection,
+    sort: str,
+    direction: str,
+    page: int,
+    size: int,
+    filters: Mapping[str, ParamValue],
+    described: bool,
+) -> Listing:
+    """One page of the session list, ordered by one of `SORTS` — the design's composition.
+
+    The library query stays the citable core: it goes in a subquery untouched, and what is
+    wrapped around it is a WHERE of `FILTERS` predicates, an ORDER BY built from two
+    dictionary lookups, a LIMIT, and `SHOWN` over the rows that survive all three — every
+    value a request supplied bound as a parameter. `session_id` breaks ties in the same
+    direction, which makes every sort a total order, its reverse exact, and the page
+    boundaries stable between requests. The rows carrying no value sort last either way:
+    "the store does not know" is not the largest reading of a column, or the smallest.
+
+    `described` says whether the store holds the enrichment tables to join — a caller asks
+    `view/enrichment.py`, which is where that catalog check lives. It is an argument rather
+    than a check here because it is a fact about the store, not about the request.
+    """
+    # A sort or filter key *is* part of a SQL fragment, so membership is the whole guard —
+    # and it is checked here as well as at the route, because this builds the SQL.
+    if sort not in SORTS or not filters.keys() <= FILTERS.keys():
+        raise KeyError(sort)
+    keyword = DIRECTIONS[direction]
+    # What the pass said each session was, joined before the sort so a row carries it: the
+    # left join adds columns and never a row, so it changes neither the order nor the count.
+    joined = (
+        f" LEFT JOIN ({_core(Page.DESCRIBED_SESSIONS)}) USING (session_id)" if described else ""
+    )
+    # `FILTERS` order, not the query string's: the SQL a citation stands for is the same
+    # whichever way a URL was typed.
+    applied = [FILTERS[key].predicate for key in FILTERS if key in filters]
+    where = f" WHERE {' AND '.join(applied)}" if applied else ""
+    bound = list_bound(page, size, filters)
+    # The one place the query and the citation under it differ, and deliberately: reading a row
+    # past the page is cheaper than a second query and all a pager needs to know there is
+    # another one, while a footer quoting that limit would offer a row the page never showed.
+    bound["limit"] = size + PAGER_PROBE
+    # The joined query cuts its own strings, and takes the same head a row's other strings do.
+    if described:
+        bound |= DESCRIBED_BOUND
+    rows = fetch(
+        connection,
+        f"{SHOWN} (SELECT * FROM ({_core(Page.SESSIONS)}){joined}{where}"
+        f" ORDER BY {sort} {keyword} NULLS LAST, session_id {keyword}"
+        " LIMIT $limit OFFSET $offset)",
+        bound,
+    )
+    return Listing(rows[:size], len(rows) > size)
+
+
+def listed(rows: list[Row]) -> Listed:
     """A page of rows and the size of the level it came from, out of the query's own count.
 
-    `matched` names the column carrying how many rows matched before the LIMIT, which the
-    paging queries compute with a window function — so a page knows the whole level without a
-    second query, and a level whose page is empty is one whose pages ran out.
+    Every paging query carries `MATCHED_ROWS`: how many rows matched before the LIMIT, computed
+    with a window function — so a page knows the whole level without a second query, and a level
+    whose page is empty is one whose pages ran out.
     """
-    return Listed(rows, rows[0][matched] if rows else 0)
+    return Listed(rows, rows[0][MATCHED_ROWS] if rows else 0)
 
 
-def paged(rows: list[Row], matched: str, cursor: str) -> Paged:
+def dropped(rows: list[Row]) -> int:
+    """How many rows the query's own LIMIT left off, for a page that says so rather than lose them.
+
+    A count of rows, not a shortened string: `format.cut` and the `cut` SQL macro are the other
+    thing that word means here. Zero on an empty page — a level with nothing in it lost nothing.
+    """
+    return listed(rows).total - len(rows)
+
+
+def paged(rows: list[Row], cursor: str) -> Paged:
     """A page of rows and its continuation, from a query's own pre-LIMIT match count.
 
-    `matched` names the column carrying how many rows the cursor had ahead of it, which the
-    paging queries compute with a window function — so a page knows what it cut without a
-    second query, and cannot report "+0 more" for rows it silently dropped.
+    `MATCHED_ROWS` carries how many rows the cursor had ahead of it, which the paging queries
+    compute with a window function — so a page knows what it cut without a second query, and
+    cannot report "+0 more" for rows it silently dropped.
     """
     if not rows:
         return Paged(rows, 0, None)
-    behind = rows[0][matched] - len(rows)
+    behind = dropped(rows)
     return Paged(rows, behind, rows[-1][cursor] if behind else None)

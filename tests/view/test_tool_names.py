@@ -11,7 +11,7 @@ invented for a tool no recording of ours has ever called.
 
 import pytest
 
-from hyphae.view.formatters import FORMATTERS, Formatted, name_tool
+from hyphae.view.tool_names import FORMATTERS, Formatted, name_tool
 
 # Every field `tool_fields` extracts, all NULL: what the store hands a formatter for a tool
 # call carrying none of them. Each case below fills in the ones its own tool recorded.

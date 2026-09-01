@@ -18,8 +18,8 @@ import duckdb
 from fastapi.testclient import TestClient
 
 from hyphae.analyze import queries
-from hyphae.enrich.prompts import PROMPT_VERSION, Level
-from hyphae.enrich.store import LEVELS
+from hyphae.enrich.items import Level
+from hyphae.enrich.levels import LEVELS
 from hyphae.enrich.taxonomy import TAXONOMY_VERSION
 from hyphae.view.app import build_app
 from hyphae.view.enrichment import GLYPH, GLYPH_CLASS
@@ -346,7 +346,7 @@ def wrote(store: duckdb.DuckDBPyConnection, turn_id: str) -> str:
         " WHERE turn_id = ?",
         [turn_id],
     )
-    aged = prompt_version != PROMPT_VERSION[Level.turn] or taxonomy != TAXONOMY_VERSION
+    aged = prompt_version != LEVELS[Level.turn].prompt_version or taxonomy != TAXONOMY_VERSION
     return (
         f"{model} · {when(at)} · prompt v{prompt_version} · taxonomy v{taxonomy}"
         f" · {'stale' if aged else 'fresh'}"
@@ -367,13 +367,13 @@ def test_an_item_described_under_an_older_prompt_is_marked_stale(
         enriched_store,
         "SELECT session_id, turn_id FROM turn_enrichments"
         " WHERE source = 'main' AND prompt_version < ?",
-        [PROMPT_VERSION[Level.turn]],
+        [LEVELS[Level.turn].prompt_version],
     )
     fresh = one(
         enriched_store,
         "SELECT session_id, turn_id FROM turn_enrichments"
         " WHERE source = 'main' AND prompt_version = ?",
-        [PROMPT_VERSION[Level.turn]],
+        [LEVELS[Level.turn].prompt_version],
     )
     # The turn described under the older prompt version is tagged...
     stale_page = enriched_client.get(f"/session/{session_id}/thread/main/turn/{turn_id}").text

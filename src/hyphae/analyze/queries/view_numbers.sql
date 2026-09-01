@@ -27,7 +27,7 @@ WITH RECURSIVE calls AS (
         c.turn_id,
         c."index",
         c.synthetic,
-        substr(c.model, 1, $model_chars + 1) AS model_name,
+        cut(c.model, $model_chars) AS model_name,
         context_window(c.model) AS window_tokens,
         context_fill(c) AS fill,
         context_added(c) AS added,

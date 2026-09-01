@@ -75,7 +75,7 @@ Run a saved query:
 uv run hp query session_counts --project ~/repos/mycelia
 ```
 
-Saved queries live in `src/hyphae/analyze/queries/`. The command prints the citation line that every finding must carry; [the analysis guide](docs/analysis.md) explains the contract. For questions the saved queries do not answer, query DuckDB directly through the `session_rollups` and `corpus_rollups` views, which omit records copied by a fork or resume. The store can outlive its source transcripts, so read [the store guide](docs/store.md) before deleting it.
+`hp query --list` names every query in the library with its scope and the parameters it needs bound; the SQL lives in `src/hyphae/analyze/queries/`. The command prints the citation line that every finding must carry; [the analysis guide](docs/analysis.md) explains the contract. For questions the saved queries do not answer, query DuckDB directly through the `session_rollups` and `corpus_rollups` views, which omit records copied by a fork or resume. The store can outlive its source transcripts, so read [the store guide](docs/store.md) before deleting it.
 
 ## Describe what happened
 

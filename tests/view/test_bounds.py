@@ -56,10 +56,15 @@ from tests.view.budgets import (
 from tests.view.conftest import (
     Planter,
     block,
+    fields,
     inside,
     one,
 )
 from tests.view.scenarios import SCENARIOS
+
+# The pages that carry a footer, and the reader of one citation line: both are the citation
+# tier's, and what the production sizes are read off here.
+from tests.view.test_query import CITING, bound
 
 # What a query may wrap a fat column in and still be bounded: a fixed-width prefix of it, a
 # count of what it holds, the check that it parses, the window the model it names answers in,
@@ -199,6 +204,8 @@ def test_every_macro_the_scan_trusts_answers_one_character_past_the_width() -> N
         return connection.execute(f"SELECT {expression}", list(params)).fetchall()[0][0]
 
     for chars in (10, 60, 300):
+        # The protocol itself, which every macro below and every bounded column is written in.
+        assert len(answer("cut(?, ?)", "v" * 400, chars)) == chars + 1
         # A field read straight.
         assert len(answer("tool_asked(?, 'file_path', ?)", inside, chars)) == chars + 1
         # The relativized path is the arm that spends width on a prefix it then throws away:
@@ -257,72 +264,115 @@ def test_every_viewer_query_is_declared_as_a_page_a_fragment_or_a_value() -> Non
     assert declared <= set(QUERIES)
 
 
-def test_the_manifest_pins_the_production_page_sizes() -> None:
+def ran_at(client: TestClient) -> dict[str, dict[str, set[int]]]:
+    """What every query ran at on the pages that cite it: query, parameter, values seen.
+
+    A set rather than a value, because a size belongs to the surface: one parameter runs at
+    two widths when two surfaces print it differently, and both are production. Read off the
+    citation line each footer carries, which is the page saying what it bound.
+    """
+    sizes: dict[str, dict[str, set[int]]] = {}
+    for path in CITING:
+        for name, line in fields(client.get(path).text, "id", "citation").items():
+            for parameter, value in bound(line).items():
+                if re.fullmatch(r"-?\d+", value):
+                    sizes.setdefault(name, {}).setdefault(parameter, set()).add(int(value))
+    return sizes
+
+
+def test_the_pages_run_at_the_production_sizes(client: TestClient) -> None:
     """The page sizes the payload bound is computed from are the ones production runs.
 
+    Read off what the pages cited, not off the manifest: no `view_` query declares a default
+    (`view/manifest.py`), and back when they did, two of the numbers pinned here were numbers
+    no page ever ran — `chip_chars` was declared 60 while the runs log ran it at 300.
+
     Every other leaf in this file binds fixture-sized values, so without this pin the whole
-    section would pass against any defaults at all — a `page_records` of 5,000 would break the
+    section would pass against any size at all — a `page_records` of 5,000 would break the
     bound in production while CI stayed green.
     """
-    assert QUERIES["view_records"].params["page_records"].default == 100
-    assert QUERIES["view_records"].params["preview_chars"].default == 160
-    assert QUERIES["view_offload"].params["chunk_chars"].default == 50_000
-    # How many children one open level of the NavTree shows. Not a manifest default — the NavTree
-    # composes its window around the query rather than binding it — and every leaf below
-    # recomputes from whatever this says, so a literal is the only thing that reds when the
-    # window silently narrows back to what it was.
-    assert bounds.Bound(200, 200) == bounds.KIN
+    ran = ran_at(client)
+    assert ran["view_records"]["page_records"] == {100}
+    assert ran["view_records"]["preview_chars"] == {160}
+    assert ran["view_offload"]["chunk_chars"] == {50_000}
     # How much of a title a row of the NavTree shows. Wide enough that a draggable tree has
     # something to show when a reader widens it — the cut is what a row can say, and CSS
     # decides how much of it fits. Every level cuts to the same width, whatever kind of child
     # it holds.
     for level in ("view_nav_tree_turns", "view_nav_tree_calls", "view_nav_tree_tools"):
-        assert QUERIES[level].params["nav_chars"].default == 110, level
+        assert ran[level]["nav_chars"] == {110}, level
     # And how much of each string a row of the pane's children log shows, with the page it is
     # read in. Wider than a NavTree row: a log row is a line of a table, with room for the first
     # words of a prompt beside the numbers.
-    assert QUERIES["view_turn_calls"].params["log_chars"].default == 300
-    assert QUERIES["view_call_tools"].params["log_chars"].default == 300
-    assert QUERIES["view_turn_calls"].params["page_calls"].default == queries.LOG_ROWS
-    assert QUERIES["view_call_tools"].params["page_tools"].default == queries.LOG_ROWS
+    assert ran["view_turn_calls"]["log_chars"] == {300}
+    assert ran["view_call_tools"]["log_chars"] == {300}
+    assert ran["view_turn_calls"]["page_calls"] == {queries.LOG_ROWS}
+    assert ran["view_call_tools"]["page_tools"] == {queries.LOG_ROWS}
     assert queries.LOG_ROWS == 100
     # A node header cuts every string it carries to a head, and the one fat value its pane
     # previews to a detail — the four kinds that have fields of their own take the same two.
     for header in ("view_turn_header", "view_call_header", "view_tool_header", "view_run_header"):
-        assert QUERIES[header].params["head_chars"].default == 100, header
-        assert QUERIES[header].params["detail_chars"].default == 4_000, header
+        assert ran[header]["head_chars"] == {100}, header
+        assert ran[header]["detail_chars"] == {4_000}, header
     # The session header is the widest of the panes: two of its columns are lists that grow
     # with the session, so it cuts the members and caps how many it shows.
-    assert QUERIES["view_session_header"].params["head_chars"].default == 100
-    assert QUERIES["view_session_header"].params["item_chars"].default == 60
-    assert QUERIES["view_session_header"].params["head_items"].default == 5
-    # How much of a run row's and a compaction row's three columns a NavTree row shows. Both
-    # queries keep no LIMIT of their own — a report quotes the whole set — so what bounds them
-    # on a page is the NavTree's own arithmetic below.
-    assert QUERIES["view_runs"].params["chip_chars"].default == 60
-    assert QUERIES["view_compactions"].params["chip_chars"].default == 60
+    assert ran["view_session_header"]["head_chars"] == {100}
+    assert ran["view_session_header"]["item_chars"] == {60}
+    assert ran["view_session_header"]["head_items"] == {5}
+    # How much of a run row's and a compaction row's three columns the row that prints them
+    # shows. One parameter at two widths, which is what a single declared default could never
+    # be: the runs log gives a chip a log row's width, and the NavTree gives it a row's.
+    assert ran["view_runs"]["chip_chars"] == {queries.LOG_CHARS}
+    assert ran["view_compactions"]["chip_chars"] == {queries.NAV_CHARS}
     # The list's rows drop the agent types a session spawned, but the query behind them still
     # gathers the names, so a member is cut where the list cuts a skill name.
-    assert QUERIES["view_sessions"].params["item_chars"].default == queries.LIST_ITEM_CHARS
-    # And how much of what a pass wrote an item shows. The taxonomy is closed and its longest
-    # member is nine characters (`enrich/taxonomy.py`), so the tag cut bounds a hand-edited row
-    # rather than anything a pass writes.
-    assert QUERIES["view_enrichment"].params["description_chars"].default == 200
-    assert QUERIES["view_enrichment"].params["tag_chars"].default == 20
-    # The same for the list, whose row the viewer cuts in its own composition — the filters
-    # read the whole values — and whose project suggestions the query itself caps.
-    assert (queries.LIST_CHARS, queries.LIST_ITEM_CHARS, queries.LIST_ITEMS) == (100, 20, 4)
-    assert QUERIES["view_projects"].params["head_chars"].default == 100
-    assert QUERIES["view_projects"].params["head_projects"].default == 10
+    assert ran["view_sessions"]["item_chars"] == {queries.LIST_ITEM_CHARS}
     # And the landing page, whose row shows a path at the list's head and links by the whole
     # one. How many projects it ranks is a size like the rest; the two windows it counts them
     # in are not sizes, and `tests/view/test_projects.py` pins those against what it cites.
-    assert QUERIES["view_project_rollups"].params["head_chars"].default == queries.LIST_CHARS
-    assert QUERIES["view_project_rollups"].params["projects"].default == 100
+    assert ran["view_project_rollups"]["head_chars"] == {queries.LIST_CHARS}
+    assert ran["view_project_rollups"]["projects"] == {100}
     # And the errors list, bound the same way — a session can fail arbitrarily many calls —
     # and titled at a NavTree row's width, because each of its rows leads to a node.
-    assert QUERIES["view_session_errors"].params["nav_chars"].default == queries.NAV_CHARS
-    assert QUERIES["view_session_errors"].params["errors"].default == 100
+    assert ran["view_session_errors"]["nav_chars"] == {queries.NAV_CHARS}
+    assert ran["view_session_errors"]["errors"] == {100}
+    # Two queries no page cites, because a fragment carries no footer: the enrichment block a
+    # node page fetches, and the filter suggestions above the session list. What binds them is
+    # pinned at the constant the composing module reads instead (`view/enrichment.py`,
+    # `view/listing.py`). The enrichment taxonomy is closed and its longest member is nine
+    # characters (`enrich/taxonomy.py`), so the tag cut bounds a hand-edited row rather than
+    # anything a pass writes.
+    assert (queries.ENRICHMENT_CHARS, queries.TAG_CHARS) == (200, 20)
+    assert (queries.LIST_CHARS, queries.LIST_ITEM_CHARS, queries.LIST_ITEMS) == (100, 20, 4)
+    assert queries.LIST_PROJECTS == 10
+
+
+def test_no_viewer_query_declares_a_default() -> None:
+    """A `view_` parameter is required, so the surface that prints the value states its width.
+
+    The viewer never reads a default — every page composes its own bindings, and an unbound
+    parameter is a DuckDB error rather than a fallback — so a default here is a number nothing
+    runs and nothing checks, free to say 60 while three surfaces run 100, 110 and 300. Dropping
+    them puts every width in one place: the constant beside its ceiling, bound by the surface
+    and quoted in the citation under the page, which is what the leaf above reads.
+    """
+    declared = {
+        f"{name}.{parameter}"
+        for name, query in QUERIES.items()
+        if name.startswith(VIEW_PREFIX)
+        for parameter, spec in query.params.items()
+        if spec.default is not queries.REQUIRED
+    }
+    assert declared == set()
+
+
+def test_every_page_fits_under_the_ceiling_it_is_priced_at() -> None:
+    """The arithmetic over the sizes above: no route can be asked for more than it affords."""
+    # How many children one open level of the NavTree shows. Not a bound parameter — the
+    # NavTree composes its window around the query rather than binding it — and every leaf
+    # below recomputes from whatever this says, so a literal is the only thing that reds when
+    # the window silently narrows back to what it was.
+    assert bounds.Bound(200, 200) == bounds.KIN
     # Every ceiling is projected at the largest page a URL can ask for, because a size is
     # something a reader types.
     assert worst_records_page_bytes() < PAGE_BYTES
@@ -366,8 +416,8 @@ def test_the_manifest_pins_the_production_page_sizes() -> None:
     declared = {
         name: value for name, value in vars(bounds).items() if isinstance(value, bounds.Bound)
     }
-    for name, bound in declared.items():
-        assert bound.default <= bound.ceiling, name
+    for name, size in declared.items():
+        assert size.default <= size.ceiling, name
     # ...and those are the sizes this leaf priced above: a new one reds here until its ceiling
     # is spent in the arithmetic too, rather than riding a page nobody weighed.
     assert set(declared) == {

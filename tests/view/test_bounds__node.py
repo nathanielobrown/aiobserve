@@ -13,7 +13,7 @@ import duckdb
 from fastapi.testclient import TestClient
 
 from hyphae.analyze import queries
-from hyphae.extract.pricing import CONTEXT_WINDOWS
+from hyphae.extract.pricing import MODELS
 from hyphae.view import bounds, nodes
 from hyphae.view.app import build_app
 from hyphae.view.format import ELLIPSIS
@@ -164,7 +164,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
             " 0 AS cache_creation_tokens)"
             " FROM (SELECT DISTINCT ON (l.session_id, l.source, l.turn_id) l.*,"
             ' l."index" + 1 AS rank FROM live_api_calls l))',
-            [next(iter(CONTEXT_WINDOWS))],
+            [next(model for model, spec in MODELS.items() if spec.context_window)],
         ),
         # And the third edge, which is read off the session's opening call rather than off the
         # turn: every thread's turns stand on what `main` sent first, so the earliest call of

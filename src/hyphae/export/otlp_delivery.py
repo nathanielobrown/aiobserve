@@ -1,19 +1,18 @@
-"""Getting shaped spans to a backend and knowing what landed: the exporter and the census.
+"""Getting shaped spans to a backend and knowing what landed.
 
 At-least-once with stable ids. A delivery row in the store records the fingerprint and the
 mapper version a session shipped under, so re-running ships only what moved and a shaping
 change re-ships the corpus (`docs/otlp-export.md`). A failed run re-sends the session whole
 rather than diffing what got through — an append-only backend never dedupes.
 
-What a session becomes on the way here is `export/otlp.py`; this module never reads a store
-row, only the spans that module made.
+What a session becomes on the way here is `export/otlp.py`; this module reads no session
+row, only the spans that module made and the delivery ledger it owns.
 """
 
 import datetime as dt
 import gzip
 import time
-from collections import Counter
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from types import TracebackType
 
@@ -24,11 +23,9 @@ from opentelemetry.proto.resource.v1 import resource_pb2
 from opentelemetry.proto.trace.v1 import trace_pb2
 
 from hyphae.export.otlp import (
-    COMPACTION_SPAN,
     MAPPER_VERSION,
     METADATA_ONLY,
     TextPolicy,
-    copied_compaction,
     session_resource,
     session_spans,
 )
@@ -360,62 +357,6 @@ def _backoff(retry_after: str | None, attempt: int) -> float:
     if retry_after is not None and retry_after.strip().isdigit():
         return float(retry_after)
     return BACKOFF_SECONDS * 2 ** (attempt - 1)
-
-
-@dataclass(frozen=True)
-class Census:
-    """What a run would ship, counted by shaping every session and sending nothing."""
-
-    sessions: int
-    spans: int
-    # Compactions that survive the copied-prefix replay rule. `live_compactions` does not
-    # reproduce this number — it keeps the copies a fork inherited — so a census that read
-    # the view would over-report every fork copy in the corpus.
-    compactions: int
-
-
-class AmbiguousCompactionError(Exception):
-    """One compaction appears twice in a session and the copied-prefix rule keeps both.
-
-    A duplicated id is a fork's copy of its parent's compaction, so exactly one copy is the
-    live one. Two would ship one compaction as two spans, which is a rule we can no longer
-    apply rather than a count to fudge.
-    """
-
-
-def census(traces: Iterable[SessionTrace], text: TextPolicy = METADATA_ONLY) -> Census:
-    """Count what a send would put on the wire, without sending it.
-
-    Shapes each session exactly as `export()` does, so the total is the mapper's own answer
-    rather than a SQL approximation of it, and crashes on a session whose duplicated
-    compactions the replay rule cannot separate.
-    """
-    sessions = spans = compactions = 0
-    for trace in traces:
-        _check_one_live_copy(trace)
-        shaped = session_spans(trace, text)
-        sessions += 1
-        spans += len(shaped)
-        compactions += sum(1 for span in shaped if span.name == COMPACTION_SPAN)
-    return Census(sessions=sessions, spans=spans, compactions=compactions)
-
-
-def _check_one_live_copy(trace: SessionTrace) -> None:
-    """Every compaction id a session holds twice must keep exactly one live copy."""
-    runs = {run.id: run for run in trace.agent_runs}
-    held: Counter[str] = Counter(compaction.id for compaction in trace.compactions)
-    live: Counter[str] = Counter(
-        compaction.id
-        for compaction in trace.compactions
-        if not copied_compaction(compaction, runs.get(compaction.source))
-    )
-    for compaction_id, count in held.items():
-        if count > 1 and live[compaction_id] != 1:
-            raise AmbiguousCompactionError(
-                f"session {trace.session.id} holds compaction {compaction_id} {count} time(s) "
-                f"and the copied-prefix rule keeps {live[compaction_id]} of them. Exactly one "
-                f"copy is live; a fork shape this rule cannot separate has landed."
-            )
 
 
 def _batches(spans: list[trace_pb2.Span], size: int) -> Iterator[list[trace_pb2.Span]]:
