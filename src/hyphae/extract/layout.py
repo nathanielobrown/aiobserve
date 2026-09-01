@@ -43,6 +43,9 @@ TOOL_RESULTS_DIR = "tool-results"
 AGENT_PREFIX = "agent-"
 META_SUFFIX = ".meta.json"
 JOURNAL_NAME = "journal.jsonl"
+# The session's title, written beside the transcript that also holds it as a `custom-title`
+# record. Nothing reads the sidecar: `extract/transcript.py` takes the title from the records.
+TITLE_SIDECAR = "custom-title.json"
 
 # The `source` a workflow journal records under, after its `wf_<id>/` directory.
 JOURNAL_SOURCE = "journal"
@@ -155,6 +158,8 @@ def classify(session: SessionFiles) -> ClassifiedFiles:
             continue
         # A workflow's definition and the script that ran it, beside the runs they drove.
         if parts[:1] == (WORKFLOWS_DIR,):
+            continue
+        if parts == (TITLE_SIDECAR,):
             continue
         place = _companion(parts, session.id)
         if place.agent_id is None:

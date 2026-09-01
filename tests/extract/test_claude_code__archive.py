@@ -139,6 +139,18 @@ def test_a_workflow_definition_is_not_a_transcript(planted_source: PlantedFactor
     assert set(lines_by_source(trace)) == {MAIN_SOURCE}
 
 
+def test_the_title_sidecar_is_not_a_transcript(planted_source: PlantedFactory):
+    """The title file a session keeps beside its transcript is not parsed as records."""
+    # If a session was renamed, Claude Code writes the name to its own file...
+    source = planted_source(
+        "spine", SPINE, {"custom-title.json": '{"customTitle": "Improve NavTree context bars"}'}
+    )
+
+    # ...and it does not reach the archive, which would choke on it as JSON lines.
+    trace = ClaudeCodeExtractor().extract(source)
+    assert set(lines_by_source(trace)) == {MAIN_SOURCE}
+
+
 @pytest.mark.parametrize(
     ("planted", "message"),
     [
