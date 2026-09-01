@@ -30,7 +30,7 @@ the two were landed in one pass because `pages.py` and `pages/` cannot coexist).
 - `src/hyphae/view/nodes.py:23` — the shared node model imports `columns`, a children-log module, for the kind icons; the dependency points up. Design moves the icons into `nodes.GLYPHS`
 - `src/hyphae/view/components/listing.py:191` — `Described` beside `enrichment.py`'s model of what a pass wrote; check whether both describe the same fact. **Closed at slice 4, no change**: they are not one fact. `enrichment.Enrichment` is what a pass wrote about a node — level, item, chars, friction, model, versions — and is read by the node page. `Described` is three strings a session-list row prints. It has no second reader, so under "view-models live in markup" it stays in `pages/sessions/markup.py:31`
 - `src/hyphae/view/components/listing.py` (489 lines) — holds both list pages; the split into `projects/` and `sessions/` should leave no helper shared between them, or that helper belongs in `components/parts.py`. **Closed at slice 4**: the split left no helper shared. `LIST_URL`, `list_url` and `project_link` were the one thing both halves read, and they went to the new shared `view/links.py` (`83bc613`), not to `components/parts.py` — they mint a URL, which is not markup
-- `src/hyphae/view/knobs.py:18-19` — a presenter importing `PresetChoice`, `Pager`, `Step` from markup modules; allowed under "view-models live in markup", but see the design's open question
+- `src/hyphae/view/knobs.py:18-19` — a presenter importing `PresetChoice`, `Pager`, `Step` from markup modules; allowed under "view-models live in markup", but see the design's open question. **Closed at slice 6, no `models.py`**: it does not read backwards once `pages/node/` exists. `Pager` and `Step` come from `components/parts.py`, which is shared markup under every page; `PresetChoice` comes from the page's own `markup/nav_tree.py`, which is the module that consumes it. Both edges go down or sideways and rule 3 holds them
 - `src/hyphae/view/expansions.py` — the audit's S6 said it re-spells `header_bound`'s bindings inline; check whether that still stands once `header_bound` is in `store.py`. **Closed**: it does not. `expansions.py:281` already calls `header_bound`, and `9158c28` moved that function to `store.py`
 - Audit items still open as of the last read (`plans/refactor-audit-2026-08-30/findings.md`): S2 one `Knobs` object, S3 `node_page.page()`'s 21 parameters, S12 double store open per enrichment fragment, S13 keyword-only `detail_of`, S14 `way` as a `StrEnum`. Record for each whether it still stands after the move. **None of the five still stands**, and all five were closed by the `Depends` work that landed before this branch rather than by it — read at slice 3, against the tree:
   - S2 — closed. `knobs.Knobs` is the NamedTuple, `deps.KnobsDep` the one dependency, and `browse.browse` takes one `Knobs` rather than four positionals
@@ -38,6 +38,15 @@ the two were landed in one pass because `pages.py` and `pages/` cannot coexist).
   - S12 — closed. Every enrichment fragment takes `connection: Db`, and `enriched(connection)` reads the one the request opened
   - S13 — closed. `detail.detail_of` is keyword-only and `detail.details(*maybe)` is the collector every route calls
   - S14 — closed. `components/node_page.py:309` is a two-member `Way` StrEnum
+
+## Answers to the design's open questions
+
+- **pyrefly sub-config globs.** Two sub-configs, not one. `matches` takes a single glob, and
+  neither `src/hyphae/view/pages/*/markup.py` nor `.../markup/**` covers the other, so
+  `pyproject.toml` declares both ahead of the `components/**` one and
+  `test_components.py:NARROWED` mirrors the three in declaration order
+- **`knobs.py`'s markup imports** — answered above, in the seed item
+- **`Described` beside `Enrichment`** — answered above, in the seed item
 
 ## Found during the move
 
@@ -83,6 +92,11 @@ the two were landed in one pass because `pages.py` and `pages/` cannot coexist).
 - `src/hyphae/view/failures.py:49` — `failures.failures(connection, session_id)` at the two
   call sites, a stutter the rename made. The design pinned the module's names, so this is left:
   the fix is a verb for the function, not another word for the module
+- Three `Step` NamedTuples now stand in the package at once: `failures.py:70` (a failure and
+  its neighbours), `components/parts.py:107` (a step control's markup) and
+  `pages/node/walk.py:52` (where the reading order goes next). Each is right in its own module
+  and no two are ever imported together, but the word is doing three jobs. Fix: name two of
+  them for what they step through, once someone reads all three at the same time
 
 - `src/hyphae/view/pages/node/routes/enrichment.py:22` — reaches sideways for
   `routes/details.fetched`, the "one row a per-value fragment is for, or a 404". Two route
