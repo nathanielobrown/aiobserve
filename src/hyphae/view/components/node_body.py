@@ -16,13 +16,13 @@ from urllib.parse import quote
 
 import htpy
 
-from hyphae.view import cuts, render
-from hyphae.view import format as fmt
 from hyphae.view.citation import Cited
 from hyphae.view.columns import Shape
 from hyphae.view.components import Html, citation, parts
 from hyphae.view.components.logs import Logged, log
 from hyphae.view.nodes import Node, run_url, spanned
+from hyphae.view.text import cuts, render
+from hyphae.view.text import format as fmt
 
 
 class SessionFacts(NamedTuple):

@@ -18,13 +18,14 @@ from fastapi.responses import Response
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.model import MAIN_SOURCE
-from hyphae.view import builders, highlight, nodes
+from hyphae.view import builders, nodes
 from hyphae.view.components import numbers, values
 from hyphae.view.deps import Db, Viewer, ViewerDep
 from hyphae.view.enrichment import enriched
 from hyphae.view.nodes import Kind, Ref
 from hyphae.view.numbers import breakout, charges, spend, wash
 from hyphae.view.store import Fragment, Row, Value, page_rows
+from hyphae.view.text import highlight
 
 router = APIRouter()
 

@@ -338,7 +338,7 @@ DIRECTIONS: dict[str, str] = {"asc": "ASC", "desc": "DESC"}
 # and applied outside the window, so it cuts the rows one page shows and nothing else.
 #
 # The `cut` macro takes one character more than the row prints, which is how the component
-# knows a value was stopped rather than ended and marks it (`view/format.py:cut`). It is a
+# knows a value was stopped rather than ended and marks it (`view/text/format.py:cut`). It is a
 # macro of the library, so this runs only on a connection `macros.install` has seen — which
 # `open_store` above is, and so is every fixture that reaches here.
 SHOWN = """SELECT * EXCLUDE (pr_urls) REPLACE (

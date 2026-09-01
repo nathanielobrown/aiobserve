@@ -1,6 +1,6 @@
 -- One api call, whole: what it answered, what it thought, and what it cost.
 -- The header of a call's node page. The two fat columns are cut one character past
--- `$detail_chars` — the protocol `view/format.py:cut` reads — with their whole lengths
+-- `$detail_chars` — the protocol `view/text/format.py:cut` reads — with their whole lengths
 -- beside them, so the pane shows the head, marks it as cut and says how much more there
 -- is; the rest is fetched one value at a time (`view_call_text`, `view_call_thinking`).
 SELECT

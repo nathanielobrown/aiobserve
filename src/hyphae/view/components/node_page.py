@@ -11,8 +11,6 @@ from typing import NamedTuple
 
 import htpy
 
-from hyphae.view import cuts
-from hyphae.view import format as fmt
 from hyphae.view.citation import Cited
 from hyphae.view.columns import Shape
 from hyphae.view.components import Html, citation, layout, logs, nav_tree, node_body, parts
@@ -24,6 +22,8 @@ from hyphae.view.detail import Detail, EnrichmentLines
 from hyphae.view.enrichment import Enrichment
 from hyphae.view.errors import Step as Failures
 from hyphae.view.nodes import Node
+from hyphae.view.text import cuts
+from hyphae.view.text import format as fmt
 from hyphae.view.walk import Step as Walked
 
 # The two scripts only this page needs: what no stylesheet can reach — where the tree opens,

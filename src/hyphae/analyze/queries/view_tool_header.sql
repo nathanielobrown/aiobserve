@@ -1,6 +1,6 @@
 -- One tool call, whole: what it was asked and what it answered, cut to a pane's width.
 -- The header of a tool call's node page. Both fat columns are cut one character past
--- `$detail_chars` — the protocol `view/format.py:cut` reads — with their whole lengths
+-- `$detail_chars` — the protocol `view/text/format.py:cut` reads — with their whole lengths
 -- beside them; the rest is fetched as one value (`view_tool_value`), and
 -- a result the transcript offloaded to a file has a page of its own instead.
 SELECT
@@ -17,7 +17,7 @@ SELECT
     cut(t.name, $head_chars) AS name,
     -- And what the input carried under the names the tools the viewer knows name their calls
     -- by, so a `Read` row reads as a path and a `Bash` row as the command it ran
-    -- (`view/tool_names.py:FORMATTERS`). Every member cut to the same width as the title above.
+    -- (`view/text/tool_names.py:FORMATTERS`). Every member cut to the same width as the title above.
     tool_fields(t.input, s.project_dir, ad.agent_type, $head_chars) AS fields,
     t.server_side,
     t.is_error,
@@ -48,7 +48,7 @@ SELECT
          THEN length(json_extract_string(t.input, '$.command'))
          END AS command_chars,
     -- And the suffix of the file a `Read` returned, lowercased, which is the only evidence in
-    -- the record of what its result holds (`view/highlight.py:by_suffix` places it). `Read`
+    -- the record of what its result holds (`view/text/highlight.py:by_suffix` places it). `Read`
     -- alone: an `Edit` names a file too, but what it returns is a confirmation, not the file.
     CASE WHEN t.name = 'Read' AND json_valid(t.input)
          -- Cut at the width and not one past it, unlike every string this query previews:
@@ -70,7 +70,7 @@ LEFT JOIN live_agent_runs a
 LEFT JOIN sessions s ON s.id = t.session_id
 -- Who a `SendMessage` addressed, where `to` held an agent run's id rather than a name the
 -- caller typed: one lookup, LEFT so a name that matches no run comes back NULL and the row
--- prints what was recorded (`view/tool_names.py:_send_message`).
+-- prints what was recorded (`view/text/tool_names.py:_send_message`).
 LEFT JOIN live_agent_runs ad
     ON ad.session_id = t.session_id AND ad.id = tool_asked(t.input, 'to', $head_chars)
 WHERE t.session_id = $session_id AND t.source = $source AND t.id = $tool_call_id;

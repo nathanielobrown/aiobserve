@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from hyphae.view.format import (
+from hyphae.view.text.format import (
     ABSENT,
     ELLIPSIS,
     ago,

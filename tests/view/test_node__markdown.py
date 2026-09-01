@@ -1,7 +1,7 @@
 """Markdown in a title, from what a pass wrote to what a row serves.
 
 A description is one line the model wrote in markdown, and every surface that prints a title
-prints it rendered rather than typed (`view/inline_markdown.py`). No fixture holds one:
+prints it rendered rather than typed (`view/text/inline_markdown.py`). No fixture holds one:
 redaction flattened every string the corpus records, so these leaves plant the markdown and
 read it back off a served page. The renderer's own readings are `tests/view/test_render.py`.
 """
@@ -17,8 +17,8 @@ from markupsafe import escape
 
 from hyphae.analyze import queries
 from hyphae.view.app import build_app
-from hyphae.view.format import ELLIPSIS
 from hyphae.view.nodes import LEAD_SEPARATOR
+from hyphae.view.text.format import ELLIPSIS
 from tests.conftest import MAIN
 from tests.view.conftest import Planter, marked_up, one, plain, values
 
@@ -84,7 +84,7 @@ def test_the_browser_tab_and_every_attribute_carry_the_text_under_a_title(
 
     Both print an element as characters or act on it, and neither is what the line says: a tab
     reading `**bold**` shows the asterisks, and markup in an attribute is the escape the whole
-    of `view/inline_markdown.py` exists to close. So the tab takes the same cut, stripped.
+    of `view/text/inline_markdown.py` exists to close. So the tab takes the same cut, stripped.
     """
     session_id, turn_id = one(
         enriched_store,

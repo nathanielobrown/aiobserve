@@ -5,12 +5,13 @@ from typing import NamedTuple
 
 import htpy
 
-from hyphae.view import bounds, cuts, highlight, render
-from hyphae.view import format as fmt
+from hyphae.view import bounds
 from hyphae.view.components import Html
 from hyphae.view.detail import Detail, EnrichmentLines
 from hyphae.view.enrichment import GLYPH, GLYPH_CLASS, Enrichment
-from hyphae.view.labels import label
+from hyphae.view.text import cuts, highlight, render
+from hyphae.view.text import format as fmt
+from hyphae.view.text.labels import label
 
 
 def code(*, value: str, syntax: highlight.Syntax, field: str) -> Html:
@@ -299,7 +300,7 @@ def prose(*, field: str, value: str | None) -> Html:
     """One value as the markdown a session wrote it in.
 
     Rendered rather than printed because that is what it is: a prompt, a model's answer and the
-    brief a run was given are written in markdown by whoever typed them. `view/render.py` owns
+    brief a run was given are written in markdown by whoever typed them. `view/text/render.py` owns
     the escaping — html passthrough off, an image a placeholder, a link only where a browser
     should follow it — and nothing here may hand a value on that did not come through it.
 

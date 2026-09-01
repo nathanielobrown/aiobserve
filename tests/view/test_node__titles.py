@@ -1,6 +1,6 @@
 """The one name a node carries wherever it is printed.
 
-A tool call is named once, in Python, out of the fields the store ships (`view/tool_names.py`),
+A tool call is named once, in Python, out of the fields the store ships (`view/text/tool_names.py`),
 and every surface that prints it — the pane heading, the NavTree row, the crumb, the parent's
 log row, the errors list, the api-call row above it — prints that one string cut to its own
 width. These leaves read the string back off each of those surfaces and check they agree.
@@ -13,10 +13,11 @@ import duckdb
 from fastapi.testclient import TestClient
 
 from hyphae.analyze import macros, queries
-from hyphae.view import nodes, tool_names
+from hyphae.view import nodes
 from hyphae.view.app import build_app
-from hyphae.view.format import ELLIPSIS, cut
 from hyphae.view.nodes import LEAD_SEPARATOR
+from hyphae.view.text import tool_names
+from hyphae.view.text.format import ELLIPSIS, cut
 from tests.conftest import MYCELIA
 from tests.view.conftest import Planter, fields, one
 
@@ -143,8 +144,8 @@ def test_one_tool_call_is_titled_the_same_way_wherever_it_is_named(
 
 # The tools the fixture corpus records under a name the registry knows, each with the glyph
 # that leads its rows and the input field its title is read from. Restated from
-# `plans/viewer-polish/design.md` rather than read off `view/tool_names.py:FORMATTERS`, which is the
-# thing under test. The six names not here have no recorded call to serve, and the leaf below
+# `plans/viewer-polish/design.md` rather than read off `view/text/tool_names.py:FORMATTERS`, which
+# is the thing under test. The six names not here have no recorded call to serve, and the leaf below
 # says so out loud.
 RECORDED_FORMATTERS = {
     "Read": ("📖", "file_path"),

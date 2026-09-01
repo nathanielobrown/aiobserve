@@ -13,7 +13,7 @@ from fastapi.responses import Response
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.model import MAIN_SOURCE
-from hyphae.view import builders, highlight, nav_tree, nodes
+from hyphae.view import builders, nav_tree, nodes
 from hyphae.view.browse import (
     Seen,
     browse,
@@ -39,6 +39,7 @@ from hyphae.view.store import (
     page_rows,
     window,
 )
+from hyphae.view.text import highlight
 
 router = APIRouter()
 

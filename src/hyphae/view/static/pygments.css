@@ -1,4 +1,4 @@
-/* Pygments' class vocabulary, painted in this viewer's colors (`view/highlight.py`).
+/* Pygments' class vocabulary, painted in this viewer's colors (`view/text/highlight.py`).
 
    Hand-written rather than generated from a Pygments theme, for two reasons. A shipped theme
    is a block of hex that reads as one scheme and washes out in the other, while every color

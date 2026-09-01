@@ -19,10 +19,10 @@ from typing import NamedTuple
 from markupsafe import Markup
 
 from hyphae.analyze import queries
-from hyphae.view import inline_markdown
 from hyphae.view.columns import CALL_ICON, COLUMNS, RUN_ICON, TOOL_ICON, Shape
-from hyphae.view.format import cut
 from hyphae.view.store import Row
+from hyphae.view.text import inline_markdown
+from hyphae.view.text.format import cut
 
 # How a cost badge is drawn: the steps it has, and how many decades of share they cover. A
 # session's cheapest turn and its dearest are three orders of magnitude apart, so the scale is
@@ -360,7 +360,7 @@ class Node:
     # What the node is called, before any surface cuts it: the model's description where a
     # pass wrote one, else what the session called it. Every query that composes it comes
     # back one character past the width it was cut to, so a name that fills a row is one the
-    # reader can tell was stopped (`view/format.py:cut`).
+    # reader can tell was stopped (`view/text/format.py:cut`).
     words: str
     # What it cost and what everything under it did, with the share each is washed at
     # (`_spend`), beside how many calls under it our price table could not price: a total
@@ -427,7 +427,7 @@ class Node:
 
         The width is spent on what a reader sees: a description written in markdown is rendered
         rather than printed, so its syntax costs the surface nothing
-        (`view/inline_markdown.py`). Which is why `source_cap` comes too — the width the query
+        (`view/text/inline_markdown.py`). Which is why `source_cap` comes too — the width the query
         cut the words at is then the only thing that knows a line with room to spare was still
         stopped. `links` is the surface's own answer — see `pane_title`.
         """

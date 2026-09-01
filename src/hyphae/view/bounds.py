@@ -129,13 +129,13 @@ DEPTH = 16
 # than serving a row nothing counted.
 CURSORLESS_TURNS = 1
 # How much indentation a JSON value may gain before it is served as stored instead
-# (`view/highlight.py`). Indenting is quadratic in nesting — 10 KB of nothing but `[` indents
+# (`view/text/highlight.py`). Indenting is quadratic in nesting — 10 KB of nothing but `[` indents
 # to 50 MB — while real values gain very little: across the canonical store on 2026-08-07, the
 # worst of a 2,000-record sample gained 3,418 characters and the largest values in it gained
 # 352. What it adds is whitespace, which the formatter writes out bare, so a page pays a byte
 # a character for it rather than a span.
 INDENT_CHARS = 20_000
-# How long a value may be and still be marked up in its own syntax (`view/highlight.py`).
+# How long a value may be and still be marked up in its own syntax (`view/text/highlight.py`).
 # Characters rather than bytes: what the ceiling guards is the tokenizer's time and the markup
 # a span per token adds — about five bytes of `<span class="…">` for every byte of value — and
 # neither of those is counted in bytes. So a multibyte value under this ceiling is marked up

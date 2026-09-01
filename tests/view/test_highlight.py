@@ -1,4 +1,4 @@
-"""What `view/highlight.py` hands a template: marked-up code, and plain text where it must be.
+"""What `view/text/highlight.py` hands a template: marked-up code, and plain text where it must be.
 
 The unit rather than a page, because two of the three arms are unreachable through the fixture
 corpus: no recorded value nests deep enough to blow the indent budget, and none is a quarter of
@@ -12,7 +12,7 @@ import json
 
 from hyphae.analyze import queries
 from hyphae.view import bounds
-from hyphae.view.highlight import Syntax, by_suffix, lit
+from hyphae.view.text.highlight import Syntax, by_suffix, lit
 from tests.view.conftest import classed, plain
 
 # One tool argument in the shape a recorded one has — a path and a pattern — with markup put

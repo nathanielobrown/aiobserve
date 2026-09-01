@@ -1,13 +1,13 @@
 """One line of what a session wrote, rendered as a title: bold, italic, code, a link.
 
-The second of the viewer's two escape paths, beside `view/render.py` — and the one that
+The second of the viewer's two escape paths, beside `view/text/render.py` — and the one that
 reaches furthest. A title is printed in a NavTree row, a crumb, a walk control, the pane's own
 heading and the browser tab, so a mistake here lands on every page at once. Which is why the
 renderer below is an allowlist rather than a configuration: markdown-it parses the line, and
 this module decides what each token it hands back may become. A token type it does not know is
 a crash rather than a silent drop.
 
-Four rules, three of them `view/render.py`'s own:
+Four rules, three of them `view/text/render.py`'s own:
 
 - **No block element.** Only the inline parser runs, so a heading, a list and a fence are the
   characters they were typed as — a `<p>` inside a NavTree row is not a row any more
@@ -31,10 +31,10 @@ from typing import NamedTuple
 from markdown_it import MarkdownIt
 from markupsafe import Markup, escape
 
-from hyphae.view.format import ELLIPSIS
-from hyphae.view.render import IMAGE_CLASS, LINK_SCHEMES, image_text
+from hyphae.view.text.format import ELLIPSIS
+from hyphae.view.text.render import IMAGE_CLASS, LINK_SCHEMES, image_text
 
-# The same reader `view/render.py` builds, and for the same two reasons: `html=False` because
+# The same reader `view/text/render.py` builds, and for the same two reasons: `html=False` because
 # the preset's default is True, and linkify off because a bare URL in a transcript is a string
 # someone typed. Only its inline parser is ever run.
 _INLINE = MarkdownIt("commonmark", {"html": False, "linkify": False})
@@ -64,7 +64,7 @@ def cut(text: str | None, size: int, *, links: bool, source_cap: int) -> Markup:
     what a reader sees: the syntax a line is written in costs the reader nothing, so it costs
     the width nothing, and a cut landing inside a `<strong>` closes it before the mark.
     `source_cap` is the *query's* — every one of them ships a character past the width it cut
-    at (`view/format.py:cut`), so a raw string longer than the cap is one the store stopped,
+    at (`view/text/format.py:cut`), so a raw string longer than the cap is one the store stopped,
     however short it renders. The run that cut broke goes with it: half a `**` is delimiters
     the page would print as typing, and nothing here can recover the half the query kept.
     """

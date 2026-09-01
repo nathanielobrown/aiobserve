@@ -20,7 +20,6 @@ from fastapi.responses import Response
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.view import bounds
-from hyphae.view import format as fmt
 from hyphae.view.citation import cited
 from hyphae.view.components import listing as components
 from hyphae.view.components.listing import Control
@@ -41,6 +40,7 @@ from hyphae.view.store import (
     page_rows,
     sorted_sessions,
 )
+from hyphae.view.text import format as fmt
 
 # The HTML input a filter's type gets on the form. One map rather than a field per filter.
 CONTROLS: dict[queries.ParamType, str] = {

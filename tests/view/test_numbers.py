@@ -23,8 +23,8 @@ from fastapi.testclient import TestClient
 
 from hyphae.extract.pricing import MODELS, CostSplit, TokenUsage, split_cost
 from hyphae.view.app import build_app
-from hyphae.view.format import ABSENT
 from hyphae.view.nodes import NUMBERS_URL, Kind
+from hyphae.view.text.format import ABSENT
 from tests.conftest import (
     ANCESTOR,
     DENSE_CALL,

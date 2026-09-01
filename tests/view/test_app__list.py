@@ -16,15 +16,15 @@ from fastapi.testclient import TestClient
 
 from hyphae.analyze import manifest, queries
 from hyphae.view import bounds
-from hyphae.view import format as fmt
 from hyphae.view.app import build_app
-from hyphae.view.format import ABSENT
 from hyphae.view.listing import (
     ARIA_SORT,
     DEFAULT_DIRECTION,
     DEFAULT_SORT,
 )
 from hyphae.view.store import DIRECTIONS, SORTS, Page
+from hyphae.view.text import format as fmt
+from hyphae.view.text.format import ABSENT
 from tests.conftest import (
     NO_PROJECT_SESSION,
     SPINE,

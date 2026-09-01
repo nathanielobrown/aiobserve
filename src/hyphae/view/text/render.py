@@ -14,7 +14,7 @@ the difference, and the first two are each one argument from being lost:
 
 `tests/view/test_render.py` pins all three. It cannot see a component that wraps a value in
 `Markup` on its way to the page, which is why the route-level sentinel test exists as well.
-The one place code meets prose is a fenced block, and `view/highlight.py` marks that up; a
+The one place code meets prose is a fenced block, and `view/text/highlight.py` marks that up; a
 value that is code whole never comes through here at all.
 """
 
@@ -26,15 +26,15 @@ from markdown_it.renderer import RendererHTML
 from markdown_it.token import Token
 from markupsafe import Markup, escape
 
-from hyphae.view import highlight
-from hyphae.view.format import ELLIPSIS
+from hyphae.view.text import highlight
+from hyphae.view.text.format import ELLIPSIS
 
 # Explicit `html=False`, because the preset's default is True. Linkify off as well: a bare
 # URL in a transcript is a string someone typed, not an invitation to make it clickable.
 _MARKDOWN = MarkdownIt("commonmark", {"html": False, "linkify": False})
 
 # The schemes a rendered URL may carry into an `href`. Everything else a transcript can write
-# there — `javascript:`, `data:`, `file:` — is shown as text instead. `view/inline_markdown.py`
+# there — `javascript:`, `data:`, `file:` — is shown as text instead. `view/text/inline_markdown.py`
 # reads it too: one answer to where a browser may be pointed.
 LINK_SCHEMES = ("http://", "https://")
 

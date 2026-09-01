@@ -16,11 +16,11 @@ SELECT
     t."index" AS tool_index,
     t.id AS tool_call_id,
     -- What the tool was called, beside the fields its title is composed out of — which is what
-    -- tells two calls of the same tool apart in the width of a NavTree (`view/tool_names.py`).
+    -- tells two calls of the same tool apart in the width of a NavTree (`view/text/tool_names.py`).
     cut(t.name, $nav_chars) AS name,
     -- And what the input carried under the names the tools the viewer knows name their calls
     -- by, so a `Read` row reads as a path and a `Bash` row as the command it ran
-    -- (`view/tool_names.py:FORMATTERS`). Every member cut to the same width as the title above.
+    -- (`view/text/tool_names.py:FORMATTERS`). Every member cut to the same width as the title above.
     tool_fields(t.input, s.project_dir, ad.agent_type, $nav_chars) AS fields,
     -- When it ran, which is what the compactions of the same turn interleave against where
     -- the api calls are folded away and the tool calls stand under the turn.
@@ -40,7 +40,7 @@ JOIN live_api_calls c
 LEFT JOIN sessions s ON s.id = t.session_id
 -- Who a `SendMessage` addressed, where `to` held an agent run's id rather than a name the
 -- caller typed: one lookup, LEFT so a name that matches no run comes back NULL and the row
--- prints what was recorded (`view/tool_names.py:_send_message`).
+-- prints what was recorded (`view/text/tool_names.py:_send_message`).
 LEFT JOIN live_agent_runs ad
     ON ad.session_id = t.session_id AND ad.id = tool_asked(t.input, 'to', $nav_chars)
 LEFT JOIN live_turns tn

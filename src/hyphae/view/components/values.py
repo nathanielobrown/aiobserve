@@ -11,9 +11,9 @@ from typing import NamedTuple
 
 import htpy
 
-from hyphae.view import format as fmt
-from hyphae.view import highlight
 from hyphae.view.components import Html, parts
+from hyphae.view.text import format as fmt
+from hyphae.view.text import highlight
 
 
 class Whole(NamedTuple):
@@ -59,7 +59,7 @@ def prose(*, node: Whole) -> Html:
     """The whole of one value as the markdown it was written in — an api call's text or thought.
 
     Through the same component the pane's own preview went through: one value, two mounts, and
-    one escaping policy over both (`view/render.py`).
+    one escaping policy over both (`view/text/render.py`).
     """
     return _mount(node=node, classes=".value.detail.quoted")[
         parts.prose(field=node.detail or "value", value=node.value)

@@ -11,11 +11,11 @@ from typing import NamedTuple
 
 import htpy
 
-from hyphae.view import cuts
-from hyphae.view import format as fmt
 from hyphae.view.citation import Cited
 from hyphae.view.components import Html, citation, layout, parts
 from hyphae.view.nodes import LIST_URL
+from hyphae.view.text import cuts
+from hyphae.view.text import format as fmt
 
 
 class Control(NamedTuple):

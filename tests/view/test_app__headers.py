@@ -1,6 +1,6 @@
 """The header above a node: the store's own facts about it, labelled in words.
 
-A fact is printed under the word `view/labels.py` gives its column, so a page and a log column
+A fact is printed under the word `view/text/labels.py` gives its column, so a page and a log column
 call one store column the same thing. The lists among them — the skills a session used, the PRs
 it touched — say when they cut what they hold, and a PR is a link only where a browser can
 follow one.
@@ -16,9 +16,9 @@ from hyphae.analyze import queries
 from hyphae.view import app as view_app
 from hyphae.view import columns as view_columns
 from hyphae.view import components
-from hyphae.view import format as fmt
 from hyphae.view.app import build_app
-from hyphae.view.labels import LABELS
+from hyphae.view.text import format as fmt
+from hyphae.view.text.labels import LABELS
 from tests.conftest import (
     MAIN,
     SPINE,

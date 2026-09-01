@@ -31,7 +31,7 @@ import hyphae.view
 import hyphae.view.components
 from hyphae.analyze import queries
 from hyphae.view.components import layout, logs, nav_tree, parts
-from hyphae.view.highlight import Syntax, lit
+from hyphae.view.text.highlight import Syntax, lit
 
 COMPONENTS = Path(hyphae.view.components.__file__).parent
 VIEW = Path(hyphae.view.__file__).parent
@@ -245,14 +245,15 @@ def test_no_component_constructs_markup() -> None:
     """Components consume the escape hatch and never open one, so escaping stays in four files.
 
     htpy escapes every string it renders. A `Markup` is the only opt-out, and keeping its
-    construction outside this package is what makes "escaped unless `view/render.py`,
+    construction outside this package is what makes "escaped unless `view/text/render.py`,
     `highlight.py`, `inline_markdown.py` or `nodes.py` said otherwise" a rule a reader can check.
     """
     # Nothing under `components/` builds one...
     assert [path.name for path in SOURCES if "Markup(" in path.read_text()] == []
     # ...and the four modules that do still do, so the scan above found nothing because the
-    # package holds the line rather than because `Markup` was renamed out from under it.
-    makers = {path.name for path in VIEW.glob("*.py") if "Markup(" in path.read_text()}
+    # package holds the line rather than because `Markup` was renamed out from under it. The
+    # whole package is walked: three of the four print one value and live in `view/text/`.
+    makers = {path.name for path in VIEW.rglob("*.py") if "Markup(" in path.read_text()}
     assert set(PRODUCER_MODULES) <= makers
 
 

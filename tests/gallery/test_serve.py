@@ -20,9 +20,9 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from hyphae.view import format as fmt
 from hyphae.view.app import PORT, build_app
 from hyphae.view.dev import RELOAD_URL
+from hyphae.view.text import format as fmt
 from tests.conftest import build_enriched_store
 from tests.gallery import serve
 from tests.view.scenarios import SCENARIOS, Group
@@ -228,7 +228,7 @@ def test_a_reload_worker_builds_the_gallery_with_the_corpus_clock_frozen(
     # a worker cleans up nothing: the parent that started it does, and here that is `uv`.
     probe = (
         "import os;"
-        " import hyphae.view.format as fmt;"
+        " import hyphae.view.text.format as fmt;"
         " import tests.gallery.serve as gallery;"
         " gallery.dev_gallery();"
         " print(fmt.utcnow().isoformat(), gallery.scratch_dir(os.getppid()))"
@@ -259,7 +259,7 @@ def test_the_viewer_the_package_ships_keeps_its_own_clock(
     reads whatever clock the request finds.
     """
     probe = (
-        "import hyphae.view.format as fmt;"
+        "import hyphae.view.text.format as fmt;"
         " own = fmt.utcnow;"
         " import tests.gallery.serve;"
         " print(fmt.utcnow is own)"

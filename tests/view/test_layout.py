@@ -332,7 +332,6 @@ def test_no_import_inside_the_viewer_points_up_a_layer() -> None:
         assert layer(imported) <= layer(importer), f"{importer} → {imported}"
 
 
-@pytest.mark.xfail(strict=True, reason="`text/` is gathered in slice 2")
 def test_text_reaches_nothing_in_the_viewer_but_itself_and_the_sizes_it_cuts_to() -> None:
     """`text/` is the leaf of the package: how one value prints, and nothing above it.
 

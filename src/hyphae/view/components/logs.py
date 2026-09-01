@@ -21,13 +21,13 @@ from typing import NamedTuple, assert_never
 
 import htpy
 
-from hyphae.view import cuts
-from hyphae.view import format as fmt
 from hyphae.view.columns import COLUMNS, Column, Shape, css
 from hyphae.view.components import Html, parts
 from hyphae.view.components.nav_tree import PANE_SWAP
-from hyphae.view.labels import label
 from hyphae.view.nodes import Node
+from hyphae.view.text import cuts
+from hyphae.view.text import format as fmt
+from hyphae.view.text.labels import label
 
 
 class LoggedTurn(NamedTuple):
@@ -45,7 +45,7 @@ class LoggedCall(NamedTuple):
 
     `called` is the tools it went on to call, named the way their own rows name them: composed
     at the route from the rows the query shipped, because naming a tool call is Python's
-    (`view/tool_names.py`).
+    (`view/text/tool_names.py`).
     """
 
     node: Node

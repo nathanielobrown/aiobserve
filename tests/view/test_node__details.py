@@ -13,8 +13,8 @@ from fastapi.testclient import TestClient
 
 from hyphae.view import bounds
 from hyphae.view.app import build_app
-from hyphae.view.format import ELLIPSIS
-from hyphae.view.labels import LABELS
+from hyphae.view.text.format import ELLIPSIS
+from hyphae.view.text.labels import LABELS
 from tests.conftest import ANCESTOR, DENSE_TURN, MAIN, SLASH_TURN, SPINE
 from tests.view.conftest import (
     Planter,
@@ -392,7 +392,7 @@ def test_a_bash_call_reads_the_command_it_ran_as_a_shell_reads_it(
         # Every character the store holds is still there to read back...
         assert plain(marked) == COMMAND
         # ...and a shell's own words are marked as what they are: `cd` a builtin, `&&` an
-        # operator. Which classes those are is `view/highlight.py`'s business; that the pane
+        # operator. Which classes those are is `view/text/highlight.py`'s business; that the pane
         # asked for a shell rather than for JSON is this leaf's.
         assert '<span class="nb">cd</span>' in marked
         assert '<span class="o">&amp;&amp;</span>' in marked

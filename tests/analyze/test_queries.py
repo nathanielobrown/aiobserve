@@ -283,8 +283,8 @@ CUT_SQL: dict[str, str] = {name: statement(name) for name in NAMES} | {"view/sto
 
 
 # Every hand-spelled `substr(value, 1, $width)` the library still holds, keyed by its query.
-# These stop at the width and leave nothing for `view/format.py:cut` to mark, which is right for
-# a closed vocabulary, for a key looked up in one, and for a cap a report states — and wrong for
+# These stop at the width and leave nothing for `view/text/format.py:cut` to mark, which is right
+# for a closed vocabulary, for a key looked up in one, and for a cap a report states — and wrong for
 # anything a page shows a reader, who then reads a cut value as the whole one. No scan can tell
 # those apart, so each one is named here and everything else goes through the `cut` macro.
 HAND_CUTS: dict[str, set[str]] = {
@@ -307,7 +307,7 @@ HAND_CUTS: dict[str, set[str]] = {
     "view_enrichment": {"e.category", "e.outcome", "e.model"},
     # The model a call fell back from, likewise a name out of a closed table.
     "view_turn_calls": {"c.fallback_from"},
-    # A file suffix, which is a key `view/highlight.py:by_suffix` looks up and never prints.
+    # A file suffix, which is a key `view/text/highlight.py:by_suffix` looks up and never prints.
     "view_tool_header": {
         r"lower(regexp_extract(json_extract_string(t.input, '$.file_path'), '\.[^./]+$'))"
     },
@@ -371,7 +371,7 @@ def test_no_query_spells_the_one_past_the_width_cut_by_hand(name: str) -> None:
 
     A query writing `substr(x, 1, $w + 1)` runs the same way today, which is why the library
     accumulated fifty copies of it — and a copy that dropped the `+ 1` served a value cut
-    where `view/format.py:cut` could no longer mark it, with the whole tier green.
+    where `view/text/format.py:cut` could no longer mark it, with the whole tier green.
 
     Cutting *at* a width is the other spelling, and `HAND_CUTS` is where each one that stays is
     named — the leaf below holds that list.

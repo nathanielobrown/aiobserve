@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 
 from hyphae.analyze import queries
 from hyphae.view.app import build_app
-from hyphae.view.format import ELLIPSIS
+from hyphae.view.text.format import ELLIPSIS
 from tests.conftest import (
     MAIN,
     SEARCH_TOOL,
@@ -36,8 +36,9 @@ def test_a_tool_row_says_what_the_tool_was_asked(
     """A tool call is titled by the input that identifies it, not by its size.
 
     What identifies one differs by tool, so the title reads the field rather than the name. A
-    tool the viewer knows reads its own field under its own glyph (`view/tool_names.py:FORMATTERS`):
-    a file tool is its path, and a path inside the session's own project reads relative to it —
+    tool the viewer knows reads its own field under its own glyph
+    (`view/text/tool_names.py:FORMATTERS`): a file tool is its path, and a path inside the session's
+    own project reads relative to it —
     the repository is the frame the reader is holding, and an absolute path spends the width of
     the column saying where the machine keeps it. A command is what ran, with what it was for
     under it — unless the title says that already, and then nothing reads under it. A tool the
@@ -261,7 +262,7 @@ def test_a_call_row_says_what_the_call_said_and_which_tools_it_called(
     # ...and the tools it called are named, in the order it called them and no others: what
     # the re-indexed call asked for last comes last, under the count of them. Each is named by
     # its own tool's rule, glyph and all, so the words here and the words on the tool's own row
-    # are one derivation (`view/tool_names.py`) — the `Bash` row says what ran rather than what
+    # are one derivation (`view/text/tool_names.py`) — the `Bash` row says what ran rather than what
     # the caller said it was for.
     assert row["tool_titles"] == "⚡ git status, 📖 src/hyphae/view/app.py"
     assert row["tool_calls"] == str(held)

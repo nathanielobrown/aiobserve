@@ -11,12 +11,12 @@ from urllib.parse import quote
 
 import htpy
 
-from hyphae.view import format as fmt
 from hyphae.view.citation import Cited
 from hyphae.view.components import Html, citation, layout, parts
 from hyphae.view.errors import Failure
-from hyphae.view.highlight import Syntax
 from hyphae.view.nodes import thread_url
+from hyphae.view.text import format as fmt
+from hyphae.view.text.highlight import Syntax
 
 
 def error_page(*, status: int, message: str, dev: bool) -> Html:

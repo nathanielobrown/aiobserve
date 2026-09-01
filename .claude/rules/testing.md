@@ -104,7 +104,7 @@ Never let a test hit a real telemetry backend by default. Backend calls go behin
 A green suite proves the tests ran, not that they would notice the code being wrong. `mise run mutate` answers the second question: it breaks one expression at a time and reports which breaks no test caught.
 
 - With no argument, it scopes to the source files this branch changed against `main`. On `main` itself, that scope is empty, so it says so and exits 1 — a mutation run that tested nothing must not read as a pass
-- Pass mutant globs to scope it yourself: `mise run mutate 'hyphae.view.format.*'`. A mutant is named `<module path>.x_<function>__mutmut_<n>`, and a method's `<module path>.xǁ<Class>ǁ<method>__mutmut_<n>` — mutmut mangles the name it wraps, so a glob written against the plain function name matches nothing
+- Pass mutant globs to scope it yourself: `mise run mutate 'hyphae.view.text.format.*'`. A mutant is named `<module path>.x_<function>__mutmut_<n>`, and a method's `<module path>.xǁ<Class>ǁ<method>__mutmut_<n>` — mutmut mangles the name it wraps, so a glob written against the plain function name matches nothing
 - 🎉 is a killed mutant, 🙁 a survivor. Read the survivors with `uv run mutmut browse`
 - Out of `check`, because it re-runs the covering tests once per mutant
 

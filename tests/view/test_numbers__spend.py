@@ -11,8 +11,8 @@ absence is pinned here as well.
 import duckdb
 from fastapi.testclient import TestClient
 
-from hyphae.view.format import ABSENT
 from hyphae.view.nodes import Kind, meter
+from hyphae.view.text.format import ABSENT
 from tests.conftest import (
     DENSE_TOOL,
     FORK_ORIGIN,

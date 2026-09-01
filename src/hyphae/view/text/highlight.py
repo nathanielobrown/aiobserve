@@ -3,7 +3,7 @@
 A syntax is here because a session writes it: the JSON a tool was passed and returned, the SQL
 behind a page, the shell a `Bash` call ran, the markdown a `Read` returned, and the languages a
 model fences a block of code in. Everything else a transcript wrote is prose, and
-`view/render.py` renders it — marking up a file the viewer shows is a reading aid over the
+`view/text/render.py` renders it — marking up a file the viewer shows is a reading aid over the
 source, never a rendering of it: a tool result is evidence, and it prints as it was stored —
 character for character, which is what `_EXACT` and `_run` are for.
 

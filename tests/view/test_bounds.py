@@ -182,7 +182,7 @@ _FIELD_KEYS = tuple(
 def test_every_macro_the_scan_trusts_answers_one_character_past_the_width() -> None:
     """Each bounding macro is run at three widths and asked how much it gives back.
 
-    The scan's trust is a bound; this is the protocol on top of it (`view/format.py:cut`
+    The scan's trust is a bound; this is the protocol on top of it (`view/text/format.py:cut`
     marks a value that came back longer than the width, so a macro that saturates *under* the
     width serves a silently truncated value, and one that saturates over it serves a fat
     column). Every arm gets a value far past the widest width, so each answer is a saturation

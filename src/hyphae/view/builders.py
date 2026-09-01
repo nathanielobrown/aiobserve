@@ -15,7 +15,6 @@ from typing import NamedTuple
 from hyphae.view.columns import Shape
 from hyphae.view.components import logs, node_body, numbers, values
 from hyphae.view.enrichment import Descriptions
-from hyphae.view.format import ELLIPSIS
 from hyphae.view.nodes import (
     COST_PLACES,
     LEAD_SEPARATOR,
@@ -32,7 +31,8 @@ from hyphae.view.nodes import (
     Spend,
 )
 from hyphae.view.store import Row
-from hyphae.view.tool_names import Fields, name_tool
+from hyphae.view.text.format import ELLIPSIS
+from hyphae.view.text.tool_names import Fields, name_tool
 
 
 def _context(row: Row) -> Context | None:
@@ -392,7 +392,7 @@ def logged(shape: Shape, node: Node, row: Row) -> logs.Logged:
                 text_head=row["text_head"],
                 tool_calls=row["tool_calls"],
                 # The words rather than the rows: naming a tool call is Python's
-                # (`view/tool_names.py`), so the query ships the fields and this composes them.
+                # (`view/text/tool_names.py`), so the query ships the fields and this composes them.
                 called=", ".join(tool_titles(row.get("called_tools") or ())),
                 text_chars=row["text_chars"],
                 started_at=row["started_at"],
@@ -435,7 +435,7 @@ def tool_numbers(row: Row) -> numbers.Tool:
     """A popover's readings for one tool call, off the row `view_numbers_tool` answered.
 
     The siblings are named here rather than in the query: what a tool call is called is
-    Python's (`view/tool_names.py`), and the query ships the fields each name is composed of.
+    Python's (`view/text/tool_names.py`), and the query ships the fields each name is composed of.
     """
     return numbers.Tool(
         input_chars=row["input_chars"],

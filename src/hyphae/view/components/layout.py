@@ -34,7 +34,7 @@ def page(
                     htpy.meta(name="viewport", content="width=device-width, initial-scale=1"),
                     htpy.title[tab_title],
                     htpy.link(rel="stylesheet", href="/static/style.css"),
-                    # What paints the classes `view/highlight.py` writes. Its own file rather
+                    # What paints the classes `view/text/highlight.py` writes. Its own file rather
                     # than a block of `style.css`, because the classes are Pygments' vocabulary
                     # and not this viewer's.
                     htpy.link(rel="stylesheet", href="/static/pygments.css"),

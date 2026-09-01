@@ -17,9 +17,9 @@ dependencies = [
   # behaviour was read off and pinned in `tests/view/test_components.py`.
   "htpy>=26.5",
   # Renders a transcript's markdown with HTML passthrough and the image rule off — see
-  # `view/render.py`, which is the only place the reader is configured.
+  # `view/text/render.py`, which is the only place the reader is configured.
   "markdown-it-py>=3.0",
-  # `Markup`, the one opt-out from htpy's escaping: `view/render.py` returns HTML it escaped
+  # `Markup`, the one opt-out from htpy's escaping: `view/text/render.py` returns HTML it escaped
   # itself, and htpy passes a `Markup` child through untouched.
   "markupsafe>=3.0",
   # The OTLP wire types only — `TracesData` and `ExportTraceServiceResponse`. Deliberately
@@ -28,7 +28,7 @@ dependencies = [
   "opentelemetry-proto>=1.30",
   # POSTs the OTLP batches, and the viewer's test client rides on it.
   "httpx>=0.28",
-  # Highlights the JSON a tool wrote and the SQL behind a page (`view/highlight.py`). Class
+  # Highlights the JSON a tool wrote and the SQL behind a page (`view/text/highlight.py`). Class
   # names only, never inline styles: the viewer's CSP allows no `style` attribute.
   "pygments>=2.19",
   # Describes Claude Code's raw record shapes in `extract/records/` — field descriptions and

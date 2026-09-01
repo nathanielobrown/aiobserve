@@ -5,6 +5,7 @@ paths:
   - "src/hyphae/view/static/*.css"
   - "src/hyphae/view/static/*.js"
   - "src/hyphae/view/*.py"
+  - "src/hyphae/view/text/*.py"
   - "src/hyphae/analyze/queries/view_*.sql"
 ---
 
@@ -31,7 +32,7 @@ Print `Node.nav_tree_title`, `tab_title`, `crumb_title`, `log_title` or `pane_ti
 
 # Naming and formatting live in Python; SQL ships fields
 
-A query hands the page the fields a name is read off, and Python composes what the reader sees. `tool_names.name_tool` is the only place a tool call is named, `src/hyphae/view/nodes.py` the only place a node is, `src/hyphae/view/numbers.py` the only place a dollar is split, and `src/hyphae/view/cuts.py` the only place a value is cut to the width its surface prints it at — so a fact printed on two surfaces was derived once.
+A query hands the page the fields a name is read off, and Python composes what the reader sees. `tool_names.name_tool` is the only place a tool call is named, `src/hyphae/view/nodes.py` the only place a node is, `src/hyphae/view/numbers.py` the only place a dollar is split, and `src/hyphae/view/text/cuts.py` the only place a value is cut to the width its surface prints it at — so a fact printed on two surfaces was derived once.
 
 A `view_*.sql` that builds a string is a second naming system, and the two drift apart in the direction nobody is looking: SQL cannot dispatch on a tool's name without a `CASE` arm per tool, so the tool nobody wrote an arm for goes unnamed rather than falling back. What SQL owns instead is the reading a page cannot afford: a fat column is cut to the width its caller asked for before it leaves the store (`src/hyphae/analyze/macros.py`).
 
@@ -49,7 +50,7 @@ Where a title repeats — a NavTree row, a crumb, a log row, a walk control — 
 
 Every mark saying what a thing *is* — the kind of node a surface names, and the kind a children log's column is about — goes through `parts.mark(character)`, whose character comes from `nodes.GLYPHS` or a `Column` — the one place those characters are written, so a mark cannot mean one thing in a table and another in the NavTree. It is `aria-hidden` and carries no `title`: the word it stands for is already in the markup beside it (`docs/viewer-titles.md`). The `<title>` element is the one place a mark goes in bare, because it is text and has no markup to hide it in.
 
-A tool's own glyph is not one of these marks and does not go through `parts.mark`. It stands in for the tool's name inside the title's words (`src/hyphae/view/tool_names.py`), so it rides as text wherever the title does — including a children log, which heads the lead in a column of its own and would drop a mark written there.
+A tool's own glyph is not one of these marks and does not go through `parts.mark`. It stands in for the tool's name inside the title's words (`src/hyphae/view/text/tool_names.py`), so it rides as text wherever the title does — including a children log, which heads the lead in a column of its own and would drop a mark written there.
 
 # A NavTree row is priced, not budgeted
 
@@ -144,9 +145,9 @@ Witnessed in a real Chromium on 2026-08-28 against `mise run gallery --port 9064
 
 # A rendered value goes through one function
 
-Prose a person or a model wrote — a prompt, a run's brief, what a call said — shows as the Markdown it was written in, through `parts.prose`. `src/hyphae/view/render.py` owns the escaping.
+Prose a person or a model wrote — a prompt, a run's brief, what a call said — shows as the Markdown it was written in, through `parts.prose`. `src/hyphae/view/text/render.py` owns the escaping.
 
-A title is the other half of that: one line rather than a block, escaped by `src/hyphae/view/inline_markdown.py` and rendered by `nodes.Node`'s own cuts, never by a component. Those two modules are the only escaping a page has.
+A title is the other half of that: one line rather than a block, escaped by `src/hyphae/view/text/inline_markdown.py` and rendered by `nodes.Node`'s own cuts, never by a component. Those two modules are the only escaping a page has.
 
 Both mounts of one value use that function: the head a pane previews, and the whole of it the fetch swaps into the same block. A value rendered one way in the preview and another in the fetch is a value a reader cannot tell has a head.
 
@@ -163,7 +164,7 @@ Witnessed in a real Chromium on 2026-08-28 against `mise run gallery --port 8492
 
 # `Markup` is the only opt-out, and only as a child
 
-htpy escapes every string child and every attribute value, so a component prints text and cannot print markup. Four modules produce a `Markup` — `src/hyphae/view/render.py`, `src/hyphae/view/highlight.py`, `src/hyphae/view/inline_markdown.py`, and `nodes.Node`'s title properties — and a component's only move is to hand one straight in as a child. None constructs one, which `tests/view/test_components.py` reads off the package's source.
+htpy escapes every string child and every attribute value, so a component prints text and cannot print markup. Four modules produce a `Markup` — `src/hyphae/view/text/render.py`, `src/hyphae/view/text/highlight.py`, `src/hyphae/view/text/inline_markdown.py`, and `nodes.Node`'s title properties — and a component's only move is to hand one straight in as a child. None constructs one, which `tests/view/test_components.py` reads off the package's source.
 
 An attribute is where the behaviour inverts: a `Markup` handed to one is escaped anyway, so the failure is double-escaped text on the page that no test in this repo would see. These are the text-bearing attributes a component writes, and each takes a plain `str`:
 
@@ -188,7 +189,7 @@ Elements are written `htpy.div[...]`, never `from htpy import div`: the prefix i
 
 # A cut value goes through the filter that marks it
 
-A string its query cut arrives one character past the width it is printed at, and the filter that prints it cuts it back and marks where the rest was left behind (`src/hyphae/view/format.py:cut`): `line` for a children log's row, `head` and `member` for a header, `short` and `item` for a row of the session list. Print such a value bare and a reader cannot tell a name that ended from one that was stopped. A title arrives marked already, at whichever of the four widths `src/hyphae/view/nodes.py` cut it to.
+A string its query cut arrives one character past the width it is printed at, and the filter that prints it cuts it back and marks where the rest was left behind (`src/hyphae/view/text/format.py:cut`): `line` for a children log's row, `head` and `member` for a header, `short` and `item` for a row of the session list. Print such a value bare and a reader cannot tell a name that ended from one that was stopped. A title arrives marked already, at whichever of the four widths `src/hyphae/view/nodes.py` cut it to.
 
 The query is the other half of that protocol: a value a page prints is cut by the `cut` macro, which stops one character past the width so the filter has something to find (`src/hyphae/analyze/macros.py`). A hand-spelled `substr(value, 1, $width)` stops *at* it and leaves nothing to mark. Every one the library keeps on purpose is named with its reason in `tests/analyze/test_queries.py:HAND_CUTS`, held by set equality, so a new one fails there rather than reaching a page as a value that looks whole.
 

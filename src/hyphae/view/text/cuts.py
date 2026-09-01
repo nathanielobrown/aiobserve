@@ -13,7 +13,7 @@ process. A viewer left open is long-lived, and the gallery freezes `fmt.utcnow` 
 import datetime as dt
 
 from hyphae.analyze import queries
-from hyphae.view import format as fmt
+from hyphae.view.text import format as fmt
 
 
 def ago(value: dt.datetime | None) -> str:

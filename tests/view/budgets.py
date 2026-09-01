@@ -14,9 +14,9 @@ from markupsafe import escape
 
 from hyphae.analyze import queries
 from hyphae.view import bounds, nodes
-from hyphae.view.format import ELLIPSIS
 from hyphae.view.knobs import Knobs
 from hyphae.view.store import SHOWN, Page
+from hyphae.view.text.format import ELLIPSIS
 from tests.view.conftest import (
     Statement,
 )
@@ -343,7 +343,7 @@ MARK_BYTES = len(ELLIPSIS.encode())
 # reason — what a lexer makes a token of is a property of the lexer, and a value every character
 # of which is its own token costs the lot.
 #
-# The class is three characters because `view/highlight.py:_ShortClasses` holds it there. Left
+# The class is three characters because `view/text/highlight.py:_ShortClasses` holds it there. Left
 # alone the formatter joins a name for every step up to a token type Pygments has a name for
 # (`l l-Scalar l-Scalar-Plain`, 25 characters), and those types are reachable — the markdown
 # lexer hands a fenced block to whatever lexer the fence names. `test_highlight.py:

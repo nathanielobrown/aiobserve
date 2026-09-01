@@ -20,10 +20,10 @@ from fastapi.testclient import TestClient
 from hyphae.analyze import queries
 from hyphae.projects import project_predicate
 from hyphae.view import bounds
-from hyphae.view import format as fmt
 from hyphae.view.app import build_app
-from hyphae.view.format import ABSENT, ELLIPSIS
 from hyphae.view.store import Page
+from hyphae.view.text import format as fmt
+from hyphae.view.text.format import ABSENT, ELLIPSIS
 from tests.conftest import HOME, MYCELIA, NO_PROJECT_SESSION, SPINE
 from tests.view.conftest import Planter, fields, inside, one, suggestions, values
 
@@ -259,7 +259,7 @@ def test_a_project_path_too_long_to_link_is_marked_where_it_was_cut(plant: Plant
     paths. The row this lands on is the one with the least to go on — the link is gone, because
     a filter on a cut path matches no session, and the box does not offer it either. What is
     left is the head, so the head has to say it is one: the query cuts through `cut`, which
-    hands back the character past the width that `view/format.py:cut` turns into the mark.
+    hands back the character past the width that `view/text/format.py:cut` turns into the mark.
     """
     # One character past what the page shows, under no root the corpus recorded, so the fold
     # leaves it standing as its own row rather than folding it into a shorter directory.

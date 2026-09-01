@@ -14,8 +14,8 @@ every pin below is taken twice.
 from markupsafe import escape
 
 from hyphae.analyze import queries
-from hyphae.view import inline_markdown, render
-from hyphae.view.format import ELLIPSIS
+from hyphae.view.text import inline_markdown, render
+from hyphae.view.text.format import ELLIPSIS
 from tests.view.conftest import plain
 
 
