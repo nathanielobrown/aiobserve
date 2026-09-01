@@ -226,7 +226,8 @@ def test_a_title_with_no_markdown_in_it_is_what_it_was() -> None:
     """
     for flat in ('{"name": "deep-research"}', "⚡ rm -rf .mutants", "a & b < c > d 'e'"):
         assert inline_markdown.render(flat, links=False) == str(escape(flat)), flat
-    # noqa: the `strip` under test is this module's own, not `str.strip`.
+    # The suppression below is right: the `strip` under test is this module's own, not
+    # `str.strip`.
     assert inline_markdown.strip("⚡ rm -rf .mutants") == "⚡ rm -rf .mutants"  # noqa: B005
 
 
