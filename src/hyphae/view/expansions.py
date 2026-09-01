@@ -15,7 +15,6 @@ from fastapi.responses import Response
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.view import bounds, builders, nodes, reads
-from hyphae.view.browse import header_bound
 from hyphae.view.citation import Ran, cited
 from hyphae.view.columns import Shape
 from hyphae.view.components import nav_tree, node_body
@@ -30,6 +29,7 @@ from hyphae.view.store import (
     Fragment,
     Page,
     Row,
+    header_bound,
     open_store,
     page_rows,
 )

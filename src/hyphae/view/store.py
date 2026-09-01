@@ -136,6 +136,20 @@ class Value(StrEnum):
 Library = Page | Fragment | Value
 
 
+def header_bound(session_id: str) -> dict[str, ParamValue]:
+    """What `Page.SESSION_HEADER` binds for one session, named once for every reader of it.
+
+    A node page reads the row whole; the errors page reads it only to word a 404, but both
+    have to bind the same params or a change to one silently stops answering for the other.
+    """
+    return {
+        "session_id": session_id,
+        "head_chars": queries.HEADER_CHARS,
+        "item_chars": queries.HEADER_ITEM_CHARS,
+        "head_items": queries.HEADER_ITEMS,
+    }
+
+
 class SchemaMoved(Exception):
     """The store's schema version is not the one this build reads."""
 

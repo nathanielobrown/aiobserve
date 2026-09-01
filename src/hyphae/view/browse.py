@@ -37,6 +37,7 @@ from hyphae.view.store import (
     Listed,
     Page,
     Row,
+    header_bound,
     listed,
     open_store,
     page_rows,
@@ -106,20 +107,6 @@ def described_node(descriptions: Descriptions, node: nodes.Node) -> Enrichment |
     if node.kind is Kind.RUN:
         return descriptions.runs.get(node.node_id)
     return None
-
-
-def header_bound(session_id: str) -> dict[str, ParamValue]:
-    """What `Page.SESSION_HEADER` binds for one session, named once for every reader of it.
-
-    A node page reads the row whole; `errors_page` reads it only to word a 404, but both
-    have to bind the same params or a change to one silently stops answering for the other.
-    """
-    return {
-        "session_id": session_id,
-        "head_chars": queries.HEADER_CHARS,
-        "item_chars": queries.HEADER_ITEM_CHARS,
-        "head_items": queries.HEADER_ITEMS,
-    }
 
 
 def browse(
