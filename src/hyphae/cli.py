@@ -191,8 +191,10 @@ def _query_arguments(subcommand: argparse.ArgumentParser) -> None:
     subcommand.add_argument(
         "--as-of",
         type=dt.date.fromisoformat,
+        # UTC, not the reader's local day: the runner measures the window in UTC, so a local
+        # date west of it would close the window hours before now and drop today's sessions.
         default=dt.datetime.now(tz=dt.UTC).date(),
-        help="The date the trailing window is measured back from (default: today)",
+        help="The date the trailing window is measured back from (default: today, UTC)",
     )
     subcommand.add_argument(
         "--param",
