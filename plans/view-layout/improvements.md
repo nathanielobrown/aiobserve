@@ -21,6 +21,7 @@ It builds the enriched fixture store once into `/tmp/view-layout-baseline/traces
 reuses it, and freezes `format.utcnow` to the corpus's own present the way the gallery does —
 without both, two captures differ on the trailing windows every list page prints. Slice 1's
 capture is 39 files, all 200, and re-running it against the same tree gives an empty diff.
+Slice 2's capture is byte-identical to slice 1's.
 
 ## Seeded from the design pass
 
@@ -46,3 +47,6 @@ capture is 39 files, all 200, and re-running it against the same tree gives an e
   what causes it. Fix: `Ran` is a list of the queries a page ran, so it belongs in
   `citation.py`; `tool_node` builds a `Node` from a store row, so `builders.py` reads like a
   shared module rather than a node-page presenter. Decide both before slice 3 renames the file
+- `tests/view/text/test_render.py:228` — a comment explaining the suppression under it opened
+  with `noqa:`, so ruff read it as a directive and warned on every lint run. **Done** in
+  `e7a6fc9`, as the cleanup commit after slice 2's move
