@@ -33,9 +33,12 @@ from hyphae.view import (
     fragments,
     listing,
     node_pages,
-    pages,
 )
 from hyphae.view.deps import Viewer
+from hyphae.view.pages.errors import routes as errors
+from hyphae.view.pages.offload import routes as offload
+from hyphae.view.pages.query import routes as query
+from hyphae.view.pages.records import routes as records
 from hyphae.view.store import (
     SchemaMoved,
     open_store,
@@ -122,7 +125,10 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
     # `app.routes` expecting the routes themselves (`tests/view/test_dev.py` says so too).
     app.router.routes.extend(listing.router.routes)
     app.router.routes.extend(node_pages.router.routes)
-    app.router.routes.extend(pages.router.routes)
+    app.router.routes.extend(errors.router.routes)
+    app.router.routes.extend(query.router.routes)
+    app.router.routes.extend(records.router.routes)
+    app.router.routes.extend(offload.router.routes)
     app.router.routes.extend(expansions.router.routes)
     app.router.routes.extend(fragments.router.routes)
     return app

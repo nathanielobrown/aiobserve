@@ -242,7 +242,6 @@ def test_every_page_package_holds_one_routes_kind_and_one_markup_kind(page: Path
         assert module != package, f"{page.name}: {kind}.py={module} {kind}/={package}"
 
 
-@pytest.mark.xfail(strict=True, reason="the first page packages land in slice 4")
 def test_only_a_markup_module_imports_htpy() -> None:
     """Markup is written in one file of a page, so a change to what a page shows has one home."""
     naming = {path for path in sources(PAGES) if "htpy" in named(path)}
@@ -252,7 +251,6 @@ def test_only_a_markup_module_imports_htpy() -> None:
     assert naming == set(markup_modules())
 
 
-@pytest.mark.xfail(strict=True, reason="the first page packages land in slice 4")
 def test_no_module_of_a_page_is_named_for_nothing() -> None:
     """A presenter is named for what it builds; these five names are where leftovers collect.
 
@@ -294,7 +292,6 @@ def test_a_models_module_appears_only_where_a_second_markup_module_reads_it() ->
 # --- Rule 2: a page package is a leaf ------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="the first page packages land in slice 4")
 def test_no_page_package_imports_a_sibling_page() -> None:
     """One page is one directory, so what two pages share is lifted rather than reached for.
 
@@ -367,7 +364,6 @@ def test_the_shared_node_model_reads_nothing_from_a_page() -> None:
 # --- Rule 4: the components rules cover a page's markup ------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="the markup globs widen in slice 4")
 def test_the_components_rules_reach_every_markup_module_a_page_holds() -> None:
     """A page's markup is markup, so the three rules `test_components.py` holds cover it too.
 

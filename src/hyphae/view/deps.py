@@ -25,7 +25,7 @@ from fastapi.responses import HTMLResponse
 
 from hyphae.view import bounds, nodes
 from hyphae.view.components import Html
-from hyphae.view.components import pages as components
+from hyphae.view.components import error as error_markup
 from hyphae.view.knobs import Knobs
 from hyphae.view.store import open_store
 
@@ -49,7 +49,7 @@ class Viewer:
     def error(self, status: int, message: str) -> HTMLResponse:
         """The error page, which is what every handler in `build_app` answers with."""
         return self.html(
-            components.error_page(status=status, message=message, dev=self.dev), status=status
+            error_markup.error_page(status=status, message=message, dev=self.dev), status=status
         )
 
 

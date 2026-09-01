@@ -338,6 +338,21 @@ implicit-any-parameter = false
 # what the tests taking it read, and every fixture here annotates one already.
 unannotated-return = false
 
+# A page's own markup, which is markup written the same way and hits the same htpy bug. Two
+# globs because a page writes either `markup.py` or a `markup/` package, never both
+# (`tests/view/test_layout.py`); everything else under `pages/` stays fully checked.
+[[tool.pyrefly.sub-config]]
+matches = "src/hyphae/view/pages/*/markup.py"
+
+[tool.pyrefly.sub-config.errors]
+bad-index = false
+
+[[tool.pyrefly.sub-config]]
+matches = "src/hyphae/view/pages/*/markup/**"
+
+[tool.pyrefly.sub-config.errors]
+bad-index = false
+
 # The viewer's components, where one error kind is off and everything else pyrefly does stays on.
 [[tool.pyrefly.sub-config]]
 matches = "src/hyphae/view/components/**"
