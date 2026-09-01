@@ -18,7 +18,8 @@ from typing import NamedTuple
 
 import duckdb
 
-from hyphae.view.nav_tree import Corpus, Ran, children
+from hyphae.view.citation import Ran
+from hyphae.view.nav_tree import Corpus, children
 from hyphae.view.nodes import Node, Preset
 
 

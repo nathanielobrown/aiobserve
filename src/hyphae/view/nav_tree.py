@@ -34,6 +34,7 @@ from hyphae.view.builders import (
     unattached_node,
     unattributed_node,
 )
+from hyphae.view.citation import Ran
 from hyphae.view.components.nav_tree import NavTreeRow
 from hyphae.view.enrichment import Descriptions
 from hyphae.view.nodes import (
@@ -51,9 +52,6 @@ from hyphae.view.store import (
     cursorless_rows,
     page_rows,
 )
-
-# What one level's queries were bound with, in the order the level ran them.
-Ran = list[tuple[Library, Mapping[str, ParamValue]]]
 
 
 @dataclass(frozen=True)

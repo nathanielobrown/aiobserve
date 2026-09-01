@@ -18,7 +18,7 @@ from fastapi.responses import Response
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.view import builders, errors, listing, nav_tree, nodes, walk
-from hyphae.view.citation import cited
+from hyphae.view.citation import Ran, cited
 from hyphae.view.columns import Shape
 from hyphae.view.components import node_page
 from hyphae.view.components.logs import Logged
@@ -63,7 +63,7 @@ class Seen(NamedTuple):
     # has one: `turns.id` is a record's `uuid`, which is the store's own join down to the
     # bytes Claude Code wrote.
     record: int | None
-    ran: nav_tree.Ran
+    ran: Ran
 
 
 # What one node route does beyond the reads every node page makes: its own header, its trail,
@@ -198,7 +198,7 @@ def browse(
     # NavTree's to work out, against the whole session rather than against one header.
     if (titled := TITLED.get(selection.kind)) is not None:
         selection = replace(selection, words=titled(session_id, source, seen.header, corpus).words)
-    ran: nav_tree.Ran = [
+    ran: Ran = [
         (Page.SESSION_HEADER, bound),
         (Page.RUNS, runs_bound),
         *seen.ran,
@@ -293,7 +293,7 @@ def call_log(
     turn_id: str | None,
     page: int,
     log: int,
-) -> tuple[Listed, list[Logged], nav_tree.Ran]:
+) -> tuple[Listed, list[Logged], Ran]:
     """One page of the api calls under a turn — or, at `turn_id` NULL, under a bucket.
 
     One function for both because the two differ by that binding alone, which is the same

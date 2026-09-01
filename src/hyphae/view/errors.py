@@ -25,7 +25,7 @@ from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.view import bounds
 from hyphae.view.builders import tool_node
-from hyphae.view.nav_tree import Ran
+from hyphae.view.citation import Ran
 from hyphae.view.nodes import NO_LEDGER, Node
 from hyphae.view.store import Page, dropped, page_rows
 
