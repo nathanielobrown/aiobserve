@@ -3,7 +3,7 @@
 A description is one line the model wrote in markdown, and every surface that prints a title
 prints it rendered rather than typed (`view/text/inline_markdown.py`). No fixture holds one:
 redaction flattened every string the corpus records, so these leaves plant the markdown and
-read it back off a served page. The renderer's own readings are `tests/view/test_render.py`.
+read it back off a served page. The renderer's own readings are `tests/view/text/test_render.py`.
 """
 
 import json

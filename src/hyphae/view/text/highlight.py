@@ -128,7 +128,8 @@ class _ShortClasses(HtmlFormatter[str]):
     can widen under it.
 
     The hook is Pygments' own private one, so a release that renames it would leave this class
-    doing nothing. What holds it is a leaf over a delegated block in `tests/view/test_highlight.py`.
+    doing nothing. What holds it is a leaf over a delegated block in
+    `tests/view/text/test_highlight.py`.
     """
 
     def _get_css_classes(self, ttype: _TokenType) -> str:

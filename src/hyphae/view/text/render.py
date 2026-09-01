@@ -12,7 +12,7 @@ the difference, and the first two are each one argument from being lost:
 - A URL is **a link only when its scheme is `http` or `https`**. Escaping leaves a
   `javascript:` URL intact, and an `href` is the one place a transcript's text is acted on
 
-`tests/view/test_render.py` pins all three. It cannot see a component that wraps a value in
+`tests/view/text/test_render.py` pins all three. It cannot see a component that wraps a value in
 `Markup` on its way to the page, which is why the route-level sentinel test exists as well.
 The one place code meets prose is a fenced block, and `view/text/highlight.py` marks that up; a
 value that is code whole never comes through here at all.

@@ -23,7 +23,7 @@ Four rules, three of them `view/text/render.py`'s own:
 Escaping is `markupsafe`'s and not markdown-it's, so a line with no markdown in it serves the
 bytes the page served before this module existed: markdown-it spells a quote `&quot;` where
 every other value on a page spells it `&#34;`, and a NavTree row is measured in bytes
-(`view/bounds.py`). `tests/view/test_render.py` pins all of it, beside the block renderer's.
+(`view/bounds.py`). `tests/view/text/test_render.py` pins all of it, beside the block renderer's.
 """
 
 from typing import NamedTuple
