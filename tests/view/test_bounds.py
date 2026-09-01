@@ -339,9 +339,9 @@ def test_the_pages_run_at_the_production_sizes(client: TestClient) -> None:
     # Two queries no page cites, because a fragment carries no footer: the enrichment block a
     # node page fetches, and the filter suggestions above the session list. What binds them is
     # pinned at the constant the composing module reads instead (`view/enrichment.py`,
-    # `view/listing.py`). The enrichment taxonomy is closed and its longest member is nine
-    # characters (`enrich/taxonomy.py`), so the tag cut bounds a hand-edited row rather than
-    # anything a pass writes.
+    # `view/pages/sessions/routes.py`). The enrichment taxonomy is closed and its longest
+    # member is nine characters (`enrich/taxonomy.py`), so the tag cut bounds a hand-edited row
+    # rather than anything a pass writes.
     assert (queries.ENRICHMENT_CHARS, queries.TAG_CHARS) == (200, 20)
     assert (queries.LIST_CHARS, queries.LIST_ITEM_CHARS, queries.LIST_ITEMS) == (100, 20, 4)
     assert queries.LIST_PROJECTS == 10

@@ -5,7 +5,7 @@
 -- `$turn_id` NULL, the same for the calls that answer no turn. Unattributed is decided by the
 -- join, not by `c.turn_id IS NULL`: a fork replays its parent's turn (`view_nav_tree_calls`).
 -- Thin like `view_nav_tree_turns` and `view_nav_tree_calls`, and unlimited for the same reason — the
--- cap lives in the composition (`view/nav_tree.py`), where it has to keep the row the open path
+-- cap lives in the composition (`view/pages/node/nav_tree.py`), where it has to keep the row the open path
 -- goes through. A tool call costs nothing of its own: what an api call spent is the api call's.
 -- The one exception is a row that asked for an agent run, which is charged what the call
 -- holding it cost — so this query alone returns that price, and every other surface builds a

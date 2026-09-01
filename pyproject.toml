@@ -134,7 +134,7 @@ select = [
 # runtime — and we don't import `annotations` from `__future__`), and COM/Q (the formatter
 # owns commas and quotes).
 ignore = [
-  # Our SQL is assembled from module constants and closed sets — `view/listing.py` documents
+  # Our SQL is assembled from module constants and closed sets — `view/pages/sessions/routes.py` documents
   # the membership check that guards the one request-shaped composition, and every value a
   # request supplies is bound as a parameter. The rule sees only the f-string.
   "S608",

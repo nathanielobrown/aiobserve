@@ -6,8 +6,8 @@ two buckets that hold what attaches to nothing. Each has a page of its own, so e
 title, one URL and one share of the spend, minted here and nowhere else: a NavTree row, a crumb
 and a pane all read the same node.
 
-`view/builders.py` turns a store row into one and `view/nav_tree.py` builds the levels out of
-them; this module is the vocabulary they are built in.
+`view/builders.py` turns a store row into one and `view/pages/node/nav_tree.py` builds the
+levels out of them; this module is the vocabulary they are built in.
 """
 
 import math
@@ -176,10 +176,10 @@ class Ref:
 class Ledger:
     """What one session spent, and what the runs under each of its nodes cost.
 
-    Read once per page (`view/browse.py`) and handed to every node built for it: a badge's
-    first half is what the node's own thread spent, its second that plus what `under` holds
-    for the node, and both are washed against `whole`. A node absent from `under` has no run
-    below it and draws one number.
+    Read once per page (`view/pages/node/routes/browse.py`) and handed to every node built for
+    it: a badge's first half is what the node's own thread spent, its second that plus what
+    `under` holds for the node, and both are washed against `whole`. A node absent from `under`
+    has no run below it and draws one number.
     """
 
     # What the session spent, the basis every share on the page is a share of.
@@ -494,8 +494,8 @@ class Node:
         strings at this width or wider — a tool header's input comes back at a preview's,
         because the same pane previews it — so a title is cut here and marked where the query
         left more behind. A pane names its node from the header it read rather than from the
-        NavTree row it stands on (`view/browse.py:TITLED`) — the NavTree cuts at a row's
-        width, which would head a turn with a third of the prompt it is about.
+        NavTree row it stands on (`view/pages/node/routes/browse.py:TITLED`) — the NavTree cuts
+        at a row's width, which would head a turn with a third of the prompt it is about.
 
         The one surface a link in a title becomes an `<a>` on: every other one prints its
         title inside a link already, and an `<a>` inside an `<a>` is markup a browser undoes.

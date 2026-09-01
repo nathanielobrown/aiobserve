@@ -11,8 +11,8 @@ session failed at. The list is capped like the landing page (`view/bounds.py`) r
 paged, and the stepper walks that same capped list — a failure past the cap is one neither
 surface reaches, rather than one the stepper offers and the list denies.
 
-`view/walk.py` is the neighbouring concern, and reads the same way: what is beside the pane,
-answered from the store rather than from the rows the page happens to have drawn.
+`view/pages/node/walk.py` is the neighbouring concern, and reads the same way: what is beside
+the pane, answered from the store rather than from the rows the page happens to have drawn.
 """
 
 import datetime as dt

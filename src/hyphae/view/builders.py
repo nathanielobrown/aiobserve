@@ -5,7 +5,7 @@ one of these, so the title, the URL and the share a reader sees are the same whe
 read it. `view/nodes.py` holds the vocabulary they build in.
 
 A row in, a node out, and nothing about the page the node lands on. What a row is *shown* as —
-the facts a body prints, the cells of a log row — is the page's own (`view/reads.py`).
+the facts a body prints, the cells of a log row — is the page's own (`view/pages/node/reads.py`).
 """
 
 from collections.abc import Sequence

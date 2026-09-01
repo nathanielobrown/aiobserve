@@ -20,8 +20,8 @@ from hyphae.view.store import Listed, Row
 class Knobs(NamedTuple):
     """The four things a node-page URL may name, checked, and the suffix its links carry.
 
-    `deps.asked` is the only builder a route reaches: it parses the query string, refuses what
-    is out of bounds, and is what makes the fields below already-checked values. Composing a
+    `routes/knobs.py:asked` is the only builder a route reaches: it parses the query string,
+    refuses what is out of bounds, and makes the fields below already-checked values. Composing a
     variant off one — the preset control does, one link per preset — goes through `_replace`,
     which needs no second check because it starts from a value that passed.
     """
@@ -39,9 +39,9 @@ class Knobs(NamedTuple):
         return f"?{urlencode(given)}" if given else ""
 
 
-# What a node URL naming no knob is served at, read off `bounds` like the defaults `deps.asked`
-# declares. Every href a node page mints carries whatever is *not* one of these
-# (`Knobs.suffix`), so a reader who picked a view or narrowed the NavTree keeps it as they walk,
+# What a node URL naming no knob is served at, read off `bounds` like the defaults
+# `routes/knobs.py:asked` declares. Every href a node page mints carries whatever is *not* one
+# of these (`Knobs.suffix`), so a reader who picked a view or narrowed the NavTree keeps it,
 # and an ordinary link stays short. `tools/gen_bounds.py` reads it for the knob table in
 # `docs/viewer-bounds.md`.
 KNOB_DEFAULTS = Knobs(

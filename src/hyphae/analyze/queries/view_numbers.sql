@@ -11,7 +11,7 @@
 -- reading the main thread; the run's own id for a run; the node's own thread otherwise. It is
 -- also what picks the calls out, for every kind alike — a session included. What the threads it
 -- spawned cost is `subtree_usd` below, which the popover prints as its own line rather than
--- summing into the three a turn spends on its own calls (`view/numbers.py`).
+-- summing into the three a turn spends on its own calls (`view/pages/node/numbers.py`).
 --
 -- Synthetic replies are out of the window numbers for the reason `view_nav_tree_turns` states —
 -- Claude Code's own placeholders report no tokens at all (`docs/schema.md`) — and in the
@@ -167,7 +167,7 @@ SELECT
     (SELECT r.cost_usd FROM session_rollups r WHERE r.session_id = $session_id) AS session_usd,
     (SELECT count(*) FILTER (s.cost_usd IS NULL) FROM calls s) AS unpriced_api_calls,
     (SELECT count(*) FROM calls s) AS api_calls,
-    -- One member per model the node spent on, for the caller to price (`view/numbers.py`).
+    -- One member per model the node spent on, for the caller to price (`view/pages/node/numbers.py`).
     -- A list rather than rows because the popover is one row of numbers: the split is summed
     -- across models before anything prints it.
     (SELECT coalesce(list(spent), []) FROM spent) AS spent
