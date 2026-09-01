@@ -1,9 +1,9 @@
 """What a URL may ask a node page for, and what a page hands back in every link it mints.
 
 Four knobs: the view, and the three sizes (`docs/viewer-bounds.md`). Every node route takes
-them as one `Knobs`, built by the one dependency `deps.KnobsDep` — which is where a value
-outside its bounds becomes a 400. A checked `Knobs` mints its own `suffix`, which every link on
-the page carries, so a reader who narrowed the NavTree keeps it as they walk. The paging
+them as one `Knobs`, built by the one dependency `routes/knobs.py` declares — which is where a
+value outside its bounds becomes a 400. A checked `Knobs` mints its own `suffix`, which every
+link on the page carries, so a reader who narrowed the NavTree keeps it as they walk. The paging
 controls live here too: a page number is the one knob a children log adds to that suffix.
 """
 
