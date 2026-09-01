@@ -25,6 +25,7 @@ from markupsafe import escape
 from hyphae.analyze import macros, queries
 from hyphae.extract.pricing import MODELS
 from hyphae.view.app import build_app
+from hyphae.view.components import layout
 from hyphae.view.nodes import BAR_STEPS
 from tests.conftest import MAIN, SPINE
 
@@ -47,6 +48,17 @@ CUT = (
 def money(amount: float) -> str:
     """A cost as the pages print it."""
     return f"${amount:.2f}"
+
+
+def viewer_css(client: TestClient) -> str:
+    """The viewer's own stylesheets as one text, joined in the order the head links them.
+
+    Reading through `layout.STYLESHEETS` is what keeps every test that scans the CSS
+    indifferent to how the sheets are split: a rule that moves between files moves nowhere
+    a test can see. Pygments' sheet stays out, as it always was — its classes are not the
+    viewer's vocabulary.
+    """
+    return "\n".join(client.get(url).text for url in layout.STYLESHEETS)
 
 
 def counted(value: int) -> str:

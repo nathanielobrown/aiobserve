@@ -37,6 +37,7 @@ from tests.view.conftest import (
     one,
     step,
     values,
+    viewer_css,
 )
 from tests.view.nav_trees import node_url
 
@@ -301,7 +302,7 @@ def test_a_context_bar_is_drawn_by_three_families_of_class_one_rule_spends(
     this tier can read: every step the markup can carry has to be a width here, or a row lands
     on a class that draws nothing and the bar quietly reads as empty.
     """
-    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
+    style = re.sub(r"/\*.*?\*/", "", viewer_css(client), flags=re.DOTALL)
     steps = list(range(BAR_STEPS + 1))
     for family, prop in (("f", "--ctx-fill"), ("p", "--ctx-prior"), ("b", "--ctx-base")):
         widths = {
@@ -359,7 +360,7 @@ def test_a_run_a_compaction_and_a_maxed_thread_each_take_the_tip_in_a_colour_of_
     this holds is that they are three different tokens, and that each is defined in both
     schemes — a token a dark page leaves unset is a band that vanishes for half the readers.
     """
-    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
+    style = re.sub(r"/\*.*?\*/", "", viewer_css(client), flags=re.DOTALL)
     tips = dict(re.findall(r"li\.node\.(\w+) > a \{[^}]*--ctx-tip: var\((--[\w-]+)\)", style))
     assert tips.keys() == {"run", "compaction", "maxed"}, tips
     # Three hues, none of them the accent a turn or a call draws its tip in.

@@ -1,0 +1,35 @@
+/* The list pages — a session's failures, one thread's records — and the footers under
+   everything. */
+/* One session's failures, whichever thread each ran on. */
+ol.errors { margin: var(--space-2) 0; padding: 0; list-style: none; }
+ol.errors li { border-top: 1px solid var(--line); padding: var(--space-1) 0;
+  display: flex; gap: var(--space-2); align-items: baseline; }
+/* The thread and the clock sit after the title and give it the room: what a reader scans is
+   which call failed, and the rest tells two failures of one tool apart. */
+ol.errors a { flex: 1; text-decoration: none; }
+ol.errors .source { color: var(--dim); }
+
+/* A row of counts under a heading, on the pages built out of one list. */
+.numbers { margin: 0; color: var(--dim); display: flex; gap: var(--space-3); }
+
+/* The records browser. One line per record, so a page of them scans as a transcript does. */
+ol.records { margin: var(--space-2) 0; padding: 0; list-style: none; }
+ol.records li { border-top: 1px solid var(--line); padding: var(--space-1) 0; }
+ol.records .line { color: var(--dim); font-variant-numeric: tabular-nums;
+  margin-right: var(--space-2); }
+/* The preview stays one line: a record is JSON, and forty wrapped lines of it is not a page. */
+ol.records code { display: inline-block; max-width: 60rem; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+/* A record opened whole wraps instead, which is the reason someone opened it. */
+[data-record-value] pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: var(--space-1) 0; }
+/* A record the URL's fragment points at, so a citation lands somewhere visible. */
+ol.records li:target { background: color-mix(in srgb, var(--mark) 12%, transparent); }
+
+/* Footers and error pages. */
+#citation { border-top: 1px solid var(--line); padding: var(--space-2) var(--space-3);
+  color: var(--dim); }
+/* Both lists: the page's own citations, and the ones its map swaps in beside them. Full page
+   width, because a citation is a line someone copies whole and the map's column would wrap a
+   session id three times. */
+#citation ul { margin: 0; padding: 0; list-style: none; overflow-wrap: anywhere; }
+#error p { max-width: 40rem; }

@@ -1,0 +1,105 @@
+/* The reading pane's furniture: the crumb chain above it, the children log, the facts and
+   details of the node, and the walk on to the next one. */
+/* Where a node sits, above the node itself. Separators between the steps rather than around
+   them, so the trail reads as one line. */
+.crumbs a + a::before { content: "/"; color: var(--dim); margin: 0 var(--space-1); }
+/* The children log: a table of what is under the node, on the pane's full width. It reuses
+   the session list's table rules (`listing.css`) — the same numbers right-aligned, the same two-line
+   cell — and adds only what a log has that a list does not.
+
+   Every column but one is a number, a stamp or a short name, so they take what they need and
+   the column the child is identified by takes the rest. `width: 100%` on that one cell is how
+   a table gives it the remainder; `min-width: 0` is what lets it then be cut rather than
+   pushing the numbers off the right. */
+#reading-pane .log th { color: var(--dim); font-size: var(--type-label); font-weight: 600; }
+#reading-pane .log td.what { width: 100%; min-width: 0; }
+#reading-pane .log td.what .primary { overflow-wrap: anywhere; }
+/* A call's own words, in the column beside the model that said them: prose, so it wraps and
+   is cut at two lines rather than ellipsised on one, and dim so the row still scans by the
+   columns a reader is counting. The list of tools the call went on to make reads the same
+   way, one line of it. Both are held off the numbers by a max-width, like the session list's
+   own title column. */
+#reading-pane .log td.said, #reading-pane .log td.called { max-width: 26rem; color: var(--dim); }
+/* And a floor under the words, because most api calls say nothing: a column sized by its
+   content collapses to the width of the few rows that filled it, and the two lines it is
+   meant to show arrive one word wide. */
+#reading-pane .log td.said { min-width: 16rem; }
+#reading-pane .log td.said > span { display: -webkit-box; -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+#reading-pane .log td.called > span { display: block; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+/* The line under it is the command a description described: one long line of shell, held to
+   one line and cut with an ellipsis. A reader who wants the whole of it opens the row. */
+#reading-pane .log td.what .secondary { font-family: ui-monospace, SFMono-Regular, monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A row opened in place, standing under the row that opened it. The rail and the wash are
+   what say so: the body inside is a whole node's, headings and all, and without them a
+   reader scrolling meets a second pane with nothing tying it to the line above. */
+#reading-pane .log tr.expansion > td { background: color-mix(in srgb, var(--mark) 12%, transparent);
+  box-shadow: inset 3px 0 var(--mark); padding: var(--space-2) var(--space-3); }
+
+/* The pane. A node's facts flow rather than stacking — a pane is one node, not four clusters
+   of them — and a fact reads the same on every kind's page: a dim label over the value it
+   names. Identifiers and paths break anywhere, because a session id has nowhere else to. */
+.facts { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3);
+  margin: var(--space-2) 0; }
+.facts dt { color: var(--dim); font-size: var(--type-label); }
+.facts dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+/* The command a slash turn ran, over the facts it made: the one line of a turn's pane a
+   reader scans for, in the accent and the monospace the command was typed in. */
+.command { margin: var(--space-2) 0; }
+.command span { color: var(--mark); font-family: ui-monospace, SFMono-Regular, monospace;
+  font-weight: 600; }
+/* One of the node's own values, cut to the pane's width. Its name reads as a label and not
+   as a heading — the pane's one heading is the node — and the value itself wraps: the reader
+   opened it to read it, and a tool input is not a column of a table.
+   The label is the section's own: a value opened whole is rendered where the preview was, and
+   a heading a model wrote inside it is prose rather than a name for what it sits in. */
+.detail > h3 { margin: var(--space-2) 0 var(--space-1); font-size: var(--type-label);
+  color: var(--dim); }
+.detail pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: var(--space-1) 0;
+  border-left: 2px solid var(--line); padding-left: var(--space-2); }
+/* What a tool was passed and what it returned are two walls of the same monospace, and a
+   reader scrolling one needs to know which. The rail says it: the ask is walled in the rule
+   color like every other value, the answer in the accent. */
+.detail[data-detail="result"] pre { border-left-color: var(--mark); }
+/* And the words a person or a model wrote are walled as the quotation they are: someone
+   else's writing set inside our page. The same rail the blocks above carry, so a pane reads
+   as one column of quoted values whether the value is prose or a payload. The wall goes on
+   the prose and not on the section, because the section holds the label naming it too. */
+.detail.quoted .prose { border-left: 2px solid var(--line); padding-left: var(--space-2);
+  margin: var(--space-1) 0; }
+/* The pull requests a session's commands touched — a list a reader follows off the page. */
+ul.prs { margin: var(--space-2) 0; padding: 0; list-style: none; overflow-wrap: anywhere; }
+/* The way down to the bytes: the thread's transcript, and the one line this node was read
+   from. Quiet, because it is the exit from the page rather than the page. */
+.raw { color: var(--dim); }
+.raw > summary { cursor: pointer; }
+
+/* Reading in order: back on the left, on to the next on the right, with whatever room is
+   between them. Each control carries the neighbour's own title rather than the word "next",
+   so it wraps like the prose it is and is capped near a reading measure. A title is not
+   always prose — a path holds no space to wrap at — so it breaks wherever it has to rather
+   than pushing the page sideways. */
+.walk { display: flex; gap: var(--space-3); border-top: 1px solid var(--line);
+  margin-top: var(--space-3); padding-top: var(--space-2); }
+.walk .button { max-width: 24rem; overflow-wrap: anywhere; }
+/* Each control holds its own end whether or not the other is there: the last node of a
+   session has nothing after it, and its back link still belongs on the left. */
+.walk [data-walk="previous"] { margin-right: auto; }
+.walk [data-walk="next"] { margin-left: auto; text-align: right; }
+/* The kind ahead of the title: the walk crosses levels, so a reader sees what they are
+   stepping to before they step. Dimmed — the node's own words are what they came for. */
+.walk [data-field="kind"] { color: var(--dim); }
+
+/* Where the session failed, laid out like the walk above it: the step back on the left, the
+   step on on the right, and the way to the whole list between them. The list is the one
+   control here that is always there, so it holds the middle rather than an end. */
+nav.error-stepper { display: flex; gap: var(--space-3); align-items: baseline;
+  margin-top: var(--space-2); }
+nav.error-stepper a { max-width: 20rem; text-decoration: none; overflow-wrap: anywhere; }
+nav.error-stepper [data-step="previous"] { margin-right: auto; }
+nav.error-stepper [data-step="next"] { margin-left: auto; text-align: right; }
+/* The count, which is the one number on the page that says how much there is to jump to. */
+nav.error-stepper [data-field="tool_errors"] { color: var(--bad); }
+

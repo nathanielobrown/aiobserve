@@ -68,11 +68,11 @@ Each page is weighed against its ceiling at the widest response its route can be
 <!-- aigarden:cog sh "uv run python -m tools.gen_bounds pages" -->
 | Page | Worst case, in bytes |
 | --- | --- |
-| Node page | 6,483,912 of the 6,500,000 it is allowed |
+| Node page | 6,484,262 of the 6,500,000 it is allowed |
 | Expansion | 621,164 of 625,000 |
-| Session list | 498,625 of 500,000 |
-| Projects | 301,225 of 500,000 |
-| A session's errors | 96,278 of 500,000 |
+| Session list | 498,975 of 500,000 |
+| Projects | 301,575 of 500,000 |
+| A session's errors | 96,628 of 500,000 |
 | Raw records | 288,000 of 500,000 |
 <!-- aigarden:end -->
 
@@ -86,8 +86,8 @@ The node page is weighed against a budget of its own rather than the 500,000 the
 | Previewed values | 3 rendered at 120,550: 361,650 |
 | Crumbs | 16 at 556: 8,896 |
 | Pager | 565 |
-| Chrome | 17,750 |
-| Spare | 16,088 |
+| Chrome | 18,100 |
+| Spare | 15,738 |
 <!-- aigarden:end -->
 
 The NavTree is what multiplies: an open path is a row for the root and one for every child of every level it descends through, and those rows are most of the page. `NAV_TREE_ROW_BYTES` is measured through the app rather than budgeted, at a title of nothing but `&` and the longest query string a link can carry, and pinned with no slack in either direction — a byte of slack there is a byte on every row of the widest page, and the room above is spoken for. Nearly all of a row is its URL, written three times: the `href` a reader follows, the `hx-get` htmx fetches, and the popover's own path under a prefix. What the click does with its response is written once on `#nav-tree-rows` and inherited; what the popover does with its own cannot be, because htmx walks up from the element that fetched, and a swap written on the row would be taken by the link inside it — so its five attributes are spelled out on every row, and a store whose agent runs carry longer ids than the recorded corpus does is a re-measure. `NODE_BYTES` in `tests/view/budgets.py` records what each raise of the ceiling bought, and the spare in the table above is what the next thing a row grows by will be measured against.

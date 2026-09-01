@@ -1,0 +1,46 @@
+/* The tokens every other sheet spends — five surface colors and an alarm, four type steps,
+   four space steps. A page that needs a size or a gap takes the nearest step rather than a
+   new number, which is what keeps a viewer with no build step coherent.
+
+   The viewer's CSS is these sheets, linked in the one order `components/layout.py` declares —
+   this file first, since the rest spend what it names — and all served from this app: the
+   policy in `app.CSP` allows no other source. */
+:root {
+  color-scheme: light dark;
+  --ink: #1b1b1f;    /* body text */
+  --dim: #676772;    /* labels and second lines; holds 4.5:1 over the `:target` wash too */
+  --line: #d8d8de;   /* rules and borders */
+  --paper: #fbfbfd;  /* the page */
+  --mark: #2b5fd9;   /* links, the selection rail, the one accent */
+  --hot: #e08a1e;    /* the ground under a cost, deepening with what the node spent */
+  --bad: #b3261e;    /* a tool call that failed, a run that ran its window out */
+  --faint: #b6b6c0;  /* the context a session opened on, under everything a turn added to it */
+  --agent: #7a45c9;  /* a run's share of its own window, so a thread reads apart from a turn */
+  --free: #1f8a4c;   /* what a compaction gave back — the one measurement that is good news */
+  --type-label: 0.75rem;
+  --type-body: 0.875rem;
+  --type-head: 1rem;
+  --type-title: 1.3rem;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 1rem;
+  --space-4: 2rem;
+  /* How far one level of the NavTree sits in from the level above it. Small, because the NavTree is
+     a narrow column and a session nests as far as an agent spawns. */
+  --nav-tree-step: var(--space-3);
+  /* One row's height, and the height of the preset control the rows scroll under: what the
+     clamped steps of the open path stand one below another against. Both are arithmetic over
+     the tokens above — a row is one line box of the label step at the NavTree's line height,
+     and the control is one such line plus the borders on its buttons, its own padding and the
+     rule under it. */
+  --nav-tree-row: calc(var(--type-label) * 1.6);
+  --nav-tree-head: calc(var(--nav-tree-row) + var(--space-2) + 3px);
+}
+/* Dark holds the same roles at the same contrast: ink and dim stay legible on paper, and the
+   accent lightens so a bar and a link read against a dark row rather than sinking into it.
+   `--hot` goes the other way and deepens, because it is a surface rather than text: a light
+   amber under a dark page's ink would be the one thing on the page that glares. */
+@media (prefers-color-scheme: dark) {
+  :root { --ink: #e6e6ea; --dim: #9a9aa5; --line: #33333c; --paper: #17171c; --mark: #7aa2f7;
+    --bad: #ff8f85; --hot: #8a5a12; --faint: #4a4a56; --agent: #b794f6; --free: #5fd18a; }
+}

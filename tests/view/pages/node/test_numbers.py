@@ -46,6 +46,7 @@ from tests.view.conftest import (
     inside,
     one,
     step,
+    viewer_css,
     wired,
 )
 
@@ -612,7 +613,7 @@ def test_a_popover_is_hidden_until_its_row_is_pointed_at_or_tabbed_into(
     also what holds the popover open while a reader selects the numbers out of it, which is
     the copy affordance a pin would otherwise have to be built for.
     """
-    style = client.get("/static/style.css").text
+    style = viewer_css(client)
     assert re.search(r"\.popover\s*\{[^{}]*display: none", style)
     # Fixed rather than absolute: `#nav-tree` scrolls under `overflow: auto`, which clips anything
     # positioned inside it — and a popover of numbers is wider than the NavTree.

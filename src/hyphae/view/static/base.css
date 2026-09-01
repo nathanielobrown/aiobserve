@@ -1,0 +1,39 @@
+/* The frame every page stands in: the document that never scrolls, the masthead across the
+   top of it, the headings, and the button. */
+/* One screen, and the masthead across the top of it. The document itself never scrolls: the
+   frame is a column exactly the viewport's height, the masthead takes what it needs, and what
+   is under it takes the rest and scrolls inside itself. Fixed by structure rather than by
+   `position: fixed`, so nothing has to know how tall the masthead is. */
+body {
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: var(--type-body);
+  line-height: 1.45;
+}
+a { color: var(--mark); }
+/* The page's own scroller on every page but the node browser, which hands the scroll down to
+   its two columns. `min-height: 0` because a flex item's floor is its content, and without it a
+   long list would push the column past the viewport and take the document's scrollbar back. */
+main { flex: 1; min-height: 0; overflow: auto; padding: 0 var(--space-3) var(--space-4); }
+#masthead {
+  flex: none;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+}
+#masthead a { text-decoration: none; }
+h1 { font-size: var(--type-title); }
+h2 { font-size: var(--type-head); }
+
+/* A control the reader clicks rather than reads: it looks the same whether it is a link that
+   leads somewhere or a button that swaps the pane under them, because which one it is is not
+   a thing they can act on. `font: inherit` because a button takes none of the page's type. */
+.button { display: inline-block; border: 1px solid var(--line); border-radius: var(--space-1);
+  padding: var(--space-1) var(--space-2); background: none; color: var(--mark); font: inherit;
+  text-align: inherit; text-decoration: none; cursor: pointer; }
+

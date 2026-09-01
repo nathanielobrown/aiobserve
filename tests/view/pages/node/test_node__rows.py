@@ -24,6 +24,7 @@ from tests.view.conftest import (
     Planter,
     fields,
     one,
+    viewer_css,
 )
 from tests.view.selections import (
     TURN,
@@ -333,7 +334,7 @@ def test_the_two_prose_columns_of_a_calls_log_are_bounded_by_the_stylesheet(
     # class the cell carries.
     page = client.get(TURN).text
     assert 'class="said"' in page and 'class="called"' in page
-    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
+    style = re.sub(r"/\*.*?\*/", "", viewer_css(client), flags=re.DOTALL)
     rules = [
         (selector.strip(), body)
         for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", style)

@@ -2,7 +2,7 @@
 
    Hand-written rather than generated from a Pygments theme, for two reasons. A shipped theme
    is a block of hex that reads as one scheme and washes out in the other, while every color
-   below is a token `style.css` already declares for both — so what clears 4.5:1 there clears
+   below is a token `tokens.css` already declares for both — so what clears 4.5:1 there clears
    it here, and `test_both_schemes_print_every_color_of_text_readably` covers this sheet by
    covering those. And a theme names two hundred classes for languages this viewer never marks
    up; a rule for a class the highlighter cannot emit is a rule nobody can see fail.

@@ -92,7 +92,7 @@ def _record(*, row: RecordRow, thread: str, opened: int | None) -> Html:
         [
             htpy.span(".line")[row.line_no],
             # Spaces, one per gap: the row is no flex line and only `.line` carries a margin
-            # (`view/static/style.css`), so these are what hold the five values apart.
+            # (`view/static/pages.css`), so these are what hold the five values apart.
             " ",
             htpy.span(".type", data_field="type")[row.type],
             " ",

@@ -1,0 +1,26 @@
+/* The marks every page shares: what an enrichment pass wrote, what kind a thing is, and
+   what failed. */
+/* What an enrichment pass said, beside what the store recorded. Dimmed throughout: these are
+   a model's words about the transcript, and the transcript is what a reader came for. */
+.enrichment { color: var(--dim); margin: var(--space-1) 0; }
+section.enrichment { border-left: 2px solid var(--line); padding-left: var(--space-2); }
+.friction { font-style: italic; }
+/* The mark saying what a thing is: what kind of node a row, a crumb or a heading names, and
+   what a children log's column counts. It says nothing a screen reader needs — the word or the
+   title beside it is the same fact — so it is dim, and the markup hides it. */
+.icon { color: var(--dim); }
+/* The mark on a title a model helped write. Not dimmed with the rest — it is the one thing
+   on a NavTree row that says where the words came from, and a dimmed mark reads as decoration. */
+.glyph { color: inherit; cursor: help; }
+/* Outlined in the colour it is written in, not in the rule colour: a chip is a thing the
+   reader is asked to see, and `--line` against either paper is 1.4:1 — a pill with no edge. */
+.tag { border: 1px solid currentColor; border-radius: 0.7rem; padding: 0 var(--space-2);
+  font-size: var(--type-label); margin-right: var(--space-1); white-space: nowrap; }
+/* Quiet rather than alarming: a stale row is a reason to re-run a pass, not a reason to
+   distrust what it says. */
+.tag.stale { border-style: dashed; }
+
+/* What failed. The alarm is spent on the tool call that returned an error and on the status an
+   error page leads with, and nowhere else — a page of red says nothing about where to look. */
+[data-field="is_error"], #error h1 { color: var(--bad); }
+

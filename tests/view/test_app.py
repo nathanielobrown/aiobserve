@@ -42,6 +42,7 @@ from tests.view.conftest import (
     fields,
     one,
     values,
+    viewer_css,
 )
 from tests.view.scenarios import SCENARIOS
 
@@ -170,7 +171,7 @@ def test_both_schemes_print_every_color_of_text_readably(client: TestClient) -> 
     The cost badge is read apart from the rest: it is a surface only the dollar value is
     printed on, so it is held to `--ink` alone rather than to every role.
     """
-    sheet = client.get("/static/style.css").text
+    sheet = viewer_css(client)
     # Tokens are declared in exactly two places, and dark restates only what it changes.
     head, _, tail = sheet.partition("prefers-color-scheme: dark")
 
@@ -180,7 +181,7 @@ def test_both_schemes_print_every_color_of_text_readably(client: TestClient) -> 
     light = read(head)
     schemes = {"light": light, "dark": light | read(tail)}
     # Two rosters, closed: the colours text is printed in, and the surfaces under it — the
-    # badge's warm ground and the three bands the context bar draws (`view/static/style.css`).
+    # badge's warm ground and the three bands the context bar draws (`view/static/nav-tree.css`).
     # A surface carries no text of its own, so what holds it is the eye on the gallery
     # (`.claude/rules/viewer-ui.md`) and the ramp below, not a contrast ratio.
     assert set(light) == {"ink", "dim", "line", "paper", "mark", "bad"} | {
@@ -222,7 +223,7 @@ def test_the_stylesheet_a_browser_reads_carries_no_prose_outside_a_comment(
     server or a test suite reports. Every comment this sheet opens is closed once, so a `*/`
     left over after the comments come out is prose a browser is about to read as a selector.
     """
-    sheet = client.get("/static/style.css").text
+    sheet = viewer_css(client)
     assert "*/" not in re.sub(r"/\*.*?\*/", "", sheet, flags=re.DOTALL)
 
 
@@ -247,7 +248,7 @@ def test_the_stylesheet_paints_only_fields_a_page_carries(
         [FORK_ORIGIN],
     ).fetchall()[0]
     page = client.get(f"/session/{FORK_ORIGIN}/thread/{source}/tool/{tool_id}").text
-    painted = set(re.findall(r'data-field="([a-z_]+)"', client.get("/static/style.css").text))
+    painted = set(re.findall(r'data-field="([a-z_]+)"', viewer_css(client)))
     assert painted, "the stylesheet no longer paints any field by name"
     assert painted <= set(re.findall(r'data-field="([a-z_]+)"', page))
 

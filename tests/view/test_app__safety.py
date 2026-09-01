@@ -45,7 +45,7 @@ from tests.view.conftest import (
         f"/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}",
         f"/fragment/result/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}",
         f"/fragment/result/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{MISSING}",
-        "/static/style.css",
+        "/static/tokens.css",
     ],
 )
 def test_every_response_carries_the_content_security_policy(path: str, client: TestClient) -> None:

@@ -1,0 +1,277 @@
+/* The NavTree: the browser's left column (`browser.css`), one flat list of rows with the
+   badges and bars each row wears. */
+/* The NavTree scrolls on its own, so a deep session scrolls its rows without losing the pane
+   beside them. Monospaced at the label step, because a name's cut and the numbers after it
+   line up down the column: the NavTree is scanned rather than read. */
+#nav-tree { min-height: 0; overflow: auto;
+  font-family: ui-monospace, monospace; font-size: var(--type-label); line-height: 1.6; }
+#nav-tree .rows { margin: 0; padding: 0; list-style: none; }
+/* The preset in force, and the two beside it. Held at the top of the NavTree's own scroller, so a
+   deep session scrolls its rows under the control rather than past it — and ruled off from
+   them, because three words above a NavTree read as the NavTree's root until they look clickable. */
+#nav-tree .presets { position: sticky; top: 0; z-index: 1; margin: 0 0 var(--space-1); display: flex;
+  gap: var(--space-2); padding: var(--space-1); background: var(--paper);
+  border-bottom: 1px solid var(--line); }
+#nav-tree .presets .button { color: var(--dim); font-size: var(--type-label);
+  padding: 0 var(--space-1); }
+#nav-tree .presets [aria-current] { color: var(--ink); border-color: var(--mark); font-weight: 600; }
+/* One rung per level a chain can open (`view/bounds.py:DEPTH`), each a step further in than
+   the one above: a subagent's turns sit four levels down and its calls deeper still, and a
+   ladder that stopped short laid them flush against the session. Written out rather than
+   computed from `data-depth`, because reading an attribute as a number is not portable CSS
+   and `app.CSP` forbids the inline style that would carry one. `tests/view/test_nav_tree.py` is
+   what keeps the ladder as long as a chain can be. */
+li.row[data-depth="1"] > :is(a, button) { padding-left: calc(1 * var(--nav-tree-step)); }
+li.row[data-depth="2"] > :is(a, button) { padding-left: calc(2 * var(--nav-tree-step)); }
+li.row[data-depth="3"] > :is(a, button) { padding-left: calc(3 * var(--nav-tree-step)); }
+li.row[data-depth="4"] > :is(a, button) { padding-left: calc(4 * var(--nav-tree-step)); }
+li.row[data-depth="5"] > :is(a, button) { padding-left: calc(5 * var(--nav-tree-step)); }
+li.row[data-depth="6"] > :is(a, button) { padding-left: calc(6 * var(--nav-tree-step)); }
+li.row[data-depth="7"] > :is(a, button) { padding-left: calc(7 * var(--nav-tree-step)); }
+li.row[data-depth="8"] > :is(a, button) { padding-left: calc(8 * var(--nav-tree-step)); }
+li.row[data-depth="9"] > :is(a, button) { padding-left: calc(9 * var(--nav-tree-step)); }
+li.row[data-depth="10"] > :is(a, button) { padding-left: calc(10 * var(--nav-tree-step)); }
+li.row[data-depth="11"] > :is(a, button) { padding-left: calc(11 * var(--nav-tree-step)); }
+li.row[data-depth="12"] > :is(a, button) { padding-left: calc(12 * var(--nav-tree-step)); }
+li.row[data-depth="13"] > :is(a, button) { padding-left: calc(13 * var(--nav-tree-step)); }
+li.row[data-depth="14"] > :is(a, button) { padding-left: calc(14 * var(--nav-tree-step)); }
+li.row[data-depth="15"] > :is(a, button) { padding-left: calc(15 * var(--nav-tree-step)); }
+li.row[data-depth="16"] > :is(a, button) { padding-left: calc(16 * var(--nav-tree-step)); }
+/* The open path, clamped. Each step of it sticks at the top of the NavTree's scroller as the
+   rows under it go by, one row further down than the step above and the first of them under
+   the preset control — so a reader deep inside a level still reads which session, which turn
+   and which run they are in. Every level a chain can open has an offset, written out for the
+   reason the ladder above is: `data-depth` is not a number a rule can read, and `app.CSP`
+   forbids the inline style that would carry one.
+   Opaque, because the rows a clamped step stands over pass beneath it, and with no `z-index`
+   of its own, which leaves it under the control the presets are pinned in and over the rows,
+   where a positioned box already stands.
+   A step stays clamped past the end of what it holds, to the foot of the list: the rows are
+   one flat `<ul>` (`_nav_tree.html`), a sticky box is released by its container, and the
+   nesting that would release each step is the nesting an out-of-band swap of the whole list
+   cannot have. Accepted — the path a reader has open is worth the rows it covers. */
+li.row.ancestor { position: sticky; background: var(--paper); }
+li.row.ancestor[data-depth="0"] { top: calc(var(--nav-tree-head) + 0 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="1"] { top: calc(var(--nav-tree-head) + 1 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="2"] { top: calc(var(--nav-tree-head) + 2 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="3"] { top: calc(var(--nav-tree-head) + 3 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="4"] { top: calc(var(--nav-tree-head) + 4 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="5"] { top: calc(var(--nav-tree-head) + 5 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="6"] { top: calc(var(--nav-tree-head) + 6 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="7"] { top: calc(var(--nav-tree-head) + 7 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="8"] { top: calc(var(--nav-tree-head) + 8 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="9"] { top: calc(var(--nav-tree-head) + 9 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="10"] { top: calc(var(--nav-tree-head) + 10 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="11"] { top: calc(var(--nav-tree-head) + 11 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="12"] { top: calc(var(--nav-tree-head) + 12 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="13"] { top: calc(var(--nav-tree-head) + 13 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="14"] { top: calc(var(--nav-tree-head) + 14 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="15"] { top: calc(var(--nav-tree-head) + 15 * var(--nav-tree-row)); }
+li.row.ancestor[data-depth="16"] { top: calc(var(--nav-tree-head) + 16 * var(--nav-tree-row)); }
+/* A row is one line: what the node is on the left, what it cost on the right, and a title too
+   long for the column cut rather than wrapped. The spare width belongs to the title and to
+   nothing else. Spread between the parts instead, a short title floats out into the middle of
+   the column with the enrichment glyph adrift ahead of it, and a column of rows reads as
+   centred text sitting away from the indent that says how deep each one is. */
+li.node > a {
+  display: flex; gap: var(--space-2);
+  padding: 0 var(--space-1); color: inherit; text-decoration: none;
+}
+li.node [data-field="title"] { flex: 1;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#nav-tree .secondary { color: var(--dim); white-space: nowrap; }
+li.node > a:hover { background-color: color-mix(in srgb, var(--mark) 12%, transparent); }
+/* The row the pane is about, held at full strength while everything around it recedes. The
+   wash alone is what a hover already does, so the selection is also railed in the accent —
+   3px of it, down the row's left edge — which no other row can wear. Inset rather than a
+   border, so the rail costs the row no width and the titles stay in one column. */
+li.row[data-selected] > a { font-weight: 600; color: var(--ink);
+  background-color: color-mix(in srgb, var(--mark) 12%, transparent);
+  box-shadow: inset 3px 0 var(--mark); }
+/* The numbers behind a row, shown while the reader is pointing at it or has tabbed into it.
+   `position: fixed` rather than absolute: the NavTree scrolls under `overflow: auto`, which clips
+   anything positioned inside it, and the popover is wider than the NavTree column. Fixed beside
+   the NavTree rather than under the pointer — no stylesheet can find a pointer — so a reader
+   knows where the numbers will be before they arrive. It stands where the reading pane does:
+   `--nav-tree-width` is the width the reader dragged to, set on `#browser` and inherited down to
+   here, and the grip and the two gutters beside it are what separate the two columns.
+   The popover is a descendant of its row, so `:hover` on the row holds while the pointer is
+   inside the popover itself, and `:focus-within` holds once a click lands on it — which is
+   what makes the numbers selectable without a pin to hold them open.
+   The `top` here is only where one stands before a script has placed it: `static/nav-tree.js`
+   aligns it with the row the reader reached, which a stylesheet cannot find. */
+.popover { display: none; position: fixed; top: var(--space-3); z-index: 2;
+  left: calc(var(--nav-tree-width, 24rem) + var(--grip-width) + var(--space-3) * 2);
+  max-width: 32rem;
+  padding: var(--space-2); background: var(--paper); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 4px;
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--ink) 20%, transparent);
+  font-size: var(--type-label); }
+li.node:hover .popover, li.node:focus-within .popover { display: block; }
+.popover dl { display: grid; grid-template-columns: auto auto; gap: 0 var(--space-2);
+  margin: 0 0 var(--space-1); }
+/* The counts and their dollars: three columns, and no gap between them, so the rule over the
+   total below runs unbroken across all three. The room between the columns is the cells' own
+   padding instead. */
+.popover dl.charges { grid-template-columns: auto auto auto; gap: 0; }
+.popover .charges dd { padding-left: var(--space-2); }
+.popover .charges .sum > * { border-top: 1px solid var(--line); padding-top: 2px; }
+.popover dl > div { display: contents; }
+.popover dt { color: var(--dim); }
+.popover dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.popover .beside { margin: 0; color: var(--dim); }
+.popover .sum [data-field="cost_usd"] { color: var(--ink); font-weight: 600; }
+/* The trigger itself draws nothing: it is a mount for the popover and a listener on the row. */
+.peek { display: contents; }
+
+/* The tail of a level, which fetches the rest of it and stands the rows in its own place. A
+   button, because there is no page at the other end — and dressed as the row it sits in
+   rather than as a control, so the NavTree stays one column of one kind of line. Held to the
+   weight of `li.node > a` above, so the rules that indent a row by its depth outrank it here
+   the same way they outrank the anchor's own padding. */
+li.row.more { color: var(--dim); }
+li.more > button { display: block; width: 100%; padding: 0 var(--space-1); border: 0;
+  background: none; color: inherit; font: inherit; text-align: inherit; cursor: pointer; }
+li.more > button:hover { background-color: color-mix(in srgb, var(--mark) 12%, transparent); }
+/* The context bar: how full the model's context window was when the node ended, over a track
+   the row's full width. Linear, so half a bar is half a window (`view/nodes.py`). Three edges
+   are drawn, and each is a prefix of the one before it: where the node left the window, where
+   the growth it is answerable for begins, and — on a turn — the context the session opened on
+   before a word had been said. What the reader sees between two edges is the band the second
+   one opens, so a turn reads as prompt, conversation, and its own share at the bright tip.
+   Three class families of 21 carry the edges as custom properties, because the policy blocks
+   the `style` attribute an inline width would need. One rule spends them: the widest layer is
+   painted first and the narrower ones over it, which is what makes each band a prefix.
+   A row that ends on no window draws no track either — an empty track under a tool call would
+   read as a window that emptied, and what a tool call took is its api call's.
+   Painted bottom left over the content box, because depth is padding on the row's link: a
+   track over the padding box would start left of the title it measures. */
+li.node:is(.f0, .f1, .f2, .f3, .f4, .f5, .f6,
+           .f7, .f8, .f9, .f10, .f11, .f12, .f13,
+           .f14, .f15, .f16, .f17, .f18, .f19, .f20, .maxed) > a {
+  background-image: linear-gradient(var(--faint), var(--faint)),
+                    linear-gradient(var(--dim), var(--dim)),
+                    linear-gradient(var(--ctx-tip, var(--mark)), var(--ctx-tip, var(--mark))),
+                    linear-gradient(var(--line), var(--line));
+  background-repeat: no-repeat;
+  background-position: left bottom;
+  background-size: var(--ctx-base, 0%) 3px,
+                   var(--ctx-prior, 0%) 3px,
+                   var(--ctx-fill, 0%) 3px,
+                   100% 3px;
+  background-origin: content-box;
+}
+/* The tip is the one part of the bar a kind may take over, so it is a property with the accent
+   as its default: a run's own thread reads apart from the turns around it, and a compaction's
+   band is green because the space it gave back is the one measurement here that is good news.
+   `maxed` is the only mark the bar mints, because it is the only thing no kind can say — a
+   subagent that compacted did so unasked and unseen, and it is drawn full in the alarm
+   whatever the last call of its thread happened to leave behind. */
+li.node.run > a { --ctx-tip: var(--agent); }
+li.node.compaction > a { --ctx-tip: var(--free); }
+li.node.maxed > a { --ctx-tip: var(--bad); --ctx-fill: 100%; --ctx-prior: 0%; --ctx-base: 0%; }
+li.node.f0 { --ctx-fill: 0%; }
+li.node.p0 { --ctx-prior: 0%; }
+li.node.b0 { --ctx-base: 0%; }
+li.node.f1 { --ctx-fill: 5%; }
+li.node.p1 { --ctx-prior: 5%; }
+li.node.b1 { --ctx-base: 5%; }
+li.node.f2 { --ctx-fill: 10%; }
+li.node.p2 { --ctx-prior: 10%; }
+li.node.b2 { --ctx-base: 10%; }
+li.node.f3 { --ctx-fill: 15%; }
+li.node.p3 { --ctx-prior: 15%; }
+li.node.b3 { --ctx-base: 15%; }
+li.node.f4 { --ctx-fill: 20%; }
+li.node.p4 { --ctx-prior: 20%; }
+li.node.b4 { --ctx-base: 20%; }
+li.node.f5 { --ctx-fill: 25%; }
+li.node.p5 { --ctx-prior: 25%; }
+li.node.b5 { --ctx-base: 25%; }
+li.node.f6 { --ctx-fill: 30%; }
+li.node.p6 { --ctx-prior: 30%; }
+li.node.b6 { --ctx-base: 30%; }
+li.node.f7 { --ctx-fill: 35%; }
+li.node.p7 { --ctx-prior: 35%; }
+li.node.b7 { --ctx-base: 35%; }
+li.node.f8 { --ctx-fill: 40%; }
+li.node.p8 { --ctx-prior: 40%; }
+li.node.b8 { --ctx-base: 40%; }
+li.node.f9 { --ctx-fill: 45%; }
+li.node.p9 { --ctx-prior: 45%; }
+li.node.b9 { --ctx-base: 45%; }
+li.node.f10 { --ctx-fill: 50%; }
+li.node.p10 { --ctx-prior: 50%; }
+li.node.b10 { --ctx-base: 50%; }
+li.node.f11 { --ctx-fill: 55%; }
+li.node.p11 { --ctx-prior: 55%; }
+li.node.b11 { --ctx-base: 55%; }
+li.node.f12 { --ctx-fill: 60%; }
+li.node.p12 { --ctx-prior: 60%; }
+li.node.b12 { --ctx-base: 60%; }
+li.node.f13 { --ctx-fill: 65%; }
+li.node.p13 { --ctx-prior: 65%; }
+li.node.b13 { --ctx-base: 65%; }
+li.node.f14 { --ctx-fill: 70%; }
+li.node.p14 { --ctx-prior: 70%; }
+li.node.b14 { --ctx-base: 70%; }
+li.node.f15 { --ctx-fill: 75%; }
+li.node.p15 { --ctx-prior: 75%; }
+li.node.b15 { --ctx-base: 75%; }
+li.node.f16 { --ctx-fill: 80%; }
+li.node.p16 { --ctx-prior: 80%; }
+li.node.b16 { --ctx-base: 80%; }
+li.node.f17 { --ctx-fill: 85%; }
+li.node.p17 { --ctx-prior: 85%; }
+li.node.b17 { --ctx-base: 85%; }
+li.node.f18 { --ctx-fill: 90%; }
+li.node.p18 { --ctx-prior: 90%; }
+li.node.b18 { --ctx-base: 90%; }
+li.node.f19 { --ctx-fill: 95%; }
+li.node.p19 { --ctx-prior: 95%; }
+li.node.b19 { --ctx-base: 95%; }
+li.node.f20 { --ctx-fill: 100%; }
+li.node.p20 { --ctx-prior: 100%; }
+li.node.b20 { --ctx-base: 100%; }
+
+/* The cost badge: a node's spend on a warm ground that deepens with it. What deepens is the
+   share of `--hot` the ground carries, held in a custom property a class per step sets — a
+   class and not an inline width, because the policy blocks a `style` attribute, and one
+   property rather than ten backgrounds so the token is named once. The steps are logarithmic
+   (`view/nodes.py`), so each is a tenth of the scale and not a tenth of a session. A badged
+   value prints in ink: the ground takes back some of the contrast a dim second line spends,
+   and this is the number the reader came for. `s0` — a row that spent nothing — is left with
+   no ground and its dim, because a wash at the bottom of the scale reads as a measurement.
+   The step rides on the badge and not on the row, because a row that spawned a run draws two:
+   what it spent itself and what its subtree did, each at its own depth. */
+li.node .badge {
+  padding: 0 var(--space-1);
+  border-radius: 3px;
+  background-color: color-mix(in srgb, var(--hot) var(--cost-wash, 0%), transparent);
+}
+li.node .badge:is(.s1, .s2, .s3, .s4, .s5, .s6, .s7, .s8, .s9, .s10) {
+  color: var(--ink);
+}
+li.node .badge.s1 { --cost-wash: 6%; }
+li.node .badge.s2 { --cost-wash: 12%; }
+li.node .badge.s3 { --cost-wash: 18%; }
+li.node .badge.s4 { --cost-wash: 24%; }
+li.node .badge.s5 { --cost-wash: 30%; }
+li.node .badge.s6 { --cost-wash: 36%; }
+li.node .badge.s7 { --cost-wash: 42%; }
+li.node .badge.s8 { --cost-wash: 48%; }
+li.node .badge.s9 { --cost-wash: 54%; }
+li.node .badge.s10 { --cost-wash: 60%; }
+/* How often a run's own thread compacted. The alarm at full strength rather than a wash of it:
+   the count has no scale to sit on — one is already the whole of what the reader needs to know,
+   that a subagent ran its window out on a transcript nobody opened — so the pill is drawn at one
+   weight and reads apart from the washed costs beside it. Paper on the alarm in both schemes,
+   which is what keeps the text legible when `--bad` lightens for a dark page. */
+li.node .compacted {
+  padding: 0 var(--space-1);
+  border-radius: 3px;
+  white-space: nowrap;
+  color: var(--paper);
+  background-color: var(--bad);
+}
+

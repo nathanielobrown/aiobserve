@@ -26,6 +26,7 @@ from tests.view.conftest import (
     money,
     one,
     values,
+    viewer_css,
 )
 from tests.view.nav_trees import (
     THREAD,
@@ -301,7 +302,7 @@ def test_a_cost_badge_deepens_at_every_step_and_washes_nothing_but_the_cost(
     stylesheet, because that is the one place it is decided: the markup carries the class
     whatever the wash does, and nothing in this tier can see a painted box.
     """
-    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
+    style = re.sub(r"/\*.*?\*/", "", viewer_css(client), flags=re.DOTALL)
     washes = {
         int(step): int(part)
         for step, part in re.findall(r"li\.node \.badge\.s(\d+) \{[^}]*--cost-wash: (\d+)%", style)

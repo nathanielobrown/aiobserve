@@ -10,6 +10,21 @@ from hyphae.view.components import Html
 # `tests/view/test_dev.py` reads both at once.
 _DEV_SCRIPT = htpy.script(src="/static/dev-reload.js", defer=True)
 
+# The viewer's own sheets, in cascade order: the tokens first, since every later sheet spends
+# them, then each region of a page after the frame it stands in. The list is the one statement
+# of that order — the head links it as written, and the tests that scan the CSS read it whole
+# through this constant (`tests/view/conftest.py:viewer_css`).
+STYLESHEETS = (
+    "/static/tokens.css",
+    "/static/base.css",
+    "/static/listing.css",
+    "/static/browser.css",
+    "/static/nav-tree.css",
+    "/static/reading-pane.css",
+    "/static/marks.css",
+    "/static/pages.css",
+)
+
 
 def page(
     *,
@@ -33,10 +48,9 @@ def page(
                     htpy.meta(charset="utf-8"),
                     htpy.meta(name="viewport", content="width=device-width, initial-scale=1"),
                     htpy.title[tab_title],
-                    htpy.link(rel="stylesheet", href="/static/style.css"),
-                    # What paints the classes `view/text/highlight.py` writes. Its own file rather
-                    # than a block of `style.css`, because the classes are Pygments' vocabulary
-                    # and not this viewer's.
+                    [htpy.link(rel="stylesheet", href=url) for url in STYLESHEETS],
+                    # What paints the classes `view/text/highlight.py` writes. Apart from the list
+                    # above, because the classes are Pygments' vocabulary and not this viewer's.
                     htpy.link(rel="stylesheet", href="/static/pygments.css"),
                     # htmx writes a style element for its indicator class as it loads, which
                     # `app.CSP` blocks and the browser reports as an error on every page.

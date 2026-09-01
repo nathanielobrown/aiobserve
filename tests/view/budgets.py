@@ -200,27 +200,27 @@ MEASURED_SESSION_ROW_MARKUP = 1_200
 MEASURED_LIST_ENRICHMENT_MARKUP = 300
 # What a list page weighs apart from its rows: the filter form, the project suggestions, the
 # table head and the two pagers. Measured through the app by the leaf at the bottom of this
-# file, with `&` planted in every suggestion and the box at its cap — 8,996 B, a worst case
+# file, with `&` planted in every suggestion and the box at its cap — 9,346 B, a worst case
 # rather than a corpus observation, because the box is bound in SQL like everything else.
 # Pinned at what it measured rather than over it: `HYPHAE_PIN_EXACT=1` is what re-pins it.
-MEASURED_LIST_CHROME = 8_996
+MEASURED_LIST_CHROME = 9_346
 # What the markup around one row of the landing page costs, with the path it carries taken off,
 # and what that page weighs apart from its rows: the table head, and the line saying how many
 # projects it left out. Both re-measured through the app by the leaf at the bottom of this
 # file, every project path planted full of `&` and the store filled past the page's ceiling:
 # 1,994 B a row, of which 782 B is a planted path in its cell and in its link, leaving 1,212 B
-# of stacked window cells and the row around them — and 1,225 B of chrome, which is small
+# of stacked window cells and the row around them — and 1,575 B of chrome, which is small
 # because the page carries no form, no pager and no suggestions.
 MEASURED_PROJECT_ROW_MARKUP = 1_300
-MEASURED_PROJECTS_CHROME = 1_225
+MEASURED_PROJECTS_CHROME = 1_575
 # The same two for the page that lists where a session failed, whose row is a link to the
 # failed tool call's own page, the thread it ran on and a timestamp. Measured through the app
 # by the leaf at the bottom of this file, every title planted full of `&` and the session
 # failing more calls than the page shows: 904 B a row, of which 550 B is a planted title at
-# `NAV_CHARS`, leaving 354 B of the link and the two cells after it — and 1,278 B of chrome,
+# `NAV_CHARS`, leaving 354 B of the link and the two cells after it — and 1,628 B of chrome,
 # which is small for the same reason the landing page's is: no form, no pager, no suggestions.
 MEASURED_ERROR_ROW_MARKUP = 400
-MEASURED_ERRORS_CHROME = 1_278
+MEASURED_ERRORS_CHROME = 1_628
 
 # What an expansion carries outside the rows it lists: the node's own body, the link to its
 # page, and the queries it cites. The body's facts are read at `HEADER_CHARS` rather than at
@@ -310,11 +310,11 @@ DEAR_PANE_DETAILS = 3
 # page rather than once a level. The project step is the dear one — it prints a project path
 # and links to the session list narrowed by the whole of it, so the path is paid for twice,
 # once escaped and once URL-encoded.
-# Re-measured through the app by `test_bounds__node.py` at 17,750 B, which is what it is pinned
+# Re-measured through the app by `test_bounds__node.py` at 18,100 B, which is what it is pinned
 # at: `HYPHAE_PIN_EXACT=1` is what re-pins it. Up to five of its strings
 # are tree titles — the page title, and the two steppers under the pane — so it moves with
 # `queries.NAV_CHARS`.
-MEASURED_NODE_CHROME = 17_750
+MEASURED_NODE_CHROME = 18_100
 
 # The parameter every truncated column of a run row is cut to. Counted per query rather than
 # listed, so a fourth column added to a chip shows up in the arithmetic instead of quietly

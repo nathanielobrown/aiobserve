@@ -28,6 +28,7 @@ from tests.view.conftest import (
     reads,
     rows,
     values,
+    viewer_css,
     wired,
 )
 from tests.view.nav_trees import (
@@ -104,7 +105,7 @@ def test_every_level_a_nav_tree_opens_is_indented_one_step_further_than_the_one_
     rendered = {depth for depth, _ in rows(page)}
     assert max(rendered) > 3, "the recorded subagent no longer nests past three levels"
     # ...and the stylesheet indents each of them by its own depth, in one step a level.
-    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
+    style = re.sub(r"/\*.*?\*/", "", viewer_css(client), flags=re.DOTALL)
     ladder = {
         int(depth): int(steps)
         for depth, steps in re.findall(
@@ -151,7 +152,7 @@ def test_the_open_path_clamps_at_the_top_while_the_rows_under_it_scroll(
     assert {key for _, key in rows(page) if marked(page, key, "ancestor")} == clamped
     # And each depth clamps one row further down than the one above it, under the control the
     # presets are pinned in. Written out per level, as long as a chain can be.
-    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
+    style = re.sub(r"/\*.*?\*/", "", viewer_css(client), flags=re.DOTALL)
     stack = {
         int(depth): int(rung)
         for depth, rung in re.findall(
@@ -188,7 +189,7 @@ def test_a_row_reads_from_the_left_and_only_its_cost_sits_at_the_right(
         for row in re.findall(r'<li class="row node.*?</li>', page, flags=re.DOTALL)
         if re.search(parts, row, flags=re.DOTALL)
     ]
-    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
+    style = re.sub(r"/\*.*?\*/", "", viewer_css(client), flags=re.DOTALL)
     row_rules = re.findall(r"li\.node > a \{([^}]*)\}", style)
     assert any("display: flex" in rule for rule in row_rules)
     # Nothing distributes the spare width between the parts — that is the centring itself.
@@ -215,7 +216,7 @@ def test_the_nav_tree_keeps_its_place_because_the_scroller_is_not_what_swaps(
     page = client.get(url(open_turn(store))).text
     # The element the swap replaces sits inside the one the NavTree is scrolled by.
     assert "nav-tree-rows" in inside(page, "id", "nav-tree", "id")
-    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
+    style = re.sub(r"/\*.*?\*/", "", viewer_css(client), flags=re.DOTALL)
     scrolls = {
         selector.strip()
         for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", style)
@@ -253,7 +254,7 @@ def test_the_nav_tree_is_widened_by_a_handle_and_the_width_outlives_the_page(
     assert len(grip) == 1 and 'role="separator"' in grip[0] and 'tabindex="0"' in grip[0]
     # The NavTree's column is one custom property, which is the whole of what the script writes:
     # a width the stylesheet fixed some other way is a handle that drags nothing.
-    style = re.sub(r"/\*.*?\*/", "", client.get("/static/style.css").text, flags=re.DOTALL)
+    style = re.sub(r"/\*.*?\*/", "", viewer_css(client), flags=re.DOTALL)
     (columns,) = re.findall(r"#browser\s*\{[^}]*grid-template-columns:([^;]*);", style)
     assert "var(--nav-tree-width" in columns
     # And the script that writes it is a file this app serves, keeping the width where a page

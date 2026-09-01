@@ -77,7 +77,7 @@ A served-HTML test reads the attributes; only a browser reads what they do. `tes
 
 # A colour on a bar is judged on the gallery
 
-The context bar paints a track and three bands over it, and the outermost band takes its colour from the row's kind (`src/hyphae/view/static/style.css`). None of it is text, so no contrast ratio settles it. What a test holds is that the edges nest, that a run, a compaction and a maxed row each take a different tip, and that every token the bar spends is defined in both schemes. Which purple, which green, and how far the base band reads from the track are eyeballed.
+The context bar paints a track and three bands over it, and the outermost band takes its colour from the row's kind (`src/hyphae/view/static/nav-tree.css`). None of it is text, so no contrast ratio settles it. What a test holds is that the edges nest, that a run, a compaction and a maxed row each take a different tip, and that every token the bar spends is defined in both schemes. Which purple, which green, and how far the base band reads from the track are eyeballed.
 
 Witnessed in a real Chromium on 2026-08-28 against `mise run gallery --port 9063` — never 8477, which is a live viewer — in both colour schemes at 1400×900:
 

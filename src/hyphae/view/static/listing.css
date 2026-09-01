@@ -1,0 +1,38 @@
+/* The session list, and the table rules the children log reuses (`reading-pane.css`). */
+/* The session list. */
+#filters { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-2) var(--space-3);
+  margin: var(--space-2) 0; }
+#filters label { display: flex; flex-direction: column; color: var(--dim);
+  font-size: var(--type-label); }
+/* Wide enough for a repository path, narrow enough that five of them fit on one line. */
+#filters input[name="project"] { width: 16rem; }
+#filters input[name="errors"] { width: 5rem; }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--line);
+  text-align: left; }
+/* The head stays put while the rows scroll under it. Its rule is drawn inside the cell: a
+   collapsed border belongs to the table and scrolls away with it, leaving the sticky head
+   sitting on the rows with nothing between them. */
+th { position: sticky; top: 0; background: var(--paper); white-space: nowrap;
+  box-shadow: inset 0 -1px var(--line); }
+th[aria-sort] a { font-weight: 700; }
+th.number, td.number { text-align: right; }
+td.number { font-variant-numeric: tabular-nums; }
+td.names, .model, .type { color: var(--dim); }
+td.when { white-space: nowrap; }
+/* The two columns that compete for whatever the numbers leave. A path is one long token, so
+   with nowhere to break it takes the width it needs and the lists beside it pay — squeezed
+   until they break a name at its hyphen. `anywhere` lets the path column give, and the floor
+   under the lists keeps an agent type on one line. */
+td.path { max-width: 22rem; overflow-wrap: anywhere; }
+td.names { min-width: 10rem; }
+/* A cell reads as two lines: the value the column is scanned for, and the texture under it.
+   Both lines are block, so the second sits under the first whatever the cell's alignment. */
+td .primary { display: block; }
+td .secondary { display: block; color: var(--dim); font-size: var(--type-label); }
+/* The title's second line is prose a pass wrote, so it wraps and is cut at two lines rather
+   than ellipsised on one: two lines of a description say what the session was. */
+td.title { max-width: 26rem; }
+td.title .secondary { display: -webkit-box; -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; margin: 0; }
+

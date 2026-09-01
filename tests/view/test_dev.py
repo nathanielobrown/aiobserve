@@ -63,10 +63,10 @@ def dev_client(enriched_db: Path) -> Iterator[TestClient]:
         # Invented change sets, labelled: watchfiles yields `set[tuple[Change, str]]` and no
         # recording of one exists. The slow leaf below checks the shape.
         # If every path in the set is a stylesheet the page can keep its state...
-        (("static/style.css", "static/pygments.css"), Event.CSS),
+        (("static/tokens.css", "static/pygments.css"), Event.CSS),
         # ...but the client script beside a stylesheet is a page event, because a set the fast
         # path takes is a set whose script edit never reaches the browser...
-        (("static/style.css", "static/dev-reload.js"), Event.PAGE),
+        (("static/tokens.css", "static/dev-reload.js"), Event.PAGE),
         # ...and the client script itself only takes effect on a load.
         (("static/dev-reload.js",), Event.PAGE),
     ],
@@ -83,7 +83,7 @@ def test_what_happened_to_a_stylesheet_does_not_change_what_the_browser_does(
     change: Change,
 ) -> None:
     """A stylesheet added, edited or deleted is one thing to a page: fetch the sheets again."""
-    assert event_for({(change, "static/style.css")}) == Event.CSS
+    assert event_for({(change, "static/tokens.css")}) == Event.CSS
 
 
 def test_a_change_set_with_nothing_in_it_is_a_broken_assumption_rather_than_an_event() -> None:

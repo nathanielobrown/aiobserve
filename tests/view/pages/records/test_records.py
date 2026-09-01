@@ -192,7 +192,7 @@ def test_a_record_row_shows_a_preview_and_the_length_it_was_cut_from(
     assert row["raw_chars"] == f"{len(stored):,}"
     assert len(row["raw_head"]) <= queries.RECORD_PREVIEW
     # And the row's five values read as five, not as one long word. Only the line number carries
-    # a margin here — `ol.records li` is no flex row (`view/static/style.css`) — so the spaces
+    # a margin here — `ol.records li` is no flex row (`view/static/pages.css`) — so the spaces
     # between the type, the time, the length and the preview are all that hold them apart.
     said = reads(page, "data-record", str(RESUME_LONG_RECORD))
     assert said.startswith(
