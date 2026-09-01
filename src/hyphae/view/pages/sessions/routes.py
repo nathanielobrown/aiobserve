@@ -1,12 +1,9 @@
-"""The store's two lists: the projects landing, and the session list under its filter form.
+"""The session list at `/sessions`: what a request may ask of it, and the page that answers.
 
-One page lists the projects a store holds sessions for, the other the sessions themselves.
-What a request may ask of the second is here: which sort and filter keys it offers, what a
-query-string value has to parse as, and the links that carry all of it to the next page.
-
-The SQL those choices compose is `view/store.py`'s, beside every other page's composition.
-This module hands it a key out of a closed dictionary and a value already parsed, which is
-what makes a key outside them a 400 here rather than a fragment of SQL there.
+Which sort and filter keys the list offers, what a query-string value has to parse as, and the
+page those choices compose. The SQL is `view/store.py`'s, beside every other page's
+composition. This module hands it a key out of a closed dictionary and a value already parsed,
+which is what makes a key outside them a 400 here rather than a fragment of SQL there.
 """
 
 import datetime as dt
@@ -20,18 +17,12 @@ from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.view import bounds
 from hyphae.view.citation import cited
-from hyphae.view.components import listing as components
-from hyphae.view.components.listing import Control
 from hyphae.view.components.parts import Count
 from hyphae.view.deps import ViewerDep
 from hyphae.view.enrichment import enriched
-from hyphae.view.links import (
-    DEFAULT_DIRECTION,
-    DEFAULT_SORT,
-    LIST_URL,
-    list_url,
-    project_link,
-)
+from hyphae.view.links import DEFAULT_DIRECTION, DEFAULT_SORT, LIST_URL, list_url
+from hyphae.view.pages.sessions import markup
+from hyphae.view.pages.sessions.markup import Control
 from hyphae.view.store import (
     DESCRIBED_BOUND,
     DIRECTIONS,
@@ -39,13 +30,14 @@ from hyphae.view.store import (
     SORTS,
     Page,
     Row,
-    dropped,
     list_bound,
     open_store,
     page_rows,
     sorted_sessions,
 )
-from hyphae.view.text import format as fmt
+
+router = APIRouter()
+
 
 # The HTML input a filter's type gets on the form. One map rather than a field per filter.
 CONTROLS: dict[queries.ParamType, str] = {
@@ -58,6 +50,7 @@ CONTROLS: dict[queries.ParamType, str] = {
 # The same two as `aria-sort` spells them. ARIA defines the tokens and `asc` is not one of
 # them, so a heading marked with the query string's own word announces no order at all.
 ARIA_SORT: dict[str, str] = {"asc": "ascending", "desc": "descending"}
+
 
 # Every query-string key the session list reads: the filters, plus what orders and pages them.
 LIST_KEYS = frozenset(FILTERS) | {"sort", "direction", "page", "size"}
@@ -93,30 +86,7 @@ def _as_bound(key: str, text: str) -> ParamValue:
         raise HTTPException(400, f"The list's {key} takes {kind} values.") from error
 
 
-def _project_row(row: Row) -> components.ProjectRow:
-    """One store row as the row the landing page prints.
-
-    The link is minted through the list's own builder, so a project opens the list the way the
-    list links to itself, and off `project_filter` rather than the path the row shows: the
-    filter matches a whole path, and a cut one matches nothing.
-    """
-    return components.ProjectRow(
-        project_dir=row["project_dir"],
-        link=project_link(row["project_filter"]),
-        recent_sessions=row["recent_sessions"],
-        recent_cost=row["recent_cost"],
-        recent_unpriced=row["recent_unpriced"],
-        window_sessions=row["window_sessions"],
-        window_cost=row["window_cost"],
-        window_unpriced=row["window_unpriced"],
-        sessions=row["sessions"],
-        cost_usd=row["cost_usd"],
-        unpriced_api_calls=row["unpriced_api_calls"],
-        last_active=row["last_active"],
-    )
-
-
-def _session_row(row: Row) -> components.SessionRow:
+def _session_row(row: Row) -> markup.SessionRow:
     """One store row as the row the session list prints.
 
     The three lists arrive as DuckDB lists and are NULL where the session has none, so each is
@@ -124,7 +94,7 @@ def _session_row(row: Row) -> components.SessionRow:
     entirely over a store with no pass to join, which is why they are read with `get`.
     """
     said = row.get("description")
-    return components.SessionRow(
+    return markup.SessionRow(
         session_id=row["session_id"],
         started_at=row["started_at"],
         title=row["title"],
@@ -145,42 +115,7 @@ def _session_row(row: Row) -> components.SessionRow:
         skills_cut=row["skills_cut"],
         work=[Count(kind["name"], kind["turns"]) for kind in row.get("work") or []],
         work_cut=row.get("work_cut", 0),
-        described=components.Described(said, row["category"], row["outcome"]) if said else None,
-    )
-
-
-router = APIRouter()
-
-
-@router.get("/")
-def projects_page(viewer: ViewerDep) -> Response:
-    """Every project the store holds sessions for, most recently active first."""
-    # The clock both trailing windows are measured back from, read here and bound like
-    # any other parameter. The query reads no clock of its own: a page counting "the last
-    # 7 days" from SQL's `now()` would cite a line that answers something else tomorrow,
-    # and the footer's whole promise is that a reader can re-run what the page ran.
-    bound: dict[str, ParamValue] = {
-        "as_of": fmt.utcnow().date(),
-        "recent_days": queries.PAGE_RECENT_DAYS,
-        "window_days": queries.PAGE_WINDOW_DAYS,
-        "head_chars": queries.LIST_CHARS,
-        "projects": bounds.PROJECTS.default,
-    }
-    with open_store(viewer.db) as connection:
-        rows = page_rows(connection, Page.PROJECT_ROLLUPS, **bound)
-    return viewer.html(
-        components.projects_page(
-            rows=[_project_row(row) for row in rows],
-            # The bindings the two window headings print, so a heading and its column read
-            # the same numbers — the citation below carries them too.
-            recent_days=queries.PAGE_RECENT_DAYS,
-            window_days=queries.PAGE_WINDOW_DAYS,
-            # What the page cut, which the query counted before its LIMIT: a landing page
-            # that silently dropped projects would be a corpus a reader cannot see.
-            cut=dropped(rows),
-            citations={Page.PROJECT_ROLLUPS.value: cited(Page.PROJECT_ROLLUPS, bound)},
-            dev=viewer.dev,
-        )
+        described=markup.Described(said, row["category"], row["outcome"]) if said else None,
     )
 
 
@@ -229,11 +164,11 @@ def session_list(
         for key in SORTS
     }
     return viewer.html(
-        components.sessions_page(
+        markup.sessions_page(
             rows=[_session_row(row) for row in rows],
             # One heading per sortable column, in `SORTS` order, each carrying the link
             # that re-sorts by it.
-            headings=[components.Heading(key, label, links[key]) for key, label in SORTS.items()],
+            headings=[markup.Heading(key, label, links[key]) for key, label in SORTS.items()],
             sort=sort,
             direction=direction,
             # The same ordering in ARIA's vocabulary, for the heading that marks it: the
@@ -244,7 +179,7 @@ def session_list(
                 Control(key, CONTROLS[spec.type], given[key]) for key, spec in FILTERS.items()
             ],
             projects=[row["project_dir"] for row in projects],
-            pages=components.Pages(
+            pages=markup.Pages(
                 first=(page - 1) * size + 1,
                 shown=len(rows),
                 previous=list_url(sort, direction, page - 1, size, given) if page > 1 else None,

@@ -31,14 +31,15 @@ from hyphae.export.duckdb import StoreLocked
 from hyphae.view import (
     expansions,
     fragments,
-    listing,
     node_pages,
 )
 from hyphae.view.deps import Viewer
 from hyphae.view.pages.errors import routes as errors
 from hyphae.view.pages.offload import routes as offload
+from hyphae.view.pages.projects import routes as projects
 from hyphae.view.pages.query import routes as query
 from hyphae.view.pages.records import routes as records
+from hyphae.view.pages.sessions import routes as sessions
 from hyphae.view.store import (
     SchemaMoved,
     open_store,
@@ -123,7 +124,8 @@ def build_app(db_path: Path, *, dev: bool = False) -> FastAPI:
     # Extended rather than `include_router`: FastAPI keeps an included router nested under
     # one opaque route object, and `tools/gen_routes.py` and the payload sweep both read
     # `app.routes` expecting the routes themselves (`tests/view/test_dev.py` says so too).
-    app.router.routes.extend(listing.router.routes)
+    app.router.routes.extend(projects.router.routes)
+    app.router.routes.extend(sessions.router.routes)
     app.router.routes.extend(node_pages.router.routes)
     app.router.routes.extend(errors.router.routes)
     app.router.routes.extend(query.router.routes)

@@ -17,11 +17,8 @@ from fastapi.testclient import TestClient
 from hyphae.analyze import manifest, queries
 from hyphae.view import bounds
 from hyphae.view.app import build_app
-from hyphae.view.listing import (
-    ARIA_SORT,
-    DEFAULT_DIRECTION,
-    DEFAULT_SORT,
-)
+from hyphae.view.links import DEFAULT_DIRECTION, DEFAULT_SORT
+from hyphae.view.pages.sessions.routes import ARIA_SORT
 from hyphae.view.store import DIRECTIONS, SORTS, Page
 from hyphae.view.text import format as fmt
 from hyphae.view.text.format import ABSENT
