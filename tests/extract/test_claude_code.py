@@ -469,7 +469,7 @@ def test_every_record_type_the_corpus_holds_parses(fixture_source: SourceFactory
     trace = ClaudeCodeExtractor().extract(fixture_source("registry_zoo", ZOO))
 
     # ...then extraction returns, and every line lands in the archive with its type intact.
-    assert len(trace.raw_records) == 31
+    assert len(trace.raw_records) == 33
     types = {record.type for record in trace.raw_records}
     assert "worktree-state" in types and "fork-context-ref" in types and "summary" in types
     assert len([r for r in trace.raw_records if r.type == "system"]) == 10

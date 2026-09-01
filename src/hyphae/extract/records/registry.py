@@ -42,6 +42,11 @@ class ArchiveRecordType(StrEnum):
     FILE_HISTORY_SNAPSHOT = "file-history-snapshot"
     FILE_HISTORY_DELTA = "file-history-delta"
     AGENT_SETTING = "agent-setting"
+    # The session's running cost and duration totals, rewritten as the session goes; the
+    # store computes its own from the api calls.
+    COST_STATE = "cost-state"
+    # An opaque latch id Claude Code writes to itself, repeated unchanged all session.
+    ATIS_LATCH = "atis-latch"
     QUEUE_OPERATION = "queue-operation"
     SUMMARY = "summary"
     # Worktree sessions only.

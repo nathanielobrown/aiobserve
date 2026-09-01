@@ -16,6 +16,7 @@ that show them in their native files.
 | `agent-setting` | `9caf667e-56ec-4267-9281-b168882aaf5b.jsonl` | 2.1.211 |
 | `file-history-delta` | `08483117-689d-4a79-91fa-963f821eee02.jsonl` | 2.1.220 |
 | `relocated`, `worktree-state`, `system/agents_killed` | `10d0349d-0705-4e23-aa64-5b1b97698b2e.jsonl` | 2.1.211 |
+| `cost-state`, `atis-latch` | `…-hyphae/969af7d2-e85f-48fa-9d1b-69b700e83fe5.jsonl` | 2.1.251 |
 | `summary` | `4b443ab7-98f8-4c1d-859f-9bdcafbabdd3.jsonl` | 1.0.128 |
 | `system/away_summary` | `034aae5c-30af-4c86-a79e-d8257eb0ea54.jsonl` | 2.1.215 |
 | `system/compact_boundary` | `0164a230…/subagents/agent-a1d0bc50fe316ed8e.jsonl` | 2.1.207 |
