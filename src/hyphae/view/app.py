@@ -2,8 +2,8 @@
 
 `build_app(db_path)` returns a FastAPI app over one store. It mounts the statics, answers a
 locked or moved store with a page rather than a stack trace, puts the `Viewer` on `app.state`
-for the dependencies in `view/deps.py`, and registers each route module's router in turn — the
-two lists, the node pages, the pages that are not a node's, the expansions, and the fragments.
+for the dependencies in `view/deps.py`, and extends one page package's routes onto the app in
+turn — the two lists, the node page, then the four pages that are not a node's.
 
 Nothing the viewer serves writes: every request opens its own read-only connection
 (`view/store.py`), checks the store's schema version, renders, and closes. That is what lets an

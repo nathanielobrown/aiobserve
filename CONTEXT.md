@@ -48,15 +48,16 @@ Model-written descriptions beside the telemetry: `docs/enrichment.md`; the vocab
 
 ## Viewer pages
 
-What each page shows and cites: `docs/viewer.md`; the routes: the modules `src/hyphae/view/app.py` mounts, one per subject.
+What each page shows and cites: `docs/viewer.md`; the code: one package per page under `src/hyphae/view/pages/`, whose routes `src/hyphae/view/app.py` extends onto the app.
 
-- **Component** — one typed function building part of a page's markup with htpy; a page is Python, not a template (`src/hyphae/view/components/`)
+- **Component** — one typed function building part of a page's markup with htpy; a page is Python, not a template (a page's own `markup`, over the shared `src/hyphae/view/components/`)
 - **Projects page** — `/`, the landing page: every project and its recent sessions
 - **Session list** — `/sessions`: the filter form above one page of sessions
 - **Node page** — the one page shape every node kind shares: NavTree beside reading pane
 - **Errors page** — every failed tool call of a session, on every thread, in order
 - **Records page** — one thread's raw records, verbatim
 - **Query page** — the SQL behind a page; every footer cites one
+- **Offload page** — one chunk of an offload file, at the URL a tool call's body links to
 - **Scenario** — one page of the fixture corpus by name: a URL, a title and a group, pinned in `tests/view/scenarios.py`
 - **Gallery** — the scenarios served as pages for UI work (`docs/ui-development.md`)
 

@@ -12,7 +12,7 @@ paths:
 
 # Viewer UI
 
-The viewer is server-rendered [htpy](https://htpy.dev) — one typed Python function per thing a page shows, under `src/hyphae/view/components/` — with three scripts on a shipped page: vendored htmx, `src/hyphae/view/static/nav-tree-width.js` for the one thing a reader sets that no URL carries, and `src/hyphae/view/static/nav-tree.js` for the two things a row's place on the screen decides. A fourth, `src/hyphae/view/static/dev-reload.js`, rides `hp view --dev` alone (below). These are the conventions the viewer's own files hold to; what each page shows is in `docs/viewer.md`, the package's own three rules are in `src/hyphae/view/components/__init__.py`, and how to edit a component with the page open in front of you is in `docs/ui-development.md`.
+The viewer is server-rendered [htpy](https://htpy.dev) — one typed Python function per thing a page shows — with three scripts on a shipped page: vendored htmx, `src/hyphae/view/static/nav-tree-width.js` for the one thing a reader sets that no URL carries, and `src/hyphae/view/static/nav-tree.js` for the two things a row's place on the screen decides. A fourth, `src/hyphae/view/static/dev-reload.js`, rides `hp view --dev` alone (below). These are the conventions the viewer's own files hold to; what each page shows is in `docs/viewer.md`, the three rules every markup module holds to are in `src/hyphae/view/components/__init__.py`, and how to edit a component with the page open in front of you is in `docs/ui-development.md`. The package is organized by page and then by kind: a page's routes, markup and presenters sit in its own package under `src/hyphae/view/pages/`, over a shared layer no page reaches up into, and `tests/view/test_layout.py` holds that tree.
 
 # One body, two mounts
 
@@ -165,7 +165,7 @@ Witnessed in a real Chromium on 2026-08-28 against `mise run gallery --port 8492
 
 # `Markup` is the only opt-out, and only as a child
 
-htpy escapes every string child and every attribute value, so a component prints text and cannot print markup. Four modules produce a `Markup` — `src/hyphae/view/text/render.py`, `src/hyphae/view/text/highlight.py`, `src/hyphae/view/text/inline_markdown.py`, and `nodes.Node`'s title properties — and a component's only move is to hand one straight in as a child. None constructs one, which `tests/view/test_components.py` reads off the package's source.
+htpy escapes every string child and every attribute value, so a component prints text and cannot print markup. Four modules produce a `Markup` — `src/hyphae/view/text/render.py`, `src/hyphae/view/text/highlight.py`, `src/hyphae/view/text/inline_markdown.py`, and `nodes.Node`'s title properties — and a component's only move is to hand one straight in as a child. None constructs one, which `tests/view/test_components.py` reads off the components package's source and `tests/view/test_layout.py` holds over every page's markup too.
 
 An attribute is where the behaviour inverts: a `Markup` handed to one is escaped anyway, so the failure is double-escaped text on the page that no test in this repo would see. These are the text-bearing attributes a component writes, and each takes a plain `str`:
 
