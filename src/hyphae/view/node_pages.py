@@ -13,7 +13,7 @@ from fastapi.responses import Response
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.model import MAIN_SOURCE
-from hyphae.view import builders, nav_tree, nodes
+from hyphae.view import builders, nav_tree, nodes, reads
 from hyphae.view.browse import (
     Seen,
     browse,
@@ -252,7 +252,7 @@ def call_page(
             trail=[nav_tree.home(source, row["turn_id"]), Ref(Kind.CALL, source, api_call_id)],
             shape=Shape.TOOLS,
             rows=[
-                builders.logged(
+                reads.logged(
                     Shape.TOOLS,
                     builders.tool_node(session_id, source, item, nodes.NO_LEDGER),
                     item,

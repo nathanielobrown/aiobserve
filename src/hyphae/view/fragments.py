@@ -18,7 +18,7 @@ from fastapi.responses import Response
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.model import MAIN_SOURCE
-from hyphae.view import builders, nodes
+from hyphae.view import nodes, reads
 from hyphae.view.components import numbers, values
 from hyphae.view.deps import Db, Viewer, ViewerDep
 from hyphae.view.enrichment import enriched
@@ -60,7 +60,7 @@ def counted(
             numbers.tool(
                 key=Ref(kind, source, node_id).key,
                 citation=queries.citation(Fragment.TOOL_NUMBERS, keyed),
-                node=builders.tool_numbers(rows[0]),
+                node=reads.tool_numbers(rows[0]),
             )
         )
     bound: dict[str, ParamValue] = {
@@ -79,7 +79,7 @@ def counted(
         numbers.popover(
             key=Ref(kind, source, node_id).key,
             citation=queries.citation(Fragment.NUMBERS, bound),
-            node=builders.window_numbers(rows[0]),
+            node=reads.window_numbers(rows[0]),
             # The three lines between the window and the total, each priced and washed
             # here rather than in the component: what a charge is made of is arithmetic
             # (`view/numbers.py`), and the total under them takes the same ground.
@@ -119,7 +119,7 @@ def compaction_numbers(
         numbers.compaction(
             key=Ref(Kind.COMPACTION, source, compaction_id).key,
             citation=queries.citation(Fragment.COMPACTION_NUMBERS, keyed),
-            node=builders.compaction_numbers(rows[0]),
+            node=reads.compaction_numbers(rows[0]),
         )
     )
 
@@ -306,7 +306,7 @@ def record_value(
     keyed = {"session_id": session_id, "source": source, "line_no": line_no}
     # The record itself, which the store holds NOT NULL.
     row, citation = fetched(connection, Value.RECORD, keyed, "raw")
-    return viewer.html(values.record(node=builders.record_value(row, citation)))
+    return viewer.html(values.record(node=reads.record_value(row, citation)))
 
 
 @router.get("/fragment/input/session/{session_id}/thread/{source}/tool/{tool_call_id}")

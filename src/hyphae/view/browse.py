@@ -17,7 +17,7 @@ from fastapi.responses import Response
 
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
-from hyphae.view import builders, errors, listing, nav_tree, nodes, walk
+from hyphae.view import builders, errors, listing, nav_tree, nodes, reads, walk
 from hyphae.view.citation import Ran, cited
 from hyphae.view.columns import Shape
 from hyphae.view.components import node_page
@@ -225,7 +225,7 @@ def browse(
                 thread=source,
             ),
             body=node_page.Body(
-                facts=builders.node_facts(selection, seen.header),
+                facts=reads.node_facts(selection, seen.header),
                 said=node_page.Said(about, said) if about and said else None,
                 details=seen.details,
                 # The bytes behind the node: the thread's transcript, and — for a turn — the
@@ -271,7 +271,7 @@ def browse(
 def turn_log(corpus: nav_tree.Corpus, source: str, rows: list[Row]) -> list[Logged]:
     """A page of one thread's timeline as a children log reads it: a row per turn."""
     return [
-        builders.logged(
+        reads.logged(
             Shape.TURNS,
             builders.turn_node(
                 corpus.session_id,
@@ -309,7 +309,7 @@ def call_log(
     }
     calls = listed(page_rows(connection, Fragment.TURN_CALLS, **bound))
     rows = [
-        builders.logged(
+        reads.logged(
             Shape.CALLS, builders.call_node(corpus.session_id, source, row, corpus.held), row
         )
         for row in calls.rows
@@ -320,7 +320,7 @@ def call_log(
 def run_log(corpus: nav_tree.Corpus, rows: list[Row]) -> list[Logged]:
     """A list of agent runs as a children log reads it: a row per run."""
     return [
-        builders.logged(
+        reads.logged(
             Shape.RUNS,
             builders.run_node(corpus.session_id, row, corpus.held, corpus.run_text(row["run_id"])),
             row,

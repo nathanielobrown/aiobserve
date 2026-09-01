@@ -14,7 +14,7 @@ from fastapi.responses import Response
 
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
-from hyphae.view import bounds, builders, nodes
+from hyphae.view import bounds, builders, nodes, reads
 from hyphae.view.browse import header_bound
 from hyphae.view.citation import Ran, cited
 from hyphae.view.columns import Shape
@@ -137,7 +137,7 @@ def expanded(
     return viewer.html(
         node_body.expansion(
             node=node,
-            facts=builders.node_facts(node, row),
+            facts=reads.node_facts(node, row),
             suffix=marks,
             shape=shape,
             children=children,
@@ -192,7 +192,7 @@ def thread_body(
             raise HTTPException(404, "No node with that id is in this thread.")
         under = (
             [
-                builders.logged(shaped.shape, shaped.listed.build(session_id, source, item), item)
+                reads.logged(shaped.shape, shaped.listed.build(session_id, source, item), item)
                 for item in page_rows(connection, shaped.listed.query, **level)
             ]
             if shaped.listed is not None
