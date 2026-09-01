@@ -13,10 +13,7 @@ from hyphae.analyze.queries import ParamValue
 from hyphae.view import bounds, failures
 from hyphae.view.citation import QUERY_URL, cited
 from hyphae.view.components import pages as components
-from hyphae.view.deps import ViewerDep
-from hyphae.view.knobs import (
-    checked,
-)
+from hyphae.view.deps import ViewerDep, checked
 from hyphae.view.store import (
     MATCHED_ROWS,
     Page,

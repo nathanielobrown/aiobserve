@@ -22,10 +22,9 @@ from hyphae.view.browse import (
     turn_log,
 )
 from hyphae.view.columns import Shape
-from hyphae.view.deps import ViewerDep
+from hyphae.view.deps import KnobsDep, ViewerDep
 from hyphae.view.detail import detail_of, details
 from hyphae.view.knobs import (
-    KnobsDep,
     skipped,
     sliced,
 )

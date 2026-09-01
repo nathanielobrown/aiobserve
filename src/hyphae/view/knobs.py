@@ -1,18 +1,15 @@
 """What a URL may ask a node page for, and what a page hands back in every link it mints.
 
 Four knobs: the view, and the three sizes (`docs/viewer-bounds.md`). Every node route takes
-them as one `Knobs`, built by the one dependency `Knobs.asked` — which is where a value outside
-its bounds becomes a 400 and where the defaults are declared. A checked `Knobs` mints its own
-`suffix`, which every link on the page carries, so a reader who narrowed the NavTree keeps it as
-they walk. The paging controls live here too: a page number is the one knob a children log adds
-to that suffix.
+them as one `Knobs`, built by the one dependency `deps.KnobsDep` — which is where a value
+outside its bounds becomes a 400. A checked `Knobs` mints its own `suffix`, which every link on
+the page carries, so a reader who narrowed the NavTree keeps it as they walk. The paging
+controls live here too: a page number is the one knob a children log adds to that suffix.
 """
 
 from collections.abc import Sequence
-from typing import Annotated, NamedTuple
+from typing import NamedTuple
 from urllib.parse import urlencode
-
-from fastapi import Depends, HTTPException
 
 from hyphae.view import bounds, nodes
 from hyphae.view.components.nav_tree import PresetChoice
@@ -20,29 +17,11 @@ from hyphae.view.components.parts import Pager, Step
 from hyphae.view.store import Listed, Row
 
 
-def checked(size: int, ceiling: int) -> int:
-    """A page size from a query string, or a 400 — every route's sizes go through here."""
-    if not 1 <= size <= ceiling:
-        raise HTTPException(400, f"Ask for a page size between 1 and {ceiling}.")
-    return size
-
-
-def viewed(nav: str) -> nodes.Preset:
-    """The filter preset from a query string, or a 400 — every node route's `?nav=` comes here.
-
-    A 400 rather than a fallback to the full NavTree: a reader who typed a view the viewer does
-    not have should be told, not served a different one under the URL they asked for.
-    """
-    if nav not in set(nodes.Preset):
-        raise HTTPException(400, f"Filter the NavTree by one of: {', '.join(nodes.Preset)}.")
-    return nodes.Preset(nav)
-
-
 class Knobs(NamedTuple):
     """The four things a node-page URL may name, checked, and the suffix its links carry.
 
-    `asked` is the only builder a route reaches: it parses the query string, refuses what is
-    out of bounds, and is what makes the fields below already-checked values. Composing a
+    `deps.asked` is the only builder a route reaches: it parses the query string, refuses what
+    is out of bounds, and is what makes the fields below already-checked values. Composing a
     variant off one — the preset control does, one link per preset — goes through `_replace`,
     which needs no second check because it starts from a value that passed.
     """
@@ -52,26 +31,6 @@ class Knobs(NamedTuple):
     log: int
     detail: int
 
-    @classmethod
-    def asked(
-        cls,
-        nav: str = nodes.Preset.FULL,
-        kin: int = bounds.KIN.default,
-        log: int = bounds.LOG.default,
-        detail: int = bounds.DETAIL.default,
-    ) -> "Knobs":
-        """The knobs one request asked for, or a 400 — declared here and in no handler.
-
-        The one FastAPI dependency behind `KnobsDep`, so the four defaults and the four
-        refusals are written once rather than once per route.
-        """
-        return cls(
-            viewed(nav),
-            checked(kin, bounds.KIN.ceiling),
-            checked(log, bounds.LOG.ceiling),
-            checked(detail, bounds.DETAIL.ceiling),
-        )
-
     @property
     def suffix(self) -> str:
         """The query string every link on a node page carries: whatever is not a default."""
@@ -80,14 +39,14 @@ class Knobs(NamedTuple):
         return f"?{urlencode(given)}" if given else ""
 
 
-# What a node URL naming no knob is served at, out of the same builder every request goes
-# through. Every href a node page mints carries whatever is *not* one of these (`Knobs.suffix`),
-# so a reader who picked a view or narrowed the NavTree keeps it as they walk, and an ordinary
-# link stays short. `tools/gen_bounds.py` reads it for the knob table in `docs/viewer-bounds.md`.
-KNOB_DEFAULTS = Knobs.asked()
-
-# What a node route declares instead of four query parameters of its own.
-KnobsDep = Annotated[Knobs, Depends(Knobs.asked)]
+# What a node URL naming no knob is served at, read off `bounds` like the defaults `deps.asked`
+# declares. Every href a node page mints carries whatever is *not* one of these
+# (`Knobs.suffix`), so a reader who picked a view or narrowed the NavTree keeps it as they walk,
+# and an ordinary link stays short. `tools/gen_bounds.py` reads it for the knob table in
+# `docs/viewer-bounds.md`.
+KNOB_DEFAULTS = Knobs(
+    nodes.Preset.FULL, bounds.KIN.default, bounds.LOG.default, bounds.DETAIL.default
+)
 
 
 def preset_choices(node: nodes.Node, knobs: Knobs) -> list[PresetChoice]:
