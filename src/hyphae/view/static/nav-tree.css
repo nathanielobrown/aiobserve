@@ -133,47 +133,49 @@ li.row.more { color: var(--dim); }
 li.more > button { display: block; width: 100%; padding: 0 var(--space-1); border: 0;
   background: none; color: inherit; font: inherit; text-align: inherit; cursor: pointer; }
 li.more > button:hover { background-color: color-mix(in srgb, var(--mark) 12%, transparent); }
-/* The context bar: how full the model's context window was when the node ended, over a track
-   the row's full width. Linear, so half a bar is half a window (`view/nodes.py`). Three edges
-   are drawn, and each is a prefix of the one before it: where the node left the window, where
-   the growth it is answerable for begins, and — on a turn — the context the session opened on
-   before a word had been said. What the reader sees between two edges is the band the second
-   one opens, so a turn reads as prompt, conversation, and its own share at the bright tip.
+/* The context bar: how full the model's context window was when the node ended. Linear, so
+   half a bar is half a window (`view/nodes.py`). Three edges are drawn, and each is a prefix
+   of the one before it: where the node left the window, where the growth it is answerable for
+   begins, and — on a turn — the context the session opened on before a word had been said.
+   What the reader sees between two edges is the band the second one opens, so a turn reads as
+   prompt, conversation, and its own share at the bright tip.
    Three class families of 21 carry the edges as `--edge-*` custom properties, because the
    policy blocks the `style` attribute an inline width would need. One rule spends them: the
    widest layer is painted first and the narrower ones over it, which is what makes each band
    a prefix. Colour rides beside width, one `--band-*` property per band, each falling back to
-   the token that band has always been painted in — which is what lets a kind repaint one band
-   in one line instead of restating the gradients.
-   A row that ends on no window draws no track either — an empty track under a tool call would
-   read as a window that emptied, and what a tool call took is its api call's.
-   Painted bottom left over the content box, because depth is padding on the row's link: a
-   track over the padding box would start left of the title it measures. */
+   its palette token in `tokens.css` — which is what lets a kind repaint one band in one line
+   instead of restating the gradients.
+   Nothing is drawn under the bands: a bar is only what the row holds. A full-width track would
+   put an empty one under every tool call, which reads as a window that emptied, and what a
+   tool call took is its api call's.
+   Painted bottom left over the content box, because depth is padding on the row's link: a bar
+   over the padding box would start left of the title it measures. */
 li.node:is(.f0, .f1, .f2, .f3, .f4, .f5, .f6,
            .f7, .f8, .f9, .f10, .f11, .f12, .f13,
            .f14, .f15, .f16, .f17, .f18, .f19, .f20, .maxed) > a {
   background-image:
-    linear-gradient(var(--band-base, var(--faint)), var(--band-base, var(--faint))),
-    linear-gradient(var(--band-past, var(--dim)), var(--band-past, var(--dim))),
-    linear-gradient(var(--band-added, var(--mark)), var(--band-added, var(--mark))),
-    linear-gradient(var(--line), var(--line));
+    linear-gradient(var(--band-base, var(--ctx-base)), var(--band-base, var(--ctx-base))),
+    linear-gradient(var(--band-past, var(--ctx-past)), var(--band-past, var(--ctx-past))),
+    linear-gradient(var(--band-added, var(--ctx-added)), var(--band-added, var(--ctx-added)));
   background-repeat: no-repeat;
   background-position: left bottom;
-  background-size: var(--edge-base, 0%) 3px,
-                   var(--edge-prior, 0%) 3px,
-                   var(--edge-fill, 0%) 3px,
-                   100% 3px;
+  background-size: var(--edge-base, 0%) var(--ctx-height),
+                   var(--edge-prior, 0%) var(--ctx-height),
+                   var(--edge-fill, 0%) var(--ctx-height);
   background-origin: content-box;
 }
-/* The added band at the tip is the part of the bar a kind takes over: a run's own thread reads
-   apart from the turns around it, and a compaction's band is green because the space it gave
-   back is the one measurement here that is good news.
+/* A thread — the session's own, or a run's — is one gray rather than the ramp: nothing stood
+   before a run (`view_runs.sql`) and a session has nothing to have added to, so its whole
+   window is one band, and a muted one, so the growth under it is what the column reads as.
+   A compaction takes the tip alone, in green, because the space it gave back is the one
+   measurement here that is good news.
    `maxed` is the only mark the bar mints, because it is the only thing no kind can say — a
-   subagent that compacted did so unasked and unseen, and it is drawn full in the alarm
-   whatever the last call of its thread happened to leave behind. */
-li.node.run > a { --band-added: var(--agent); }
-li.node.compaction > a { --band-added: var(--free); }
-li.node.maxed > a { --band-added: var(--bad); --edge-fill: 100%; --edge-prior: 0%; --edge-base: 0%; }
+   subagent that compacted did so unasked and unseen. It is drawn full whatever the last call
+   of its thread happened to leave behind, in the gray it already wears: the alarm is the
+   compaction pill on the same row, and a red bar beside it was the loudest thing here. */
+li.node:is(.session, .run) > a { --band-past: var(--ctx-thread); --band-added: var(--ctx-thread); }
+li.node.compaction > a { --band-added: var(--ctx-freed); }
+li.node.maxed > a { --edge-fill: 100%; --edge-prior: 0%; --edge-base: 0%; }
 li.node.f0 { --edge-fill: 0%; }
 li.node.p0 { --edge-prior: 0%; }
 li.node.b0 { --edge-base: 0%; }
