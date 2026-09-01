@@ -25,13 +25,18 @@ Slice 2's capture is byte-identical to slice 1's.
 
 ## Seeded from the design pass
 
-- `src/hyphae/view/knobs.py:23` — `checked` raises `HTTPException` from a presenter module; a route concern living below the routes. Design lifts it to `deps.py`
+- `src/hyphae/view/knobs.py:23` — `checked` raises `HTTPException` from a presenter module; a route concern living below the routes. Design lifts it to `deps.py`. **Done** in `5c70faf`, with `viewed`, `Knobs.asked` and `KnobsDep`: see "Found during the move"
 - `src/hyphae/view/nodes.py:23` — the shared node model imports `columns`, a children-log module, for the kind icons; the dependency points up. Design moves the icons into `nodes.GLYPHS`
 - `src/hyphae/view/components/listing.py:191` — `Described` beside `enrichment.py`'s model of what a pass wrote; check whether both describe the same fact
 - `src/hyphae/view/components/listing.py` (489 lines) — holds both list pages; the split into `projects/` and `sessions/` should leave no helper shared between them, or that helper belongs in `components/parts.py`
 - `src/hyphae/view/knobs.py:18-19` — a presenter importing `PresetChoice`, `Pager`, `Step` from markup modules; allowed under "view-models live in markup", but see the design's open question
-- `src/hyphae/view/expansions.py` — the audit's S6 said it re-spells `header_bound`'s bindings inline; check whether that still stands once `header_bound` is in `store.py`
-- Audit items still open as of the last read (`plans/refactor-audit-2026-08-30/findings.md`): S2 one `Knobs` object, S3 `node_page.page()`'s 21 parameters, S12 double store open per enrichment fragment, S13 keyword-only `detail_of`, S14 `way` as a `StrEnum`. Record for each whether it still stands after the move
+- `src/hyphae/view/expansions.py` — the audit's S6 said it re-spells `header_bound`'s bindings inline; check whether that still stands once `header_bound` is in `store.py`. **Closed**: it does not. `expansions.py:281` already calls `header_bound`, and `9158c28` moved that function to `store.py`
+- Audit items still open as of the last read (`plans/refactor-audit-2026-08-30/findings.md`): S2 one `Knobs` object, S3 `node_page.page()`'s 21 parameters, S12 double store open per enrichment fragment, S13 keyword-only `detail_of`, S14 `way` as a `StrEnum`. Record for each whether it still stands after the move. **None of the five still stands**, and all five were closed by the `Depends` work that landed before this branch rather than by it — read at slice 3, against the tree:
+  - S2 — closed. `knobs.Knobs` is the NamedTuple, `deps.KnobsDep` the one dependency, and `browse.browse` takes one `Knobs` rather than four positionals
+  - S3 — closed. `components/node_page.py:page()` takes eight keyword parameters, grouped into `Nav`, `Body`, `Bearings`, `Children`
+  - S12 — closed. Every enrichment fragment takes `connection: Db`, and `enriched(connection)` reads the one the request opened
+  - S13 — closed. `detail.detail_of` is keyword-only and `detail.details(*maybe)` is the collector every route calls
+  - S14 — closed. `components/node_page.py:309` is a two-member `Way` StrEnum
 
 ## Found during the move
 
@@ -40,7 +45,11 @@ Slice 2's capture is byte-identical to slice 1's.
   on that edge at slice 6: `components/` is under every page and cannot read one page's
   presenter. Fix: lift the two view-models out of `detail.py` — `EnrichmentLines` beside
   `enrichment.py`, `Detail` with it — and leave the reading of a fat value in `pages/node/`.
-  Found at slice 1 while writing `test_layout.py`; nothing in slices 1–2 touches it
+  Found at slice 1 while writing `test_layout.py`; nothing in slices 1–2 touches it.
+  **Closed at slice 3 without a code change, by reading what `detail.py` imports**: `queries`,
+  `enrich.items.Level`, `nodes`, `enrichment.Enrichment`, `text/`. Nothing node-page-specific,
+  so the module is shared and the design's file tree is wrong to list it under `pages/node/`.
+  `test_layout.py:LAYERED` now names it `SHARED`; slice 6 leaves `detail.py` where it is
 - `src/hyphae/view/errors.py:26-27` — the module the design renames to the shared
   `failures.py` imports `builders.tool_node` and `nav_tree.Ran`, both of which the design puts
   in `pages/node/`. Same red at slice 6, and the lift of `failures.py` into the shared layer is
@@ -50,3 +59,10 @@ Slice 2's capture is byte-identical to slice 1's.
 - `tests/view/text/test_render.py:228` — a comment explaining the suppression under it opened
   with `noqa:`, so ruff read it as a directive and warned on every lint run. **Done** in
   `e7a6fc9`, as the cleanup commit after slice 2's move
+- `src/hyphae/view/browse.py:25` — the last node-page presenter that reaches a web framework:
+  it takes a `deps.Viewer` and returns `viewer.html(...)`, so rule 1's probe will red on
+  `pages/node/browse.py` at slice 6. Fix: have `browse` return `Html` and let each node route
+  wrap it, which is the same seam every other presenter already sits on
+- `src/hyphae/view/failures.py:49` — `failures.failures(connection, session_id)` at the two
+  call sites, a stutter the rename made. The design pinned the module's names, so this is left:
+  the fix is a verb for the function, not another word for the module

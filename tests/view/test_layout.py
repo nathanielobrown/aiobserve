@@ -64,6 +64,8 @@ LAYERED = {
     "enrichment": SHARED,
     "citation": SHARED,
     "failures": SHARED,
+    "builders": SHARED,
+    "detail": SHARED,
     "store": BASE,
     "bounds": BASE,
     "manifest": BASE,
