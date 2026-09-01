@@ -363,7 +363,7 @@ class Node:
     # glyph beside the title marks. Three kinds can be: a session, a turn and a run.
     enriched: bool = False
     # Whether the tool call came back an error. Only ever True for a `Kind.TOOL` node: it is
-    # the column the NavTree's mark and the errors list (`view/errors.py`) are both read from.
+    # the column the NavTree's mark and the errors list (`view/failures.py`) are both read from.
     is_error: bool = False
     # What every cut of the title keeps, printed after the words: how many of each tool an api
     # call went on to invoke after the first (`call_node`). A surface cuts the words to its

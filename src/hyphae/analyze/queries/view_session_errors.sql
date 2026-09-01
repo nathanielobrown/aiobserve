@@ -1,6 +1,6 @@
 -- Every failed tool call of one session, whichever thread it ran on, in the order they
 -- happened: the list behind the viewer's errors page and the stepper beside a pane reading a
--- failure (`view/errors.py`).
+-- failure (`view/failures.py`).
 -- Session-wide rather than per thread, for the reason the unattached bucket is: what a
 -- subagent failed at is what the session failed at, and the NavTree opens one path — so nothing
 -- else on a node page reaches a failure five spawns down without reading everything first.

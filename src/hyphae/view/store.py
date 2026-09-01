@@ -48,7 +48,7 @@ class Page(StrEnum):
     PROJECTS = "view_projects"
     SESSION_HEADER = "view_session_header"
     # Every failed tool call of one session, across every thread — the one page the NavTree
-    # cannot lead to, because a failure is scattered rather than nested (`view/errors.py`).
+    # cannot lead to, because a failure is scattered rather than nested (`view/failures.py`).
     SESSION_ERRORS = "view_session_errors"
     # One node read whole, the header of its own page. One per kind that has fields of its
     # own; a bucket has none, and a compaction reads out of `view_compactions`.

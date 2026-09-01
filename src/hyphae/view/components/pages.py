@@ -13,7 +13,7 @@ import htpy
 
 from hyphae.view.citation import Cited
 from hyphae.view.components import Html, citation, layout, parts
-from hyphae.view.errors import Failure
+from hyphae.view.failures import Failure
 from hyphae.view.nodes import thread_url
 from hyphae.view.text import format as fmt
 from hyphae.view.text.highlight import Syntax

@@ -20,7 +20,7 @@ from hyphae.view.components.node_body import Facts
 from hyphae.view.components.parts import Pager
 from hyphae.view.detail import Detail, EnrichmentLines
 from hyphae.view.enrichment import Enrichment
-from hyphae.view.errors import Step as Failures
+from hyphae.view.failures import Step as Failures
 from hyphae.view.nodes import Node
 from hyphae.view.text import cuts
 from hyphae.view.text import format as fmt

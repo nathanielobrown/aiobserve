@@ -10,7 +10,7 @@ from fastapi.responses import Response
 
 from hyphae.analyze import macros, manifest, queries
 from hyphae.analyze.queries import ParamValue
-from hyphae.view import bounds, errors
+from hyphae.view import bounds, failures
 from hyphae.view.citation import QUERY_URL, cited
 from hyphae.view.components import pages as components
 from hyphae.view.deps import ViewerDep
@@ -39,7 +39,7 @@ def errors_page(session_id: str, viewer: ViewerDep) -> Response:
     carries the crumbs that place it.
     """
     with open_store(viewer.db) as connection:
-        failed = errors.failures(connection, session_id)
+        failed = failures.failures(connection, session_id)
         # A session the store never held and one whose calls all succeeded are both
         # nothing at this URL, and not the same nothing. The header is read only when
         # there is a 404 to word, so the page a reader actually opens runs one query.

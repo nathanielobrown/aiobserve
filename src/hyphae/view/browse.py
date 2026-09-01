@@ -17,7 +17,7 @@ from fastapi.responses import Response
 
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
-from hyphae.view import builders, errors, listing, nav_tree, nodes, reads, walk
+from hyphae.view import builders, failures, listing, nav_tree, nodes, reads, walk
 from hyphae.view.citation import Ran, cited
 from hyphae.view.columns import Shape
 from hyphae.view.components import node_page
@@ -171,7 +171,7 @@ def browse(
         # failure. A session-wide list is a query per page load and the step it answers
         # does not exist anywhere else, so every other node page asks the store nothing.
         failed = (
-            errors.failures(connection, session_id)
+            failures.failures(connection, session_id)
             if built.chain[-1].kind is Kind.TOOL and built.chain[-1].is_error
             else None
         )
@@ -237,7 +237,7 @@ def browse(
                 # And where the session failed: how many failures it holds, which is what the
                 # way into the list says, beside the step to the next one where there is one.
                 tool_errors=head[0]["tool_errors"],
-                failures=errors.stepped(failed.listed, selection) if failed else None,
+                failures=failures.stepped(failed.listed, selection) if failed else None,
             ),
             children=node_page.Children(
                 shape=seen.shape,
