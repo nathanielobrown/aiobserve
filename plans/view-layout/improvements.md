@@ -21,14 +21,14 @@ It builds the enriched fixture store once into `/tmp/view-layout-baseline/traces
 reuses it, and freezes `format.utcnow` to the corpus's own present the way the gallery does —
 without both, two captures differ on the trailing windows every list page prints. Slice 1's
 capture is 39 files, all 200, and re-running it against the same tree gives an empty diff.
-Slice 2's capture is byte-identical to slice 1's.
+Slices 2, 3 and 4 are byte-identical to slice 1's.
 
 ## Seeded from the design pass
 
 - `src/hyphae/view/knobs.py:23` — `checked` raises `HTTPException` from a presenter module; a route concern living below the routes. Design lifts it to `deps.py`. **Done** in `5c70faf`, with `viewed`, `Knobs.asked` and `KnobsDep`: see "Found during the move"
 - `src/hyphae/view/nodes.py:23` — the shared node model imports `columns`, a children-log module, for the kind icons; the dependency points up. Design moves the icons into `nodes.GLYPHS`
-- `src/hyphae/view/components/listing.py:191` — `Described` beside `enrichment.py`'s model of what a pass wrote; check whether both describe the same fact
-- `src/hyphae/view/components/listing.py` (489 lines) — holds both list pages; the split into `projects/` and `sessions/` should leave no helper shared between them, or that helper belongs in `components/parts.py`
+- `src/hyphae/view/components/listing.py:191` — `Described` beside `enrichment.py`'s model of what a pass wrote; check whether both describe the same fact. **Closed at slice 4, no change**: they are not one fact. `enrichment.Enrichment` is what a pass wrote about a node — level, item, chars, friction, model, versions — and is read by the node page. `Described` is three strings a session-list row prints. It has no second reader, so under "view-models live in markup" it stays in `pages/sessions/markup.py:31`
+- `src/hyphae/view/components/listing.py` (489 lines) — holds both list pages; the split into `projects/` and `sessions/` should leave no helper shared between them, or that helper belongs in `components/parts.py`. **Closed at slice 4**: the split left no helper shared. `LIST_URL`, `list_url` and `project_link` were the one thing both halves read, and they went to the new shared `view/links.py` (`83bc613`), not to `components/parts.py` — they mint a URL, which is not markup
 - `src/hyphae/view/knobs.py:18-19` — a presenter importing `PresetChoice`, `Pager`, `Step` from markup modules; allowed under "view-models live in markup", but see the design's open question
 - `src/hyphae/view/expansions.py` — the audit's S6 said it re-spells `header_bound`'s bindings inline; check whether that still stands once `header_bound` is in `store.py`. **Closed**: it does not. `expansions.py:281` already calls `header_bound`, and `9158c28` moved that function to `store.py`
 - Audit items still open as of the last read (`plans/refactor-audit-2026-08-30/findings.md`): S2 one `Knobs` object, S3 `node_page.page()`'s 21 parameters, S12 double store open per enrichment fragment, S13 keyword-only `detail_of`, S14 `way` as a `StrEnum`. Record for each whether it still stands after the move. **None of the five still stands**, and all five were closed by the `Depends` work that landed before this branch rather than by it — read at slice 3, against the tree:
@@ -55,7 +55,13 @@ Slice 2's capture is byte-identical to slice 1's.
   in `pages/node/`. Same red at slice 6, and the lift of `failures.py` into the shared layer is
   what causes it. Fix: `Ran` is a list of the queries a page ran, so it belongs in
   `citation.py`; `tool_node` builds a `Node` from a store row, so `builders.py` reads like a
-  shared module rather than a node-page presenter. Decide both before slice 3 renames the file
+  shared module rather than a node-page presenter. Decide both before slice 3 renames the file.
+  **Closed at slice 3, both as proposed.** `Ran` is now `citation.py:23`, beside the `cited()`
+  that consumes it. `builders.py` stays where it is and `test_layout.py:LAYERED` names it
+  `SHARED`: it turns a store row into a `Node`, reads only `nodes`, `enrichment`, `store` and
+  `text/`, and has five readers on both sides of the page boundary. So the design's file tree
+  is wrong twice — `detail.py` and `builders.py` are both shared, not `pages/node/` presenters.
+  This adds no layer: both were already inside the design's shared layer, only mis-placed
 - `tests/view/text/test_render.py:228` — a comment explaining the suppression under it opened
   with `noqa:`, so ruff read it as a directive and warned on every lint run. **Done** in
   `e7a6fc9`, as the cleanup commit after slice 2's move
