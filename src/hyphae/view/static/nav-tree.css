@@ -172,10 +172,12 @@ li.node:is(.f0, .f1, .f2, .f3, .f4, .f5, .f6,
    `maxed` is the only mark the bar mints, because it is the only thing no kind can say — a
    subagent that compacted did so unasked and unseen. It is drawn full whatever the last call
    of its thread happened to leave behind, in the gray it already wears: the alarm is the
-   compaction pill on the same row, and a red bar beside it was the loudest thing here. */
+   compaction pill on the same row, and a red bar beside it was the loudest thing here. Only the
+   fill needs forcing: a maxed row is always a run (`view/builders.py`), and a run's own share is
+   its whole fill, so the ladder already puts its two inner edges at zero. */
 li.node:is(.session, .run) > a { --band-past: var(--ctx-thread); --band-added: var(--ctx-thread); }
 li.node.compaction > a { --band-added: var(--ctx-freed); }
-li.node.maxed > a { --edge-fill: 100%; --edge-prior: 0%; --edge-base: 0%; }
+li.node.maxed > a { --edge-fill: 100%; }
 li.node.f0 { --edge-fill: 0%; }
 li.node.p0 { --edge-prior: 0%; }
 li.node.b0 { --edge-base: 0%; }

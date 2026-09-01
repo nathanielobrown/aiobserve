@@ -389,10 +389,10 @@ def test_a_thread_takes_one_gray_a_compaction_the_green_and_a_maxed_run_the_whol
     assert given_back not in ramp | {gray}, (given_back, ramp, gray)
     # A maxed row is the whole bar and nothing more: a run that filled its window says so at
     # full width, whatever the last call of its thread happened to leave behind, in the gray it
-    # already wears.
+    # already wears. The fill is the only edge it has to force — only a run is ever maxed, and a
+    # run's own share is its whole fill, so the ladder already put its two inner edges at zero.
     maxed = one_of(re.findall(r"li\.node\.maxed > a \{([^}]*)\}", style))
-    assert "--edge-fill: 100%" in maxed and "--edge-prior: 0%" in maxed, maxed
-    assert "--band" not in maxed, maxed
+    assert re.findall(r"--[\w-]+:[^;]+", maxed) == ["--edge-fill: 100%"], maxed
     # And every colour the bar spends is defined for both schemes, light and dark alike.
     dark = one_of(re.findall(r"@media \(prefers-color-scheme: dark\) \{([^}]*)\}", style))
     for token in ramp | {gray, given_back}:
