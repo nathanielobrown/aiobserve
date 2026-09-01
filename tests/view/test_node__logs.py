@@ -244,7 +244,7 @@ def test_every_children_log_heads_the_columns_its_rows_fill(
     assert children, url
     for key in children:
         assert inside(page, "data-child", key, "data-column") == named, (url, key)
-    # And what a row opens spans exactly those columns. `nodes.LISTED` says which shape of log
+    # And what a row opens spans exactly those columns. `columns.LISTED` says which shape of log
     # a kind lists in, and the expansion's span is read off it — a kind mapped to the wrong
     # shape opens a row narrower or wider than the table it lands in. Checked here, against
     # the page that did the listing, because this is where the shape is known to be right.

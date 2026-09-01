@@ -19,7 +19,6 @@ from typing import NamedTuple
 from markupsafe import Markup
 
 from hyphae.analyze import queries
-from hyphae.view.columns import CALL_ICON, COLUMNS, RUN_ICON, TOOL_ICON, Shape
 from hyphae.view.store import Row
 from hyphae.view.text import inline_markdown
 from hyphae.view.text.format import cut
@@ -89,29 +88,13 @@ BUCKET_ICON = "∅"
 GLYPHS: dict[Kind, str] = {
     Kind.SESSION: "❖",
     Kind.TURN: "❯",
-    Kind.RUN: RUN_ICON,
-    Kind.CALL: CALL_ICON,
-    Kind.TOOL: TOOL_ICON,
+    Kind.RUN: "◎",
+    Kind.CALL: "⇄",
+    Kind.TOOL: "⚒",
     Kind.COMPACTION: "⊟",
     Kind.UNATTRIBUTED: BUCKET_ICON,
     Kind.UNATTACHED: BUCKET_ICON,
 }
-
-# Which shape of log lists a kind. For the one reader that knows a child and needs its
-# parent's table: an expansion arrives as a row of the log it opens under, and that row spans
-# the log's columns. A kind lists in one shape of log wherever it lists at all, which is what
-# makes the width answerable from the child alone.
-LISTED: dict[Kind, Shape] = {
-    Kind.TURN: Shape.TURNS,
-    Kind.CALL: Shape.CALLS,
-    Kind.TOOL: Shape.TOOLS,
-    Kind.RUN: Shape.RUNS,
-}
-
-
-def spanned(kind: str) -> int:
-    """How many columns the log listing a node of `kind` has, for a row that spans them."""
-    return len(COLUMNS[LISTED[Kind(kind)]])
 
 
 class Preset(StrEnum):

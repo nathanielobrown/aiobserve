@@ -17,10 +17,10 @@ from urllib.parse import quote
 import htpy
 
 from hyphae.view.citation import Cited
-from hyphae.view.columns import Shape
+from hyphae.view.columns import Shape, spanned
 from hyphae.view.components import Html, citation, parts
 from hyphae.view.components.logs import Logged, log
-from hyphae.view.nodes import Node, run_url, spanned
+from hyphae.view.nodes import Node, run_url
 from hyphae.view.text import cuts, render
 from hyphae.view.text import format as fmt
 
@@ -200,7 +200,7 @@ def expansion(
 
     A row of the log's own table, swapped in after the row that asked for it, spanning every
     column that row fills: the parent's shape is not in the URL, so the span comes from the
-    kind of node this is — `nodes.spanned` maps it back to the log that lists it.
+    kind of node this is — `columns.spanned` maps it back to the log that lists it.
     """
     return htpy.tr(".expansion", data_expansion=node.kind)[
         htpy.td(colspan=spanned(node.kind))[

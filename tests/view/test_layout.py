@@ -347,7 +347,6 @@ def test_text_reaches_nothing_in_the_viewer_but_itself_and_the_sizes_it_cuts_to(
             assert name == "bounds" or name.split(".")[0] == "text", f"{dotted(path)} → {name}"
 
 
-@pytest.mark.xfail(strict=True, reason="`nodes` reads the kind icons from `columns` until slice 3")
 def test_the_shared_node_model_reads_nothing_from_a_page() -> None:
     """`nodes.py` is under every page, so an import of a page's own module inverts the tree.
 
