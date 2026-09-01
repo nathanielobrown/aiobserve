@@ -16,7 +16,7 @@ from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.view import bounds, builders, nodes
 from hyphae.view.citation import Ran, cited
-from hyphae.view.deps import KnobsDep, Viewer, ViewerDep
+from hyphae.view.deps import Viewer, ViewerDep
 from hyphae.view.enrichment import described
 from hyphae.view.nodes import Kind, Ref
 from hyphae.view.pages.node import reads
@@ -27,6 +27,7 @@ from hyphae.view.pages.node.markup import nav_tree
 from hyphae.view.pages.node.markup.logs import Logged
 from hyphae.view.pages.node.markup.nav_tree import NavTreeRow
 from hyphae.view.pages.node.nav_tree import Corpus, children, spread, windowed
+from hyphae.view.pages.node.routes.knobs import KnobsDep
 from hyphae.view.store import (
     Fragment,
     Page,

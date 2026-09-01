@@ -9,9 +9,10 @@ one request's read-only connection, opened and closed around the route.
 page is open, so `Db` is for the fragment routes, whose markup is a line or two. A route that
 renders a document opens the store itself and closes it before `viewer.html(...)` runs.
 
-`KnobsDep` is here rather than beside `Knobs` because parsing a query string and refusing what
-is out of bounds is a route's job: a presenter is callable without a request, and a module that
-imports `HTTPException` is not (`tests/view/test_layout.py`).
+`checked` is here rather than beside the sizes it reads because refusing what is out of bounds
+is a route's job: a presenter is callable without a request, and a module that imports
+`HTTPException` is not (`tests/view/test_layout.py`). The node page's four knobs are parsed the
+same way, one page in (`view/pages/node/routes/knobs.py`).
 """
 
 from collections.abc import Generator
@@ -23,10 +24,8 @@ import duckdb
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
-from hyphae.view import bounds, nodes
 from hyphae.view.components import Html
 from hyphae.view.components import error as error_markup
-from hyphae.view.pages.node.knobs import Knobs
 from hyphae.view.store import open_store
 
 
@@ -82,37 +81,3 @@ def checked(size: int, ceiling: int) -> int:
     if not 1 <= size <= ceiling:
         raise HTTPException(400, f"Ask for a page size between 1 and {ceiling}.")
     return size
-
-
-def viewed(nav: str) -> nodes.Preset:
-    """The filter preset from a query string, or a 400 — every node route's `?nav=` comes here.
-
-    A 400 rather than a fallback to the full NavTree: a reader who typed a view the viewer does
-    not have should be told, not served a different one under the URL they asked for.
-    """
-    if nav not in set(nodes.Preset):
-        raise HTTPException(400, f"Filter the NavTree by one of: {', '.join(nodes.Preset)}.")
-    return nodes.Preset(nav)
-
-
-def asked(
-    nav: str = nodes.Preset.FULL,
-    kin: int = bounds.KIN.default,
-    log: int = bounds.LOG.default,
-    detail: int = bounds.DETAIL.default,
-) -> Knobs:
-    """The knobs one request asked for, or a 400 — declared here and in no handler.
-
-    The one dependency behind `KnobsDep`, so the four defaults and the four refusals are
-    written once rather than once per route. `knobs.KNOB_DEFAULTS` reads the same `bounds`.
-    """
-    return Knobs(
-        viewed(nav),
-        checked(kin, bounds.KIN.ceiling),
-        checked(log, bounds.LOG.ceiling),
-        checked(detail, bounds.DETAIL.ceiling),
-    )
-
-
-# What a node route declares instead of four query parameters of its own.
-KnobsDep = Annotated[Knobs, Depends(asked)]

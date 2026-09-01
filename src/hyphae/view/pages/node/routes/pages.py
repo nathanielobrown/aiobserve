@@ -14,7 +14,7 @@ from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.model import MAIN_SOURCE
 from hyphae.view import builders, nodes
-from hyphae.view.deps import KnobsDep, ViewerDep
+from hyphae.view.deps import ViewerDep
 from hyphae.view.detail import detail_of, details
 from hyphae.view.nodes import Kind, Ref
 from hyphae.view.pages.node import nav_tree, reads
@@ -30,6 +30,7 @@ from hyphae.view.pages.node.routes.browse import (
     run_log,
     turn_log,
 )
+from hyphae.view.pages.node.routes.knobs import KnobsDep
 from hyphae.view.store import (
     TURN_CURSOR,
     Fragment,
