@@ -308,12 +308,6 @@ def run_url(session_id: str, run_id: str) -> str:
     return f"{session_url(session_id)}/run/{run_id}"
 
 
-# Where the session list is served, and the way out of every session. Written here with the
-# viewer's other mount points because the route, the link builder and the form the page writes
-# all have to agree: `/` is the projects landing, and a link that still points there drops the
-# sort and the filters the request composed.
-LIST_URL = "/sessions"
-
 # Where a node's body alone is served from, written once: the routes in `view/app.py` answer
 # what `Node.expansion` mints. A fragment path is its node's path under a prefix, so the two
 # say the same thing about where a node sits.

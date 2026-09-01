@@ -12,7 +12,6 @@ what makes a key outside them a 400 here rather than a fragment of SQL there.
 import datetime as dt
 from collections.abc import Mapping
 from typing import assert_never
-from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
@@ -26,7 +25,13 @@ from hyphae.view.components.listing import Control
 from hyphae.view.components.parts import Count
 from hyphae.view.deps import ViewerDep
 from hyphae.view.enrichment import enriched
-from hyphae.view.nodes import LIST_URL
+from hyphae.view.links import (
+    DEFAULT_DIRECTION,
+    DEFAULT_SORT,
+    LIST_URL,
+    list_url,
+    project_link,
+)
 from hyphae.view.store import (
     DESCRIBED_BOUND,
     DIRECTIONS,
@@ -53,10 +58,6 @@ CONTROLS: dict[queries.ParamType, str] = {
 # The same two as `aria-sort` spells them. ARIA defines the tokens and `asc` is not one of
 # them, so a heading marked with the query string's own word announces no order at all.
 ARIA_SORT: dict[str, str] = {"asc": "ascending", "desc": "descending"}
-
-# Newest first: the session someone is looking for is usually the one that just ran.
-DEFAULT_SORT = "started_at"
-DEFAULT_DIRECTION = "desc"
 
 # Every query-string key the session list reads: the filters, plus what orders and pages them.
 LIST_KEYS = frozenset(FILTERS) | {"sort", "direction", "page", "size"}
@@ -90,36 +91,6 @@ def _as_bound(key: str, text: str) -> ParamValue:
                 assert_never(kind)
     except ValueError as error:
         raise HTTPException(400, f"The list's {key} takes {kind} values.") from error
-
-
-def list_url(sort: str, direction: str, page: int, size: int, filters: Mapping[str, str]) -> str:
-    """A link back to the list, carrying everything that made this view of it.
-
-    Every link the list writes goes through here. A filter that rode the sort headings but
-    not the pager would widen the list halfway through reading it, which is the kind of thing
-    a reader notices only after quoting the wrong count.
-    """
-    query: dict[str, str | int] = {"sort": sort, "direction": direction}
-    if page > 1:
-        query["page"] = page
-    if size != bounds.SESSIONS.default:
-        query["size"] = size
-    narrowed = {key: value for key, value in filters.items() if value}
-    return f"{LIST_URL}?" + urlencode(query | narrowed)
-
-
-def project_link(project_dir: str | None) -> str | None:
-    """The session list narrowed to one project, or None when there is no list to open.
-
-    The path is the whole one and not the head a row shows — the list's filter matches a path
-    prefix, and a cut one matches nothing. A row the query left NULL is a row with no link:
-    the sessions that named no directory, and a path longer than the head this page shows.
-    """
-    if project_dir is None:
-        return None
-    return list_url(
-        DEFAULT_SORT, DEFAULT_DIRECTION, 1, bounds.SESSIONS.default, {"project": project_dir}
-    )
 
 
 def _project_row(row: Row) -> components.ProjectRow:

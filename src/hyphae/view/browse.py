@@ -17,7 +17,7 @@ from fastapi.responses import Response
 
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
-from hyphae.view import builders, failures, listing, nav_tree, nodes, reads, walk
+from hyphae.view import builders, failures, links, nav_tree, nodes, reads, walk
 from hyphae.view.citation import Ran, cited
 from hyphae.view.columns import Shape
 from hyphae.view.components import node_page
@@ -227,9 +227,9 @@ def browse(
                 # stands above the chain rather than in it — a session is still the outermost
                 # node.
                 trail=node_page.Trail(
-                    list_url=nodes.LIST_URL,
+                    list_url=links.LIST_URL,
                     project_dir=head[0]["project_dir"],
-                    project_url=listing.project_link(head[0]["project_filter"]),
+                    project_url=links.project_link(head[0]["project_filter"]),
                 ),
                 chain=built.chain,
                 # Where the reading order goes from here, in both directions.
