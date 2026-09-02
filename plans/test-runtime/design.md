@@ -6,6 +6,12 @@
 in under 30s wall, median of 3 runs on an otherwise idle 18-core M5 Max. The suite stays green,
 `mise run check` stays the gate, and no test drops a property it asserts today.
 
+**As built,** Phases 0–3 landed, together with Phase 5's collection reorder; Phase 4 and Phase
+5's connection reuse did not. The numbers this design was written against are superseded by
+[the Phase 0 baseline](baseline.md); what the finished suite measures is in
+[the closing results](results.md). Later phases carry their own as-built notes where what
+shipped differs from what is described.
+
 Provenance labels used throughout:
 
 - **[Py]** — measured on this Python codebase, `main` at `bc2aa17`, 2026-09-01, 18-core M5 Max,
@@ -159,6 +165,11 @@ rather than assuming one; the two full sweeps each carry ~40–45% of the stragg
 phase: 22–28s (inferred by reconstruction, not measured — the heavy tail collects last, so
 leaves start ~9–12s in). **A median of 30±3s here is expected, not a failed phase: Phase 3
 runs unconditionally, and the gate is re-measured after it.**
+
+**As built,** the median after this phase was 44.87s — outside the projected band and above the
+30±3s the paragraph above allows for. The projection is left as written because it is what
+justified running Phase 3 unconditionally, which is what closed the gap.
+
 **Red-check (TDD for a test change):** under `HYPHAE_PIN_EXACT=1` — without the flag the
 crumb, pager, and chrome pins are ceilings and the check stays green — bump each pinned
 budget constant (e.g. `NAV_TREE_ROW_BYTES`) by 1 and confirm exactly the expected leaf goes
@@ -171,8 +182,8 @@ each sweep the same corpus store at default knobs through the same session-scope
 and assert different properties over byte-identical responses **[Py durations from the
 parallel run]**:
 
-- `test_node.py::test_every_kind_renders_a_body_and_every_shape_a_log` (12.1s)
-- `test_walk.py::test_every_control_in_the_corpus_walks_its_own_level_or_climbs_out_of_it`
+- `pages/node/test_node.py::test_every_kind_renders_a_body_and_every_shape_a_log` (12.1s)
+- `pages/node/test_walk.py::test_every_control_in_the_corpus_walks_its_own_level_or_climbs_out_of_it`
   (10.0s — it computes its expectations from each page's own HTML only, so it is
   shared-map-safe)
 - `test_enrichment.py::test_a_store_no_enrichment_pass_has_touched_renders_every_page`
@@ -192,11 +203,13 @@ Stays out of the shared pass, by name:
 - `test_nav_tree__badges` / `__names` — skip-as-read logic and planted halves; revisit only
   if margin runs short
 
-Mechanism: a session-scoped fixture in `tests/view/conftest.py`,
-`corpus_pages(client, store) -> Mapping[str, str]` (URL → served HTML, every response
-asserted 200 once), consumed by those tests in place of their own render loops. Each test
-keeps its own id and its own failure report — pytest fixtures give us what the Rust port's
-merged-leaf design had to fake with collected-failure lists. Under xdist, mark the consumers
+Mechanism: in `tests/view/conftest.py`, a builder `render_pages(path) -> dict[str, str]` (URL →
+served HTML, every response asserted 200 once) with a session-scoped `corpus_pages(corpus_db)`
+over it, consumed by those tests in place of their own render loops. The builder takes a store
+path rather than the corpus `client` and `store` so the red-check below can rebuild the map over
+a planted copy. Each test keeps its own id and its own failure report — pytest fixtures give us
+what the Rust port's merged-leaf design had to fake with collected-failure lists. Under xdist,
+mark the consumers
 `@pytest.mark.xdist_group("corpus_sweep")` and add `--dist loadgroup` to the test task, so
 one worker renders the map once (~10s at threads=1) instead of each consumer's worker paying
 it. The extra, non-shared requests those tests make (enrichment fetch-URL 404s, the walk
@@ -215,6 +228,10 @@ NULL, and at one with a broken enrichment table, and confirm the respective cons
 against *that* map; revert.
 
 ### Phase 4 — query-shape fixes in the shared SQL/macros (product work that also buys margin)
+
+**As built,** none of this landed: the gate was met without it. Nothing below has been
+re-measured on Python, so every number in this phase is still **[Rust]**, and open question 1's
+recommendation — a separate branch — stands.
 
 These speed `hp view` for a reader, not just the tests. Each was measured end-to-end on the
 Rust port (same DuckDB 1.5.5, same SQL bytes) **[Rust]**; each must be re-measured on Python
@@ -252,6 +269,10 @@ they change shipped query results' *byte layout* risk-free only if verified (ris
 run once.
 
 ### Phase 5 — contingency: test-harness connection reuse (only if the gate is unmet)
+
+**As built,** the reorder landed — `pytest_collection_modifyitems` in `tests/conftest.py`, which
+fronts `tests/view/` and the shared-corpus group. The connection reuse did not: the gate was met
+after it, so the invasive half was never needed.
 
 **Try tail reordering first — it is far cheaper.** xdist hands tests out in collection
 order, and `tests/view/` collects after every other directory, so the heavy leaves start
@@ -294,16 +315,18 @@ speculatively.
 plans/test-runtime/design.md      this file — commit it on the implementing branch first;
                                   an untracked copy left on main blocks the fast-forward
 plans/test-runtime/baseline.md    Phase 0 output
+plans/test-runtime/results.md     what the finished suite measures, against that baseline
 pyproject.toml                    + pytest-xdist (dev group, with a purpose comment)
 mise.toml                         test task: uv run pytest -n auto [--dist loadgroup from Phase 3]
-tests/conftest.py                 duckdb.connect wrapper pinning SET threads TO 1
-tests/view/conftest.py            + corpus_pages fixture (Phase 3)
+tests/conftest.py                 duckdb.connect wrapper pinning SET threads TO 1;
+                                  collection reorder fronting the long work (Phase 5)
+tests/view/conftest.py            + render_pages builder and corpus_pages fixture (Phase 3)
 tests/view/test_bounds__node.py   straggler split into three ids over a module-scoped plant
-tests/view/test_node.py, test_walk.py, test_enrichment.py, test_app__list.py
-                                  consume corpus_pages (Phase 3)
-src/hyphae/analyze/macros.py      MAP context_window, lazy JSON install (Phase 4)
-src/hyphae/export/duckdb.py       grouped-join rollup views (Phase 4)
-src/hyphae/view/walk.py|store.py|deps.py  per-request statement memo (Phase 4)
+tests/view/pages/node/test_node.py, .../test_walk.py, tests/view/test_enrichment.py,
+tests/view/test_app__list.py      consume corpus_pages (Phase 3)
+src/hyphae/analyze/macros.py      MAP context_window, lazy JSON install (Phase 4 — not built)
+src/hyphae/export/duckdb.py       grouped-join rollup views (Phase 4 — not built)
+src/hyphae/view/walk.py|store.py|deps.py  per-request statement memo (Phase 4 — not built)
 ```
 
 ## Decisions
