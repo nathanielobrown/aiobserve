@@ -230,9 +230,10 @@ bytes keeps slices green — which is what makes mid-branch coexistence work and
 slice-7 re-pin a discipline rather than a test.
 
 - **O29. `NAV_TREE_ROW_BYTES` is re-pinned inside slice 5, and it falls.** The one equality pin
-  (`test_bounds__node.py:227`, `assert widest_row == budget`), currently 1929. *Evidence:* the
+  (`test_bounds__node.py`, `assert widest_row == budget`), currently 1929. *Evidence:* the
   leaf green with the new constant, and the new constant strictly less than 1929 — htpy emitting
-  *more* than djLint-indented Jinja would mean a space was added, not restored.
+  *more* than djLint-indented Jinja would mean a space was added, not restored. *Superseded:* the
+  Phase 2 split (PR #28) moved that assertion into `weighed()`, which the three sweep leaves share.
 - **O30. `bounds.SESSIONS` rises when it is re-derived.** It is pinned from both sides
   (`test_bounds.py:335-343`: the ceiling fits under `PAGE_BYTES`, ceiling+1 does not), so smaller
   rows force the ceiling up from 97. *Evidence:* both halves green at slice 7; the cog block at
