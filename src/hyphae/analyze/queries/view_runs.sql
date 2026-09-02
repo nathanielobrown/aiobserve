@@ -28,7 +28,7 @@ SELECT
     coalesce(calls.cost_usd, 0) AS cost_usd,
     coalesce(calls.unpriced_api_calls, 0) AS unpriced_api_calls,
     coalesce(tools.tool_errors, 0) AS tool_errors,
-    coalesce(kompactions.compactions, 0) AS compactions,
+    coalesce(compacted.compactions, 0) AS compactions,
     -- Where the run left the context window of its own thread, and the window it answered in.
     -- What a run added is the whole of what it holds: a run starts on an empty window and
     -- fills it while it runs, so the fill and the tip are one number said twice. The struct
@@ -69,7 +69,7 @@ LEFT JOIN (
     ON tools.session_id = a.session_id AND tools.source = a.id
 LEFT JOIN (
     SELECT k.session_id, k.source, count(*) AS compactions
-    FROM live_compactions k GROUP BY k.session_id, k.source) kompactions
-    ON kompactions.session_id = a.session_id AND kompactions.source = a.id
+    FROM live_compactions k GROUP BY k.session_id, k.source) compacted
+    ON compacted.session_id = a.session_id AND compacted.source = a.id
 WHERE a.session_id = $session_id
 ORDER BY a.started_at NULLS LAST, a.id;
