@@ -14,13 +14,16 @@ rather than derived from the store a second time.
 """
 
 import re
+from collections import Counter
 from collections.abc import Mapping
 
 import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import FORK_ORIGIN, MAIN, SPINE
+from hyphae.analyze.queries import ParamValue
+from hyphae.view import store
+from tests.conftest import DENSE_TOOL, FORK_ORIGIN, FORK_ORIGIN_RUN, MAIN, SPINE
 from tests.view.conftest import fields, inside, kin, one, plain, under, values
 
 
@@ -250,3 +253,37 @@ def test_the_walk_is_the_same_however_the_nav_tree_is_capped(
         assert capped.status_code == 200, page.url
         for named in ("previous", "next"):
             assert control(capped.text, named) == control(page.html, named), (page.key, named)
+
+
+def test_the_walk_asks_the_store_nothing_the_nav_tree_already_asked(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A node page runs each of its questions once, however many readers want the answer.
+
+    The NavTree opens the path down to the selection; the walk then needs those same levels
+    again to find what stands beside it. Both read through the request's `Corpus`, so the
+    second reader is answered from what the first read — on the real store that is a quarter
+    of a deep page's query time it does not spend twice.
+    """
+    # If every statement one page runs is written down, at the deepest node the corpus offers
+    # — a tool call on a run's own thread, five levels under the session...
+    ran: list[tuple[str, tuple[tuple[str, ParamValue], ...]]] = []
+    read = store.fetch
+
+    def watched(
+        connection: duckdb.DuckDBPyConnection, sql: str, bindings: Mapping[str, ParamValue]
+    ) -> list[store.Row]:
+        ran.append((sql, tuple(sorted(bindings.items()))))
+        return read(connection, sql, bindings)
+
+    monkeypatch.setattr(store, "fetch", watched)
+    page = client.get(f"/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}")
+    assert page.status_code == 200
+
+    # ...then no statement ran twice. A repeat is named by its query's opening line, which is
+    # what the library writes at the top of every file.
+    repeated = [sql.splitlines()[0] for (sql, _), hits in Counter(ran).items() if hits > 1]
+    assert repeated == []
+    # ...and both readers did run: the walk offers a step, so the levels really were wanted
+    # twice rather than once.
+    assert values(page.text, "data-walk")

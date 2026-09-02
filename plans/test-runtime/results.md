@@ -101,6 +101,22 @@ medians. DuckDB pinned to 4 threads, medians of 7 reads, caches warm.
 | Grouped-join rollups | one session out of `corpus_rollups` | 76.9 / 77.4 ms | 25.4 / 25.4 ms |
 | Grouped-join `view_runs.sql` | the session with 240 agent runs | 10.7 / 10.7 ms | 6.3 / 6.6 ms |
 
+The third fix is measured differently, because what it removes is a whole page's second read
+rather than one statement: the same three URLs served through the app, medians of 7 requests,
+the arms interleaved the same way. The old arm is the memo bypassed rather than the old code
+restored, so the two arms differ by the memo and by nothing else.
+
+| Fix | Subject | Before | After |
+| --- | --- | --- | --- |
+| Per-request level memo | a tool call five levels down | 144.6 / 144.8 ms | 118.7 / 119.5 ms |
+| Per-request level memo | a turn of `main` | 100.5 / 100.1 ms | 80.5 / 81.1 ms |
+| Per-request level memo | the session page | 53.2 / 53.2 ms | 53.5 / 53.5 ms |
+
+The session page is the control: nothing stands beside a session, so the walk reads no level
+and there is nothing to answer twice. On the two pages that do walk a level, the whole request
+drops a fifth — the levels the NavTree opened were a quarter of the page's query time, and the
+walk was running every one of them again.
+
 A keyed read of `corpus_rollups` costs what a scan does either way: the replay exclusion is a
 window over the whole family, so no filter on one session reaches it.
 

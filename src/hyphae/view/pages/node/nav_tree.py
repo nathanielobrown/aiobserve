@@ -16,7 +16,7 @@ Everything else here is arithmetic over the rows those queries returned.
 
 import datetime as dt
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import NamedTuple
 
 import duckdb
@@ -43,15 +43,9 @@ from hyphae.view.nodes import (
     Preset,
     Ref,
 )
+from hyphae.view.pages.node.levels import Levels
 from hyphae.view.pages.node.markup.nav_tree import NavTreeRow
-from hyphae.view.store import (
-    TURN_CURSOR,
-    Library,
-    Page,
-    Row,
-    cursorless_rows,
-    page_rows,
-)
+from hyphae.view.store import TURN_CURSOR, Library, Page, Row
 
 
 @dataclass(frozen=True)
@@ -72,6 +66,10 @@ class Corpus:
     described: Descriptions
     # The thread the enrichment was read for.
     source: str
+    # Every level this request has already read, so the walk beside the pane asks the store
+    # nothing the NavTree already asked (`levels.py`). Read a level through it and never
+    # through `store.page_rows`, or the second reader pays for it again.
+    levels: Levels = field(default_factory=Levels, compare=False)
 
     def turn_text(self, source: str, turn_id: str) -> str | None:
         """What the pass called one turn, or None when it said nothing about it."""
@@ -203,7 +201,9 @@ def unattributed(
     session holds, which is the same answer: there is no bucket at that URL either way.
     """
     timeline, bound = _timeline(corpus.session_id, source)
-    rows = cursorless_rows(connection, timeline, TURN_CURSOR, bounds.CURSORLESS_TURNS, **bound)
+    rows = corpus.levels.cursorless(
+        connection, timeline, TURN_CURSOR, bounds.CURSORLESS_TURNS, **bound
+    )
     return Standing(rows[0], (timeline, bound)) if rows else None
 
 
@@ -222,8 +222,8 @@ def _thread_level(
     keyed: dict[str, ParamValue] = {"session_id": corpus.session_id, "source": source}
     listed = keyed | {"nav_chars": queries.NAV_CHARS}
     chipped = keyed | {"chip_chars": queries.NAV_CHARS}
-    turns = page_rows(connection, Page.NAV_TREE_TURNS, **listed)
-    marks = page_rows(connection, Page.COMPACTIONS, **chipped)
+    turns = corpus.levels.rows(connection, Page.NAV_TREE_TURNS, **listed)
+    marks = corpus.levels.rows(connection, Page.COMPACTIONS, **chipped)
     # The thread's calls that answer no turn, as one group — the bucket's own row, read the
     # same way the bucket's own page reads it.
     standing = unattributed(connection, corpus, source)
@@ -297,7 +297,7 @@ def _marks(
         "source": source,
         "chip_chars": queries.NAV_CHARS,
     }
-    rows = page_rows(connection, Page.COMPACTIONS, **keyed)
+    rows = corpus.levels.rows(connection, Page.COMPACTIONS, **keyed)
     return [
         (compaction_node(corpus.session_id, source, row), row["timestamp"])
         for row in rows
@@ -378,7 +378,7 @@ def _calls_level(
     """
     keyed: dict[str, ParamValue] = {"session_id": corpus.session_id, "source": source}
     bound = keyed | {"turn_id": turn_id, "nav_chars": queries.NAV_CHARS}
-    calls = page_rows(connection, Page.NAV_TREE_CALLS, **bound)
+    calls = corpus.levels.rows(connection, Page.NAV_TREE_CALLS, **bound)
     marks, mark_ran = _marks(connection, corpus, source, turn_id)
     level = _interleave(
         [
@@ -410,7 +410,7 @@ def _tools_level(
         "turn_id": turn_id,
         "nav_chars": queries.NAV_CHARS,
     }
-    rows = page_rows(connection, Page.NAV_TREE_TOOLS, **bound)
+    rows = corpus.levels.rows(connection, Page.NAV_TREE_TOOLS, **bound)
     under = None if api_call_id is not None else turn_id
     marks, mark_ran = _marks(connection, corpus, source, under)
     level = _interleave(
