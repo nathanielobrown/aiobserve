@@ -15,7 +15,7 @@ rather than derived from the store a second time.
 
 import re
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 import duckdb
 import pytest
@@ -255,8 +255,28 @@ def test_the_walk_is_the_same_however_the_nav_tree_is_capped(
             assert control(capped.text, named) == control(page.html, named), (page.key, named)
 
 
+def deepest_node(client: TestClient) -> str:
+    """The deepest node the corpus offers: a tool call five levels under the session."""
+    return f"/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}"
+
+
+def thread_level_node(client: TestClient) -> str:
+    """The first row of a thread's own level, reached the way a reader reaches it.
+
+    Its level is the one the timelines answer, and a thread's calls that answer no turn ride
+    that answer with no cursor value of their own — so this is the shape whose repeated read
+    goes through `cursorless_rows` rather than the paged reader beside it.
+    """
+    return first_child(client, f"/session/{SPINE}")
+
+
+@pytest.mark.parametrize(
+    "select",
+    [deepest_node, thread_level_node],
+    ids=["five levels down", "on its thread's own level"],
+)
 def test_the_walk_asks_the_store_nothing_the_nav_tree_already_asked(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, select: Callable[[TestClient], str]
 ) -> None:
     """A node page runs each of its questions once, however many readers want the answer.
 
@@ -264,9 +284,13 @@ def test_the_walk_asks_the_store_nothing_the_nav_tree_already_asked(
     again to find what stands beside it. Both read through the request's `Corpus`, so the
     second reader is answered from what the first read — on the real store that is a quarter
     of a deep page's query time it does not spend twice.
+
+    Two depths, because a level is read two ways: the deep node's is a page of rows, while a
+    node standing on its thread's own level shares that level with the calls the thread never
+    attributed, which are read cursorless. Only the second holds the cursorless half.
     """
-    # If every statement one page runs is written down, at the deepest node the corpus offers
-    # — a tool call on a run's own thread, five levels under the session...
+    # If every statement one page runs is written down...
+    url = select(client)
     ran: list[tuple[str, tuple[tuple[str, ParamValue], ...]]] = []
     read = store.fetch
 
@@ -277,7 +301,7 @@ def test_the_walk_asks_the_store_nothing_the_nav_tree_already_asked(
         return read(connection, sql, bindings)
 
     monkeypatch.setattr(store, "fetch", watched)
-    page = client.get(f"/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}")
+    page = client.get(url)
     assert page.status_code == 200
 
     # ...then no statement ran twice. A repeat is named by its query's opening line, which is
@@ -285,5 +309,9 @@ def test_the_walk_asks_the_store_nothing_the_nav_tree_already_asked(
     repeated = [sql.splitlines()[0] for (sql, _), hits in Counter(ran).items() if hits > 1]
     assert repeated == []
     # ...and both readers did run: the walk offers a step, so the levels really were wanted
-    # twice rather than once.
+    # twice rather than once...
     assert values(page.text, "data-walk")
+    # ...and both ways a level comes back were among the questions asked, so neither half of
+    # the memo passes the line above by never having been reached.
+    cursorless = [sql for sql, _ in ran if "$cursorless" in sql]
+    assert cursorless and len(cursorless) < len(ran)
