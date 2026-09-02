@@ -11,7 +11,8 @@ the page.
 """
 
 import re
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Generator, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
@@ -116,6 +117,22 @@ def pages(store: duckdb.DuckDBPyConnection) -> list[str]:
     return urls
 
 
+@contextmanager
+def reading(path: Path) -> Generator[duckdb.DuckDBPyConnection]:
+    """A read-only connection to one store, opened the way a request opens one.
+
+    Macros and all (`view/store.py:open_store`): a library query calls them by name, so a bare
+    connection answers a catalog error rather than rows.
+    """
+    connection = duckdb.connect(str(path), read_only=True)
+    connection.execute("SET TimeZone='UTC'")
+    macros.install(connection)
+    try:
+        yield connection
+    finally:
+        connection.close()
+
+
 def render_pages(path: Path) -> dict[str, str]:
     """Every page one store serves at the default knobs, keyed by URL and served once.
 
@@ -130,13 +147,8 @@ def render_pages(path: Path) -> dict[str, str]:
     surface through a map built from the untouched corpus, so a sweep that could not be
     rebuilt could not be red-checked either.
     """
-    reading = duckdb.connect(str(path), read_only=True)
-    reading.execute("SET TimeZone='UTC'")
-    macros.install(reading)
-    try:
-        urls = pages(reading)
-    finally:
-        reading.close()
+    with reading(path) as connection:
+        urls = pages(connection)
     with TestClient(build_app(path)) as served:
         rendered = {}
         for url in urls:
@@ -165,16 +177,9 @@ def client(corpus_db: Path) -> Iterator[TestClient]:
 
 @pytest.fixture(scope="session")
 def store(corpus_db: Path) -> Iterator[duckdb.DuckDBPyConnection]:
-    """A read-only connection for the expectations — what the page is checked against.
-
-    Opened the way a request opens one (`view/store.py:open_store`), macros and all: a library
-    query calls them by name, so a bare connection answers a catalog error rather than rows.
-    """
-    connection = duckdb.connect(str(corpus_db), read_only=True)
-    connection.execute("SET TimeZone='UTC'")
-    macros.install(connection)
-    yield connection
-    connection.close()
+    """A read-only connection for the expectations — what the page is checked against."""
+    with reading(corpus_db) as connection:
+        yield connection
 
 
 @pytest.fixture(scope="session")
@@ -188,10 +193,8 @@ def enriched_client(enriched_db: Path) -> Iterator[TestClient]:
 @pytest.fixture(scope="session")
 def enriched_store(enriched_db: Path) -> Iterator[duckdb.DuckDBPyConnection]:
     """A read-only connection to the described corpus, for what its pages are checked against."""
-    connection = duckdb.connect(str(enriched_db), read_only=True)
-    connection.execute("SET TimeZone='UTC'")
-    yield connection
-    connection.close()
+    with reading(enriched_db) as connection:
+        yield connection
 
 
 def planter(base: Path, tmp_path: Path) -> Planter:
