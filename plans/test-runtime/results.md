@@ -86,6 +86,29 @@ out 20.1s of it. Stealing balances a tail; it cannot balance a tail it created.
 251, 333 — while the wall bottoms out at twelve and rises again. So the task asks for twelve, or
 for every core on a machine that has fewer, which is what CI runs.
 
+## Phase 4: the queries under the suite
+
+Each fix is A/B'd on the real store — 627 sessions, 16 GB — with the arms interleaved
+`old, new, old, new` so drift in the machine shows up as disagreement between an arm's two
+medians. DuckDB pinned to 4 threads, medians of 7 reads, caches warm.
+
+| Fix | Subject | Before | After |
+| --- | --- | --- | --- |
+| `context_window()` CASE → MAP | `view_compactions.sql`, the thread with 22 compactions | 11.5 / 11.1 ms | 2.6 / 2.6 ms |
+| Grouped-join rollups | `SELECT * FROM session_rollups` | 18.0 / 17.9 ms | 5.4 / 5.4 ms |
+| Grouped-join rollups | `SELECT * FROM corpus_rollups` | 84.5 / 84.7 ms | 29.0 / 28.9 ms |
+| Grouped-join rollups | one session out of `session_rollups` | 5.6 / 5.7 ms | 1.3 / 1.2 ms |
+| Grouped-join rollups | one session out of `corpus_rollups` | 76.9 / 77.4 ms | 25.4 / 25.4 ms |
+
+A keyed read of `corpus_rollups` costs what a scan does either way: the replay exclusion is a
+window over the whole family, so no filter on one session reaches it.
+
+**The float drift the risk register predicted is real and bounded.** Summing a session's
+`cost_usd` in one grouped pass instead of one subquery per session moves the last bits: over the
+627 sessions, `session_rollups` is identical and `corpus_rollups` differs on 109 rows, worst
+absolute 4.1e-12 and worst relative 3.6e-15. Every row still rounds equal at 4dp, which is the
+tightest any consumer reads — `money()` prints 2dp, `cost_distribution.sql` rounds to 4.
+
 ## One thing to know before you measure
 
 The baseline table names `uv run pytest -q` as its serial command, and the serial numbers here

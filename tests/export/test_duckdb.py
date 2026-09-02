@@ -17,7 +17,7 @@ from hyphae.export.duckdb import (
     DuckDbExporter,
     open_trace_store,
 )
-from tests.conftest import NO_WAIT, TraceFactory, stored_rows
+from tests.conftest import MODEL_ONLY, NO_WAIT, TraceFactory, stored_rows
 
 SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"
 DUPS = "8ee00a94-b01a-4394-b447-b065f74b11af"
@@ -346,6 +346,31 @@ def test_a_call_we_cannot_price_is_counted_out_of_the_total(db: Path, fixture_tr
         "SELECT cost_usd, unpriced_api_calls FROM session_rollups WHERE session_id = ?",
         [SPINE],
     ) == [(pytest.approx(priced.cost_usd), 1)]
+
+
+def test_a_session_that_ran_no_call_totals_zero_rather_than_nothing(
+    db: Path, fixture_trace: TraceFactory
+):
+    """A session with no work of a kind reports none of it as zero, not as a missing number.
+
+    Every consumer sorts, sums or prints these columns, so a NULL here is a blank cell on the
+    projects page and a session missing from a cost order — not a visible failure.
+    """
+    exporter = DuckDbExporter(db, wait=NO_WAIT)
+    # If a recorded session drove no api call at all — `model_only/` is three `/model`,
+    # `/clear` and `/reload-skills` turns the CLI answered by itself...
+    exporter.export(fixture_trace("model_only", MODEL_ONLY), "fingerprint-1")
+
+    # ...then its rollup reports the turns it did record and a zero for everything else, on
+    # both views: the four families holding nothing of its own are zeros, not nulls.
+    columns = (
+        "turns, api_calls, tool_calls, agent_runs, compactions, input_tokens, output_tokens,"
+        " cache_read_tokens, cache_creation_tokens, cost_usd, unpriced_api_calls"
+    )
+    for view in ("session_rollups", "corpus_rollups"):
+        assert stored_rows(
+            exporter.path, f"SELECT {columns} FROM {view} WHERE session_id = ?", [MODEL_ONLY]
+        ) == [(3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)], view
 
 
 def test_an_offloaded_output_is_keyed_by_session_and_name(db: Path, fixture_trace: TraceFactory):
