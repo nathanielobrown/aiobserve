@@ -1,37 +1,39 @@
 # Closing results
 
 What the branch measured against [the Phase 0 baseline](baseline.md). Same machine, same
-method: 18-core M5 Max, idle, warm caches; medians of 3. The serial numbers were taken at
-`6a8802c`, before the scheduler was retuned, which nothing serial depends on.
+method: 18-core M5 Max, idle, warm caches; medians of 3.
 
 ## Headline
 
-| Measurement | Baseline | Now | How |
-| --- | --- | --- | --- |
-| Gate: `mise run test` | — | **25.02s** wall, 248.7s Σ | median of 3 at the retuned `-n 12 --dist loadgroup` |
-| Serial wall, `uv run pytest` | 226.28s | **145.44s** | median of 3: 143.12 / 145.44 / 146.00 |
-| Σ test-seconds, serial | 225.4s | **145.0s** | `--junitxml`, summed over 2,228 cases |
-| Result | 2,174 passed, 51 skipped | 2,178 passed, **51 skipped** | the skip count is what had to hold |
+| Measurement | Baseline | After Phase 5a | Now | How |
+| --- | --- | --- | --- | --- |
+| Gate: `mise run test` | — | 25.02s wall, 248.7s Σ | **20.62s** wall, 201.3s Σ | median of 3 at `-n 12 --dist loadgroup` |
+| Serial wall, `uv run pytest` | 226.28s | 145.44s | **109.59s** | median of 3: 109.12 / 109.59 / 110.17 |
+| Σ test-seconds, serial | 225.4s | 145.0s | **108.7s** | `--junitxml`, summed over 2,236 cases |
+| Result | 2,174 passed, 51 skipped | 2,178 passed, 51 skipped | 2,185 passed, **51 skipped** | the skip count is what had to hold |
 
-The serial number is the control the parallel one cannot give: it says the suite has 80s less
-work in it, not that 80s moved behind a worker. Σ test-seconds is 99.3% of the serial wall, so
+The serial number is the control the parallel one cannot give: it says the suite has 117s less
+work in it, not that 117s moved behind a worker. Σ test-seconds is 99.2% of the serial wall, so
 the run is still test bodies rather than harness.
 
-**Read a Σ only against another Σ at the same width.** Twelve workers contending turn the same
-145s of serial work into 249 test-seconds, because each leaf's own clock runs while eleven
-others hold the machine. The number compares two schedulers on one machine; it does not
-compare a parallel run to a serial one.
+**Read a Σ only against another Σ at the same width.** Twelve workers contending turn 110s of
+serial work into 201 test-seconds, because each leaf's own clock runs while eleven others hold
+the machine. The number compares two schedulers on one machine; it does not compare a parallel
+run to a serial one.
 
-Four ids more than the baseline collected: Phase 2 split one test into three, and the
-`gen_schema` fix gave its refusal leaf a second case.
+Eleven ids more than the baseline collected: Phase 2 split one test into three, the
+`gen_schema` fix gave its refusal leaf a second case, and Phase 4 added a guard per rewrite.
 
-## Which phases the 81 serial seconds came from
+## Which phases the 117 serial seconds came from
 
-Two of the four phases remove work; the other two move it:
+Three phases remove work; the other two move it:
 
-- **Phase 1**, the thread pin, and **Phase 3**, the shared render pass, are the only levers that
-  cut serial time. Their split was not measured — doing so needs a serial run per commit, at
-  ~145s each, and nothing downstream turns on the answer
+- **Phase 1**, the thread pin, and **Phase 3**, the shared render pass, are the two setup levers
+  that cut serial time. Their split was not measured — doing so needs a serial run per commit,
+  and nothing downstream turns on the answer
+- **Phase 4** cut 36s of it on its own, measured as one block: 145.44s before its first commit
+  and 109.59s after its last. It is the only phase that deletes work a page does rather than
+  work a fixture does, so the viewer gets the same cut (below)
 - **Phase 2**'s split and **Phase 5a**'s reorder cost serial time or leave it alone; they buy the
   parallel wall by spreading the same work over more workers
 
@@ -41,24 +43,28 @@ Top 6 by junit `time`, serial:
 
 | Seconds | Test |
 | --- | --- |
-| 9.93 | `view/test_bounds__node.py::test_a_node_page_at_the_sizes_a_reader_gets_…` |
-| 9.14 | `view/test_bounds__node.py::test_a_node_page_at_the_widest_knobs_…` |
-| 8.41 | `view/pages/node/test_node.py::test_every_kind_renders_a_body_and_every_shape_a_log` |
-| 8.05 | `view/test_enrichment.py::test_a_store_whose_enrichment_tables_are_empty_…` |
-| 7.61 | `view/test_bounds__node.py::test_a_second_page_of_a_level_…` |
-| 7.14 | `view/test_enrichment.py::test_a_partly_described_store_…` |
+| 6.81 | `view/test_bounds__node.py::test_a_node_page_at_the_sizes_a_reader_gets_…` |
+| 6.33 | `view/test_bounds__node.py::test_a_node_page_at_the_widest_knobs_…` |
+| 5.16 | `view/test_dev.py::test_a_file_saved_under_a_watched_path_…[style.css-css]` |
+| 5.16 | `view/test_dev.py::test_a_file_saved_under_a_watched_path_…[dev-reload.js-page]` |
+| 5.10 | `view/pages/node/test_node.py::test_every_kind_renders_a_body_and_every_shape_a_log` |
+| 5.05 | `view/test_dev.py::test_the_reload_stream_answers_as_an_event_stream_…` |
 
-The baseline's 37.9s straggler is gone; nothing is above 10s. The `test_node` figure carries the
-shared render pass, which builds inside whichever consumer runs first. The two `test_enrichment`
-leaves are the enrichment-absence stores the design ruled must stay separate — each proves a
-different guard, so they are cost the suite is meant to pay.
+The baseline's 37.9s straggler is gone and nothing is above 7s. The `test_node` figure carries
+the shared render pass, which builds inside whichever consumer runs first. What is left is two
+kinds of cost: pages rendered at their widest, which Phase 4 already made cheaper, and the three
+`test_dev` leaves, which are a file-watch debounce being waited out and have no query in them at
+all. Nothing here is worth a phase of its own — the next lever is the fixture corpus, not a leaf.
 
 The shared group's setup is the longest single item, and the wall is that plus the tail behind
-it: 19.6-21.8s at eighteen workers, 14.1-14.5s at twelve.
+it.
 
 ## Which scheduler, and how many workers
 
-Every cell is one whole-suite run under `--junitxml`, on the idle 18-core machine:
+Every cell is one whole-suite run under `--junitxml`, on the idle 18-core machine. These were
+taken before Phase 4, so read them against each other rather than against the headline: what
+they settle is which scheduler and how many workers, and Phase 4 takes work out of every cell
+alike.
 
 | `--dist` | `-n` | Wall | Σ test-seconds |
 | --- | --- | --- | --- |
@@ -123,6 +129,19 @@ window over the whole family, so no filter on one session reaches it.
 `view_runs.sql` answers identically for all 126 sessions of the store that ran an agent run.
 That corpus is what proves the empty cases: it holds a run with no api call of its own, one
 with no non-synthetic call, six with no tool call and 2,276 with no compaction.
+
+**The fourth fix, lazy JSON macro install, was measured and dropped.** Installing the whole
+macro library on a fresh connection costs 0.744 ms, of which the three JSON macros are 0.287 ms
+(`tool_asked`, `tool_path`, `tool_fields`, medians of 50 installs on an in-memory database). A
+serial suite run opens 2,815 of them and spends 1.77 s installing macros, so skipping the JSON
+three on every connection that never calls one would be worth at most 0.8 s of 110 s — 0.6% —
+and less than that on a page, where 0.29 ms sits inside 53-145 ms.
+
+What it would cost is the invariant `DEFINITIONS` is written around: a connection holds the
+whole library or a query that reaches for a macro fails on a page nobody rendered under test.
+`install` runs before any query is known, so laziness means either a check on every statement or
+a tier per consumer. That is a fail-fast property traded for half a percent, so the fix is not
+landed.
 
 **The float drift the risk register predicted is real and bounded.** Summing a session's
 `cost_usd` in one grouped pass instead of one subquery per session moves the last bits: over the
