@@ -10,6 +10,7 @@ Which node each leaf reads is picked out of the store by `tests/view/selections.
 """
 
 import json
+from collections.abc import Mapping
 from urllib.parse import parse_qs, urlparse
 
 import duckdb
@@ -42,7 +43,6 @@ from tests.view.conftest import (
     inside,
     marked_up,
     one,
-    pages,
     reads,
     values,
 )
@@ -581,9 +581,8 @@ def test_a_crumb_is_cut_narrower_than_every_other_place_a_title_is_read(
     assert f"<title>❯ {bold} y" in bolded
 
 
-def test_every_kind_renders_a_body_and_every_shape_a_log(
-    client: TestClient, store: duckdb.DuckDBPyConnection
-) -> None:
+@pytest.mark.xdist_group("corpus_sweep")
+def test_every_kind_renders_a_body_and_every_shape_a_log(corpus_pages: Mapping[str, str]) -> None:
     """The match over a node's kind and the one over its log's shape each answer for every member.
 
     The runtime half of what `assert_never` promises the checker: a kind added to `nodes.Kind`
@@ -594,8 +593,7 @@ def test_every_kind_renders_a_body_and_every_shape_a_log(
     """
     bodies: set[str] = set()
     logged: set[str] = set()
-    for url in pages(store):
-        served = client.get(url).text
+    for served in corpus_pages.values():
         bodies.update(values(served, "data-body"))
         logged.update(values(served, "data-log"))
     assert {kind.value for kind in Kind} <= bodies, sorted({k.value for k in Kind} - bodies)

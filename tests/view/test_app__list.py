@@ -8,6 +8,7 @@ expectation instead of falling out of it.
 
 import datetime as dt
 import re
+from collections.abc import Mapping
 from html import unescape
 
 import duckdb
@@ -35,7 +36,6 @@ from tests.view.conftest import (
     inside,
     money,
     one,
-    pages,
     plain,
     reads,
     values,
@@ -98,8 +98,9 @@ def test_the_list_holds_every_session_with_its_own_numbers(
     assert f"{errors} errors" in reads(page, "data-session-id", SPINE)
 
 
+@pytest.mark.xdist_group("corpus_sweep")
 def test_a_column_the_store_left_null_reads_as_one_dash(
-    client: TestClient, store: duckdb.DuckDBPyConnection
+    client: TestClient, corpus_pages: Mapping[str, str]
 ) -> None:
     """A cell over a column the store holds nothing in prints a dash, not "None" or a blank.
 
@@ -117,8 +118,8 @@ def test_a_column_the_store_left_null_reads_as_one_dash(
     # And no page the store can serve prints a Python value anywhere: the three cells above are
     # the columns this corpus records a gap in, and a template that renders a NULL straight is
     # one recording away from showing `None` to a reader.
-    for url in pages(store):
-        assert ">None<" not in client.get(url).text, url
+    for url, served in corpus_pages.items():
+        assert ">None<" not in served, url
 
 
 def test_the_list_reads_the_clock_at_render_rather_than_at_startup(

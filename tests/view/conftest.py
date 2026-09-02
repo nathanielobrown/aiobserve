@@ -11,7 +11,7 @@ the page.
 """
 
 import re
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
@@ -114,6 +114,46 @@ def pages(store: duckdb.DuckDBPyConnection) -> list[str]:
     ).fetchall():
         urls.append(f"/session/{session_id}/unattached")
     return urls
+
+
+def render_pages(path: Path) -> dict[str, str]:
+    """Every page one store serves at the default knobs, keyed by URL and served once.
+
+    Four leaves sweep the corpus this way and assert different properties of the *same* bytes —
+    same store file, same knobs, same app — so rendering once and sharing the map changes what
+    each of them reads not at all, and costs the run one pass instead of four. The 200 is
+    asserted here rather than in each of them: a page that failed never reaches the map, and it
+    names the URL that did it.
+
+    A function over a path rather than a fixture over the corpus, so a leaf that plants
+    something can rebuild the map over its own copy. A plant in a scratch store can never
+    surface through a map built from the untouched corpus, so a sweep that could not be
+    rebuilt could not be red-checked either.
+    """
+    reading = duckdb.connect(str(path), read_only=True)
+    reading.execute("SET TimeZone='UTC'")
+    macros.install(reading)
+    try:
+        urls = pages(reading)
+    finally:
+        reading.close()
+    with TestClient(build_app(path)) as served:
+        rendered = {}
+        for url in urls:
+            response = served.get(url)
+            assert response.status_code == 200, (url, response.status_code)
+            rendered[url] = response.text
+    return rendered
+
+
+@pytest.fixture(scope="session")
+def corpus_pages(corpus_db: Path) -> Mapping[str, str]:
+    """The fixture corpus rendered once, for the leaves that sweep every page of it.
+
+    Session-scoped, and its consumers are marked `xdist_group("corpus_sweep")` so one worker
+    renders it once for all of them instead of each worker paying for its own pass.
+    """
+    return render_pages(corpus_db)
 
 
 @pytest.fixture(scope="session")

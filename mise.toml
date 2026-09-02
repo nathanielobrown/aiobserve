@@ -124,7 +124,9 @@ description = "Run the test suite"
 # `-n auto` here rather than in `addopts`, so it shapes the whole-suite run and nothing else:
 # a developer running one file keeps the serial harness with `-s` and pdb working, and
 # `mise run mutate`, which invokes pytest itself per mutant, stays serial and reproducible.
-run = "uv run pytest -n auto"
+# `--dist loadgroup` sends the leaves sharing an `xdist_group` mark to one worker, so the
+# corpus render pass they share is paid once per run rather than once per worker.
+run = "uv run pytest -n auto --dist loadgroup"
 
 [tasks.gallery]
 description = "Serve the test fixtures' scenario pages in a browser, with live reload"

@@ -12,9 +12,11 @@ The described store is `enriched_db`, whose four model-written fields are invent
 """
 
 import re
+from collections.abc import Mapping
 from pathlib import Path
 
 import duckdb
+import pytest
 from fastapi.testclient import TestClient
 
 from hyphae.analyze import queries
@@ -264,8 +266,9 @@ def test_a_run_page_shows_the_runs_own_enrichment_beside_its_brief(
     assert values(page, "data-detail") == ["brief", "prompt", "result"]
 
 
+@pytest.mark.xdist_group("corpus_sweep")
 def test_a_store_no_enrichment_pass_has_touched_renders_every_page(
-    client: TestClient, store: duckdb.DuckDBPyConnection
+    corpus_pages: Mapping[str, str], client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
     """The viewer over a store holding no enrichment table at all serves every page.
 
@@ -273,10 +276,11 @@ def test_a_store_no_enrichment_pass_has_touched_renders_every_page(
     viewer only ever reads. Nothing on the page stands in for the missing rows either — an
     empty tag is noise a reader has to learn to ignore.
     """
-    for url in pages(store):
-        page = client.get(url)
-        assert page.status_code == 200, url
-        assert values(page.text, "data-enrichment") == [], url
+    # Every page served, which `corpus_pages` is what asserts — it renders nothing it did not
+    # get a 200 for, so a page that broke on the missing tables never reaches this loop.
+    assert corpus_pages
+    for url, served in corpus_pages.items():
+        assert values(served, "data-enrichment") == [], url
     # And the fetches behind those words answer nothing rather than crashing. No page here
     # links to one — the section that carries the link is not rendered at all — but the URLs
     # are ones a reader can paste from a described store's page, and the table they read does

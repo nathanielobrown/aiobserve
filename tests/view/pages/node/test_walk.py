@@ -14,13 +14,14 @@ rather than derived from the store a second time.
 """
 
 import re
+from collections.abc import Mapping
 
 import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
 from tests.conftest import FORK_ORIGIN, MAIN, SPINE
-from tests.view.conftest import fields, inside, kin, one, pages, plain, under, values
+from tests.view.conftest import fields, inside, kin, one, plain, under, values
 
 
 class Page:
@@ -142,8 +143,9 @@ def deep_turn(store: duckdb.DuckDBPyConnection) -> str:
     return str(turn_id)
 
 
+@pytest.mark.xdist_group("corpus_sweep")
 def test_every_control_in_the_corpus_walks_its_own_level_or_climbs_out_of_it(
-    client: TestClient, store: duckdb.DuckDBPyConnection
+    corpus_pages: Mapping[str, str],
 ) -> None:
     """Neither control ever descends: every page in the corpus, both controls, against its tree.
 
@@ -153,10 +155,9 @@ def test_every_control_in_the_corpus_walks_its_own_level_or_climbs_out_of_it(
     somewhere no level on the page holds, and fail here.
     """
     seen: set[str] = set()
-    for url in pages(store):
+    for url, html in corpus_pages.items():
         if not url.startswith("/session/"):
             continue
-        html = client.get(url).text
         page = Page(url, html)
         # The expectation is a level read off the NavTree, so a level the cap cut would make it a
         # different claim. Nothing in this corpus comes near the window.
