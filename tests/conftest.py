@@ -15,6 +15,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+import duckdb
 import pytest
 
 from hyphae.enrich.items import Level
@@ -28,6 +29,26 @@ from hyphae.extract.layout import SessionFiles
 from hyphae.model import SessionTrace
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+_opened = duckdb.connect
+
+
+def _single_threaded(*arguments: Any, **keywords: Any) -> duckdb.DuckDBPyConnection:
+    """`duckdb.connect`, with the new connection's thread pool pinned to one.
+
+    DuckDB sizes that pool by the machine's cores, which over ~20-row fixture tables buys
+    contention and nothing else: pinned, the suite's straggler fell 41.0s to 29.1s and its CPU
+    106s to 30s (`plans/test-runtime/design.md`). Wrapping the library function is one seam
+    over every connection the run opens — the fixtures' own, the store builders', and the one
+    the viewer under test takes per request. Scaffolding only: shipped `hp view` keeps the
+    default pool, whose value on a multi-GB store is unmeasured.
+    """
+    connection = _opened(*arguments, **keywords)
+    connection.execute("SET threads TO 1")
+    return connection
+
+
+duckdb.connect = _single_threaded
 
 # The project every recorded fixture was captured under. `tests/fixtures/*/README.md` names
 # the session behind each one.
