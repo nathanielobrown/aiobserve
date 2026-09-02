@@ -231,9 +231,14 @@ against *that* map; revert.
 
 ### Phase 4 — query-shape fixes in the shared SQL/macros (product work that also buys margin)
 
-**As built,** none of this landed: the gate was met without it. Nothing below has been
-re-measured on Python, so every number in this phase is still **[Rust]**, and open question 1's
-recommendation — a separate branch — stands.
+**As built,** fixes 1–3 landed on this branch after the gate was met, at Nathaniel's
+instruction — which is what settled open question 1 against its own recommendation of a
+separate branch. Each was re-measured on Python and its A/B is in [results.md](results.md), so
+the **[Rust]** marks below say what the fix was proposed on, not what it was kept on. Fix 4 was
+measured and dropped, which is the "or not at all" it was already offered under: at most 0.8 s
+of 110 s, against the invariant that a connection holds the whole macro library. Fix 3's memo
+is narrower than the sketch below — a `Levels` on the request's `Corpus`
+(`src/hyphae/view/pages/node/levels.py`), not something the request's `Db` holds.
 
 These speed `hp view` for a reader, not just the tests. Each was measured end-to-end on the
 Rust port (same DuckDB 1.5.5, same SQL bytes) **[Rust]**; each must be re-measured on Python
@@ -320,15 +325,19 @@ plans/test-runtime/baseline.md    Phase 0 output
 plans/test-runtime/results.md     what the finished suite measures, against that baseline
 pyproject.toml                    + pytest-xdist (dev group, with a purpose comment)
 mise.toml                         test task: uv run pytest -n auto [--dist loadgroup from Phase 3]
+                                  as built, -n 12 or every core where there are fewer
 tests/conftest.py                 duckdb.connect wrapper pinning SET threads TO 1;
                                   collection reorder fronting the long work (Phase 5)
 tests/view/conftest.py            + render_pages builder and corpus_pages fixture (Phase 3)
 tests/view/test_bounds__node.py   straggler split into three ids over a module-scoped plant
 tests/view/pages/node/test_node.py, .../test_walk.py, tests/view/test_enrichment.py,
 tests/view/test_app__list.py      consume corpus_pages (Phase 3)
-src/hyphae/analyze/macros.py      MAP context_window, lazy JSON install (Phase 4 — not built)
-src/hyphae/export/duckdb.py       grouped-join rollup views (Phase 4 — not built)
-src/hyphae/view/walk.py|store.py|deps.py  per-request statement memo (Phase 4 — not built)
+src/hyphae/analyze/macros.py      MAP context_window (Phase 4; lazy JSON install not built)
+src/hyphae/export/duckdb.py       grouped-join rollup views (Phase 4), and view_runs.sql beside it
+src/hyphae/view/pages/node/levels.py  the per-request level memo (Phase 4), where the sketch
+                                  said walk.py|store.py|deps.py
+src/hyphae/view/dev.py            found by profiling rather than designed here: the reload
+                                  watcher lets go on a shorter timeout (results.md)
 ```
 
 ## Decisions
@@ -397,7 +406,10 @@ src/hyphae/view/walk.py|store.py|deps.py  per-request statement memo (Phase 4 �
 1. Should Phase 4 land at all once the gate is met, or be re-scoped as a viewer-performance
    change with its own plan? (Recommendation: land it — it is user-facing speed — but as a
    separate branch so the suite change is reviewable alone)
+   **Answered:** on this branch, at Nathaniel's instruction
 2. `TestClient` per-request overhead on Python is unmeasured; Phase 0's no-op run bounds it.
    If it is >5ms/request, the ASGITransport swap becomes a real phase
+   **Answered:** it is not — the swap is 0.040 s of a 7.64 s sweep, half a percent
+   ([results.md](results.md)), so there is no phase here
 3. Does `mise run mutate` interact with the new task flags on this machine? (Expected no —
    flags live in the task, and mutmut invokes pytest directly — but run one mutant to confirm)
