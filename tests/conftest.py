@@ -40,8 +40,13 @@ def _single_threaded(*arguments: Any, **keywords: Any) -> duckdb.DuckDBPyConnect
     contention and nothing else: pinned, the suite's straggler fell 41.0s to 29.1s and its CPU
     106s to 30s (`plans/test-runtime/design.md`). Wrapping the library function is one seam
     over every connection the run opens — the fixtures' own, the store builders', and the one
-    the viewer under test takes per request. Scaffolding only: shipped `hp view` keeps the
-    default pool, whose value on a multi-GB store is unmeasured.
+    the viewer under test takes per request.
+
+    Importing this module is what installs it, so the pin also rides the dev tools that reach
+    it through `tests/view/scenarios.py`: `mise run gallery` and `tools/gen_e2e_routes.py`.
+    Both read fixture stores of a few dozen rows. It is never shipped — `src/` imports nothing
+    from `tests/`, so `hp view` keeps the default pool, whose value on a multi-GB store is
+    unmeasured.
     """
     connection = _opened(*arguments, **keywords)
     connection.execute("SET threads TO 1")
