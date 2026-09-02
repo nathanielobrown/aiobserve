@@ -482,8 +482,8 @@ def test_a_session_renders_its_metrics_then_what_it_did(mutable_db: Path) -> Non
         "## Metrics\n"
         "branch fixture-branch-1\n"
         "wall 30d 23h, active 3m 39s\n"
-        "tokens 15 in, 5,579 out, 295,615 cache read, 144,797 cache write\n"
-        "cost $3.07\n"
+        "tokens 17 in, 5,846 out, 362,120 cache read, 145,722 cache write\n"
+        "cost $3.17\n"
         "\n"
         "## Work\n"
         # The turn recorded a month before the other three comes first: children are in

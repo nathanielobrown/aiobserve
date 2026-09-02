@@ -169,9 +169,9 @@ def test_input_hash_reads_the_rendered_content_and_nothing_else(mutable_db: Path
 
 def test_an_over_budget_turn_drops_the_middle_of_its_work(fixture_db: Path) -> None:
     """Past its budget a turn drops the middle of its call sequence and says how much went."""
-    # If `spine/`'s longest turn — three tool calls under one response — is rendered at a
-    # budget of 300 characters, two thirds of the 463 it needs (injected, because redaction
-    # leaves no fixture within two orders of magnitude of the real 30K)...
+    # If `spine/`'s longest turn — three tool calls between two responses — is rendered at a
+    # budget of 300 characters, under two thirds of the 487 it needs (injected, because
+    # redaction leaves no fixture within two orders of magnitude of the real 30K)...
     with EnrichmentStore(fixture_db) as store:
         item = turn(store, SPINE, "30aad8e5")
         elided = render_turn(item, dataclasses.replace(TURN_BUDGETS, total=300))
@@ -190,11 +190,14 @@ def test_an_over_budget_turn_drops_the_middle_of_its_work(fixture_db: Path) -> N
         "\n"
         "## Response\n"
         "[redacted]\n"
-        "[… 2 of 8 lines elided …]\n"
+        "[… 2 of 11 lines elided …]\n"
         "- Read (input 58 chars, unanswered) "
         '{"file_path": "/Users/nob/repos/mycelia/issues/README.md"}\n'
         "\n"
-        "## Ended: tool_use"
+        "## Response\n"
+        "[redacted]\n"
+        "\n"
+        "## Ended: end_turn"
     )
     assert len(elided) <= 300
 

@@ -1,8 +1,8 @@
 # `spine/` — the slice-1 whole-object fixture
 
 Redacted excerpt of `4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b.jsonl`, **Claude Code 2.1.221**, from
-`~/.claude/projects/-Users-nob-repos-mycelia/`. 41 records, drawn from lines 1–3, 5–7, 9, 16, 19–24,
-123, 126, 140, 513, 531, 780–781, 860–863, 877–878 and 895–900 of the original. Order is the
+`~/.claude/projects/-Users-nob-repos-mycelia/`. 42 records, drawn from lines 1–3, 5–7, 9, 16, 19–24,
+122, 123, 126, 140, 513, 531, 780–781, 860–863, 877–878 and 895–900 of the original. Order is the
 original's, except that 780–781 — the `Agent` call that spawned the subagent below, and its result —
 sit inside the last turn so the spawning call and the delegated work stay in one excerpt, and the two
 `pr-link` records sit at the end.
@@ -43,6 +43,11 @@ written:
   session, and a generated title after it does not
 - the `<synthetic>` reply — priced at a stated zero rather than left unpriced. Its 2026-07-06
   timestamp is the file's earliest, so it also sets the session's `started_at`
+- `msg_011CdmMz6vD6y2JsoEV6qVYL` — the last call of turn `30aad8e5`, here for its `usage` and
+  nothing else. It is what leaves the window standing well above where the session opened, so the
+  turn after it draws a context bar with all three bands apart: the opening context in navy, the
+  conversation over it, and the turn's own growth bright at the tip (`f10 p7 b3`). Trim it and no
+  turn in the whole corpus draws all three (`tests/view/pages/node/test_nav_tree__bars.py`)
 - two `pr-link` records — the same `prNumber` twice, four minutes apart, which is why a PR link is
   keyed by its transcript line rather than by its number
 

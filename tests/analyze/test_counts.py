@@ -382,9 +382,9 @@ def test_context_reloads_totals_the_threads_it_lists(run_query: QueryRunner, per
     # cost is counted once per reload it happened to hold...
     (total,) = [row for row in rows if row["grain"] == "corpus"]
     assert int(total["threads"]) == len(threads)
-    assert float(total["thread_cost_usd"]) == sum(
-        float(row["thread_cost_usd"]) for row in threads.values()
-    )
+    # Each grain rounds its own sum, so the total sits within half a cent per row of theirs.
+    parts = [float(row["thread_cost_usd"]) for row in threads.values()]
+    assert float(total["thread_cost_usd"]) == pytest.approx(sum(parts), abs=0.005 * len(rows))
     # ...and the counts a finding would quote add up the same way, which is what a session
     # sitting in both periods must not disturb.
     for column in ("reloads", "idle_reloads", "rebuilt_tokens"):

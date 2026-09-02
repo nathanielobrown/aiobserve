@@ -423,6 +423,7 @@ def test_every_band_a_row_draws_nests_inside_the_one_that_holds_it(
     """
     sessions = [str(row[0]) for row in store.execute("SELECT id FROM sessions").fetchall()]
     banded = 0
+    ramped = []
     for session_id in sessions:
         page = client.get(f"/session/{session_id}").text
         for key in values(page, "data-nav-tree"):
@@ -435,11 +436,24 @@ def test_every_band_a_row_draws_nests_inside_the_one_that_holds_it(
             assert edges == sorted(edges, reverse=True), (session_id, key, drawn)
             assert drawn.fill <= BAR_STEPS, (session_id, key, drawn)
             banded += len(edges)
+            # A turn whose three edges are all apart, and whose innermost is off the left, draws
+            # all three bands at once with ground under each: the opening context in navy, the
+            # conversation over it in medium, its own growth bright at the tip.
+            ramp = 0 < (drawn.base or 0) < (drawn.prior or 0) < drawn.fill
+            if ramp and key.startswith(f"{Kind.TURN}:"):
+                ramped.append((session_id, key, drawn))
         # And no row carries a width of its own: the classes are the only hook there is, and a
         # `style` attribute anywhere under a row is markup the policy would refuse to paint
         # (`tests/view/test_app__headers.py`).
         assert not re.findall(r'data-nav-tree="[^"]*"[^>]*style="', page), session_id
     assert banded, "no row in the corpus drew a band"
+    # And the corpus can show the ramp the palette was chosen for. Nothing above forces it:
+    # every clamp here is satisfied by a row drawing two bands or one, and the corpus drew no
+    # three-band turn at all until `spine/` kept the call that ends the turn before its last
+    # one, which is the conversation that turn stands on (`tests/fixtures/spine/README.md`).
+    # Without one the gallery leads a reader to no page where the three blues can be read
+    # against each other, and a colour nobody can look at is a colour nothing defends.
+    assert ramped, "no turn in the corpus draws all three bands"
 
 
 def test_a_turns_bar_stands_on_the_context_the_session_opened_on(

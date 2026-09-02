@@ -52,6 +52,7 @@ from tests.view.nav_trees import (
     mounts,
     open_turn,
     shut,
+    spawned,
     spilled,
     thread_level,
     turn_level,
@@ -437,12 +438,21 @@ def test_a_tail_row_stands_the_rest_of_its_level_where_it_stands(
     # rows the reader could not see, ready to stand where the row that counted them stands.
     served = client.get(fetch["hx-get"])
     assert served.status_code == 200
-    assert rows(served.text) == [(1, key) for key in level if key != f"turn:{selection}"]
+    stood = rows(served.text)
+    assert [key for depth, key in stood if depth == 1] == [
+        key for key in level if key != f"turn:{selection}"
+    ]
+    # They arrive whole, each carrying whatever the tree draws beneath it, since a row that
+    # stands in for another has to bring what that row was holding: one of these turns spawned
+    # the session's agent runs, and they come with it.
+    assert [key for depth, key in stood if depth > 1] == [
+        f"run:{run_id}" for run_id, *_ in spawned(store, SPINE)
+    ]
     # Each of them reads on under the sizes the reader typed, like any row the page drew, and
     # by one URL whether it is clicked or pasted. The link, not the popover trigger beside it:
     # a row fetches twice, and only one of the two is somewhere a reader can go.
     links = [(key, at) for key, at in wired(served.text, "data-nav-tree") if "href" in at]
-    assert len(links) == len(level) - 1
+    assert len(links) == len(stood)
     for key, wiring in links:
         assert wiring["href"] == wiring["hx-get"], key
         assert parse_qs(urlsplit(wiring["hx-get"]).query) == {"kin": ["1"]}, key

@@ -98,13 +98,13 @@ def test_re_exporting_a_session_replaces_it_wholly(db: Path, fixture_trace: Trac
     assert counts(exporter) == {
         "sessions": 1,
         "turns": 6,
-        "api_calls": 9,
+        "api_calls": 10,
         "tool_calls": 12,
         "agent_runs": 2,
         "compactions": 0,
         "pr_links": 2,
         "offload_files": 0,
-        "raw_records": 57,
+        "raw_records": 58,
     }
 
     # ...and the same session comes back shorter — one turn, one call, three lines,

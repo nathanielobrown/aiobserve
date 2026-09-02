@@ -93,6 +93,10 @@ SEARCH_BASH_TOOL = "toolu_013mFHM2jYQ6khnnZDCHq5Ua"
 # `SPINE`'s main-thread turn typed as a slash command — `/night-run`, with arguments recorded
 # after it — which is the one shape that fills the two command columns.
 SLASH_TURN = "30aad8e5-21f8-486d-b9d9-e118c703a5a1"
+# `SPINE`'s second main-thread turn, and the corpus's one turn whose context bar draws all
+# three bands apart: the context the session opened on, the conversation over it, and its own
+# growth at the tip (`tests/fixtures/spine/README.md`).
+THREE_BAND_TURN = "818588ad-3849-48fe-a546-573163768e04"
 
 # `ANCESTOR` is the session `RESUME` resumed, and one of the two pool sessions that compacted.
 # `FORK_ORIGIN` holds the fork whose spawning call sits in the fork's own transcript:

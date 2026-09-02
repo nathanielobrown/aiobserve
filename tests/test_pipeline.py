@@ -162,7 +162,7 @@ def test_a_grown_session_is_replaced_rather_than_appended(
     built from scratch over the grown file catches that, where a row count would not.
     """
     # If a session was extracted while it was still short...
-    corpus.add("spine", SPINE, lines=22)
+    corpus.add("spine", SPINE, lines=23)
     extractor = corpus.extractor()
     refresh(corpus.project, extractor=extractor, exporter=exporter)
     # Three turns of its own, plus the two its subagent's transcript holds.
@@ -210,7 +210,7 @@ def test_a_session_caught_mid_write_heals_on_the_next_refresh(
     # ...and once Claude Code has finished the line, the next refresh takes the session whole.
     corpus.add("spine", SPINE)
     assert refresh(corpus.project, extractor=extractor, exporter=exporter).extracted == [SPINE]
-    assert archived() == 41
+    assert archived() == 42
 
 
 def test_a_new_subagent_file_re_extracts_its_session(corpus: Corpus, exporter: DuckDbExporter):
