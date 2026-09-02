@@ -37,6 +37,14 @@ STYLESHEET = ".css"
 # through this stream.
 RENDERED = frozenset({STYLESHEET, ".js"})
 
+# How long the watcher stays down in rust before surfacing to see whether it is still wanted.
+# Cancelling the response never reaches that thread, so a reader who closes the page holds a
+# worker until this elapses — and `serve` caps uvicorn's graceful shutdown around this very
+# stream. `awatch` waits five seconds by default; surfacing twice a second costs nothing and
+# changes nothing else, since a watcher that surfaces with no change to report just goes back
+# down. What decides when a save is reported is the debounce, which is untouched.
+LET_GO_MS = 500
+
 
 class Rendered(DefaultFilter):
     """watchfiles' own noise filter, narrowed to the files the viewer renders from.
@@ -92,5 +100,5 @@ async def _events(paths: Sequence[Path]) -> AsyncIterator[str]:
     The stream has no last message, so `serve` caps uvicorn's graceful shutdown under `--dev`:
     an exit that waits for every in-flight response would otherwise wait on this one forever.
     """
-    async for changes in awatch(*paths, watch_filter=Rendered()):
+    async for changes in awatch(*paths, watch_filter=Rendered(), rust_timeout=LET_GO_MS):
         yield f"data: {event_for(changes)}\n\n"
