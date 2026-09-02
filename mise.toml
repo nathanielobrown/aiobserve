@@ -126,6 +126,9 @@ description = "Run the test suite"
 # `mise run mutate`, which invokes pytest itself per mutant, stays serial and reproducible.
 # `--dist loadgroup` sends the leaves sharing an `xdist_group` mark to one worker, so the
 # corpus render pass they share is paid once per run rather than once per worker.
+# `auto` rather than a number: on 18 cores it ties a hand-picked 12 (27.6s against 27.3s,
+# median of the whole suite) and beats 8 and 24, so the tuning is worth nothing here and
+# would cost every machine with a different core count — CI's included.
 run = "uv run pytest -n auto --dist loadgroup"
 
 [tasks.gallery]

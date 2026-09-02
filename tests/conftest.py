@@ -50,6 +50,24 @@ def _single_threaded(*arguments: Any, **keywords: Any) -> duckdb.DuckDBPyConnect
 
 duckdb.connect = _single_threaded
 
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Hand the long work out first, because xdist distributes in collection order.
+
+    Every leaf in this suite that runs longer than a second renders viewer pages, and
+    `tests/view/` collects last of the directories — so left alone, the run's longest work
+    starts a third of the way in and the wall is that offset plus the longest leaf. Fronted,
+    the sub-second tests fill the workers behind it instead of ahead of it: the median fell
+    from 30.9s to what `mise run test` prints today.
+
+    The shared corpus render pass leads, being both the longest single block and, under
+    `--dist loadgroup`, one worker's alone. `sort` is stable, so within each of the three
+    groups the order is still the order pytest collected in.
+    """
+    items.sort(key=lambda item: 0 if item.get_closest_marker("xdist_group") else 1)
+    items.sort(key=lambda item: 0 if item.nodeid.startswith("tests/view/") else 1)
+
+
 # The project every recorded fixture was captured under. `tests/fixtures/*/README.md` names
 # the session behind each one.
 MYCELIA = "/Users/nob/repos/mycelia"
