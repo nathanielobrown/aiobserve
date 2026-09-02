@@ -62,7 +62,7 @@ RECORDED_SKILLS = {
     "grill-me": (2, 2),
     "deep-research": (2, 1),
     "manager": (1, 1),
-    "night-run": (1, 1),
+    "night-run": (2, 1),
 }
 # The skills the plant invokes: one the corpus already attributes calls to, so the two halves
 # meet in one row; one it does not, so the invoked half stands alone at zero api calls.
@@ -73,9 +73,9 @@ INVOKED_ALONE = "commit"
 UNREADABLE_INPUT = "not json at all"
 
 # The command turn the corpus records with any spend of its own: one turn of `SPINE`, holding
-# one api call and the three tool calls under it.
+# two api calls and the three tool calls under them.
 BILLED_COMMAND = "/night-run"
-BILLED_API_CALLS = 1
+BILLED_API_CALLS = 2
 BILLED_TOOL_CALLS = 3
 
 # What the costliest tenth of 15 sessions is: `percent_rank` puts two of them at or above 0.9,

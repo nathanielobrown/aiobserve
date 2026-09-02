@@ -164,6 +164,35 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             thinking="[redacted]",
             replayed=False,
         ),
+        # ...one that only answered, and is here for where it left the context window: it ends
+        # the turn before the last, which is what gives that turn's context bar a conversation
+        # to stand on (`tests/fixtures/spine/README.md`)...
+        ApiCall(
+            id="msg_011CdmMz6vD6y2JsoEV6qVYL",
+            session_id=SPINE,
+            source="main",
+            turn_id="30aad8e5-21f8-486d-b9d9-e118c703a5a1",
+            index=1,
+            model="claude-fable-5",
+            fallback_from=None,
+            effort="high",
+            stop_reason="end_turn",
+            attribution_skill="night-run",
+            request_id="req_011CdmMz5oVCnzjRdjfSLSRX",
+            started_at=at("2026-08-06T10:47:54.500"),
+            ended_at=at("2026-08-06T10:47:54.500"),
+            input_tokens=2,
+            output_tokens=267,
+            cache_read_tokens=66505,
+            cache_creation_tokens=925,
+            cache_5m_tokens=0,
+            cache_1h_tokens=925,
+            cost_usd=0.098375,
+            synthetic=False,
+            text="[redacted]",
+            thinking="",
+            replayed=False,
+        ),
         # ...one that did nothing but delegate: a single `Agent` block, so no text and no
         # thinking, and its subagent's transcript holds what came of it...
         ApiCall(
@@ -171,7 +200,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             session_id=SPINE,
             source="main",
             turn_id="818588ad-3849-48fe-a546-573163768e04",
-            index=1,
+            index=2,
             model="claude-fable-5",
             fallback_from=None,
             effort="high",
@@ -202,7 +231,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             session_id=SPINE,
             source="main",
             turn_id="818588ad-3849-48fe-a546-573163768e04",
-            index=2,
+            index=3,
             model="claude-fable-5",
             fallback_from=None,
             effort="high",
@@ -229,7 +258,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             session_id=SPINE,
             source="main",
             turn_id="818588ad-3849-48fe-a546-573163768e04",
-            index=3,
+            index=4,
             model="claude-fable-5",
             fallback_from=None,
             effort="high",
@@ -255,7 +284,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             session_id=SPINE,
             source="main",
             turn_id="818588ad-3849-48fe-a546-573163768e04",
-            index=4,
+            index=5,
             model="claude-fable-5",
             fallback_from=None,
             effort="high",
@@ -284,7 +313,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
             session_id=SPINE,
             source="main",
             turn_id="8cdceb31-385c-42d4-9dae-137958b09b88",
-            index=5,
+            index=6,
             model="<synthetic>",
             fallback_from=None,
             effort=None,
@@ -312,7 +341,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
     assert trace.pr_links == [
         PrLink(
             session_id=SPINE,
-            line_no=39,
+            line_no=40,
             pr_number=656,
             pr_url="fixture-pr-url-1",
             pr_repository="fixture-pr-repo-1",
@@ -320,7 +349,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
         ),
         PrLink(
             session_id=SPINE,
-            line_no=40,
+            line_no=41,
             pr_number=656,
             pr_url="fixture-pr-url-1",
             pr_repository="fixture-pr-repo-1",
@@ -330,7 +359,7 @@ def test_a_recorded_session_extracts_whole(fixture_source: SourceFactory):
 
     # ...while every line of the transcript survives in the archive, whatever it was —
     # beside the lines of the subagent it spawned, which carry their own source.
-    assert len([r for r in trace.raw_records if r.source == MAIN_SOURCE]) == 41
+    assert len([r for r in trace.raw_records if r.source == MAIN_SOURCE]) == 42
     assert trace.extractor == "claude_code"
 
 
@@ -343,15 +372,15 @@ def test_a_message_split_across_records_merges_into_one_call(fixture_source: Sou
     """
     trace = ClaudeCodeExtractor().extract(fixture_source("spine", SPINE))
 
-    # If the file holds thirteen assistant records under six message ids...
+    # If the file holds fourteen assistant records under seven message ids...
     assert (
         len([r for r in trace.raw_records if r.type == "assistant" and r.source == MAIN_SOURCE])
-        == 13
+        == 14
     )
-    # ...then six API calls come back, each spanning from the record it answers to its
+    # ...then seven API calls come back, each spanning from the record it answers to its
     # last chunk, with the thinking and the text it was split across both present.
     main = [call for call in trace.api_calls if call.source == MAIN_SOURCE]
-    assert len(main) == 6
+    assert len(main) == 7
     merged = main[0]
     assert (merged.started_at, merged.ended_at) == (
         at("2026-08-06T10:44:27.629"),

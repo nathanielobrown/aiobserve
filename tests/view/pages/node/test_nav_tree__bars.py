@@ -295,7 +295,7 @@ def test_a_context_bar_fills_linearly_and_stops_at_a_full_window(
 def test_a_context_bar_is_drawn_by_three_families_of_class_one_rule_spends(
     client: TestClient,
 ) -> None:
-    """What three edges are drawn as: a track, the fill, and the two bands nested inside it.
+    """What three edges are drawn as: the fill, and the two bands nested inside it.
 
     The policy forbids the inline width that would carry a percentage, so the numbers ride in
     as classes and the stylesheet turns them back into widths. That makes the ladder a thing
@@ -304,81 +304,103 @@ def test_a_context_bar_is_drawn_by_three_families_of_class_one_rule_spends(
     """
     style = re.sub(r"/\*.*?\*/", "", viewer_css(client), flags=re.DOTALL)
     steps = list(range(BAR_STEPS + 1))
-    for family, prop in (("f", "--ctx-fill"), ("p", "--ctx-prior"), ("b", "--ctx-base")):
+    for family, prop in (("f", "--edge-fill"), ("p", "--edge-prior"), ("b", "--edge-base")):
         widths = {
             int(step): int(width)
             for step, width in re.findall(rf"li\.node\.{family}(\d+) \{{ {prop}: (\d+)%", style)
         }
-        # Every family runs the whole ladder, bottom to top: a band of nothing is a drawn track
-        # with nothing in it, and a full window is the bar's own end.
+        # Every family runs the whole ladder, bottom to top: a band of nothing draws nothing at
+        # all, and a full window is the bar's own end.
         assert sorted(widths) == steps, (family, sorted(widths))
         # And they are linear, evenly spaced from empty to full — the bar's whole claim is that
         # half of it is half a window.
         assert [widths[n] for n in steps] == [n * 100 // BAR_STEPS for n in steps], widths
-    # One rule spends all three, layering the track under the fill under the two bands that
-    # stand inside it. Each band is a prefix drawn over the one below, so the ground a reader
-    # sees between two edges is the band the second one opens.
-    ((selector, body),) = re.findall(r"(li\.node:is\([^)]*\)) > a \{([^}]*)\}", style)
+    # One rule spends all three, layering the fill under the two bands that stand inside it.
+    # Each band is a prefix drawn over the one below, so the ground a reader sees between two
+    # edges is the band the second one opens. Nothing is drawn under the widest of them: a bar
+    # is only what the row holds, and an empty track would read as a window that emptied.
+    selector, body = one_of(
+        [
+            (found, rule)
+            for found, rule in re.findall(r"(li\.node:is\([^)]*\)) > a \{([^}]*)\}", style)
+            if "background-image" in rule
+        ]
+    )
+    thick = r"var\(--ctx-height\)"
     assert re.search(
-        r"var\(--ctx-base, 0%\) 3px,\s*var\(--ctx-prior, 0%\) 3px,"
-        r"\s*var\(--ctx-fill, 0%\) 3px,\s*100% 3px",
+        rf"var\(--edge-base, 0%\) {thick},\s*var\(--edge-prior, 0%\) {thick},"
+        rf"\s*var\(--edge-fill, 0%\) {thick};",
         body,
     ), body
-    # The tip's own colour is the one thing a kind may take over, so it is a property with the
-    # accent as its default rather than a colour written into the layer.
-    assert re.findall(r"var\(--(faint|dim|ctx-tip|line)", body) == [
-        "faint",
-        "faint",
-        "dim",
-        "dim",
-        "ctx-tip",
-        "ctx-tip",
-        "line",
-        "line",
+    # And the number that name stands for. How thick a bar reads is eyeballed on the gallery the
+    # way its colours are (`.claude/rules/viewer-ui.md`), so this pins the value rather than
+    # justifying it: nothing else in either tier fails when the bar changes height.
+    assert re.search(r"--ctx-height: 3px;", style), style
+    # Widths are edges and colours are bands, so the two vocabularies never collide. Each band
+    # is a role a kind may take over, named in the order the layers stack: the context the
+    # session opened on, under what stood before the node, under the node's own share.
+    assert re.findall(r"linear-gradient\(var\((--[\w-]+)", body) == [
+        "--band-base",
+        "--band-past",
+        "--band-added",
     ], body
-    assert body.count("var(--ctx-tip, var(--mark))") == 2, body
+    # A role is a property with its palette token as its default rather than a colour written
+    # into the layer, so a kind override is one line and an unclaimed band paints itself.
+    for role in ("base", "past", "added"):
+        assert body.count(f"var(--band-{role}, var(--ctx-{role}))") == 2, (role, body)
     # Every fill class the markup can carry is named by that rule, and so is the mark a run
     # whose thread compacted carries: a step outside it would set a width nothing reads.
     assert sorted(int(step) for step in re.findall(r"\.f(\d+)", selector)) == steps, selector
     assert ".maxed" in selector, selector
     # A band alone draws nothing: a row that names where its own share begins without naming
-    # where it left the window has no bar to put the band in, and the fill carries the track.
+    # where it left the window has no bar to put the band in, so the fill is what mints one.
     assert not re.findall(r"li\.node:is\([^)]*\.[pb]\d+", style), style
 
 
-def test_a_run_a_compaction_and_a_maxed_thread_each_take_the_tip_in_a_colour_of_their_own(
+def test_a_thread_takes_one_gray_a_compaction_the_green_and_a_maxed_run_the_whole_bar(
     client: TestClient,
 ) -> None:
-    """The three hues beside the accent, and the one row that is drawn full whatever it holds.
+    """What a kind repaints, and the one row that is drawn full whatever it holds.
 
-    A hue is keyed on the row's own kind, which the row already carries — a second class saying
-    `run` on a run would be eight bytes a row for what the markup says already. What no kind can
-    say is that a run's own thread compacted, and that is the one mark the bar mints: the window
-    it ran out of, drawn full in the alarm the rest of the viewer flags an error with.
+    A kind is keyed on the class the row already carries — a second class saying `run` on a run
+    would be eight bytes a row for what the markup says already. A thread is one band and not
+    the ramp: nothing stood before a run and a session has nothing to have added to, so a
+    session and a run take one gray over both the bands a turn would draw. What no kind can say
+    is that a run's own thread compacted, and that is still the one mark the bar mints — but it
+    mints a width now and not a colour, because the red pill on the same row says why.
 
     The colours themselves are eyeballed on the gallery (`.claude/rules/viewer-ui.md`); what
-    this holds is that they are three different tokens, and that each is defined in both
-    schemes — a token a dark page leaves unset is a band that vanishes for half the readers.
+    this holds is which band each kind takes over, and that every colour the bar spends is
+    defined in both schemes — a token a dark page leaves unset is a band that vanishes for half
+    the readers.
     """
     style = re.sub(r"/\*.*?\*/", "", viewer_css(client), flags=re.DOTALL)
-    tips = dict(re.findall(r"li\.node\.(\w+) > a \{[^}]*--ctx-tip: var\((--[\w-]+)\)", style))
-    assert tips.keys() == {"run", "compaction", "maxed"}, tips
-    # Three hues, none of them the accent a turn or a call draws its tip in.
-    assert len(set(tips.values())) == len(tips) and "--mark" not in tips.values(), tips
-    # A maxed row is the whole track: a run that filled its window says so at full width,
-    # whatever the last call of its thread happened to leave behind.
-    maxed = one_of(
-        [
-            body
-            for selector, body in re.findall(r"li\.node\.(\w+) > a \{([^}]*)\}", style)
-            if selector == "maxed"
-        ]
-    )
-    assert "--ctx-fill: 100%" in maxed and "--ctx-prior: 0%" in maxed, maxed
-    # And every token the bar spends is defined for both schemes, light and dark alike.
+    # What an unclaimed band paints itself in: the ramp, read off the paint rule's own defaults
+    # so the claims below are about a kind departing from it rather than about three names.
+    ramp = set(re.findall(r"var\(--band-\w+, var\((--[\w-]+)\)\)", style))
+    # A session and a run are repainted by one rule, in one token, over both bands. A thread
+    # given two would read as a ramp it has no second number to justify.
+    thread = one_of(re.findall(r"li\.node:is\(\.session, \.run\) > a \{([^}]*)\}", style))
+    bands = dict(re.findall(r"--band-(past|added): var\((--[\w-]+)\)", thread))
+    assert bands.keys() == {"past", "added"}, thread
+    (gray,) = set(bands.values())
+    assert gray not in ramp, (gray, ramp)
+    # A compaction repaints its tip alone, in a token of its own: what it gave back is the one
+    # measurement here that is good news, and what stood before it is still the ramp.
+    freed = one_of(re.findall(r"li\.node\.compaction > a \{([^}]*)\}", style))
+    (given_back,) = re.findall(r"--band-added: var\((--[\w-]+)\)", freed)
+    assert "--band-past" not in freed, freed
+    assert given_back not in ramp | {gray}, (given_back, ramp, gray)
+    # A maxed row is the whole bar and nothing more: a run that filled its window says so at
+    # full width, whatever the last call of its thread happened to leave behind, in the gray it
+    # already wears. The fill is the only edge it has to force — only a run is ever maxed, and a
+    # run's own share is its whole fill, so the ladder already put its two inner edges at zero.
+    maxed = one_of(re.findall(r"li\.node\.maxed > a \{([^}]*)\}", style))
+    assert re.findall(r"--[\w-]+:[^;]+", maxed) == ["--edge-fill: 100%"], maxed
+    # And every colour the bar spends is defined for both schemes, light and dark alike.
     dark = one_of(re.findall(r"@media \(prefers-color-scheme: dark\) \{([^}]*)\}", style))
-    for token in {*tips.values(), "--faint", "--dim", "--mark", "--line"}:
-        assert re.search(rf"^\s*{token}: #", style, re.MULTILINE), token
+    for token in ramp | {gray, given_back}:
+        assert re.search(rf"^\s*{token}:\s+#", style, re.MULTILINE), token
         assert f"{token}: #" in dark, (token, dark)
 
 
@@ -401,6 +423,7 @@ def test_every_band_a_row_draws_nests_inside_the_one_that_holds_it(
     """
     sessions = [str(row[0]) for row in store.execute("SELECT id FROM sessions").fetchall()]
     banded = 0
+    ramped = []
     for session_id in sessions:
         page = client.get(f"/session/{session_id}").text
         for key in values(page, "data-nav-tree"):
@@ -413,11 +436,24 @@ def test_every_band_a_row_draws_nests_inside_the_one_that_holds_it(
             assert edges == sorted(edges, reverse=True), (session_id, key, drawn)
             assert drawn.fill <= BAR_STEPS, (session_id, key, drawn)
             banded += len(edges)
+            # A turn whose three edges are all apart, and whose innermost is off the left, draws
+            # all three bands at once with ground under each: the opening context in navy, the
+            # conversation over it in medium, its own growth bright at the tip.
+            ramp = 0 < (drawn.base or 0) < (drawn.prior or 0) < drawn.fill
+            if ramp and key.startswith(f"{Kind.TURN}:"):
+                ramped.append((session_id, key, drawn))
         # And no row carries a width of its own: the classes are the only hook there is, and a
         # `style` attribute anywhere under a row is markup the policy would refuse to paint
         # (`tests/view/test_app__headers.py`).
         assert not re.findall(r'data-nav-tree="[^"]*"[^>]*style="', page), session_id
     assert banded, "no row in the corpus drew a band"
+    # And the corpus can show the ramp the palette was chosen for. Nothing above forces it:
+    # every clamp here is satisfied by a row drawing two bands or one, and the corpus drew no
+    # three-band turn at all until `spine/` kept the call that ends the turn before its last
+    # one, which is the conversation that turn stands on (`tests/fixtures/spine/README.md`).
+    # Without one the gallery leads a reader to no page where the three blues can be read
+    # against each other, and a colour nobody can look at is a colour nothing defends.
+    assert ramped, "no turn in the corpus draws all three bands"
 
 
 def test_a_turns_bar_stands_on_the_context_the_session_opened_on(
@@ -597,7 +633,7 @@ def test_a_compaction_whose_thread_names_no_window_draws_no_bar(
             assert fields(page, "data-nav-tree", key)["title"]
 
 
-def test_a_run_whose_own_thread_compacted_is_drawn_full_in_the_alarm(
+def test_a_run_whose_own_thread_compacted_is_drawn_full(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
     """The one warning the NavTree draws: a subagent that ran its own window out.

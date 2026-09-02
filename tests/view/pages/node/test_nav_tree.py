@@ -53,6 +53,7 @@ from tests.view.nav_trees import (
     open_turn,
     shut,
     spilled,
+    standing,
     thread_level,
     turn_level,
     url,
@@ -437,12 +438,23 @@ def test_a_tail_row_stands_the_rest_of_its_level_where_it_stands(
     # rows the reader could not see, ready to stand where the row that counted them stands.
     served = client.get(fetch["hx-get"])
     assert served.status_code == 200
-    assert rows(served.text) == [(1, key) for key in level if key != f"turn:{selection}"]
+    stood = rows(served.text)
+    # One sequence read whole, not two projections of it: they arrive carrying whatever the
+    # tree draws beneath them, since a row that stands in for another has to bring what that
+    # row was holding — one of these turns spawned the session's agent runs. Where those runs
+    # fall among the turns is the claim. Split the sequence by depth and a fragment that put a
+    # run above the turn holding it would read as correct.
+    assert stood == [
+        (1 + below, key)
+        for below, key in standing(
+            store, SPINE, MAIN, [key for key in level if key != f"turn:{selection}"]
+        )
+    ]
     # Each of them reads on under the sizes the reader typed, like any row the page drew, and
     # by one URL whether it is clicked or pasted. The link, not the popover trigger beside it:
     # a row fetches twice, and only one of the two is somewhere a reader can go.
     links = [(key, at) for key, at in wired(served.text, "data-nav-tree") if "href" in at]
-    assert len(links) == len(level) - 1
+    assert len(links) == len(stood)
     for key, wiring in links:
         assert wiring["href"] == wiring["hx-get"], key
         assert parse_qs(urlsplit(wiring["hx-get"]).query) == {"kin": ["1"]}, key

@@ -133,106 +133,114 @@ li.row.more { color: var(--dim); }
 li.more > button { display: block; width: 100%; padding: 0 var(--space-1); border: 0;
   background: none; color: inherit; font: inherit; text-align: inherit; cursor: pointer; }
 li.more > button:hover { background-color: color-mix(in srgb, var(--mark) 12%, transparent); }
-/* The context bar: how full the model's context window was when the node ended, over a track
-   the row's full width. Linear, so half a bar is half a window (`view/nodes.py`). Three edges
-   are drawn, and each is a prefix of the one before it: where the node left the window, where
-   the growth it is answerable for begins, and — on a turn — the context the session opened on
-   before a word had been said. What the reader sees between two edges is the band the second
-   one opens, so a turn reads as prompt, conversation, and its own share at the bright tip.
-   Three class families of 21 carry the edges as custom properties, because the policy blocks
-   the `style` attribute an inline width would need. One rule spends them: the widest layer is
-   painted first and the narrower ones over it, which is what makes each band a prefix.
-   A row that ends on no window draws no track either — an empty track under a tool call would
-   read as a window that emptied, and what a tool call took is its api call's.
-   Painted bottom left over the content box, because depth is padding on the row's link: a
-   track over the padding box would start left of the title it measures. */
+/* The context bar: how full the model's context window was when the node ended. Linear, so
+   half a bar is half a window (`view/nodes.py`). Three edges are drawn, and each is a prefix
+   of the one before it: where the node left the window, where the growth it is answerable for
+   begins, and — on a turn — the context the session opened on before a word had been said.
+   What the reader sees between two edges is the band the second one opens, so a turn reads as
+   prompt, conversation, and its own share at the bright tip.
+   Three class families of 21 carry the edges as `--edge-*` custom properties, because the
+   policy blocks the `style` attribute an inline width would need. One rule spends them: the
+   widest layer is painted first and the narrower ones over it, which is what makes each band
+   a prefix. Colour rides beside width, one `--band-*` property per band, each falling back to
+   its palette token in `tokens.css` — which is what lets a kind repaint one band in one line
+   instead of restating the gradients.
+   Nothing is drawn under the bands: a bar is only what the row holds. A full-width track would
+   put an empty one under every tool call, which reads as a window that emptied, and what a
+   tool call took is its api call's.
+   Painted bottom left over the content box, because depth is padding on the row's link: a bar
+   over the padding box would start left of the title it measures. */
 li.node:is(.f0, .f1, .f2, .f3, .f4, .f5, .f6,
            .f7, .f8, .f9, .f10, .f11, .f12, .f13,
            .f14, .f15, .f16, .f17, .f18, .f19, .f20, .maxed) > a {
-  background-image: linear-gradient(var(--faint), var(--faint)),
-                    linear-gradient(var(--dim), var(--dim)),
-                    linear-gradient(var(--ctx-tip, var(--mark)), var(--ctx-tip, var(--mark))),
-                    linear-gradient(var(--line), var(--line));
+  background-image:
+    linear-gradient(var(--band-base, var(--ctx-base)), var(--band-base, var(--ctx-base))),
+    linear-gradient(var(--band-past, var(--ctx-past)), var(--band-past, var(--ctx-past))),
+    linear-gradient(var(--band-added, var(--ctx-added)), var(--band-added, var(--ctx-added)));
   background-repeat: no-repeat;
   background-position: left bottom;
-  background-size: var(--ctx-base, 0%) 3px,
-                   var(--ctx-prior, 0%) 3px,
-                   var(--ctx-fill, 0%) 3px,
-                   100% 3px;
+  background-size: var(--edge-base, 0%) var(--ctx-height),
+                   var(--edge-prior, 0%) var(--ctx-height),
+                   var(--edge-fill, 0%) var(--ctx-height);
   background-origin: content-box;
 }
-/* The tip is the one part of the bar a kind may take over, so it is a property with the accent
-   as its default: a run's own thread reads apart from the turns around it, and a compaction's
-   band is green because the space it gave back is the one measurement here that is good news.
+/* A thread — the session's own, or a run's — is one gray rather than the ramp: nothing stood
+   before a run (`view_runs.sql`) and a session has nothing to have added to, so its whole
+   window is one band, and a muted one, so the growth under it is what the column reads as.
+   A compaction takes the tip alone, in green, because the space it gave back is the one
+   measurement here that is good news.
    `maxed` is the only mark the bar mints, because it is the only thing no kind can say — a
-   subagent that compacted did so unasked and unseen, and it is drawn full in the alarm
-   whatever the last call of its thread happened to leave behind. */
-li.node.run > a { --ctx-tip: var(--agent); }
-li.node.compaction > a { --ctx-tip: var(--free); }
-li.node.maxed > a { --ctx-tip: var(--bad); --ctx-fill: 100%; --ctx-prior: 0%; --ctx-base: 0%; }
-li.node.f0 { --ctx-fill: 0%; }
-li.node.p0 { --ctx-prior: 0%; }
-li.node.b0 { --ctx-base: 0%; }
-li.node.f1 { --ctx-fill: 5%; }
-li.node.p1 { --ctx-prior: 5%; }
-li.node.b1 { --ctx-base: 5%; }
-li.node.f2 { --ctx-fill: 10%; }
-li.node.p2 { --ctx-prior: 10%; }
-li.node.b2 { --ctx-base: 10%; }
-li.node.f3 { --ctx-fill: 15%; }
-li.node.p3 { --ctx-prior: 15%; }
-li.node.b3 { --ctx-base: 15%; }
-li.node.f4 { --ctx-fill: 20%; }
-li.node.p4 { --ctx-prior: 20%; }
-li.node.b4 { --ctx-base: 20%; }
-li.node.f5 { --ctx-fill: 25%; }
-li.node.p5 { --ctx-prior: 25%; }
-li.node.b5 { --ctx-base: 25%; }
-li.node.f6 { --ctx-fill: 30%; }
-li.node.p6 { --ctx-prior: 30%; }
-li.node.b6 { --ctx-base: 30%; }
-li.node.f7 { --ctx-fill: 35%; }
-li.node.p7 { --ctx-prior: 35%; }
-li.node.b7 { --ctx-base: 35%; }
-li.node.f8 { --ctx-fill: 40%; }
-li.node.p8 { --ctx-prior: 40%; }
-li.node.b8 { --ctx-base: 40%; }
-li.node.f9 { --ctx-fill: 45%; }
-li.node.p9 { --ctx-prior: 45%; }
-li.node.b9 { --ctx-base: 45%; }
-li.node.f10 { --ctx-fill: 50%; }
-li.node.p10 { --ctx-prior: 50%; }
-li.node.b10 { --ctx-base: 50%; }
-li.node.f11 { --ctx-fill: 55%; }
-li.node.p11 { --ctx-prior: 55%; }
-li.node.b11 { --ctx-base: 55%; }
-li.node.f12 { --ctx-fill: 60%; }
-li.node.p12 { --ctx-prior: 60%; }
-li.node.b12 { --ctx-base: 60%; }
-li.node.f13 { --ctx-fill: 65%; }
-li.node.p13 { --ctx-prior: 65%; }
-li.node.b13 { --ctx-base: 65%; }
-li.node.f14 { --ctx-fill: 70%; }
-li.node.p14 { --ctx-prior: 70%; }
-li.node.b14 { --ctx-base: 70%; }
-li.node.f15 { --ctx-fill: 75%; }
-li.node.p15 { --ctx-prior: 75%; }
-li.node.b15 { --ctx-base: 75%; }
-li.node.f16 { --ctx-fill: 80%; }
-li.node.p16 { --ctx-prior: 80%; }
-li.node.b16 { --ctx-base: 80%; }
-li.node.f17 { --ctx-fill: 85%; }
-li.node.p17 { --ctx-prior: 85%; }
-li.node.b17 { --ctx-base: 85%; }
-li.node.f18 { --ctx-fill: 90%; }
-li.node.p18 { --ctx-prior: 90%; }
-li.node.b18 { --ctx-base: 90%; }
-li.node.f19 { --ctx-fill: 95%; }
-li.node.p19 { --ctx-prior: 95%; }
-li.node.b19 { --ctx-base: 95%; }
-li.node.f20 { --ctx-fill: 100%; }
-li.node.p20 { --ctx-prior: 100%; }
-li.node.b20 { --ctx-base: 100%; }
+   subagent that compacted did so unasked and unseen. It is drawn full whatever the last call
+   of its thread happened to leave behind, in the gray it already wears: the alarm is the
+   compaction pill on the same row, and a red bar beside it was the loudest thing here. Only the
+   fill needs forcing: a maxed row is always a run (`view/builders.py`), and a run's own share is
+   its whole fill, so the ladder already puts its two inner edges at zero. */
+li.node:is(.session, .run) > a { --band-past: var(--ctx-thread); --band-added: var(--ctx-thread); }
+li.node.compaction > a { --band-added: var(--ctx-freed); }
+li.node.maxed > a { --edge-fill: 100%; }
+li.node.f0 { --edge-fill: 0%; }
+li.node.p0 { --edge-prior: 0%; }
+li.node.b0 { --edge-base: 0%; }
+li.node.f1 { --edge-fill: 5%; }
+li.node.p1 { --edge-prior: 5%; }
+li.node.b1 { --edge-base: 5%; }
+li.node.f2 { --edge-fill: 10%; }
+li.node.p2 { --edge-prior: 10%; }
+li.node.b2 { --edge-base: 10%; }
+li.node.f3 { --edge-fill: 15%; }
+li.node.p3 { --edge-prior: 15%; }
+li.node.b3 { --edge-base: 15%; }
+li.node.f4 { --edge-fill: 20%; }
+li.node.p4 { --edge-prior: 20%; }
+li.node.b4 { --edge-base: 20%; }
+li.node.f5 { --edge-fill: 25%; }
+li.node.p5 { --edge-prior: 25%; }
+li.node.b5 { --edge-base: 25%; }
+li.node.f6 { --edge-fill: 30%; }
+li.node.p6 { --edge-prior: 30%; }
+li.node.b6 { --edge-base: 30%; }
+li.node.f7 { --edge-fill: 35%; }
+li.node.p7 { --edge-prior: 35%; }
+li.node.b7 { --edge-base: 35%; }
+li.node.f8 { --edge-fill: 40%; }
+li.node.p8 { --edge-prior: 40%; }
+li.node.b8 { --edge-base: 40%; }
+li.node.f9 { --edge-fill: 45%; }
+li.node.p9 { --edge-prior: 45%; }
+li.node.b9 { --edge-base: 45%; }
+li.node.f10 { --edge-fill: 50%; }
+li.node.p10 { --edge-prior: 50%; }
+li.node.b10 { --edge-base: 50%; }
+li.node.f11 { --edge-fill: 55%; }
+li.node.p11 { --edge-prior: 55%; }
+li.node.b11 { --edge-base: 55%; }
+li.node.f12 { --edge-fill: 60%; }
+li.node.p12 { --edge-prior: 60%; }
+li.node.b12 { --edge-base: 60%; }
+li.node.f13 { --edge-fill: 65%; }
+li.node.p13 { --edge-prior: 65%; }
+li.node.b13 { --edge-base: 65%; }
+li.node.f14 { --edge-fill: 70%; }
+li.node.p14 { --edge-prior: 70%; }
+li.node.b14 { --edge-base: 70%; }
+li.node.f15 { --edge-fill: 75%; }
+li.node.p15 { --edge-prior: 75%; }
+li.node.b15 { --edge-base: 75%; }
+li.node.f16 { --edge-fill: 80%; }
+li.node.p16 { --edge-prior: 80%; }
+li.node.b16 { --edge-base: 80%; }
+li.node.f17 { --edge-fill: 85%; }
+li.node.p17 { --edge-prior: 85%; }
+li.node.b17 { --edge-base: 85%; }
+li.node.f18 { --edge-fill: 90%; }
+li.node.p18 { --edge-prior: 90%; }
+li.node.b18 { --edge-base: 90%; }
+li.node.f19 { --edge-fill: 95%; }
+li.node.p19 { --edge-prior: 95%; }
+li.node.b19 { --edge-base: 95%; }
+li.node.f20 { --edge-fill: 100%; }
+li.node.p20 { --edge-prior: 100%; }
+li.node.b20 { --edge-base: 100%; }
 
 /* The cost badge: a node's spend on a warm ground that deepens with it. What deepens is the
    share of `--hot` the ground carries, held in a custom property a class per step sets — a

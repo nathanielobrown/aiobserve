@@ -176,19 +176,21 @@ def test_both_schemes_print_every_color_of_text_readably(client: TestClient) -> 
     head, _, tail = sheet.partition("prefers-color-scheme: dark")
 
     def read(block: str) -> dict[str, str]:
-        return dict(re.findall(r"--([a-z]+):\s*(#[0-9a-f]{6})", block))
+        return dict(re.findall(r"--([a-z-]+):\s*(#[0-9a-f]{6})", block))
 
     light = read(head)
     schemes = {"light": light, "dark": light | read(tail)}
     # Two rosters, closed: the colours text is printed in, and the surfaces under it — the
-    # badge's warm ground and the three bands the context bar draws (`view/static/nav-tree.css`).
+    # badge's warm ground and the context bar's palette (`view/static/nav-tree.css` spends it).
     # A surface carries no text of its own, so what holds it is the eye on the gallery
     # (`.claude/rules/viewer-ui.md`) and the ramp below, not a contrast ratio.
     assert set(light) == {"ink", "dim", "line", "paper", "mark", "bad"} | {
         "hot",
-        "faint",
-        "agent",
-        "free",
+        "ctx-base",
+        "ctx-past",
+        "ctx-added",
+        "ctx-freed",
+        "ctx-thread",
     }
     for scheme, tokens in schemes.items():
         surfaces = {
@@ -203,13 +205,17 @@ def test_both_schemes_print_every_color_of_text_readably(client: TestClient) -> 
         for where, under in surfaces.items():
             ratio = _contrast(tokens["ink"], _over(tokens["hot"], under, BADGE))
             assert ratio >= READABLE, f"{scheme} --ink on the badge over {where}: {ratio:.2f}:1"
-        # And the context bar's three grounds are a ramp: the track palest, the base band a
-        # step in from it, the conversation over that. Each scheme runs the ramp its own way —
-        # a light page darkens toward the reader, a dark one lightens — so what is held is the
-        # order and not the direction. Two bands a reader cannot tell apart is one band.
-        ramp = [_luminance(tokens[role]) for role in ("line", "faint", "dim")]
-        assert ramp == sorted(ramp, reverse=scheme == "light"), (scheme, ramp)
+        # And the context bar's three bands are a ramp that brightens toward the tip: the
+        # context the session opened on darkest, the conversation over it, the node's own share
+        # brightest. Both schemes run it the same way, because the direction is the reading —
+        # growth left to right — and not an accommodation to the paper. Two bands a reader
+        # cannot tell apart is one band.
+        ramp = [_luminance(tokens[role]) for role in ("ctx-base", "ctx-past", "ctx-added")]
+        assert ramp == sorted(ramp), (scheme, ramp)
         assert len(set(ramp)) == len(ramp), (scheme, ramp)
+        # A thread's gray is a band and not an absence: a bar the colour of the page would say
+        # a run held no window rather than that it held one nobody has to read a ramp in.
+        assert tokens["ctx-thread"] != tokens["paper"], scheme
 
 
 def test_the_stylesheet_a_browser_reads_carries_no_prose_outside_a_comment(

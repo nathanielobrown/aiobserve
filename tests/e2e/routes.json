@@ -49,10 +49,10 @@
   },
   {
     "route": "/session/{session_id}/thread/{source}/turn/{turn_id}",
-    "url": "/session/2352492b-1437-4427-ad51-70f35c75f663/thread/main/turn/55309e59-0fae-4ef1-9251-877e27487bda",
-    "title": "Turn",
+    "url": "/session/4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b/thread/main/turn/818588ad-3849-48fe-a546-573163768e04",
+    "title": "Turn, drawing all three context bands",
     "group": "Node kinds",
-    "note": "",
+    "note": "The corpus's one turn whose three bands each have ground of their own, so the navy ramp can be read off a page rather than argued about.",
     "fragment": false
   },
   {

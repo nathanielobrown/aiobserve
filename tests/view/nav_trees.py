@@ -167,6 +167,11 @@ def open_turn(store: duckdb.DuckDBPyConnection) -> str:
     Both halves matter. Two calls under it give the level below the selection something for a
     cap to cut, and a turn that is not its level's first row is one a cap of a single child
     would drop — which is what the rescue rule exists to stop.
+
+    Which turn this answers moves with the corpus, silently: every leaf that reads it — a dozen
+    of them, across three files — follows. The turn it picks today holds two calls, the fewest
+    the query accepts, so the level under the selection has one spare child and no more.
+    Tighten the query before leaning on a wider one.
     """
     (turn_id,) = one(
         store,
@@ -250,12 +255,16 @@ def runs_where(
     return [f"run:{edge.run_id}" for edge in edges(store, session_id) if holds(edge)]
 
 
-def hanging(store: duckdb.DuckDBPyConnection, session_id: str, source: str, key: str) -> list[str]:
-    """The runs one shut row stands, and the runs under those, as the NavTree draws them.
+def nested(
+    store: duckdb.DuckDBPyConnection, session_id: str, source: str, key: str
+) -> list[tuple[int, str]]:
+    """The runs one shut row stands, each beside how far below the row the tree indents it.
 
     A run is always visible: where the rows between it and its spawning call are shut, it
     renders under the deepest one showing. So the expectation for any row a page draws closed
     is the row and then this, by the spawning edge — the same edge the cells place a run by.
+    A run the row itself hides sits one deeper than it, and a run that run spawned one deeper
+    again, which is the indent that says which of the two holds the other.
     """
     kind, _, node_id = key.partition(":")
     match kind:
@@ -291,9 +300,36 @@ def hanging(store: duckdb.DuckDBPyConnection, session_id: str, source: str, key:
         case _:
             return []
     return [
-        key
+        (below, standing_key)
         for run in spawned
-        for key in [run, *hanging(store, session_id, run.removeprefix("run:"), run)]
+        for below, standing_key in [
+            (1, run),
+            *[
+                (deeper + 1, under)
+                for deeper, under in nested(store, session_id, run.removeprefix("run:"), run)
+            ],
+        ]
+    ]
+
+
+def hanging(store: duckdb.DuckDBPyConnection, session_id: str, source: str, key: str) -> list[str]:
+    """What one shut row hides, as keys in document order — `nested` without the indents."""
+    return [key for _, key in nested(store, session_id, source, key)]
+
+
+def standing(
+    store: duckdb.DuckDBPyConnection, session_id: str, source: str, level: Sequence[str]
+) -> list[tuple[int, str]]:
+    """One level as a page draws it shut, each row beside how deep under the level it sits.
+
+    Zero for a row of the level itself, one for a run that row hides, deeper for the runs
+    under that one. Relative because a level lands wherever the tree had reached: a caller
+    that knows the depth its rows arrive at adds it.
+    """
+    return [
+        (below, key)
+        for row in level
+        for below, key in [(0, row), *nested(store, session_id, source, row)]
     ]
 
 
@@ -301,7 +337,7 @@ def shut(
     store: duckdb.DuckDBPyConnection, session_id: str, source: str, level: Sequence[str]
 ) -> list[str]:
     """One level as a page draws it with every row of it closed: each row, then what it hides."""
-    return [key for row in level for key in [row, *hanging(store, session_id, source, row)]]
+    return [key for _, key in standing(store, session_id, source, level)]
 
 
 def cell(

@@ -27,6 +27,7 @@ from tests.conftest import (
     SLASH_TURN,
     SPINE,
     SPINE_RUN,
+    THREE_BAND_TURN,
 )
 
 
@@ -100,7 +101,11 @@ SCENARIOS: dict[str, Scenario] = {
     # session with two of them, a bucket at each of the two sessions that has one.
     "/session/{session_id}": Scenario(f"/session/{SPINE}", "Session", Group.NODES),
     "/session/{session_id}/thread/{source}/turn/{turn_id}": Scenario(
-        f"/session/{ANCESTOR}/thread/main/turn/{DENSE_TURN}", "Turn", Group.NODES
+        f"/session/{SPINE}/thread/{MAIN}/turn/{THREE_BAND_TURN}",
+        "Turn, drawing all three context bands",
+        Group.NODES,
+        note="The corpus's one turn whose three bands each have ground of their own, so the "
+        "navy ramp can be read off a page rather than argued about.",
     ),
     "/session/{session_id}/run/{run_id}": Scenario(
         f"/session/{SPINE}/run/{SPINE_RUN}", "Agent run", Group.NODES
