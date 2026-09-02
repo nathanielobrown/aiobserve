@@ -53,6 +53,8 @@ Tokens deleted: `--faint`, `--agent` (each has one use, in the bar), `--free` (r
 
 The paint rule and the kind overrides are in `prototypes-2.html` under `/* ═══ The context bar, restructured`; lift them, dropping `--ctx-track` and `--ctx-track-height` (the chosen option has no track). Every kind override stays keyed on the class the row already carries — no new class, no markup change.
 
+**As built,** the paint rule declares no `--band-*` defaults block; each gradient names its palette token inline, `var(--band-past, var(--ctx-past))`. A declared block and the kind overrides tie at specificity 0-2-2, so the block would rest on source order while a fallback cannot lose a tie. The paint is the same; it costs six inline fallbacks where three declarations would do.
+
 ## Chosen test seam
 
 The served stylesheet, read by `TestClient` in the Python tier, as the two existing leaves do: regex over `/static/style.css` with comments stripped. Colours themselves are eyeballed on the gallery (`.claude/rules/viewer-ui.md`); what the tier holds is structure and scheme coverage.
