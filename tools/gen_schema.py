@@ -11,6 +11,7 @@ no model documents, each stop the run.
 """
 
 import sys
+from collections.abc import Sequence
 from enum import StrEnum
 
 from hyphae.extract.records.evidence import Cited
@@ -197,12 +198,12 @@ def generate(section: Section) -> str:
     return text.table(HEADERS, rows(section))
 
 
-def main() -> None:
-    """Print the table named by the one argument."""
-    if len(sys.argv) != 2:
+def main(argv: Sequence[str]) -> None:
+    """Print the table named by the one argument, which the caller passes rather than we read."""
+    if len(argv) != 1:
         raise SystemExit(f"name one table: {' | '.join(section.value for section in Section)}")
-    print(generate(Section(sys.argv[1])))
+    print(generate(Section(argv[0])))
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

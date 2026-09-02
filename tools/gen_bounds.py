@@ -13,6 +13,7 @@ can be left out of both tables.
 """
 
 import sys
+from collections.abc import Sequence
 from enum import StrEnum
 from typing import NamedTuple
 
@@ -354,12 +355,12 @@ def generate(table: Table) -> str:
     )
 
 
-def main() -> None:
+def main(argv: Sequence[str]) -> None:
     """Print the table named by the one argument, as the four cog blocks spell it."""
-    if len(sys.argv) != 2:
+    if len(argv) != 1:
         raise SystemExit(f"name one table: {' | '.join(table.value for table in Table)}")
-    print(generate(Table(sys.argv[1])))
+    print(generate(Table(argv[0])))
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])
