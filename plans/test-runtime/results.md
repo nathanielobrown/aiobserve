@@ -12,11 +12,12 @@ method: 18-core M5 Max, idle, warm caches; medians of 3.
 | Σ test-seconds, serial | 225.4s | 145.0s | 108.7s | **95.8s** | `--junitxml`, summed over 2,237 cases |
 | Result | 2,174 passed, 51 skipped | 2,178 passed | 2,185 passed | 2,186 passed, **51 skipped** | the skip count is what had to hold |
 
-**On CI the `mise run check` step fell from 221s to 173s to 153s** across the branch's last three
-pushes, read off the GitHub job timings for `4d2e18b`, `b24d6ca` and `b2ec5c2`. Those are single
-samples on a shared runner with a handful of cores, so read the direction and not the digits —
-what they say is that the cuts land where there is less parallelism to hide them, which is the
-machine that matters.
+**On CI the `mise run check` step fell from 221s to 173s to about 155s** across the branch's
+pushes, read off the GitHub job timings for `4d2e18b`, `b24d6ca`, `b2ec5c2` (153s) and `b96bf22`
+(158s). Those are single samples on a shared runner with a handful of cores, so read the
+direction and not the digits: the last two are one sample each and say nothing to each other.
+What they do say is that the cuts land where there is less parallelism to hide them, which is
+the machine that matters.
 
 The serial number is the control the parallel one cannot give: it says the suite has 130s less
 work in it, not that 130s moved behind a worker. Σ test-seconds is 99.1% of the serial wall, so
@@ -30,7 +31,9 @@ prices.
 
 Twelve ids more than the baseline collected: Phase 2 split one test into three, the
 `gen_schema` fix gave its refusal leaf a second case, Phase 4 added a guard per rewrite, and
-the watcher fix below added a leaf holding its own bound.
+the watcher fix below added a leaf holding its own bound. A thirteenth arrived after the
+medians above were taken — the memo's walk leaf gained a second depth to close the one mutant
+the audit found alive — so the suite collects 2,187 today at the same measured cost.
 
 ## Which phases the 130 serial seconds came from
 
