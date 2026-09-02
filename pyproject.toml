@@ -183,8 +183,8 @@ docstring-code-format = true
 testpaths = ["tests"]
 # A hung test with no ceiling burns the whole run and prints no failure line.
 # This is a backstop; individual waits carry their own deadlines. Kept several times clear of
-# the slowest item every run prints in its `--durations` footer — under `-n auto` that is the
-# shared corpus render pass, at about a fifth of this — so a trip always means nothing here was
+# the slowest item every run prints in its `--durations` footer — in parallel that is the
+# shared corpus render pass, at about an eighth of this — so a trip always means nothing here was
 # bounded and never preempts an inner deadline's own diagnostic.
 timeout = 120
 # SIGALRM raises inside the test, so a trip is a red test with a stack and the run still

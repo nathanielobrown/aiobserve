@@ -121,15 +121,17 @@ npx -y @mermaid-js/mermaid-cli -s 2 -i "$usage_file" -o "$dir/diagram.png" >/dev
 
 [tasks.test]
 description = "Run the test suite"
-# `-n auto` here rather than in `addopts`, so it shapes the whole-suite run and nothing else:
+# `-n` here rather than in `addopts`, so it shapes the whole-suite run and nothing else:
 # a developer running one file keeps the serial harness with `-s` and pdb working, and
 # `mise run mutate`, which invokes pytest itself per mutant, stays serial and reproducible.
 # `--dist loadgroup` sends the leaves sharing an `xdist_group` mark to one worker, so the
-# corpus render pass they share is paid once per run rather than once per worker.
-# `auto` rather than a number: on 18 cores it ties a hand-picked 12 (27.6s against 27.3s,
-# median of the whole suite) and beats 8 and 24, so the tuning is worth nothing here and
-# would cost every machine with a different core count — CI's included.
-run = "uv run pytest -n auto --dist loadgroup"
+# corpus render pass they share is paid once per run rather than once per worker. `worksteal`
+# ignores the mark: it built that pass on three workers and ran the four leaves at the tail of
+# the run, finishing 9s later.
+# Twelve workers, or every core on a machine with fewer than twelve. Past twelve the workers
+# contend for more than the parallelism buys back — eighteen here spend 333 CPU-seconds to
+# finish 3s later than twelve spend 249. `plans/test-runtime/results.md` holds the runs.
+run = "uv run pytest -n {% set cores = num_cpus() | int %}{{ [12, cores] | sort | first }} --dist loadgroup"
 
 [tasks.gallery]
 description = "Serve the test fixtures' scenario pages in a browser, with live reload"

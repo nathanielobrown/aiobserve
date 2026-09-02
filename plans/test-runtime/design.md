@@ -80,7 +80,9 @@ Two changes that were measured together green **[Py]**:
 - **Add `pytest-xdist` to the dev dependency group** and change the `test` task in `mise.toml`
   to `uv run pytest -n auto`. Put the flag in the mise task, **not** in `addopts`: a developer
   running one test file keeps the serial harness (no worker spin-up, `-s`/pdb still work), and
-  `mise run mutate` — which invokes pytest itself per mutant — is not silently reshaped
+  `mise run mutate` — which invokes pytest itself per mutant — is not silently reshaped.
+  **As built,** the task asks for twelve workers, or every core on a machine with fewer: `auto`
+  spends a third more CPU to finish 3s later here. The matrix is in [results.md](results.md)
 - **Pin DuckDB's per-connection thread pool to 1 for the whole test process.** In
   `tests/conftest.py`, at module import, wrap `duckdb.connect` so every connection the harness
   or the app-under-test opens runs `SET threads TO 1` (works on read-only connections;
