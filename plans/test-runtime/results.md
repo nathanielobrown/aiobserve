@@ -5,28 +5,36 @@ method: 18-core M5 Max, idle, warm caches; medians of 3.
 
 ## Headline
 
-| Measurement | Baseline | After Phase 5a | Now | How |
-| --- | --- | --- | --- | --- |
-| Gate: `mise run test` | — | 25.02s wall, 248.7s Σ | **20.62s** wall, 201.3s Σ | median of 3 at `-n 12 --dist loadgroup` |
-| Serial wall, `uv run pytest` | 226.28s | 145.44s | **109.59s** | median of 3: 109.12 / 109.59 / 110.17 |
-| Σ test-seconds, serial | 225.4s | 145.0s | **108.7s** | `--junitxml`, summed over 2,236 cases |
-| Result | 2,174 passed, 51 skipped | 2,178 passed, 51 skipped | 2,185 passed, **51 skipped** | the skip count is what had to hold |
+| Measurement | Baseline | After Phase 5a | After Phase 4 | Now | How |
+| --- | --- | --- | --- | --- | --- |
+| Gate: `mise run test` | — | 25.02s, 248.7s Σ | 20.62s, 201.3s Σ | **19.11s**, 190.1s Σ | median of 3 at `-n 12 --dist loadgroup` |
+| Serial wall, `uv run pytest` | 226.28s | 145.44s | 109.59s | **96.63s** | median of 3: 96.49 / 96.63 / 96.69 |
+| Σ test-seconds, serial | 225.4s | 145.0s | 108.7s | **95.8s** | `--junitxml`, summed over 2,237 cases |
+| Result | 2,174 passed, 51 skipped | 2,178 passed | 2,185 passed | 2,186 passed, **51 skipped** | the skip count is what had to hold |
 
-The serial number is the control the parallel one cannot give: it says the suite has 117s less
-work in it, not that 117s moved behind a worker. Σ test-seconds is 99.2% of the serial wall, so
+**On CI the `mise run check` step fell from 221s to 173s to 153s** across the branch's last three
+pushes, read off the GitHub job timings for `4d2e18b`, `b24d6ca` and `b2ec5c2`. Those are single
+samples on a shared runner with a handful of cores, so read the direction and not the digits —
+what they say is that the cuts land where there is less parallelism to hide them, which is the
+machine that matters.
+
+The serial number is the control the parallel one cannot give: it says the suite has 130s less
+work in it, not that 130s moved behind a worker. Σ test-seconds is 99.1% of the serial wall, so
 the run is still test bodies rather than harness.
 
-**Read a Σ only against another Σ at the same width.** Twelve workers contending turn 110s of
-serial work into 201 test-seconds, because each leaf's own clock runs while eleven others hold
+**Read a Σ only against another Σ at the same width.** Twelve workers contending turn 96s of
+serial work into 190 test-seconds, because each leaf's own clock runs while eleven others hold
 the machine. The number compares two schedulers on one machine; it does not compare a parallel
-run to a serial one.
+run to a serial one — and the gap is contention, not rebuilt fixtures, which the last section
+prices.
 
-Eleven ids more than the baseline collected: Phase 2 split one test into three, the
-`gen_schema` fix gave its refusal leaf a second case, and Phase 4 added a guard per rewrite.
+Twelve ids more than the baseline collected: Phase 2 split one test into three, the
+`gen_schema` fix gave its refusal leaf a second case, Phase 4 added a guard per rewrite, and
+the watcher fix below added a leaf holding its own bound.
 
-## Which phases the 117 serial seconds came from
+## Which phases the 130 serial seconds came from
 
-Three phases remove work; the other two move it:
+Four steps remove work; two move it:
 
 - **Phase 1**, the thread pin, and **Phase 3**, the shared render pass, are the two setup levers
   that cut serial time. Their split was not measured — doing so needs a serial run per commit,
@@ -34,6 +42,8 @@ Three phases remove work; the other two move it:
 - **Phase 4** cut 36s of it on its own, measured as one block: 145.44s before its first commit
   and 109.59s after its last. It is the only phase that deletes work a page does rather than
   work a fixture does, so the viewer gets the same cut (below)
+- **The watcher fix** cut 13s: 109.59s before it and 96.63s after, all of it wall clock three
+  leaves were waiting out rather than work anything did
 - **Phase 2**'s split and **Phase 5a**'s reorder cost serial time or leave it alone; they buy the
   parallel wall by spreading the same work over more workers
 
@@ -43,18 +53,17 @@ Top 6 by junit `time`, serial:
 
 | Seconds | Test |
 | --- | --- |
-| 6.81 | `view/test_bounds__node.py::test_a_node_page_at_the_sizes_a_reader_gets_…` |
+| 6.83 | `view/test_bounds__node.py::test_a_node_page_at_the_sizes_a_reader_gets_…` |
 | 6.33 | `view/test_bounds__node.py::test_a_node_page_at_the_widest_knobs_…` |
-| 5.16 | `view/test_dev.py::test_a_file_saved_under_a_watched_path_…[style.css-css]` |
-| 5.16 | `view/test_dev.py::test_a_file_saved_under_a_watched_path_…[dev-reload.js-page]` |
-| 5.10 | `view/pages/node/test_node.py::test_every_kind_renders_a_body_and_every_shape_a_log` |
-| 5.05 | `view/test_dev.py::test_the_reload_stream_answers_as_an_event_stream_…` |
+| 5.13 | `view/pages/node/test_node.py::test_every_kind_renders_a_body_and_every_shape_a_log` |
+| 4.84 | `view/test_bounds__node.py::test_a_second_page_of_a_level_…` |
+| 4.78 | `view/test_enrichment.py::test_a_store_whose_enrichment_tables_are_empty_…` |
+| 3.89 | `view/test_enrichment.py::test_a_partly_described_store_…` |
 
-The baseline's 37.9s straggler is gone and nothing is above 7s. The `test_node` figure carries
-the shared render pass, which builds inside whichever consumer runs first. What is left is two
-kinds of cost: pages rendered at their widest, which Phase 4 already made cheaper, and the three
-`test_dev` leaves, which are a file-watch debounce being waited out and have no query in them at
-all. Nothing here is worth a phase of its own — the next lever is the fixture corpus, not a leaf.
+The baseline's 37.9s straggler is gone, the three `test_dev` leaves have left the table, and
+nothing is above 7s. The `test_node` figure carries the shared render pass, which builds inside
+whichever consumer runs first. Everything else here is a whole-corpus page sweep, which is the
+subject of the last section.
 
 The shared group's setup is the longest single item, and the wall is that plus the tail behind
 it.
@@ -148,6 +157,84 @@ landed.
 627 sessions, `session_rollups` is identical and `corpus_rollups` differs on 109 rows, worst
 absolute 4.1e-12 and worst relative 3.6e-15. Every row still rounds equal at 4dp, which is the
 tightest any consumer reads — `money()` prints 2dp, `cost_distribution.sql` rounds to 4.
+
+## Where the last 109 seconds went
+
+Profiled rather than guessed: a serial run under `--durations=0 --durations-min=0.05`, and
+`cProfile` over the three leaves that lead it. Shares are of the 108.7s Σ that stood before the
+watcher fix.
+
+| Share | Cause | Where it shows |
+| --- | --- | --- |
+| 16.7% | Three streaming leaves waiting out `awatch`'s five-second window, with no query in them | `view/test_dev.py` — **fixed below** |
+| 16.6% | Three sweeps of every node page over the escaped plant, at three knob sets | `view/test_bounds__node.py` |
+| 8.8% | Two sweeps of every node page over the enrichment-absence stores | `view/test_enrichment.py` |
+| ~5.9% | Opening a connection per request: 2,815 opens at 2.26 ms | spread over every page a test renders |
+| 6.5% | The shared render pass, built inside whichever consumer runs first | `view/pages/node/test_node.py` setup |
+| 4.2% | Three leaves waiting out a real DuckDB holder in a real subprocess | `view/test_lifecycle.py` |
+| 3.9% | One sweep per preset | `view/pages/node/test_nav_tree__presets.py` |
+| 2.6% | An extract waiting out a holder, and the pipeline's own leaves | `tests/test_pipeline.py` |
+| 2.6% | Two planted sweeps of the corpus for cost badges | `view/pages/node/test_nav_tree__badges.py` |
+| 2.0% | Reading the view package's own source, once per rule | `view/test_layout.py` |
+
+Two facts frame the rest. **Fixture setup is 7.4s of the run** — the `--durations` footer splits
+into 86.5s of call against 7.4s of setup — so the session scoping Phases 1 and 3 put in has
+already taken that lever. And the top of the profile inside a sweep is DuckDB executing
+statements, not the harness around it: in a whole-corpus sweep `store.fetch` is the largest
+single line by internal time.
+
+### The one fix worth landing
+
+`_events` asks `awatch` to surface twice a second rather than every five (`src/hyphae/view/dev.py`).
+Cancelling the response never reaches the thread `awatch` blocks in — `anyio.to_thread.run_sync`
+waits for it either way, and `awatch` sets its stop event only after the thread has already
+returned — so a reader who closes the page holds a worker for whatever is left of that window.
+The suite's three streaming leaves each paid the full five seconds.
+
+| Subject | Before | After |
+| --- | --- | --- |
+| `…a_file_saved_under_a_watched_path…[style.css-css]` | 5.18 / 5.16 s | 0.63 / 0.63 s |
+| `…a_file_saved_under_a_watched_path…[dev-reload.js-page]` | 5.14 / 5.14 s | 0.62 / 0.63 s |
+| `…the_reload_stream_answers_as_an_event_stream…` | 5.04 / 5.02 s | 0.51 / 0.53 s |
+
+The debounce that decides when a save is reported is untouched, and a watcher that surfaces with
+nothing to report goes straight back down: driving the real watcher over a real directory yields
+the first change in 0.12s at either setting. `test_dropping_the_stream_lets_go_of_the_watcher_…`
+holds the bound from now on — it fails at 5.02s against the old value.
+
+### Three candidates measured and dropped
+
+**`ASGITransport` instead of `TestClient`** (design open question 2). The portal machinery —
+`testclient`, `anyio.from_thread`, the backend, the thread and future plumbing — is **0.040s of
+a 7.64s** whole-corpus sweep, 0.5%. There is nothing there to win.
+
+**A shared read-only corpus artifact across workers.** Building all three session-scoped stores
+costs **1.04s per worker**: `corpus_db` 0.51s, `exportable_db` 0.47s, `enriched_db` 0.06s. At
+twelve workers that is 12.5s of Σ and about a second of wall, against a fixture contract every
+tier in the suite reads. The gate's 190s Σ against the serial 95.8s is contention between twelve
+workers on eighteen cores, not fixtures rebuilt eleven times.
+
+**Merging the three enrichment-absence stores** is out of bounds: each is the absence a different
+page has to render, and one store cannot be three.
+
+### Ranked follow-ups, none built
+
+1. **The per-request store open — 6.4s ceiling, and the same cut on every page load.** Each
+   request opens a connection, checks the schema version, rebuilds fourteen temp views and
+   installs the macro library: 2.26 ms, of which `refresh_views` is 1.37 ms and `macros.install`
+   0.58 ms. Two written contracts stand in the way, and both are deliberate — `view/deps.py`
+   opens per request so `hp extract` can write between two page loads, and `refresh_views`
+   promises a reader this code's view text rather than whatever a writer last stored. Caching
+   either is a design conversation, not a sweep
+2. **The escaped plant's markdown cost — about 5s, and only in tests.** In the widest-knobs
+   sweep, `markdown_it` is 5.5s of the 6.1s spent rendering: the plant is 4,001 `&` at every cap,
+   so the inline parser's entity rule fires 1.6M times. It does not appear at all in an
+   unplanted sweep, so the win is the suite's and the risk — a fast path through the viewer's one
+   escaping seam — is the product's. Wrong trade at this size
+3. **The lock waits in `test_lifecycle` and `test_pipeline`, about 4s.** A real subprocess holds
+   a real DuckDB lock and the leaf waits it out. The waiting is the thing under test
+4. **The planted halves of `test_nav_tree__badges` and `__names`, 4.1s between them**, which the
+   design already deferred
 
 ## One thing to know before you measure
 
