@@ -99,9 +99,14 @@ medians. DuckDB pinned to 4 threads, medians of 7 reads, caches warm.
 | Grouped-join rollups | `SELECT * FROM corpus_rollups` | 84.5 / 84.7 ms | 29.0 / 28.9 ms |
 | Grouped-join rollups | one session out of `session_rollups` | 5.6 / 5.7 ms | 1.3 / 1.2 ms |
 | Grouped-join rollups | one session out of `corpus_rollups` | 76.9 / 77.4 ms | 25.4 / 25.4 ms |
+| Grouped-join `view_runs.sql` | the session with 240 agent runs | 10.7 / 10.7 ms | 6.3 / 6.6 ms |
 
 A keyed read of `corpus_rollups` costs what a scan does either way: the replay exclusion is a
 window over the whole family, so no filter on one session reaches it.
+
+`view_runs.sql` answers identically for all 126 sessions of the store that ran an agent run.
+That corpus is what proves the empty cases: it holds a run with no api call of its own, one
+with no non-synthetic call, six with no tool call and 2,276 with no compaction.
 
 **The float drift the risk register predicted is real and bounded.** Summing a session's
 `cost_usd` in one grouped pass instead of one subquery per session moves the last bits: over the

@@ -21,25 +21,20 @@ SELECT
     a.tool_use_id,
     a.started_at,
     a.ended_at,
-    -- What a reader ranks runs by. Each is the run's own thread and not its subtree: a run
-    -- it spawned has a source of its own, and its numbers belong to its own row.
-    (SELECT coalesce(round(sum(c.cost_usd), 4), 0) FROM live_api_calls c
-        WHERE c.session_id = a.session_id AND c.source = a.id) AS cost_usd,
-    (SELECT count(*) FILTER (c.cost_usd IS NULL) FROM live_api_calls c
-        WHERE c.session_id = a.session_id AND c.source = a.id) AS unpriced_api_calls,
-    (SELECT count(*) FILTER (t.is_error) FROM live_tool_calls t
-        WHERE t.session_id = a.session_id AND t.source = a.id) AS tool_errors,
-    (SELECT count(*) FROM live_compactions k
-        WHERE k.session_id = a.session_id AND k.source = a.id) AS compactions,
+    -- What a reader ranks runs by, gathered by the three joins below rather than by a
+    -- correlated subquery apiece. Each is the run's own thread and not its subtree: a run it
+    -- spawned has a source of its own, and its numbers belong to its own row. A run no group
+    -- covers takes the zero, so a thread that answered nothing prices at nothing.
+    coalesce(calls.cost_usd, 0) AS cost_usd,
+    coalesce(calls.unpriced_api_calls, 0) AS unpriced_api_calls,
+    coalesce(tools.tool_errors, 0) AS tool_errors,
+    coalesce(kompactions.compactions, 0) AS compactions,
     -- Where the run left the context window of its own thread, and the window it answered in.
     -- What a run added is the whole of what it holds: a run starts on an empty window and
-    -- fills it while it runs, so the fill and the tip are one number said twice.
-    (SELECT {
-        'fill': max_by(context_fill(c), c."index"),
-        'added': max_by(context_fill(c), c."index"),
-        'window': max_by(context_window(c.model), c."index")
-     } FROM live_api_calls c
-        WHERE c.session_id = a.session_id AND c.source = a.id AND NOT c.synthetic) AS context,
+    -- fills it while it runs, so the fill and the tip are one number said twice. The struct
+    -- is built here rather than in the join, so a run with no call still answers a struct of
+    -- nulls — a bar the viewer does not draw — instead of no struct at all.
+    {'fill': calls.tip, 'added': calls.tip, 'window': calls.window} AS context,
     -- The thread the spawning call was made from, and the turn inside it. A run spawned from
     -- another run resolves to a turn of that run's timeline, not of `main`.
     c.source AS spawn_source,
@@ -57,5 +52,24 @@ LEFT JOIN live_api_calls c
 -- this thread does not hold; the NavTree would then hang the run off a node no level renders.
 LEFT JOIN live_turns st
     ON st.session_id = c.session_id AND st.source = c.source AND st.id = c.turn_id
+-- One grouped pass per family the numbers above come from, keyed on the thread they belong
+-- to. `synthetic` calls are excluded from the context tip alone: they carry no window, and
+-- they are still calls the run made and priced.
+LEFT JOIN (
+    SELECT n.session_id, n.source,
+        round(sum(n.cost_usd), 4) AS cost_usd,
+        count(*) FILTER (n.cost_usd IS NULL) AS unpriced_api_calls,
+        max_by(context_fill(n), n."index") FILTER (NOT n.synthetic) AS tip,
+        max_by(context_window(n.model), n."index") FILTER (NOT n.synthetic) AS window
+    FROM live_api_calls n GROUP BY n.session_id, n.source) calls
+    ON calls.session_id = a.session_id AND calls.source = a.id
+LEFT JOIN (
+    SELECT t.session_id, t.source, count(*) FILTER (t.is_error) AS tool_errors
+    FROM live_tool_calls t GROUP BY t.session_id, t.source) tools
+    ON tools.session_id = a.session_id AND tools.source = a.id
+LEFT JOIN (
+    SELECT k.session_id, k.source, count(*) AS compactions
+    FROM live_compactions k GROUP BY k.session_id, k.source) kompactions
+    ON kompactions.session_id = a.session_id AND kompactions.source = a.id
 WHERE a.session_id = $session_id
 ORDER BY a.started_at NULLS LAST, a.id;
