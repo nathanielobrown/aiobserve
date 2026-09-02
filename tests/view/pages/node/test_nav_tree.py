@@ -52,8 +52,8 @@ from tests.view.nav_trees import (
     mounts,
     open_turn,
     shut,
-    spawned,
     spilled,
+    standing,
     thread_level,
     turn_level,
     url,
@@ -439,14 +439,16 @@ def test_a_tail_row_stands_the_rest_of_its_level_where_it_stands(
     served = client.get(fetch["hx-get"])
     assert served.status_code == 200
     stood = rows(served.text)
-    assert [key for depth, key in stood if depth == 1] == [
-        key for key in level if key != f"turn:{selection}"
-    ]
-    # They arrive whole, each carrying whatever the tree draws beneath it, since a row that
-    # stands in for another has to bring what that row was holding: one of these turns spawned
-    # the session's agent runs, and they come with it.
-    assert [key for depth, key in stood if depth > 1] == [
-        f"run:{run_id}" for run_id, *_ in spawned(store, SPINE)
+    # One sequence read whole, not two projections of it: they arrive carrying whatever the
+    # tree draws beneath them, since a row that stands in for another has to bring what that
+    # row was holding — one of these turns spawned the session's agent runs. Where those runs
+    # fall among the turns is the claim. Split the sequence by depth and a fragment that put a
+    # run above the turn holding it would read as correct.
+    assert stood == [
+        (1 + below, key)
+        for below, key in standing(
+            store, SPINE, MAIN, [key for key in level if key != f"turn:{selection}"]
+        )
     ]
     # Each of them reads on under the sizes the reader typed, like any row the page drew, and
     # by one URL whether it is clicked or pasted. The link, not the popover trigger beside it:
