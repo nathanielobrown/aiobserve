@@ -121,7 +121,10 @@ npx -y @mermaid-js/mermaid-cli -s 2 -i "$usage_file" -o "$dir/diagram.png" >/dev
 
 [tasks.test]
 description = "Run the test suite"
-run = "uv run pytest"
+# `-n auto` here rather than in `addopts`, so it shapes the whole-suite run and nothing else:
+# a developer running one file keeps the serial harness with `-s` and pdb working, and
+# `mise run mutate`, which invokes pytest itself per mutant, stays serial and reproducible.
+run = "uv run pytest -n auto"
 
 [tasks.gallery]
 description = "Serve the test fixtures' scenario pages in a browser, with live reload"

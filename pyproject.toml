@@ -48,6 +48,9 @@ build-backend = "hatchling.build"
 dev = [
   "pytest>=8.4",
   "pytest-timeout>=2.4", # backs the `timeout` setting below
+  # Spreads the suite over the machine's cores — `mise run test` passes `-n auto`. The run is
+  # almost entirely viewer page renders, which share nothing, so it scales nearly linearly.
+  "pytest-xdist>=3.6",
   # Floor at 1.0: the config below uses the 1.x spellings — `preset`, a severity map under
   # `[tool.pyrefly.errors]`, and `sub-config` — which 0.x neither reads nor rejects.
   "pyrefly>=1.0",
