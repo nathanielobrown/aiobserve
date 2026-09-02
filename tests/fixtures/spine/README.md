@@ -43,11 +43,16 @@ written:
   session, and a generated title after it does not
 - the `<synthetic>` reply — priced at a stated zero rather than left unpriced. Its 2026-07-06
   timestamp is the file's earliest, so it also sets the session's `started_at`
-- `msg_011CdmMz6vD6y2JsoEV6qVYL` — the last call of turn `30aad8e5`, here for its `usage` and
-  nothing else. It is what leaves the window standing well above where the session opened, so the
-  turn after it draws a context bar with all three bands apart: the opening context in navy, the
-  conversation over it, and the turn's own growth bright at the tip (`f10 p7 b3`). Trim it and no
-  turn in the whole corpus draws all three (`tests/view/pages/node/test_nav_tree__bars.py`)
+- `msg_011CdmMz6vD6y2JsoEV6qVYL` — the last call of turn `30aad8e5`, here for its `usage` and its
+  `attributionSkill`. The usage leaves the window standing well above where the session opened, so
+  the turn after it draws a context bar with all three bands apart: the opening context in navy, the
+  conversation over it, and the turn's own growth bright at the tip (`f10 p7 b3`). Three things ride
+  on that: the browser tier has a page where the three blues can be read against each other, the
+  corpus invariant in `tests/view/pages/node/test_nav_tree__bars.py` reds the moment the record is
+  trimmed, and the turn-bar SQL's `lag(...) OVER (ORDER BY t."index")` gains a second leaf that
+  catches its ordering reversed. The bands themselves are defended without it — the four `Node.bar`
+  mutants tried against a trimmed corpus all died. `attributionSkill: night-run` is the second such
+  attribution the corpus holds, which is what `tests/analyze/test_shapes.py` counts
 - two `pr-link` records — the same `prNumber` twice, four minutes apart, which is why a PR link is
   keyed by its transcript line rather than by its number
 
