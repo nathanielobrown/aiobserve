@@ -294,7 +294,7 @@ def test_lint_shell_cannot_pass_without_shellcheck() -> None:
 def test_a_gated_task_run_through_mise_prints_one_line(monkeypatch: pytest.MonkeyPatch) -> None:
     """Run the way a reader runs it, a passing gate's whole output is its own success line.
 
-    The three pieces are only worth anything together: `task_output` drops mise's chrome,
+    The three pieces are only worth anything together: `task.output` drops mise's chrome,
     `MISE_TASK_NAME` gives the wrapper the label, and the wrapper swallows the rest. The
     cheapest gate stands for all of them, because the leaf above proves none of the others
     skips the wrapper.

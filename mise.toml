@@ -39,8 +39,10 @@ node = "24.17.0"
 python.uv_venv_auto = true
 # Drop mise's own `[task] $ cmd` headers and `Finished in` footers. What a task has to say is
 # then the task's own, which for a gate is the one line `tools/gate.py` prints. Set here and
-# not per invocation so `mise run check` reads the same for everyone, CI included.
-task_output = "quiet"
+# not per invocation so `mise run check` reads the same for everyone, CI included. Dotted, not
+# the flat `task_output`: that spelling is deprecated, and a mise new enough to say so says it
+# once per task — the warning would land on the green path this setting exists to keep clear.
+task.output = "quiet"
 # aigarden is ours, so a release we just cut is the one we want — no soak period to wait out.
 minimum_release_age_excludes = ["github:nathanielobrown/aigarden"]
 

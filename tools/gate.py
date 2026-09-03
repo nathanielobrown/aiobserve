@@ -2,7 +2,7 @@
 """Run one gate command and say only whether it passed.
 
 Every task in `check` and `check-fast` routes through here (`mise.toml` says which, and why).
-mise drops its own per-task headers and footers through `task_output = "quiet"`; this wrapper
+mise drops its own per-task headers and footers through `task.output = "quiet"`; this wrapper
 owns the rest. It runs the command with both streams captured, and
 
   - on success prints one line, `✅ <name>  <elapsed>`, swallowing whatever the tool says when
