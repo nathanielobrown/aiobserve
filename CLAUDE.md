@@ -44,7 +44,7 @@ src/hyphae/               Analyze AI coding agents from their telemetry
   view/                   The trace viewer: a local web app serving every node of a session as its own page
   pipeline.py             The seams: what an extractor and an exporter owe each other, and the loop that drives them
 tests/                    The suite, mirroring the package layout; fixtures are recorded sessions, and `gallery/` serves them as pages (`docs/ui-development.md`)
-tools/                    The repo's own generators: what the code already owns, written back out for another reader
+tools/                    The repo's own tooling: what the code already owns written back out, and what runs the gates
 docs/
   analysis.md             Follow this process to turn the trace store into evidence-backed findings about how an AI coding agent behaved on a project
   schema.md               Every Claude Code telemetry field hyphae reads, what it means, and the recording that proves it
