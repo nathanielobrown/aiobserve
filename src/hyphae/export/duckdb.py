@@ -235,7 +235,14 @@ SELECT * EXCLUDE (rank, owner_rank) FROM (
 
 
 def _rollup_view(name: str, prefix: str, view: str) -> str:
-    """One row per session, counting the rows of the `prefix` family of views."""
+    """One row per session, counting the rows of the `prefix` family of views.
+
+    One grouped pass per family joined onto the sessions, rather than a correlated subquery
+    per column: eleven correlations over five relations re-scan the api calls seven times, and
+    on the corpus family each scan pays for the whole replay exclusion again. Every join is a
+    LEFT JOIN and every column it feeds coalesces, so a session with none of a kind still
+    reports the zero its readers sum and sort by.
+    """
     return f"""
 CREATE OR REPLACE {view} {name} AS
 SELECT
@@ -248,26 +255,38 @@ SELECT
     -- away; `active_ms` is what Claude Code reported working.
     date_diff('millisecond', s.started_at, s.ended_at) AS wall_ms,
     s.active_ms,
-    (SELECT count(*) FROM {prefix}_turns t WHERE t.session_id = s.id) AS turns,
-    (SELECT count(*) FROM {prefix}_api_calls c WHERE c.session_id = s.id) AS api_calls,
-    (SELECT count(*) FROM {prefix}_tool_calls tc WHERE tc.session_id = s.id) AS tool_calls,
-    (SELECT count(*) FROM {prefix}_agent_runs a WHERE a.session_id = s.id) AS agent_runs,
-    (SELECT count(*) FROM {prefix}_compactions k WHERE k.session_id = s.id) AS compactions,
-    (SELECT coalesce(sum(c.input_tokens), 0) FROM {prefix}_api_calls c
-        WHERE c.session_id = s.id) AS input_tokens,
-    (SELECT coalesce(sum(c.output_tokens), 0) FROM {prefix}_api_calls c
-        WHERE c.session_id = s.id) AS output_tokens,
-    (SELECT coalesce(sum(c.cache_read_tokens), 0) FROM {prefix}_api_calls c
-        WHERE c.session_id = s.id) AS cache_read_tokens,
-    (SELECT coalesce(sum(c.cache_creation_tokens), 0) FROM {prefix}_api_calls c
-        WHERE c.session_id = s.id) AS cache_creation_tokens,
+    coalesce(t.turns, 0) AS turns,
+    coalesce(c.api_calls, 0) AS api_calls,
+    coalesce(tc.tool_calls, 0) AS tool_calls,
+    coalesce(a.agent_runs, 0) AS agent_runs,
+    coalesce(k.compactions, 0) AS compactions,
+    coalesce(c.input_tokens, 0) AS input_tokens,
+    coalesce(c.output_tokens, 0) AS output_tokens,
+    coalesce(c.cache_read_tokens, 0) AS cache_read_tokens,
+    coalesce(c.cache_creation_tokens, 0) AS cache_creation_tokens,
     -- Sums only the calls our price table prices; `unpriced_api_calls` says how many it
     -- left out, so a total is never read as complete without checking.
-    (SELECT coalesce(sum(c.cost_usd), 0) FROM {prefix}_api_calls c
-        WHERE c.session_id = s.id) AS cost_usd,
-    (SELECT count(*) FROM {prefix}_api_calls c
-        WHERE c.session_id = s.id AND c.cost_usd IS NULL) AS unpriced_api_calls
-FROM sessions s;
+    coalesce(c.cost_usd, 0) AS cost_usd,
+    coalesce(c.unpriced_api_calls, 0) AS unpriced_api_calls
+FROM sessions s
+LEFT JOIN (SELECT session_id, count(*) AS turns
+           FROM {prefix}_turns GROUP BY session_id) t ON t.session_id = s.id
+LEFT JOIN (SELECT session_id, count(*) AS tool_calls
+           FROM {prefix}_tool_calls GROUP BY session_id) tc ON tc.session_id = s.id
+LEFT JOIN (SELECT session_id, count(*) AS agent_runs
+           FROM {prefix}_agent_runs GROUP BY session_id) a ON a.session_id = s.id
+LEFT JOIN (SELECT session_id, count(*) AS compactions
+           FROM {prefix}_compactions GROUP BY session_id) k ON k.session_id = s.id
+LEFT JOIN (
+    SELECT session_id,
+        count(*) AS api_calls,
+        sum(input_tokens) AS input_tokens,
+        sum(output_tokens) AS output_tokens,
+        sum(cache_read_tokens) AS cache_read_tokens,
+        sum(cache_creation_tokens) AS cache_creation_tokens,
+        sum(cost_usd) AS cost_usd,
+        count(*) FILTER (cost_usd IS NULL) AS unpriced_api_calls
+    FROM {prefix}_api_calls GROUP BY session_id) c ON c.session_id = s.id;
 """
 
 

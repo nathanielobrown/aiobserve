@@ -156,16 +156,16 @@ def test_the_table_ends_without_its_own_newline(section: gen_schema.Section) -> 
     assert not gen_schema.generate(section).endswith("\n")
 
 
-def test_main_prints_the_table_it_is_named(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_main_prints_the_table_it_is_named(capsys: pytest.CaptureFixture[str]) -> None:
     # What the cog block runs: one argument, one table, nothing else on stdout.
-    monkeypatch.setattr("sys.argv", ["gen_schema", "events"])
-    gen_schema.main()
+    gen_schema.main(["events"])
     assert capsys.readouterr().out == gen_schema.generate(gen_schema.Section.EVENTS) + "\n"
 
 
-def test_main_refuses_to_guess_which_table() -> None:
-    # A cog block that forgot its argument gets an error, not the first table.
+@pytest.mark.parametrize("argv", [[], ["events", "identity"]], ids=["none", "two"])
+def test_main_refuses_to_guess_which_table(argv: list[str]) -> None:
+    # A cog block that forgot its argument — or named two tables — gets an error, not a guess.
+    # `main` reads what it is handed rather than `sys.argv`, so pytest's own flags are not an
+    # argument to the tool and this leaf passes under any way of invoking the suite.
     with pytest.raises(SystemExit, match="identity"):
-        gen_schema.main()
+        gen_schema.main(argv)

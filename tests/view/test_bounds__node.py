@@ -8,8 +8,11 @@ a page that grows a field pays for it here before it reaches a ceiling.
 
 import json
 import re
+from collections.abc import Iterator, Mapping
+from pathlib import Path
 
 import duckdb
+import pytest
 from fastapi.testclient import TestClient
 
 from hyphae.analyze import queries
@@ -34,9 +37,11 @@ from tests.view.budgets import (
 )
 from tests.view.conftest import (
     Planter,
+    Statement,
     fields,
     one,
     pages,
+    planter,
     values,
 )
 
@@ -84,19 +89,12 @@ def priced(html: str) -> tuple[str, dict[str, list[str]]]:
     return html, rows
 
 
-def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
-    enriched_plant: Planter, store: duckdb.DuckDBPyConnection
-) -> None:
-    """Every part of a node page weighs no more than the arithmetic above gives it.
+def escaped_at_every_cap() -> tuple[Statement, ...]:
+    """Every cap a title, a heading or a preview reads, planted full of `&`.
 
-    The node page is the one page `worst_node_bytes` multiplies four ways — a crumb per level
-    open, a NavTree row per child of each, a log row per child of the selection, and the values the
-    pane previews — so a template that grows any of them puts the ceiling out by whatever size
-    it is multiplied by. Every cap a title, a heading or a preview reads is planted full of `&`,
-    the character that escapes to five bytes, because no recorded node is adversarial: what a
+    `&` is the character that escapes to five bytes, and no recorded node is adversarial: what a
     pass wrote, and the prompt, command, agent type, model, tool name and tool payload a page
-    falls back to. The sweep is every node of every session, not one page: the widest chrome
-    belongs to whichever pane is dearest, and that is a question about the corpus.
+    falls back to.
     """
     head = "&" * queries.HEADER_CHARS
     # Longer than the widest cut any query makes, so every cut bites and every preview offers
@@ -107,7 +105,7 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     # a row can name the syntax of.
     tokens = "&;" * ((queries.DETAIL_CHARS + 2) // 2)
     over = queries.HEADER_ITEMS + 2
-    path = enriched_plant(
+    return (
         (
             "UPDATE sessions SET title = ?, agent_name = ?, project_dir = ?, git_branch = ?,"
             " version = ?, entrypoint = ?",
@@ -202,44 +200,81 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
         ),
         *DESCRIBED_AT_EVERY_CAP,
     )
+
+
+@pytest.fixture(scope="module")
+def escaped_client(
+    enriched_db: Path, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[TestClient]:
+    """The viewer over a described store planted full of `&` at every cap it reads.
+
+    Module-scoped and built off `tmp_path_factory`, because the three sweeps below are three
+    leaves over one plant: `enriched_plant` is function-scoped over `tmp_path` and would rebuild
+    it per leaf. Nothing here writes to the store, so the three share it safely.
+    """
+    path = planter(enriched_db, tmp_path_factory.mktemp("escaped"))(*escaped_at_every_cap())
     with TestClient(build_app(path)) as planted:
-        served = []
-        # Twice over the store: once at the defaults, where the NavTree holds a row of every kind
-        # there is, and once at the knobs that make every link on the page longest. A reader
-        # who narrows a page pays for the query string on every row of it, and the two sweeps
-        # together hold the widest row of each kind beside the dearest link.
-        for marks in ({}, WORST_KNOBS):
-            for url in pages(store):
-                response = planted.get(url, params=marks)
-                assert response.status_code == 200, (url, response.text[:200])
-                served.append(response.text)
-        # And once more one child to a page, at the second page of each level: no recorded
-        # node has children enough to page at a size a reader would type, and the control
-        # under the log is what a level running past its page costs. A level of fewer than
-        # three has no second page and no middle page, and answers 404 by design.
-        for url in pages(store):
-            response = planted.get(url, params={**WORST_KNOBS, "log": 1, "page": 2})
-            if response.status_code == 200:
-                served.append(response.text)
-    # The list and the two pages that are not nodes come back too; only a node page splits.
-    split = [priced(page) for page in served if 'id="nav-tree-rows"' in page]
-    # A crumb, a NavTree row, a log row and a preview each weigh what the arithmetic budgets...
-    for name, budget, exact in (
+        yield planted
+
+
+# One node page, split into the rows the arithmetic prices and the chrome it does not.
+Split = tuple[str, dict[str, list[str]]]
+
+# The second page of each level, one child to a page: no recorded node has children enough to
+# page at a size a reader would type, and the control under the log is what a level running past
+# its page costs.
+PAGED_KNOBS = {**WORST_KNOBS, "log": 1, "page": 2}
+
+
+def swept(
+    planted: TestClient, urls: list[str], marks: Mapping[str, str | int], *, paged: bool
+) -> list[Split]:
+    """Every node page the store serves at these knobs, priced row by row.
+
+    The list and the two pages that are not nodes come back too; only a node page splits. Pass
+    `paged` for the sweep that asks for a second page, where a level of fewer than three has
+    neither a second page nor a middle one and answers 404 by design — every other sweep holds
+    every URL to 200.
+    """
+    served = []
+    for url in urls:
+        response = planted.get(url, params=marks)
+        if paged and response.status_code != 200:
+            continue
+        assert response.status_code == 200, (url, response.text[:200])
+        served.append(response.text)
+    return [priced(page) for page in served if 'id="nav-tree-rows"' in page]
+
+
+def found_rows(split: list[Split], name: str) -> list[str]:
+    """Every priced row of one kind the sweep rendered, over all of its pages."""
+    return [row for _, rows in split for row in rows[name]]
+
+
+def weighed(split: list[Split], *, widest_of: frozenset[str]) -> None:
+    """A crumb, a NavTree row and a log row of this sweep each weigh what the arithmetic budgets.
+
+    `widest_of` names the kinds this sweep renders the corpus's widest row of, which is a fact
+    about the fixtures recorded by weighing the three sweeps apart rather than reasoned from the
+    knobs. There a budget is held from below as well; everywhere else it is only a ceiling, and a
+    template that grows a row still reds in the one sweep that prices that kind exactly.
+    """
+    for name, budget, pinned in (
         ("crumb", worst_crumb_bytes(), exact_pins()),
         ("nav_tree", bounds.NAV_TREE_ROW_BYTES, True),
         ("log", worst_log_row_bytes(), False),
-        ("pager", MEASURED_PAGER_BYTES, exact_pins()),
     ):
-        found = [row for _, rows in split for row in rows[name]]
+        found = found_rows(split, name)
         assert found, name
         widest_row = max(len(row.encode()) for row in found)
         # A log row is arithmetic over a cap with a rounding fudge inside it, so a row that comes
-        # in under is a cap with room left and the budget is only ever a ceiling. The other three
+        # in under is a cap with room left and the budget is only ever a ceiling. The other two
         # are measurements of the row itself, or arithmetic with nothing rounded in it: the
         # NavTree's is held from below always — the NavTree is most of the page, so a byte of
         # slack there is 3,217 bytes the ceiling keeps for nothing, and `NODE_BYTES` now has room
-        # to hide one — and the crumb's and the pager's under the exact-pin mode, which is what
-        # keeps a hand-written pin from outliving the measurement it stood for.
+        # to hide one — and the crumb's under the exact-pin mode, which is what keeps a
+        # hand-written pin from outliving the measurement it stood for.
+        exact = pinned and name in widest_of
         assert widest_row == budget if exact else widest_row <= budget, (name, widest_row)
         if name == "nav_tree":
             # And the row it priced drew a context bar at its widest spelling: three edges of
@@ -252,58 +287,154 @@ def test_a_node_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
             # And it drew both halves of its cost badge, which is the widest thing the row has
             # grown: a corpus whose dearest row spawned no agent run would measure under this.
             assert widest.count('class="badge ') == 2, widest[:200]
-    # A preview is priced by whether the page marked it up, which is the whole of the
-    # difference between the two budgets: an element a token against an escape a character.
-    # Marked up two ways — the syntax a record named, and the markdown a session wrote — and
-    # both are read off the markup rather than off the route, because what the ceiling pays
-    # for is what came back.
-    previews = [row for _, rows in split for row in rows["detail"]]
+
+
+def marked_up(split: list[Split]) -> tuple[list[str], list[str], list[str]]:
+    """The sweep's previews split by whether the page marked one up, each inside its own budget.
+
+    A preview is priced by whether the page marked it up, which is the whole of the difference
+    between the two budgets: an element a token against an escape a character. Marked up two
+    ways — the syntax a record named, and the markdown a session wrote — and both are read off
+    the markup rather than off the route, because what the ceiling pays for is what came back.
+    """
+    previews = found_rows(split, "detail")
     dear = [row for row in previews if 'class="code ' in row or 'class="prose"' in row]
-    assert dear and len(dear) < len(previews)
+    assert dear
     assert max(len(row.encode()) for row in dear) <= worst_rendered_detail_bytes()
-    # And the plant reached a lexer through both of those routes, so that budget is being held
-    # rather than merely not approached: the dearest preview costs more than escaping every
-    # character of it would, which is the whole of the difference between the two.
+    # And the plant reached a lexer, so that budget is being held rather than merely not
+    # approached: the dearest preview costs more than escaping every character of it would,
+    # which is the whole of the difference between the two.
     assert max(len(row.encode()) for row in dear) > worst_stored_detail_bytes()
-    stored = [row for row in previews if row not in dear]
-    assert max(len(row.encode()) for row in stored) <= worst_stored_detail_bytes()
-    # And no pane shows more previews than the arithmetic gives it, or more marked-up ones: a
-    # kind that grew a third value would otherwise spend the ceiling unpriced.
-    counts = [len(rows["detail"]) for _, rows in split]
-    assert max(counts) == PANE_DETAILS
-    assert max(sum(row in dear for row in rows["detail"]) for _, rows in split) == (
-        DEAR_PANE_DETAILS
-    )
-    # ...and what the page carries whatever it holds fits the allowance the ceiling gives it.
-    widest = max((chrome for chrome, _ in split), key=lambda page: len(page.encode()))
-    assert fits(measured=len(widest.encode()), budget=MEASURED_NODE_CHROME), len(widest.encode())
-    # The plant reached the caps, which is what makes those numbers a worst case: each header
-    # string cut to its head, each list cut to its first members and saying how many it left,
-    # every tree title cut to a nav width, and every preview offering the rest of itself.
+    return previews, dear, [row for row in previews if row not in dear]
+
+
+def reached_the_caps(split: list[Split]) -> None:
+    """The plant reached every cap this sweep's pages read, which is what makes them a worst case.
+
+    Each header string cut to its head, each list cut to its first members and saying how many it
+    left, every tree title cut to a nav width, and every preview offering the rest of itself.
+    """
     session = next(chrome for chrome, _ in split if 'data-body="session"' in chrome)
     facts = fields(session, "data-body", "session")
     assert len(facts["git_branch"]) == len(facts["version"]) == queries.HEADER_CHARS
     escaped = {
         found.count("&amp;")
-        for _, rows in split
-        for row in rows["nav_tree"]
+        for row in found_rows(split, "nav_tree")
         for found in re.findall(r'<span data-field="title">(.*?)</span>', row, flags=re.DOTALL)
     }
     # No title got past the cut, and one reached it. Not every row's title is planted — a
     # bucket is named by the viewer and a compaction by its trigger — so the widest is what
-    # says the cut bit rather than every row being the same width.
+    # says the cut bit rather than every row being the same width. Every sweep reaches the cut,
+    # so every one of them holds it from below.
     assert max(escaped) == queries.NAV_CHARS
-    cuts = {row.count("more character(s)") for _, rows in split for row in rows["detail"]}
-    assert cuts == {1}
+    assert {row.count("more character(s)") for row in found_rows(split, "detail")} == {1}
     # And the mark a failed call carries reached the rows the NavTree priced, so
     # `NAV_TREE_ROW_BYTES` is a price for the dearest tool row rather than for one that happened
     # to succeed.
-    assert any('data-field="is_error"' in row for _, rows in split for row in rows["nav_tree"])
+    assert any('data-field="is_error"' in row for row in found_rows(split, "nav_tree"))
     # The enrichment sits in the chrome, stale tag and all, so it is planted with the rest.
     described = fields(session, "data-enrichment", values(session, "data-enrichment")[0])
     marked = "&" * queries.ENRICHMENT_CHARS + ELLIPSIS
     assert described["description"] == described["friction"] == marked
     assert described["stale"] == "stale"
+
+
+# The node page is the one page `worst_node_bytes` multiplies four ways — a crumb per level open,
+# a NavTree row per child of each, a log row per child of the selection, and the values the pane
+# previews — so a template that grows any of them puts the ceiling out by whatever size it is
+# multiplied by. Three sweeps of every node of every session weigh them, one to a leaf: a page is
+# not what any of them measures, because the widest chrome belongs to whichever pane is dearest
+# and that is a question about the corpus. Which sweep reaches which budget is recorded, not
+# assumed — run the three under `HYPHAE_PIN_EXACT=1` after changing a knob or the corpus, because
+# a pin moving to another sweep shows up as one leaf red and another passing loosely.
+
+
+def test_a_node_page_at_the_sizes_a_reader_gets_costs_what_the_ceiling_budgets(
+    escaped_client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """Every part of a node page at the default sizes weighs no more than the arithmetic gives it.
+
+    The defaults are where the NavTree holds a row of every kind there is, and where the chrome —
+    the page apart from the rows the arithmetic prices — is widest of the three sweeps.
+    """
+    split = swept(escaped_client, pages(store), {}, paged=False)
+    weighed(split, widest_of=frozenset())
+    # No level of the corpus runs past its page at a size a reader would type, so nothing here
+    # draws the control under the log; the paged sweep below is the one that prices it.
+    assert not found_rows(split, "pager")
+    previews, dear, stored = marked_up(split)
+    # The plant reached the store's own route as well as the lexer's, so the cheaper budget is
+    # weighed against a preview that took it rather than against none.
+    assert len(dear) < len(previews)
+    assert max(len(row.encode()) for row in stored) <= worst_stored_detail_bytes()
+    # And no pane shows more previews than the arithmetic gives it, or more marked-up ones: a
+    # kind that grew a third value would otherwise spend the ceiling unpriced.
+    assert max(len(rows["detail"]) for _, rows in split) == PANE_DETAILS
+    assert max(sum(row in dear for row in rows["detail"]) for _, rows in split) == (
+        DEAR_PANE_DETAILS
+    )
+    # ...and what the page carries whatever it holds fits the allowance the ceiling gives it,
+    # which this sweep is the one to spend in full.
+    widest = max((chrome for chrome, _ in split), key=lambda page: len(page.encode()))
+    assert fits(measured=len(widest.encode()), budget=MEASURED_NODE_CHROME), len(widest.encode())
+    reached_the_caps(split)
+
+
+def test_a_node_page_at_the_widest_knobs_costs_what_the_ceiling_budgets(
+    escaped_client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """Every part of a node page at the sizes that lengthen every link on it fits its budget.
+
+    A reader who narrows a page pays for the query string on every row of it, so this is the
+    sweep that holds the widest crumb and the widest NavTree row.
+    """
+    split = swept(escaped_client, pages(store), WORST_KNOBS, paged=False)
+    weighed(split, widest_of=frozenset({"crumb", "nav_tree"}))
+    # These knobs ask for a page of every level, so no level here runs past one either.
+    assert not found_rows(split, "pager")
+    previews, dear, stored = marked_up(split)
+    assert len(dear) < len(previews)
+    assert max(len(row.encode()) for row in stored) <= worst_stored_detail_bytes()
+    assert max(len(rows["detail"]) for _, rows in split) == PANE_DETAILS
+    assert max(sum(row in dear for row in rows["detail"]) for _, rows in split) == (
+        DEAR_PANE_DETAILS
+    )
+    widest = max((chrome for chrome, _ in split), key=lambda page: len(page.encode()))
+    assert len(widest.encode()) <= MEASURED_NODE_CHROME, len(widest.encode())
+    reached_the_caps(split)
+
+
+def test_a_second_page_of_a_level_costs_what_the_ceiling_budgets(
+    escaped_client: TestClient, store: duckdb.DuckDBPyConnection
+) -> None:
+    """A node page showing a level's second page weighs the control the first two sweeps never draw.
+
+    One child to a page, because no recorded node has children enough to page at a size a reader
+    would type — and the control under the log is what a level running past its page costs.
+    """
+    split = swept(escaped_client, pages(store), PAGED_KNOBS, paged=True)
+    weighed(split, widest_of=frozenset())
+    # The pager is this sweep's alone: it is arithmetic with nothing rounded in it, so the
+    # exact-pin mode holds it from below as well, and a sweep that drew none would crash on the
+    # `max()` below rather than pass.
+    pagers = found_rows(split, "pager")
+    assert pagers
+    widest_pager = max(len(row.encode()) for row in pagers)
+    if exact_pins():
+        assert widest_pager == MEASURED_PAGER_BYTES, widest_pager
+    else:
+        assert widest_pager <= MEASURED_PAGER_BYTES, widest_pager
+    _, dear, stored = marked_up(split)
+    # Every preview a second page shows is one a model or a person wrote, so this sweep has no
+    # escaped-only preview to weigh: the cheaper budget is held in the two sweeps that render one.
+    assert not stored
+    assert max(len(rows["detail"]) for _, rows in split) <= PANE_DETAILS
+    assert max(sum(row in dear for row in rows["detail"]) for _, rows in split) <= (
+        DEAR_PANE_DETAILS
+    )
+    widest = max((chrome for chrome, _ in split), key=lambda page: len(page.encode()))
+    assert len(widest.encode()) <= MEASURED_NODE_CHROME, len(widest.encode())
+    reached_the_caps(split)
 
 
 def test_an_expansion_weighs_a_body_and_the_one_page_of_rows_it_lists(

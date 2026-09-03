@@ -11,6 +11,7 @@ import duckdb
 from fastapi.testclient import TestClient
 
 from hyphae.analyze import queries
+from hyphae.view.app import build_app
 from tests.conftest import (
     BYREF_FORK,
     FORK_ORIGIN,
@@ -23,7 +24,7 @@ from tests.conftest import (
     TEAMMATE,
     TEAMMATE_RUN,
 )
-from tests.view.conftest import SPAWN_OF, fields, inside, one, values
+from tests.view.conftest import SPAWN_OF, Planter, fields, inside, one, values
 
 
 def test_a_run_page_is_that_runs_own_thread(
@@ -191,6 +192,26 @@ def test_a_fork_is_never_its_own_child(client: TestClient) -> None:
         f"run:{FORK_RUN}",
     ]
     assert f"run:{FORK_ORIGIN_RUN}" not in values(page, "data-crumb")
+
+
+def test_a_run_that_answered_nothing_spends_zero_rather_than_nothing(plant: Planter) -> None:
+    """A run whose thread holds no api call reads as $0.00 spent, not as a blank.
+
+    `view_runs.sql` gathers a run's numbers per thread, so a run no group covers takes the
+    zero the join could not find. The fixture corpus records no such run — the real store
+    holds one in 3,005 — so this plants it by taking a recorded run's calls away.
+    """
+    # If a recorded run's own api calls are all gone, leaving the run row and its turns...
+    path = plant(("DELETE FROM api_calls WHERE session_id = ? AND source = ?", [SPINE, SPINE_RUN]))
+    with TestClient(build_app(path)) as emptied:
+        page = emptied.get(f"/session/{SPINE}/run/{SPINE_RUN}").text
+
+    # ...then the run's own page still prices its thread, at nothing.
+    pane = fields(page, "data-body", "run")
+    assert pane["api_calls"] == "0"
+    assert pane["cost_usd"] == "$0.00"
+    # ...and the row the NavTree draws for it agrees, so no ancestor sums a null.
+    assert fields(page, "data-nav-tree", f"run:{SPINE_RUN}")["cost_usd"] == "$0.00"
 
 
 def test_the_run_page_cites_the_two_queries_that_read_its_thread(client: TestClient) -> None:

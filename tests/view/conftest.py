@@ -11,7 +11,8 @@ the page.
 """
 
 import re
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Generator, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
@@ -116,6 +117,57 @@ def pages(store: duckdb.DuckDBPyConnection) -> list[str]:
     return urls
 
 
+@contextmanager
+def reading(path: Path) -> Generator[duckdb.DuckDBPyConnection]:
+    """A read-only connection to one store, opened the way a request opens one.
+
+    Macros and all (`view/store.py:open_store`): a library query calls them by name, so a bare
+    connection answers a catalog error rather than rows.
+    """
+    connection = duckdb.connect(str(path), read_only=True)
+    connection.execute("SET TimeZone='UTC'")
+    macros.install(connection)
+    try:
+        yield connection
+    finally:
+        connection.close()
+
+
+def render_pages(path: Path) -> dict[str, str]:
+    """Every page one store serves at the default knobs, keyed by URL and served once.
+
+    Four leaves sweep the corpus this way and assert different properties of the *same* bytes —
+    same store file, same knobs, same app — so rendering once and sharing the map changes what
+    each of them reads not at all, and costs the run one pass instead of four. The 200 is
+    asserted here rather than in each of them: a page that failed never reaches the map, and it
+    names the URL that did it.
+
+    A function over a path rather than a fixture over the corpus, so a leaf that plants
+    something can rebuild the map over its own copy. A plant in a scratch store can never
+    surface through a map built from the untouched corpus, so a sweep that could not be
+    rebuilt could not be red-checked either.
+    """
+    with reading(path) as connection:
+        urls = pages(connection)
+    with TestClient(build_app(path)) as served:
+        rendered = {}
+        for url in urls:
+            response = served.get(url)
+            assert response.status_code == 200, (url, response.status_code)
+            rendered[url] = response.text
+    return rendered
+
+
+@pytest.fixture(scope="session")
+def corpus_pages(corpus_db: Path) -> Mapping[str, str]:
+    """The fixture corpus rendered once, for the leaves that sweep every page of it.
+
+    Session-scoped, and its consumers are marked `xdist_group("corpus_sweep")` so one worker
+    renders it once for all of them instead of each worker paying for its own pass.
+    """
+    return render_pages(corpus_db)
+
+
 @pytest.fixture(scope="session")
 def client(corpus_db: Path) -> Iterator[TestClient]:
     """The viewer over the fixture corpus, which nothing in this tier writes to."""
@@ -125,16 +177,9 @@ def client(corpus_db: Path) -> Iterator[TestClient]:
 
 @pytest.fixture(scope="session")
 def store(corpus_db: Path) -> Iterator[duckdb.DuckDBPyConnection]:
-    """A read-only connection for the expectations — what the page is checked against.
-
-    Opened the way a request opens one (`view/store.py:open_store`), macros and all: a library
-    query calls them by name, so a bare connection answers a catalog error rather than rows.
-    """
-    connection = duckdb.connect(str(corpus_db), read_only=True)
-    connection.execute("SET TimeZone='UTC'")
-    macros.install(connection)
-    yield connection
-    connection.close()
+    """A read-only connection for the expectations — what the page is checked against."""
+    with reading(corpus_db) as connection:
+        yield connection
 
 
 @pytest.fixture(scope="session")
@@ -148,10 +193,8 @@ def enriched_client(enriched_db: Path) -> Iterator[TestClient]:
 @pytest.fixture(scope="session")
 def enriched_store(enriched_db: Path) -> Iterator[duckdb.DuckDBPyConnection]:
     """A read-only connection to the described corpus, for what its pages are checked against."""
-    connection = duckdb.connect(str(enriched_db), read_only=True)
-    connection.execute("SET TimeZone='UTC'")
-    yield connection
-    connection.close()
+    with reading(enriched_db) as connection:
+        yield connection
 
 
 def planter(base: Path, tmp_path: Path) -> Planter:

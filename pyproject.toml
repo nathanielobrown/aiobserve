@@ -48,6 +48,9 @@ build-backend = "hatchling.build"
 dev = [
   "pytest>=8.4",
   "pytest-timeout>=2.4", # backs the `timeout` setting below
+  # Spreads the suite over workers — `mise run test` passes `-n` and `--dist`, with the
+  # worker count and its measurement beside the flag in `mise.toml`.
+  "pytest-xdist>=3.6",
   # Floor at 1.0: the config below uses the 1.x spellings — `preset`, a severity map under
   # `[tool.pyrefly.errors]`, and `sub-config` — which 0.x neither reads nor rejects.
   "pyrefly>=1.0",
@@ -179,9 +182,10 @@ docstring-code-format = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # A hung test with no ceiling burns the whole run and prints no failure line.
-# This is a backstop; individual waits carry their own deadlines. Kept well clear of both:
-# the slowest test in the suite takes 20s, so a trip always means nothing here was bounded
-# and never preempts an inner deadline's own diagnostic.
+# This is a backstop; individual waits carry their own deadlines. Kept several times clear of
+# the slowest item every run prints in its `--durations` footer — in parallel that is the
+# shared corpus render pass, at about an eighth of this — so a trip always means nothing here was
+# bounded and never preempts an inner deadline's own diagnostic.
 timeout = 120
 # SIGALRM raises inside the test, so a trip is a red test with a stack and the run still
 # reports. pytest-timeout's other method kills the process outright. It already picks this

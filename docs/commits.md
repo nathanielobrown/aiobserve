@@ -33,6 +33,7 @@ Start each subject with at least one emoji from this table. Don't use emojis out
 | ✨ | New feature |
 | 🌱 | Intermediate work that is built but not yet wired in |
 | 🧹 | Refactor or cleanup |
+| ⚡ | Performance: the same behavior for less time or memory |
 | 🗂️ | Data model |
 | 🐛 | Bug fix |
 | 🧪 | Tests only |

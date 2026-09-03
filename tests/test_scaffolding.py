@@ -1,8 +1,8 @@
-"""The shared scaffolding's own moving parts: taking a store's lock, and letting go of it.
+"""The shared scaffolding's own moving parts: the DuckDB thread pin, and a store's lock.
 
-Everything else in `tests/conftest.py` builds data. `locked()` drives another process, so it
-is the one piece with failure modes of its own — and both of the suite's known flakes came
-from it.
+Everything else in `tests/conftest.py` builds data. The pin reaches into a shipped library and
+`locked()` drives another process, so they are the pieces with failure modes of their own —
+and both of the suite's known flakes came from the second.
 """
 
 import subprocess
@@ -14,7 +14,11 @@ from typing import Any
 import duckdb
 import pytest
 
-from tests.conftest import LOCK_TIMEOUT, locked, opens_elsewhere, stop
+from hyphae.export.duckdb import DuckDbExporter, open_trace_store
+from tests.conftest import LOCK_TIMEOUT, NO_WAIT, locked, opens_elsewhere, stop
+
+# What a connection reports its thread pool as.
+_THREADS = "SELECT current_setting('threads')"
 
 # A holder that will not answer SIGTERM, so only the fallback can end it. Invented, and it
 # has to be: the real holder does answer, and the flake this leaf covers is one that
@@ -27,6 +31,25 @@ _DEAF_HOLDER = (
 # How long the leaf gives the holder to answer each signal: long enough that a healthy one
 # would, short enough that the fallback costs the suite nothing.
 PATIENCE = 0.2
+
+
+def test_every_store_the_suite_opens_runs_on_one_duckdb_thread(tmp_path: Path) -> None:
+    """A store opened anywhere under the suite queries single-threaded, however it was opened.
+
+    The pin is what makes the parallel run pay (`plans/test-runtime/design.md`), and it has to
+    hold for connections the harness opens directly *and* for the ones shipped code opens
+    under it — the viewer opens one per request through `open_trace_store`.
+    """
+    # If a store is opened the way a builder opens one, for write...
+    path = tmp_path / "traces.duckdb"
+    DuckDbExporter(path, wait=NO_WAIT)
+    with duckdb.connect(str(path)) as writable:
+        # ...then it queries on a single thread...
+        assert writable.execute(_THREADS).fetchone() == (1,)
+    # ...and so does the read-only connection the viewer takes per request, through the
+    # shipped opener the pin never touched.
+    with open_trace_store(path, read_only=True, wait=NO_WAIT) as reader:
+        assert reader.execute(_THREADS).fetchone() == (1,)
 
 
 def test_a_holder_that_ignores_sigterm_is_still_stopped(tmp_path: Path) -> None:

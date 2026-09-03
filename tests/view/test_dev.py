@@ -22,6 +22,7 @@ import signal
 import socket
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Iterator, MutableMapping
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -238,6 +239,25 @@ def test_the_reload_stream_answers_as_an_event_stream_under_the_same_policy(
     # Starlette appends a charset to any `text/*` media type, so the type is read off the head.
     assert streamed.headers["content-type"].startswith("text/event-stream")
     assert streamed.headers["content-security-policy"] == CSP
+
+
+def test_dropping_the_stream_lets_go_of_the_watcher_without_waiting_out_its_timeout(
+    tmp_path: Path,
+) -> None:
+    """A reader who closes the page frees the watcher instead of parking a worker on it.
+
+    Cancelling the response never reaches the thread `awatch` blocks in: that thread returns
+    when the rust side next surfaces, and the request waits for it either way. So the interval
+    is charged to every closed page — and to this file's three streaming leaves, which is where
+    a regression will show first.
+    """
+    app = FastAPI()
+    app.include_router(reload_router([tmp_path]))
+    opened = time.monotonic()
+    assert asyncio.run(_stream(app, RELOAD_URL, chunks=0)).status == 200
+    # A ceiling far under the five seconds `awatch` parks for by default, and far over the
+    # half second the stream costs when the watcher lets go on its own schedule.
+    assert time.monotonic() - opened < 2.0
 
 
 @pytest.mark.parametrize(("name", "expected"), [("style.css", b"css"), ("dev-reload.js", b"page")])

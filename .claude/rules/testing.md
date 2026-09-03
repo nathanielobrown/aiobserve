@@ -97,6 +97,10 @@ Keep the suite fast enough to run on every edit. A test that has *earned* its ti
 
 Every run prints a `--durations=10` footer. A pure-parsing test landing there is usually doing accidental I/O or carrying an oversized fixture; fix that rather than accept it.
 
+`mise run test` spreads the suite over the machine's cores, so leaves that share one expensive fixture would otherwise each pay for it on their own worker. Mark every one of them `@pytest.mark.xdist_group("<name>")` and the group runs on one worker, which builds it once.
+
+Write the expensive pass itself as a plain function over the store path it reads, with a thin session fixture over it (`tests/view/conftest.py:render_pages`). A red-check has to rebuild the pass over a planted copy: a plant in a scratch store can never surface through a map built from the untouched corpus, so a sweep that cannot be rebuilt cannot be red-checked either.
+
 Never let a test hit a real telemetry backend by default. Backend calls go behind a marker and an explicit env var, so a bare `mise run test` works offline.
 
 # Mutation testing

@@ -14,13 +14,17 @@ rather than derived from the store a second time.
 """
 
 import re
+from collections import Counter
+from collections.abc import Callable, Mapping
 
 import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import FORK_ORIGIN, MAIN, SPINE
-from tests.view.conftest import fields, inside, kin, one, pages, plain, under, values
+from hyphae.analyze.queries import ParamValue
+from hyphae.view import store
+from tests.conftest import DENSE_TOOL, FORK_ORIGIN, FORK_ORIGIN_RUN, MAIN, SPINE
+from tests.view.conftest import fields, inside, kin, one, plain, under, values
 
 
 class Page:
@@ -142,8 +146,9 @@ def deep_turn(store: duckdb.DuckDBPyConnection) -> str:
     return str(turn_id)
 
 
+@pytest.mark.xdist_group("corpus_sweep")
 def test_every_control_in_the_corpus_walks_its_own_level_or_climbs_out_of_it(
-    client: TestClient, store: duckdb.DuckDBPyConnection
+    corpus_pages: Mapping[str, str],
 ) -> None:
     """Neither control ever descends: every page in the corpus, both controls, against its tree.
 
@@ -153,10 +158,9 @@ def test_every_control_in_the_corpus_walks_its_own_level_or_climbs_out_of_it(
     somewhere no level on the page holds, and fail here.
     """
     seen: set[str] = set()
-    for url in pages(store):
+    for url, html in corpus_pages.items():
         if not url.startswith("/session/"):
             continue
-        html = client.get(url).text
         page = Page(url, html)
         # The expectation is a level read off the NavTree, so a level the cap cut would make it a
         # different claim. Nothing in this corpus comes near the window.
@@ -249,3 +253,65 @@ def test_the_walk_is_the_same_however_the_nav_tree_is_capped(
         assert capped.status_code == 200, page.url
         for named in ("previous", "next"):
             assert control(capped.text, named) == control(page.html, named), (page.key, named)
+
+
+def deepest_node(client: TestClient) -> str:
+    """The deepest node the corpus offers: a tool call five levels under the session."""
+    return f"/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}"
+
+
+def thread_level_node(client: TestClient) -> str:
+    """The first row of a thread's own level, reached the way a reader reaches it.
+
+    Its level is the one the timelines answer, and a thread's calls that answer no turn ride
+    that answer with no cursor value of their own — so this is the shape whose repeated read
+    goes through `cursorless_rows` rather than the paged reader beside it.
+    """
+    return first_child(client, f"/session/{SPINE}")
+
+
+@pytest.mark.parametrize(
+    "select",
+    [deepest_node, thread_level_node],
+    ids=["five levels down", "on its thread's own level"],
+)
+def test_the_walk_asks_the_store_nothing_the_nav_tree_already_asked(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, select: Callable[[TestClient], str]
+) -> None:
+    """A node page runs each of its questions once, however many readers want the answer.
+
+    The NavTree opens the path down to the selection; the walk then needs those same levels
+    again to find what stands beside it. Both read through the request's `Corpus`, so the
+    second reader is answered from what the first read — on the real store that is a quarter
+    of a deep page's query time it does not spend twice.
+
+    Two depths, because a level is read two ways: the deep node's is a page of rows, while a
+    node standing on its thread's own level shares that level with the calls the thread never
+    attributed, which are read cursorless. Only the second holds the cursorless half.
+    """
+    # If every statement one page runs is written down...
+    url = select(client)
+    ran: list[tuple[str, tuple[tuple[str, ParamValue], ...]]] = []
+    read = store.fetch
+
+    def watched(
+        connection: duckdb.DuckDBPyConnection, sql: str, bindings: Mapping[str, ParamValue]
+    ) -> list[store.Row]:
+        ran.append((sql, tuple(sorted(bindings.items()))))
+        return read(connection, sql, bindings)
+
+    monkeypatch.setattr(store, "fetch", watched)
+    page = client.get(url)
+    assert page.status_code == 200
+
+    # ...then no statement ran twice. A repeat is named by its query's opening line, which is
+    # what the library writes at the top of every file.
+    repeated = [sql.splitlines()[0] for (sql, _), hits in Counter(ran).items() if hits > 1]
+    assert repeated == []
+    # ...and both readers did run: the walk offers a step, so the levels really were wanted
+    # twice rather than once...
+    assert values(page.text, "data-walk")
+    # ...and both ways a level comes back were among the questions asked, so neither half of
+    # the memo passes the line above by never having been reached.
+    cursorless = [sql for sql, _ in ran if "$cursorless" in sql]
+    assert cursorless and len(cursorless) < len(ran)

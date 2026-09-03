@@ -15,6 +15,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+import duckdb
 import pytest
 
 from hyphae.enrich.items import Level
@@ -28,6 +29,49 @@ from hyphae.extract.layout import SessionFiles
 from hyphae.model import SessionTrace
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+_opened = duckdb.connect
+
+
+def _single_threaded(*arguments: Any, **keywords: Any) -> duckdb.DuckDBPyConnection:
+    """`duckdb.connect`, with the new connection's thread pool pinned to one.
+
+    DuckDB sizes that pool by the machine's cores, which over ~20-row fixture tables buys
+    contention and nothing else: pinned, the suite's straggler fell 41.0s to 29.1s and its CPU
+    106s to 30s (`plans/test-runtime/design.md`). Wrapping the library function is one seam
+    over every connection the run opens — the fixtures' own, the store builders', and the one
+    the viewer under test takes per request.
+
+    Importing this module is what installs it, so the pin also rides the dev tools that reach
+    it through `tests/view/scenarios.py`: `mise run gallery` and `tools/gen_e2e_routes.py`.
+    Both read fixture stores of a few dozen rows. It is never shipped — `src/` imports nothing
+    from `tests/`, so `hp view` keeps the default pool, whose value on a multi-GB store is
+    unmeasured.
+    """
+    connection = _opened(*arguments, **keywords)
+    connection.execute("SET threads TO 1")
+    return connection
+
+
+duckdb.connect = _single_threaded
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Hand the long work out first, because xdist distributes in collection order.
+
+    Every leaf in this suite that runs longer than a second renders viewer pages, and
+    `tests/view/` collects last of the directories — so left alone, the run's longest work
+    starts a third of the way in and the wall is that offset plus the longest leaf. Fronted,
+    the sub-second tests fill the workers behind it instead of ahead of it: the median fell
+    from 30.9s to what `mise run test` prints today.
+
+    The shared corpus render pass leads, being both the longest single block and, under
+    `--dist loadgroup`, one worker's alone. `sort` is stable, so within each of the three
+    groups the order is still the order pytest collected in.
+    """
+    items.sort(key=lambda item: 0 if item.get_closest_marker("xdist_group") else 1)
+    items.sort(key=lambda item: 0 if item.nodeid.startswith("tests/view/") else 1)
+
 
 # The project every recorded fixture was captured under. `tests/fixtures/*/README.md` names
 # the session behind each one.
