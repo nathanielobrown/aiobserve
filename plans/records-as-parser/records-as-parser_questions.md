@@ -178,3 +178,31 @@ Agree with recommendation
 - `CONTEXT.md` gains *record model*: the typed shape of one record kind, which the parser reads through and `docs/schema.md` prints — will write when the design is
 - The commit order inside the one PR (hook and census first, then reader by reader, drift test last) — will go in the plan, not a question
 
+
+
+
+# Phase 3: what the fixtures already carry
+
+Settled by walking every `tests/fixtures/**/*.jsonl` through `model_for`, `model_validate` and a `model_extra` walk on 2026-09-03:
+
+- **The fixtures alone carry 115 field paths no model declares**, on 358 records with 0 validation failures. Strict mode as phase 2 settled it would turn the whole suite red, so the census's question is already answered before the store is opened.
+- **They split by owner.** 45 are keys inside `toolUseResult`, one key set per tool (`Bash`, `Read`, `Agent`, `SendMessage`, `Workflow`, `ToolSearch`, `PushNotification`, and redacted MCP tools), and the value carries no tool name. 17 sit on the six thin `system` subtypes `UNMODELLED` already lists as read by nothing. The remaining ~53 are envelope fields Claude Code writes on the kinds the parser reads (`userType`, `slug`, `agentId`, `sessionKind`, `promptId`, `message.role`, `usage.service_tier`, `usage.speed`, `usage.iterations`, `usage.inference_geo`, `compactMetadata.preservedSegment`, and so on), most recurring across kinds.
+- `raw_record` **reads `uuid` and `timestamp` from every line**, including `attachment` records, so `ArchivedRecord` carries both rather than only `type`.
+- **The bracket-read count is 93** in `transcript.py`, plus one in `agent_runs.py` on the `.meta.json` sidecar rather than a record.
+
+## 8. When strict mode meets the 115 paths the fixtures carry, what does the model declare, and where does the walk stop?
+
+| Option | What happens to the 115 | Trade-off |
+| --- | --- | --- |
+| Declare all of them | Every path gets a field, a description and a citation, including 45 `toolUseResult` keys | Honest for the envelope; for `toolUseResult` it is a flat grab-bag with no owner, and the first MCP tool in the corpus goes red again |
+| Scope strict by owner | Envelope fields are declared; `toolUseResult` and archived kinds are marked opaque and the walk stops at them; an unread object is a `dict` leaf; the thin subtypes route to `ArchivedRecord` | Strict stays a claim of completeness where a model can make one; a new key inside a tool's report is not noticed, by design |
+| Allow-listed baseline | A checked-in tally of today's 115; crash only outside it | Green for free, but it is `OBSERVED_UNREAD` again at three times the size, with no description or citation behind any entry |
+
+Stakes: medium. The opaque marker is one class variable and a leaf pinning its set to two models; the thin-subtype rerouting amends phase 2's note that `SystemRecord` stays the fallback. Both reverse in a line. Leaving the boundary unstated is what does not reverse: a ratchet file grows, and nobody says which claims it stands for.
+
+### Recommendation: scope strict by owner
+
+The rule is "declare what you rely on", and a model can only claim completeness over shapes Claude Code owns. `toolUseResult` is the tool's; the walk stops there, and `ToolUseResult` keeps the two fields readers open. Everything on the envelope gets declared, about 30 declarations once shared fields land on mixins, and the walk over the fixture corpus reporting nothing is the leaf that says the slice is done. What we give up: a new key inside a tool's report or an unread object is not noticed until someone runs the census and asks. The design is written to this; say so if the allow-list is what you wanted.
+
+### User Response:
+
