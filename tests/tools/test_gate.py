@@ -7,7 +7,8 @@ code would turn every red gate green and nothing else in the repo would notice.
 
 The wrapper is driven here the way mise drives it — a subprocess with `MISE_TASK_NAME` in its
 environment — rather than by calling `main()`, because the exit code and the single stream
-write are the contract, and neither is observable in-process.
+write are the contract, and neither is observable in-process. The leaves at the foot read
+`mise.toml` instead: they are what keeps a new gate from leaking raw tool chatter back in.
 """
 
 import os
@@ -15,6 +16,9 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+
+from tests.tools.conftest import commands, mise_config, tasks
+from tools import gate
 
 ROOT = Path(__file__).resolve().parents[2]
 GATE = ROOT / "tools" / "gate.py"
@@ -122,3 +126,77 @@ def test_a_gate_wrapping_nothing_refuses_to_run() -> None:
     assert result.returncode == 2
     assert "no command given" in result.stderr
     assert not result.stdout
+
+
+def gated() -> dict[str, dict]:
+    """Every task whose `run` goes through the wrapper — the names that reach it as a label."""
+    return {
+        name: task
+        for name, task in tasks().items()
+        if any("gate.py" in command for command in commands(task))
+    }
+
+
+def test_every_gate_in_check_routes_through_the_wrapper() -> None:
+    """No member of `check` or `check-fast` prints a tool's own output straight at the reader."""
+    # If we take the two aggregates a reader runs, and everything they depend on...
+    declared = tasks()
+    members = {member for name in ("check", "check-fast") for member in declared[name]["depends"]}
+    # ...there are members to check, so a parse that went wrong cannot pass as a clean sweep...
+    assert members, "`check` and `check-fast` depend on nothing — the `mise.toml` parse is stale"
+    # ...and each one runs through the wrapper, which is what holds a green run to a line apiece.
+    for member in sorted(members):
+        assert member in gated(), (
+            f"`{member}` is a gate but does not run through `tools/gate.py`, so a green "
+            f"`check` prints whatever it has to say"
+        )
+
+
+def test_the_name_column_covers_every_gated_task() -> None:
+    """The padding column fits the widest gated name, so no green run goes ragged."""
+    # If we take every name that reaches the wrapper as a label...
+    names = gated()
+    assert names, "no task routes through `tools/gate.py` — the `mise.toml` parse is stale"
+    # ...then the widest fits the column. The wrapper sees one invocation and cannot work the
+    # maximum out for itself, so this is what makes a longer name a deliberate bump.
+    widest = max(names, key=len)
+    assert len(widest) <= gate.NAME_COLUMN, (
+        f"`{widest}` is {len(widest)} characters and NAME_COLUMN is {gate.NAME_COLUMN}; "
+        f"raise the constant in tools/gate.py"
+    )
+
+
+def test_lint_shell_cannot_pass_without_shellcheck() -> None:
+    """shellcheck is pinned, so `lint-shell` can never report green on a check it skipped."""
+    # If the tool is pinned in `mise.toml`, every machine that runs the task has it...
+    assert any("shellcheck" in tool for tool in mise_config()["tools"])
+    # ...so the task runs it flat, with nothing that would step around a machine without one.
+    # Under the wrapper such a branch would be swallowed and the gate would say ✅ having read
+    # no script at all — the silent pass the pin exists to make impossible.
+    run = "\n".join(commands(tasks()["lint-shell"]))
+    assert "shellcheck" in run
+    assert "command -v" not in run
+
+
+def test_a_gated_task_run_through_mise_prints_one_line() -> None:
+    """Run the way a reader runs it, a passing gate's whole output is its own success line.
+
+    The three pieces are only worth anything together: `task_output` drops mise's chrome,
+    `MISE_TASK_NAME` gives the wrapper the label, and the wrapper swallows the rest. The
+    cheapest gate stands for all of them, because the leaf above proves none of the others
+    skips the wrapper.
+    """
+    # If the cheapest gate is run through mise on a formatted tree...
+    result = subprocess.run(
+        ["mise", "run", "format-check"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    # ...then what lands in the terminal is one line, and it is the wrapper's.
+    printed = (result.stdout + result.stderr).splitlines()
+    assert printed == [line for line in printed if line.startswith("✅")]
+    assert len(printed) == 1, printed

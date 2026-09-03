@@ -9,8 +9,9 @@ credential in the repo.
 import os
 import shutil
 import subprocess
-import tomllib
 from pathlib import Path
+
+from tests.tools.conftest import tasks
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -25,11 +26,6 @@ REFUSAL = f"{TOKEN} is missing or empty"
 # What it runs when it has one: the Chromatic CLI over the archives `mise run e2e` wrote,
 # reporting a changed page rather than failing the job while the baselines settle.
 UPLOAD = "chromatic --playwright --exit-zero-on-changes"
-
-
-def tasks() -> dict[str, dict]:
-    """Every task `mise.toml` declares, as data."""
-    return tomllib.loads((ROOT / "mise.toml").read_text())["tasks"]
 
 
 def test_every_task_that_runs_outside_the_root_names_a_directory_the_tree_holds() -> None:

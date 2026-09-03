@@ -21,9 +21,17 @@ uv = "0.10.11"
 # Exact for the reason above, and pinned here rather than per task so a machine with its own
 # node — nvm's comes first on a shell's PATH — still runs the version this repo says.
 node = "24.17.0"
+# What `lint-shell` runs. Pinned rather than left to the machine: the task used to skip itself
+# where shellcheck was missing, which under the gate would print ✅ for a check that read
+# nothing. Exact for the reason above — a release adds warnings, so a bump is this line.
+"aqua:koalaman/shellcheck" = "0.11.0"
 
 [settings]
 python.uv_venv_auto = true
+# Drop mise's own `[task] $ cmd` headers and `Finished in` footers. What a task has to say is
+# then the task's own, which for a gate is the one line `tools/gate.py` prints. Set here and
+# not per invocation so `mise run check` reads the same for everyone, CI included.
+task_output = "quiet"
 # aigarden is ours, so a release we just cut is the one we want — no soak period to wait out.
 minimum_release_age_excludes = ["github:nathanielobrown/aigarden"]
 
@@ -33,37 +41,37 @@ run = "uv sync --all-groups"
 
 [tasks.format]
 description = "Format Python with ruff"
-run = "uv run ruff format ."
+run = "tools/gate.py uv run ruff format ."
 
 [tasks.format-check]
 description = "Check Python formatting without writing"
-run = "uv run ruff format --check ."
+run = "tools/gate.py uv run ruff format --check ."
 
 [tasks.lint]
 description = "Lint Python with ruff, applying safe fixes"
-run = "uv run ruff check --fix ."
+run = "tools/gate.py uv run ruff check --fix ."
 
 [tasks.lint-check]
 description = "Lint Python with ruff, no fixes (the CI shape)"
-run = "uv run ruff check ."
+run = "tools/gate.py uv run ruff check ."
 
 [tasks.typecheck]
 description = "Type-check with pyrefly"
 # What gets checked is `project-includes` in `pyproject.toml`, which is also what makes a bare
 # run safe inside a gitignored agent worktree: the config turns pyrefly's ignore-file and
 # exclude heuristics off, so naming paths here would only be a second place to keep in step.
-run = "uv run pyrefly check"
+run = "tools/gate.py uv run pyrefly check"
 
 [tasks.lint-docs]
 description = "Lint the docs with aigarden — links, size budgets, prose style — applying fixes"
 # The prose formatter as well as the linter: `--fix` rejoins a paragraph someone hard-wrapped,
 # which is the never-wrap convention `aigarden.toml` configures. What each rule holds the repo
 # to is in that file; `aigarden rules` lists them.
-run = "aigarden check --fix"
+run = "tools/gate.py aigarden check --fix"
 
 [tasks.lint-docs-check]
 description = "Lint the docs, no fixes (the CI shape)"
-run = "aigarden check"
+run = "tools/gate.py aigarden check"
 
 [tasks.cogs]
 description = "Regenerate every generated block in the docs from its generator"
@@ -73,7 +81,7 @@ run = "aigarden cog --write"
 
 [tasks.cogs-check]
 description = "Fail when a generated block no longer matches what its generator prints"
-run = "aigarden cog --check"
+run = "tools/gate.py aigarden cog --check"
 
 [tasks.mv-doc]
 description = "Move a doc and rewrite every reference to it across the repo"
@@ -88,14 +96,10 @@ run = 'aigarden mv "$usage_src" "$usage_dst"'
 description = "Lint the repo's shell scripts with shellcheck"
 # The hooks run on every tool call; a syntax error there is invisible until it
 # silently stops firing. `tests/e2e` holds the Chromatic uploader, where a slip
-# would be seen once a month. Skipped when shellcheck isn't installed.
-run = """
-if command -v shellcheck >/dev/null; then
-  shellcheck .claude/hooks/*.sh tests/e2e/*.sh
-else
-  echo 'shellcheck not installed — skipping (brew install shellcheck)'
-fi
-"""
+# would be seen once a month. shellcheck is pinned in `[tools]`, so this runs it
+# flat: a version that stepped around a machine without one would, under the
+# gate, report a green check it never ran.
+run = "tools/gate.py shellcheck .claude/hooks/*.sh tests/e2e/*.sh"
 
 [tasks.diagram-check]
 description = "Validate a Mermaid file or Markdown's ```mermaid blocks by rendering it"
@@ -131,7 +135,7 @@ description = "Run the test suite"
 # Twelve workers, or every core on a machine with fewer than twelve. Past twelve the workers
 # contend for more than the parallelism buys back — eighteen here spend 333 CPU-seconds to
 # finish 3s later than twelve spend 249. `plans/test-runtime/results.md` holds the runs.
-run = "uv run pytest -n {% set cores = num_cpus() | int %}{{ [12, cores] | sort | first }} --dist loadgroup"
+run = "tools/gate.py uv run pytest -n {% set cores = num_cpus() | int %}{{ [12, cores] | sort | first }} --dist loadgroup"
 
 [tasks.gallery]
 description = "Serve the test fixtures' scenario pages in a browser, with live reload"
