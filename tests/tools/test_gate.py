@@ -17,6 +17,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from tests.tools.conftest import commands, mise_config, tasks
 from tools import gate
 
@@ -29,20 +31,26 @@ GATE = ROOT / "tools" / "gate.py"
 PASSED = r"✅ {name} +\d+\.\d\ds\n"
 
 
+def pinned(**named: str) -> dict[str, str]:
+    """This run's environment with `GATE_VERBOSE` emptied, and whatever else a leaf names.
+
+    Every leaf below that spawns a gate — straight through the wrapper or through mise — builds
+    its environment here. The audit run is `GATE_VERBOSE=1 mise run check`, and that runs this
+    suite: inherit the flag and every leaf asserting a green gate stays quiet goes red under the
+    one command the escape hatch exists for.
+    """
+    return {**os.environ, "GATE_VERBOSE": ""} | named
+
+
 def run_gate(
     *command: str, name: str = "demo", verbose: bool = False
 ) -> subprocess.CompletedProcess[str]:
-    """The wrapper over `command`, labelled `name` the way mise labels it.
-
-    `GATE_VERBOSE` is pinned rather than inherited: the audit run is `GATE_VERBOSE=1 mise run
-    check`, which runs this suite, and an inherited flag would flip the default-path leaves.
-    """
-    environment = {**os.environ, "MISE_TASK_NAME": name, "GATE_VERBOSE": "1" if verbose else ""}
+    """The wrapper over `command`, labelled `name` the way mise labels it."""
     return subprocess.run(
         [sys.executable, str(GATE), *command],
         capture_output=True,
         text=True,
-        env=environment,
+        env=pinned(MISE_TASK_NAME=name, **({"GATE_VERBOSE": "1"} if verbose else {})),
         timeout=60,
         check=False,
     )
@@ -53,9 +61,12 @@ def python(source: str) -> tuple[str, str, str]:
     return (sys.executable, "-c", source)
 
 
-def test_a_passing_gate_says_only_that_it_passed() -> None:
+def test_a_passing_gate_says_only_that_it_passed(monkeypatch: pytest.MonkeyPatch) -> None:
     """A green command's own chatter is swallowed — one line is left, and it names the task."""
-    # If the wrapped command prints what a tool prints and then exits 0...
+    # If the suite is itself running under the audit flag, which is where this claim is easiest
+    # to lose — the gate under test must read the environment its caller pinned, not ours...
+    monkeypatch.setenv("GATE_VERBOSE", "1")
+    # ...and the wrapped command prints what a tool prints and then exits 0...
     result = run_gate(*python("print('245 files already formatted')"), name="format-check")
     # ...then the wrapper passes too...
     assert result.returncode == 0
@@ -178,7 +189,7 @@ def test_lint_shell_cannot_pass_without_shellcheck() -> None:
     assert "command -v" not in run
 
 
-def test_a_gated_task_run_through_mise_prints_one_line() -> None:
+def test_a_gated_task_run_through_mise_prints_one_line(monkeypatch: pytest.MonkeyPatch) -> None:
     """Run the way a reader runs it, a passing gate's whole output is its own success line.
 
     The three pieces are only worth anything together: `task_output` drops mise's chrome,
@@ -186,12 +197,16 @@ def test_a_gated_task_run_through_mise_prints_one_line() -> None:
     cheapest gate stands for all of them, because the leaf above proves none of the others
     skips the wrapper.
     """
-    # If the cheapest gate is run through mise on a formatted tree...
+    # If the suite is running under the audit flag — the run that made this leaf red once, by
+    # reaching mise through an environment nobody had pinned...
+    monkeypatch.setenv("GATE_VERBOSE", "1")
+    # ...and the cheapest gate is run through mise on a formatted tree...
     result = subprocess.run(
         ["mise", "run", "format-check"],
         cwd=ROOT,
         capture_output=True,
         text=True,
+        env=pinned(),
         timeout=120,
         check=False,
     )
