@@ -32,28 +32,38 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 _opened = duckdb.connect
 
+# The block a store the suite creates is laid out in: the smallest DuckDB allows. Every table
+# and index of a fresh store takes at least one block, so at the default 256 KB a store of
+# the whole 500 KB fixture corpus weighs 11 MB and a one-session store 9 MB — and a run
+# builds some 300 of them, 4.9 GB written in 18 s at twelve workers, which is what made the
+# machine beside it stall. At 16 KB the corpus store weighs 1.9 MB and builds in the same
+# time. Only a file being created reads the setting; a store that exists keeps its own.
+BLOCK_SIZE = 16384
 
-def _single_threaded(*arguments: Any, **keywords: Any) -> duckdb.DuckDBPyConnection:
-    """`duckdb.connect`, with the new connection's thread pool pinned to one.
 
-    DuckDB sizes that pool by the machine's cores, which over ~20-row fixture tables buys
+def _pinned(*arguments: Any, **keywords: Any) -> duckdb.DuckDBPyConnection:
+    """`duckdb.connect`, with the connection's thread pool pinned to one and any file it
+    creates laid out in `BLOCK_SIZE` blocks.
+
+    DuckDB sizes the pool by the machine's cores, which over ~20-row fixture tables buys
     contention and nothing else: pinned, the suite's straggler fell 41.0s to 29.1s and its CPU
     106s to 30s (`plans/test-runtime/design.md`). Wrapping the library function is one seam
     over every connection the run opens — the fixtures' own, the store builders', and the one
-    the viewer under test takes per request.
+    the viewer under test takes per request. A caller's own `config` wins over the block pin.
 
-    Importing this module is what installs it, so the pin also rides the dev tools that reach
+    Importing this module is what installs it, so the pins also ride the dev tools that reach
     it through `tests/view/scenarios.py`: `mise run gallery` and `tools/gen_e2e_routes.py`.
     Both read fixture stores of a few dozen rows. It is never shipped — `src/` imports nothing
-    from `tests/`, so `hp view` keeps the default pool, whose value on a multi-GB store is
-    unmeasured.
+    from `tests/`, so `hp view` keeps the default pool and block, whose values on a multi-GB
+    store are unmeasured.
     """
+    keywords["config"] = {"default_block_size": str(BLOCK_SIZE), **keywords.get("config", {})}
     connection = _opened(*arguments, **keywords)
     connection.execute("SET threads TO 1")
     return connection
 
 
-duckdb.connect = _single_threaded
+duckdb.connect = _pinned
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:

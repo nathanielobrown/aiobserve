@@ -1,6 +1,6 @@
-"""The shared scaffolding's own moving parts: the DuckDB thread pin, and a store's lock.
+"""The shared scaffolding's own moving parts: the two DuckDB pins, and a store's lock.
 
-Everything else in `tests/conftest.py` builds data. The pin reaches into a shipped library and
+Everything else in `tests/conftest.py` builds data. The pins reach into a shipped library and
 `locked()` drives another process, so they are the pieces with failure modes of their own —
 and both of the suite's known flakes came from the second.
 """
@@ -15,10 +15,14 @@ import duckdb
 import pytest
 
 from hyphae.export.duckdb import DuckDbExporter, open_trace_store
-from tests.conftest import LOCK_TIMEOUT, NO_WAIT, locked, opens_elsewhere, stop
+from tests.conftest import BLOCK_SIZE, LOCK_TIMEOUT, NO_WAIT, locked, opens_elsewhere, stop
 
 # What a connection reports its thread pool as.
 _THREADS = "SELECT current_setting('threads')"
+# What a store reports it was laid out in.
+_BLOCK_SIZE = "SELECT block_size FROM pragma_database_size()"
+# DuckDB's own default block, which is what a store built outside the suite is laid out in.
+STOCK_BLOCK_SIZE = 262144
 
 # A holder that will not answer SIGTERM, so only the fallback can end it. Invented, and it
 # has to be: the real holder does answer, and the flake this leaf covers is one that
@@ -50,6 +54,29 @@ def test_every_store_the_suite_opens_runs_on_one_duckdb_thread(tmp_path: Path) -
     # shipped opener the pin never touched.
     with open_trace_store(path, read_only=True, wait=NO_WAIT) as reader:
         assert reader.execute(_THREADS).fetchone() == (1,)
+
+
+def test_every_store_the_suite_creates_is_laid_out_in_small_blocks(tmp_path: Path) -> None:
+    """A store any builder under the suite creates weighs what its rows do, not what DuckDB's
+    default block does — and a store that already exists keeps the layout it was born with.
+
+    At the default 256 KB block every table and index of a fresh store takes one, so a
+    one-session store weighs 9 MB and a run of the suite writes gigabytes. The pin is what
+    holds that down (`tests/conftest.py`), and this leaf is what says it still does.
+    """
+    # If a store is created the way every builder creates one...
+    path = tmp_path / "traces.duckdb"
+    DuckDbExporter(path, wait=NO_WAIT)
+    # ...then it is laid out in the smallest block DuckDB allows...
+    with duckdb.connect(str(path), read_only=True) as reader:
+        assert reader.execute(_BLOCK_SIZE).fetchone() == (BLOCK_SIZE,)
+    # ...while a store created with an explicit layout — DuckDB's own default here, the layout
+    # a store outside the suite has — keeps it when the suite opens it for write.
+    stock = tmp_path / "stock.duckdb"
+    with duckdb.connect(str(stock), config={"default_block_size": str(STOCK_BLOCK_SIZE)}):
+        pass
+    with duckdb.connect(str(stock)) as writable:
+        assert writable.execute(_BLOCK_SIZE).fetchone() == (STOCK_BLOCK_SIZE,)
 
 
 def test_a_holder_that_ignores_sigterm_is_still_stopped(tmp_path: Path) -> None:
