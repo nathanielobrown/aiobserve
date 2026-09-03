@@ -8,10 +8,14 @@
 #
 # `mise run a ::: b` runs a and b in parallel.
 #
-# Route a task through `tools/gate.py` when its output is a verdict about the tree — you run it
-# to learn pass or fail, and a green run has nothing to tell you. Leave it loud when the output
-# is the thing you ran it for: a served page, a rendered path, a rewritten block, a surviving
-# mutant, an installed dependency.
+# Route a task through `tools/gate.py` when a run that went well has nothing to tell you: the
+# gates `check` and `check-fast` run, and the fixing task beside each one. A fix lands in the
+# tree, where `git status` is what shows it, so the tool naming it again is noise.
+#
+# Leave a task loud when its output is the thing you ran it for — a served page, the paths a
+# render wrote, the references a move rewrote, the survivors of a mutation run, an installed
+# dependency — or when silence would read as a hang: `diagram-check` downloads through `npx` on
+# a cold machine, and the browser tier takes minutes.
 
 [tools]
 python = "3.13"
@@ -82,7 +86,7 @@ run = "tools/gate.py aigarden check"
 description = "Regenerate every generated block in the docs from its generator"
 # The blocks and the generators behind them: `docs/documentation.md`. Writing and checking are
 # separate commands in aigarden by design, so this one never runs in `check`.
-run = "aigarden cog --write"
+run = "tools/gate.py aigarden cog --write"
 
 [tasks.cogs-check]
 description = "Fail when a generated block no longer matches what its generator prints"
@@ -101,9 +105,7 @@ run = 'aigarden mv "$usage_src" "$usage_dst"'
 description = "Lint the repo's shell scripts with shellcheck"
 # The hooks run on every tool call; a syntax error there is invisible until it
 # silently stops firing. `tests/e2e` holds the Chromatic uploader, where a slip
-# would be seen once a month. shellcheck is pinned in `[tools]`, so this runs it
-# flat: a version that stepped around a machine without one would, under the
-# gate, report a green check it never ran.
+# would be seen once a month. Run flat, for the reason the pin in `[tools]` gives.
 run = "tools/gate.py shellcheck .claude/hooks/*.sh tests/e2e/*.sh"
 
 [tasks.diagram-check]

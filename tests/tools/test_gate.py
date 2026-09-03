@@ -233,6 +233,31 @@ def test_every_gate_in_check_routes_through_the_wrapper() -> None:
         )
 
 
+def test_a_fixing_task_is_gated_wherever_its_verdict_twin_is() -> None:
+    """A task that fixes what its `-check` twin reports on is gated alongside it.
+
+    Four tools here answer the same question twice, once reporting and once rewriting. The fix
+    lands in the tree, where `git status` is what shows it, so the tool naming it again is the
+    noise the wrapper exists to drop — and a pair split across the two styles would make a
+    reader's `check-fast` read half as a table and half as tool output.
+    """
+    # If we pair each gated verdict task with the fixing task of the same name...
+    declared = tasks()
+    twins = {
+        name.removesuffix("-check"): name
+        for name in gated()
+        if name.endswith("-check") and name.removesuffix("-check") in declared
+    }
+    # ...there are pairs to check...
+    assert twins, "no gated task has a fixing twin — the `mise.toml` parse is stale"
+    # ...and neither half of any pair is loud.
+    for fixer, verdict in sorted(twins.items()):
+        assert fixer in gated(), (
+            f"`{verdict}` runs through `tools/gate.py` and `{fixer}` does not, so the pair a "
+            f"reader runs together reports two different ways"
+        )
+
+
 def test_the_name_column_covers_every_gated_task() -> None:
     """The padding column fits the widest gated name, so no green run goes ragged."""
     # If we take every name that reaches the wrapper as a label...
