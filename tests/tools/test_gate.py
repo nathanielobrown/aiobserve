@@ -13,8 +13,10 @@ write are the contract, and neither is observable in-process. The leaves at the 
 
 import os
 import re
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -103,6 +105,74 @@ def test_a_failing_gate_replays_everything_it_captured() -> None:
     # ...and the last line marks the failure and names which gate owns the block above it,
     # which is what keeps two failing gates apart when they run in parallel.
     assert re.search(r"❌ typecheck  \d+\.\d\ds\n\Z", result.stdout)
+
+    # ...and a tool whose last line has no newline of its own — a progress counter, a prompt —
+    # gets one, rather than having the mark glued onto the end of what it was saying.
+    unterminated = run_gate(
+        *python("import sys; sys.stdout.write('cut off mid-'); sys.exit(1)"), name="test"
+    )
+    assert re.search(r"^cut off mid-\n❌ test  \d+\.\d\ds\n\Z", unterminated.stdout)
+
+
+def test_a_gate_replays_output_that_no_codec_can_read() -> None:
+    """A byte that isn't UTF-8 costs its own character, not the whole failure replay."""
+    # If a failing tool writes a byte no decoder accepts — this repo reads transcripts holding
+    # whatever an agent read, so a tool that echoes one back is not far-fetched...
+    result = run_gate(
+        *python(
+            "import sys; sys.stdout.buffer.write(b'a \\xff byte\\n'); sys.stdout.flush();"
+            " sys.exit(1)"
+        ),
+        name="test",
+    )
+    # ...then the gate still reports the failure the tool's way, with the rest of the line
+    # intact. Decoding strictly would raise here and lose the output at the one moment it
+    # matters, and the traceback would name the gate rather than the tool that failed.
+    assert result.returncode == 1
+    assert "Traceback" not in result.stderr
+    assert re.search(r"^a . byte\n❌ test  \d+\.\d\ds\n\Z", result.stdout)
+
+
+def test_an_interrupted_gate_keeps_what_the_tool_had_printed(tmp_path: Path) -> None:
+    """Ctrl-C during a gate leaves the tool's output on screen and says the run was interrupted.
+
+    `test` is silent for as long as the suite runs, so it is the gate a reader interrupts — and
+    what they wanted was the pytest output the run had reached. Captured output is the gate's to
+    hand back; a traceback out of the wrapper is not what the reader asked about.
+    """
+    # If a wrapped command prints, says so, and then hangs...
+    printed = tmp_path / "printed"
+    child = subprocess.Popen(
+        [
+            sys.executable,
+            str(GATE),
+            *python(
+                "import pathlib, sys, time; print('the failures so far', flush=True);"
+                f" pathlib.Path({str(printed)!r}).touch(); time.sleep(30)"
+            ),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=pinned(MISE_TASK_NAME="test"),
+        # Its own process group, so the signal below reaches the gate and the child together —
+        # which is what a terminal does to the foreground group on Ctrl-C.
+        start_new_session=True,
+    )
+    deadline = time.monotonic() + 30
+    while not printed.exists():
+        assert time.monotonic() < deadline, "the wrapped command never got as far as printing"
+        time.sleep(0.02)
+
+    # ...and the reader interrupts it...
+    os.killpg(os.getpgid(child.pid), signal.SIGINT)
+    stdout, stderr = child.communicate(timeout=30)
+
+    # ...then what the tool had said is still there, the mark says why the run stopped, and the
+    # exit code is the one a shell reports for an interrupted process.
+    assert child.returncode == 130
+    assert stdout == "the failures so far\n❌ test  interrupted\n"
+    assert "Traceback" not in stderr
 
 
 def test_a_gates_exit_code_is_the_commands_own() -> None:
