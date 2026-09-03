@@ -42,3 +42,16 @@ jobs:
         run: mise run e2e-chromatic
         env:
           CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          # `GITHUB_SHA` on a `pull_request` event is GitHub's ephemeral merge preview commit,
+          # never the PR branch's own tip — it does not persist in history, so a later build
+          # cannot walk back to it and the CLI cannot even resolve it by branch name (the
+          # default checkout leaves no local ref named `GITHUB_HEAD_REF`), so it falls back to
+          # the merge SHA anyway and warns baselines from this build won't be retained. These
+          # two make the CLI use the PR's real, persistent commit and branch instead, which is
+          # what a later build on the same branch — or on `main` once it lands — can find and
+          # reuse a baseline from. `chromaui/action` sets both of these for you; a bare `npx
+          # chromatic` does not. Both read empty on `push`, where neither problem exists — the
+          # CLI's own `GITHUB_SHA` fallback is already the real commit — and empty is what turns
+          # its override off, the same as leaving it unset.
+          CHROMATIC_SHA: ${{ github.event.pull_request.head.sha }}
+          CHROMATIC_BRANCH: ${{ github.head_ref }}
