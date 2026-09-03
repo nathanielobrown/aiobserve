@@ -94,6 +94,7 @@ The generators: `tools/`; how to write one and where a generated fact belongs: `
 
 - **Cog** — the splice `mise run cogs` performs: it runs the command a document names and pastes the output back into it
 - **Cog block** — one splice in one document: the two markers and the generated text between them
+- **Gate** — one task wrapped in `tools/gate.py`: a line when it passes, everything the tool said when it fails
 - **Browser tier** — the Playwright specs under `tests/e2e/` that drive the gallery in a real Chromium; every other test the suite runs is the Python tier
 
 ## Qualify these words

@@ -95,7 +95,7 @@ The `timeout` setting in `pyproject.toml` is a last-resort backstop, not the mec
 
 Keep the suite fast enough to run on every edit. A test that has *earned* its time — a real subprocess, a live backend call, a large corpus — gets `@pytest.mark.slow` with a why-comment. Prefer speeding a test up over marking it.
 
-Every run prints a `--durations=10` footer. A pure-parsing test landing there is usually doing accidental I/O or carrying an oversized fixture; fix that rather than accept it.
+Every run prints a `--durations=10` footer, which `mise run test` shows you when the suite fails or when you ask for it with `GATE_VERBOSE=1` (`mise.toml`). A pure-parsing test landing there is usually doing accidental I/O or carrying an oversized fixture; fix that rather than accept it.
 
 `mise run test` spreads the suite over the machine's cores, so leaves that share one expensive fixture would otherwise each pay for it on their own worker. Mark every one of them `@pytest.mark.xdist_group("<name>")` and the group runs on one worker, which builds it once.
 
