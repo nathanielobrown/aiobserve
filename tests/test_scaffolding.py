@@ -79,6 +79,18 @@ def test_every_store_the_suite_creates_is_laid_out_in_small_blocks(tmp_path: Pat
         assert writable.execute(_BLOCK_SIZE).fetchone() == (STOCK_BLOCK_SIZE,)
 
 
+def test_every_temp_dir_the_suite_hands_out_sits_where_spotlight_does_not_look(
+    tmp_path: Path, request: pytest.FixtureRequest
+) -> None:
+    """A `tmp_path` sits under a `.noindex` directory, so the stores a run leaves there are
+    never handed to the macOS indexer — unless the run named its own base with `--basetemp`,
+    which is a developer's choice the suite does not override.
+    """
+    if request.config.option.basetemp:
+        pytest.skip("--basetemp names its own root")
+    assert any(parent.name.endswith(".noindex") for parent in tmp_path.parents), tmp_path
+
+
 def test_a_holder_that_ignores_sigterm_is_still_stopped(tmp_path: Path) -> None:
     """A lock holder slow to answer SIGTERM is killed, not left to fail the teardown.
 

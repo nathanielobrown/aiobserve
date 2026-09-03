@@ -6,9 +6,11 @@ transcript is better evidence than one assembled by hand. Each fixture directory
 names its source session and Claude Code version.
 """
 
+import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable, Generator, Iterable, Sequence
 from contextlib import contextmanager
@@ -64,6 +66,25 @@ def _pinned(*arguments: Any, **keywords: Any) -> duckdb.DuckDBPyConnection:
 
 
 duckdb.connect = _pinned
+
+# Where the run's temp directories go: a `.noindex` directory under the system temp, which
+# macOS Spotlight skips along with everything beneath it. Left at pytest's default the
+# indexer took every store a run leaves — about 880 items a run — and its index writes ran
+# to 34 GB over one night of runs. pytest reads the root from this variable and keeps its
+# numbered `pytest-of-<user>/pytest-N` layout and retention under it; `--basetemp` bypasses
+# both. The suffix does nothing on Linux, so CI needs no branch.
+TEMP_ROOT = Path(tempfile.gettempdir()) / "pytest.noindex"
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Point pytest's temp root at `TEMP_ROOT` before the first `tmp_path` is minted.
+
+    Lazily read, so setting it here — after the tmpdir plugin configured but before any
+    fixture ran — is early enough; a caller's own value wins. pytest expects the root to
+    exist, so it is made here.
+    """
+    TEMP_ROOT.mkdir(exist_ok=True)
+    os.environ.setdefault("PYTEST_DEBUG_TEMPROOT", str(TEMP_ROOT))
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
