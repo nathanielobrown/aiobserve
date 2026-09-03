@@ -1,10 +1,12 @@
-"""The shared scaffolding's own moving parts: the two DuckDB pins, and a store's lock.
+"""The shared scaffolding's own moving parts: the pins on the suite's environment, and a store's
+lock.
 
-Everything else in `tests/conftest.py` builds data. The pins reach into a shipped library and
-`locked()` drives another process, so they are the pieces with failure modes of their own —
-and both of the suite's known flakes came from the second.
+Everything else in `tests/conftest.py` builds data. The pins reach into a shipped library, the
+temp root, and the venv itself, and `locked()` drives another process, so they are the pieces
+with failure modes of their own — and both of the suite's known flakes came from the last.
 """
 
+import importlib.util
 import subprocess
 import sys
 import time
@@ -89,6 +91,21 @@ def test_every_temp_dir_the_suite_hands_out_sits_where_spotlight_does_not_look(
     if request.config.option.basetemp:
         pytest.skip("--basetemp names its own root")
     assert any(parent.name.endswith(".noindex") for parent in tmp_path.parents), tmp_path
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin", reason="only macOS routes a title through Launch Services"
+)
+def test_no_worker_can_check_in_with_launch_services() -> None:
+    """The venv on a Mac has no `setproctitle`, so a worker never announces itself to the desktop.
+
+    pytest-xdist retitles a worker for every test it runs, through `setproctitle` when that
+    module is importable. On macOS the module checks the process in with Launch Services as an
+    application and turns each retitle into a name-change notification that every GUI process
+    answers — at 12 workers, thousands a second, enough to pin `launchservicesd` and freeze the
+    desktop for the length of the run. `pyproject.toml` keeps the module off the Mac.
+    """
+    assert importlib.util.find_spec("setproctitle") is None
 
 
 def test_a_holder_that_ignores_sigterm_is_still_stopped(tmp_path: Path) -> None:
