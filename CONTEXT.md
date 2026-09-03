@@ -20,6 +20,7 @@ What one session recorded. Entities: `src/hyphae/model.py`; relationships: `docs
 - **Agent run** — one subagent execution; its own turns, calls and tools form the thread keyed by the run id
 - **Compaction** — where Claude Code summarized the conversation to free context; the transcript after one is lossy
 - **Record** — one verbatim transcript line; the flat archive every normalized row derives from
+- **Record model** — the pydantic class the parser reads one record kind through, in `src/hyphae/extract/records/`; every field it declares is one the parser may read, and every field it does not is unknown
 - **Offload file** — tool output Claude Code wrote to a file instead of the transcript
 - **Replay** — rows a fork or resume copied from another transcript; kept in the store, excluded from the corpus
 
