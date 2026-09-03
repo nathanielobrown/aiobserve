@@ -7,6 +7,11 @@
 # flag on any other task is a mistake.
 #
 # `mise run a ::: b` runs a and b in parallel.
+#
+# Route a task through `tools/gate.py` when its output is a verdict about the tree — you run it
+# to learn pass or fail, and a green run has nothing to tell you. Leave it loud when the output
+# is the thing you ran it for: a served page, a rendered path, a rewritten block, a surviving
+# mutant, an installed dependency.
 
 [tools]
 python = "3.13"

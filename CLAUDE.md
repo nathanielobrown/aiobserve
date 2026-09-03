@@ -27,6 +27,7 @@ Use `mise` to run project tasks. `uv` owns the Python environment.
 - Run any individual task listed in `mise.toml` with `mise run <task>`. Ruff formats and lints Python, which is what a viewer page is made of (`docs/ui-development.md`); Pyrefly checks types; aigarden holds the docs to `aigarden.toml` and splices their generated blocks (`docs/documentation.md`)
 - Run `mise run diagram-check <file>` to validate Mermaid and `mise run mutate` to score the suite against mutants (`.claude/rules/testing.md`)
 - Run `mise run e2e` to drive the viewer's pages in a real Chromium; it is out of `check` because it needs a browser (`docs/ui-development.md`)
+- A gate that passes prints one line, `✅ <task>  <elapsed>`, and a gate that fails replays everything the tool said. So read a red run from the top and take a green one at its word — and when you want a passing gate's output anyway, run `GATE_VERBOSE=1 mise run check`
 
 Put `mise` flags before the task name. `mise run check --force` passes `--force` to the task, where it does nothing.
 
