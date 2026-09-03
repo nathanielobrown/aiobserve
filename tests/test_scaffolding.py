@@ -1,10 +1,13 @@
-"""The shared scaffolding's own moving parts: the DuckDB thread pin, and a store's lock.
+"""The shared scaffolding's own moving parts: the pins on the suite's environment, and a store's
+lock.
 
-Everything else in `tests/conftest.py` builds data. The pin reaches into a shipped library and
-`locked()` drives another process, so they are the pieces with failure modes of their own —
-and both of the suite's known flakes came from the second.
+Everything else in `tests/conftest.py` builds data. The pins reach into a shipped library, the
+temp root, and the venv itself, and `locked()` drives another process, so they are the pieces
+with failure modes of their own — and both of the suite's known flakes came from the last.
 """
 
+import importlib.util
+import os
 import subprocess
 import sys
 import time
@@ -15,10 +18,22 @@ import duckdb
 import pytest
 
 from hyphae.export.duckdb import DuckDbExporter, open_trace_store
-from tests.conftest import LOCK_TIMEOUT, NO_WAIT, locked, opens_elsewhere, stop
+from tests.conftest import (
+    BLOCK_SIZE,
+    LOCK_TIMEOUT,
+    NO_WAIT,
+    TEMP_ROOT,
+    locked,
+    opens_elsewhere,
+    stop,
+)
 
 # What a connection reports its thread pool as.
 _THREADS = "SELECT current_setting('threads')"
+# What a store reports it was laid out in.
+_BLOCK_SIZE = "SELECT block_size FROM pragma_database_size()"
+# DuckDB's own default block, which is what a store built outside the suite is laid out in.
+STOCK_BLOCK_SIZE = 262144
 
 # A holder that will not answer SIGTERM, so only the fallback can end it. Invented, and it
 # has to be: the real holder does answer, and the flake this leaf covers is one that
@@ -50,6 +65,81 @@ def test_every_store_the_suite_opens_runs_on_one_duckdb_thread(tmp_path: Path) -
     # shipped opener the pin never touched.
     with open_trace_store(path, read_only=True, wait=NO_WAIT) as reader:
         assert reader.execute(_THREADS).fetchone() == (1,)
+
+
+def test_every_store_the_suite_creates_is_laid_out_in_small_blocks(tmp_path: Path) -> None:
+    """A store any builder under the suite creates weighs what its rows do, not what DuckDB's
+    default block does — and a store that already exists keeps the layout it was born with.
+
+    At the default 256 KB block every table and index of a fresh store takes one, so a
+    one-session store weighs 9 MB and a run of the suite writes gigabytes. The pin is what
+    holds that down (`tests/conftest.py`), and this leaf is what says it still does.
+    """
+    # If a store is created the way every builder creates one...
+    path = tmp_path / "traces.duckdb"
+    DuckDbExporter(path, wait=NO_WAIT)
+    # ...then it is laid out in the smallest block DuckDB allows...
+    with duckdb.connect(str(path), read_only=True) as reader:
+        assert reader.execute(_BLOCK_SIZE).fetchone() == (BLOCK_SIZE,)
+    # ...while a store created with an explicit layout — DuckDB's own default here, the layout
+    # a store outside the suite has — keeps it when the suite opens it for write.
+    stock = tmp_path / "stock.duckdb"
+    with duckdb.connect(str(stock), config={"default_block_size": str(STOCK_BLOCK_SIZE)}):
+        pass
+    with duckdb.connect(str(stock)) as writable:
+        assert writable.execute(_BLOCK_SIZE).fetchone() == (STOCK_BLOCK_SIZE,)
+
+
+def test_every_temp_dir_the_suite_hands_out_sits_where_spotlight_does_not_look(
+    tmp_path: Path, request: pytest.FixtureRequest
+) -> None:
+    """A `tmp_path` sits under a `.noindex` directory, so the stores a run leaves there are
+    never handed to the macOS indexer — unless the run named its own base with `--basetemp`,
+    which is a developer's choice the suite does not override. xdist names one for every
+    worker, under the run's own, so only a base outside the suite's root is the developer's.
+    """
+    base = request.config.option.basetemp
+    if base and not Path(base).resolve().is_relative_to(TEMP_ROOT.resolve()):
+        pytest.skip("--basetemp names its own root")
+    assert any(parent.name.endswith(".noindex") for parent in tmp_path.parents), tmp_path
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin", reason="only macOS routes a title through Launch Services"
+)
+def test_no_worker_can_check_in_with_launch_services() -> None:
+    """The venv on a Mac has no `setproctitle`, so a worker never announces itself to the desktop.
+
+    pytest-xdist retitles a worker for every test it runs, through `setproctitle` when that
+    module is importable. On macOS the module checks the process in with Launch Services as an
+    application and turns each retitle into a name-change notification that every GUI process
+    answers — at 12 workers, thousands a second, enough to pin `launchservicesd` and freeze the
+    desktop for the length of the run. `pyproject.toml` keeps the module off the Mac.
+    """
+    assert importlib.util.find_spec("setproctitle") is None
+
+
+def test_the_shared_stores_are_built_once_a_run_and_no_worker_can_write_to_one(
+    corpus_db: Path,
+    exportable_db: Path,
+    enriched_db: Path,
+    tmp_path_factory: pytest.TempPathFactory,
+    worker_id: str,
+) -> None:
+    """Every worker reads the one corpus the run built, and none can write to it.
+
+    A session fixture is per worker under xdist, so without the sharing twelve workers build
+    twelve corpora — and the exporter checkpoints on every session it writes, so each build
+    costs ten times the file it leaves. The file is read-only so that a test which writes to
+    it fails at the open, instead of leaking a row into what every other worker reads.
+    """
+    for store in (corpus_db, exportable_db, enriched_db):
+        # If the run has workers, the store sits in the run's own directory, above every
+        # worker's, where the others can find it...
+        if worker_id != "master":
+            assert store.parent.parent == tmp_path_factory.getbasetemp().parent, store
+        # ...and however it was built, no one can open it for write.
+        assert not os.access(store, os.W_OK), store
 
 
 def test_a_holder_that_ignores_sigterm_is_still_stopped(tmp_path: Path) -> None:

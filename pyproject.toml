@@ -69,6 +69,15 @@ dev = [
   "pyyaml>=6.0",
 ]
 
+[tool.uv]
+# `setproctitle` reaches the venv only through mutmut, which itself never uses it on macOS.
+# pytest-xdist does: it retitles a worker for every test it runs, and on macOS the module
+# routes each retitle through Launch Services, which broadcasts a name change to every GUI
+# process on the machine — enough, at 12 workers, to pin `launchservicesd` and freeze the
+# desktop for the length of a run. The marker keeps the module off a Mac; Linux, where a title
+# is a write to argv, keeps it (`tests/test_scaffolding.py`).
+override-dependencies = ["setproctitle; sys_platform != 'darwin'"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py313"

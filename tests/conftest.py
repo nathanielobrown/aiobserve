@@ -6,9 +6,12 @@ transcript is better evidence than one assembled by hand. Each fixture directory
 names its source session and Claude Code version.
 """
 
+import fcntl
+import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable, Generator, Iterable, Sequence
 from contextlib import contextmanager
@@ -32,28 +35,57 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 _opened = duckdb.connect
 
+# The block a store the suite creates is laid out in: the smallest DuckDB allows. Every table
+# and index of a fresh store takes at least one block, so at the default 256 KB a store of
+# the whole 500 KB fixture corpus weighs 11 MB and a one-session store 9 MB — and a run
+# builds some 300 of them, 4.9 GB written in 18 s at twelve workers, which is what made the
+# machine beside it stall. At 16 KB the corpus store weighs 1.9 MB and builds in the same
+# time. Only a file being created reads the setting; a store that exists keeps its own.
+BLOCK_SIZE = 16384
 
-def _single_threaded(*arguments: Any, **keywords: Any) -> duckdb.DuckDBPyConnection:
-    """`duckdb.connect`, with the new connection's thread pool pinned to one.
 
-    DuckDB sizes that pool by the machine's cores, which over ~20-row fixture tables buys
+def _pinned(*arguments: Any, **keywords: Any) -> duckdb.DuckDBPyConnection:
+    """`duckdb.connect`, with the connection's thread pool pinned to one and any file it
+    creates laid out in `BLOCK_SIZE` blocks.
+
+    DuckDB sizes the pool by the machine's cores, which over ~20-row fixture tables buys
     contention and nothing else: pinned, the suite's straggler fell 41.0s to 29.1s and its CPU
     106s to 30s (`plans/test-runtime/design.md`). Wrapping the library function is one seam
     over every connection the run opens — the fixtures' own, the store builders', and the one
-    the viewer under test takes per request.
+    the viewer under test takes per request. A caller's own `config` wins over the block pin.
 
-    Importing this module is what installs it, so the pin also rides the dev tools that reach
+    Importing this module is what installs it, so the pins also ride the dev tools that reach
     it through `tests/view/scenarios.py`: `mise run gallery` and `tools/gen_e2e_routes.py`.
     Both read fixture stores of a few dozen rows. It is never shipped — `src/` imports nothing
-    from `tests/`, so `hp view` keeps the default pool, whose value on a multi-GB store is
-    unmeasured.
+    from `tests/`, so `hp view` keeps the default pool and block, whose values on a multi-GB
+    store are unmeasured.
     """
+    keywords["config"] = {"default_block_size": str(BLOCK_SIZE), **keywords.get("config", {})}
     connection = _opened(*arguments, **keywords)
     connection.execute("SET threads TO 1")
     return connection
 
 
-duckdb.connect = _single_threaded
+duckdb.connect = _pinned
+
+# Where the run's temp directories go: a `.noindex` directory under the system temp, which
+# macOS Spotlight skips along with everything beneath it. Left at pytest's default the
+# indexer took every store a run leaves — about 880 items a run — and its index writes ran
+# to 34 GB over one night of runs. pytest reads the root from this variable and keeps its
+# numbered `pytest-of-<user>/pytest-N` layout and retention under it; `--basetemp` bypasses
+# both. The suffix does nothing on Linux, so CI needs no branch.
+TEMP_ROOT = Path(tempfile.gettempdir()) / "pytest.noindex"
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Point pytest's temp root at `TEMP_ROOT` before the first `tmp_path` is minted.
+
+    Lazily read, so setting it here — after the tmpdir plugin configured but before any
+    fixture ran — is early enough; a caller's own value wins. pytest expects the root to
+    exist, so it is made here.
+    """
+    TEMP_ROOT.mkdir(exist_ok=True)
+    os.environ.setdefault("PYTEST_DEBUG_TEMPROOT", str(TEMP_ROOT))
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -374,30 +406,66 @@ def locked(path: Path, *, hold: float = HOLD_UNTIL_STOPPED) -> Generator["subpro
         signal.unlink(missing_ok=True)
 
 
+def shared_store(
+    name: str, build: Callable[[Path], None], factory: pytest.TempPathFactory, worker_id: str
+) -> Path:
+    """One store for the whole run: built by the first worker to ask, read by every other.
+
+    A session fixture is per worker under xdist, so twelve workers would build the corpus
+    twelve times — and the exporter checkpoints on every session it writes, so each build
+    writes ten times the file it leaves. The first worker to ask builds it in the run's own
+    directory, above every worker's, behind a lock the rest wait on; a serial run has no one
+    to share with and builds under its own temp. Either way the file goes read-only, so a
+    test that writes to it fails at the open instead of leaking a row into what every other
+    worker reads — a test that plants copies the file first.
+    """
+    if worker_id == "master":
+        path = factory.mktemp(name) / "traces.duckdb"
+        build(path)
+        path.chmod(0o444)
+        return path
+    run = factory.getbasetemp().parent
+    path = run / name / "traces.duckdb"
+    with (run / f"{name}.lock").open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if not path.exists():
+            # Built under another name and renamed into place, so a build that dies half way
+            # leaves nothing the next worker would take for a finished store.
+            path.parent.mkdir(exist_ok=True)
+            building = path.with_name("building.duckdb")
+            build(building)
+            building.chmod(0o444)
+            building.rename(path)
+    return path
+
+
 @pytest.fixture(scope="session")
-def corpus_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def corpus_db(tmp_path_factory: pytest.TempPathFactory, worker_id: str) -> Path:
     """The fixture corpus as one trace store: 13 mycelia sessions and three outside them.
 
     Built once for the whole run and read by every tier that queries a store — the analysis
     queries and the viewer's routes ask their questions of the same 16 sessions. Read-only:
     a test that plants or deletes a row copies the file first.
     """
-    path = tmp_path_factory.mktemp("corpus") / "traces.duckdb"
-    build_store(path, corpus_transcripts())
-    return path
+    return shared_store(
+        "corpus", lambda path: build_store(path, corpus_transcripts()), tmp_path_factory, worker_id
+    )
 
 
 @pytest.fixture(scope="session")
-def exportable_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def exportable_db(tmp_path_factory: pytest.TempPathFactory, worker_id: str) -> Path:
     """The fixture corpus minus the session the OTLP source filter refuses to place.
 
     `fork_byref/`'s session carries no `project_dir` and holds rows, so `StoreSource.sessions()`
     crashes on any store holding it — by design. A store meant to be listed or shipped leaves
     that one out. Read-only: copy the file before planting a row.
     """
-    path = tmp_path_factory.mktemp("exportable") / "traces.duckdb"
-    build_store(path, exportable_transcripts())
-    return path
+    return shared_store(
+        "exportable",
+        lambda path: build_store(path, exportable_transcripts()),
+        tmp_path_factory,
+        worker_id,
+    )
 
 
 def build_enriched_store(path: Path, corpus: Path | None) -> None:
@@ -427,15 +495,18 @@ def build_enriched_store(path: Path, corpus: Path | None) -> None:
 
 
 @pytest.fixture(scope="session")
-def enriched_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+def enriched_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory, worker_id: str) -> Path:
     """The fixture corpus, enriched — the store every tier that reads a description queries.
 
     Read-only: copy the file before planting a row. `tests/gallery/serve.py` builds the same
     store for the browser, through the same function.
     """
-    path = tmp_path_factory.mktemp("enriched") / "traces.duckdb"
-    build_enriched_store(path, corpus=corpus_db)
-    return path
+    return shared_store(
+        "enriched",
+        lambda path: build_enriched_store(path, corpus=corpus_db),
+        tmp_path_factory,
+        worker_id,
+    )
 
 
 def planted_enrichment(index: int) -> Enrichment:
