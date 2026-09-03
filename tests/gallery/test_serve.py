@@ -206,7 +206,7 @@ def test_the_clock_the_gallery_freezes_to_is_read_out_of_the_corpus(
     assert serve.corpus_now(enriched_db) == latest[0]
     # A store whose sessions all ran a month later carries the gallery's clock a month forward.
     newer = tmp_path / "traces.duckdb"
-    shutil.copy(enriched_db, newer)
+    shutil.copyfile(enriched_db, newer)
     with duckdb.connect(str(newer)) as store:
         store.execute("UPDATE sessions SET ended_at = ended_at + INTERVAL 30 DAY")
     assert serve.corpus_now(newer) == latest[0] + dt.timedelta(days=30)

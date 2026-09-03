@@ -6,6 +6,7 @@ transcript is better evidence than one assembled by hand. Each fixture directory
 names its source session and Claude Code version.
 """
 
+import fcntl
 import os
 import shutil
 import subprocess
@@ -405,30 +406,66 @@ def locked(path: Path, *, hold: float = HOLD_UNTIL_STOPPED) -> Generator["subpro
         signal.unlink(missing_ok=True)
 
 
+def shared_store(
+    name: str, build: Callable[[Path], None], factory: pytest.TempPathFactory, worker_id: str
+) -> Path:
+    """One store for the whole run: built by the first worker to ask, read by every other.
+
+    A session fixture is per worker under xdist, so twelve workers would build the corpus
+    twelve times — and the exporter checkpoints on every session it writes, so each build
+    writes ten times the file it leaves. The first worker to ask builds it in the run's own
+    directory, above every worker's, behind a lock the rest wait on; a serial run has no one
+    to share with and builds under its own temp. Either way the file goes read-only, so a
+    test that writes to it fails at the open instead of leaking a row into what every other
+    worker reads — a test that plants copies the file first.
+    """
+    if worker_id == "master":
+        path = factory.mktemp(name) / "traces.duckdb"
+        build(path)
+        path.chmod(0o444)
+        return path
+    run = factory.getbasetemp().parent
+    path = run / name / "traces.duckdb"
+    with (run / f"{name}.lock").open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if not path.exists():
+            # Built under another name and renamed into place, so a build that dies half way
+            # leaves nothing the next worker would take for a finished store.
+            path.parent.mkdir(exist_ok=True)
+            building = path.with_name("building.duckdb")
+            build(building)
+            building.chmod(0o444)
+            building.rename(path)
+    return path
+
+
 @pytest.fixture(scope="session")
-def corpus_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def corpus_db(tmp_path_factory: pytest.TempPathFactory, worker_id: str) -> Path:
     """The fixture corpus as one trace store: 13 mycelia sessions and three outside them.
 
     Built once for the whole run and read by every tier that queries a store — the analysis
     queries and the viewer's routes ask their questions of the same 16 sessions. Read-only:
     a test that plants or deletes a row copies the file first.
     """
-    path = tmp_path_factory.mktemp("corpus") / "traces.duckdb"
-    build_store(path, corpus_transcripts())
-    return path
+    return shared_store(
+        "corpus", lambda path: build_store(path, corpus_transcripts()), tmp_path_factory, worker_id
+    )
 
 
 @pytest.fixture(scope="session")
-def exportable_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def exportable_db(tmp_path_factory: pytest.TempPathFactory, worker_id: str) -> Path:
     """The fixture corpus minus the session the OTLP source filter refuses to place.
 
     `fork_byref/`'s session carries no `project_dir` and holds rows, so `StoreSource.sessions()`
     crashes on any store holding it — by design. A store meant to be listed or shipped leaves
     that one out. Read-only: copy the file before planting a row.
     """
-    path = tmp_path_factory.mktemp("exportable") / "traces.duckdb"
-    build_store(path, exportable_transcripts())
-    return path
+    return shared_store(
+        "exportable",
+        lambda path: build_store(path, exportable_transcripts()),
+        tmp_path_factory,
+        worker_id,
+    )
 
 
 def build_enriched_store(path: Path, corpus: Path | None) -> None:
@@ -458,15 +495,18 @@ def build_enriched_store(path: Path, corpus: Path | None) -> None:
 
 
 @pytest.fixture(scope="session")
-def enriched_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+def enriched_db(corpus_db: Path, tmp_path_factory: pytest.TempPathFactory, worker_id: str) -> Path:
     """The fixture corpus, enriched — the store every tier that reads a description queries.
 
     Read-only: copy the file before planting a row. `tests/gallery/serve.py` builds the same
     store for the browser, through the same function.
     """
-    path = tmp_path_factory.mktemp("enriched") / "traces.duckdb"
-    build_enriched_store(path, corpus=corpus_db)
-    return path
+    return shared_store(
+        "enriched",
+        lambda path: build_enriched_store(path, corpus=corpus_db),
+        tmp_path_factory,
+        worker_id,
+    )
 
 
 def planted_enrichment(index: int) -> Enrichment:

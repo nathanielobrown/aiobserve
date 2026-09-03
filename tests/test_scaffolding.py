@@ -7,6 +7,7 @@ with failure modes of their own — and both of the suite's known flakes came fr
 """
 
 import importlib.util
+import os
 import subprocess
 import sys
 import time
@@ -17,7 +18,15 @@ import duckdb
 import pytest
 
 from hyphae.export.duckdb import DuckDbExporter, open_trace_store
-from tests.conftest import BLOCK_SIZE, LOCK_TIMEOUT, NO_WAIT, locked, opens_elsewhere, stop
+from tests.conftest import (
+    BLOCK_SIZE,
+    LOCK_TIMEOUT,
+    NO_WAIT,
+    TEMP_ROOT,
+    locked,
+    opens_elsewhere,
+    stop,
+)
 
 # What a connection reports its thread pool as.
 _THREADS = "SELECT current_setting('threads')"
@@ -86,9 +95,11 @@ def test_every_temp_dir_the_suite_hands_out_sits_where_spotlight_does_not_look(
 ) -> None:
     """A `tmp_path` sits under a `.noindex` directory, so the stores a run leaves there are
     never handed to the macOS indexer — unless the run named its own base with `--basetemp`,
-    which is a developer's choice the suite does not override.
+    which is a developer's choice the suite does not override. xdist names one for every
+    worker, under the run's own, so only a base outside the suite's root is the developer's.
     """
-    if request.config.option.basetemp:
+    base = request.config.option.basetemp
+    if base and not Path(base).resolve().is_relative_to(TEMP_ROOT.resolve()):
         pytest.skip("--basetemp names its own root")
     assert any(parent.name.endswith(".noindex") for parent in tmp_path.parents), tmp_path
 
@@ -106,6 +117,29 @@ def test_no_worker_can_check_in_with_launch_services() -> None:
     desktop for the length of the run. `pyproject.toml` keeps the module off the Mac.
     """
     assert importlib.util.find_spec("setproctitle") is None
+
+
+def test_the_shared_stores_are_built_once_a_run_and_no_worker_can_write_to_one(
+    corpus_db: Path,
+    exportable_db: Path,
+    enriched_db: Path,
+    tmp_path_factory: pytest.TempPathFactory,
+    worker_id: str,
+) -> None:
+    """Every worker reads the one corpus the run built, and none can write to it.
+
+    A session fixture is per worker under xdist, so without the sharing twelve workers build
+    twelve corpora — and the exporter checkpoints on every session it writes, so each build
+    costs ten times the file it leaves. The file is read-only so that a test which writes to
+    it fails at the open, instead of leaking a row into what every other worker reads.
+    """
+    for store in (corpus_db, exportable_db, enriched_db):
+        # If the run has workers, the store sits in the run's own directory, above every
+        # worker's, where the others can find it...
+        if worker_id != "master":
+            assert store.parent.parent == tmp_path_factory.getbasetemp().parent, store
+        # ...and however it was built, no one can open it for write.
+        assert not os.access(store, os.W_OK), store
 
 
 def test_a_holder_that_ignores_sigterm_is_still_stopped(tmp_path: Path) -> None:
