@@ -45,14 +45,18 @@ def pinned(**named: str) -> dict[str, str]:
 
 
 def run_gate(
-    *command: str, name: str = "demo", verbose: bool = False
+    *command: str, name: str = "demo", verbose: str = ""
 ) -> subprocess.CompletedProcess[str]:
-    """The wrapper over `command`, labelled `name` the way mise labels it."""
+    """The wrapper over `command`, labelled `name` the way mise labels it.
+
+    `verbose` is the literal `GATE_VERBOSE` value, not a boolean: the wrapper honours one
+    spelling, so what a leaf sets has to be the string a reader would type.
+    """
     return subprocess.run(
         [sys.executable, str(GATE), *command],
         capture_output=True,
         text=True,
-        env=pinned(MISE_TASK_NAME=name, **({"GATE_VERBOSE": "1"} if verbose else {})),
+        env=pinned(MISE_TASK_NAME=name, GATE_VERBOSE=verbose),
         timeout=60,
         check=False,
     )
@@ -186,14 +190,17 @@ def test_a_gates_exit_code_is_the_commands_own() -> None:
 
 def test_verbose_shows_what_a_passing_gate_printed() -> None:
     """`GATE_VERBOSE=1` replays a passing command's output, so a warning cannot ride the mark."""
+    warns = python("print('a deprecation that still passes')")
     # If a command warns and still exits 0, the default path swallows the warning...
-    quiet = run_gate(*python("print('a deprecation that still passes')"), name="lint-check")
+    quiet = run_gate(*warns, name="lint-check")
     assert "deprecation" not in quiet.stdout
+    # ...and so does `GATE_VERBOSE=0`, because the wrapper honours the one spelling the docs
+    # give. Anything looser — a truthiness test, a non-empty test — would read this as a yes,
+    # and a reader who spelled the flag off would get the noise they had just turned down.
+    assert "deprecation" not in run_gate(*warns, name="lint-check", verbose="0").stdout
     # ...but under the flag it is replayed ahead of the mark, which is how the audit run finds
     # a tool that warns instead of failing.
-    loud = run_gate(
-        *python("print('a deprecation that still passes')"), name="lint-check", verbose=True
-    )
+    loud = run_gate(*warns, name="lint-check", verbose="1")
     assert loud.returncode == 0
     assert loud.stdout.startswith("a deprecation that still passes\n")
     assert re.search(PASSED.format(name="lint-check") + r"\Z", loud.stdout)
