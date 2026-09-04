@@ -128,4 +128,11 @@ Written after the eight slices landed. Each note is a place the code and this pl
 - **49. A `pr-link` record missing `prNumber`, `prUrl` or `prRepository` crashes naming that field.** *Evidence:* three invented fixtures, one per field, since the reader stops at the first field it cannot read; the assertion names the field, the kind and the line, and asserts the tripwire absent. INVENTED — all 3,096 `pr-link` records on the recording machine carry all four fields (scanned 2026-09-04). Slice 3 added the `required()` calls behind `PrLink` and obligation 27 froze the file they belong in, so the leaf lands in slice 8
 - **`UNCITED_BLOCKS` sits beside `ARCHIVED_UNREAD`.** The design named one excuse list; `ContentBlock.IMAGE` is a registered block kind with no model, so obligations 2 and 43 read both
 - **`AssistantMessage.content` is declared as a list, not `str | list`.** All 390,236 assistant records in the store write a list (scanned 2026-09-04). Slice 5 narrows the model rather than adding an unreachable crash path to `_api_calls`, which moves that failure onto obligations 16 and 17
+- **`ArchivedRecord` extends `SessionContext`, not `Identified`.** Obligations 4 and 5 pass
+  under either mixin, which is how the first build shipped a session that lost its project
+  (`handoff_2026_09_04_audit-records-as-parser.md`, finding 1). `tests/fixtures/system_sited/`
+  is the recording that decides it — a session sited only by a `system/informational` record —
+  and `test_claude_code__archive.py::test_a_session_sited_only_by_an_archived_record_still_reports_where_it_ran`
+  is the leaf. It lands in the archive file rather than beside the other session-fact leaves
+  because `test_claude_code.py` sits at its 700-line budget
 - **`session_of` skips a record carrying `"cwd": null`.** The dict version tested for the key and would have chosen it, yielding a null project. Inferred harmless: the census found no such record

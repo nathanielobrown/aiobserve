@@ -25,6 +25,8 @@ from tests.extract.test_claude_code__agents import (
 
 # The fan-out's journal, sourced by the directory it sits in rather than by an agentId.
 JOURNAL = f"{WORKFLOW_RUN}/journal"
+# The session whose only `cwd` sits on an archived record, and nowhere else.
+SYSTEM_SITED = "637fb3f1-ab2c-427e-b876-304be9f7bb8e"
 # The session that offloaded a tool result, and the file holding it.
 OFFLOAD = "7e37bb35-4dcb-4e16-85be-55ac510c168e"
 OFFLOADED_FILE = "bosvr1kjx.txt"
@@ -77,6 +79,36 @@ def test_a_bookkeeping_record_is_archived_without_a_uuid_or_a_time(fixture_sourc
         "file-history-snapshot",
     ]
     assert all(r.uuid is None and r.timestamp is None for r in opening)
+
+
+def test_a_session_sited_only_by_an_archived_record_still_reports_where_it_ran(
+    fixture_source: SourceFactory,
+):
+    """An archived record's envelope still says where and how the session was running.
+
+    Five of the 3,647 threads in the store take their `cwd` from a thin `system` subtype, and
+    24,704 `attachment` records carry one too (scanned 2026-09-04). A reader that only looked
+    at the kinds with models of their own would report those sessions as belonging to no
+    project, and they would drop out of every corpus query without a word.
+    """
+    trace = ClaudeCodeExtractor().extract(fixture_source("system_sited", SYSTEM_SITED))
+
+    # If the only record in the file carrying a `cwd` is an archived `system/informational`...
+    assert [r.type for r in trace.raw_records] == [
+        "mode",
+        "permission-mode",
+        "system",
+        "last-prompt",
+    ]
+    # ...then all four of the session's context fields still come off it...
+    assert (
+        trace.session.project_dir,
+        trace.session.git_branch,
+        trace.session.version,
+        trace.session.entrypoint,
+    ) == ("/Users/nob/repos/mycelia", "fixture-branch-1", "2.1.205", "cli")
+    # ...though nothing in the file opens a turn.
+    assert trace.turns == []
 
 
 def test_an_offloaded_output_is_archived_whole(fixture_source: SourceFactory):
