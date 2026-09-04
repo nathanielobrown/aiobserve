@@ -57,7 +57,7 @@ Of 240 encoded working directories under `~/.claude/projects` on the recording m
 | --- | --- | --- | --- |
 | `message` | `user`, `assistant` | The API message the record carried: a role and its content | `tests/fixtures/spine/`, CC 2.1.221 |
 | `message.role` | `user`, `assistant` | `user` or `assistant`, repeating what the record's own `type` says | `tests/fixtures/spine/`, CC 2.1.221 |
-| `message.content` | `user`, `assistant` | Either a string or a list of the blocks below. A `user` record whose list holds a `tool_result` is plumbing, not a prompt | `tests/fixtures/spine/`, CC 2.1.220 — for the block form |
+| `message.content` | `user`, `assistant` | A list of the blocks below, or — on a `user` record only — a bare string: all 390,236 assistant records in the store write a list (scanned 2026-09-04). A `user` record whose list holds a `tool_result` is plumbing, not a prompt | `tests/fixtures/spine/`, CC 2.1.220 — for the block form |
 | `message.content.text` | `user`, `assistant` | Prose, under `text`: the model's answer, or a prompt written in block form | `tests/fixtures/spine/`, CC 2.1.221 |
 | `message.content.text.text` | `user`, `assistant` | The prose itself, which can be empty | `tests/fixtures/spine/`, CC 2.1.221 |
 | `message.content.thinking` | `assistant` | The model's reasoning, under `thinking`, beside the `signature` that lets it be replayed | `tests/fixtures/spine/`, CC 2.1.221 |

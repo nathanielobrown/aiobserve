@@ -10,7 +10,7 @@ session that proved it (`docs/schema.md`).
 
 import json
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import PurePath
@@ -18,8 +18,9 @@ from typing import Any, NamedTuple
 
 from hyphae.extract.errors import TranscriptSchemaError
 from hyphae.extract.pricing import SYNTHETIC_MODEL, TokenUsage, compute_cost
-from hyphae.extract.records.blocks import Block, TextBlock
-from hyphae.extract.records.conversation import UserRecord
+from hyphae.extract.records.blocks import Block, FallbackBlock, TextBlock, ThinkingBlock
+from hyphae.extract.records.conversation import AssistantRecord, UserRecord
+from hyphae.extract.records.messages import AssistantMessage
 from hyphae.extract.records.registry import (
     AdvisorResult,
     ContentBlock,
@@ -66,6 +67,42 @@ class _Prompt:
     text: str
     command_name: str | None
     command_args: str | None
+
+
+class _Chunk(NamedTuple):
+    """One assistant record: one block of one reply, with what every reader of it needs.
+
+    A reply is written across as many records as it has blocks, so nothing here is the whole
+    call — `_api_calls` groups the chunks that share a `call_id` into one.
+    """
+
+    line: Line
+    record: AssistantRecord
+    # `message.id`: the reply this record holds a piece of, and the id its `ApiCall` takes.
+    call_id: str
+    message: AssistantMessage
+    # The record's own content list, which is the only form an assistant message is written in.
+    blocks: Sequence[Block]
+
+
+def _replies(lines: Iterable[Line], session_id: str) -> Iterator[_Chunk]:
+    """Every assistant record of a transcript, narrowed to what a reply is read through.
+
+    The three required fields are the ones a record cannot be placed without: with no message,
+    no reply id or no content list, there is no call to group it into and no blocks to read.
+    """
+    for line in lines:
+        record = line.record
+        if not isinstance(record, AssistantRecord):
+            continue
+        message = required(record.message, line, session_id, "message")
+        yield _Chunk(
+            line=line,
+            record=record,
+            call_id=required(message.id, line, session_id, "message.id"),
+            message=message,
+            blocks=required(message.content, line, session_id, "message.content"),
+        )
 
 
 def parse(lines: list[Line], session_id: str, source: str, replayed: set[int]) -> Parsed:
@@ -193,73 +230,88 @@ def _api_calls(
     messages in the corpus span several records, so grouping is not optional.
     """
     at_uuid = {line.uuid: line for line in lines if line.uuid}
-    chunks: dict[str, list[Line]] = {}
-    for line in lines:
-        if line.fields["type"] != RecordType.ASSISTANT:
-            continue
-        chunks.setdefault(line.fields["message"]["id"], []).append(line)
+    chunks: dict[str, list[_Chunk]] = {}
+    for chunk in _replies(lines, session_id):
+        chunks.setdefault(chunk.call_id, []).append(chunk)
     calls = []
-    for index, (message_id, group) in enumerate(chunks.items()):
+    for index, (call_id, group) in enumerate(chunks.items()):
         first, last = group[0], group[-1]
-        # The chunks of one message repeat the same usage; the last is the file's final word.
-        message = last.fields["message"]
-        usage = message["usage"]
-        # None when the record this call answers is not in this file — after a compaction,
-        # or in a fork that opens mid-conversation.
-        answered = at_uuid.get(first.fields["parentUuid"])
-        split = usage.get("cache_creation")
-        tokens = TokenUsage(
-            input=usage["input_tokens"],
-            output=usage["output_tokens"],
-            cache_read=usage["cache_read_input_tokens"],
-            cache_creation=usage["cache_creation_input_tokens"],
-            cache_5m=split["ephemeral_5m_input_tokens"] if split else None,
-            cache_1h=split["ephemeral_1h_input_tokens"] if split else None,
-        )
+        # The chunks of one message repeat the same usage and the rest of the reply's envelope;
+        # the last is the file's final word on all of it.
+        model = required(last.message.model, last.line, session_id, "message.model")
+        tokens = _tokens(last, session_id)
+        # None when the record this call answers is not in this file — after a compaction, or
+        # in a fork that opens mid-conversation — and when the reply answers nothing at all,
+        # which 23 records in the store say with a null `parentUuid` (scanned 2026-09-04).
+        parent = first.record.parentUuid
+        answered = at_uuid.get(parent) if parent is not None else None
         calls.append(
             ApiCall(
-                id=message_id,
+                id=call_id,
                 session_id=session_id,
                 source=source,
-                turn_id=turn_by_line[first.line_no],
+                turn_id=turn_by_line[first.line.line_no],
                 index=index,
-                model=message["model"],
-                fallback_from=_fallback_from(group),
-                effort=last.fields.get("effort"),
-                stop_reason=message["stop_reason"],
+                model=model,
+                fallback_from=_fallback_from(group, session_id),
+                effort=last.record.effort,
+                stop_reason=last.message.stop_reason,
                 # Present only while a skill was driving.
-                attribution_skill=last.fields.get("attributionSkill"),
-                request_id=last.fields.get("requestId"),
-                started_at=required_timestamp(answered or first, session_id),
-                ended_at=required_timestamp(last, session_id),
+                attribution_skill=last.record.attributionSkill,
+                request_id=last.record.requestId,
+                started_at=required_timestamp(answered or first.line, session_id),
+                ended_at=required_timestamp(last.line, session_id),
                 input_tokens=tokens.input,
                 output_tokens=tokens.output,
                 cache_read_tokens=tokens.cache_read,
                 cache_creation_tokens=tokens.cache_creation,
                 cache_5m_tokens=tokens.cache_5m,
                 cache_1h_tokens=tokens.cache_1h,
-                cost_usd=compute_cost(message["model"], tokens),
-                synthetic=message["model"] == SYNTHETIC_MODEL,
-                text=_blocks(group, ContentBlock.TEXT, "text"),
-                thinking=_blocks(group, ContentBlock.THINKING, "thinking"),
+                cost_usd=compute_cost(model, tokens),
+                synthetic=model == SYNTHETIC_MODEL,
+                text=_blocks(group, TextBlock, lambda block: block.text),
+                thinking=_blocks(group, ThinkingBlock, lambda block: block.thinking),
                 # The message belongs to whichever transcript wrote it first, so its first
                 # chunk decides — a fork copies a message whole.
-                replayed=first.line_no in replayed,
+                replayed=first.line.line_no in replayed,
             )
         )
     return calls
 
 
-def _fallback_from(group: Iterable[Line]) -> str | None:
+def _tokens(chunk: _Chunk, session_id: str) -> TokenUsage:
+    """What one reply reported spending, as the pricing table charges it.
+
+    Every chunk of a reply repeats the counts, so the caller passes the one it is reading from.
+    A count that is missing is not a zero — it is a reply nothing can be priced from.
+    """
+
+    def counted(value: int | None, field: str) -> int:
+        return required(value, chunk.line, session_id, f"message.usage.{field}")
+
+    usage = required(chunk.message.usage, chunk.line, session_id, "message.usage")
+    split = usage.cache_creation
+    return TokenUsage(
+        input=counted(usage.input_tokens, "input_tokens"),
+        output=counted(usage.output_tokens, "output_tokens"),
+        cache_read=counted(usage.cache_read_input_tokens, "cache_read_input_tokens"),
+        cache_creation=counted(usage.cache_creation_input_tokens, "cache_creation_input_tokens"),
+        cache_5m=split.ephemeral_5m_input_tokens if split else None,
+        cache_1h=split.ephemeral_1h_input_tokens if split else None,
+    )
+
+
+def _fallback_from(group: Iterable[_Chunk], session_id: str) -> str | None:
     """The model this message was first asked of, when Claude Code retried on another.
 
     A `fallback` block names both ends; the one that answered is already `message.model`,
     which every recorded fallback agrees with, so only the model asked for first is new.
     """
-    for line in group:
-        for block in line.fields["message"]["content"]:
-            if block["type"] == ContentBlock.FALLBACK:
-                return block["from"]["model"]
+    for chunk in group:
+        for block in chunk.blocks:
+            if isinstance(block, FallbackBlock):
+                asked = required(block.from_, chunk.line, session_id, "fallback.from")
+                return asked.model
     return None
 
 
@@ -398,17 +450,17 @@ def _result_text(content: Any, session_id: str, line_no: int) -> str:
     return "".join(parts)
 
 
-def _blocks(group: Iterable[Line], kind: ContentBlock, field: str) -> str:
+def _blocks[B: Block](
+    group: Iterable[_Chunk], kind: type[B], words: Callable[[B], str | None]
+) -> str:
     """Every block of one kind across a message's records, concatenated in order.
 
-    `field` is the block's own key for the text it carries, which is not the kind: a
-    `thinking` block holds its words at `thinking`, a `text` block at `text`.
+    `words` reads the text off the block, which the kind decides rather than the caller: a
+    `thinking` block holds its words at `thinking`, a `text` block at `text`. A block that
+    carries none contributes nothing, which is what an empty one contributes too.
     """
     return "".join(
-        block[field]
-        for line in group
-        for block in line.fields["message"]["content"]
-        if block["type"] == kind
+        words(block) or "" for chunk in group for block in chunk.blocks if isinstance(block, kind)
     )
 
 
