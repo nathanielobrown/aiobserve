@@ -637,11 +637,13 @@ def test_a_record_with_no_timestamp_crashes_naming_the_kind_it_was(
     with pytest.raises(TranscriptSchemaError) as excinfo:
         ClaudeCodeExtractor().extract(fixture_source("invented", "invented-no-timestamp"))
 
-    message = str(excinfo.value)
-    assert "pr-link" in message and "line 2" in message
-    # The old message called every one of them a prompt, and this record is not one.
-    assert "prompt" not in message
-    assert "SUPER-SECRET-PAYLOAD-9f2a" not in message
+    # The whole message, since each of its four parts is a claim: the session and the line
+    # send a reader to the record, the kind says what it was — the message this replaced
+    # called every one of them a prompt — and nothing else is said, because the record's own
+    # text is the one thing a crash could leak.
+    assert str(excinfo.value) == (
+        "Session invented-no-timestamp, line 2: a pr-link record with no timestamp"
+    )
 
 
 @pytest.mark.parametrize(
@@ -667,12 +669,9 @@ def test_a_record_missing_a_field_a_reader_needs_crashes_naming_that_field(
     with pytest.raises(TranscriptSchemaError) as excinfo:
         ClaudeCodeExtractor().extract(fixture_source("invented", fixture))
 
-    message = str(excinfo.value)
-    # The field by name, so the reader knows which one to go looking for in the transcript...
-    assert field in message and "line 2" in message
-    # ...and the kind, which is all the message says of the record, since it quotes none of it.
-    assert kind in message
-    assert "SUPER-SECRET-PAYLOAD-9f2a" not in message
+    # The whole message again: the field by name, so the reader knows which one to go
+    # looking for, and the kind, which is all it says of a record it must not quote.
+    assert str(excinfo.value) == f"Session {fixture}, line 2: a {kind} record with no {field}"
 
 
 def test_a_duplicate_uuid_whose_content_differs_crashes(fixture_source: SourceFactory):

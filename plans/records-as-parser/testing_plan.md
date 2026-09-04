@@ -145,6 +145,11 @@ Written after the eight slices landed. Each note is a place the code and this pl
   `turn_duration` records on the recording machine carry one (scanned 2026-09-04), so
   `invented-no-duration.jsonl` is the evidence, and the leaf is now
   `test_a_record_missing_a_field_a_reader_needs_crashes_naming_that_field` over four fixtures
+- **The crash leaves assert the whole message.** Obligations 18 and 49 asked for the field
+  by name, and a substring assert leaves the session id and the field name free to mutate.
+  Both leaves now compare the whole string, which subsumes the tripwire assert: a message
+  fixed end to end quotes nothing of the record. The message names the record's `type`,
+  `pr-link`, rather than obligation 18's `PrLinkRecord` — a reader greps the transcript
 - **Obligation 4 needed a record that carries an envelope.** The archive leaf only showed
   bookkeeping records with neither a uuid nor a time, so a `raw_record` that hard-coded
   `timestamp=None` passed it. It now also reads the workflow run's two `attachment` records,
