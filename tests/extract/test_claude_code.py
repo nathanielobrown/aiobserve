@@ -644,6 +644,34 @@ def test_a_record_with_no_timestamp_crashes_naming_the_kind_it_was(
     assert "SUPER-SECRET-PAYLOAD-9f2a" not in message
 
 
+@pytest.mark.parametrize(
+    ("fixture", "field"),
+    [
+        ("invented-no-pr-number", "prNumber"),
+        ("invented-no-pr-url", "prUrl"),
+        ("invented-no-pr-repository", "prRepository"),
+    ],
+)
+def test_a_pr_link_missing_a_field_crashes_naming_that_field(
+    fixture: str, field: str, fixture_source: SourceFactory
+):
+    """A `PrLink` row cannot be built without its number, its url or its repository.
+
+    INVENTED fixtures — all 3,096 `pr-link` records on the recording machine carry all four
+    fields (scanned 2026-09-04), so none of these has a recorded example. One file per field,
+    because the reader stops at the first field it cannot read and never reaches the next.
+    """
+    with pytest.raises(TranscriptSchemaError) as excinfo:
+        ClaudeCodeExtractor().extract(fixture_source("invented", fixture))
+
+    message = str(excinfo.value)
+    # The field by name, so the reader knows which one to go looking for in the transcript...
+    assert field in message and "line 2" in message
+    # ...and the kind, since a `pr-link` carries no uuid to identify it by.
+    assert "pr-link" in message
+    assert "SUPER-SECRET-PAYLOAD-9f2a" not in message
+
+
 def test_a_duplicate_uuid_whose_content_differs_crashes(fixture_source: SourceFactory):
     """Two records under one uuid may differ in their envelope, never in what was said.
 
