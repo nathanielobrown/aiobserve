@@ -6,6 +6,7 @@ directory's README names its source session and Claude Code version.
 """
 
 from collections import Counter
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -64,14 +65,18 @@ def test_a_workflow_run_archives_its_journal_and_its_agents(fixture_source: Sour
     assert {r.type for r in trace.raw_records if r.source == JOURNAL} == {"started", "result"}
 
 
-def test_a_bookkeeping_record_is_archived_without_a_uuid_or_a_time(fixture_source: SourceFactory):
-    """Records that carry neither an id nor a timestamp still reach the archive."""
+def test_an_archived_record_keeps_whatever_envelope_it_carried(fixture_source: SourceFactory):
+    """The archive reads an id and a time off an archived record, and reports neither when absent.
+
+    Both halves matter to a reader of `raw_records`: a null timestamp there has to mean the
+    record had none, not that the archive stopped looking once it stopped modelling the kind.
+    """
     trace = ClaudeCodeExtractor().extract(fixture_source("workflow", WORKFLOW))
 
     # If a transcript opens on editor-state records — as this one does, on four of them...
     opening = [r for r in trace.raw_records if r.source == MAIN_SOURCE][:4]
 
-    # ...then each is archived with its type and its raw line, and nothing else to say.
+    # ...then each is archived with its type and its raw line, and nothing else to say...
     assert [r.type for r in opening] == [
         "mode",
         "permission-mode",
@@ -79,6 +84,14 @@ def test_a_bookkeeping_record_is_archived_without_a_uuid_or_a_time(fixture_sourc
         "file-history-snapshot",
     ]
     assert all(r.uuid is None and r.timestamp is None for r in opening)
+
+    # ...while an archived kind that does carry an envelope keeps it, so the two `attachment`
+    # records of the run place themselves in the session as every modelled record does.
+    attachments = [r for r in trace.raw_records if r.type == "attachment"]
+    assert [(r.uuid, r.timestamp) for r in attachments] == [
+        ("870b4053-f05f-4b14-9d66-8492a229bf43", datetime(2026, 7, 12, 15, 38, 13, 896000, UTC)),
+        ("75a30121-dfe0-4cd4-89d4-1949a4122083", datetime(2026, 7, 12, 15, 38, 13, 897000, UTC)),
+    ]
 
 
 def test_a_session_sited_only_by_an_archived_record_still_reports_where_it_ran(
