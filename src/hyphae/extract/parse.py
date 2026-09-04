@@ -36,10 +36,9 @@ from hyphae.extract.records.registry import (
     AdvisorResult,
     ContentBlock,
     MachineTag,
-    RecordType,
-    SystemSubtype,
     TurnTag,
 )
+from hyphae.extract.records.system import CompactBoundaryRecord
 from hyphae.extract.transcript import Line, required, required_timestamp, timestamp_of
 from hyphae.model import MAIN_SOURCE, ApiCall, Compaction, ToolCall, Turn
 
@@ -479,19 +478,29 @@ def _compactions(
     Each boundary is written alongside the summary that replaced the history, so one row
     here is one `isCompactSummary` user record in the same file.
     """
-    return [
-        Compaction(
-            id=line.fields["uuid"],
-            session_id=session_id,
-            source=source,
-            timestamp=required_timestamp(line, session_id),
-            trigger=line.fields["compactMetadata"]["trigger"],
-            pre_tokens=line.fields["compactMetadata"]["preTokens"],
-            post_tokens=line.fields["compactMetadata"]["postTokens"],
-            duration_ms=line.fields["compactMetadata"]["durationMs"],
-            replayed=line.line_no in replayed,
+    compactions = []
+    for line in lines:
+        record = line.record
+        if not isinstance(record, CompactBoundaryRecord):
+            continue
+        # All 1,510 boundaries in the store carry the object and its four numbers (scanned
+        # 2026-09-04), so a boundary missing one is a shape nobody has recorded.
+        meta = required(record.compactMetadata, line, session_id, "compactMetadata")
+        compactions.append(
+            Compaction(
+                id=required(record.uuid, line, session_id, "uuid"),
+                session_id=session_id,
+                source=source,
+                timestamp=required_timestamp(line, session_id),
+                trigger=required(meta.trigger, line, session_id, "compactMetadata.trigger"),
+                pre_tokens=required(meta.preTokens, line, session_id, "compactMetadata.preTokens"),
+                post_tokens=required(
+                    meta.postTokens, line, session_id, "compactMetadata.postTokens"
+                ),
+                duration_ms=required(
+                    meta.durationMs, line, session_id, "compactMetadata.durationMs"
+                ),
+                replayed=line.line_no in replayed,
+            )
         )
-        for line in lines
-        if line.fields["type"] == RecordType.SYSTEM
-        and line.fields["subtype"] == SystemSubtype.COMPACT_BOUNDARY
-    ]
+    return compactions
