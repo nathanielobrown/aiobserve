@@ -73,7 +73,11 @@ def far_future(monkeypatch: pytest.MonkeyPatch) -> None:
 # Mycelia sessions `corpus_rollups` credits with no turns and no agent runs, so no stratum
 # may reach them. One of them compacted, which is what makes the exclusion visible: a pool
 # drawn on metrics alone would rank it.
-NO_WORK_SESSIONS = (RESUME, "8ee00a94-b01a-4394-b447-b065f74b11af")
+NO_WORK_SESSIONS = (
+    RESUME,
+    "8ee00a94-b01a-4394-b447-b065f74b11af",
+    "637fb3f1-ab2c-427e-b876-304be9f7bb8e",
+)
 
 # The id the planted agent-run compaction carries, so no first-seen twin can own it.
 
@@ -83,12 +87,12 @@ POOL_AT_PARTIAL = 6
 # Distinct `agent_type`s across the corpus's 11 agent runs.
 AGENT_TYPES = 7
 
-# Measured on 2026-08-15 by building the store below: 15 mycelia sessions between
+# Measured on 2026-09-04 by building the store below: 16 mycelia sessions between
 # 2026-06-30 and 2026-07-27, in five unevenly filled ISO weeks.
-MYCELIA_SESSIONS = 15
+MYCELIA_SESSIONS = 16
 WEEKS = {
     "2026-W27": 4,
-    "2026-W28": 4,
+    "2026-W28": 5,
     "2026-W29": 4,
     # Two, since `model_only/` — the recording that carries a turn and no api call — landed here.
     "2026-W30": 2,
@@ -101,9 +105,9 @@ IN_WINDOW_AT_PARTIAL = 8
 AS_OF_WHOLE = "2026-07-28"
 # A third `$as_of`, inside the corpus, so the window's far edge has something to exclude:
 # 2026-07-19 opens at 2026-06-21, before the earliest session, and closes at the end of that
-# day — 12 sessions, the corpus minus the three recorded after it (07-20, 07-21, 07-27).
+# day — 13 sessions, the corpus minus the three recorded after it (07-20, 07-21, 07-27).
 AS_OF_MID = "2026-07-19"
-IN_WINDOW_AT_MID = 12
+IN_WINDOW_AT_MID = 13
 
 
 @dataclass(frozen=True)

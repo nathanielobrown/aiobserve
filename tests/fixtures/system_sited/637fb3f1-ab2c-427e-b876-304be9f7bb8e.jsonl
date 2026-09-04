@@ -1,0 +1,4 @@
+{"type": "mode", "mode": "[redacted]", "sessionId": "637fb3f1-ab2c-427e-b876-304be9f7bb8e"}
+{"type": "permission-mode", "permissionMode": "[redacted]", "sessionId": "637fb3f1-ab2c-427e-b876-304be9f7bb8e"}
+{"parentUuid": null, "isSidechain": false, "type": "system", "subtype": "informational", "content": "[redacted]", "isMeta": false, "timestamp": "2026-07-09T23:32:49.523Z", "uuid": "fbd4a757-c061-4e47-8b5f-fb3f7c7c2216", "level": "notice", "userType": "external", "entrypoint": "cli", "cwd": "/Users/nob/repos/mycelia", "sessionId": "637fb3f1-ab2c-427e-b876-304be9f7bb8e", "version": "2.1.205", "gitBranch": "fixture-branch-1"}
+{"type": "last-prompt", "leafUuid": "fbd4a757-c061-4e47-8b5f-fb3f7c7c2216", "sessionId": "637fb3f1-ab2c-427e-b876-304be9f7bb8e"}

@@ -33,15 +33,15 @@ from tests.conftest import FORK_ORIGIN, MYCELIA, SPINE, SPINE_LEAF, SPINE_RUN
 # sessions. The rebindings below are read against this.
 RECORDED_SHAPES = {
     "conversational": 7,
-    "no-work": 2,
+    "no-work": 3,
     "read-only-analysis": 4,
     "skill-orchestrated": 2,
 }
 
-# The two sessions `corpus_rollups` credits with no turns and no agent runs, and what makes
-# them worth a shape of their own: one compacted, so they are sessions that did work for a
-# thread elsewhere rather than sessions where nothing happened.
-NO_WORK_SESSIONS = 2
+# The three sessions `corpus_rollups` credits with no turns and no agent runs, and what makes
+# them worth a shape of their own: one compacted, so a no-work session can be one that did work
+# for a thread elsewhere rather than one where nothing happened.
+NO_WORK_SESSIONS = 3
 NO_WORK_COMPACTIONS = 1
 
 # The session the editing plant lands on, and what the plant is worth: `FORK_ORIGIN` holds 8
@@ -145,7 +145,7 @@ def test_a_session_that_did_no_work_is_shaped_before_any_threshold_is_read(
             {"delegating_runs": 2},
             {
                 "conversational": 7,
-                "no-work": 2,
+                "no-work": 3,
                 "delegation-heavy": 3,
                 "skill-orchestrated": 2,
                 "read-only-analysis": 1,
@@ -155,7 +155,7 @@ def test_a_session_that_did_no_work_is_shaped_before_any_threshold_is_read(
         # through to whatever the arms below say they are...
         (
             {"skill_share_pct": 101},
-            {"conversational": 8, "read-only-analysis": 5, "no-work": 2},
+            {"conversational": 8, "read-only-analysis": 5, "no-work": 3},
         ),
         # ...and raising what counts as busy moves sessions the other way, out of analysis and
         # into conversation, because the same threshold decides both arms.
@@ -163,7 +163,7 @@ def test_a_session_that_did_no_work_is_shaped_before_any_threshold_is_read(
             {"busy_tool_calls": 8},
             {
                 "conversational": 10,
-                "no-work": 2,
+                "no-work": 3,
                 "skill-orchestrated": 2,
                 "read-only-analysis": 1,
             },

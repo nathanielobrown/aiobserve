@@ -8,7 +8,7 @@ registered kind no reader opens.
 from typing import Any
 
 from hyphae.extract.errors import TranscriptSchemaError
-from hyphae.extract.records.base import Identified, Record
+from hyphae.extract.records.base import Record, SessionContext
 from hyphae.extract.records.bookkeeping import (
     AgentNameRecord,
     AiTitleRecord,
@@ -27,13 +27,16 @@ from hyphae.extract.records.system import (
 )
 
 
-class ArchivedRecord(Identified):
-    """A kind the store keeps verbatim and no reader opens.
+class ArchivedRecord(SessionContext):
+    """A kind the store keeps verbatim, whose own fields no reader opens.
 
-    It extends `Identified` for the four envelope fields `raw_record` and the run-time bounds
-    read — `uuid` and `timestamp` above all, which 24k `attachment` records carry — and claims
-    nothing else: the rest of its keys are the archive's, kept whole rather than described.
-    It is outside `RECORD_MODELS`, so it prints no row in `docs/schema.md`.
+    It extends `SessionContext` because the envelope is read off every kind that carries one:
+    `raw_record` takes `uuid` and `timestamp`, and `session_of` takes `cwd`, `gitBranch`,
+    `version` and `entrypoint` from the first record that has them, which for five of the
+    3,647 threads in the store is a thin `system` subtype (scanned 2026-09-04; 24,704
+    `attachment` records carry the same four). Past the envelope it claims nothing: the rest
+    of its keys are the archive's, kept whole rather than described. It is outside
+    `RECORD_MODELS`, so it prints no row in `docs/schema.md`.
     """
 
     OPAQUE = "archived verbatim; its fields are the archive's, not a claim"
