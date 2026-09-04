@@ -257,6 +257,57 @@ class Usage(Described):
         ),
         Cited(SPINE, "2.1.221"),
     ]
+    service_tier: Annotated[
+        str | None,
+        Field(default=None, description="The API service tier the reply was served on"),
+        Cited(SPINE, "2.1.221", note="`standard` wherever the fixtures leave it unredacted"),
+    ]
+    speed: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "The speed tier the reply was served at. Absent from 30 of the 108 fixture "
+                "replies, across versions that carry it elsewhere, so its absence is not a "
+                "version fact"
+            ),
+        ),
+        Cited(SPINE, "2.1.221", note="`standard` wherever the fixtures leave it unredacted"),
+    ]
+    inference_geo: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "Where inference ran, or `not_available`. The one `<synthetic>` reply — Claude "
+                "Code's own placeholder rather than a model answer — nulls it, along with "
+                "`service_tier`, `speed` and `iterations`"
+            ),
+        ),
+        Cited(SPINE, "2.1.221"),
+    ]
+    iterations: Annotated[
+        list[dict[str, Any]] | None,
+        Field(
+            default=None,
+            description=(
+                "Token counts for each pass a reply took, in this object's own shape. Cost uses "
+                "the totals above, and nothing has opened these, so their interior is undeclared"
+            ),
+        ),
+        Cited(SPINE, "2.1.221"),
+    ]
+    server_tool_use: Annotated[
+        dict[str, Any] | None,
+        Field(
+            default=None,
+            description=(
+                "How many server-side tool requests the reply made, by kind. Zero on every "
+                "fixture reply, `server_tools/` included, so a non-zero count is unrecorded"
+            ),
+        ),
+        Cited(SPINE, "2.1.221"),
+    ]
 
 
 # What every message says about its content list, which is one field on one base class.
@@ -275,6 +326,14 @@ class Message(Described):
         str | list[Any] | None,
         Field(default=None, description=_CONTENT),
         Cited(SPINE, "2.1.220", note="for the block form"),
+    ]
+    role: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description="`user` or `assistant`, repeating what the record's own `type` says",
+        ),
+        Cited(SPINE, "2.1.221"),
     ]
 
 
@@ -336,10 +395,83 @@ class AssistantMessage(Message):
         ),
         Cited(SPINE, "2.1.221", note="five identical copies under one id"),
     ]
+    type: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description="The API envelope's own kind: `message` on every fixture reply",
+        ),
+        Cited(SPINE, "2.1.221"),
+    ]
+    stop_sequence: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "The stop sequence that ended generation. Null on every fixture reply but one, "
+                "which carries an empty string, so a real sequence is unrecorded"
+            ),
+        ),
+        Cited(SPINE, "2.1.221"),
+    ]
+    stop_details: Annotated[
+        dict[str, Any] | None,
+        Field(
+            default=None,
+            description=(
+                "More about why generation stopped, beside `stop_reason`. Null on every fixture "
+                "reply, so its interior is unrecorded as well as undeclared"
+            ),
+        ),
+        Cited(SPINE, "2.1.221"),
+    ]
+    diagnostics: Annotated[
+        dict[str, Any] | None,
+        Field(
+            default=None,
+            description=(
+                "Why the prompt cache missed, when it did: a `cache_miss_reason` naming the "
+                "cause and what it cost. Null when the cache hit. Nothing has opened it"
+            ),
+        ),
+        Cited(SPINE, "2.1.221"),
+    ]
+    container: Annotated[
+        Any,
+        Field(
+            default=None,
+            description=(
+                "The container a code-execution reply ran in. Recorded once, as null, so its "
+                "shape is unrecorded"
+            ),
+        ),
+        Cited(SPINE, "2.1.201"),
+    ]
+    context_management: Annotated[
+        dict[str, Any] | None,
+        Field(
+            default=None,
+            description=(
+                "What context management did to the request, as an `applied_edits` list. "
+                "Nothing has opened it, so its interior is undeclared"
+            ),
+        ),
+        Cited(PARALLEL_TOOLS, "2.1.211"),
+    ]
 
 
 class ToolUseResult(Described):
-    """The structured report Claude Code wrote beside a tool's result block."""
+    """The structured report Claude Code wrote beside a tool's result block.
+
+    Only the two fields readers open are declared. The rest of the object is the tool's, one key
+    set per tool and open once an MCP tool writes one, so a new key there is a tool changing its
+    report rather than Claude Code changing the transcript.
+    """
+
+    OPAQUE = (
+        "the tool's own report: one key set per tool, an open set, keyed by nothing "
+        "the value carries"
+    )
 
     persistedOutputPath: Annotated[
         str | None,
@@ -367,6 +499,11 @@ class ToolUseResult(Described):
         Cited(WORKFLOW, "2.1.207"),
     ]
 
+
+# Registered block kinds no model describes, each with the reason.
+UNCITED_BLOCKS: dict[ContentBlock, str] = {
+    ContentBlock.IMAGE: "no fixture holds one, so there is nothing to cite",
+}
 
 # Every block model. Order follows `ContentBlock`.
 BLOCK_MODELS: tuple[type[Block], ...] = (

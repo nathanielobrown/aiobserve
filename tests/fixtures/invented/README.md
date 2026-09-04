@@ -12,6 +12,7 @@ invented record follows on a known line.
 | `invented-unknown-type.jsonl` | `type: "telepathy"` | every `type` in the corpus is in the registry — that is the registry's whole claim |
 | `invented-unknown-subtype.jsonl` | `system` with `subtype: "quantum_flux"` | all nine live subtypes are registered |
 | `invented-unknown-block.jsonl` | an assistant `message.content` block of `type: "clairvoyance"` | the corpus holds eight block kinds, all registered. This is the shape that went wrong once already: `server_tool_use` was unregistered and produced no row and no crash |
+| `invented-unknown-field.jsonl` | an `assistant` record with an undeclared top-level field, one with an undeclared key inside `message.usage`, and a `user` record with one inside `toolUseResult` | the models declare every field the recorded corpus carries — that is what `test_records.py`'s corpus leaf asserts — so an undeclared field cannot come from a recording. The first two are what the unknown-field walk reports; the third is behind the opaque stop and must report nothing |
 | `invented-novel-tag.jsonl` | a prompt string leading with `<sparkle-notice>` | the tag census closed over every main and subagent transcript |
 | `invented-dup-content-diff.jsonl` | one uuid twice, with different `message.content` | 995 duplicate-uuid pairs exist and **none** differs in content; a difference would mean the conversation itself was rewritten under one uuid |
 | `invented-no-cache-creation.jsonl` | an assistant `usage` with no `cache_creation` key | scanned every assistant record in the corpus: zero lack the key, so "absent, not zero" has no recorded example (see the note below) |
@@ -19,8 +20,8 @@ invented record follows on a known line.
 | `invented-no-timestamp.jsonl` | a `pr-link` record with no `timestamp` key | scanned every `user`, `assistant`, `system` and `pr-link` record on the recording machine — 678,793 of them, none missing the key. Only those four kinds reach the raise; the bookkeeping types that do carry no timestamp and need none |
 | `invented-corrupt-middle.jsonl` | the same broken line, with a complete record after it | corruption rather than a live write, so it crashes. The pair only means something read together: a tolerance that leaked to any line would turn a schema change into silent data loss |
 
-Seven of the nine carry the string `SUPER-SECRET-PAYLOAD-9f2a` in the offending record: the four
-unknown-shape files, the timestamp-less one, and both broken-line files. That is the test's tripwire — a crash message or a
+Eight of the ten carry the string `SUPER-SECRET-PAYLOAD-9f2a` in the offending record: the four
+unknown-shape files, the undeclared-field one, the timestamp-less one, and both broken-line files. That is the test's tripwire — a crash message or a
 log line that names it has leaked private transcript content.
 
 ## The `cache_creation` gap

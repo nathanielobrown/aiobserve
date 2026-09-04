@@ -12,6 +12,8 @@ Prefer a checked-in fixture. The fixture directory's README names its source ses
 
 The transcript-field tables under the next heading are generated. A field's meaning and its citation are declared on the record model that carries it, in `src/hyphae/extract/records/`; document a new field there and run `mise run cogs`. A field declared without a citation fails the generator instead of printing an empty cell.
 
+What the fields mean together — which records start a turn, which timestamps were measured — is [reading transcript records](transcript-reading.md).
+
 ## Transcript records are typed JSON objects
 
 A transcript stores one JSON object per line. Each object has a `type`. `hyphae.extract.records.registry` registers every type it has seen and the readers crash on unknown types. Treat that registry—not the tables below—as the current census.
@@ -24,6 +26,8 @@ A transcript stores one JSON object per line. Each object has a `type`. `hyphae.
 | `type` | every record | The record shape. Known values include `user`, `assistant`, `system`, `attachment`, `summary`, and about a dozen bookkeeping types | `tests/fixtures/registry_zoo/` — holds one record of every registered type |
 | `subtype` | `system` | The system event. The registry zoo holds ten, including `turn_duration`, `compact_boundary`, and `api_error` | `tests/fixtures/registry_zoo/` — one record of every registered subtype |
 | `sessionId` | `user`, `assistant`, `system`, `custom-title`, `ai-title`, `agent-name`, `pr-link` | The session id Claude Code wrote into the record. Nothing reads it: the extractor takes the session id from the file name | `tests/fixtures/spine/`, CC 2.1.221 |
+| `session_id` | `user`, `assistant`, `system` | A second session id in snake_case, which does not always agree with `sessionId`: a resumed transcript copies the original id here while `sessionId` follows the file, and 58 of 99 fixture records disagree. Nothing reads either | `tests/fixtures/resume_pair/`, CC 2.1.205 — 52 of 54 disagree with `sessionId` |
+| `agentId` | `user`, `assistant`, `system`, `fork-context-ref` | The agent run the record belongs to. A subagent's transcript is `<session>/subagents/agent-<agentId>.jsonl`, so the id is its file name without the prefix | `tests/fixtures/spine/`, CC 2.1.221 — every record of each subagent thread |
 | `uuid` | `user`, `assistant`, `system` | The record id within its file. It is not unique: rewinding can write new records under existing uuids, and the extractor keeps the last | `tests/fixtures/dup_uuid/`, CC 2.1.211 — five uuids twice each |
 | `parentUuid` | `user`, `assistant`, `system` | The record this one answers, or null at the start of a thread. A `<local-command-stdout>` record points at the command turn whose output it is | `tests/fixtures/spine/`, CC 2.1.221 |
 | `timestamp` | `user`, `assistant`, `system`, `pr-link` | A UTC ISO-8601 timestamp with a `Z` suffix. File order is not timestamp order; adjacent records can move backward by one millisecond | `tests/fixtures/spine/`, CC 2.1.221 |
@@ -31,6 +35,9 @@ A transcript stores one JSON object per line. Each object has a `type`. `hyphae.
 | `gitBranch` | `user`, `assistant`, `system` | The branch checked out when the record was written | `tests/fixtures/spine/`, CC 2.1.221 |
 | `version` | `user`, `assistant`, `system` | The Claude Code version that wrote the record, and the version every schema claim here is dated by | `tests/fixtures/spine/`, CC 2.1.221 |
 | `entrypoint` | `user`, `assistant`, `system` | How the session was launched, such as `cli` | `tests/fixtures/spine/`, CC 2.1.221; absent from `tests/fixtures/legacy_entrypoint/`, CC 1.0.128 — the oldest corpus transcripts |
+| `userType` | `user`, `assistant`, `system` | Who the record is attributed to. Every fixture record says `external`, so no other value is recorded | `tests/fixtures/spine/`, CC 2.1.221 |
+| `sessionKind` | `user`, `assistant`, `system` | What kind of session Claude Code was recording. Redacted in the one fixture that carries it, so no value is recorded | `tests/fixtures/resume_pair/`, CC 2.1.205 |
+| `slug` | `user`, `assistant`, `system` | A short name Claude Code gives the session. The fixtures redact it, so its presence is what is recorded and not how it is derived | `tests/fixtures/spine/`, CC 2.1.221 |
 | `isMeta` | `user`, `system` | Claude Code wrote the record on the user's behalf, such as a caveat or a hook echo. It is not a prompt | `tests/fixtures/spine/`, CC 2.1.221 |
 | `isCompactSummary` | `user` | Claude Code wrote the record after compaction to replace the dropped context. It is not a prompt, and every one has a `compact_boundary` record beside it | `tests/fixtures/dup_uuid/`, CC 2.1.211 |
 | `isSidechain` | `user`, `assistant`, `system` | The record belongs to a subagent stream. On a main thread, skip it because the subagent's own file records the work better. On a subagent thread every record carries it, and skipping those would remove every turn | `tests/fixtures/spine/`, CC 2.1.221 — holds both main and subagent records |
@@ -44,6 +51,7 @@ Of 240 encoded working directories under `~/.claude/projects` on the recording m
 | Field | Records | Meaning | Evidence |
 | --- | --- | --- | --- |
 | `message` | `user`, `assistant` | The API message the record carried: a role and its content | `tests/fixtures/spine/`, CC 2.1.221 |
+| `message.role` | `user`, `assistant` | `user` or `assistant`, repeating what the record's own `type` says | `tests/fixtures/spine/`, CC 2.1.221 |
 | `message.content` | `user`, `assistant` | Either a string or a list of the blocks below. A `user` record whose list holds a `tool_result` is plumbing, not a prompt | `tests/fixtures/spine/`, CC 2.1.220 — for the block form |
 | `text` | `user`, `assistant` | Prose, under `text`: the model's answer, or a prompt written in block form | `tests/fixtures/spine/`, CC 2.1.221 |
 | `thinking` | `assistant` | The model's reasoning, under `thinking`, beside the `signature` that lets it be replayed | `tests/fixtures/spine/`, CC 2.1.221 |
@@ -67,6 +75,14 @@ Of 240 encoded working directories under `~/.claude/projects` on the recording m
 | `toolUseResult` | `user` | The tool's structured report beside the result block. Most are objects, but 3,590 of 137,255 corpus values are strings and 795 are lists (scanned 2026-08-07) | `tests/fixtures/offload/`, CC 2.1.220; `tests/fixtures/fork_origin/`, CC 2.1.215 — a string-valued one |
 | `toolUseResult.persistedOutputPath` | `user` | The path to output too large for the transcript. Claude Code writes the full output to `<session>/tool-results/<name>.txt` and leaves a preview in `content`. The path is absolute, so only its file name travels; the corpus holds 321 such results (scanned 2026-08-07) | `tests/fixtures/offload/`, CC 2.1.220 |
 | `toolUseResult.runId` | `user` | The fan-out id a `Workflow` call returns, matching the `wf_<id>` directory that holds its agents' transcripts. It is the only link from those transcripts to the call that launched them | `tests/fixtures/workflow/`, CC 2.1.207 |
+| `promptId` | `user` | An id Claude Code gives the record's prompt. It is not the record's own `uuid` — the two differ on all 84 fixture records that carry both | `tests/fixtures/spine/`, CC 2.1.221 |
+| `promptSource` | `user` | Where the prompt came from. Redacted in every fixture, so no value is recorded | `tests/fixtures/spine/`, CC 2.1.221 |
+| `origin` | `user` | Where the record came from, as an object holding a `kind`. Nothing has opened it, so its interior is undeclared | `tests/fixtures/spine/`, CC 2.1.221 |
+| `permissionMode` | `user` | The permission mode in force when the record was written: `default`, `auto` and `bypassPermissions` in the fixtures | `tests/fixtures/spine/`, CC 2.1.221 |
+| `thinkingMetadata` | `user` | The thinking budget in force, as a `level`, a `disabled` flag and `triggers`. Nothing has opened it, so its interior is undeclared | `tests/fixtures/legacy_entrypoint/`, CC 1.0.128 |
+| `isVisibleInTranscriptOnly` | `user` | The record is shown when reading the transcript back and nowhere else. Recorded only as true, so the false shape is unrecorded | `tests/fixtures/compaction/`, CC 2.1.198 |
+| `sourceToolAssistantUUID` | `user` | The assistant record this one answers, by uuid. Nothing reads it: a result is joined to its call through `tool_use_id` | `tests/fixtures/spine/`, CC 2.1.221 |
+| `interruptedMessageId` | `user` | The reply an interruption stopped. One fixture record carries it | `tests/fixtures/spine/`, CC 2.1.220 |
 <!-- aigarden:end -->
 
 ### API replies, models, and tokens
@@ -75,8 +91,14 @@ Of 240 encoded working directories under `~/.claude/projects` on the recording m
 | Field | Records | Meaning | Evidence |
 | --- | --- | --- | --- |
 | `message.id` | `assistant` | The API reply id, and the key for merging records. One reply can span several records, one per content block; counting lines triples the API-call count | `tests/fixtures/spine/`, CC 2.1.221 — eight records for two replies |
+| `message.type` | `assistant` | The API envelope's own kind: `message` on every fixture reply | `tests/fixtures/spine/`, CC 2.1.221 |
 | `message.model` | `assistant` | The model that answered. `<synthetic>` marks Claude Code's placeholder for an interrupt or a cancelled request: of about 290,000 corpus assistant records, 205 are synthetic, all reporting zero tokens and omitting `usage.inference_geo` (scanned 2026-08-07) | `tests/fixtures/spine/`, CC 2.1.201 — holds a `<synthetic>` reply |
 | `message.stop_reason` | `assistant` | Why generation stopped, such as `tool_use` or `end_turn` | `tests/fixtures/spine/`, CC 2.1.221 |
+| `message.stop_sequence` | `assistant` | The stop sequence that ended generation. Null on every fixture reply but one, which carries an empty string, so a real sequence is unrecorded | `tests/fixtures/spine/`, CC 2.1.221 |
+| `message.stop_details` | `assistant` | More about why generation stopped, beside `stop_reason`. Null on every fixture reply, so its interior is unrecorded as well as undeclared | `tests/fixtures/spine/`, CC 2.1.221 |
+| `message.container` | `assistant` | The container a code-execution reply ran in. Recorded once, as null, so its shape is unrecorded | `tests/fixtures/spine/`, CC 2.1.201 |
+| `message.context_management` | `assistant` | What context management did to the request, as an `applied_edits` list. Nothing has opened it, so its interior is undeclared | `tests/fixtures/parallel_tools/`, CC 2.1.211 |
+| `message.diagnostics` | `assistant` | Why the prompt cache missed, when it did: a `cache_miss_reason` naming the cause and what it cost. Null when the cache hit. Nothing has opened it | `tests/fixtures/spine/`, CC 2.1.221 |
 | `message.usage` | `assistant` | Token usage for the whole reply. Every record sharing a `message.id` repeats the totals, so summing records multiplies usage by the number of chunks | `tests/fixtures/spine/`, CC 2.1.221 — five identical copies under one id |
 | `usage.input_tokens` | `assistant` | Tokens sent that neither hit nor filled the cache | `tests/fixtures/spine/`, CC 2.1.221 |
 | `usage.output_tokens` | `assistant` | Tokens the model generated | `tests/fixtures/spine/`, CC 2.1.221 |
@@ -85,9 +107,17 @@ Of 240 encoded working directories under `~/.claude/projects` on the recording m
 | `usage.cache_creation` | `assistant` | Cache-creation tokens split by TTL. Every assistant record in the mycelia corpus has this object, so the absent shape remains unrecorded (scanned 2026-08-07) | `tests/fixtures/spine/`, CC 2.1.221 |
 | `cache_creation.ephemeral_5m_input_tokens` | `assistant` | Tokens written to the five-minute cache | `tests/fixtures/spine/`, CC 2.1.221 |
 | `cache_creation.ephemeral_1h_input_tokens` | `assistant` | Tokens written to the one-hour cache | `tests/fixtures/spine/`, CC 2.1.221 |
+| `usage.server_tool_use` | `assistant` | How many server-side tool requests the reply made, by kind. Zero on every fixture reply, `server_tools/` included, so a non-zero count is unrecorded | `tests/fixtures/spine/`, CC 2.1.221 |
+| `usage.service_tier` | `assistant` | The API service tier the reply was served on | `tests/fixtures/spine/`, CC 2.1.221 — `standard` wherever the fixtures leave it unredacted |
+| `usage.speed` | `assistant` | The speed tier the reply was served at. Absent from 30 of the 108 fixture replies, across versions that carry it elsewhere, so its absence is not a version fact | `tests/fixtures/spine/`, CC 2.1.221 — `standard` wherever the fixtures leave it unredacted |
+| `usage.inference_geo` | `assistant` | Where inference ran, or `not_available`. The one `<synthetic>` reply — Claude Code's own placeholder rather than a model answer — nulls it, along with `service_tier`, `speed` and `iterations` | `tests/fixtures/spine/`, CC 2.1.221 |
+| `usage.iterations` | `assistant` | Token counts for each pass a reply took, in this object's own shape. Cost uses the totals above, and nothing has opened these, so their interior is undeclared | `tests/fixtures/spine/`, CC 2.1.221 |
 | `attributionSkill` | `assistant` | The skill loaded when the reply returned. Absent when none was loaded | `tests/fixtures/spine/`, CC 2.1.221 |
+| `attributionAgent` | `assistant` | The agent the reply is attributed to, beside `attributionSkill`. Redacted in the fixtures, so no value is recorded | `tests/fixtures/spine/`, CC 2.1.221 |
+| `advisorModel` | `assistant` | The model behind a server-side advisor call. Only `server_tools/` records one, which is also the only fixture holding a `server_tool_use` block | `tests/fixtures/server_tools/`, CC 2.1.201 |
 | `effort` | `assistant` | The reasoning-effort setting as an opaque string, such as `"high"` | `tests/fixtures/spine/`, CC 2.1.221 |
 | `requestId` | `assistant` | The API request id the reply came back on | `tests/fixtures/spine/`, CC 2.1.221 |
+| `isApiErrorMessage` | `assistant` | The reply is Claude Code's own report of an API error rather than the model's. Recorded once, as false, so the true shape is unrecorded | `tests/fixtures/spine/`, CC 2.1.201 |
 <!-- aigarden:end -->
 
 ### System events and session labels
@@ -96,12 +126,20 @@ Of 240 encoded working directories under `~/.claude/projects` on the recording m
 | Field | Records | Meaning | Evidence |
 | --- | --- | --- | --- |
 | `durationMs` | `system` / `turn_duration` | The turn's wall-clock duration in milliseconds. Sum these to measure active session time; the transcript's timestamp span includes idle hours | `tests/fixtures/spine/`, CC 2.1.221 |
+| `messageCount` | `system` / `turn_duration` | A message count Claude Code writes beside the duration. It reaches 466 in one fixture turn, so it counts more than the turn's own records; nothing reads it | `tests/fixtures/spine/`, CC 2.1.221 |
+| `pendingBackgroundAgentCount` | `system` / `turn_duration` | How many background agent runs were still going when the turn ended | `tests/fixtures/spine/`, CC 2.1.221 |
 | `compactMetadata` | `system` / `compact_boundary` | The compaction's own numbers. Read compaction from this object rather than inferring it from the nearest assistant call; all 1,026 corpus boundaries carry it (scanned 2026-08-07) | `tests/fixtures/compaction/`, CC 2.1.198 |
 | `compactMetadata.trigger` | `system` / `compact_boundary` | `auto` when Claude Code hit the context limit, `manual` when the operator asked: 933 and 93 of 1,026 corpus boundaries (scanned 2026-08-07) | `tests/fixtures/compaction/`, CC 2.1.198 — one of each |
 | `compactMetadata.preTokens` | `system` / `compact_boundary` | Context size before the compaction | `tests/fixtures/compaction/`, CC 2.1.198 |
 | `compactMetadata.postTokens` | `system` / `compact_boundary` | Context size after it | `tests/fixtures/compaction/`, CC 2.1.198 |
 | `compactMetadata.durationMs` | `system` / `compact_boundary` | How long the compaction itself took | `tests/fixtures/compaction/`, CC 2.1.198 |
-| `content` | `system` / `local_command` | The `<local-command-stdout>` text, when Claude Code recorded the output as a `system` record rather than a `user` one: 37 of 316 corpus outputs. The body can span lines and can be empty | `tests/fixtures/model_only/`, CC 2.1.215 — an empty `/clear` body |
+| `compactMetadata.cumulativeDroppedTokens` | `system` / `compact_boundary` | Tokens every compaction in the thread has dropped so far, this one included, so it does not reduce to `preTokens` minus `postTokens` | `tests/fixtures/compaction/`, CC 2.1.198 |
+| `compactMetadata.preCompactDiscoveredTools` | `system` / `compact_boundary` | The tools the thread had discovered before compacting, by name | `tests/fixtures/compaction/`, CC 2.1.198 |
+| `compactMetadata.preservedMessages` | `system` / `compact_boundary` | Which records survived, as an anchor uuid and the uuids kept. Nothing has opened it, so its interior is undeclared | `tests/fixtures/compaction/`, CC 2.1.198 |
+| `compactMetadata.preservedSegment` | `system` / `compact_boundary` | The span of records the compaction kept, by head, anchor and tail uuid. Nothing has opened it, so its interior is undeclared | `tests/fixtures/compaction/`, CC 2.1.198 |
+| `logicalParentUuid` | `system` / `compact_boundary` | The record the boundary answers in the conversation, beside `parentUuid`, which answers the file. Nothing reads it | `tests/fixtures/compaction/`, CC 2.1.198 |
+| `level` | `system` | How loud the event is: `info`, `warning`, `error` and `suggestion` in the fixtures | `tests/fixtures/compaction/`, CC 2.1.198 |
+| `content` | `system` | The event's own text. On a `local_command` it is the `<local-command-stdout>` body, which Claude Code writes here rather than on a `user` record for 37 of 316 corpus outputs; the body can span lines and can be empty | `tests/fixtures/model_only/`, CC 2.1.215 — an empty `/clear` body |
 | `originalModel` | `system` / `model_consent_fallback` | The model the session asked for and did not get: it needed credits the account lacked | `tests/fixtures/registry_zoo/`, CC 2.1.221 |
 | `fallbackModel` | `system` / `model_consent_fallback` | The model it ran on instead | `tests/fixtures/registry_zoo/`, CC 2.1.221 |
 | `choice` | `system` / `model_consent_fallback` | What the operator answered, such as `cancelled` | `tests/fixtures/registry_zoo/`, CC 2.1.221 |
@@ -116,79 +154,6 @@ Of 240 encoded working directories under `~/.claude/projects` on the recording m
 | `parentLastUuid` | `fork-context-ref` | The parent record work resumes after | `tests/fixtures/fork_byref/`, CC 2.1.202 |
 | `contextLength` | `fork-context-ref` | How much of the parent's context the fork carried over | `tests/fixtures/fork_byref/`, CC 2.1.202 |
 <!-- aigarden:end -->
-
-## Read transcript records by these rules
-
-### A leading tag distinguishes prompts from other records
-
-When a `user` record contains a string, its leading XML-like tag often determines whether the record starts a turn.
-
-- Count `<command-name>` and `<command-message>` as a turn. They mark a slash command, can appear in either order, and carry `<command-args>` beside them. The wrapper is the whole prompt: all 451 command turns in the canonical store hold the tags and nothing else, so a command turn's `prompt` says no more than its `command_name` and `command_args` do (scanned 2026-08-24)
-- Count `<teammate-message>` as a turn
-- Don't count `<task-notification>`, `<local-command-stdout>`, `<bash-input>`, or `<bash-stdout>`. Claude Code wrote these to itself
-
-Counting every string-valued `user` record as a turn inflates the total several-fold. The mycelia corpus contains 2,157 `<task-notification>` records but 968 prompts ([trace-pipeline design](../plans/trace-pipeline/design.md)). The extractor crashes on an unregistered tag instead of guessing, because the next machine-written tag would silently inflate the count again.
-
-Tags can carry attributes, as in `<teammate-message teammate_id="team-lead" summary="…">`. Parse the name only to the first whitespace or `>`. Keep the full opening tag in `Turn.prompt` because it identifies the sender. The 132 corpus `<teammate-message>` records all occur in subagent transcripts from one mycelia session, so a census of main transcripts misses them (scanned 2026-08-07).
-
-*Evidence:* `tests/fixtures/spine/` contains both slash-command orderings at CC 2.1.221, `<bash-input>` and `<bash-stdout>` at CC 2.1.212, and `<teammate-message>` at CC 2.1.211.
-
-### Attach slash-command output to the command turn
-
-`<local-command-stdout>` does not start a turn. It records what a slash command printed, and its `parentUuid` points to the command turn. Many command turns produce no model reply, making this output the only record of what happened.
-
-Claude Code writes the output in two shapes:
-
-- A `user` record with the tag in `message.content`: 279 of 316 mycelia records
-- A `system` record with `subtype: local_command` and the tag in `content`: the other 37
-
-The text between the tags can span lines, so don't stop at the first line. It can also be empty. All 21 recorded `/clear` outputs are empty, compared with a median body length of 71 characters and a maximum of 2,038 (scanned 2026-08-13).
-
-A resumed session can replay the same output under the plain turn that now precedes it. The corpus contains 183 such records. If `parentUuid` points to a turn that ran no command, the output has no owning turn in that thread; the archive is not malformed.
-
-*Evidence:* `tests/fixtures/spine/`, CC 2.1.221, contains the `user` carrier; `tests/fixtures/model_only/`, CC 2.1.215, contains the `system` carrier and an empty `/clear` body; `tests/fixtures/resume_pair/`, CC 2.1.202, contains the replay.
-
-### Start parallel local calls at the batch's first timestamp
-
-One assistant message can issue several local tool calls at once. Claude Code usually writes one record per call in execution order, so calls issued together receive different timestamps. Only 156 of 23,371 multi-call messages in the mycelia corpus use one timestamp for the whole batch (scanned 2026-08-07). Treating each record timestamp as its call's start mistakes queue position for duration.
-
-Start every call in such a batch at the earliest record timestamp and set `ToolCall.duration_synthetic` to show that the start was assigned rather than measured. A lone call keeps its own timestamp and sets the flag to false.
-
-Define the batch by records, not calls. One record can contain several `tool_use` blocks; those calls were issued together and keep their shared, measured record timestamp. Counting blocks would mark that real start as synthetic.
-
-*Evidence:* `tests/fixtures/spine/`, CC 2.1.221, contains three calls under `msg_011CdmMjFXDofyYSMxYtXa5n`; `tests/fixtures/parallel_tools/`, CC 2.1.211, contains one message of each shape.
-
-### Time a server-side call from its own record
-
-A `server_tool_use` shares the assistant stream with local calls but does not join their batch. Claude Code did not execute it, so its record marks the request rather than a queue position. Keep that timestamp, set `duration_synthetic` to false, and end the call when Claude Code writes the `advisor_tool_result` in the same message.
-
-Store the call in `tool_calls` with `server_side` set. Before the extractor registered this block, it produced no row, text, or crash; sessions that used the advisor looked as though they had not.
-
-*Evidence:* `tests/fixtures/server_tools/`, CC 2.1.201, contains a subagent message with two local calls and one server-side call.
-
-### Keep the last record when a uuid repeats
-
-Rewinding leaves both the old and new records under the same uuid. Their token usage differs. The extractor keeps the last record because it reflects the session's final state; keeping the first changes token totals in four mycelia sessions.
-
-No recorded duplicate pair changes `message.content`. Such a change would mean that Claude Code rewrote the conversation itself, so the extractor crashes if it finds one.
-
-*Evidence:* `tests/fixtures/dup_uuid/`, CC 2.1.211, contains five uuids twice each.
-
-### Read compaction from the boundary record
-
-Every `system` / `compact_boundary` record has a corresponding `user` record with `isCompactSummary`. The mycelia corpus contains 1,026 of each, with matching counts in every file (CC 2.1.191–2.1.221; scanned 2026-08-07).
-
-Subagents compact much more often than main threads. Attribute a compaction to the file that reached the limit, not to the session as a whole.
-
-*Evidence:* `tests/fixtures/compaction/`, CC 2.1.198, contains one `auto` and one `manual` boundary, each with its summary.
-
-### Preserve both cache-creation totals
-
-The total and the split disagree in 53 of about 290,000 mycelia assistant records, as the table above records. The extractor stores the total as `cache_creation_tokens` and the split as `cache_5m_tokens` and `cache_1h_tokens`. Cost uses the split when present, so those 53 calls use a value that the total does not confirm.
-
-### Split records only on newline characters
-
-String values can contain raw U+2028 and U+2029 separators. Python's `splitlines()` treats them as record boundaries and breaks JSON objects. Split transcript files on `"\n"`.
 
 ## Session data comes from three places
 
