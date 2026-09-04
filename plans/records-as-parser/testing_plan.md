@@ -140,4 +140,13 @@ Written after the eight slices landed. Each note is a place the code and this pl
   and `test_claude_code__archive.py::test_a_session_sited_only_by_an_archived_record_still_reports_where_it_ran`
   is the leaf. It lands in the archive file rather than beside the other session-fact leaves
   because `test_claude_code.py` sits at its 700-line budget
+- **Obligation 49 widens to every field a reader cannot do without.** Slice 4 summed
+  `durationMs or 0`, defaulting a field the fail-fast rule says must crash. All 3,592
+  `turn_duration` records on the recording machine carry one (scanned 2026-09-04), so
+  `invented-no-duration.jsonl` is the evidence, and the leaf is now
+  `test_a_record_missing_a_field_a_reader_needs_crashes_naming_that_field` over four fixtures
+- **Obligation 4 needed a record that carries an envelope.** The archive leaf only showed
+  bookkeeping records with neither a uuid nor a time, so a `raw_record` that hard-coded
+  `timestamp=None` passed it. It now also reads the workflow run's two `attachment` records,
+  which is what kills that mutant
 - **`session_of` skips a record carrying `"cwd": null`.** The dict version tested for the key and would have chosen it, yielding a null project. Inferred harmless: the census found no such record
