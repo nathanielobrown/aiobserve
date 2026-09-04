@@ -10,7 +10,7 @@ session that proved it (`docs/schema.md`).
 
 import json
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import PurePath
@@ -18,6 +18,8 @@ from typing import Any, NamedTuple
 
 from hyphae.extract.errors import TranscriptSchemaError
 from hyphae.extract.pricing import SYNTHETIC_MODEL, TokenUsage, compute_cost
+from hyphae.extract.records.blocks import Block, TextBlock
+from hyphae.extract.records.conversation import UserRecord
 from hyphae.extract.records.registry import (
     AdvisorResult,
     ContentBlock,
@@ -27,7 +29,7 @@ from hyphae.extract.records.registry import (
     SystemSubtype,
     TurnTag,
 )
-from hyphae.extract.transcript import Line, required_timestamp, timestamp_of
+from hyphae.extract.transcript import Line, required, required_timestamp, timestamp_of
 from hyphae.model import MAIN_SOURCE, ApiCall, Compaction, ToolCall, Turn
 
 # A leading tag, with or without attributes: `<teammate-message teammate_id="...">` names
@@ -96,7 +98,7 @@ def _turns(
     for line in lines:
         prompt = _prompt(line, session_id, source)
         if prompt is not None:
-            open_turn = line.fields["uuid"]
+            open_turn = required(line.uuid, line, session_id, "uuid")
             spans[open_turn] = []
             turns.append(
                 Turn(
@@ -127,17 +129,18 @@ def _prompt(line: Line, session_id: str, source: str) -> _Prompt | None:
     The filters run before the tag registry: `isMeta` records carry tags of their own that
     the registry deliberately does not list.
     """
-    record = line.fields
-    if record["type"] != RecordType.USER:
+    record = line.record
+    if not isinstance(record, UserRecord):
         return None
     # These flags are absent on ordinary prompts — absence means "no". `isSidechain` marks
     # delegated work, and excludes it only in the main transcript, where the subagent's own
     # file states it better; inside that file every record is sidechain.
-    if record.get("isMeta") or record.get("isCompactSummary"):
+    if record.isMeta or record.isCompactSummary:
         return None
-    if source == MAIN_SOURCE and record.get("isSidechain"):
+    if source == MAIN_SOURCE and record.isSidechain:
         return None
-    content = record["message"]["content"]
+    message = required(record.message, line, session_id, "message")
+    content = required(message.content, line, session_id, "message.content")
     if isinstance(content, list):
         return _block_prompt(content)
     text = content.strip()
@@ -160,14 +163,14 @@ def _prompt(line: Line, session_id: str, source: str) -> _Prompt | None:
     )
 
 
-def _block_prompt(blocks: list[dict[str, Any]]) -> _Prompt | None:
+def _block_prompt(blocks: Sequence[Block]) -> _Prompt | None:
     """A block-content user record is a prompt unless it is carrying a tool result back."""
-    kinds = {block["type"] for block in blocks}
+    kinds = {block.BLOCK for block in blocks}
     if ContentBlock.TOOL_RESULT in kinds:
         return None
     if not kinds & {ContentBlock.TEXT, ContentBlock.IMAGE}:
         return None
-    text = "".join(block["text"] for block in blocks if block["type"] == ContentBlock.TEXT)
+    text = "".join(block.text or "" for block in blocks if isinstance(block, TextBlock))
     return _Prompt(text=text, command_name=None, command_args=None)
 
 
