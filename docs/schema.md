@@ -18,7 +18,7 @@ Where the files these records come from sit on disk, and how the extractor joins
 
 ## Transcript records are typed JSON objects
 
-A transcript stores one JSON object per line. Each object has a `type`. `hyphae.extract.records.registry` registers every type it has seen and the readers crash on unknown types. Treat that registry—not the tables below—as the current census.
+A transcript stores one JSON object per line. Each object has a `type`. `hyphae.extract.records.registry` names every type and subtype the corpus has shown, and a record outside it crashes the extract rather than being skipped. The standing census is `tests/extract/test_records__census.py`: it reads every record of a live store through the model its type resolves to, and reports both the fields no model declares and the keys the models deliberately claim nothing about.
 
 ### Record identity and session context
 
