@@ -17,7 +17,7 @@ from hyphae.extract.records.evidence import (
     Cited,
     Described,
 )
-from hyphae.extract.records.registry import ContentBlock, ResultBlock
+from hyphae.extract.records.registry import AdvisorResult, ContentBlock, ResultBlock
 
 # What every discriminator says. It is the field pydantic dispatches a content list on, and the
 # tables name a member's fields from the kind it carries — `tool_use.id` — so the kind is the
@@ -200,12 +200,13 @@ class AdvisorContent(Described):
     """What an `advisor_tool_result` block returned."""
 
     type: Annotated[
-        str | None,
+        AdvisorResult | None,
         Field(
             default=None,
             description=(
                 "Either `advisor_tool_result_error` or `advisor_redacted_result`. Neither shape "
-                "carries readable output"
+                "carries readable output, and a third would be a shape nothing here can read, so "
+                "the registry is what this field validates against"
             ),
         ),
         Cited(SERVER_TOOLS, "2.1.201", note="holds both"),

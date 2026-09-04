@@ -119,7 +119,7 @@ class ClaudeCodeExtractor:
                 kept,
                 metas,
                 replays,
-                workflow_launches(kept[MAIN_SOURCE]),
+                workflow_launches(kept[MAIN_SOURCE], source.id),
                 source.id,
             ),
             compactions=[one for parsed_one in parsed for one in parsed_one.compactions],
