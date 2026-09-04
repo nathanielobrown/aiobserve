@@ -14,8 +14,9 @@ Two rules hold the description honest:
   than an undocumented field
 
 The modules, in dependency order: `registry` (every type, subtype, block and tag the parser
-knows), `evidence` (what proves a claim), `blocks` (content blocks and the messages holding
-them), `base` (the ladder of mixins), one module per record family — `conversation`, `system`,
-`bookkeeping` — then `shapes` (the roster and the dispatch onto it) and `field_tables` (the
-walk that turns all of it into table rows).
+knows), `evidence` (what proves a claim), `blocks` (one model per content-block kind),
+`messages` (the messages whose content lists dispatch to them), `base` (the ladder of mixins),
+one module per record family — `conversation`, `system`, `bookkeeping` — then `shapes` (the
+roster and the dispatch onto it) and `field_tables` (the walk that turns all of it into table
+rows).
 """

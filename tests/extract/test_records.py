@@ -20,10 +20,11 @@ from hyphae.extract.records import (
     conversation,
     evidence,
     field_tables,
+    messages,
     shapes,
     system,
 )
-from hyphae.extract.records.registry import ContentBlock
+from hyphae.extract.records.registry import ContentBlock, ResultBlock
 from hyphae.extract.records.unknown import UnknownFields
 from hyphae.extract.transcript import read_lines
 from tests.conftest import FIXTURES, corpus_transcripts
@@ -139,7 +140,7 @@ def test_exactly_two_models_stop_the_walk_and_each_says_why() -> None:
     # kind nobody reads. The set is asserted whole, so a third arrival fails here first.
     opaque = {model for model in described_models() if model.OPAQUE}
 
-    assert opaque == {shapes.ArchivedRecord, blocks.ToolUseResult}
+    assert opaque == {shapes.ArchivedRecord, messages.ToolUseResult}
     for model in opaque:
         assert model.OPAQUE.strip(), f"{model.__name__} is opaque without a stated reason"
 
@@ -158,7 +159,7 @@ def test_an_opaque_model_declares_only_the_fields_a_reader_opens() -> None:
     # against a recording by the corpus leaf, so the two the readers open are the two that may be
     # here. `toolUseResult` carries around 39 keys across the fixtures; the model claims two, and
     # the citation leaves above prove both against the fixture each names.
-    assert set(blocks.ToolUseResult.model_fields) == {"persistedOutputPath", "runId"}
+    assert set(messages.ToolUseResult.model_fields) == {"persistedOutputPath", "runId"}
 
 
 @pytest.mark.parametrize(
@@ -167,9 +168,9 @@ def test_an_opaque_model_declares_only_the_fields_a_reader_opens() -> None:
         (conversation.UserRecord, "thinkingMetadata"),
         (conversation.UserRecord, "origin"),
         (system.CompactMetadata, "preservedSegment"),
-        (blocks.AssistantMessage, "stop_details"),
-        (blocks.AssistantMessage, "context_management"),
-        (blocks.Usage, "server_tool_use"),
+        (messages.AssistantMessage, "stop_details"),
+        (messages.AssistantMessage, "context_management"),
+        (messages.Usage, "server_tool_use"),
     ],
     ids=lambda arg: arg if isinstance(arg, str) else arg.__name__,
 )
@@ -244,8 +245,13 @@ def test_a_field_inside_a_block_is_named_from_the_block() -> None:
     # rather than by position, and two blocks can hold fields that agree on everything else.
     # The advisor result's `content` and the fallback's `from` are the recorded cases.
     names = {doc.path for doc in field_tables.documentation()}
-    assert "advisor_tool_result.content.type" in names
-    assert "fallback.from.model" in names
+    assert "message.content.advisor_tool_result.content.type" in names
+    assert "message.content.fallback.from.model" in names
+    # And why the name runs the whole way down rather than naming the block and its field: a kind
+    # repeats at two depths. A picture is a block of a message's own list and a part of a
+    # block-form `tool_result`, so `image.source` alone would send a reader to two different rows.
+    assert "message.content.image.source" in names
+    assert "message.content.tool_result.content.image.source" in names
 
 
 def test_every_cited_fixture_exists() -> None:
@@ -285,17 +291,23 @@ def test_every_citation_shows_the_field_in_the_fixture_it_names(
             assert cite.version in written, f"{doc.path} cites CC {cite.version}, unwritten there"
 
 
-@pytest.mark.parametrize("block", blocks.BLOCK_MODELS, ids=lambda b: b.BLOCK.value)
-def test_every_block_model_validates_a_recorded_block(block: type[blocks.Block]) -> None:
+@pytest.mark.parametrize(
+    "block", [*blocks.BLOCK_MODELS, *blocks.RESULT_MODELS], ids=lambda b: b.BLOCK.value
+)
+def test_every_block_model_validates_a_recorded_block(block: type[blocks.Kinded]) -> None:
     # Blocks are not records, so the registry test above cannot reach them: they are validated
-    # here, against every block of their kind in every fixture. A block model whose kind no
-    # fixture holds cannot be here at all — it would have no evidence to cite.
+    # here, against every block of their kind in every fixture — both lists, a message's own and
+    # a block-form `tool_result`'s. A kind a fixture cannot hold has to say so in its citation:
+    # `image` is the one, because a redacted excerpt carrying one would carry the picture whole.
     found = [
         item
         for record in every_record()
-        for item in content_of(record)
+        for item in blocks_and_parts(record)
         if item.get("type") == block.BLOCK
     ]
+    if all(cite.scan and not cite.fixture for cite in block.EVIDENCE):
+        assert not found, f"a fixture holds a `{block.BLOCK.value}` block, so cite it"
+        return
     assert found, f"no fixture holds a `{block.BLOCK.value}` block"
     for item in found:
         block.model_validate(item)
@@ -315,6 +327,19 @@ def content_of(record: dict[str, Any]) -> list[dict[str, Any]]:
     return [item for item in content if isinstance(item, dict)] if isinstance(content, list) else []
 
 
+def blocks_and_parts(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """Both content lists a record holds: the message's blocks, and any block's own parts."""
+    found = content_of(record)
+    parts = [
+        part
+        for item in found
+        if isinstance(item.get("content"), list)
+        for part in item["content"]
+        if isinstance(part, dict)
+    ]
+    return [*found, *parts]
+
+
 @pytest.mark.xdist_group("corpus")
 def test_no_recorded_record_carries_a_field_the_models_do_not_declare() -> None:
     # What "the models are the schema" costs, stated as a test: every transcript the corpus holds,
@@ -324,11 +349,9 @@ def test_no_recorded_record_carries_a_field_the_models_do_not_declare() -> None:
     # object nobody has opened — is the boundary of what the models claim at all.
     unknown = UnknownFields(strict=False)
     for transcript in corpus_transcripts():
-        # Through `read_lines`, so the corpus is exactly the lines the extractor keeps: a
-        # transcript read mid-write ends in half a record, which it drops.
-        for line in read_lines(transcript, transcript.stem):
-            model = shapes.model_for(line.record)
-            unknown.note(model.model_validate(line.record), transcript.stem, line.line_no)
+        # Through `read_lines`, which is where validation and the walk now live, so the corpus
+        # is exactly the lines the extractor keeps and reads them exactly as it does.
+        read_lines(transcript, transcript.stem, unknown)
 
     assert unknown.report() == ""
 
@@ -337,9 +360,23 @@ def test_the_content_blocks_a_message_can_hold_are_the_ones_it_lists() -> None:
     # The union each message model declares is what the generator reads to say which records
     # carry a block, so a block recorded under a message that does not list it would document
     # the wrong records. Checked against every block in every fixture.
-    listed: dict[type[BaseModel], set[ContentBlock]] = {
-        conversation.UserRecord: {b.BLOCK for b in blocks.UserMessage.BLOCKS},
-        conversation.AssistantRecord: {b.BLOCK for b in blocks.AssistantMessage.BLOCKS},
+    listed: dict[type[BaseModel], set[ContentBlock | ResultBlock]] = {
+        model: {
+            member.BLOCK
+            for member in field_tables.members(message.model_fields["content"].annotation)
+        }
+        for model, message in (
+            (conversation.UserRecord, messages.UserMessage),
+            (conversation.AssistantRecord, messages.AssistantMessage),
+        )
+    }
+    # A block-form `tool_result` holds its own list, dispatched by the same rule, so the parts
+    # are checked against the union that block declares.
+    parts = {
+        member.BLOCK
+        for member in field_tables.members(
+            blocks.ToolResultBlock.model_fields["content"].annotation
+        )
     }
     for record in every_record():
         model = shapes.model_for(record)
@@ -350,3 +387,40 @@ def test_the_content_blocks_a_message_can_hold_are_the_ones_it_lists() -> None:
             assert kind in listed[model] or kind in blocks.UNCITED_BLOCKS, (
                 f"a `{kind}` block in a {record['type']} record that lists none"
             )
+            for part in item["content"] if isinstance(item.get("content"), list) else []:
+                assert part["type"] in parts, f"a `{part['type']}` part no `tool_result` lists"
+
+
+def test_every_recorded_block_parses_as_the_model_its_kind_names() -> None:
+    # What the discriminator buys: a content list comes back as the block models themselves, so a
+    # reader asks a `tool_use` for its `name` instead of reaching into a dict and hoping. Every
+    # block of every recorded fixture, checked by class rather than by "it parsed" — the two
+    # differ exactly when a union member is missing and pydantic picks a neighbour.
+    # Two maps, not one: `ContentBlock.TEXT` and `ResultBlock.TEXT` are both the string `text`,
+    # so a single dict keyed by kind would lose one of them — which is the collision the whole-
+    # path naming in `field_tables` exists for.
+    by_block = {model.BLOCK: model for model in blocks.BLOCK_MODELS}
+    by_part = {model.BLOCK: model for model in blocks.RESULT_MODELS}
+    seen: list[ContentBlock | ResultBlock] = []
+    for record in every_record():
+        parsed = shapes.model_for(record).model_validate(record)
+        message = getattr(parsed, "message", None)
+        content = getattr(message, "content", None)
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            assert type(block) is by_block[block.BLOCK], (
+                f"a `{block.BLOCK}` block parsed as {type(block)}"
+            )
+            seen.append(block.BLOCK)
+            parts = getattr(block, "content", None)
+            for part in parts if isinstance(parts, list) else []:
+                assert type(part) is by_part[part.BLOCK], (
+                    f"a `{part.BLOCK}` part parsed as {type(part)}"
+                )
+                seen.append(part.BLOCK)
+
+    # And the count, so a walk that silently found no lists cannot pass: what the models yielded
+    # is what the raw JSON holds, kind for kind.
+    raw = [item["type"] for record in every_record() for item in blocks_and_parts(record)]
+    assert sorted(kind.value for kind in seen) == sorted(raw)

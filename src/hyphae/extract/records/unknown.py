@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import NamedTuple
 
 from hyphae.extract.errors import TranscriptSchemaError
+from hyphae.extract.records.blocks import Kinded
 from hyphae.extract.records.evidence import Described
 from hyphae.extract.records.shapes import Record
 
@@ -71,8 +72,23 @@ class UnknownFields:
         # became a model is descended into.
         for name, info in type(model).model_fields.items():
             value = getattr(model, name)
+            step = f"{path}.{info.alias or name}"
             if isinstance(value, Described):
-                self._walk(value, f"{path}.{info.alias or name}", session_id, line_no)
+                self._walk(value, step, session_id, line_no)
+            elif isinstance(value, list):
+                self._blocks(value, step, session_id, line_no)
+
+    def _blocks(self, values: list[object], path: str, session_id: str, line_no: int) -> None:
+        """Every block of a content list, named by its kind rather than its position.
+
+        The only lists of models a transcript holds are content lists, and the schema tables
+        name a block's fields from the kind it carries — `message.content.tool_use.caller` —
+        so two blocks of one kind report one path. A list of anything else holds no model and
+        no claim, so it is a leaf.
+        """
+        for value in values:
+            if isinstance(value, Kinded):
+                self._walk(value, f"{path}.{value.BLOCK.value}", session_id, line_no)
 
     def _seen(self, path: str, session_id: str, line_no: int) -> None:
         if self.strict:

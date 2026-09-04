@@ -9,7 +9,7 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict
 
-from hyphae.extract.records.registry import ContentBlock
+from hyphae.extract.records.registry import ContentBlock, ResultBlock
 
 # The fixtures the claims below cite, spelled the way a reader would type them.
 COMPACTION = "tests/fixtures/compaction/"
@@ -26,6 +26,10 @@ RESUME_PAIR = "tests/fixtures/resume_pair/"
 SERVER_TOOLS = "tests/fixtures/server_tools/"
 SPINE = "tests/fixtures/spine/"
 WORKFLOW = "tests/fixtures/workflow/"
+
+# The scan behind every claim no fixture holds: `hp extract`'s own archive, read field by field.
+# The counts beside those claims are its counts, so re-running it is how they are checked.
+CENSUS = "the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04"
 
 
 @dataclass(frozen=True)
@@ -50,9 +54,13 @@ class Cited:
 
 @dataclass(frozen=True)
 class Among:
-    """A step into every block of one kind inside a `message.content` list."""
+    """A step into every block of one kind inside a content list.
 
-    kind: ContentBlock
+    Both lists a transcript holds: a `message.content`, whose kinds are `ContentBlock`, and a
+    block-form `tool_result`'s own content, whose kinds are `ResultBlock`.
+    """
+
+    kind: ContentBlock | ResultBlock
 
 
 # One step of a field's locator: a key to read, or a block kind to select within a content list.

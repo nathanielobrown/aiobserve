@@ -8,8 +8,8 @@ session's working directory:
 
 This module finds those files and sorts them by what reads them. It parses none of them —
 records belong to `extract/transcript.py`, and the two rot on different schedules: the layout
-is stable, the record shapes are not (`docs/schema.md`). The one file it reads whole is an
-offloaded tool result, which is text rather than records.
+is stable (`docs/session-layout.md`), the record shapes are not (`docs/schema.md`). The one file
+it reads whole is an offloaded tool result, which is text rather than records.
 
 The layout is closed-world like the record registry: a file whose place we cannot name raises
 `SessionLayoutError` (`extract/errors.py`) rather than being skipped.

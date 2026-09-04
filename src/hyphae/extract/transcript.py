@@ -20,11 +20,12 @@ from datetime import datetime
 from pathlib import Path, PurePath
 from typing import Any, NamedTuple
 
-from hyphae.extract.errors import TranscriptSchemaError
+from pydantic import ValidationError
+
+from hyphae.extract.errors import TranscriptSchemaError, invalid_record
 from hyphae.extract.pricing import SYNTHETIC_MODEL, TokenUsage, compute_cost
 from hyphae.extract.records.registry import (
     AdvisorResult,
-    ArchiveRecordType,
     ContentBlock,
     MachineTag,
     RecordType,
@@ -32,6 +33,8 @@ from hyphae.extract.records.registry import (
     SystemSubtype,
     TurnTag,
 )
+from hyphae.extract.records.shapes import Record, model_for
+from hyphae.extract.records.unknown import UnknownFields
 from hyphae.model import (
     MAIN_SOURCE,
     ApiCall,
@@ -54,16 +57,19 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class Line:
-    """One line of a transcript, parsed but not yet interpreted."""
+    """One line of a transcript, validated against its model but not yet interpreted."""
 
     line_no: int
-    record: dict[str, Any]
+    record: Record
+    # The same line as a dict, for the readers that have not moved onto the model yet. It goes
+    # when the last of them does (`plans/records-as-parser/design.md`).
+    fields: dict[str, Any]
     raw: str
 
     @property
     def uuid(self) -> str | None:
         """The record's own id, absent on the bookkeeping types — a documented absence."""
-        return self.record.get("uuid")
+        return self.fields.get("uuid")
 
 
 class Parsed(NamedTuple):
@@ -95,8 +101,11 @@ class _Prompt:
     command_args: str | None
 
 
-def read_lines(path: Path, session_id: str) -> list[Line]:
-    """Every line of a transcript, parsed as JSON.
+def read_lines(path: Path, session_id: str, unknown_fields: UnknownFields) -> list[Line]:
+    """Every line of a transcript, parsed as JSON and validated against its record model.
+
+    `unknown_fields` is where a field no model declares goes: a crash in a test run, a tally
+    in an extract. It belongs to the extraction run, not the file, so the caller owns it.
 
     Split on "\\n" rather than `splitlines()`: real records contain U+2028 and U+2029
     inside string values, which `splitlines()` treats as line breaks and so cuts records
@@ -125,9 +134,33 @@ def read_lines(path: Path, session_id: str) -> list[Line]:
                 line_no,
             )
             continue
-        _check_type(record, session_id, line_no)
-        lines.append(Line(line_no=line_no, record=record, raw=raw))
+        lines.append(_validated(record, raw, session_id, line_no, unknown_fields))
     return lines
+
+
+def _validated(
+    record: dict[str, Any],
+    raw: str,
+    session_id: str,
+    line_no: int,
+    unknown_fields: UnknownFields,
+) -> Line:
+    """One parsed line through its model: the kind, the shape, then the undeclared fields.
+
+    Each step names the session and the line, because a transcript is the only place a reader
+    can check what went wrong and neither the model nor pydantic knows where the record came
+    from.
+    """
+    try:
+        model = model_for(record)
+    except TranscriptSchemaError as error:
+        raise TranscriptSchemaError(f"{error} in session {session_id}, line {line_no}") from error
+    try:
+        parsed = model.model_validate(record)
+    except ValidationError as error:
+        raise invalid_record(error, model, session_id, line_no) from error
+    unknown_fields.note(parsed, session_id, line_no)
+    return Line(line_no=line_no, record=parsed, fields=record, raw=raw)
 
 
 def resolve_duplicates(lines: list[Line], session_id: str) -> list[Line]:
@@ -167,33 +200,9 @@ def parse(lines: list[Line], session_id: str, source: str, replayed: set[int]) -
     )
 
 
-def _check_type(record: dict[str, Any], session_id: str, line_no: int) -> None:
-    """Reject a record type, `system` subtype or content block outside the registries."""
-    kind = record["type"]
-    if kind == RecordType.SYSTEM:
-        subtype = record["subtype"]
-        if subtype not in SystemSubtype:
-            raise TranscriptSchemaError(
-                f"Unknown system subtype {subtype!r} in session {session_id}, line {line_no}"
-            )
-        return
-    if kind not in RecordType and kind not in ArchiveRecordType:
-        raise TranscriptSchemaError(
-            f"Unknown record type {kind!r} in session {session_id}, line {line_no}"
-        )
-    message = record.get("message")
-    content = message.get("content") if isinstance(message, dict) else None
-    # A string content is a bare prompt, which has no blocks to register.
-    for block in content if isinstance(content, list) else []:
-        if block["type"] not in ContentBlock:
-            raise TranscriptSchemaError(
-                f"Unknown content block {block['type']!r} in session {session_id}, line {line_no}"
-            )
-
-
 def _content(line: Line) -> Any:
     """What the record said, if it said anything — the one field a duplicate may not change."""
-    message = line.record.get("message")
+    message = line.fields.get("message")
     return message.get("content") if isinstance(message, dict) else None
 
 
@@ -204,8 +213,8 @@ def raw_record(session_id: str, source: str, line: Line) -> RawRecord:
         source=source,
         line_no=line.line_no,
         uuid=line.uuid,
-        timestamp=timestamp_of(line.record),
-        type=line.record["type"],
+        timestamp=timestamp_of(line.fields),
+        type=line.fields["type"],
         raw=line.raw,
     )
 
@@ -220,13 +229,13 @@ def session_of(lines: list[Line], session_id: str, transcript: Path) -> Session:
     """Session metadata, gathered from the records that carry it."""
     # The file opens on bookkeeping records with no `cwd`, so the first record that has
     # one is what says where this session ran.
-    context = next((line.record for line in lines if "cwd" in line.record), None)
-    moments = [t for t in (timestamp_of(line.record) for line in lines) if t is not None]
+    context = next((line.fields for line in lines if "cwd" in line.fields), None)
+    moments = [t for t in (timestamp_of(line.fields) for line in lines) if t is not None]
     active_ms = sum(
-        line.record["durationMs"]
+        line.fields["durationMs"]
         for line in lines
-        if line.record["type"] == RecordType.SYSTEM
-        and line.record["subtype"] == SystemSubtype.TURN_DURATION
+        if line.fields["type"] == RecordType.SYSTEM
+        and line.fields["subtype"] == SystemSubtype.TURN_DURATION
     )
     return Session(
         id=session_id,
@@ -251,7 +260,7 @@ def session_of(lines: list[Line], session_id: str, transcript: Path) -> Session:
 
 def _last_field(lines: list[Line], kind: RecordType, field: str) -> str | None:
     """The last value of a single-field record type, or None when the file holds none."""
-    values = [line.record[field] for line in lines if line.record["type"] == kind]
+    values = [line.fields[field] for line in lines if line.fields["type"] == kind]
     return values[-1] if values else None
 
 
@@ -265,19 +274,19 @@ def _compactions(
     """
     return [
         Compaction(
-            id=line.record["uuid"],
+            id=line.fields["uuid"],
             session_id=session_id,
             source=source,
             timestamp=_required_timestamp(line, session_id),
-            trigger=line.record["compactMetadata"]["trigger"],
-            pre_tokens=line.record["compactMetadata"]["preTokens"],
-            post_tokens=line.record["compactMetadata"]["postTokens"],
-            duration_ms=line.record["compactMetadata"]["durationMs"],
+            trigger=line.fields["compactMetadata"]["trigger"],
+            pre_tokens=line.fields["compactMetadata"]["preTokens"],
+            post_tokens=line.fields["compactMetadata"]["postTokens"],
+            duration_ms=line.fields["compactMetadata"]["durationMs"],
             replayed=line.line_no in replayed,
         )
         for line in lines
-        if line.record["type"] == RecordType.SYSTEM
-        and line.record["subtype"] == SystemSubtype.COMPACT_BOUNDARY
+        if line.fields["type"] == RecordType.SYSTEM
+        and line.fields["subtype"] == SystemSubtype.COMPACT_BOUNDARY
     ]
 
 
@@ -291,13 +300,13 @@ def pr_links(lines: list[Line], session_id: str) -> list[PrLink]:
         PrLink(
             session_id=session_id,
             line_no=line.line_no,
-            pr_number=line.record["prNumber"],
-            pr_url=line.record["prUrl"],
-            pr_repository=line.record["prRepository"],
+            pr_number=line.fields["prNumber"],
+            pr_url=line.fields["prUrl"],
+            pr_repository=line.fields["prRepository"],
             timestamp=_required_timestamp(line, session_id),
         )
         for line in lines
-        if line.record["type"] == RecordType.PR_LINK
+        if line.fields["type"] == RecordType.PR_LINK
     ]
 
 
@@ -309,8 +318,8 @@ def fork_context(lines: list[Line]) -> str | None:
     (scanned 2026-08-07), but the search does not depend on that.
     """
     for line in lines:
-        if line.record["type"] == RecordType.FORK_CONTEXT_REF:
-            return line.record["parentLastUuid"]
+        if line.fields["type"] == RecordType.FORK_CONTEXT_REF:
+            return line.fields["parentLastUuid"]
     return None
 
 
@@ -323,10 +332,10 @@ def workflow_launches(lines: list[Line]) -> dict[str, str]:
     """
     launches = {}
     for line in lines:
-        details = line.record.get("toolUseResult")
+        details = line.fields.get("toolUseResult")
         if not isinstance(details, dict) or "runId" not in details:
             continue
-        for block in line.record["message"]["content"]:
+        for block in line.fields["message"]["content"]:
             if block["type"] == ContentBlock.TOOL_RESULT:
                 launches[details["runId"]] = block["tool_use_id"]
     return launches
@@ -347,7 +356,7 @@ def _turns(
     for line in lines:
         prompt = _prompt(line, session_id, source)
         if prompt is not None:
-            open_turn = line.record["uuid"]
+            open_turn = line.fields["uuid"]
             spans[open_turn] = []
             turns.append(
                 Turn(
@@ -365,7 +374,7 @@ def _turns(
                 )
             )
         turn_by_line[line.line_no] = open_turn
-        moment = timestamp_of(line.record)
+        moment = timestamp_of(line.fields)
         if open_turn is not None and moment is not None:
             spans[open_turn].append(moment)
     # Every span holds at least the prompt's own timestamp, which the loop above required.
@@ -374,13 +383,13 @@ def _turns(
 
 def _required_timestamp(line: Line, session_id: str) -> datetime:
     """The record's timestamp, for the entities that cannot be placed in time without one."""
-    moment = timestamp_of(line.record)
+    moment = timestamp_of(line.fields)
     if moment is None:
         # The kind comes off the record rather than the caller: eight parse paths reach
         # here, and a caller naming the wrong one sends the reader to the wrong records.
         raise TranscriptSchemaError(
             f"Session {session_id}, line {line.line_no}: "
-            f"a {line.record['type']} record with no timestamp"
+            f"a {line.fields['type']} record with no timestamp"
         )
     return moment
 
@@ -391,7 +400,7 @@ def _prompt(line: Line, session_id: str, source: str) -> _Prompt | None:
     The filters run before the tag registry: `isMeta` records carry tags of their own that
     the registry deliberately does not list.
     """
-    record = line.record
+    record = line.fields
     if record["type"] != RecordType.USER:
         return None
     # These flags are absent on ordinary prompts — absence means "no". `isSidechain` marks
@@ -456,18 +465,18 @@ def _api_calls(
     at_uuid = {line.uuid: line for line in lines if line.uuid}
     chunks: dict[str, list[Line]] = {}
     for line in lines:
-        if line.record["type"] != RecordType.ASSISTANT:
+        if line.fields["type"] != RecordType.ASSISTANT:
             continue
-        chunks.setdefault(line.record["message"]["id"], []).append(line)
+        chunks.setdefault(line.fields["message"]["id"], []).append(line)
     calls = []
     for index, (message_id, group) in enumerate(chunks.items()):
         first, last = group[0], group[-1]
         # The chunks of one message repeat the same usage; the last is the file's final word.
-        message = last.record["message"]
+        message = last.fields["message"]
         usage = message["usage"]
         # None when the record this call answers is not in this file — after a compaction,
         # or in a fork that opens mid-conversation.
-        answered = at_uuid.get(first.record["parentUuid"])
+        answered = at_uuid.get(first.fields["parentUuid"])
         split = usage.get("cache_creation")
         tokens = TokenUsage(
             input=usage["input_tokens"],
@@ -486,11 +495,11 @@ def _api_calls(
                 index=index,
                 model=message["model"],
                 fallback_from=_fallback_from(group),
-                effort=last.record.get("effort"),
+                effort=last.fields.get("effort"),
                 stop_reason=message["stop_reason"],
                 # Present only while a skill was driving.
-                attribution_skill=last.record.get("attributionSkill"),
-                request_id=last.record.get("requestId"),
+                attribution_skill=last.fields.get("attributionSkill"),
+                request_id=last.fields.get("requestId"),
                 started_at=_required_timestamp(answered or first, session_id),
                 ended_at=_required_timestamp(last, session_id),
                 input_tokens=tokens.input,
@@ -518,7 +527,7 @@ def _fallback_from(group: Iterable[Line]) -> str | None:
     which every recorded fallback agrees with, so only the model asked for first is new.
     """
     for line in group:
-        for block in line.record["message"]["content"]:
+        for block in line.fields["message"]["content"]:
             if block["type"] == ContentBlock.FALLBACK:
                 return block["from"]["model"]
     return None
@@ -540,8 +549,8 @@ def _tool_calls(
     issued = [
         (line, block)
         for line in lines
-        if line.record["type"] == RecordType.ASSISTANT
-        for block in line.record["message"]["content"]
+        if line.fields["type"] == RecordType.ASSISTANT
+        for block in line.fields["message"]["content"]
         if block["type"] in (ContentBlock.TOOL_USE, ContentBlock.SERVER_TOOL_USE)
     ]
     # A batch is the *records* a message issued its calls from, not the calls: several
@@ -551,19 +560,19 @@ def _tool_calls(
     batches: dict[str, dict[int, datetime]] = {}
     for line, block in issued:
         if block["type"] == ContentBlock.TOOL_USE:
-            message_id = line.record["message"]["id"]
+            message_id = line.fields["message"]["id"]
             batches.setdefault(message_id, {})[line.line_no] = _required_timestamp(line, session_id)
     calls = []
     for index, (line, block) in enumerate(issued):
         server_side = block["type"] == ContentBlock.SERVER_TOOL_USE
-        batch = list(batches[line.record["message"]["id"]].values()) if not server_side else []
+        batch = list(batches[line.fields["message"]["id"]].values()) if not server_side else []
         result = results.get(block["id"])
         calls.append(
             ToolCall(
                 id=block["id"],
                 session_id=session_id,
                 source=source,
-                api_call_id=line.record["message"]["id"],
+                api_call_id=line.fields["message"]["id"],
                 index=index,
                 name=block["name"],
                 server_side=server_side,
@@ -590,7 +599,7 @@ def _tool_results(lines: list[Line], session_id: str) -> dict[str, _Result]:
     """
     results: dict[str, _Result] = {}
     for line in lines:
-        record = line.record
+        record = line.fields
         if record["type"] != RecordType.USER:
             continue
         content = record["message"]["content"]
@@ -622,9 +631,9 @@ def _advisor_results(lines: list[Line], session_id: str) -> dict[str, _Result]:
     """
     results: dict[str, _Result] = {}
     for line in lines:
-        if line.record["type"] != RecordType.ASSISTANT:
+        if line.fields["type"] != RecordType.ASSISTANT:
             continue
-        for block in line.record["message"]["content"]:
+        for block in line.fields["message"]["content"]:
             if block["type"] != ContentBlock.ADVISOR_TOOL_RESULT:
                 continue
             content = block["content"]
@@ -638,7 +647,7 @@ def _advisor_results(lines: list[Line], session_id: str) -> dict[str, _Result]:
                 text=content["error_code"] if error else None,
                 is_error=error,
                 offload_file=None,
-                ended_at=timestamp_of(line.record),
+                ended_at=timestamp_of(line.fields),
             )
     return results
 
@@ -668,6 +677,6 @@ def _blocks(group: Iterable[Line], kind: ContentBlock, field: str) -> str:
     return "".join(
         block[field]
         for line in group
-        for block in line.record["message"]["content"]
+        for block in line.fields["message"]["content"]
         if block["type"] == kind
     )

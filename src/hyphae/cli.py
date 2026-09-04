@@ -95,6 +95,11 @@ def _extract(args: argparse.Namespace) -> None:
     exporter = DuckDbExporter(args.db, wait=CLI_WAIT)
     result = refresh(args.project, extractor=extractor, exporter=exporter)
     print(f"{len(result.extracted)} session(s) extracted, {len(result.skipped)} unchanged")
+    # A field no model declares is news, not a failure: the archive kept it either way, and the
+    # exit code stays 0. Silence means the models still describe what Claude Code writes.
+    report = extractor.unknown_fields.report()
+    if report:
+        print(f"Fields no model declares:\n{report}")
 
 
 def _extract_arguments(subcommand: argparse.ArgumentParser) -> None:

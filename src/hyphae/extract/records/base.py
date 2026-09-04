@@ -9,6 +9,7 @@ from typing import Annotated, ClassVar
 from pydantic import Field
 
 from hyphae.extract.records.evidence import (
+    CENSUS,
     DUP_UUID,
     LEGACY_ENTRYPOINT,
     REGISTRY_ZOO,
@@ -105,6 +106,21 @@ AGENT_ID = (
     "`<session>/subagents/agent-<agentId>.jsonl`, so the id is its file name without the prefix"
 )
 AGENT_ID_EVIDENCE = Cited(SPINE, "2.1.221", note="every record of each subagent thread")
+
+
+class ForkedFrom(Described):
+    """The transcript a fork branched from, and the record it branched at."""
+
+    sessionId: Annotated[
+        str | None,
+        Field(default=None, description="The session the fork was cut from"),
+        Cited(scan=CENSUS),
+    ]
+    messageUuid: Annotated[
+        str | None,
+        Field(default=None, description="The record in that session the fork was cut at"),
+        Cited(scan=CENSUS),
+    ]
 
 
 class SessionContext(Identified):
@@ -205,6 +221,18 @@ class SessionContext(Identified):
             ),
         ),
         Cited(RESUME_PAIR, "2.1.205", note="52 of 54 disagree with `sessionId`"),
+    ]
+    forkedFrom: Annotated[
+        ForkedFrom | None,
+        Field(
+            default=None,
+            description=(
+                "Where the session was forked from, on every record the fork carried over. One "
+                "corpus session has it, on 299 records here and 151 more that are archived "
+                "unread. Nothing reads it: a fork's copied rows are found by their content"
+            ),
+        ),
+        Cited(scan=CENSUS, note="only `2.1.220` writes it"),
     ]
 
 
