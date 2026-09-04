@@ -23,6 +23,7 @@ from pydantic import ValidationError
 
 from hyphae.extract.errors import TranscriptSchemaError, invalid_record
 from hyphae.extract.records.base import Identified, Record, SessionContext, Timestamped
+from hyphae.extract.records.blocks import ToolResultBlock
 from hyphae.extract.records.bookkeeping import (
     AgentNameRecord,
     AiTitleRecord,
@@ -30,7 +31,8 @@ from hyphae.extract.records.bookkeeping import (
     ForkContextRefRecord,
     PrLinkRecord,
 )
-from hyphae.extract.records.registry import ContentBlock
+from hyphae.extract.records.conversation import UserRecord
+from hyphae.extract.records.messages import ToolUseResult
 from hyphae.extract.records.shapes import model_for
 from hyphae.extract.records.system import TurnDurationRecord
 from hyphae.extract.records.unknown import UnknownFields
@@ -239,7 +241,7 @@ def fork_context(lines: list[Line]) -> str | None:
     return None
 
 
-def workflow_launches(lines: list[Line]) -> dict[str, str]:
+def workflow_launches(lines: list[Line], session_id: str) -> dict[str, str]:
     """Which tool call launched each fan-out: `runId` from the result, to its call's id.
 
     A `Workflow` call answers with the run it started, and the run id is the name of the
@@ -248,12 +250,19 @@ def workflow_launches(lines: list[Line]) -> dict[str, str]:
     """
     launches = {}
     for line in lines:
-        details = line.fields.get("toolUseResult")
-        if not isinstance(details, dict) or "runId" not in details:
+        record = line.record
+        # Only a tool result carries the report, and only a `user` record carries one.
+        if not isinstance(record, UserRecord) or not isinstance(
+            record.toolUseResult, ToolUseResult
+        ):
             continue
-        for block in line.fields["message"]["content"]:
-            if block["type"] == ContentBlock.TOOL_RESULT:
-                launches[details["runId"]] = block["tool_use_id"]
+        run_id = record.toolUseResult.runId
+        if run_id is None:
+            continue
+        message = required(record.message, line, session_id, "message")
+        for block in message.content if isinstance(message.content, list) else []:
+            if isinstance(block, ToolResultBlock):
+                launches[run_id] = required(block.tool_use_id, line, session_id, "tool_use_id")
     return launches
 
 

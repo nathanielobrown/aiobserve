@@ -14,19 +14,29 @@ from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import PurePath
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
 from hyphae.extract.errors import TranscriptSchemaError
 from hyphae.extract.pricing import SYNTHETIC_MODEL, TokenUsage, compute_cost
-from hyphae.extract.records.blocks import Block, FallbackBlock, TextBlock, ThinkingBlock
+from hyphae.extract.records.blocks import (
+    AdvisorToolResultBlock,
+    Block,
+    FallbackBlock,
+    ResultPart,
+    ServerToolUseBlock,
+    TextBlock,
+    TextResult,
+    ThinkingBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+)
 from hyphae.extract.records.conversation import AssistantRecord, UserRecord
-from hyphae.extract.records.messages import AssistantMessage
+from hyphae.extract.records.messages import AssistantMessage, ToolUseResult
 from hyphae.extract.records.registry import (
     AdvisorResult,
     ContentBlock,
     MachineTag,
     RecordType,
-    ResultBlock,
     SystemSubtype,
     TurnTag,
 )
@@ -329,45 +339,47 @@ def _tool_calls(
     """
     results = _tool_results(lines, session_id) | _advisor_results(lines, session_id)
     issued = [
-        (line, block)
-        for line in lines
-        if line.fields["type"] == RecordType.ASSISTANT
-        for block in line.fields["message"]["content"]
-        if block["type"] in (ContentBlock.TOOL_USE, ContentBlock.SERVER_TOOL_USE)
+        (chunk, block)
+        for chunk in _replies(lines, session_id)
+        for block in chunk.blocks
+        if isinstance(block, ToolUseBlock | ServerToolUseBlock)
     ]
     # A batch is the *records* a message issued its calls from, not the calls: several
     # `tool_use` blocks in one record were issued together and share that record's real
     # timestamp, so counting blocks would call a measured start synthetic (both shapes are
     # recorded — `docs/schema.md`, `tool_use block`).
     batches: dict[str, dict[int, datetime]] = {}
-    for line, block in issued:
-        if block["type"] == ContentBlock.TOOL_USE:
-            message_id = line.fields["message"]["id"]
-            batches.setdefault(message_id, {})[line.line_no] = required_timestamp(line, session_id)
+    for chunk, block in issued:
+        if isinstance(block, ToolUseBlock):
+            moment = required_timestamp(chunk.line, session_id)
+            batches.setdefault(chunk.call_id, {})[chunk.line.line_no] = moment
     calls = []
-    for index, (line, block) in enumerate(issued):
-        server_side = block["type"] == ContentBlock.SERVER_TOOL_USE
-        batch = list(batches[line.fields["message"]["id"]].values()) if not server_side else []
-        result = results.get(block["id"])
+    for index, (chunk, block) in enumerate(issued):
+        server_side = isinstance(block, ServerToolUseBlock)
+        batch = [] if server_side else list(batches[chunk.call_id].values())
+        tool_use_id = required(block.id, chunk.line, session_id, "tool_use.id")
+        result = results.get(tool_use_id)
         calls.append(
             ToolCall(
-                id=block["id"],
+                id=tool_use_id,
                 session_id=session_id,
                 source=source,
-                api_call_id=line.fields["message"]["id"],
+                api_call_id=chunk.call_id,
                 index=index,
-                name=block["name"],
+                name=required(block.name, chunk.line, session_id, "tool_use.name"),
                 server_side=server_side,
-                input=json.dumps(block["input"]),
+                input=json.dumps(required(block.input, chunk.line, session_id, "tool_use.input")),
                 result=result.text if result else None,
                 offload_file=result.offload_file if result else None,
                 is_error=result.is_error if result else False,
                 incomplete=result is None,
-                started_at=required_timestamp(line, session_id) if server_side else min(batch),
+                started_at=(
+                    required_timestamp(chunk.line, session_id) if server_side else min(batch)
+                ),
                 ended_at=result.ended_at if result else None,
                 duration_synthetic=len(batch) > 1,
                 # The issuing record decides: a fork copies the call and its answer together.
-                replayed=line.line_no in replayed,
+                replayed=chunk.line.line_no in replayed,
             )
         )
     return calls
@@ -381,25 +393,26 @@ def _tool_results(lines: list[Line], session_id: str) -> dict[str, _Result]:
     """
     results: dict[str, _Result] = {}
     for line in lines:
-        record = line.fields
-        if record["type"] != RecordType.USER:
+        record = line.record
+        if not isinstance(record, UserRecord):
             continue
-        content = record["message"]["content"]
-        if not isinstance(content, list):
+        message = required(record.message, line, session_id, "message")
+        if not isinstance(message.content, list):
             continue
-        # Present on tool-result records only, and a string on a few older ones, which
-        # carry no offload pointer.
-        details = record.get("toolUseResult")
-        path = details.get("persistedOutputPath") if isinstance(details, dict) else None
-        for block in content:
-            if block["type"] != ContentBlock.TOOL_RESULT:
+        # Present on tool-result records only, and a string or a list on a few older ones,
+        # which carry no offload pointer.
+        details = record.toolUseResult
+        path = details.persistedOutputPath if isinstance(details, ToolUseResult) else None
+        for block in message.content:
+            if not isinstance(block, ToolResultBlock):
                 continue
-            results[block["tool_use_id"]] = _Result(
-                text=_result_text(block["content"], session_id, line.line_no),
+            answered = required(block.tool_use_id, line, session_id, "tool_result.tool_use_id")
+            results[answered] = _Result(
+                text=_result_text(required(block.content, line, session_id, "tool_result.content")),
                 # Absent on most results — absence means the tool succeeded.
-                is_error=bool(block.get("is_error")),
+                is_error=bool(block.is_error),
                 offload_file=PurePath(path).name if path else None,
-                ended_at=timestamp_of(line.record),
+                ended_at=timestamp_of(record),
             )
     return results
 
@@ -410,44 +423,38 @@ def _advisor_results(lines: list[Line], session_id: str) -> dict[str, _Result]:
     Unlike a local tool, the answer rides inside the same assistant message as the request,
     and it is never readable: a refusal names its error code, and a completed call comes
     back encrypted. So the row records that the advisor answered, and what it cost in time.
+
+    An unregistered result kind never reaches here: `AdvisorContent.type` is the registry
+    itself, so validating the record is what rejects one.
     """
     results: dict[str, _Result] = {}
-    for line in lines:
-        if line.fields["type"] != RecordType.ASSISTANT:
-            continue
-        for block in line.fields["message"]["content"]:
-            if block["type"] != ContentBlock.ADVISOR_TOOL_RESULT:
+    for chunk in _replies(lines, session_id):
+        for block in chunk.blocks:
+            if not isinstance(block, AdvisorToolResultBlock):
                 continue
-            content = block["content"]
-            kind = content["type"]
-            if kind not in AdvisorResult:
-                raise TranscriptSchemaError(
-                    f"Unknown advisor result {kind!r} in session {session_id}, line {line.line_no}"
-                )
-            error = kind == AdvisorResult.ERROR
-            results[block["tool_use_id"]] = _Result(
-                text=content["error_code"] if error else None,
+            line = chunk.line
+            content = required(block.content, line, session_id, "advisor_tool_result.content")
+            error = content.type == AdvisorResult.ERROR
+            answered = required(block.tool_use_id, line, session_id, "advisor_tool_result.id")
+            results[answered] = _Result(
+                text=content.error_code if error else None,
                 is_error=error,
                 offload_file=None,
-                ended_at=timestamp_of(line.record),
+                ended_at=timestamp_of(chunk.record),
             )
     return results
 
 
-def _result_text(content: Any, session_id: str, line_no: int) -> str:
-    """A result flattened to text, whether it was recorded as a string or as blocks."""
+def _result_text(content: str | Sequence[ResultPart]) -> str:
+    """A result flattened to text, whether it was recorded as a string or as blocks.
+
+    Only a `text` part carries words; an image and a tool reference carry none. A part of an
+    unregistered kind never reaches here either — the union `ToolResultBlock.content` declares
+    is what a block-form result validates against.
+    """
     if isinstance(content, str):
         return content
-    parts = []
-    for block in content:
-        kind = block["type"]
-        if kind not in ResultBlock:
-            raise TranscriptSchemaError(
-                f"Unknown tool result block {kind!r} in session {session_id}, line {line_no}"
-            )
-        if kind == ResultBlock.TEXT:
-            parts.append(block["text"])
-    return "".join(parts)
+    return "".join(part.text or "" for part in content if isinstance(part, TextResult))
 
 
 def _blocks[B: Block](
