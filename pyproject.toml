@@ -224,12 +224,14 @@ markers = [
 # line. Config keys are 3.x's: `paths_to_mutate` and `tests_dir` are the deprecated 2.x names.
 source_paths = ["src/hyphae"]
 # The suite is the oracle, so a mutant that survives is a gap in it. `-x` stops at the first
-# test that catches the mutant, which is all a kill needs. The three deselected leaves cannot
-# pass from the copy, and each would red the baseline before a single mutant ran: the first two
-# read the repository as a git checkout and as a mise project, which `mutants/` is neither, and
-# the third reads component source, which mutmut rewrites — every function becomes a family of
-# `x_name__mutmut_N` variants taking `*args, **kwargs`, exactly what the signature floor forbids.
-# Dropping that one costs the sweep its floor, so a mutant only it would catch survives here.
+# test that catches the mutant, which is all a kill needs. The four deselected leaves cannot
+# pass while `mutants/` is on disk, and each would red the baseline before a single mutant ran:
+# the first two read the repository as a git checkout and as a mise project, which `mutants/` is
+# neither; the third reads component source, which mutmut rewrites — every function becomes a
+# family of `x_name__mutmut_N` variants taking `*args, **kwargs`, exactly what the signature
+# floor forbids; and the fourth runs a gate over the whole repository from its root, which now
+# holds `mutants/` — an untrusted `mise.toml` and a tree of rewritten, unformatted source.
+# Dropping the third costs the sweep its floor, so a mutant only it would catch survives here.
 pytest_add_cli_args = [
   "-x",
   "-p",
@@ -240,6 +242,8 @@ pytest_add_cli_args = [
   "tests/tools/test_mise_tasks.py::test_the_chromatic_upload_refuses_to_run_on_an_empty_token",
   "--deselect",
   "tests/view/test_components.py::test_every_component_clears_the_signature_floor",
+  "--deselect",
+  "tests/tools/test_gate.py::test_a_gated_task_run_through_mise_prints_one_line",
 ]
 # mutmut copies `src`, `tests` and `pyproject.toml` and nothing else, so a test that reads a
 # repo file reads it out of `mutants/` and finds it missing. The stylesheet gate in
