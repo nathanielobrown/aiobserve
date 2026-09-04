@@ -168,8 +168,9 @@ class Usage(Described):
 
 # What every message says about its content list, which is one field on one base class.
 _CONTENT = (
-    "Either a string or a list of the blocks below. A `user` record whose list holds a "
-    "`tool_result` is plumbing, not a prompt"
+    "A list of the blocks below, or — on a `user` record only — a bare string: all 390,236 "
+    "assistant records in the store write a list (scanned 2026-09-04). A `user` record whose "
+    "list holds a `tool_result` is plumbing, not a prompt"
 )
 
 
@@ -208,11 +209,14 @@ class UserMessage(Message):
 
 
 class AssistantMessage(Message):
-    """One model reply, spread over as many records as it has content blocks."""
+    """One model reply, spread over as many records as it has content blocks.
+
+    Its `content` is a list and never the bare string a `user` message can hold, which is what
+    lets a reader walk the blocks without asking which form arrived.
+    """
 
     content: Annotated[
-        str
-        | list[
+        list[
             Annotated[
                 TextBlock
                 | ThinkingBlock
