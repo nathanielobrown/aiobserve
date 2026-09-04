@@ -15,7 +15,9 @@ from pydantic import BaseModel
 
 from hyphae.extract.records import blocks, evidence, field_tables, shapes
 from hyphae.extract.records.registry import ContentBlock
-from tests.conftest import FIXTURES
+from hyphae.extract.records.unknown import UnknownFields
+from hyphae.extract.transcript import read_lines
+from tests.conftest import FIXTURES, corpus_transcripts
 
 # The repository root, because a field's evidence cites a fixture the way a reader would type
 # it: `tests/fixtures/spine/`, a path from the root rather than from this test.
@@ -77,16 +79,99 @@ def test_every_registered_record_type_validates_against_a_recorded_one(
     record: dict[str, Any],
 ) -> None:
     # The headline: the models claim to describe Claude Code's shapes, and only a recording can
-    # support that claim. The zoo holds one record of every registered type, so every type is
-    # either modelled — and its model accepts the real thing, field types and all — or named as
-    # one no model describes.
+    # support that claim. The zoo holds one record of every registered type, so every type
+    # resolves to a model — `model_for` is total — and that model accepts the real thing, field
+    # types and all. A kind read by nothing resolves to `ArchivedRecord`, which claims only the
+    # envelope.
     model = shapes.model_for(record)
-    if model is None:
-        kind = record.get("subtype") if record["type"] == "system" else record["type"]
-        assert kind in shapes.UNMODELLED, f"{kind} has neither a model nor a stated reason"
-        return
     parsed = model.model_validate(record)
     assert parsed.type == record["type"]
+
+
+def test_an_archived_kind_keeps_its_envelope_and_carries_the_rest_whole() -> None:
+    # `ArchivedRecord` is the model for a kind no reader opens, and what it declares is exactly
+    # what `raw_record` writes: the type, the uuid and the timestamp. An `attachment` — 24k of
+    # them in the store — carries all three, and everything else it holds rides along as extras
+    # rather than as a claim. A `file-history-snapshot` carries neither uuid nor timestamp, which
+    # is why those two are optional and why the model claims nothing about which kinds have them.
+    zoo = {record["type"]: record for record in zoo_records()}
+
+    attachment = shapes.ArchivedRecord.model_validate(zoo["attachment"])
+    assert attachment.type == "attachment"
+    assert attachment.uuid == zoo["attachment"]["uuid"]
+    assert attachment.timestamp == zoo["attachment"]["timestamp"]
+    assert attachment.model_extra, "the attachment's own keys were dropped rather than kept"
+
+    snapshot = shapes.ArchivedRecord.model_validate(zoo["file-history-snapshot"])
+    assert snapshot.uuid is None
+    assert snapshot.timestamp is None
+    assert snapshot.model_extra
+
+
+def test_a_thin_system_subtype_is_archived_rather_than_read_as_a_system_record() -> None:
+    # `SystemRecord` used to be the fallback for any `system` record, which made it the model for
+    # subtypes nobody had looked at. Now it is the base of the four subtypes with models, and the
+    # six thin ones route to `ArchivedRecord` — the walk stops there, so their fields stay the
+    # archive's rather than becoming undeclared fields the corpus leaf below would report.
+    thin = [record for record in zoo_records() if record["type"] == "system"]
+    archived = [r for r in thin if r["subtype"] in shapes.ARCHIVED_UNREAD]
+    assert len(archived) == 6, "the zoo no longer holds one record of every thin system subtype"
+    for record in archived:
+        assert shapes.model_for(record) is shapes.ArchivedRecord
+    for record in thin:
+        if record["subtype"] not in shapes.ARCHIVED_UNREAD:
+            assert issubclass(shapes.model_for(record), shapes.SystemRecord)
+
+
+def test_exactly_two_models_stop_the_walk_and_each_says_why() -> None:
+    # `OPAQUE` silences the unknown-field walk under it, so it is the one thing that can make the
+    # corpus leaf below pass by describing less rather than by declaring more. Two models may do
+    # it: a tool's own report, whose key set is the tool's and not Claude Code's, and an archived
+    # kind nobody reads. The set is asserted whole, so a third arrival fails here first.
+    opaque = {model for model in described_models() if model.OPAQUE}
+
+    assert opaque == {shapes.ArchivedRecord, blocks.ToolUseResult}
+    for model in opaque:
+        assert model.OPAQUE.strip(), f"{model.__name__} is opaque without a stated reason"
+
+
+def described_models() -> Iterator[type[evidence.Described]]:
+    """Every model in the package, however deeply subclassed."""
+    stack = list(evidence.Described.__subclasses__())
+    while stack:
+        model = stack.pop()
+        stack.extend(model.__subclasses__())
+        yield model
+
+
+def test_an_opaque_model_declares_only_the_fields_a_reader_opens() -> None:
+    # The other half of opacity: because the walk stops, a field written here is never checked
+    # against a recording by the corpus leaf, so the two the readers open are the two that may be
+    # here. `toolUseResult` carries around 39 keys across the fixtures; the model claims two, and
+    # the citation leaves above prove both against the fixture each names.
+    assert set(blocks.ToolUseResult.model_fields) == {"persistedOutputPath", "runId"}
+
+
+@pytest.mark.parametrize(
+    ("model", "field"),
+    [
+        (shapes.UserRecord, "thinkingMetadata"),
+        (shapes.UserRecord, "origin"),
+        (shapes.CompactMetadata, "preservedSegment"),
+        (blocks.AssistantMessage, "stop_details"),
+        (blocks.AssistantMessage, "context_management"),
+        (blocks.Usage, "server_tool_use"),
+    ],
+    ids=lambda arg: arg if isinstance(arg, str) else arg.__name__,
+)
+def test_an_object_no_reader_opens_is_declared_as_a_dict_rather_than_modelled(
+    model: type[evidence.Described], field: str
+) -> None:
+    # The rule that keeps the schema honest about its own depth: an object gets a model when a
+    # reader opens it, and until then it is one declared `dict` leaf with a citation. The walk
+    # treats it as a value, so the keys inside it are neither claimed nor reported — which is the
+    # difference between "we looked and there is nothing" and "nobody has looked yet".
+    assert model.model_fields[field].annotation == (dict[str, Any] | None)
 
 
 def test_a_field_claude_code_adds_later_rides_along() -> None:
@@ -221,6 +306,24 @@ def content_of(record: dict[str, Any]) -> list[dict[str, Any]]:
     return [item for item in content if isinstance(item, dict)] if isinstance(content, list) else []
 
 
+@pytest.mark.xdist_group("corpus")
+def test_no_recorded_record_carries_a_field_the_models_do_not_declare() -> None:
+    # What "the models are the schema" costs, stated as a test: every transcript the corpus holds,
+    # read through the model its type resolves to, must carry no key the models leave undeclared.
+    # The failure message is the list of fields still to write, which is how the declarations were
+    # found in the first place. Where the walk stops — a tool's own report, an archived kind, an
+    # object nobody has opened — is the boundary of what the models claim at all.
+    unknown = UnknownFields(strict=False)
+    for transcript in corpus_transcripts():
+        # Through `read_lines`, so the corpus is exactly the lines the extractor keeps: a
+        # transcript read mid-write ends in half a record, which it drops.
+        for line in read_lines(transcript, transcript.stem):
+            model = shapes.model_for(line.record)
+            unknown.note(model.model_validate(line.record), transcript.stem, line.line_no)
+
+    assert unknown.report() == ""
+
+
 def test_the_content_blocks_a_message_can_hold_are_the_ones_it_lists() -> None:
     # The union each message model declares is what the generator reads to say which records
     # carry a block, so a block recorded under a message that does not list it would document
@@ -235,6 +338,6 @@ def test_the_content_blocks_a_message_can_hold_are_the_ones_it_lists() -> None:
             continue
         for item in content_of(record):
             kind = item["type"]
-            assert kind in listed[model] or kind in shapes.UNMODELLED, (
+            assert kind in listed[model] or kind in blocks.UNCITED_BLOCKS, (
                 f"a `{kind}` block in a {record['type']} record that lists none"
             )

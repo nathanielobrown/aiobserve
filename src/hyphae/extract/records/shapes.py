@@ -8,6 +8,7 @@ from typing import Annotated, Any, ClassVar
 
 from pydantic import Field
 
+from hyphae.extract.errors import TranscriptSchemaError
 from hyphae.extract.records.blocks import AssistantMessage, ToolUseResult, UserMessage
 from hyphae.extract.records.evidence import (
     COMPACTION,
@@ -19,13 +20,14 @@ from hyphae.extract.records.evidence import (
     MODEL_ONLY,
     OFFLOAD,
     REGISTRY_ZOO,
+    RESUME_PAIR,
+    SERVER_TOOLS,
     SPINE,
     Cited,
     Described,
 )
 from hyphae.extract.records.registry import (
     ArchiveRecordType,
-    ContentBlock,
     RecordType,
     SystemSubtype,
 )
@@ -109,6 +111,14 @@ class Identified(Timestamped):
     ]
 
 
+# What `agentId` says on both records that carry one, which sit on either side of `Record`.
+_AGENT_ID = (
+    "The agent run the record belongs to. A subagent's transcript is "
+    "`<session>/subagents/agent-<agentId>.jsonl`, so the id is its file name without the prefix"
+)
+_AGENT_ID_EVIDENCE = Cited(SPINE, "2.1.221", note="every record of each subagent thread")
+
+
 class SessionContext(Identified):
     """A record carrying where and how the session was running when it was written."""
 
@@ -157,6 +167,56 @@ class SessionContext(Identified):
             ),
         ),
         Cited(SPINE, "2.1.221", note="holds both main and subagent records"),
+    ]
+    agentId: Annotated[
+        str | None,
+        Field(default=None, description=_AGENT_ID),
+        _AGENT_ID_EVIDENCE,
+    ]
+    userType: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "Who the record is attributed to. Every fixture record says `external`, so no "
+                "other value is recorded"
+            ),
+        ),
+        Cited(SPINE, "2.1.221"),
+    ]
+    slug: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "A short name Claude Code gives the session. The fixtures redact it, so its "
+                "presence is what is recorded and not how it is derived"
+            ),
+        ),
+        Cited(SPINE, "2.1.221"),
+    ]
+    sessionKind: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "What kind of session Claude Code was recording. Redacted in the one fixture "
+                "that carries it, so no value is recorded"
+            ),
+        ),
+        Cited(RESUME_PAIR, "2.1.205"),
+    ]
+    session_id: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "A second session id in snake_case, which does not always agree with "
+                "`sessionId`: a resumed transcript copies the original id here while `sessionId` "
+                "follows the file, and 58 of 99 fixture records disagree. Nothing reads either"
+            ),
+        ),
+        Cited(RESUME_PAIR, "2.1.205", note="52 of 54 disagree with `sessionId`"),
     ]
 
 
@@ -219,6 +279,90 @@ class UserRecord(SessionContext, MetaFlagged):
         Cited(OFFLOAD, "2.1.220"),
         Cited(FORK_ORIGIN, "2.1.215", note="a string-valued one"),
     ]
+    promptId: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "An id Claude Code gives the record's prompt. It is not the record's own "
+                "`uuid` — the two differ on all 84 fixture records that carry both"
+            ),
+        ),
+        Cited(SPINE, "2.1.221"),
+    ]
+    promptSource: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "Where the prompt came from. Redacted in every fixture, so no value is recorded"
+            ),
+        ),
+        Cited(SPINE, "2.1.221"),
+    ]
+    origin: Annotated[
+        dict[str, Any] | None,
+        Field(
+            default=None,
+            description=(
+                "Where the record came from, as an object holding a `kind`. Nothing has opened "
+                "it, so its interior is undeclared"
+            ),
+        ),
+        Cited(SPINE, "2.1.221"),
+    ]
+    permissionMode: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "The permission mode in force when the record was written: `default`, `auto` "
+                "and `bypassPermissions` in the fixtures"
+            ),
+        ),
+        Cited(SPINE, "2.1.221"),
+    ]
+    isVisibleInTranscriptOnly: Annotated[
+        bool | None,
+        Field(
+            default=None,
+            description=(
+                "The record is shown when reading the transcript back and nowhere else. "
+                "Recorded only as true, so the false shape is unrecorded"
+            ),
+        ),
+        Cited(COMPACTION, "2.1.198"),
+    ]
+    sourceToolAssistantUUID: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "The assistant record this one answers, by uuid. Nothing reads it: a result is "
+                "joined to its call through `tool_use_id`"
+            ),
+        ),
+        Cited(SPINE, "2.1.221"),
+    ]
+    interruptedMessageId: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description="The reply an interruption stopped. One fixture record carries it",
+        ),
+        Cited(SPINE, "2.1.220"),
+    ]
+    thinkingMetadata: Annotated[
+        dict[str, Any] | None,
+        Field(
+            default=None,
+            description=(
+                "The thinking budget in force, as a `level`, a `disabled` flag and `triggers`. "
+                "Nothing has opened it, so its interior is undeclared"
+            ),
+        ),
+        Cited(LEGACY_ENTRYPOINT, "1.0.128"),
+    ]
 
 
 class AssistantRecord(SessionContext):
@@ -252,6 +396,39 @@ class AssistantRecord(SessionContext):
         ),
         Cited(SPINE, "2.1.221"),
     ]
+    attributionAgent: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "The agent the reply is attributed to, beside `attributionSkill`. Redacted in "
+                "the fixtures, so no value is recorded"
+            ),
+        ),
+        Cited(SPINE, "2.1.221"),
+    ]
+    advisorModel: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "The model behind a server-side advisor call. Only `server_tools/` records one, "
+                "which is also the only fixture holding a `server_tool_use` block"
+            ),
+        ),
+        Cited(SERVER_TOOLS, "2.1.201"),
+    ]
+    isApiErrorMessage: Annotated[
+        bool | None,
+        Field(
+            default=None,
+            description=(
+                "The reply is Claude Code's own report of an API error rather than the model's. "
+                "Recorded once, as false, so the true shape is unrecorded"
+            ),
+        ),
+        Cited(SPINE, "2.1.201"),
+    ]
 
 
 class SystemRecord(SessionContext, MetaFlagged):
@@ -269,6 +446,28 @@ class SystemRecord(SessionContext, MetaFlagged):
         ),
         Cited(REGISTRY_ZOO, note="one record of every registered subtype"),
     ]
+    level: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "How loud the event is: `info`, `warning`, `error` and `suggestion` in the fixtures"
+            ),
+        ),
+        Cited(COMPACTION, "2.1.198"),
+    ]
+    content: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "The event's own text. On a `local_command` it is the `<local-command-stdout>` "
+                "body, which Claude Code writes here rather than on a `user` record for 37 of "
+                "316 corpus outputs; the body can span lines and can be empty"
+            ),
+        ),
+        Cited(MODEL_ONLY, "2.1.215", note="an empty `/clear` body"),
+    ]
 
 
 class TurnDurationRecord(SystemRecord):
@@ -284,6 +483,25 @@ class TurnDurationRecord(SystemRecord):
                 "The turn's wall-clock duration in milliseconds. Sum these to measure active "
                 "session time; the transcript's timestamp span includes idle hours"
             ),
+        ),
+        Cited(SPINE, "2.1.221"),
+    ]
+    messageCount: Annotated[
+        int | None,
+        Field(
+            default=None,
+            description=(
+                "A message count Claude Code writes beside the duration. It reaches 466 in one "
+                "fixture turn, so it counts more than the turn's own records; nothing reads it"
+            ),
+        ),
+        Cited(SPINE, "2.1.221"),
+    ]
+    pendingBackgroundAgentCount: Annotated[
+        int | None,
+        Field(
+            default=None,
+            description="How many background agent runs were still going when the turn ended",
         ),
         Cited(SPINE, "2.1.221"),
     ]
@@ -318,6 +536,47 @@ class CompactMetadata(Described):
         Field(default=None, description="How long the compaction itself took"),
         Cited(COMPACTION, "2.1.198"),
     ]
+    cumulativeDroppedTokens: Annotated[
+        int | None,
+        Field(
+            default=None,
+            description=(
+                "Tokens every compaction in the thread has dropped so far, this one included, "
+                "so it does not reduce to `preTokens` minus `postTokens`"
+            ),
+        ),
+        Cited(COMPACTION, "2.1.198"),
+    ]
+    preCompactDiscoveredTools: Annotated[
+        list[str] | None,
+        Field(
+            default=None,
+            description="The tools the thread had discovered before compacting, by name",
+        ),
+        Cited(COMPACTION, "2.1.198"),
+    ]
+    preservedMessages: Annotated[
+        dict[str, Any] | None,
+        Field(
+            default=None,
+            description=(
+                "Which records survived, as an anchor uuid and the uuids kept. Nothing has "
+                "opened it, so its interior is undeclared"
+            ),
+        ),
+        Cited(COMPACTION, "2.1.198"),
+    ]
+    preservedSegment: Annotated[
+        dict[str, Any] | None,
+        Field(
+            default=None,
+            description=(
+                "The span of records the compaction kept, by head, anchor and tail uuid. "
+                "Nothing has opened it, so its interior is undeclared"
+            ),
+        ),
+        Cited(COMPACTION, "2.1.198"),
+    ]
 
 
 class CompactBoundaryRecord(SystemRecord):
@@ -337,25 +596,27 @@ class CompactBoundaryRecord(SystemRecord):
         ),
         Cited(COMPACTION, "2.1.198"),
     ]
-
-
-class LocalCommandRecord(SystemRecord):
-    """What a slash command printed, in the shape Claude Code uses less often."""
-
-    SUBTYPE = SystemSubtype.LOCAL_COMMAND
-
-    content: Annotated[
+    logicalParentUuid: Annotated[
         str | None,
         Field(
             default=None,
             description=(
-                "The `<local-command-stdout>` text, when Claude Code recorded the output as a "
-                "`system` record rather than a `user` one: 37 of 316 corpus outputs. The body can "
-                "span lines and can be empty"
+                "The record the boundary answers in the conversation, beside `parentUuid`, "
+                "which answers the file. Nothing reads it"
             ),
         ),
-        Cited(MODEL_ONLY, "2.1.215", note="an empty `/clear` body"),
+        Cited(COMPACTION, "2.1.198"),
     ]
+
+
+class LocalCommandRecord(SystemRecord):
+    """What a slash command printed, in the shape Claude Code uses less often.
+
+    It adds no field of its own: the output sits in `SystemRecord.content`, which every `system`
+    subtype that says anything writes to.
+    """
+
+    SUBTYPE = SystemSubtype.LOCAL_COMMAND
 
 
 class ModelConsentFallbackRecord(SystemRecord):
@@ -499,6 +760,25 @@ class ForkContextRefRecord(Record):
         Field(default=None, description="How much of the parent's context the fork carried over"),
         Cited(FORK_BYREF, "2.1.202"),
     ]
+    # Redeclared rather than lifted: this record sits outside `SessionContext`, and the two
+    # declarations share one meaning and one citation so the tables print them as one row.
+    agentId: Annotated[
+        str | None,
+        Field(default=None, description=_AGENT_ID),
+        _AGENT_ID_EVIDENCE,
+    ]
+
+
+class ArchivedRecord(Identified):
+    """A kind the store keeps verbatim and no reader opens.
+
+    It extends `Identified` for the four envelope fields `raw_record` and the run-time bounds
+    read — `uuid` and `timestamp` above all, which 24k `attachment` records carry — and claims
+    nothing else: the rest of its keys are the archive's, kept whole rather than described.
+    It is outside `RECORD_MODELS`, so it prints no row in `docs/schema.md`.
+    """
+
+    OPAQUE = "archived verbatim; its fields are the archive's, not a claim"
 
 
 # Every record model, in the order the tables name them.
@@ -518,43 +798,25 @@ RECORD_MODELS: tuple[type[Record], ...] = (
 )
 
 
-# Registered shapes no model describes, each with the reason. The drift tier holds this set to
-# the registries in `registry.py`, so a new record type lands here or gets a model.
-UNMODELLED: dict[str, str] = {
-    **{
-        kind.value: "archived verbatim and read by nothing, so there is no field to describe"
-        for kind in ArchiveRecordType
-    },
-    SystemSubtype.AWAY_SUMMARY.value: (
+# Registered kinds `ArchivedRecord` takes, each with the reason nothing opens it. Every archive
+# type is here by construction; a `system` subtype is here when it is too thin to model, which
+# also says `SystemRecord` is the base of the four modelled subtypes and no longer a fallback.
+ARCHIVED_UNREAD: dict[ArchiveRecordType | SystemSubtype, str] = {
+    **dict.fromkeys(
+        ArchiveRecordType, "archived verbatim and read by nothing, so there is no field to describe"
+    ),
+    SystemSubtype.AWAY_SUMMARY: "carries only the common system fields and a `content` string",
+    SystemSubtype.INFORMATIONAL: "carries only the common system fields and a `content` string",
+    SystemSubtype.SCHEDULED_TASK_FIRE: (
         "carries only the common system fields and a `content` string"
     ),
-    SystemSubtype.INFORMATIONAL.value: (
-        "carries only the common system fields and a `content` string"
-    ),
-    SystemSubtype.SCHEDULED_TASK_FIRE.value: (
-        "carries only the common system fields and a `content` string"
-    ),
-    SystemSubtype.API_ERROR.value: (
+    SystemSubtype.API_ERROR: (
         "its retry fields are read by nothing, and one recorded error is thin evidence for them"
     ),
-    SystemSubtype.AGENTS_KILLED.value: "carries only the common system fields",
-    SystemSubtype.STOP_HOOK_SUMMARY.value: (
+    SystemSubtype.AGENTS_KILLED: "carries only the common system fields",
+    SystemSubtype.STOP_HOOK_SUMMARY: (
         "its hook fields are read by nothing, and one recorded summary is thin evidence for them"
     ),
-    ContentBlock.IMAGE.value: "no fixture holds one, so there is nothing to cite",
-}
-
-# Documented fields the parser never reads. Every other documented name appears in the
-# parser's own source, which the drift tier checks.
-OBSERVED_UNREAD: dict[str, str] = {
-    "sessionId": "the extractor takes the session id from the file name",
-    "originalModel": "the model_consent_fallback record is archived, not parsed",
-    "fallbackModel": "the model_consent_fallback record is archived, not parsed",
-    "choice": "the model_consent_fallback record is archived, not parsed",
-    "persistedAsDefault": "the model_consent_fallback record is archived, not parsed",
-    "parentSessionId": "a by-reference fork's parent is not followed",
-    "contextLength": "nothing measures what a fork carried over",
-    "encrypted_content": "unreadable by construction",
 }
 
 # What `model_for` dispatches on: the record type, and the subtype for the `system` records
@@ -569,9 +831,24 @@ for _model in RECORD_MODELS:
         _SUBTYPE_MODELS[_subtype.value] = _model
 
 
-def model_for(record: dict[str, Any]) -> type[Record] | None:
-    """The most specific model describing one raw record, or `None` for a shape none describes."""
+def model_for(record: dict[str, Any]) -> type[Record]:
+    """The model describing one raw record. Total over both registries: a kind outside them
+    raises, because a record type we quietly skip is a wrong count months from now.
+
+    The caller adds the session and the line, which are what a reader needs to find the record.
+    """
     kind = record.get("type", "")
     if kind == RecordType.SYSTEM:
-        return _SUBTYPE_MODELS.get(record.get("subtype", ""), SystemRecord)
-    return _TYPE_MODELS.get(kind)
+        subtype = record.get("subtype", "")
+        modelled = _SUBTYPE_MODELS.get(subtype)
+        if modelled is not None:
+            return modelled
+        if subtype in ARCHIVED_UNREAD:
+            return ArchivedRecord
+        raise TranscriptSchemaError(f"Unknown system subtype {subtype!r}")
+    modelled = _TYPE_MODELS.get(kind)
+    if modelled is not None:
+        return modelled
+    if kind in ARCHIVED_UNREAD:
+        return ArchivedRecord
+    raise TranscriptSchemaError(f"Unknown record type {kind!r}")

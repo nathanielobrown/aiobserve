@@ -49,6 +49,7 @@ tools/                    The repo's own tooling: what the code already owns wri
 docs/
   analysis.md             Follow this process to turn the trace store into evidence-backed findings about how an AI coding agent behaved on a project
   schema.md               Every Claude Code telemetry field hyphae reads, what it means, and the recording that proves it
+  transcript-reading.md   Read a Claude Code transcript by these rules: which `user` records start a turn, where a slash command's output went, and which timestamps were measured rather than assigned
   store.md                The trace store is one DuckDB file, `data/traces.duckdb`: the archive `hp extract` writes to and every query reads
   enrichment.md           Enrichment describes every agent run, main turn, and session in the trace store
   viewer.md               `hp view` opens the trace store in a local browser

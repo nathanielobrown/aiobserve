@@ -5,6 +5,7 @@ every declaration and `tools/gen_schema.py` refuses to print a field that carrie
 """
 
 from dataclasses import dataclass
+from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict
 
@@ -21,6 +22,7 @@ MODEL_ONLY = "tests/fixtures/model_only/"
 OFFLOAD = "tests/fixtures/offload/"
 PARALLEL_TOOLS = "tests/fixtures/parallel_tools/"
 REGISTRY_ZOO = "tests/fixtures/registry_zoo/"
+RESUME_PAIR = "tests/fixtures/resume_pair/"
 SERVER_TOOLS = "tests/fixtures/server_tools/"
 SPINE = "tests/fixtures/spine/"
 WORKFLOW = "tests/fixtures/workflow/"
@@ -61,3 +63,8 @@ class Described(BaseModel):
     """Base of everything here: extra keys ride along, and aliases work by field name."""
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    # A non-empty reason marks the model opaque: it declares the fields a reader opens and claims
+    # nothing about the rest, so `UnknownFields`' walk stops here rather than reporting what
+    # Claude Code does not own. Setting it silences the walk, so exactly two models may.
+    OPAQUE: ClassVar[str] = ""
