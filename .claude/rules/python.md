@@ -18,8 +18,9 @@ paths:
 The parsing layer is where a schema we don't own meets code that assumes one, so it's the place where fail-fast matters most:
 
 - **Crash on an unrecognized shape.** A record whose `type` we don't handle is a schema change we need to see, not a row to skip. Silently dropping it turns schema drift into a quietly wrong count months later.
-- **Never default a field that carries meaning.** `record.get("costUSD", 0.0)` reports a free session; `record["costUSD"]` reports a schema change. Use `.get` only where absence is a documented, meaningful state — and say which in a comment.
-- Record what you relied on: when a parser depends on a field's shape, declare that field on its record model in `src/hyphae/extract/records/`, with the recording that shows it — `docs/schema.md` prints what the models carry
+- **Read a record through its model, never as a dict.** `read_lines` validates every line into a record model, so a reader takes attributes and narrows kinds with `isinstance` — `isinstance(line.record, UserRecord)`, not `record["type"] == "user"`. A leaf in `tests/extract/test_records.py` pins it: nothing under `src/hyphae/extract/` indexes a record by string.
+- **Never default a field that carries meaning.** Every model field is optional, so a reader that cannot build its row without one passes it through `transcript.required`, which crashes naming the session, line, record kind and field. `record.costUSD or 0.0` reports a free session; `required(record.costUSD, …)` reports a schema change. Default only where absence is a documented, meaningful state — and say which in a comment.
+- **Record what you relied on.** A field a reader opens is declared on its record model in `src/hyphae/extract/records/`, with the recording that shows it, so the parser cannot rely on a field `docs/schema.md` does not print. A field no model declares crashes the suite and is tallied after `hp extract`; the walk that finds it stops at a model marked `OPAQUE`, whose interior nobody claims.
 
 ## Documenting model members
 

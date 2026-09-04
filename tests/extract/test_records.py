@@ -4,6 +4,9 @@ The world here is the fixtures — recorded, redacted sessions — because a mod
 transcript format can only be checked against a transcript. Nothing in this tier invents a
 record: the models say what Claude Code writes, so an invented record would let the models
 describe a format nobody has ever seen.
+
+Two leaves read live source instead: `records/registry.py` names every shape the parser has
+seen, `records/` describes those shapes, and nothing makes the two agree at runtime.
 """
 
 import json
@@ -27,7 +30,13 @@ from hyphae.extract.records import (
     shapes,
     system,
 )
-from hyphae.extract.records.registry import ContentBlock, ResultBlock
+from hyphae.extract.records.registry import (
+    ArchiveRecordType,
+    ContentBlock,
+    RecordType,
+    ResultBlock,
+    SystemSubtype,
+)
 from hyphae.extract.records.unknown import UnknownFields
 from hyphae.extract.transcript import read_lines
 from tests.conftest import FIXTURES, corpus_transcripts
@@ -99,6 +108,54 @@ def test_every_registered_record_type_validates_against_a_recorded_one(
     model = shapes.model_for(record)
     parsed = model.model_validate(record)
     assert parsed.type == record["type"]
+
+
+# Every closed-world registry a record model could describe, and how a member is spelled when a
+# model claims it.
+REGISTERED = (
+    *RecordType,
+    *ArchiveRecordType,
+    *SystemSubtype,
+    *ContentBlock,
+)
+
+
+def modelled() -> set[str]:
+    """Every registered value some model describes: record types, subtypes, and block kinds."""
+    return {
+        *(model.RECORD_TYPE.value for model in shapes.RECORD_MODELS),
+        *(model.SUBTYPE.value for model in shapes.RECORD_MODELS if model.SUBTYPE is not None),
+        *(block.BLOCK.value for block in blocks.BLOCK_MODELS),
+    }
+
+
+def excused() -> dict[str, str]:
+    """Every registered value described by a stated reason rather than by a model."""
+    return {
+        **{kind.value: reason for kind, reason in shapes.ARCHIVED_UNREAD.items()},
+        **{kind.value: reason for kind, reason in blocks.UNCITED_BLOCKS.items()},
+    }
+
+
+@pytest.mark.parametrize("member", REGISTERED, ids=lambda m: f"{type(m).__name__}.{m.value}")
+def test_every_registered_shape_has_a_model_or_a_stated_reason(member: str) -> None:
+    # What keeps the registry and the models honest. A record type, subtype or block kind the
+    # parser learns tomorrow lands here as an undescribed shape, and the run stops until someone
+    # writes the model or writes down why there is nothing to describe.
+    assert member in modelled() or member in excused(), (
+        f"`{member}` is registered in records/registry.py but has no model, no ARCHIVED_UNREAD "
+        "reason and no UNCITED_BLOCKS reason"
+    )
+
+
+def test_no_reason_is_left_for_a_shape_that_no_longer_exists() -> None:
+    # The other direction, so the excuse lists shrink as models arrive rather than rotting: every
+    # key is a live registry member, and none of them has a model after all.
+    registered = {member.value for member in REGISTERED}
+    for kind, reason in excused().items():
+        assert kind in registered, f"`{kind}` is excused, but no registry holds it"
+        assert kind not in modelled(), f"`{kind}` has a model, so its reason is stale"
+        assert reason, f"`{kind}` is excused without a reason"
 
 
 def test_an_archived_kind_keeps_its_envelope_and_carries_the_rest_whole() -> None:

@@ -95,7 +95,7 @@ Every `raw_records` row of the canonical store through its model. Skipped in CI 
 
 ## structural — the pins and the retirement
 
-41. **`rg '\["[a-zA-Z_]+"\]' src/hyphae/extract/transcript.py` finds nothing after slice 7.** *Evidence:* a leaf in `test_records.py` reading `transcript.py`'s source and asserting no bracket-string read survives. Today the count is 93 there; the only other in the package is `agent_runs.py:67`, `meta["agentType"]` on the `.meta.json` sidecar, which the design keeps and which a scope of one file excludes without an exemption list. Bolded: it is the one thing that keeps a reader from quietly going back to the dict.
+41. **`rg '\["[a-zA-Z_]+"\]' src/hyphae/extract/` finds nothing after slice 7, bar the `.meta.json` sidecar read.** *Evidence:* a leaf in `test_records.py` reading every module under `src/hyphae/extract/` and asserting no bracket-string read survives, with `meta["…"]` — `agent_runs.py:67`, on the sidecar the design keeps — subtracted first. The scope is the package rather than `transcript.py`, because the readers moved into `parse.py` when the file hit its budget and a pin on one module follows them nowhere. Bolded: it is the one thing that keeps a reader from quietly going back to the dict.
 42. `tests/extract/test_records__drift.py` is deleted, and nothing imports it. *Evidence:* the file is absent at slice 8 and `mise run check` is green — the four leaves it loses (the read-direction grep and its three vacuity gates) are what the Q1 answer retires, and obligations 1, 2 and 41 carry what survives.
 43. `OBSERVED_UNREAD` and `UNMODELLED` are gone from `shapes.py`, replaced by `ARCHIVED_UNREAD`. *Evidence:* `rg 'OBSERVED_UNREAD|UNMODELLED' src tests` finds nothing; obligation 2 covers the replacement.
 44. `UNIT_TESTING=1` reaches a bare `uv run pytest` on one file, not only `mise run test`. *Evidence:* a leaf asserting `hyphae.settings.UNIT_TESTING is True`, run as `uv run pytest tests/extract/test_transcript__unknown.py::<that leaf>`; it fails if the variable is set anywhere but `[tool.pytest.ini_options] env`. This makes the design's rejection of `conftest.py` and `mise.toml` real.
@@ -117,4 +117,15 @@ Every `raw_records` row of the canonical store through its model. Skipped in CI 
 
 ## Count
 
-48 obligations. None unreachable through the design's seam.
+49 obligations, the last added while implementing. None unreachable through the design's seam.
+
+## As built
+
+Written after the eight slices landed. Each note is a place the code and this plan diverged; every other obligation was discharged as written.
+
+- **The parser is two modules.** `transcript.py` hit its 700-line budget during slice 4 and split into `transcript.py` (the file as lines, and what the file says about the session) and `parse.py` (`parse` and its four readers). `required` and `required_timestamp` are shared, so they lost their underscore. Obligation 41 is rewritten above to pin the package instead of the one module
+- **Obligation 27's freeze ends at slice 7, as written.** `git diff --stat main -- tests/extract/test_claude_code*.py` was empty through slice 7; slice 8 adds obligation 49's leaf to `test_claude_code.py` and nothing else
+- **49. A `pr-link` record missing `prNumber`, `prUrl` or `prRepository` crashes naming that field.** *Evidence:* three invented fixtures, one per field, since the reader stops at the first field it cannot read; the assertion names the field, the kind and the line, and asserts the tripwire absent. INVENTED — all 3,096 `pr-link` records on the recording machine carry all four fields (scanned 2026-09-04). Slice 3 added the `required()` calls behind `PrLink` and obligation 27 froze the file they belong in, so the leaf lands in slice 8
+- **`UNCITED_BLOCKS` sits beside `ARCHIVED_UNREAD`.** The design named one excuse list; `ContentBlock.IMAGE` is a registered block kind with no model, so obligations 2 and 43 read both
+- **`AssistantMessage.content` is declared as a list, not `str | list`.** All 390,236 assistant records in the store write a list (scanned 2026-09-04). Slice 5 narrows the model rather than adding an unreachable crash path to `_api_calls`, which moves that failure onto obligations 16 and 17
+- **`session_of` skips a record carrying `"cwd": null`.** The dict version tested for the key and would have chosen it, yielding a null project. Inferred harmless: the census found no such record
