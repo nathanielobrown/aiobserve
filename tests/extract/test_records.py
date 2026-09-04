@@ -13,7 +13,16 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from hyphae.extract.records import blocks, evidence, field_tables, shapes
+from hyphae.extract.records import (
+    base,
+    blocks,
+    bookkeeping,
+    conversation,
+    evidence,
+    field_tables,
+    shapes,
+    system,
+)
 from hyphae.extract.records.registry import ContentBlock
 from hyphae.extract.records.unknown import UnknownFields
 from hyphae.extract.transcript import read_lines
@@ -48,7 +57,7 @@ def zoo_records() -> list[dict[str, Any]]:
     return list(fixture_records(ZOO))
 
 
-def carries(record: dict[str, Any], model: type[shapes.Record]) -> bool:
+def carries(record: dict[str, Any], model: type[base.Record]) -> bool:
     """Whether one record is of the kind `model` describes, subtype included."""
     if record["type"] != model.RECORD_TYPE:
         return False
@@ -120,7 +129,7 @@ def test_a_thin_system_subtype_is_archived_rather_than_read_as_a_system_record()
         assert shapes.model_for(record) is shapes.ArchivedRecord
     for record in thin:
         if record["subtype"] not in shapes.ARCHIVED_UNREAD:
-            assert issubclass(shapes.model_for(record), shapes.SystemRecord)
+            assert issubclass(shapes.model_for(record), system.SystemRecord)
 
 
 def test_exactly_two_models_stop_the_walk_and_each_says_why() -> None:
@@ -155,9 +164,9 @@ def test_an_opaque_model_declares_only_the_fields_a_reader_opens() -> None:
 @pytest.mark.parametrize(
     ("model", "field"),
     [
-        (shapes.UserRecord, "thinkingMetadata"),
-        (shapes.UserRecord, "origin"),
-        (shapes.CompactMetadata, "preservedSegment"),
+        (conversation.UserRecord, "thinkingMetadata"),
+        (conversation.UserRecord, "origin"),
+        (system.CompactMetadata, "preservedSegment"),
         (blocks.AssistantMessage, "stop_details"),
         (blocks.AssistantMessage, "context_management"),
         (blocks.Usage, "server_tool_use"),
@@ -179,7 +188,7 @@ def test_a_field_claude_code_adds_later_rides_along() -> None:
     # record *types* are closed-world. An unknown key validates and is kept, rather than raising.
     recorded = next(r for r in fixture_records(SPINE) if r["type"] == "assistant")
 
-    parsed = shapes.AssistantRecord.model_validate(recorded | {"whateverIsNext": 7})
+    parsed = conversation.AssistantRecord.model_validate(recorded | {"whateverIsNext": 7})
 
     assert parsed.model_extra is not None
     assert parsed.model_extra["whateverIsNext"] == 7
@@ -188,8 +197,8 @@ def test_a_field_claude_code_adds_later_rides_along() -> None:
 def test_a_shared_field_is_declared_on_one_mixin() -> None:
     # Shared fields live once, on the mixin that says which records carry them: `uuid` belongs to
     # every conversation record, so no record model may redeclare it...
-    assert "uuid" in shapes.Identified.__annotations__
-    for model in (shapes.UserRecord, shapes.AssistantRecord, shapes.SystemRecord):
+    assert "uuid" in base.Identified.__annotations__
+    for model in (conversation.UserRecord, conversation.AssistantRecord, system.SystemRecord):
         assert "uuid" not in model.__annotations__
         assert "uuid" in model.model_fields
     # ...and the row the generator derives from that inheritance names every record that has one.
@@ -200,9 +209,9 @@ def test_a_shared_field_is_declared_on_one_mixin() -> None:
 def test_a_record_type_with_no_uuid_does_not_inherit_one() -> None:
     # The other side of the same claim, and the reason `timestamp` and `uuid` are separate
     # mixins: a pr-link record is timestamped and has no uuid at all.
-    assert "timestamp" in shapes.PrLinkRecord.model_fields
-    assert "uuid" not in shapes.PrLinkRecord.model_fields
-    assert "timestamp" not in shapes.ForkContextRefRecord.model_fields
+    assert "timestamp" in bookkeeping.PrLinkRecord.model_fields
+    assert "uuid" not in bookkeeping.PrLinkRecord.model_fields
+    assert "timestamp" not in bookkeeping.ForkContextRefRecord.model_fields
 
 
 def test_every_documented_field_carries_its_meaning_and_its_evidence() -> None:
@@ -329,8 +338,8 @@ def test_the_content_blocks_a_message_can_hold_are_the_ones_it_lists() -> None:
     # carry a block, so a block recorded under a message that does not list it would document
     # the wrong records. Checked against every block in every fixture.
     listed: dict[type[BaseModel], set[ContentBlock]] = {
-        shapes.UserRecord: {b.BLOCK for b in blocks.UserMessage.BLOCKS},
-        shapes.AssistantRecord: {b.BLOCK for b in blocks.AssistantMessage.BLOCKS},
+        conversation.UserRecord: {b.BLOCK for b in blocks.UserMessage.BLOCKS},
+        conversation.AssistantRecord: {b.BLOCK for b in blocks.AssistantMessage.BLOCKS},
     }
     for record in every_record():
         model = shapes.model_for(record)

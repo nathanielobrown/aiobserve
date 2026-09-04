@@ -15,7 +15,7 @@ from typing import Annotated, Any, ClassVar
 import pytest
 from pydantic import Field
 
-from hyphae.extract.records import field_tables, shapes
+from hyphae.extract.records import base, field_tables
 from hyphae.extract.records.registry import RecordType
 from tests.tools.conftest import cells
 from tools import gen_schema
@@ -76,7 +76,7 @@ def test_every_row_still_names_the_records_the_document_named(row: dict[str, Any
         assert f"`{record}`" in said, f"`{record}` carried {row['fields']} and no longer does"
 
 
-class Undescribed(shapes.Record):
+class Undescribed(base.Record):
     """A record with a field nobody described. Registered nowhere: this test is its only caller."""
 
     RECORD_TYPE: ClassVar[RecordType] = RecordType.USER
@@ -84,7 +84,7 @@ class Undescribed(shapes.Record):
     mystery: str | None = None
 
 
-class Uncited(shapes.Record):
+class Uncited(base.Record):
     """A record whose field says what it means and names no recording that shows it."""
 
     RECORD_TYPE: ClassVar[RecordType] = RecordType.USER
@@ -92,7 +92,7 @@ class Uncited(shapes.Record):
     hearsay: Annotated[str | None, Field(description="Something someone remembers")] = None
 
 
-def documented(model: type[shapes.Record], path: str) -> field_tables.Documentation:
+def documented(model: type[base.Record], path: str) -> field_tables.Documentation:
     return next(doc for doc in field_tables.documentation((model,)) if doc.path == path)
 
 

@@ -15,12 +15,6 @@ reflow = "never-wrap"
 # the models' and not a writer's to cut. It carries a raised ceiling rather than an exemption —
 # reaching this one means splitting the reading rules out of it, not raising it again.
 "docs/schema.md" = { tokens = 9000 }
-# The same argument one step upstream: `shapes.py` is a schema document written in Python. Almost
-# every line is a field's description and the recording behind it, which the models own and no
-# writer may cut, and the file grows with what Claude Code writes rather than with what we build.
-# Reaching this one means splitting the record families — conversation, system, bookkeeping — into
-# modules of their own, not raising it again.
-"src/hyphae/extract/records/shapes.py" = { lines = 900 }
 
 [per-file-ignores]
 # Historical documents: a plan describes the repo as it was, so a path it cites is allowed to

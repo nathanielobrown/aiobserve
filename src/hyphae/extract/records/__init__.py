@@ -15,6 +15,7 @@ Two rules hold the description honest:
 
 The modules, in dependency order: `registry` (every type, subtype, block and tag the parser
 knows), `evidence` (what proves a claim), `blocks` (content blocks and the messages holding
-them), `shapes` (the record models), and `field_tables` (the walk that turns all of it into
-table rows).
+them), `base` (the ladder of mixins), one module per record family — `conversation`, `system`,
+`bookkeeping` — then `shapes` (the roster and the dispatch onto it) and `field_tables` (the
+walk that turns all of it into table rows).
 """
