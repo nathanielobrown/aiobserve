@@ -26,7 +26,9 @@ import duckdb
 import pytest
 from pydantic import ValidationError
 
-from hyphae.extract.records.blocks import BLOCK_MODELS, RESULT_MODELS
+from hyphae.extract.records.blocks import BLOCK_MODELS, RESULT_MODELS, Kinded
+from hyphae.extract.records.evidence import Described
+from hyphae.extract.records.registry import ArchiveRecordType
 from hyphae.extract.records.shapes import Record, model_for
 from hyphae.extract.records.unknown import UnknownFields
 
@@ -56,6 +58,36 @@ class Census:
     # The undeclared fields, tallied rather than raised: the declaration list this sweep exists
     # to produce.
     unknown: UnknownFields = field(default_factory=lambda: UnknownFields(strict=False))
+    # The other side of that walk: one entry per key sitting where it stops. Keys only —
+    # a key is a field name, and this file prints no value.
+    unclaimed: Counter[str] = field(default_factory=Counter)
+
+
+def unclaimed_keys(model: Described, path: str, found: Counter[str]) -> None:
+    """Every key one level under a place the declaration walk stops, by the path it sits at.
+
+    `UnknownFields` claims nothing about an opaque model's own keys or the interior of a
+    dict-typed leaf, so nothing else in the suite would ever name them. A reader who wants a
+    field there declares it on the model, which is how `persistedOutputPath` and `runId` came
+    off this side and onto `ToolUseResult`; this is the menu that choice is made from. One
+    level, because the level below is a further claim nobody has made either.
+    """
+    if model.OPAQUE:
+        for name in model.model_extra or {}:
+            found[f"{path}.{name}"] += 1
+        return
+    for name, info in type(model).model_fields.items():
+        value = getattr(model, name)
+        step = f"{path}.{info.alias or name}"
+        if isinstance(value, Described):
+            unclaimed_keys(value, step, found)
+        elif isinstance(value, dict):
+            for key in value:
+                found[f"{step}.{key}"] += 1
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, Kinded):
+                    unclaimed_keys(item, f"{step}.{item.BLOCK.value}", found)
 
 
 def live_store_copy(tmp_path: Path) -> Path:
@@ -87,6 +119,7 @@ def swept(census: Census, session_id: str, line_no: int, raw: str) -> None:
             census.failures[(kind, ".".join(str(part) for part in fault["loc"]))] += 1
         return
     census.unknown.note(parsed, session_id, line_no)
+    unclaimed_keys(parsed, kind, census.unclaimed)
     if (result := record.get("toolUseResult")) is not None:
         census.result_forms[type(result).__name__] += 1
     content = getattr(getattr(parsed, "message", None), "content", None)
@@ -123,6 +156,7 @@ def census(tmp_path_factory: pytest.TempPathFactory) -> Census:
     print("\n".join(f"  {kind} -> {name}: {n:,}" for (kind, name), n in found.models.most_common()))  # noqa: T201 — the section a person runs this for
     print("\n".join(f"  {kind}.{part}: {n:,}" for (kind, part), n in found.blocks.most_common()))  # noqa: T201 — the section a person runs this for
     print(f"  toolUseResult forms: {dict(found.result_forms)}")  # noqa: T201 — the section a person runs this for
+    print("\n".join(f"  unclaimed {path}: {n:,}" for path, n in found.unclaimed.most_common()))  # noqa: T201 — the section a person runs this for
     return found
 
 
@@ -176,3 +210,22 @@ def test_every_recorded_block_kind_is_one_the_message_that_held_it_declares(
     assert census.blocks, "no record in the store carried a content list"
     declared = {model.BLOCK.value for model in (*BLOCK_MODELS, *RESULT_MODELS)}
     assert {kind for _, kind in census.blocks} <= declared
+
+
+@pytest.mark.slow  # The same sweep; see above.
+def test_the_keys_no_model_claims_are_counted_rather_than_unseen(census: Census) -> None:
+    """The opaque side, which the design promises the census prints when asked.
+
+    An archived kind, a tool's own report and a dict-typed leaf are the three places the
+    declaration walk stops. Stopping is the design; being unable to say what is there is not,
+    because the next reader who wants one of those fields chooses it from this section.
+    """
+    assert census.unclaimed, "the sweep stopped at no opaque model and no dict leaf"
+    # An archived kind: keys of a record type nothing reads past its envelope...
+    assert {path.split(".")[0] for path in census.unclaimed} & {
+        kind.value for kind in ArchiveRecordType
+    }
+    # ...a tool's own report, which is an open set nobody here claims...
+    assert any(".toolUseResult." in path for path in census.unclaimed)
+    # ...and a dict-typed leaf, of which a tool call's `input` is the one every session holds.
+    assert any(".tool_use.input." in path for path in census.unclaimed)
