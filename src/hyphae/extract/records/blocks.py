@@ -1,30 +1,64 @@
-"""The blocks a `message.content` list holds, and the messages that hold them.
+"""Every block a `content` list can hold, one model per registered kind.
 
 A block model's docstring is the meaning its own table row prints, and `BLOCK` names the
-registered kind it describes, which is what ties this file to the registry beside it.
+registered kind it describes, which is what ties this file to the registry beside it. The
+messages whose lists dispatch to these models are in `messages.py`.
 """
 
-from typing import Annotated, Any, ClassVar
+from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import Field
 
 from hyphae.extract.records.evidence import (
-    OFFLOAD,
+    CENSUS,
     PARALLEL_TOOLS,
     SERVER_TOOLS,
     SPINE,
-    WORKFLOW,
     Cited,
     Described,
 )
-from hyphae.extract.records.registry import ContentBlock
+from hyphae.extract.records.registry import ContentBlock, ResultBlock
+
+# What every discriminator says. It is the field pydantic dispatches a content list on, and the
+# tables name a member's fields from the kind it carries — `tool_use.id` — so the kind is the
+# row's own name and gets no row of its own.
+_KIND = "The block kind, which is what dispatches the block to the model below"
+
+# What a picture is recorded as, on both members that hold one.
+_SOURCE = (
+    "The picture itself, as a `type`, a `media_type` and base64 `data`. Nothing has opened it, "
+    "so its interior is undeclared — and its `data` is the largest value a transcript holds"
+)
+# Neither form of picture is in a fixture: a redacted excerpt would carry the image bytes whole.
+_IMAGE_EVIDENCE = (
+    Cited(
+        scan=CENSUS,
+        note="3 blocks in a `user` content list, 633 inside a `tool_result`",
+    ),
+)
 
 
-class Block(Described):
+class Kinded(Described):
+    """One member of a `content` list, reached by its own `type` rather than by position.
+
+    Pydantic dispatches the list on that field, so every member declares it as a `Literal` of the
+    registered kind and the union does the rest.
+    """
+
+    BLOCK: ClassVar[ContentBlock | ResultBlock]
+    EVIDENCE: ClassVar[tuple[Cited, ...]]
+
+
+class Block(Kinded):
     """One block of a `message.content` list. The docstring is the row the tables print."""
 
     BLOCK: ClassVar[ContentBlock]
-    EVIDENCE: ClassVar[tuple[Cited, ...]]
+
+
+class ResultPart(Kinded):
+    """One block of a block-form `tool_result`'s own content list."""
+
+    BLOCK: ClassVar[ResultBlock]
 
 
 class TextBlock(Block):
@@ -33,12 +67,37 @@ class TextBlock(Block):
     BLOCK = ContentBlock.TEXT
     EVIDENCE = (Cited(SPINE, "2.1.221"),)
 
+    type: Annotated[Literal[ContentBlock.TEXT], Field(description=_KIND)]
+    text: Annotated[
+        str | None,
+        Field(default=None, description="The prose itself, which can be empty"),
+        Cited(SPINE, "2.1.221"),
+    ]
+
 
 class ThinkingBlock(Block):
     """The model's reasoning, under `thinking`, beside the `signature` that lets it be replayed."""
 
     BLOCK = ContentBlock.THINKING
     EVIDENCE = (Cited(SPINE, "2.1.221"),)
+
+    type: Annotated[Literal[ContentBlock.THINKING], Field(description=_KIND)]
+    thinking: Annotated[
+        str | None,
+        Field(default=None, description="The reasoning text, which no store column carries"),
+        Cited(SPINE, "2.1.221"),
+    ]
+    signature: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "The opaque token that lets the reasoning be replayed to the model. Every "
+                "fixture `thinking` block carries one"
+            ),
+        ),
+        Cited(SPINE, "2.1.221"),
+    ]
 
 
 class ToolUseBlock(Block):
@@ -51,6 +110,7 @@ class ToolUseBlock(Block):
         Cited(PARALLEL_TOOLS, "2.1.211", note="two calls in one record"),
     )
 
+    type: Annotated[Literal[ContentBlock.TOOL_USE], Field(description=_KIND)]
     id: Annotated[
         str | None,
         Field(
@@ -82,6 +142,18 @@ class ToolUseBlock(Block):
         Cited(SPINE, "2.1.221"),
         Cited(scan="57 sessions, CC 2.1.195–2.1.221, scanned 2026-08-08", note="the `Skill` shape"),
     ]
+    caller: Annotated[
+        dict[str, Any] | None,
+        Field(
+            default=None,
+            description=(
+                "Who asked for the call, as an object holding a `kind`. Every one of the 214,583 "
+                "corpus blocks says `direct` (scanned 2026-09-04), and nothing has opened it, so "
+                "its interior is undeclared"
+            ),
+        ),
+        Cited(SPINE, "2.1.221"),
+    ]
 
 
 class ServerToolUseBlock(Block):
@@ -91,6 +163,37 @@ class ServerToolUseBlock(Block):
 
     BLOCK = ContentBlock.SERVER_TOOL_USE
     EVIDENCE = (Cited(SERVER_TOOLS, "2.1.201"),)
+
+    type: Annotated[Literal[ContentBlock.SERVER_TOOL_USE], Field(description=_KIND)]
+    id: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "The call id, which the `advisor_tool_result` block answering it repeats in "
+                "`tool_use_id`"
+            ),
+        ),
+        Cited(SERVER_TOOLS, "2.1.201"),
+    ]
+    name: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description="The server-side tool asked for; every corpus block says `advisor`",
+        ),
+        Cited(SERVER_TOOLS, "2.1.201"),
+    ]
+    input: Annotated[
+        dict[str, Any] | None,
+        Field(
+            default=None,
+            description=(
+                "The arguments, empty on every corpus block, so no argument shape is recorded"
+            ),
+        ),
+        Cited(SERVER_TOOLS, "2.1.201"),
+    ]
 
 
 class AdvisorContent(Described):
@@ -133,6 +236,12 @@ class AdvisorToolResultBlock(Block):
     BLOCK = ContentBlock.ADVISOR_TOOL_RESULT
     EVIDENCE = (Cited(SERVER_TOOLS, "2.1.201", note="both result shapes and the unanswered call"),)
 
+    type: Annotated[Literal[ContentBlock.ADVISOR_TOOL_RESULT], Field(description=_KIND)]
+    tool_use_id: Annotated[
+        str | None,
+        Field(default=None, description="The `server_tool_use` block this answers"),
+        Cited(SERVER_TOOLS, "2.1.201"),
+    ]
     content: Annotated[
         AdvisorContent | None,
         Field(default=None, description="The result object, whose `type` says which shape it is"),
@@ -159,11 +268,73 @@ class FallbackBlock(Block):
     BLOCK = ContentBlock.FALLBACK
     EVIDENCE = (Cited(SERVER_TOOLS, "2.1.206"),)
 
+    type: Annotated[Literal[ContentBlock.FALLBACK], Field(description=_KIND)]
     from_: Annotated[
         FallbackEnd | None,
         Field(default=None, alias="from", description="The model the request first went to"),
         Cited(SERVER_TOOLS, "2.1.206"),
     ]
+    to: Annotated[
+        FallbackEnd | None,
+        Field(
+            default=None,
+            description=(
+                "The model it retried on. All three corpus blocks agree with `message.model` "
+                "here, so nothing reads it (scanned 2026-08-07)"
+            ),
+        ),
+        Cited(SERVER_TOOLS, "2.1.206"),
+    ]
+
+
+class TextResult(ResultPart):
+    """Prose a tool returned, inside a block-form `tool_result`. The only part that carries into
+    `ToolCall.result`."""
+
+    BLOCK = ResultBlock.TEXT
+    EVIDENCE = (Cited(SPINE, "2.1.221"),)
+
+    type: Annotated[Literal[ResultBlock.TEXT], Field(description=_KIND)]
+    text: Annotated[
+        str | None,
+        Field(default=None, description="What the tool printed"),
+        Cited(SPINE, "2.1.221"),
+    ]
+
+
+class ImageResult(ResultPart):
+    """A picture a tool returned, inside a block-form `tool_result`. It carries no text, so
+    nothing of it reaches `ToolCall.result`."""
+
+    BLOCK = ResultBlock.IMAGE
+    EVIDENCE = _IMAGE_EVIDENCE
+
+    type: Annotated[Literal[ResultBlock.IMAGE], Field(description=_KIND)]
+    source: Annotated[
+        dict[str, Any] | None,
+        Field(default=None, description=_SOURCE),
+        *_IMAGE_EVIDENCE,
+    ]
+
+
+class ToolReferenceResult(ResultPart):
+    """A tool the result pointed at rather than anything the tool said."""
+
+    BLOCK = ResultBlock.TOOL_REFERENCE
+    EVIDENCE = (Cited(SPINE, "2.1.221"),)
+
+    type: Annotated[Literal[ResultBlock.TOOL_REFERENCE], Field(description=_KIND)]
+    tool_name: Annotated[
+        str | None,
+        Field(default=None, description="The tool the result named"),
+        Cited(SPINE, "2.1.221"),
+    ]
+
+
+# One part of a block-form `tool_result`, dispatched on its own `type` the way a block is.
+type ResultPartUnion = Annotated[
+    TextResult | ImageResult | ToolReferenceResult, Field(discriminator="type")
+]
 
 
 class ToolResultBlock(Block):
@@ -172,13 +343,14 @@ class ToolResultBlock(Block):
     BLOCK = ContentBlock.TOOL_RESULT
     EVIDENCE = (Cited(SPINE, "2.1.221"),)
 
+    type: Annotated[Literal[ContentBlock.TOOL_RESULT], Field(description=_KIND)]
     tool_use_id: Annotated[
         str | None,
         Field(default=None, description="The `tool_use` block this answers"),
         Cited(SPINE, "2.1.221"),
     ]
     content: Annotated[
-        str | list[Any] | None,
+        str | list[ResultPartUnion] | None,
         Field(
             default=None,
             description=(
@@ -201,309 +373,25 @@ class ToolResultBlock(Block):
     ]
 
 
-class CacheCreation(Described):
-    """Cache-creation tokens split by how long the cache entry lives."""
+class ImageBlock(Block):
+    """A picture in a message's own content list, pasted by the operator rather than returned by
+    a tool. Three records in the canonical store hold one (scanned 2026-09-04)."""
 
-    ephemeral_5m_input_tokens: Annotated[
-        int | None,
-        Field(default=None, description="Tokens written to the five-minute cache"),
-        Cited(SPINE, "2.1.221"),
-    ]
-    ephemeral_1h_input_tokens: Annotated[
-        int | None,
-        Field(default=None, description="Tokens written to the one-hour cache"),
-        Cited(SPINE, "2.1.221"),
-    ]
+    BLOCK = ContentBlock.IMAGE
+    EVIDENCE = _IMAGE_EVIDENCE
 
-
-class Usage(Described):
-    """One reply's token counts, and what the cost of a call is computed from."""
-
-    input_tokens: Annotated[
-        int | None,
-        Field(default=None, description="Tokens sent that neither hit nor filled the cache"),
-        Cited(SPINE, "2.1.221"),
-    ]
-    output_tokens: Annotated[
-        int | None,
-        Field(default=None, description="Tokens the model generated"),
-        Cited(SPINE, "2.1.221"),
-    ]
-    cache_read_input_tokens: Annotated[
-        int | None,
-        Field(default=None, description="Tokens served from the cache"),
-        Cited(SPINE, "2.1.221"),
-    ]
-    cache_creation_input_tokens: Annotated[
-        int | None,
-        Field(
-            default=None,
-            description=(
-                "Tokens written to the cache. It should equal the sum of the two `cache_creation` "
-                "splits, but 53 of about 290,000 mycelia assistant records disagree, and cost "
-                "uses the split (scanned 2026-08-07)"
-            ),
-        ),
-        Cited(SPINE, "2.1.221"),
-    ]
-    cache_creation: Annotated[
-        CacheCreation | None,
-        Field(
-            default=None,
-            description=(
-                "Cache-creation tokens split by TTL. Every assistant record in the mycelia corpus "
-                "has this object, so the absent shape remains unrecorded (scanned 2026-08-07)"
-            ),
-        ),
-        Cited(SPINE, "2.1.221"),
-    ]
-    service_tier: Annotated[
-        str | None,
-        Field(default=None, description="The API service tier the reply was served on"),
-        Cited(SPINE, "2.1.221", note="`standard` wherever the fixtures leave it unredacted"),
-    ]
-    speed: Annotated[
-        str | None,
-        Field(
-            default=None,
-            description=(
-                "The speed tier the reply was served at. Absent from 30 of the 108 fixture "
-                "replies, across versions that carry it elsewhere, so its absence is not a "
-                "version fact"
-            ),
-        ),
-        Cited(SPINE, "2.1.221", note="`standard` wherever the fixtures leave it unredacted"),
-    ]
-    inference_geo: Annotated[
-        str | None,
-        Field(
-            default=None,
-            description=(
-                "Where inference ran, or `not_available`. The one `<synthetic>` reply — Claude "
-                "Code's own placeholder rather than a model answer — nulls it, along with "
-                "`service_tier`, `speed` and `iterations`"
-            ),
-        ),
-        Cited(SPINE, "2.1.221"),
-    ]
-    iterations: Annotated[
-        list[dict[str, Any]] | None,
-        Field(
-            default=None,
-            description=(
-                "Token counts for each pass a reply took, in this object's own shape. Cost uses "
-                "the totals above, and nothing has opened these, so their interior is undeclared"
-            ),
-        ),
-        Cited(SPINE, "2.1.221"),
-    ]
-    server_tool_use: Annotated[
+    type: Annotated[Literal[ContentBlock.IMAGE], Field(description=_KIND)]
+    source: Annotated[
         dict[str, Any] | None,
-        Field(
-            default=None,
-            description=(
-                "How many server-side tool requests the reply made, by kind. Zero on every "
-                "fixture reply, `server_tools/` included, so a non-zero count is unrecorded"
-            ),
-        ),
-        Cited(SPINE, "2.1.221"),
+        Field(default=None, description=_SOURCE),
+        *_IMAGE_EVIDENCE,
     ]
 
 
-# What every message says about its content list, which is one field on one base class.
-_CONTENT = (
-    "Either a string or a list of the blocks below. A `user` record whose list holds a "
-    "`tool_result` is plumbing, not a prompt"
-)
-
-
-class Message(Described):
-    """The API message a `user` or `assistant` record carried."""
-
-    BLOCKS: ClassVar[tuple[type[Block], ...]]
-
-    content: Annotated[
-        str | list[Any] | None,
-        Field(default=None, description=_CONTENT),
-        Cited(SPINE, "2.1.220", note="for the block form"),
-    ]
-    role: Annotated[
-        str | None,
-        Field(
-            default=None,
-            description="`user` or `assistant`, repeating what the record's own `type` says",
-        ),
-        Cited(SPINE, "2.1.221"),
-    ]
-
-
-class UserMessage(Message):
-    """What the operator, or Claude Code on their behalf, sent."""
-
-    BLOCKS = (TextBlock, ToolResultBlock)
-
-
-class AssistantMessage(Message):
-    """One model reply, spread over as many records as it has content blocks."""
-
-    BLOCKS = (
-        TextBlock,
-        ThinkingBlock,
-        ToolUseBlock,
-        ServerToolUseBlock,
-        AdvisorToolResultBlock,
-        FallbackBlock,
-    )
-
-    id: Annotated[
-        str | None,
-        Field(
-            default=None,
-            description=(
-                "The API reply id, and the key for merging records. One reply can span several "
-                "records, one per content block; counting lines triples the API-call count"
-            ),
-        ),
-        Cited(SPINE, "2.1.221", note="eight records for two replies"),
-    ]
-    model: Annotated[
-        str | None,
-        Field(
-            default=None,
-            description=(
-                "The model that answered. `<synthetic>` marks Claude Code's placeholder for an "
-                "interrupt or a cancelled request: of about 290,000 corpus assistant records, "
-                "205 are synthetic, all reporting zero tokens and omitting `usage.inference_geo` "
-                "(scanned 2026-08-07)"
-            ),
-        ),
-        Cited(SPINE, "2.1.201", note="holds a `<synthetic>` reply"),
-    ]
-    stop_reason: Annotated[
-        str | None,
-        Field(default=None, description="Why generation stopped, such as `tool_use` or `end_turn`"),
-        Cited(SPINE, "2.1.221"),
-    ]
-    usage: Annotated[
-        Usage | None,
-        Field(
-            default=None,
-            description=(
-                "Token usage for the whole reply. Every record sharing a `message.id` repeats the "
-                "totals, so summing records multiplies usage by the number of chunks"
-            ),
-        ),
-        Cited(SPINE, "2.1.221", note="five identical copies under one id"),
-    ]
-    type: Annotated[
-        str | None,
-        Field(
-            default=None,
-            description="The API envelope's own kind: `message` on every fixture reply",
-        ),
-        Cited(SPINE, "2.1.221"),
-    ]
-    stop_sequence: Annotated[
-        str | None,
-        Field(
-            default=None,
-            description=(
-                "The stop sequence that ended generation. Null on every fixture reply but one, "
-                "which carries an empty string, so a real sequence is unrecorded"
-            ),
-        ),
-        Cited(SPINE, "2.1.221"),
-    ]
-    stop_details: Annotated[
-        dict[str, Any] | None,
-        Field(
-            default=None,
-            description=(
-                "More about why generation stopped, beside `stop_reason`. Null on every fixture "
-                "reply, so its interior is unrecorded as well as undeclared"
-            ),
-        ),
-        Cited(SPINE, "2.1.221"),
-    ]
-    diagnostics: Annotated[
-        dict[str, Any] | None,
-        Field(
-            default=None,
-            description=(
-                "Why the prompt cache missed, when it did: a `cache_miss_reason` naming the "
-                "cause and what it cost. Null when the cache hit. Nothing has opened it"
-            ),
-        ),
-        Cited(SPINE, "2.1.221"),
-    ]
-    container: Annotated[
-        Any,
-        Field(
-            default=None,
-            description=(
-                "The container a code-execution reply ran in. Recorded once, as null, so its "
-                "shape is unrecorded"
-            ),
-        ),
-        Cited(SPINE, "2.1.201"),
-    ]
-    context_management: Annotated[
-        dict[str, Any] | None,
-        Field(
-            default=None,
-            description=(
-                "What context management did to the request, as an `applied_edits` list. "
-                "Nothing has opened it, so its interior is undeclared"
-            ),
-        ),
-        Cited(PARALLEL_TOOLS, "2.1.211"),
-    ]
-
-
-class ToolUseResult(Described):
-    """The structured report Claude Code wrote beside a tool's result block.
-
-    Only the two fields readers open are declared. The rest of the object is the tool's, one key
-    set per tool and open once an MCP tool writes one, so a new key there is a tool changing its
-    report rather than Claude Code changing the transcript.
-    """
-
-    OPAQUE = (
-        "the tool's own report: one key set per tool, an open set, keyed by nothing "
-        "the value carries"
-    )
-
-    persistedOutputPath: Annotated[
-        str | None,
-        Field(
-            default=None,
-            description=(
-                "The path to output too large for the transcript. Claude Code writes the full "
-                "output to `<session>/tool-results/<name>.txt` and leaves a preview in `content`. "
-                "The path is absolute, so only its file name travels; the corpus holds 321 such "
-                "results (scanned 2026-08-07)"
-            ),
-        ),
-        Cited(OFFLOAD, "2.1.220"),
-    ]
-    runId: Annotated[
-        str | None,
-        Field(
-            default=None,
-            description=(
-                "The fan-out id a `Workflow` call returns, matching the `wf_<id>` directory that "
-                "holds its agents' transcripts. It is the only link from those transcripts to the "
-                "call that launched them"
-            ),
-        ),
-        Cited(WORKFLOW, "2.1.207"),
-    ]
-
-
-# Registered block kinds no model describes, each with the reason.
-UNCITED_BLOCKS: dict[ContentBlock, str] = {
-    ContentBlock.IMAGE: "no fixture holds one, so there is nothing to cite",
-}
+# Registered block kinds no model describes, each with the reason. Empty: every kind the
+# registry holds is now a member of one of the two unions above, which is what makes a list
+# dispatch total.
+UNCITED_BLOCKS: dict[ContentBlock, str] = {}
 
 # Every block model. Order follows `ContentBlock`.
 BLOCK_MODELS: tuple[type[Block], ...] = (
@@ -513,5 +401,10 @@ BLOCK_MODELS: tuple[type[Block], ...] = (
     ServerToolUseBlock,
     AdvisorToolResultBlock,
     FallbackBlock,
+    ImageBlock,
     ToolResultBlock,
 )
+
+# Every model a block-form `tool_result`'s own content list dispatches to. Order follows
+# `ResultBlock`.
+RESULT_MODELS: tuple[type[ResultPart], ...] = (TextResult, ImageResult, ToolReferenceResult)

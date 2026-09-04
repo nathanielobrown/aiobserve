@@ -10,6 +10,7 @@ from pydantic import Field
 
 from hyphae.extract.records.base import MetaFlagged, SessionContext
 from hyphae.extract.records.evidence import (
+    CENSUS,
     COMPACTION,
     MODEL_ONLY,
     REGISTRY_ZOO,
@@ -93,6 +94,17 @@ class TurnDurationRecord(SystemRecord):
             description="How many background agent runs were still going when the turn ended",
         ),
         Cited(SPINE, "2.1.221"),
+    ]
+    pendingWorkflowCount: Annotated[
+        int | None,
+        Field(
+            default=None,
+            description=(
+                "How many workflows were still going when the turn ended, beside "
+                "`pendingBackgroundAgentCount`. Three corpus records carry it, each saying 1"
+            ),
+        ),
+        Cited(scan=CENSUS),
     ]
 
 

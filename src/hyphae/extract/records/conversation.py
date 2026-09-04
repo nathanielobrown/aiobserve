@@ -5,8 +5,8 @@ from typing import Annotated, Any
 from pydantic import Field
 
 from hyphae.extract.records.base import MetaFlagged, SessionContext
-from hyphae.extract.records.blocks import AssistantMessage, ToolUseResult, UserMessage
 from hyphae.extract.records.evidence import (
+    CENSUS,
     COMPACTION,
     DUP_UUID,
     FORK_ORIGIN,
@@ -16,6 +16,7 @@ from hyphae.extract.records.evidence import (
     SPINE,
     Cited,
 )
+from hyphae.extract.records.messages import AssistantMessage, ToolUseResult, UserMessage
 from hyphae.extract.records.registry import RecordType
 
 # What `message` says on both records that carry one: they narrow the type, not the meaning.
@@ -141,6 +142,138 @@ class UserRecord(SessionContext, MetaFlagged):
         ),
         Cited(LEGACY_ENTRYPOINT, "1.0.128"),
     ]
+    sourceToolUseID: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "The tool call this record answers, by `tool_use` id. It names the same link as "
+                "`sourceToolAssistantUUID` and never appears beside it — 613 corpus records "
+                "carry one and none carries both. Nothing reads either"
+            ),
+        ),
+        Cited(scan=CENSUS),
+    ]
+    toolDenialKind: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "Why a tool call was refused. The 306 corpus records carrying one say "
+                "`automode-blocked`, `permission-rule`, `automode-unavailable`, `user-rejected` "
+                "or `automode-parsing-error`"
+            ),
+        ),
+        Cited(scan=CENSUS),
+    ]
+    userFeedback: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "What the operator said when refusing a tool call. Both corpus records carrying "
+                "it also say `toolDenialKind: user-rejected`"
+            ),
+        ),
+        Cited(scan=CENSUS),
+    ]
+    toolEndsTurn: Annotated[
+        bool | None,
+        Field(
+            default=None,
+            description=(
+                "The tool result ends the turn rather than feeding another reply. Recorded only "
+                "as true, on 108 records in 2 corpus sessions, so the false shape is unrecorded"
+            ),
+        ),
+        Cited(scan=CENSUS),
+    ]
+    turnCompanion: Annotated[
+        bool | None,
+        Field(
+            default=None,
+            description=(
+                "The record rides along with a turn rather than opening one. Recorded only as "
+                "true, on 5 records written by `2.1.259`, so the false shape is unrecorded"
+            ),
+        ),
+        Cited(scan=CENSUS, note="only `2.1.259` writes it"),
+    ]
+    queuePriority: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "Where a queued prompt sits in the queue. All 89 corpus values are `later`, so "
+                "no other is recorded"
+            ),
+        ),
+        Cited(scan=CENSUS),
+    ]
+    queueSkipAttachments: Annotated[
+        bool | None,
+        Field(
+            default=None,
+            description=(
+                "The queued prompt went in without its attachments. Recorded only as true, on 3 "
+                "records written by `2.1.259`, so the false shape is unrecorded"
+            ),
+        ),
+        Cited(scan=CENSUS, note="only `2.1.259` writes it"),
+    ]
+    classifierMetaLines: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "What a classifier noted about the prompt, as a JSON document held in a string "
+                "rather than an object — 952 of the 960 corpus values parse and 8 do not. "
+                "Nothing has opened it, so its interior is undeclared"
+            ),
+        ),
+        Cited(scan=CENSUS),
+    ]
+    imagePasteIds: Annotated[
+        list[int] | None,
+        Field(
+            default=None,
+            description=(
+                "The images pasted into the prompt, by id. Two corpus records carry the list"
+            ),
+        ),
+        Cited(scan=CENSUS),
+    ]
+    mcpMeta: Annotated[
+        dict[str, Any] | None,
+        Field(
+            default=None,
+            description=(
+                "What an MCP tool returned beside its result, as an object holding `_meta` and "
+                "`structuredContent`. One corpus record carries it, which is too thin to declare "
+                "an interior on"
+            ),
+        ),
+        Cited(scan=CENSUS),
+    ]
+    scheduledTaskId: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description="The scheduled task that wrote the record. One corpus record carries it",
+        ),
+        Cited(scan=CENSUS, note="only `2.1.259` writes it"),
+    ]
+    scheduledFireId: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "The one firing of that task, beside `scheduledTaskId`. The same corpus record "
+                "carries both"
+            ),
+        ),
+        Cited(scan=CENSUS, note="only `2.1.259` writes it"),
+    ]
 
 
 class AssistantRecord(SessionContext):
@@ -206,4 +339,71 @@ class AssistantRecord(SessionContext):
             ),
         ),
         Cited(SPINE, "2.1.201"),
+    ]
+    error: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "What failed, when the reply is Claude Code's error report. Every one of the 222 "
+                "corpus records carrying it also says `isApiErrorMessage`, and the values are "
+                "`rate_limit`, `server_error`, `oauth_org_not_allowed`, `authentication_failed` "
+                "and `model_not_found`"
+            ),
+        ),
+        Cited(scan=CENSUS),
+    ]
+    errorDetails: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "More about that failure, as a free string. Six corpus records carry it, each "
+                "beside an `error`"
+            ),
+        ),
+        Cited(scan=CENSUS),
+    ]
+    apiErrorStatus: Annotated[
+        int | None,
+        Field(
+            default=None,
+            description=(
+                "The HTTP status behind the failure. The 181 corpus records carrying one say "
+                "429, 403, 529, 404 or 500"
+            ),
+        ),
+        Cited(scan=CENSUS),
+    ]
+    apiBlockIndex: Annotated[
+        int | None,
+        Field(
+            default=None,
+            description=(
+                "Which block of the reply this record holds, counting from zero within the API "
+                "message. Claude Code added it late: 220 corpus records over 90 message ids, "
+                "all written by `2.1.259`, running 0 to 5"
+            ),
+        ),
+        Cited(scan=CENSUS, note="only `2.1.259` writes it"),
+    ]
+    attributionMcpServer: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "The MCP server the reply is attributed to, beside `attributionSkill`. Always "
+                "written with `attributionMcpTool`: 4,732 corpus records in 27 sessions carry "
+                "both and none carries one alone"
+            ),
+        ),
+        Cited(scan=CENSUS),
+    ]
+    attributionMcpTool: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description="The tool on that server, beside `attributionMcpServer`",
+        ),
+        Cited(scan=CENSUS),
     ]

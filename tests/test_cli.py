@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from hyphae import cli
+from hyphae import cli, settings
 from hyphae.cli import DEFAULT_DB
 from hyphae.enrich.client import DEFAULT_CONCURRENCY, DEFAULT_MODEL
 from hyphae.export.otlp import DEFAULT_MAX_CHARS
@@ -21,6 +21,7 @@ from hyphae.export.otlp_delivery import DEFAULT_RATE, GENERIC
 from hyphae.extract.layout import DEFAULT_PROJECTS_ROOT
 from hyphae.projects import encode_project_path
 from hyphae.view.app import PORT
+from tests.conftest import FIXTURES
 from tests.extract.test_layout import make_projects_root
 
 PROJECT = Path("repos/mycelia")
@@ -225,3 +226,67 @@ def test_the_viewer_opens_a_browser_unless_the_run_says_not_to(
         (DEFAULT_DB, PORT, False, False),
         (DEFAULT_DB, PORT, True, True),
     ]
+
+
+def extracted(
+    tmp_path: Path, fixture: str, capsys: pytest.CaptureFixture[str], strict: bool
+) -> list[str]:
+    """Run `hp extract` over one fixture transcript, and hand back what it printed.
+
+    `strict` is what a test run has and an extract does not: the extractor reads it once, at
+    construction, so setting it here is setting it for the run.
+    """
+    project = Path("/Users/nob/repos/mycelia")
+    root = make_projects_root(tmp_path, project, [fixture])
+    source = next(FIXTURES.rglob(f"{fixture}.jsonl"))
+    (root / encode_project_path(project) / f"{fixture}.jsonl").write_text(source.read_text())
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(settings, "UNIT_TESTING", strict)
+        cli.main(
+            "extract",
+            str(project),
+            "--projects-root",
+            str(root),
+            "--db",
+            str(tmp_path / "traces.duckdb"),
+        )
+    return capsys.readouterr().out.splitlines()
+
+
+def test_an_extract_prints_the_fields_no_model_declares_under_its_summary(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An extract tallies an undeclared field and keeps going; the suite is what crashes.
+
+    A field Claude Code added yesterday is news, and the archive kept the record either way.
+    The tally is how a person finds out, so it has to reach the terminal — one line per path,
+    with where it was first seen — and it has to say nothing about what the field held.
+    """
+    # If an extract meets a record carrying a field no model declares, in an extract's own
+    # lax mode...
+    printed = extracted(tmp_path, "invented-unknown-field", capsys, strict=False)
+
+    # ...then the session is extracted, and the tally follows the summary rather than
+    # replacing it.
+    assert printed[0] == "1 session(s) extracted, 0 unchanged"
+    assert printed[1] == "Fields no model declares:"
+    assert printed[2].startswith("assistant.shimmerBudget: first in session")
+    # And the value the field held is transcript content, which never leaves the store.
+    assert "SUPER-SECRET-PAYLOAD-9f2a" not in "\n".join(printed)
+    # The run returned rather than exiting: `cli.main` raising `SystemExit` here would fail this
+    # leaf, which is where the design's rejection of an exit-code flag is written down.
+
+
+def test_an_extract_that_finds_nothing_undeclared_prints_only_its_summary(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The negative control: silence is what "the models still describe it" looks like.
+
+    Without this leaf a tally header printed unconditionally would pass the leaf above.
+    """
+    # If every field of every record is declared — a recorded fixture, under strict mode, so
+    # the run would have crashed rather than tallied...
+    printed = extracted(tmp_path, "invented-no-cache-creation", capsys, strict=True)
+
+    # ...then the summary is the whole output.
+    assert printed == ["1 session(s) extracted, 0 unchanged"]

@@ -5,9 +5,9 @@ added to a model is a row and a field deleted is a row gone, with no second plac
 """
 
 from collections.abc import Iterator
-from typing import Any, ForwardRef, NamedTuple, get_args
+from typing import Any, ForwardRef, NamedTuple, TypeAliasType, get_args
 
-from hyphae.extract.records.blocks import Message
+from hyphae.extract.records.blocks import Kinded
 from hyphae.extract.records.evidence import Among, Cited, Described, Step
 from hyphae.extract.records.registry import RecordType
 from hyphae.extract.records.shapes import RECORD_MODELS, Record
@@ -61,8 +61,22 @@ def _nested(annotation: Any) -> Iterator[type[Described]]:
         return
     if isinstance(annotation, ForwardRef):
         raise TypeError(f"{annotation} was never resolved, so its fields would go undocumented")
+    # A `type X = ...` alias is one object, not a union: `get_args` sees through it only once
+    # it is opened.
+    if isinstance(annotation, TypeAliasType):
+        yield from _nested(annotation.__value__)
+        return
     for argument in get_args(annotation):
         yield from _nested(argument)
+
+
+def members(annotation: Any) -> tuple[type[Kinded], ...]:
+    """Every model a content list dispatches to by kind, read from the union itself.
+
+    The union is the one statement of which blocks a message holds and which parts a block-form
+    `tool_result` holds, so nothing lists them a second time.
+    """
+    return tuple(model for model in _nested(annotation) if issubclass(model, Kinded))
 
 
 def _prose(text: str | None) -> str:
@@ -80,30 +94,37 @@ def _describe(
 ) -> Iterator[tuple[tuple[Step, ...], str, tuple[Cited, ...]]]:
     """Every documented field reachable from one model, with where it sits and what it claims."""
     for name, info in model.model_fields.items():
+        # A kinded model's `type` is its discriminator, and the row below is already named by the
+        # kind it carries, so a row for it would say the row's own name back.
+        if name == "type" and issubclass(model, Kinded):
+            continue
         here = (*locate, info.alias or name)
         evidence = tuple(item for item in info.metadata if isinstance(item, Cited))
         yield here, _prose(info.description), evidence
+        # A content list is reached by kind rather than by position, so its members are stepped
+        # into through `Among` and never as a plain nested model.
+        kinds = members(info.annotation)
+        if kinds:
+            for kind in kinds:
+                inside = (*here, Among(kind.BLOCK))
+                yield inside, _prose(kind.__doc__), kind.EVIDENCE
+                yield from _describe(kind, inside)
+            continue
         for nested in _nested(info.annotation):
             yield from _describe(nested, here)
-        if issubclass(model, Message) and name == "content":
-            for block in model.BLOCKS:
-                inside = (*here, Among(block.BLOCK))
-                yield inside, _prose(block.__doc__), block.EVIDENCE
-                yield from _describe(block, inside)
 
 
 def _name(locate: tuple[Step, ...]) -> str:
     """The Field column's spelling: the field under its container, as `usage.cache_creation`.
 
-    A field inside a block is spelled from the block — `advisor_tool_result.content.type` — because
-    a block is identified by name rather than by position, and more than one holds a `content`.
-    Outside a block the container is a record's own field, unique across the document.
+    Anything inside a content list is spelled whole, from the record's own field down —
+    `message.content.tool_result.content.image.source`. A block kind repeats at more than one
+    depth (`text` and `image` name both a block and a part of a block-form `tool_result`), so a
+    short name would send a reader looking for `image` to two rows. Outside a content list the
+    container is a record's own field, unique across the document, and one step is enough.
     """
-    last = locate[-1]
-    if isinstance(last, Among):
-        return last.kind.value
-    blocks = [at for at, step in enumerate(locate) if isinstance(step, Among)]
-    start = blocks[-1] if blocks else max(len(locate) - 2, 0)
+    inside_a_list = any(isinstance(step, Among) for step in locate)
+    start = 0 if inside_a_list else max(len(locate) - 2, 0)
     return ".".join(step.kind.value if isinstance(step, Among) else step for step in locate[start:])
 
 

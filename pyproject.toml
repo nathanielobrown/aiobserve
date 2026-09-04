@@ -48,6 +48,10 @@ build-backend = "hatchling.build"
 dev = [
   "pytest>=8.4",
   "pytest-timeout>=2.4", # backs the `timeout` setting below
+  # Sets `UNIT_TESTING=1` for every pytest invocation, including a bare `uv run pytest` on one
+  # file and `mise run mutate`. That is what puts the unknown-field walk in strict mode, so an
+  # undeclared field stops the suite rather than being tallied (`src/hyphae/settings.py`).
+  "pytest-env>=1.1",
   # Spreads the suite over workers — `mise run test` passes `-n` and `--dist`, with the
   # worker count and its measurement beside the flag in `mise.toml`.
   "pytest-xdist>=3.6",
@@ -202,6 +206,9 @@ timeout = 120
 # turn the backstop into a killed run.
 timeout_method = "signal"
 addopts = "--strict-markers --durations=10"
+# The record models are the parser's schema, and a test run is where a field they do not declare
+# has to stop the run rather than be counted (`src/hyphae/settings.py`).
+env = ["UNIT_TESTING=1"]
 filterwarnings = [
   # A warning is a finding: something we call is on its way out, or a value is the wrong
   # shape. Raising them keeps a deprecation from riding along unread until the release that

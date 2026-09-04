@@ -14,6 +14,8 @@ The transcript-field tables under the next heading are generated. A field's mean
 
 What the fields mean together — which records start a turn, which timestamps were measured — is [reading transcript records](transcript-reading.md).
 
+Where the files these records come from sit on disk, and how the extractor joins them, is [session layout](session-layout.md).
+
 ## Transcript records are typed JSON objects
 
 A transcript stores one JSON object per line. Each object has a `type`. `hyphae.extract.records.registry` registers every type it has seen and the readers crash on unknown types. Treat that registry—not the tables below—as the current census.
@@ -41,6 +43,9 @@ A transcript stores one JSON object per line. Each object has a `type`. `hyphae.
 | `isMeta` | `user`, `system` | Claude Code wrote the record on the user's behalf, such as a caveat or a hook echo. It is not a prompt | `tests/fixtures/spine/`, CC 2.1.221 |
 | `isCompactSummary` | `user` | Claude Code wrote the record after compaction to replace the dropped context. It is not a prompt, and every one has a `compact_boundary` record beside it | `tests/fixtures/dup_uuid/`, CC 2.1.211 |
 | `isSidechain` | `user`, `assistant`, `system` | The record belongs to a subagent stream. On a main thread, skip it because the subagent's own file records the work better. On a subagent thread every record carries it, and skipping those would remove every turn | `tests/fixtures/spine/`, CC 2.1.221 — holds both main and subagent records |
+| `forkedFrom` | `user`, `assistant`, `system` | Where the session was forked from, on every record the fork carried over. One corpus session has it, on 299 records here and 151 more that are archived unread. Nothing reads it: a fork's copied rows are found by their content | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 — only `2.1.220` writes it |
+| `forkedFrom.sessionId` | `user`, `assistant`, `system` | The session the fork was cut from | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 |
+| `forkedFrom.messageUuid` | `user`, `assistant`, `system` | The record in that session the fork was cut at | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 |
 <!-- aigarden:end -->
 
 Of 240 encoded working directories under `~/.claude/projects` on the recording machine, 181 lie under a symlinked root—153 under `-private-var` and 28 under `-private-tmp`—but none uses the unresolved `-var-…` or `-tmp-…` spelling (scanned 2026-08-15). The likely mechanism is Node's `process.cwd()`, which returns a physical path, but that mechanism is inferred. No fixture demonstrates it because every fixture session ran under an unsymlinked path.
@@ -53,25 +58,43 @@ Of 240 encoded working directories under `~/.claude/projects` on the recording m
 | `message` | `user`, `assistant` | The API message the record carried: a role and its content | `tests/fixtures/spine/`, CC 2.1.221 |
 | `message.role` | `user`, `assistant` | `user` or `assistant`, repeating what the record's own `type` says | `tests/fixtures/spine/`, CC 2.1.221 |
 | `message.content` | `user`, `assistant` | Either a string or a list of the blocks below. A `user` record whose list holds a `tool_result` is plumbing, not a prompt | `tests/fixtures/spine/`, CC 2.1.220 — for the block form |
-| `text` | `user`, `assistant` | Prose, under `text`: the model's answer, or a prompt written in block form | `tests/fixtures/spine/`, CC 2.1.221 |
-| `thinking` | `assistant` | The model's reasoning, under `thinking`, beside the `signature` that lets it be replayed | `tests/fixtures/spine/`, CC 2.1.221 |
-| `tool_use` | `assistant` | A local tool request. Most records contain one, but 23 records in the mycelia corpus contain two or more, so counting records undercounts calls (scanned 2026-08-07) | `tests/fixtures/spine/`, CC 2.1.221; `tests/fixtures/parallel_tools/`, CC 2.1.211 — two calls in one record |
-| `tool_use.id` | `assistant` | The call id. A `tool_result` block names it in `tool_use_id`, and a subagent's meta names it in `toolUseId`. Unique within a session, not across the store | `tests/fixtures/spine/`, CC 2.1.221 |
-| `tool_use.name` | `assistant` | The tool asked for, such as `Bash` or `Agent` | `tests/fixtures/spine/`, CC 2.1.221 |
-| `tool_use.input` | `assistant` | The arguments, shaped by the tool. On a `Skill` call it names the invoked skill in `skill`, with `args` on 81 of 326 corpus calls; that records invocation, while `attributionSkill` records what was loaded when the reply returned. They can disagree, and a skill reached through a slash command creates no `Skill` call (57 sessions, CC 2.1.195–2.1.221; scanned 2026-08-08) | `tests/fixtures/spine/`, CC 2.1.221; corpus scan: 57 sessions, CC 2.1.195–2.1.221, scanned 2026-08-08 — the `Skill` shape |
-| `tool_result` | `user` | A local tool's reply, written in the `user` record that answers the call | `tests/fixtures/spine/`, CC 2.1.221 |
-| `tool_result.tool_use_id` | `user` | The `tool_use` block this answers | `tests/fixtures/spine/`, CC 2.1.221 |
-| `tool_result.content` | `user` | A string, or a list of `text`, `image`, and `tool_reference` blocks. Only text carries into `ToolCall.result` | `tests/fixtures/spine/`, CC 2.1.221 |
-| `tool_result.is_error` | `user` | Present when the tool failed. Success omits it: 66,653 of 154,169 corpus result blocks have no `is_error` (scanned 2026-08-07) | `tests/fixtures/spine/`, CC 2.1.221 |
-| `server_tool_use` | `assistant` | A tool request Anthropic ran server-side, with the same fields as `tool_use`. It shares the assistant stream but joins no batch, so its own timestamp is the call's start. All 45 corpus blocks, across five sessions, call `advisor` with empty `input` (scanned 2026-08-07) | `tests/fixtures/server_tools/`, CC 2.1.201 |
-| `advisor_tool_result` | `assistant` | The answer to a `server_tool_use`, stored in the same assistant message rather than in a `user` record. The corpus contains answers for 44 of 45 calls; one call has no answer (scanned 2026-08-07) | `tests/fixtures/server_tools/`, CC 2.1.201 — both result shapes and the unanswered call |
-| `advisor_tool_result.content` | `assistant` | The result object, whose `type` says which shape it is | `tests/fixtures/server_tools/`, CC 2.1.201 |
-| `advisor_tool_result.content.type` | `assistant` | Either `advisor_tool_result_error` or `advisor_redacted_result`. Neither shape carries readable output | `tests/fixtures/server_tools/`, CC 2.1.201 — holds both |
-| `advisor_tool_result.content.error_code` | `assistant` | Why the advisor failed, on the error shape | `tests/fixtures/server_tools/`, CC 2.1.201 |
-| `advisor_tool_result.content.encrypted_content` | `assistant` | The advisor's answer, unreadable: the transcript records that it answered and nothing of what it said | `tests/fixtures/server_tools/`, CC 2.1.201 |
-| `fallback` | `assistant` | A retry on another model. The block also carries a `to`, but all three corpus blocks occur in one session and agree with `message.model` there, so only `from` adds information (scanned 2026-08-07). This is not a `model_consent_fallback`, which changes the whole session's model | `tests/fixtures/server_tools/`, CC 2.1.206 |
-| `fallback.from` | `assistant` | The model the request first went to | `tests/fixtures/server_tools/`, CC 2.1.206 |
-| `fallback.from.model` | `assistant` | The model this side of the retry names | `tests/fixtures/server_tools/`, CC 2.1.206 |
+| `message.content.text` | `user`, `assistant` | Prose, under `text`: the model's answer, or a prompt written in block form | `tests/fixtures/spine/`, CC 2.1.221 |
+| `message.content.text.text` | `user`, `assistant` | The prose itself, which can be empty | `tests/fixtures/spine/`, CC 2.1.221 |
+| `message.content.thinking` | `assistant` | The model's reasoning, under `thinking`, beside the `signature` that lets it be replayed | `tests/fixtures/spine/`, CC 2.1.221 |
+| `message.content.thinking.thinking` | `assistant` | The reasoning text, which no store column carries | `tests/fixtures/spine/`, CC 2.1.221 |
+| `message.content.thinking.signature` | `assistant` | The opaque token that lets the reasoning be replayed to the model. Every fixture `thinking` block carries one | `tests/fixtures/spine/`, CC 2.1.221 |
+| `message.content.image` | `user` | A picture in a message's own content list, pasted by the operator rather than returned by a tool. Three records in the canonical store hold one (scanned 2026-09-04) | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 — 3 blocks in a `user` content list, 633 inside a `tool_result` |
+| `message.content.image.source` | `user` | The picture itself, as a `type`, a `media_type` and base64 `data`. Nothing has opened it, so its interior is undeclared — and its `data` is the largest value a transcript holds | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 — 3 blocks in a `user` content list, 633 inside a `tool_result` |
+| `message.content.tool_use` | `assistant` | A local tool request. Most records contain one, but 23 records in the mycelia corpus contain two or more, so counting records undercounts calls (scanned 2026-08-07) | `tests/fixtures/spine/`, CC 2.1.221; `tests/fixtures/parallel_tools/`, CC 2.1.211 — two calls in one record |
+| `message.content.tool_use.id` | `assistant` | The call id. A `tool_result` block names it in `tool_use_id`, and a subagent's meta names it in `toolUseId`. Unique within a session, not across the store | `tests/fixtures/spine/`, CC 2.1.221 |
+| `message.content.tool_use.name` | `assistant` | The tool asked for, such as `Bash` or `Agent` | `tests/fixtures/spine/`, CC 2.1.221 |
+| `message.content.tool_use.input` | `assistant` | The arguments, shaped by the tool. On a `Skill` call it names the invoked skill in `skill`, with `args` on 81 of 326 corpus calls; that records invocation, while `attributionSkill` records what was loaded when the reply returned. They can disagree, and a skill reached through a slash command creates no `Skill` call (57 sessions, CC 2.1.195–2.1.221; scanned 2026-08-08) | `tests/fixtures/spine/`, CC 2.1.221; corpus scan: 57 sessions, CC 2.1.195–2.1.221, scanned 2026-08-08 — the `Skill` shape |
+| `message.content.tool_use.caller` | `assistant` | Who asked for the call, as an object holding a `kind`. Every one of the 214,583 corpus blocks says `direct` (scanned 2026-09-04), and nothing has opened it, so its interior is undeclared | `tests/fixtures/spine/`, CC 2.1.221 |
+| `message.content.tool_result` | `user` | A local tool's reply, written in the `user` record that answers the call | `tests/fixtures/spine/`, CC 2.1.221 |
+| `message.content.tool_result.tool_use_id` | `user` | The `tool_use` block this answers | `tests/fixtures/spine/`, CC 2.1.221 |
+| `message.content.tool_result.is_error` | `user` | Present when the tool failed. Success omits it: 66,653 of 154,169 corpus result blocks have no `is_error` (scanned 2026-08-07) | `tests/fixtures/spine/`, CC 2.1.221 |
+| `message.content.tool_result.content` | `user` | A string, or a list of `text`, `image`, and `tool_reference` blocks. Only text carries into `ToolCall.result` | `tests/fixtures/spine/`, CC 2.1.221 |
+| `message.content.tool_result.content.text` | `user` | Prose a tool returned, inside a block-form `tool_result`. The only part that carries into `ToolCall.result` | `tests/fixtures/spine/`, CC 2.1.221 |
+| `message.content.tool_result.content.text.text` | `user` | What the tool printed | `tests/fixtures/spine/`, CC 2.1.221 |
+| `message.content.tool_result.content.image` | `user` | A picture a tool returned, inside a block-form `tool_result`. It carries no text, so nothing of it reaches `ToolCall.result` | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 — 3 blocks in a `user` content list, 633 inside a `tool_result` |
+| `message.content.tool_result.content.image.source` | `user` | The picture itself, as a `type`, a `media_type` and base64 `data`. Nothing has opened it, so its interior is undeclared — and its `data` is the largest value a transcript holds | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 — 3 blocks in a `user` content list, 633 inside a `tool_result` |
+| `message.content.tool_result.content.tool_reference` | `user` | A tool the result pointed at rather than anything the tool said | `tests/fixtures/spine/`, CC 2.1.221 |
+| `message.content.tool_result.content.tool_reference.tool_name` | `user` | The tool the result named | `tests/fixtures/spine/`, CC 2.1.221 |
+| `message.content.server_tool_use` | `assistant` | A tool request Anthropic ran server-side, with the same fields as `tool_use`. It shares the assistant stream but joins no batch, so its own timestamp is the call's start. All 45 corpus blocks, across five sessions, call `advisor` with empty `input` (scanned 2026-08-07) | `tests/fixtures/server_tools/`, CC 2.1.201 |
+| `message.content.server_tool_use.id` | `assistant` | The call id, which the `advisor_tool_result` block answering it repeats in `tool_use_id` | `tests/fixtures/server_tools/`, CC 2.1.201 |
+| `message.content.server_tool_use.name` | `assistant` | The server-side tool asked for; every corpus block says `advisor` | `tests/fixtures/server_tools/`, CC 2.1.201 |
+| `message.content.server_tool_use.input` | `assistant` | The arguments, empty on every corpus block, so no argument shape is recorded | `tests/fixtures/server_tools/`, CC 2.1.201 |
+| `message.content.advisor_tool_result` | `assistant` | The answer to a `server_tool_use`, stored in the same assistant message rather than in a `user` record. The corpus contains answers for 44 of 45 calls; one call has no answer (scanned 2026-08-07) | `tests/fixtures/server_tools/`, CC 2.1.201 — both result shapes and the unanswered call |
+| `message.content.advisor_tool_result.tool_use_id` | `assistant` | The `server_tool_use` block this answers | `tests/fixtures/server_tools/`, CC 2.1.201 |
+| `message.content.advisor_tool_result.content` | `assistant` | The result object, whose `type` says which shape it is | `tests/fixtures/server_tools/`, CC 2.1.201 |
+| `message.content.advisor_tool_result.content.type` | `assistant` | Either `advisor_tool_result_error` or `advisor_redacted_result`. Neither shape carries readable output | `tests/fixtures/server_tools/`, CC 2.1.201 — holds both |
+| `message.content.advisor_tool_result.content.error_code` | `assistant` | Why the advisor failed, on the error shape | `tests/fixtures/server_tools/`, CC 2.1.201 |
+| `message.content.advisor_tool_result.content.encrypted_content` | `assistant` | The advisor's answer, unreadable: the transcript records that it answered and nothing of what it said | `tests/fixtures/server_tools/`, CC 2.1.201 |
+| `message.content.fallback` | `assistant` | A retry on another model. The block also carries a `to`, but all three corpus blocks occur in one session and agree with `message.model` there, so only `from` adds information (scanned 2026-08-07). This is not a `model_consent_fallback`, which changes the whole session's model | `tests/fixtures/server_tools/`, CC 2.1.206 |
+| `message.content.fallback.from` | `assistant` | The model the request first went to | `tests/fixtures/server_tools/`, CC 2.1.206 |
+| `message.content.fallback.from.model` | `assistant` | The model this side of the retry names | `tests/fixtures/server_tools/`, CC 2.1.206 |
+| `message.content.fallback.to` | `assistant` | The model it retried on. All three corpus blocks agree with `message.model` here, so nothing reads it (scanned 2026-08-07) | `tests/fixtures/server_tools/`, CC 2.1.206 |
+| `message.content.fallback.to.model` | `assistant` | The model this side of the retry names | `tests/fixtures/server_tools/`, CC 2.1.206 |
 | `toolUseResult` | `user` | The tool's structured report beside the result block. Most are objects, but 3,590 of 137,255 corpus values are strings and 795 are lists (scanned 2026-08-07) | `tests/fixtures/offload/`, CC 2.1.220; `tests/fixtures/fork_origin/`, CC 2.1.215 — a string-valued one |
 | `toolUseResult.persistedOutputPath` | `user` | The path to output too large for the transcript. Claude Code writes the full output to `<session>/tool-results/<name>.txt` and leaves a preview in `content`. The path is absolute, so only its file name travels; the corpus holds 321 such results (scanned 2026-08-07) | `tests/fixtures/offload/`, CC 2.1.220 |
 | `toolUseResult.runId` | `user` | The fan-out id a `Workflow` call returns, matching the `wf_<id>` directory that holds its agents' transcripts. It is the only link from those transcripts to the call that launched them | `tests/fixtures/workflow/`, CC 2.1.207 |
@@ -80,9 +103,13 @@ Of 240 encoded working directories under `~/.claude/projects` on the recording m
 | `origin` | `user` | Where the record came from, as an object holding a `kind`. Nothing has opened it, so its interior is undeclared | `tests/fixtures/spine/`, CC 2.1.221 |
 | `permissionMode` | `user` | The permission mode in force when the record was written: `default`, `auto` and `bypassPermissions` in the fixtures | `tests/fixtures/spine/`, CC 2.1.221 |
 | `thinkingMetadata` | `user` | The thinking budget in force, as a `level`, a `disabled` flag and `triggers`. Nothing has opened it, so its interior is undeclared | `tests/fixtures/legacy_entrypoint/`, CC 1.0.128 |
+| `classifierMetaLines` | `user` | What a classifier noted about the prompt, as a JSON document held in a string rather than an object — 952 of the 960 corpus values parse and 8 do not. Nothing has opened it, so its interior is undeclared | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 |
 | `isVisibleInTranscriptOnly` | `user` | The record is shown when reading the transcript back and nowhere else. Recorded only as true, so the false shape is unrecorded | `tests/fixtures/compaction/`, CC 2.1.198 |
 | `sourceToolAssistantUUID` | `user` | The assistant record this one answers, by uuid. Nothing reads it: a result is joined to its call through `tool_use_id` | `tests/fixtures/spine/`, CC 2.1.221 |
+| `sourceToolUseID` | `user` | The tool call this record answers, by `tool_use` id. It names the same link as `sourceToolAssistantUUID` and never appears beside it — 613 corpus records carry one and none carries both. Nothing reads either | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 |
 | `interruptedMessageId` | `user` | The reply an interruption stopped. One fixture record carries it | `tests/fixtures/spine/`, CC 2.1.220 |
+| `imagePasteIds` | `user` | The images pasted into the prompt, by id. Two corpus records carry the list | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 |
+| `mcpMeta` | `user` | What an MCP tool returned beside its result, as an object holding `_meta` and `structuredContent`. One corpus record carries it, which is too thin to declare an interior on | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 |
 <!-- aigarden:end -->
 
 ### API replies, models, and tokens
@@ -107,6 +134,8 @@ Of 240 encoded working directories under `~/.claude/projects` on the recording m
 | `usage.cache_creation` | `assistant` | Cache-creation tokens split by TTL. Every assistant record in the mycelia corpus has this object, so the absent shape remains unrecorded (scanned 2026-08-07) | `tests/fixtures/spine/`, CC 2.1.221 |
 | `cache_creation.ephemeral_5m_input_tokens` | `assistant` | Tokens written to the five-minute cache | `tests/fixtures/spine/`, CC 2.1.221 |
 | `cache_creation.ephemeral_1h_input_tokens` | `assistant` | Tokens written to the one-hour cache | `tests/fixtures/spine/`, CC 2.1.221 |
+| `usage.output_tokens_details` | `assistant` | How the generated tokens break down. Claude Code added it late: 114 corpus records in 2 sessions carry it, all written by `2.1.259` | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 |
+| `output_tokens_details.thinking_tokens` | `assistant` | How many of `output_tokens` the model spent thinking. Across the 114 corpus records carrying the object it runs from 0 to 3,241, never above `output_tokens`, so it is a share of that total and not an addition to it | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 — only `2.1.259` writes it |
 | `usage.server_tool_use` | `assistant` | How many server-side tool requests the reply made, by kind. Zero on every fixture reply, `server_tools/` included, so a non-zero count is unrecorded | `tests/fixtures/spine/`, CC 2.1.221 |
 | `usage.service_tier` | `assistant` | The API service tier the reply was served on | `tests/fixtures/spine/`, CC 2.1.221 — `standard` wherever the fixtures leave it unredacted |
 | `usage.speed` | `assistant` | The speed tier the reply was served at. Absent from 30 of the 108 fixture replies, across versions that carry it elsewhere, so its absence is not a version fact | `tests/fixtures/spine/`, CC 2.1.221 — `standard` wherever the fixtures leave it unredacted |
@@ -118,6 +147,12 @@ Of 240 encoded working directories under `~/.claude/projects` on the recording m
 | `effort` | `assistant` | The reasoning-effort setting as an opaque string, such as `"high"` | `tests/fixtures/spine/`, CC 2.1.221 |
 | `requestId` | `assistant` | The API request id the reply came back on | `tests/fixtures/spine/`, CC 2.1.221 |
 | `isApiErrorMessage` | `assistant` | The reply is Claude Code's own report of an API error rather than the model's. Recorded once, as false, so the true shape is unrecorded | `tests/fixtures/spine/`, CC 2.1.201 |
+| `error` | `assistant` | What failed, when the reply is Claude Code's error report. Every one of the 222 corpus records carrying it also says `isApiErrorMessage`, and the values are `rate_limit`, `server_error`, `oauth_org_not_allowed`, `authentication_failed` and `model_not_found` | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 |
+| `errorDetails` | `assistant` | More about that failure, as a free string. Six corpus records carry it, each beside an `error` | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 |
+| `apiErrorStatus` | `assistant` | The HTTP status behind the failure. The 181 corpus records carrying one say 429, 403, 529, 404 or 500 | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 |
+| `apiBlockIndex` | `assistant` | Which block of the reply this record holds, counting from zero within the API message. Claude Code added it late: 220 corpus records over 90 message ids, all written by `2.1.259`, running 0 to 5 | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 — only `2.1.259` writes it |
+| `attributionMcpServer` | `assistant` | The MCP server the reply is attributed to, beside `attributionSkill`. Always written with `attributionMcpTool`: 4,732 corpus records in 27 sessions carry both and none carries one alone | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 |
+| `attributionMcpTool` | `assistant` | The tool on that server, beside `attributionMcpServer` | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 |
 <!-- aigarden:end -->
 
 ### System events and session labels
@@ -128,6 +163,7 @@ Of 240 encoded working directories under `~/.claude/projects` on the recording m
 | `durationMs` | `system` / `turn_duration` | The turn's wall-clock duration in milliseconds. Sum these to measure active session time; the transcript's timestamp span includes idle hours | `tests/fixtures/spine/`, CC 2.1.221 |
 | `messageCount` | `system` / `turn_duration` | A message count Claude Code writes beside the duration. It reaches 466 in one fixture turn, so it counts more than the turn's own records; nothing reads it | `tests/fixtures/spine/`, CC 2.1.221 |
 | `pendingBackgroundAgentCount` | `system` / `turn_duration` | How many background agent runs were still going when the turn ended | `tests/fixtures/spine/`, CC 2.1.221 |
+| `pendingWorkflowCount` | `system` / `turn_duration` | How many workflows were still going when the turn ended, beside `pendingBackgroundAgentCount`. Three corpus records carry it, each saying 1 | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 |
 | `compactMetadata` | `system` / `compact_boundary` | The compaction's own numbers. Read compaction from this object rather than inferring it from the nearest assistant call; all 1,026 corpus boundaries carry it (scanned 2026-08-07) | `tests/fixtures/compaction/`, CC 2.1.198 |
 | `compactMetadata.trigger` | `system` / `compact_boundary` | `auto` when Claude Code hit the context limit, `manual` when the operator asked: 933 and 93 of 1,026 corpus boundaries (scanned 2026-08-07) | `tests/fixtures/compaction/`, CC 2.1.198 — one of each |
 | `compactMetadata.preTokens` | `system` / `compact_boundary` | Context size before the compaction | `tests/fixtures/compaction/`, CC 2.1.198 |
@@ -137,6 +173,14 @@ Of 240 encoded working directories under `~/.claude/projects` on the recording m
 | `compactMetadata.preCompactDiscoveredTools` | `system` / `compact_boundary` | The tools the thread had discovered before compacting, by name | `tests/fixtures/compaction/`, CC 2.1.198 |
 | `compactMetadata.preservedMessages` | `system` / `compact_boundary` | Which records survived, as an anchor uuid and the uuids kept. Nothing has opened it, so its interior is undeclared | `tests/fixtures/compaction/`, CC 2.1.198 |
 | `compactMetadata.preservedSegment` | `system` / `compact_boundary` | The span of records the compaction kept, by head, anchor and tail uuid. Nothing has opened it, so its interior is undeclared | `tests/fixtures/compaction/`, CC 2.1.198 |
+| `toolDenialKind` | `user` | Why a tool call was refused. The 306 corpus records carrying one say `automode-blocked`, `permission-rule`, `automode-unavailable`, `user-rejected` or `automode-parsing-error` | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 |
+| `userFeedback` | `user` | What the operator said when refusing a tool call. Both corpus records carrying it also say `toolDenialKind: user-rejected` | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 |
+| `toolEndsTurn` | `user` | The tool result ends the turn rather than feeding another reply. Recorded only as true, on 108 records in 2 corpus sessions, so the false shape is unrecorded | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 |
+| `turnCompanion` | `user` | The record rides along with a turn rather than opening one. Recorded only as true, on 5 records written by `2.1.259`, so the false shape is unrecorded | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 — only `2.1.259` writes it |
+| `queuePriority` | `user` | Where a queued prompt sits in the queue. All 89 corpus values are `later`, so no other is recorded | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 |
+| `queueSkipAttachments` | `user` | The queued prompt went in without its attachments. Recorded only as true, on 3 records written by `2.1.259`, so the false shape is unrecorded | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 — only `2.1.259` writes it |
+| `scheduledTaskId` | `user` | The scheduled task that wrote the record. One corpus record carries it | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 — only `2.1.259` writes it |
+| `scheduledFireId` | `user` | The one firing of that task, beside `scheduledTaskId`. The same corpus record carries both | corpus scan: the canonical store, 705,431 records in 630 sessions, scanned 2026-09-04 — only `2.1.259` writes it |
 | `logicalParentUuid` | `system` / `compact_boundary` | The record the boundary answers in the conversation, beside `parentUuid`, which answers the file. Nothing reads it | `tests/fixtures/compaction/`, CC 2.1.198 |
 | `level` | `system` | How loud the event is: `info`, `warning`, `error` and `suggestion` in the fixtures | `tests/fixtures/compaction/`, CC 2.1.198 |
 | `content` | `system` | The event's own text. On a `local_command` it is the `<local-command-stdout>` body, which Claude Code writes here rather than on a `user` record for 37 of 316 corpus outputs; the body can span lines and can be empty | `tests/fixtures/model_only/`, CC 2.1.215 — an empty `/clear` body |
@@ -154,101 +198,3 @@ Of 240 encoded working directories under `~/.claude/projects` on the recording m
 | `parentLastUuid` | `fork-context-ref` | The parent record work resumes after | `tests/fixtures/fork_byref/`, CC 2.1.202 |
 | `contextLength` | `fork-context-ref` | How much of the parent's context the fork carried over | `tests/fixtures/fork_byref/`, CC 2.1.202 |
 <!-- aigarden:end -->
-
-## Session data comes from three places
-
-- `~/.claude/projects/<encoded-cwd>/<session-id>.jsonl` stores one session transcript as one JSON object per line
-- `~/.claude/projects/<encoded-cwd>/<session-id>/` stores the session directory described below; `hyphae.extract.layout` walks this tree
-- Claude Code's OpenTelemetry export provides a thinner live schema and is enabled per machine, not per repository
-
-Claude Code forms `<encoded-cwd>` by replacing each `/` in the working directory with `-`: `~/repos/mycelia` becomes `-Users-nob-repos-mycelia`. This tree is shared across Claude accounts because `~/.claude-black/projects` is a symlink to `~/.claude/projects`. A transcript path therefore does not identify the account that wrote it.
-
-### A session directory holds transcripts, metadata, and offloaded output
-
-Of 575 mycelia transcripts, 104 have a session directory beside them (scanned 2026-08-07). Those directories contain only the path shapes below. The extractor crashes on an unknown path because Claude Code prunes these directories within weeks; silently skipping a file could erase the only evidence of a schema change.
-
-| Path below `<session-id>/` | Count | Contents | Archive destination |
-| --- | ---: | --- | --- |
-| `subagents/agent-<id>.jsonl` | 2,275 | A subagent transcript | source `<id>` |
-| `subagents/agent-<id>.meta.json` | 2,275 | The spawn metadata: `toolUseId`, `agentType`, and `spawnDepth` | `agent_runs` |
-| `subagents/workflows/wf_<id>/agent-<id>.jsonl` | 180 | A parallel fan-out agent transcript, one level deeper | source `<id>` |
-| `subagents/workflows/wf_<id>/agent-<id>.meta.json` | 180 | Only the workflow agent's `agentType` and `spawnDepth`; it has no spawning tool call | `agent_runs` |
-| `subagents/workflows/wf_<id>/journal.jsonl` | 6 | The fan-out log, with `started` and `result` records keyed by agent | source `wf_<id>/journal` |
-| `tool-results/<name>` | 567 | Tool output named by `persistedOutputPath` because it was too large for the transcript | `offload_files` |
-| `workflows/wf_<id>.json` | 6 | The workflow definition | not read |
-| `workflows/scripts/<name>.js` | 6 | The script that drove the workflow | not read |
-
-A subagent id is often hexadecimal, but sessions can assign names such as `agent-audit-pr291-79ea2c606313e623.jsonl`. Use the complete stem after `agent-` as the source.
-
-*Evidence:* `tests/fixtures/spine/`, CC 2.1.221, contains a subagent; `tests/fixtures/workflow/`, CC 2.1.207, contains a fan-out and journal; `tests/fixtures/offload/`, CC 2.1.220, contains a persisted result.
-
-### Subagent metadata records why the agent ran
-
-Each observed subagent transcript has a neighboring `meta.json`, and each meta has a transcript: 2,764 pairs on the recording machine, with no unpaired files (scanned 2026-08-07). Because no recording establishes how half a pair should behave, the extractor crashes if it finds one.
-
-| Key | Metas | Meaning |
-| --- | ---: | --- |
-| `agentType` | 2,764 | The agent definition, such as `general-purpose`, `auditor`, `workflow-subagent`, or a session-defined name. This is not a closed set |
-| `spawnDepth` | 2,763 | `1` for an agent spawned by the session, higher for nested agents, and `0` for a teammate. Its absence in one CC 2.1.186 session is a recorded state, not a parse error |
-| `description` | 2,584 | The one-line task summary from the spawning call |
-| `toolUseId` | 2,510 | The `Agent` call that requested the run |
-| `model` | 753 | The model alias chosen by the caller, such as `opus` |
-| `parentAgentId` | 389 | The agent that spawned this run |
-| `isFork` | 52 | The run replays another transcript's history or continues it by reference |
-| `taskKind`, `teamName`, `color`, `planModeRequired`, `permissionMode` | 71 | Teammate fields; `taskKind` is `in_process_teammate` |
-| `name`, `worktreePath`, `worktreeBranch`, `customAgentType`, `stoppedByUser` | 94, 86, 86, 39, 3 | Recorded but not yet read |
-
-Of the 254 metas without `toolUseId`, 180 belong to workflow agents, 71 to teammates, and three to forks. The team mechanism starts a teammate without a tool call. Preserve that orphaned run with a warning; dropping it would recreate the prior importer's false claim that all agent runs came from direct tool calls.
-
-*Evidence:* `tests/fixtures/spine/`, CC 2.1.221, contains a spawned and nested run; `tests/fixtures/teammate/`, CC 2.1.211, contains an orphaned teammate.
-
-### Read a run's ask and answer off the call that spawned it
-
-What a run was asked and what it answered are not in the meta. Both are on the spawning call: its `prompt` and its `result`. Read the field rather than the tool name, because the tool is not always `Agent` and a fan-out shares one call among many runs:
-
-```sql
--- data/traces.duckdb, every agent run, no time window. Scanned 2026-08-25.
-SELECT tc.name,
-       count(*) AS runs,
-       count(DISTINCT (tc.session_id, tc.id)) AS spawning_calls,
-       count(json_extract_string(tc.input, '$.prompt')) AS with_prompt,
-       count(tc.result) AS with_result
-FROM agent_runs a
-JOIN tool_calls tc ON tc.session_id = a.session_id
-                  AND tc.id = a.tool_use_id AND tc.source <> a.id
-GROUP BY ALL;
-```
-
-| `name` | Runs | Spawning calls | With `prompt` | With `result` |
-| --- | ---: | ---: | ---: | ---: |
-| `Agent` | 2,555 | 2,555 | 2,555 | 2,554 |
-| `Workflow` | 180 | 6 | 0 | 180 |
-
-So 180 of the 2,735 runs with a spawning call — 6.6% — have no ask to read, because a fan-out is launched once and the launcher is asked in other words. The one `Agent` run without a result is a run whose parent received nothing. No result in the store is JSON, so what comes back is prose.
-
-Count runs, not calls. `tool_calls.id` is unique within a session, not across the store: the same query keyed on `id` alone counts 2,629 `Agent` rows, 74 of which belong to a session whose runs point at something else.
-
-*Evidence:* `tests/fixtures/spine/`, CC 2.1.221, contains an `Agent` call carrying a `prompt` and the result it returned; `tests/fixtures/workflow/`, CC 2.1.207, contains the `Workflow` call, whose input is a name and its arguments.
-
-### Join a workflow agent through its launcher's run id
-
-A fan-out does not spawn agents one by one, so its agent metas name no call. The launching `Workflow` call returns `toolUseResult.runId`, which matches the `wf_<id>` directory containing the agent transcripts. This is the only link from those transcripts to their launching tool call. All six workflow runs on the recording machine contain it (scanned 2026-08-07).
-
-*Evidence:* `tests/fixtures/workflow/`, CC 2.1.207, contains the `Workflow` call, its result, and the named `wf_c30cc877-997` directory.
-
-### Attribute copied history to the transcript that ran it first
-
-All 52 observed fork metas pair `isFork: true` with `agentType: "fork"` (scanned 2026-08-07). The first transcript record identifies one of two fork shapes:
-
-| First record | Forks | Meaning |
-| --- | ---: | --- |
-| `fork-context-ref` | 26 | The file copies no records. The opening record names `parentSessionId`, `parentLastUuid`, and `contextLength`; work begins mid-conversation |
-| `user` or `system` | 26 | The file copies the parent's records verbatim, including uuids and timestamps, then appends the fork's work |
-
-A copy is the original but for `agentId`, which each file rewrites to its own: of the 2,006 pairs of records that share a uuid across two transcripts of one session, on this machine's twelve such sessions, every pair differs there and no pair differs only elsewhere (scanned 2026-08-30). A copied record then appears in two files. The corpus contains 51 overlapping transcript pairs, each with a fork on one side; 25 are fork-to-fork, where one fork copies another's work. Attribute each record to the transcript that ran it first. Keep later copies but mark them `replayed`, so the archive retains what each file recorded without double-counting the work. This rule marks 1,617 records across nine sessions as replays. None appears in a non-fork transcript; such a replay would show that the ordering chose the wrong origin.
-
-Order transcripts by `(spawnDepth, first timestamp, agentId)`, with the main transcript first. Depth must lead because a copied-history fork begins with its parent's timestamp. Of 51 overlapping pairs, 46 tie on the first timestamp; breaking those ties by agent id would wrongly assign 335 records from six original transcripts to their forks. A fork is spawned by the transcript it copies and is therefore deeper.
-
-The one meta without `spawnDepth` sorts last. Its transcript, the subagent file `agent-a20276f6d8a4e5309.jsonl` under the `mac_settings` project, from CC 2.1.186, shares no uuid with a sibling, so its position does not affect attribution.
-
-*Evidence:* `tests/fixtures/fork_origin/`, CC 2.1.215, contains a copied-history fork and the auditor it copied; `tests/fixtures/fork_byref/`, CC 2.1.202, begins with `fork-context-ref`.

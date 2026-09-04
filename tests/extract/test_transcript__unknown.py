@@ -1,33 +1,41 @@
-"""What happens to a field no model declares: a crash where a person is looking, a tally elsewhere.
+"""What `read_lines` does with a record the models do not describe: a crash, or a tally.
 
-The record models claim to describe every field Claude Code writes, and `UnknownFields` is what
-holds them to it. The corpus leaf in `test_records.py` proves the claim over the fixtures; these
-leaves prove the walk itself — where it descends, where it stops, and what it says when it finds
-something.
+Two failures, one seam. A field whose *value* has the wrong shape is a validation error, and the
+message it turns into is this package's promise to whoever reads a crash. A field the models do
+not *declare* is `UnknownFields`' business, and the models claim there are none. The corpus leaf
+in `test_records.py` proves that claim over the fixtures; these leaves prove the walk itself —
+where it descends, where it stops, and what it says when it finds something. Everything goes
+through `read_lines`, where validation and the walk meet in an extract, so no leaf here reaches
+past the seam the extractor uses.
 
-The driving fixture is invented by necessity: a field no model declares is, by construction, a
+The driving fixtures are invented by necessity: a field no model declares is, by construction, a
 field no recorded session in this repository carries. `tests/fixtures/invented/README.md` labels
-it, and its invented values are the tripwire string, so every leaf here can assert that the value
-never reaches a message or a report.
+them, and their invented values are the tripwire string, so every leaf here can assert that the
+value never reaches a message or a report. One file per position the walk has to get right,
+because strict mode stops at the first undeclared field it meets.
 """
-
-from pathlib import Path
 
 import pytest
 
+from hyphae import settings
+from hyphae.extract.claude_code import ClaudeCodeExtractor
 from hyphae.extract.errors import TranscriptSchemaError
-from hyphae.extract.records import shapes
 from hyphae.extract.records.unknown import UnknownFields
 from hyphae.extract.transcript import read_lines
 from tests.conftest import FIXTURES
 
-# The invented transcript, and the line each of its records sits on: a `mode` record opens it, as
-# every file in `invented/` does, then one record per shape the walk has to get right.
-UNKNOWN_FIELD = FIXTURES / "invented" / "invented-unknown-field.jsonl"
-ENVELOPE_LINE = 2
+INVENTED = FIXTURES / "invented"
+# One undeclared field each, at the four places the walk has to tell apart. Every file opens with
+# a `mode` record, as every file in `invented/` does, so the offender is on line 2 — except in the
+# nested fixture, where a clean record ahead of it keeps the reported line from being every
+# file's line.
+ENVELOPE = INVENTED / "invented-unknown-field.jsonl"
+NESTED = INVENTED / "invented-unknown-nested-field.jsonl"
+BLOCK = INVENTED / "invented-unknown-block-field.jsonl"
+OPAQUE = INVENTED / "invented-unknown-opaque-field.jsonl"
+OFFENDING_LINE = 2
 NESTED_LINE = 3
-OPAQUE_LINE = 4
-# The value every invented field in that fixture carries. A crash message or a tally line that
+# The value every invented field in those fixtures carries. A crash message or a tally line that
 # names it has leaked transcript content, which is the one failure mode worse than a wrong count.
 TRIPWIRE = "SUPER-SECRET-PAYLOAD-9f2a"
 # A recorded fixture whose every field the models declare — the negative control for `report()`.
@@ -35,12 +43,42 @@ CLEAN = FIXTURES / "model_only"
 ZOO = FIXTURES / "registry_zoo"
 
 
-def walk(unknown: UnknownFields, path: Path, session_id: str, only: int | None = None) -> None:
-    """Feed one transcript through the models into `unknown`, or just one of its lines."""
-    for line in read_lines(path, session_id):
-        if only is None or line.line_no == only:
-            model = shapes.model_for(line.record)
-            unknown.note(model.model_validate(line.record), session_id, line.line_no)
+# A record whose declared field carries the wrong shape: the second thing `read_lines` can raise.
+WRONG_TYPE = INVENTED / "invented-wrong-field-type.jsonl"
+
+
+def test_a_wrongly_typed_field_names_the_model_the_field_and_where_it_was() -> None:
+    # The error contract, which is the whole reason validation happens at the seam rather than
+    # wherever a reader first trips over the value. A person reading this crash has the record's
+    # address and the field's, and nothing else: the value is transcript content, and one that
+    # reached a log would be a privacy incident rather than a bad message.
+    unknown = UnknownFields(strict=True)
+
+    with pytest.raises(TranscriptSchemaError) as raised:
+        read_lines(WRONG_TYPE, "wrong-type-session", unknown)
+
+    message = str(raised.value)
+    assert "AssistantRecord" in message
+    assert "wrong-type-session" in message
+    assert str(OFFENDING_LINE) in message
+    assert TRIPWIRE not in message
+    # Both faults, in one message, joined: a record with two bad fields would otherwise be read
+    # twice, once per crash, and the second fault only found after the first was fixed.
+    assert "isSidechain: Input should be a valid boolean" in message, message
+    assert "; message.usage.input_tokens: Input should be a valid integer" in message, message
+
+
+def test_a_validation_message_carries_neither_the_value_nor_a_link_to_pydantic() -> None:
+    # How the message stays clean: pydantic renders `input=` and a documentation URL by default,
+    # and the first of those is the private half of the record. Turning both off is one call
+    # argument, so this leaf is what says it was a decision.
+    unknown = UnknownFields(strict=True)
+
+    with pytest.raises(TranscriptSchemaError) as raised:
+        read_lines(WRONG_TYPE, "wrong-type-session", unknown)
+
+    assert "input=" not in str(raised.value)
+    assert "https://errors.pydantic.dev" not in str(raised.value)
 
 
 def test_strict_mode_stops_on_a_field_no_model_declares() -> None:
@@ -51,12 +89,12 @@ def test_strict_mode_stops_on_a_field_no_model_declares() -> None:
     unknown = UnknownFields(strict=True)
 
     with pytest.raises(TranscriptSchemaError) as raised:
-        walk(unknown, UNKNOWN_FIELD, "unknown-field-session", only=ENVELOPE_LINE)
+        read_lines(ENVELOPE, "unknown-field-session", unknown)
 
     message = str(raised.value)
     assert "assistant.shimmerBudget" in message
     assert "unknown-field-session" in message
-    assert str(ENVELOPE_LINE) in message
+    assert str(OFFENDING_LINE) in message
     assert TRIPWIRE not in message
 
 
@@ -68,9 +106,25 @@ def test_the_walk_descends_into_the_models_nested_inside_a_record() -> None:
     unknown = UnknownFields(strict=True)
 
     with pytest.raises(TranscriptSchemaError) as raised:
-        walk(unknown, UNKNOWN_FIELD, "unknown-field-session", only=NESTED_LINE)
+        read_lines(NESTED, "unknown-field-session", unknown)
 
     assert "assistant.message.usage.shimmer_tokens" in str(raised.value)
+    assert str(NESTED_LINE) in str(raised.value)
+    assert TRIPWIRE not in str(raised.value)
+
+
+def test_the_walk_descends_into_every_block_of_a_content_list() -> None:
+    # The position a list costs: `message.content` is a list of models, not a model, so a walk
+    # that only followed fields would stop at the list and report nothing about the blocks —
+    # silently, which is why this leaf exists rather than a mutation catching it. A block is
+    # addressed by its kind rather than its index, the way the schema tables name it, because
+    # two blocks of one kind are one claim.
+    unknown = UnknownFields(strict=True)
+
+    with pytest.raises(TranscriptSchemaError) as raised:
+        read_lines(BLOCK, "unknown-field-session", unknown)
+
+    assert "assistant.message.content.thinking.shimmerTag" in str(raised.value)
     assert TRIPWIRE not in str(raised.value)
 
 
@@ -82,7 +136,7 @@ def test_the_walk_stops_at_a_tools_own_report(strict: bool) -> None:
     # the corpus leaf would be a demand that we describe every tool anyone ever writes.
     unknown = UnknownFields(strict=strict)
 
-    walk(unknown, UNKNOWN_FIELD, "unknown-field-session", only=OPAQUE_LINE)
+    read_lines(OPAQUE, "unknown-field-session", unknown)
 
     assert unknown.report() == ""
 
@@ -95,7 +149,7 @@ def test_an_archived_kind_carries_whatever_it_likes() -> None:
     unknown = UnknownFields(strict=True)
 
     for transcript in sorted(ZOO.rglob("*.jsonl")):
-        walk(unknown, transcript, transcript.stem)
+        read_lines(transcript, transcript.stem, unknown)
 
     assert unknown.report() == ""
 
@@ -107,18 +161,21 @@ def test_lax_mode_tallies_one_entry_per_path_with_its_first_sighting() -> None:
     # new field rolling out or one session doing something odd.
     unknown = UnknownFields(strict=False)
 
-    walk(unknown, UNKNOWN_FIELD, "first-session")
-    walk(unknown, UNKNOWN_FIELD, "second-session")
+    for session in ("first-session", "second-session"):
+        for transcript in (ENVELOPE, NESTED, BLOCK, OPAQUE):
+            read_lines(transcript, session, unknown)
 
     # The report is what an extract prints, so pin the whole of it: one line per path, in path
-    # order. Two paths, not three — the invented key inside `toolUseResult` is behind the opaque
+    # order. Three paths, not four — the invented key inside `toolUseResult` is behind the opaque
     # stop. Every line says `first-session`, so the second read overwrote no first sighting; a
     # field's arrival date would otherwise drift to whenever the extractor last ran.
     assert unknown.report() == (
+        f"assistant.message.content.thinking.shimmerTag: first in session first-session "
+        f"line {OFFENDING_LINE}, 2 session(s)\n"
         f"assistant.message.usage.shimmer_tokens: first in session first-session "
         f"line {NESTED_LINE}, 2 session(s)\n"
         f"assistant.shimmerBudget: first in session first-session "
-        f"line {ENVELOPE_LINE}, 2 session(s)"
+        f"line {OFFENDING_LINE}, 2 session(s)"
     )
     assert TRIPWIRE not in unknown.report()
 
@@ -130,6 +187,27 @@ def test_a_clean_transcript_reports_nothing() -> None:
     unknown = UnknownFields(strict=False)
 
     for transcript in sorted(CLEAN.rglob("*.jsonl")):
-        walk(unknown, transcript, transcript.stem)
+        read_lines(transcript, transcript.stem, unknown)
 
     assert unknown.report() == ""
+
+
+def test_the_suite_runs_strict_however_it_was_started() -> None:
+    # What makes every leaf above worth anything in the tier that does not write them: the
+    # extractor asks `settings.UNIT_TESTING` for its mode, and `pytest-env` sets the variable for
+    # every pytest invocation from `pyproject.toml`. Run this leaf on its own with a bare
+    # `uv run pytest` — it is red if the variable is set anywhere else, such as the test task,
+    # which would leave a developer running one file walking in lax mode and proving nothing.
+    assert settings.UNIT_TESTING is True
+
+
+def test_each_extractor_run_tallies_on_its_own() -> None:
+    # Whose tally it is. One `UnknownFields` per extractor, exposed so the CLI can print it after
+    # a refresh: the count of sessions carrying a field only means something if it counts one
+    # run's sessions, and a tally shared between two runs would carry the last one's news.
+    first, second = ClaudeCodeExtractor(), ClaudeCodeExtractor()
+
+    assert first.unknown_fields is not second.unknown_fields
+    # And a test run's extractor is strict, which is what makes the corpus leaf a gate rather
+    # than a report nobody reads.
+    assert first.unknown_fields.strict is settings.UNIT_TESTING
