@@ -103,6 +103,8 @@ Write the expensive pass itself as a plain function over the store path it reads
 
 Never let a test hit a real telemetry backend by default. Backend calls go behind a marker and an explicit env var, so a bare `mise run test` works offline.
 
+A test that reads the canonical trace store goes behind `HYPHAE_LIVE_STORE`, which names the store file, and skips when it is unset — the store is private session data, so `mise run check` never runs one and CI cannot. Copy the store with its WAL before opening it, because a reader holding it open blocks the extract that writes it, and assert on counts and field paths only: a failing assertion prints its operands, and a `raw_records` row is transcript content (`tests/extract/test_records__census.py`).
+
 # Mutation testing
 
 A green suite proves the tests ran, not that they would notice the code being wrong. `mise run mutate` answers the second question: it breaks one expression at a time and reports which breaks no test caught.
