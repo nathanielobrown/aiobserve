@@ -1,8 +1,8 @@
 """The Claude Code extractor: which sessions a project has, and what each one holds.
 
 Assembly. It finds a project's sessions, sorts each one's files (`extract/layout.py`),
-reads every transcript's lines into entities (`extract/transcript.py`), and stamps the result
-with a fingerprint that decides re-extraction.
+reads each transcript into lines (`extract/transcript.py`) and those lines into entities
+(`extract/parse.py`), and stamps the result with a fingerprint that decides re-extraction.
 
 The reader below it is closed-world on purpose: every record type, every `system` subtype and
 every tag a prompt can lead with is registered in `extract/records/registry.py`, and anything else
@@ -24,10 +24,10 @@ from hyphae.extract.layout import (
     find_sessions,
     read_offload_file,
 )
+from hyphae.extract.parse import parse
 from hyphae.extract.records.unknown import UnknownFields
 from hyphae.extract.replays import replayed_lines
 from hyphae.extract.transcript import (
-    parse,
     pr_links,
     raw_record,
     read_lines,
