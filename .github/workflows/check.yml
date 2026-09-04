@@ -18,7 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      # Installs the tools mise.toml pins (Python, uv) and caches them between runs.
+      # Installs every tool `mise.toml` pins — including the shellcheck `lint-shell` runs, so CI
+      # reads the scripts with the version this repo names rather than whatever the runner image
+      # ships — and caches them between runs.
       - uses: jdx/mise-action@v4
       - run: mise run sync
       - run: mise run check
