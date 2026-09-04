@@ -180,7 +180,9 @@ def session_of(lines: list[Line], session_id: str, transcript: Path) -> Session:
     context = next((record for record in sited if record.cwd is not None), None)
     moments = [t for t in (timestamp_of(line.record) for line in lines) if t is not None]
     active_ms = sum(
-        line.record.durationMs or 0 for line in lines if isinstance(line.record, TurnDurationRecord)
+        required(line.record.durationMs, line, session_id, "durationMs")
+        for line in lines
+        if isinstance(line.record, TurnDurationRecord)
     )
     custom_title = _last_of(lines, CustomTitleRecord)
     ai_title = _last_of(lines, AiTitleRecord)

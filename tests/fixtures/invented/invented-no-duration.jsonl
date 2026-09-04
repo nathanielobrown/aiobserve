@@ -1,0 +1,2 @@
+{"type": "mode", "mode": "normal", "sessionId": "invented-no-duration"}
+{"parentUuid": null, "isSidechain": false, "type": "system", "subtype": "turn_duration", "messageCount": 107, "content": "SUPER-SECRET-PAYLOAD-9f2a", "timestamp": "2026-07-13T00:22:22.415Z", "uuid": "3b84cce4-ed08-4876-84e6-20ae234754cc", "isMeta": false, "userType": "external", "entrypoint": "cli", "cwd": "/Users/nob/repos/mycelia", "sessionId": "invented-no-duration", "version": "2.1.221", "gitBranch": "fixture-branch-1"}
