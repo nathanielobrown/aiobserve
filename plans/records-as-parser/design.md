@@ -52,6 +52,8 @@ docs/schema.md                             ~ regenerated: the four cog blocks gr
 CONTEXT.md, .claude/rules/python.md        ~ record model term; the "declare what you rely on" rule becomes structural
 ```
 
+**As built,** two of those files split instead of growing. `records/shapes.py` kept the roster and the dispatch and handed the models themselves to `base` (the mixin ladder), `conversation`, `system` and `bookkeeping`, while the messages left `blocks` for `messages`. `extract/transcript.py` kept the file, its lines and what one line says about the session as a whole, and handed turns, api calls, tool calls and compactions to a new `extract/parse.py`. The readers are the ones listed in slices 3 to 7 either way; each module's docstring says what it now holds.
+
 The invented fixture is a file under `tests/fixtures/invented/`, not a directory of its own: `tests/conftest.py:corpus_transcripts` globs every other fixtures subdirectory into the shared corpus store, so a new directory would crash every tier that builds one.
 
 ## Key contracts
@@ -178,8 +180,10 @@ Each slice is one commit on the branch and is green under `mise run check` on it
 
 `tests/fixtures/spine/` (Claude Code 2.1.221) for every modelled shape, `tests/fixtures/registry_zoo/` for one record of every registered kind, `tests/fixtures/invented/` for the existing crash paths, the fixture-wide walk of 2026-09-03 (358 records, 115 undeclared paths) for the boundary rules, and the canonical store on 2026-09-03 for the census. Whether `UserMessage.content` can hold a block kind beyond `text` and `tool_result` in the corpus is a hypothesis the census settles in slice 2.
 
+**As built,** `tests/fixtures/system_sited/` (CC 2.1.205) joined them: a session whose only record carrying a `cwd` is a thin `system` subtype, which is what `ArchivedRecord`'s envelope has to keep. The census answered the hypothesis: `UserMessage.content` also holds an `image` block, in three records of the canonical store (scanned 2026-09-04).
+
 ## Open questions
 
-- What the census finds beyond the fixtures. A Claude Code version the fixtures do not cover will carry envelope fields they do not show; each is declared before slice 3, and whether a trimmed fixture or a scan citation is the evidence depends on whether one session can be redacted to show it
-- Which mixin `ArchivedRecord` extends. `Identified` gives it `uuid`, `timestamp`, `sessionId` and `parentUuid` for free; `test_records.py:test_a_record_type_with_no_uuid_does_not_inherit_one` may object, and the implementer settles it against that leaf
-- Whether `ToolUseResult`'s string and list forms validate cleanly under smart-union across the whole corpus. The census answers this too
+- What the census finds beyond the fixtures. A Claude Code version the fixtures do not cover will carry envelope fields they do not show; each is declared before slice 3, and whether a trimmed fixture or a scan citation is the evidence depends on whether one session can be redacted to show it. **Settled:** the sweep of 2026-09-04 over 705,431 records in 630 sessions rejected none, and each field it turned up took the evidence it could — a trimmed fixture where one session could show it, as `tests/fixtures/system_sited/` does, and a scan citation for the fields no fixture holds, such as `forkedFrom` and `attributionMcpServer`
+- Which mixin `ArchivedRecord` extends. `Identified` gives it `uuid`, `timestamp`, `sessionId` and `parentUuid` for free; `test_records.py:test_a_record_type_with_no_uuid_does_not_inherit_one` may object, and the implementer settles it against that leaf. **Settled:** `SessionContext`, for the reason in the decision above
+- Whether `ToolUseResult`'s string and list forms validate cleanly under smart-union across the whole corpus. The census answers this too. **Settled:** they do — the sweep counts the shape each `toolUseResult` arrived in and reported no validation failure

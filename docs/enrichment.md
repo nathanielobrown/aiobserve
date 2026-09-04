@@ -51,7 +51,7 @@ The `describable_sessions` view excludes sessions that give the model nothing so
 
 A main turn that ran a slash command includes the command's printed output, capped at 2,000 characters. For a turn that made no API call, this may be the only record of what happened. In the mycelia corpus on 2026-08-13, 272 of 280 such turns had output.
 
-The prompt names all three output states: recorded output, "the command printed nothing," and "not recorded." Every recorded `/clear` falls into the second state. Claude Code stores slash-command output in either of two record shapes documented in the [schema](schema.md). If the enricher finds a third shape, it stops rather than treating the answer as empty.
+The prompt names all three output states: recorded output, "the command printed nothing," and "not recorded." Every recorded `/clear` falls into the second state. Claude Code stores slash-command output in either of two record shapes, as [reading transcript records](transcript-reading.md#attach-slash-command-output-to-the-command-turn) records. If the enricher finds a third shape, it stops rather than treating the answer as empty.
 
 `sweep_zombies` checks session rows against `describable_sessions`. The next pass removes enrichments written before this gate and reports how many it removed. The gate does not apply to turns, so a turn that made no API call keeps its row.
 
