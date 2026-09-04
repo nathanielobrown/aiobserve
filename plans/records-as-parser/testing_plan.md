@@ -145,6 +145,12 @@ Written after the eight slices landed. Each note is a place the code and this pl
   `turn_duration` records on the recording machine carry one (scanned 2026-09-04), so
   `invented-no-duration.jsonl` is the evidence, and the leaf is now
   `test_a_record_missing_a_field_a_reader_needs_crashes_naming_that_field` over four fixtures
+- **Obligation 37 shipped a comment instead of a section.** The census printed what it read
+  — models, blocks, `toolUseResult` forms — and nothing about what it stopped at, so the
+  design's "the census still prints every one of them when asked" was not true of the code.
+  `unclaimed_keys` now tallies one level of keys under every stop: 362 paths over 705,431
+  records in 630 sessions (run 2026-09-04). Against the plan, a leaf does read the section —
+  a count nothing asserts on can fall to zero without anyone noticing
 - **The crash leaves assert the whole message.** Obligations 18 and 49 asked for the field
   by name, and a substring assert leaves the session id and the field name free to mutate.
   Both leaves now compare the whole string, which subsumes the tripwire assert: a message
