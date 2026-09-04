@@ -109,7 +109,7 @@ Every `raw_records` row of the canonical store through its model. Skipped in CI 
 
 ## Deliberately not covered
 
-- **The 0.3×-`json.loads` cost claim.** A wall-clock ratio is not a suite obligation: machine-dependent and flaky. The `--durations=10` footer on `mise run test` is the standing signal
+- **The cost of validating every record.** A wall-clock ratio is not a suite obligation: machine-dependent and flaky. The design carries the measurement; the `--durations=10` footer on `mise run test` is the standing signal
 - **The interior of `toolUseResult`, of an archived kind, or of a dict leaf.** Not covered by design, not by omission. Obligations 22, 23 and 37 pin that the silence is deliberate and visible on request
 - **Live delivery, enrichment and OTLP.** Untouched; their existing leaves are the regression net (obligation 28)
 - **A model per thin `system` subtype.** Out of scope, so no leaf asserts fields on one beyond obligations 3 and 5
