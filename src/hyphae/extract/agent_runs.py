@@ -47,13 +47,13 @@ def agent_runs(
                 "Session %s: agent run %s has no spawning tool call", session_id, agent.id
             )
         lines = kept[agent.id]
-        moments = [t for t in (timestamp_of(line.fields) for line in lines) if t]
+        moments = [t for t in (timestamp_of(line.record) for line in lines) if t]
         # A fork's file opens with the conversation it inherited, so its own work starts
         # where the copying stops.
         own = [
             t
             for t in (
-                timestamp_of(line.fields) for line in lines if line.line_no not in replays[agent.id]
+                timestamp_of(line.record) for line in lines if line.line_no not in replays[agent.id]
             )
             if t
         ]
