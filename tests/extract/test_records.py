@@ -19,6 +19,7 @@ import pytest
 from pydantic import BaseModel
 
 from hyphae import extract
+from hyphae.extract.errors import TranscriptSchemaError
 from hyphae.extract.records import (
     base,
     blocks,
@@ -156,6 +157,29 @@ def test_no_reason_is_left_for_a_shape_that_no_longer_exists() -> None:
         assert kind in registered, f"`{kind}` is excused, but no registry holds it"
         assert kind not in modelled(), f"`{kind}` has a model, so its reason is stale"
         assert reason, f"`{kind}` is excused without a reason"
+
+
+@pytest.mark.parametrize(
+    ("kind", "subtype", "says"),
+    [
+        (SystemSubtype.API_ERROR, None, "Unknown record type"),
+        (ArchiveRecordType.ATTACHMENT, RecordType.SYSTEM, "Unknown system subtype"),
+    ],
+    ids=["a-subtype-spelled-as-a-type", "a-type-spelled-as-a-subtype"],
+)
+def test_a_kind_borrowed_from_the_other_registry_crashes(
+    kind: str, subtype: str | None, says: str
+) -> None:
+    # The two registries name different levels of the same envelope, and one excuse list holds
+    # both — so a name from one, read at the other's level, must not be quietly archived.
+    # `api_error` as a top-level type or `attachment` as a `system` subtype would be Claude Code
+    # moving a kind up or down the envelope, which is the schema change the crash exists for.
+    # These are kind names rather than recorded records: no session writes either shape, which
+    # is the claim.
+    record = {"type": subtype or kind} | ({"subtype": kind} if subtype else {})
+
+    with pytest.raises(TranscriptSchemaError, match=says):
+        shapes.model_for(record)
 
 
 def test_an_archived_kind_keeps_its_envelope_and_carries_the_rest_whole() -> None:

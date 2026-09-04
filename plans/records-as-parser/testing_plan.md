@@ -128,6 +128,11 @@ Written after the eight slices landed. Each note is a place the code and this pl
 - **49. A `pr-link` record missing `prNumber`, `prUrl` or `prRepository` crashes naming that field.** *Evidence:* three invented fixtures, one per field, since the reader stops at the first field it cannot read; the assertion names the field, the kind and the line, and asserts the tripwire absent. INVENTED — all 3,096 `pr-link` records on the recording machine carry all four fields (scanned 2026-09-04). Slice 3 added the `required()` calls behind `PrLink` and obligation 27 froze the file they belong in, so the leaf lands in slice 8
 - **`UNCITED_BLOCKS` sits beside `ARCHIVED_UNREAD`.** The design named one excuse list; `ContentBlock.IMAGE` is a registered block kind with no model, so obligations 2 and 43 read both
 - **`AssistantMessage.content` is declared as a list, not `str | list`.** All 390,236 assistant records in the store write a list (scanned 2026-09-04). Slice 5 narrows the model rather than adding an unreachable crash path to `_api_calls`, which moves that failure onto obligations 16 and 17
+- **Obligation 1 gains a closed-world leaf.** `ARCHIVED_UNREAD` keys both registries and a
+  member of either is a string, so `{"type": "api_error"}` and a `system` record whose subtype
+  was `attachment` were archived instead of raising. `model_for` now keys each branch on its
+  own registry, and `test_records.py::test_a_kind_borrowed_from_the_other_registry_crashes` is
+  the leaf — obligation 1 asserted that every member resolves, not that only members do
 - **`ArchivedRecord` extends `SessionContext`, not `Identified`.** Obligations 4 and 5 pass
   under either mixin, which is how the first build shipped a session that lost its project
   (`handoff_2026_09_04_audit-records-as-parser.md`, finding 1). `tests/fixtures/system_sited/`
