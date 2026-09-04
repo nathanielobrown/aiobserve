@@ -24,6 +24,14 @@ from pydantic import ValidationError
 
 from hyphae.extract.errors import TranscriptSchemaError, invalid_record
 from hyphae.extract.pricing import SYNTHETIC_MODEL, TokenUsage, compute_cost
+from hyphae.extract.records.base import Identified, Record, SessionContext, Timestamped
+from hyphae.extract.records.bookkeeping import (
+    AgentNameRecord,
+    AiTitleRecord,
+    CustomTitleRecord,
+    ForkContextRefRecord,
+    PrLinkRecord,
+)
 from hyphae.extract.records.registry import (
     AdvisorResult,
     ContentBlock,
@@ -33,7 +41,8 @@ from hyphae.extract.records.registry import (
     SystemSubtype,
     TurnTag,
 )
-from hyphae.extract.records.shapes import Record, model_for
+from hyphae.extract.records.shapes import model_for
+from hyphae.extract.records.system import TurnDurationRecord
 from hyphae.extract.records.unknown import UnknownFields
 from hyphae.model import (
     MAIN_SOURCE,
@@ -69,7 +78,7 @@ class Line:
     @property
     def uuid(self) -> str | None:
         """The record's own id, absent on the bookkeeping types — a documented absence."""
-        return self.fields.get("uuid")
+        return self.record.uuid if isinstance(self.record, Identified) else None
 
 
 class Parsed(NamedTuple):
@@ -213,38 +222,40 @@ def raw_record(session_id: str, source: str, line: Line) -> RawRecord:
         source=source,
         line_no=line.line_no,
         uuid=line.uuid,
-        timestamp=timestamp_of(line.fields),
-        type=line.fields["type"],
+        timestamp=timestamp_of(line.record),
+        type=line.record.type,
         raw=line.raw,
     )
 
 
-def timestamp_of(record: dict[str, Any]) -> datetime | None:
+def timestamp_of(record: Record) -> datetime | None:
     """A record's timestamp. Absent on the bookkeeping types, which carry no time at all."""
-    moment = record.get("timestamp")
-    return datetime.fromisoformat(moment) if moment else None
+    if not isinstance(record, Timestamped) or record.timestamp is None:
+        return None
+    return datetime.fromisoformat(record.timestamp)
 
 
 def session_of(lines: list[Line], session_id: str, transcript: Path) -> Session:
     """Session metadata, gathered from the records that carry it."""
     # The file opens on bookkeeping records with no `cwd`, so the first record that has
     # one is what says where this session ran.
-    context = next((line.fields for line in lines if "cwd" in line.fields), None)
-    moments = [t for t in (timestamp_of(line.fields) for line in lines) if t is not None]
+    sited = (line.record for line in lines if isinstance(line.record, SessionContext))
+    context = next((record for record in sited if record.cwd is not None), None)
+    moments = [t for t in (timestamp_of(line.record) for line in lines) if t is not None]
     active_ms = sum(
-        line.fields["durationMs"]
-        for line in lines
-        if line.fields["type"] == RecordType.SYSTEM
-        and line.fields["subtype"] == SystemSubtype.TURN_DURATION
+        line.record.durationMs or 0 for line in lines if isinstance(line.record, TurnDurationRecord)
     )
+    custom_title = _last_of(lines, CustomTitleRecord)
+    ai_title = _last_of(lines, AiTitleRecord)
+    agent_name = _last_of(lines, AgentNameRecord)
     return Session(
         id=session_id,
-        project_dir=context["cwd"] if context else None,
+        project_dir=context.cwd if context else None,
         # Absent when the project is not a git repository.
-        git_branch=context.get("gitBranch") if context else None,
-        version=context["version"] if context else None,
+        git_branch=context.gitBranch if context else None,
+        version=context.version if context else None,
         # Absent on sessions older than the field — the corpus has 1.0.128 sessions.
-        entrypoint=context.get("entrypoint") if context else None,
+        entrypoint=context.entrypoint if context else None,
         started_at=min(moments) if moments else None,
         ended_at=max(moments) if moments else None,
         active_ms=active_ms,
@@ -252,16 +263,16 @@ def session_of(lines: list[Line], session_id: str, transcript: Path) -> Session:
         # Claude Code appends a fresh title record on every rename, so the last one is the
         # name the session ended up with. Both spellings are current; 13 of the 398 titled
         # mycelia sessions hold both (scanned 2026-08-07), and there the operator's wins.
-        title=_last_field(lines, RecordType.CUSTOM_TITLE, "customTitle")
-        or _last_field(lines, RecordType.AI_TITLE, "aiTitle"),
-        agent_name=_last_field(lines, RecordType.AGENT_NAME, "agentName"),
+        title=(custom_title.customTitle if custom_title else None)
+        or (ai_title.aiTitle if ai_title else None),
+        agent_name=agent_name.agentName if agent_name else None,
     )
 
 
-def _last_field(lines: list[Line], kind: RecordType, field: str) -> str | None:
-    """The last value of a single-field record type, or None when the file holds none."""
-    values = [line.fields[field] for line in lines if line.fields["type"] == kind]
-    return values[-1] if values else None
+def _last_of[R: Record](lines: list[Line], kind: type[R]) -> R | None:
+    """The file's last record of one kind, or None when it holds none."""
+    found = [line.record for line in lines if isinstance(line.record, kind)]
+    return found[-1] if found else None
 
 
 def _compactions(
@@ -300,13 +311,13 @@ def pr_links(lines: list[Line], session_id: str) -> list[PrLink]:
         PrLink(
             session_id=session_id,
             line_no=line.line_no,
-            pr_number=line.fields["prNumber"],
-            pr_url=line.fields["prUrl"],
-            pr_repository=line.fields["prRepository"],
+            pr_number=_required(line.record.prNumber, line, session_id, "prNumber"),
+            pr_url=_required(line.record.prUrl, line, session_id, "prUrl"),
+            pr_repository=_required(line.record.prRepository, line, session_id, "prRepository"),
             timestamp=_required_timestamp(line, session_id),
         )
         for line in lines
-        if line.fields["type"] == RecordType.PR_LINK
+        if isinstance(line.record, PrLinkRecord)
     ]
 
 
@@ -318,8 +329,8 @@ def fork_context(lines: list[Line]) -> str | None:
     (scanned 2026-08-07), but the search does not depend on that.
     """
     for line in lines:
-        if line.fields["type"] == RecordType.FORK_CONTEXT_REF:
-            return line.fields["parentLastUuid"]
+        if isinstance(line.record, ForkContextRefRecord):
+            return line.record.parentLastUuid
     return None
 
 
@@ -374,7 +385,7 @@ def _turns(
                 )
             )
         turn_by_line[line.line_no] = open_turn
-        moment = timestamp_of(line.fields)
+        moment = timestamp_of(line.record)
         if open_turn is not None and moment is not None:
             spans[open_turn].append(moment)
     # Every span holds at least the prompt's own timestamp, which the loop above required.
@@ -383,15 +394,22 @@ def _turns(
 
 def _required_timestamp(line: Line, session_id: str) -> datetime:
     """The record's timestamp, for the entities that cannot be placed in time without one."""
-    moment = timestamp_of(line.fields)
-    if moment is None:
-        # The kind comes off the record rather than the caller: eight parse paths reach
-        # here, and a caller naming the wrong one sends the reader to the wrong records.
+    return _required(timestamp_of(line.record), line, session_id, "timestamp")
+
+
+def _required[V](value: V | None, line: Line, session_id: str, field: str) -> V:
+    """A declared field an entity cannot be built without, or a crash naming where it was.
+
+    Every field on a model is optional, so this is where a reader that cannot proceed without
+    one says so. The kind comes off the record rather than the caller: eight parse paths reach
+    this raise, and a caller naming the wrong one sends the reader to the wrong records.
+    """
+    if value is None:
         raise TranscriptSchemaError(
             f"Session {session_id}, line {line.line_no}: "
-            f"a {line.fields['type']} record with no timestamp"
+            f"a {line.record.type} record with no {field}"
         )
-    return moment
+    return value
 
 
 def _prompt(line: Line, session_id: str, source: str) -> _Prompt | None:
@@ -617,7 +635,7 @@ def _tool_results(lines: list[Line], session_id: str) -> dict[str, _Result]:
                 # Absent on most results — absence means the tool succeeded.
                 is_error=bool(block.get("is_error")),
                 offload_file=PurePath(path).name if path else None,
-                ended_at=timestamp_of(record),
+                ended_at=timestamp_of(line.record),
             )
     return results
 
@@ -647,7 +665,7 @@ def _advisor_results(lines: list[Line], session_id: str) -> dict[str, _Result]:
                 text=content["error_code"] if error else None,
                 is_error=error,
                 offload_file=None,
-                ended_at=timestamp_of(line.fields),
+                ended_at=timestamp_of(line.record),
             )
     return results
 

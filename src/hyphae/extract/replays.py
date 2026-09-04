@@ -67,7 +67,7 @@ def _transcript_order(kept: dict[str, list[Line]], metas: dict[str, dict[str, An
         # A meta that names no depth sorts last. The one such transcript on this machine
         # shares no uuid with any sibling, so where it sits changes nothing (2.1.186).
         depth = metas[name].get("spawnDepth")
-        moments = [t for t in (timestamp_of(line.fields) for line in kept[name]) if t]
+        moments = [t for t in (timestamp_of(line.record) for line in kept[name]) if t]
         return (
             _UNKNOWN_DEPTH if depth is None else depth,
             min(moments) if moments else datetime.max.replace(tzinfo=UTC),
