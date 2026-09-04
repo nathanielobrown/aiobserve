@@ -80,6 +80,13 @@ ARCHIVED_UNREAD: dict[ArchiveRecordType | SystemSubtype, str] = {
     ),
 }
 
+# The archived kinds each branch of the dispatch may answer, kept apart because the two
+# registries name two levels of one envelope and a member of either is just a string: without
+# the split, `api_error` as a top-level type and `attachment` as a `system` subtype would both
+# be archived, when a kind moving up or down the envelope is exactly the change to crash on.
+_ARCHIVED_TYPES = frozenset(k.value for k in ARCHIVED_UNREAD if isinstance(k, ArchiveRecordType))
+_ARCHIVED_SUBTYPES = frozenset(k.value for k in ARCHIVED_UNREAD if isinstance(k, SystemSubtype))
+
 # What `model_for` dispatches on: the record type, and the subtype for the `system` records
 # that carry fields of their own.
 _TYPE_MODELS: dict[str, type[Record]] = {}
@@ -104,12 +111,12 @@ def model_for(record: dict[str, Any]) -> type[Record]:
         modelled = _SUBTYPE_MODELS.get(subtype)
         if modelled is not None:
             return modelled
-        if subtype in ARCHIVED_UNREAD:
+        if subtype in _ARCHIVED_SUBTYPES:
             return ArchivedRecord
         raise TranscriptSchemaError(f"Unknown system subtype {subtype!r}")
     modelled = _TYPE_MODELS.get(kind)
     if modelled is not None:
         return modelled
-    if kind in ARCHIVED_UNREAD:
+    if kind in _ARCHIVED_TYPES:
         return ArchivedRecord
     raise TranscriptSchemaError(f"Unknown record type {kind!r}")
