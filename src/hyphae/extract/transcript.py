@@ -31,7 +31,7 @@ from hyphae.extract.records.bookkeeping import (
     ForkContextRefRecord,
     PrLinkRecord,
 )
-from hyphae.extract.records.conversation import UserRecord
+from hyphae.extract.records.conversation import AssistantRecord, UserRecord
 from hyphae.extract.records.messages import ToolUseResult
 from hyphae.extract.records.shapes import model_for
 from hyphae.extract.records.system import TurnDurationRecord
@@ -47,9 +47,6 @@ class Line:
 
     line_no: int
     record: Record
-    # The same line as a dict, for the readers that have not moved onto the model yet. It goes
-    # when the last of them does (`plans/records-as-parser/design.md`).
-    fields: dict[str, Any]
     raw: str
 
     @property
@@ -117,7 +114,7 @@ def _validated(
     except ValidationError as error:
         raise invalid_record(error, model, session_id, line_no) from error
     unknown_fields.note(parsed, session_id, line_no)
-    return Line(line_no=line_no, record=parsed, fields=record, raw=raw)
+    return Line(line_no=line_no, record=parsed, raw=raw)
 
 
 def resolve_duplicates(lines: list[Line], session_id: str) -> list[Line]:
@@ -143,9 +140,16 @@ def resolve_duplicates(lines: list[Line], session_id: str) -> list[Line]:
 
 
 def _content(line: Line) -> Any:
-    """What the record said, if it said anything — the one field a duplicate may not change."""
-    message = line.fields.get("message")
-    return message.get("content") if isinstance(message, dict) else None
+    """What the record said, if it said anything — the one field a duplicate may not change.
+
+    Only the two conversation kinds say anything: of the 619,138 records in the store, none of
+    any other kind carries a `message` (scanned 2026-09-04). Comparing the parsed content
+    compares the fields no model declares too, which ride along on the blocks.
+    """
+    record = line.record
+    if not isinstance(record, UserRecord | AssistantRecord):
+        return None
+    return record.message.content if record.message is not None else None
 
 
 def raw_record(session_id: str, source: str, line: Line) -> RawRecord:

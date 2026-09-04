@@ -7,12 +7,15 @@ describe a format nobody has ever seen.
 """
 
 import json
+import re
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
 from pydantic import BaseModel
 
+from hyphae import extract
 from hyphae.extract.records import (
     base,
     blocks,
@@ -424,3 +427,24 @@ def test_every_recorded_block_parses_as_the_model_its_kind_names() -> None:
     # is what the raw JSON holds, kind for kind.
     raw = [item["type"] for record in every_record() for item in blocks_and_parts(record)]
     assert sorted(kind.value for kind in seen) == sorted(raw)
+
+
+# Any `record["field"]` read, which is how a dict comes back into a reader.
+DICT_READ = re.compile(r'\["[a-zA-Z_]+"\]')
+# The one the design keeps: `agent_runs.py` opens the `agent-<id>.meta.json` sidecar, a file
+# Claude Code writes beside a transcript and no record model describes.
+SIDECAR_READ = re.compile(r'\bmeta\["[a-zA-Z_]+"\]')
+
+
+def test_no_extractor_reads_a_record_as_a_dict() -> None:
+    # The pin behind the whole change: the models are the parser's types, so a reader that wants
+    # a field asks the record for it. A bracket read is how the dict gets back in — one line at a
+    # time, past the models, past the type checker, and without evidence that the field is there.
+    # Whole package rather than one module, because the readers moved between modules while the
+    # change was underway and a pin on one file follows them nowhere.
+    package = Path(extract.__file__).parent
+    reads = {
+        str(path.relative_to(package)): DICT_READ.findall(SIDECAR_READ.sub("", path.read_text()))
+        for path in sorted(package.rglob("*.py"))
+    }
+    assert {module: found for module, found in reads.items() if found} == {}
