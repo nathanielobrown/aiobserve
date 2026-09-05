@@ -9,7 +9,7 @@ in `taxonomy.py`.
 
 import hashlib
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 from hyphae.enrich.items import Level
 from hyphae.enrich.levels import LEVELS
@@ -26,6 +26,11 @@ class Stamp:
     prompt_version: int
     taxonomy_version: int
     model: str
+
+
+# The stamp's columns, in field order. A writer binds `astuple(stamp)` against this and a
+# reader unpacks `Stamp(*row)` from it, so the two cannot drift from the fields above.
+COLUMNS: tuple[str, ...] = tuple(field.name for field in fields(Stamp))
 
 
 def input_hash(rendered: str) -> str:
