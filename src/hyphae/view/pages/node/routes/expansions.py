@@ -276,6 +276,11 @@ def spilled(
         )
         if not head:
             raise HTTPException(404, "No session with that id is in this store.")
+        # The NavTree's width, where the node page reads the same query at the log's
+        # (`browse.py`): what comes back here is drawn as rows and listed in no children log,
+        # so the wider read would fetch three times the string for a surface printing a third
+        # of it. Nothing rendered says which was chosen — the row cuts to its own width
+        # whatever arrives — so `tests/view/test_bounds__widths.py` is what holds it.
         runs = page_rows(connection, Page.RUNS, **bound(Page.RUNS, bounds.NAV_TREE_WIDTHS, **keyed))
         corpus = Corpus(
             session_id=session_id,

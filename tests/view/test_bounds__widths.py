@@ -1,4 +1,4 @@
-"""What each surface prints store text at.
+"""What each surface prints store text at, and which surface a read names.
 
 `test_bounds.py` reads the widths off what a page cited, which reaches only the surfaces a
 footer quotes. Four print none — an expansion, a popover, the enrichment block and the
@@ -9,7 +9,14 @@ Swept rather than listed read by read: the gap it closes is a profile that arriv
 nobody's number behind it.
 """
 
+import ast
+from pathlib import Path
+
+import hyphae.view
 from hyphae.view import bounds
+from hyphae.view.store import Page
+
+VIEW = Path(hyphae.view.__file__).parent
 
 # What each surface prints at, spelled out once. Read off nothing: this is the half of the pin
 # that says which width a number is, and `test_bounds.py:test_the_pages_run_at_the_production_sizes`
@@ -53,3 +60,55 @@ def test_every_surface_declares_the_widths_it_prints_at() -> None:
     assert sorted(declared) == sorted(PROFILES)
     for name, profile in declared.items():
         assert (type(profile), profile) == (type(PROFILES[name]), PROFILES[name]), name
+
+
+# Which surface each read of a session's agent runs names. Two reads of one query at two
+# widths: the node page prints a run as a children log row and draws it as a NavTree row, so
+# it reads at the wider of the two and cuts again at each; the tail row's fetch draws NavTree
+# rows and nothing else, so it reads at a row's width.
+RUNS_READS = [
+    ("pages/node/routes/browse.py", "LOG_WIDTHS"),
+    ("pages/node/routes/expansions.py", "NAV_TREE_WIDTHS"),
+]
+
+
+def called(func: ast.expr) -> str:
+    """The name a call is written under, however it was imported."""
+    return func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+
+
+def runs_reads() -> list[tuple[str, str]]:
+    """Every `bound(Page.RUNS, …)` the viewer makes, by module, with the surface it names.
+
+    The seam takes its page and its surface positionally (`view/store.py:bound`), so the call
+    says which is which without being run. A read that named its surface some other way trips
+    the assertion rather than dropping out of the sweep.
+    """
+    found: list[tuple[str, str]] = []
+    for path in sorted(VIEW.rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if not isinstance(node, ast.Call) or called(node.func) != "bound":
+                continue
+            page, widths = node.args[0], node.args[1]
+            if not isinstance(page, ast.Attribute) or page.attr != Page.RUNS.name:
+                continue
+            assert isinstance(widths, ast.Attribute), ast.unparse(node)
+            found.append((str(path.relative_to(VIEW)), widths.attr))
+    return sorted(found)
+
+
+def test_each_read_of_a_sessions_runs_names_the_surface_it_is_drawn_at() -> None:
+    """The one read whose surface nothing else can see, held to the surface it is drawn at.
+
+    Read off the source, because no rendered byte carries the choice: the tail row's fetch is
+    a fragment with no footer to quote a width, and the NavTree cuts a title to a row's width
+    whatever the query brought back. Swapping that read to the log's profile leaves all 137
+    tail-row fetches the fixture corpus offers at `?kin=1` byte for byte identical (probed) —
+    it ships green, prints the same page, and fetches three times the string for a surface
+    that shows a third of it.
+
+    A list rather than a map, so a second read in one module cannot take the place of the
+    first, and the map is the scan's companion: a read that moved, a read that arrived, or a
+    scan that stopped finding anything all red here rather than passing on an empty sweep.
+    """
+    assert runs_reads() == RUNS_READS
