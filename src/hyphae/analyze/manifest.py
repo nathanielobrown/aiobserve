@@ -182,7 +182,7 @@ def describe(name: str) -> Query:
     library does not ship, a parameter `PARAM_TYPES` does not type, and a default no
     statement binds — the two ways what stays in Python can drift from the SQL.
     """
-    if not (queries.QUERY_DIR / f"{name}.sql").is_file():
+    if name not in set(names()):
         raise QueryError(f"no query named {name!r}. Known queries: {', '.join(names())}")
     text = statement(name)
     bound = parameters(text)

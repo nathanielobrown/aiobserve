@@ -252,6 +252,27 @@ def test_a_parameter_the_library_types_nowhere_is_refused_rather_than_bound_blin
         query(corpus_db, capsys, "planted", "--param", "undeclared=1")
 
 
+def test_a_name_outside_the_query_directory_is_refused_like_an_unknown_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`describe` guards on membership in `names()`, not on whether a path resolves to a file.
+
+    The query directory is the registry (`names()` globs it), so a name is only ever one of
+    its stems. Guarding with `Path.is_file()` instead would let `../` walk a name to any file
+    on disk the process can read — outside the library `hp query` is supposed to be limited to.
+    """
+    library = tmp_path / "library"
+    library.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "evil.sql").write_text("SELECT 1")
+    monkeypatch.setattr(queries, "QUERY_DIR", library)
+    # The traversal reaches a real file, but it is not one of `names()` — refused the same way
+    # a name that does not exist anywhere is.
+    with pytest.raises(queries.QueryError, match="no query named"):
+        manifest.describe("../outside/evil")
+
+
 def test_a_default_the_statement_binds_nothing_to_is_refused(
     corpus_db: Path,
     tmp_path: Path,
