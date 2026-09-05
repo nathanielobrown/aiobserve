@@ -45,7 +45,7 @@ Model-written descriptions beside the telemetry: `docs/enrichment.md`; the vocab
 - **Enrichment** — one accepted model answer about one item: description, category, outcome, friction
 - **Level** — the three kinds a pass describes: turn, agent run, session
 - **Category / Outcome** — the closed vocabularies for what kind of work it was and how it ended
-- **Stamp** — the input hash and versions that decide re-enrichment; a mismatch is what `stale` means
+- **Stamp** — the input hash, versions and model a row was written under; a mismatch with today's is what `stale` means
 - **Pass** — one person-started, bottom-up enrichment or analysis iteration; never call it a run
 
 ## Viewer pages

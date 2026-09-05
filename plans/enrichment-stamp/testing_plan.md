@@ -45,7 +45,7 @@ Three rules shape everything below.
 ### integration (CLI)
 
 - **`hp enrich` runs a pass against today's declarations, because `_enrich` builds `Versions.current()`.** *Evidence:* extend `test_enricher__cli.py:test_the_cli_writes_what_the_library_writes` to assert the stored `prompt_version` and `taxonomy_version` of the rows the CLI wrote equal `LEVELS[level].prompt_version` and `TAXONOMY_VERSION`. Bolded: `cli.py` is the only production caller, and nothing else would catch a CLI that passed an empty or hand-built `Versions` — every other leaf supplies its own.
-- The dry-run leaves keep quoting what a pass sends. *Evidence:* `test_enricher__cli.py:test_a_dry_run_counts_the_ancestors_of_what_is_stale` and `test_a_dry_run_quotes_a_price_it_computed_itself`, whose `plan(store, MODEL, project=None, limit=None)` calls (lines 169, 189) gain `versions=`; assertions unchanged.
+- The dry-run leaves keep quoting what a pass sends. *Evidence:* `test_enricher__cli.py:test_a_dry_run_counts_the_ancestors_of_what_is_stale` and `test_a_dry_run_quotes_a_price_it_computed_itself`, whose `plan(store, MODEL, project=None, limit=None)` calls (lines 201, 221) gain `versions=`; assertions unchanged.
 
 ---
 
@@ -66,7 +66,7 @@ Three rules shape everything below.
 
 ### integration (viewer)
 
-- A row described under an older prompt version is tagged stale and one described under today's is not. *Evidence:* `tests/view/test_enrichment.py:test_an_item_described_under_an_older_prompt_is_marked_stale`, unchanged. Its `wrote()` oracle reads `LEVELS[Level.turn].prompt_version` and `TAXONOMY_VERSION` directly, on purpose: an oracle that called `moved_past` would compare `Enrichment.stale` against the function it now delegates to. The planted corpus supplies both sides — `tests/conftest.py:planted_stamp` puts every fifth row one prompt version behind.
+- A row described under an older prompt version is tagged stale and one described under today's is not. *Evidence:* `tests/view/test_enrichment.py:test_an_item_described_under_an_older_version_is_marked_stale`, renamed for the taxonomy case the obligation below adds and otherwise unchanged. Its `wrote()` oracle reads `LEVELS[Level.turn].prompt_version` and `TAXONOMY_VERSION` directly, on purpose: an oracle that called `moved_past` would compare `Enrichment.stale` against the function it now delegates to. The planted corpus supplies both sides — `tests/conftest.py:planted_stamp` puts every fifth row one prompt version behind.
 - **The viewer and the enricher call one row stale or fresh alike on the taxonomy axis.** *Evidence:* extend `tests/conftest.py:planted_stamp` to put some rows one taxonomy version behind — the same every-fifth-row shape, on an index coprime with the prompt-version cycle so the two axes can be told apart — and add a case to the viewer leaf above for a row stale on taxonomy alone. See the report: today's planted corpus never moves `taxonomy_version`, so that arm of `moved_past` reaches no page.
 
 ---
@@ -106,4 +106,4 @@ Twenty-three obligations: eight new leaves (`test_stamp.py`), two replacing dele
 1. *The binding is only nine-tenths mechanical.* `upsert` writes `str(enrichment.category)` and `str(enrichment.outcome)` today. `astuple(stamp)` is safe, but a payload binding written as `astuple(enrichment)` would hand DuckDB two `StrEnum` members, and no existing store leaf reads either column back. Hence the new assertion on `test_a_second_upsert_replaces_the_row`
 2. *The viewer's taxonomy arm is dark.* `planted_stamp` moves only `prompt_version`, so no page in the fixture corpus is stale on taxonomy. `Enrichment.stale` passes both versions to `moved_past`, and today an implementation that dropped the taxonomy comparison would go green. Fixing it costs three lines in `tests/conftest.py`
 
-**Collision with `plans/one-price-table/design.md`:** none in the same lines. That change edits `cli.py`'s `--model` argparse block and `enrich/cost.py`; this one edits `cli.py:_enrich`'s body. Both touch `tests/enrich/test_enricher__cli.py` — one adds a door test, this one adds `versions=` to the `plan()` calls at lines 169 and 189 and extends `test_the_cli_writes_what_the_library_writes`. Whichever lands second rebases cleanly.
+**Collision with `plans/one-price-table/design.md`:** none in the same lines. That change edits `cli.py`'s `--model` argparse block and `enrich/cost.py`; this one edits `cli.py:_enrich`'s body. Both touch `tests/enrich/test_enricher__cli.py` — one adds a door test, this one adds `versions=` to the `plan()` calls at lines 201 and 221 and extends `test_the_cli_writes_what_the_library_writes`. Whichever lands second rebases cleanly.

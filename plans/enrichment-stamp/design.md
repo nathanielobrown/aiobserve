@@ -97,7 +97,7 @@ Tests drive the deepened interfaces and nothing under them:
 - `stale()` is tested on plain maps in `tests/enrich/test_stamp.py`: one field moved, a missing row, an identical stamp
 - The store keeps one round trip: `upsert` then `stamps(level)` returns what was written, and `stale(planned, store.stamps(level))` names the mutated row — the existing parametrized four-field test, recomposed
 - Parity: `declared_shape(store._SCHEMA)[spec.table] == set(spec.keys) | set(PAYLOAD_COLUMNS)` for every `LevelSpec`, via `export/schema.py:declared_shape`. This replaces `test_stamp_is_the_four_field_staleness_key`: a fifth stamp field now fails here until the DDL carries it, which is the guard that test wanted
-- The viewer keeps `tests/view/test_enrichment.py::test_an_item_described_under_an_older_prompt_is_marked_stale` as is; its `wrote()` oracle still reads `LEVELS` and `TAXONOMY_VERSION` directly, on purpose — an oracle that called `moved_past` would test the code against itself
+- The viewer keeps `tests/view/test_enrichment.py::test_an_item_described_under_an_older_version_is_marked_stale` (renamed for the taxonomy case) as is; its `wrote()` oracle still reads `LEVELS` and `TAXONOMY_VERSION` directly, on purpose — an oracle that called `moved_past` would test the code against itself
 
 ## Slices
 

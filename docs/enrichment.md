@@ -57,12 +57,14 @@ The prompt names all three output states: recorded output, "the command printed 
 
 ## Four values decide whether a row is stale
 
-A row is current only when these values match:
+`src/hyphae/enrich/stamp.py` owns the rule. A row is current only when these values match:
 
 - The rendered prompt's content hash
 - The level's prompt version
 - The taxonomy version
 - The model that answered
+
+A pass compares the stamp it would write against the one the store holds. The viewer's stale tag asks the same module the version half of that question, so a page and the next pass agree about which rows have aged.
 
 The hash covers rendered content, not extraction metadata. Re-extracting unchanged text therefore costs nothing. A changed child description changes its parent's rendered prompt, which makes the parent stale in the same invocation. If the new child description matches the old one, the cascade stops there.
 
