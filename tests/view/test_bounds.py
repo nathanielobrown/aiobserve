@@ -351,8 +351,7 @@ def test_the_pages_run_at_the_production_sizes(client: TestClient) -> None:
     # The list's rows drop the agent types a session spawned, but the query behind them still
     # gathers the names, so a member is cut where the list cuts a skill name.
     assert ran["view_sessions"]["item_chars"] == {bounds.LIST_WIDTHS.item_chars}
-    # And what the list surface declares, from the row's own strings through to the two
-    # counted lists a described row adds and the suggestions in the filter box above it.
+    # And what the list surface declares: the row, the two lists a described row adds, the box.
     assert (
         bounds.SessionList(
             head_chars=100,
@@ -365,9 +364,9 @@ def test_the_pages_run_at_the_production_sizes(client: TestClient) -> None:
         )
         == bounds.LIST_WIDTHS
     )
-    # And the landing page, whose row shows a path at the list's head and links by the whole
-    # one. How many projects it ranks is a size like the rest; the two windows it counts them
-    # in are not sizes, and `tests/view/test_projects.py` pins those against what it cites.
+    # And the landing page, whose row shows a path at its own head and links by the whole one.
+    # The two windows it counts a project in are not sizes, and `tests/view/pages/projects/`
+    # pins those against what the page cites.
     assert ran["view_project_rollups"]["head_chars"] == {bounds.PROJECTS_WIDTHS.head_chars}
     assert ran["view_project_rollups"]["projects"] == {bounds.PROJECTS_WIDTHS.projects}
     assert (
@@ -379,10 +378,9 @@ def test_the_pages_run_at_the_production_sizes(client: TestClient) -> None:
     assert ran["view_session_errors"]["nav_chars"] == {bounds.ERRORS_WIDTHS.nav_chars}
     assert ran["view_session_errors"]["errors"] == {bounds.ERRORS_WIDTHS.errors}
     assert bounds.Errors(nav_chars=110, errors=100) == bounds.ERRORS_WIDTHS
-    # The enrichment block a node page fetches is the one surface no footer quotes — a
-    # fragment carries none — so its widths are pinned on the profile alone. The taxonomy is
-    # closed and its longest member is nine characters (`enrich/taxonomy.py`), so the tag cut
-    # bounds a hand-edited row rather than anything a pass writes.
+    # The enrichment block a node page fetches is the one surface no footer quotes — a fragment
+    # carries none — so its widths are pinned on the profile alone. The taxonomy is closed and
+    # its longest member is nine characters, so the tag cut bounds a hand-edited row.
     assert (
         bounds.Enrichment(
             description_chars=200, tag_chars=20, head_chars=bounds.HEADER_WIDTHS.head_chars

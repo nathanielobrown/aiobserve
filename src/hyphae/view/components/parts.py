@@ -194,7 +194,7 @@ def counted(*, entries: Sequence[Count], mark_cuts: bool) -> Html:
     Every integer goes through `fmt.count`, like every other one a page prints, and every name
     through `cuts.item`, which marks the ones the query stopped. `mark_cuts` is how a caller
     opts out, for a list whose vocabulary is closed: a taxonomy value is cut at a width its own
-    words cannot reach (`analyze/queries.py:TAG_CHARS`), so a mark on one would say a name went
+    words cannot reach (`view/bounds.py:SessionList.kind_chars`), so a mark on one would say a name
     on when nothing was left behind.
     """
     return htpy.fragment[

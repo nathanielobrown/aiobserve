@@ -12,7 +12,7 @@ process. A viewer left open is long-lived, and the gallery freezes `fmt.utcnow` 
 
 import datetime as dt
 
-from hyphae.analyze import queries
+from hyphae.view import bounds
 from hyphae.view.text import format as fmt
 
 
@@ -34,7 +34,7 @@ def line(value: str | None) -> str:
     `nodes.Node.log_title` does for a node's title, for the columns a row prints straight off
     the row.
     """
-    return fmt.ABSENT if value is None else fmt.cut(value, queries.LOG_CHARS)
+    return fmt.ABSENT if value is None else fmt.cut(value, bounds.LOG_WIDTHS.log_chars)
 
 
 def head(value: object) -> object:
@@ -47,7 +47,7 @@ def head(value: object) -> object:
     """
     if value is None:
         return fmt.ABSENT
-    return fmt.cut(value, queries.HEADER_CHARS) if isinstance(value, str) else value
+    return fmt.cut(value, bounds.HEADER_WIDTHS.head_chars) if isinstance(value, str) else value
 
 
 def short(value: str | None) -> str:
@@ -61,7 +61,7 @@ def short(value: str | None) -> str:
     Takes None like the other cuts do: it stands ahead of `project_path` on the project column,
     which is where a row's one nullable string is printed.
     """
-    return fmt.ABSENT if value is None else fmt.cut(value, queries.LIST_CHARS)
+    return fmt.ABSENT if value is None else fmt.cut(value, bounds.LIST_WIDTHS.head_chars)
 
 
 def item(value: str) -> str:
@@ -69,17 +69,17 @@ def item(value: str) -> str:
 
     What `member` does for a header's lists, at the width a row shows a skill or an agent type.
     The kinds of work beside them do not come through here: their vocabulary is closed
-    (`enrich/taxonomy.py`), so `queries.TAG_CHARS` is a bound the page's arithmetic needs rather
+    (`enrich/taxonomy.py`), so the list's `kind_chars` is a bound the page's arithmetic needs
     than one a value reaches, and a mark there could never be true.
     """
-    return fmt.cut(value, queries.LIST_ITEM_CHARS)
+    return fmt.cut(value, bounds.LIST_WIDTHS.item_chars)
 
 
 def member(value: str) -> str:
     """One member of a header's list, marked where the query cut it.
 
     The list half of what `head` does for a header's own strings: a list is cut twice — to its
-    first `HEADER_ITEMS` members, which the pane counts out loud, and each member to
-    `HEADER_ITEM_CHARS`, which nothing said until here.
+    first `head_items` members, which the pane counts out loud, and each member to the
+    surface's `item_chars`, which nothing said until here.
     """
-    return fmt.cut(value, queries.HEADER_ITEM_CHARS)
+    return fmt.cut(value, bounds.HEADER_WIDTHS.item_chars)

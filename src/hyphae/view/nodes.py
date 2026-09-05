@@ -19,6 +19,7 @@ from typing import NamedTuple
 from markupsafe import Markup
 
 from hyphae.analyze import queries
+from hyphae.view import bounds
 from hyphae.view.store import Row
 from hyphae.view.text import inline_markdown
 from hyphae.view.text.format import cut
@@ -56,7 +57,7 @@ SPEECH_MARK = "💭"
 # narrowest width any surface cuts a title to, so the tool the reader picks the row out by
 # keeps the other half: the canonical store's worst call names its tools in 93 characters, and
 # the whole of a pane's heading is 100.
-TALLY_CHARS = queries.HEADER_CHARS // 2
+TALLY_CHARS = bounds.HEADER_WIDTHS.head_chars // 2
 
 
 class Kind(StrEnum):
@@ -426,7 +427,7 @@ class Node:
         own, wherever it is printed. A cap read off the surface instead would mark a described
         row that nothing had stopped.
         """
-        return queries.ENRICHMENT_CHARS if self.enriched else chars
+        return bounds.ENRICHMENT_WIDTHS.description_chars if self.enriched else chars
 
     def _plain(self, chars: int, *parts: str) -> str:
         """The same cut, as the text under it: for the surfaces that cannot carry markup."""
@@ -436,11 +437,11 @@ class Node:
     def nav_tree_title(self) -> Markup:
         """The title at the width of a NavTree row, a walk control, or an errors-list row."""
         return self._at(
-            queries.NAV_CHARS,
+            bounds.NAV_TREE_WIDTHS.nav_chars,
             self.lead,
             self.words,
             links=False,
-            source_cap=self._cut_at(queries.NAV_CHARS),
+            source_cap=self._cut_at(bounds.NAV_TREE_WIDTHS.nav_chars),
         )
 
     @property
@@ -451,7 +452,7 @@ class Node:
         and neither is what the words say — so the one surface with nowhere to put markup takes
         the text under it, cut at the same place the row beside it stops.
         """
-        return self._plain(queries.NAV_CHARS, self.lead, self.words)
+        return self._plain(bounds.NAV_TREE_WIDTHS.nav_chars, self.lead, self.words)
 
     @property
     def crumb_title(self) -> Markup:
@@ -470,7 +471,7 @@ class Node:
             self.lead,
             self.words,
             links=False,
-            source_cap=self._cut_at(queries.NAV_CHARS),
+            source_cap=self._cut_at(bounds.NAV_TREE_WIDTHS.nav_chars),
         )
 
     @property
@@ -483,7 +484,10 @@ class Node:
         that column with it too (`lead`).
         """
         return self._at(
-            queries.LOG_CHARS, self.words, links=False, source_cap=self._cut_at(queries.LOG_CHARS)
+            bounds.LOG_WIDTHS.log_chars,
+            self.words,
+            links=False,
+            source_cap=self._cut_at(bounds.LOG_WIDTHS.log_chars),
         )
 
     @property
@@ -504,11 +508,11 @@ class Node:
         # strings at this width *or wider*: the pane cannot tell where such a string was cut,
         # so its own budget is the only cut it may mark.
         return self._at(
-            queries.HEADER_CHARS,
+            bounds.HEADER_WIDTHS.head_chars,
             self.lead,
             self.words,
             links=True,
-            source_cap=self._cut_at(queries.DETAIL_CHARS),
+            source_cap=self._cut_at(bounds.DETAIL.ceiling),
         )
 
     @property

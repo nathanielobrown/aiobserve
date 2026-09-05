@@ -15,8 +15,8 @@ from collections.abc import Mapping
 from enum import StrEnum
 from typing import Any, NamedTuple, assert_never
 
-from hyphae.analyze import queries
 from hyphae.enrich.items import Level
+from hyphae.view import bounds
 from hyphae.view.enrichment import Enrichment
 from hyphae.view.store import Page, Value
 from hyphae.view.text import format as fmt
@@ -318,6 +318,8 @@ def enrichment_lines(
     # tuple itself rather than a second read of `view_enrichment`.
     row = about._asdict()
     return EnrichmentLines(
-        description=preview(lines[0], row, size=queries.ENRICHMENT_CHARS, **keyed),
-        friction=preview(lines[1], row, size=queries.ENRICHMENT_CHARS, **keyed),
+        description=preview(
+            lines[0], row, size=bounds.ENRICHMENT_WIDTHS.description_chars, **keyed
+        ),
+        friction=preview(lines[1], row, size=bounds.ENRICHMENT_WIDTHS.description_chars, **keyed),
     )
