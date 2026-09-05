@@ -278,7 +278,8 @@ class OtlpCensus:
 
     def __init__(self, ledger: DeliveryLedger, *, text: TextPolicy) -> None:
         self.ledger = ledger
-        # No default: whether transcript text ships changes the count, so the caller chooses.
+        # No default: the caller must choose, even though the policy moves attributes rather
+        # than the span count — `session_spans` emits one span per live row whatever it is.
         self.text = text
         self.counts = Census(sessions=0, spans=0, compactions=0)
 
@@ -287,7 +288,13 @@ class OtlpCensus:
         return self.ledger.fingerprints()
 
     def export(self, trace: SessionTrace, fingerprint: str) -> None:
-        """Shape one session the way a send would, and count it instead of posting it."""
+        """Shape one session the way a send would, and count it instead of posting it.
+
+        Breaks the `Exporter` protocol's post-condition that `fingerprints()` reports the
+        fingerprint afterwards — this counts a session without recording it as held. Safe
+        because `refresh()` reads `fingerprints()` once, before any `export()` call; a second
+        `refresh()` over the same census would count the same sessions again.
+        """
         self.counts += census([trace], self.text)
 
 
