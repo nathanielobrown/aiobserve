@@ -58,6 +58,8 @@ Model-written descriptions beside the telemetry: `docs/enrichment.md`; the vocab
 What each page shows and cites: `docs/viewer.md`; the code: one package per page under `src/hyphae/view/pages/`, whose routes `src/hyphae/view/app.py` extends onto the app.
 
 - **Component** — one typed function building part of a page's markup with htpy; a page is Python, not a template (a page's own `markup`, over the shared `src/hyphae/view/components/`)
+- **Surface** — one place a page prints store text at widths of its own: the NavTree, a header, a children log, an expansion, a popover, a list row; `src/hyphae/view/bounds.py` declares each
+- **Widths** — a surface's fixed sizes, one field per query parameter it binds; a read names the surface, the store fills the mapping, the footer quotes it
 - **Projects page** — `/`, the landing page: every project and its recent sessions
 - **Session list** — `/sessions`: the filter form above one page of sessions
 - **Node page** — the one page shape every node kind shares: NavTree beside reading pane
