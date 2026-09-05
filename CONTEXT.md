@@ -38,6 +38,8 @@ The extract → store → export seam: `src/hyphae/pipeline.py`; the store: `doc
 - **Rollup** — one row per session: counts, tokens, cost
 - **Timeline** — one thread in outline, a row per turn in the order they ran: `session_timeline` for `main`, `run_timeline` for an agent run
 - **Span** — a store row's OTLP shadow; one OTLP trace per session
+- **Delivery ledger** — what one backend acknowledged of each session, and the fingerprints the next send diffs against
+- **Census** — what a send would ship, counted by shaping every session and posting none: the dry run
 
 ## Enrichment
 
