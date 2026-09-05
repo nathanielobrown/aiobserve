@@ -9,11 +9,15 @@ person or a model wrote, shown as what it was written in rather than rendered.
 import json
 
 import duckdb
+import pytest
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
-from hyphae.view import bounds
+from hyphae.view import bounds, detail
 from hyphae.view.app import build_app
+from hyphae.view.detail import DETAILS, Written
 from hyphae.view.text.format import ELLIPSIS
+from hyphae.view.text.highlight import Syntax
 from hyphae.view.text.labels import LABELS
 from tests.conftest import ANCESTOR, DENSE_TURN, MAIN, SLASH_TURN, SPINE
 from tests.view.conftest import (
@@ -28,9 +32,59 @@ from tests.view.conftest import (
     values,
     walled,
 )
+from tests.view.scenarios import SCENARIOS, Group
 from tests.view.selections import (
     TURN,
 )
+
+# The one `/fragment/` route that serves a whole value and is not a Detail: a record arrives
+# with a header line of its own and no pane previews a head of it (`routes/details.py`).
+RECORD_ROUTE = "/fragment/record/session/{session_id}/thread/{source}/line/{line_no}"
+
+
+def test_the_registry_declares_every_value_the_viewer_previews_and_fetches(
+    client: TestClient,
+) -> None:
+    """`DETAILS` is the whole population of previewable values, read against the app itself.
+
+    A Detail used to be declared in six places that agreed only by string equality — the
+    pane's call, the fetch route, the two header columns, a `store.Value` and a label key —
+    and a hand-kept list in a test was a seventh. This is what replaces them all: every
+    spec's route is a route the app answers, and the specs plus the raw record are exactly
+    the value and enrichment fetches the scenario corpus pins.
+
+    Both halves are needed. The route set alone would pass a spec that declared a URL nobody
+    can reach; the scenario set alone would pass a route no spec declares. Together with
+    `test_bounds.py:test_every_route_the_viewer_exposes_is_in_the_payload_sweep`, which
+    equates the app's routes to `SCENARIOS`, no public URL can move without one going red.
+    """
+    routes = {spec.route for spec in DETAILS}
+    exposed = {route.path for route in client.app.routes if isinstance(route, APIRoute)}  # pyrefly: ignore
+    assert routes <= exposed
+    assert routes | {RECORD_ROUTE} == {
+        path
+        for path, scenario in SCENARIOS.items()
+        if scenario.group in (Group.VALUES, Group.ENRICHMENT)
+    }
+
+
+def test_the_one_syntax_rule_refuses_a_row_that_never_said_what_it_holds() -> None:
+    """A `NAMED_FILE` value reads its syntax off the row, and a row without it is a crash.
+
+    Called directly rather than through a URL, which is the one leaf here that is: both
+    queries behind the only `NAMED_FILE` spec select `result_type` (`view_tool_header.sql`,
+    `view_tool_result.sql`), so no request can produce the row below. The obligation is real
+    anyway — the fetch used to read the column with `.get`, which turned a query that stopped
+    selecting it into the same JSON a suffix-less file falls back to, silently.
+
+    The rows are invented: a row the two queries cannot return is the whole point.
+    """
+    with pytest.raises(KeyError):
+        detail.syntax_of(Written.NAMED_FILE, {})
+    # Present and naming a file, present and naming none: the fallback is JSON because a tool
+    # that does not answer in prose answers in JSON far more often than anything else.
+    assert detail.syntax_of(Written.NAMED_FILE, {"result_type": ".md"}) is Syntax.MARKDOWN
+    assert detail.syntax_of(Written.NAMED_FILE, {"result_type": None}) is Syntax.JSON
 
 
 def test_a_pane_previews_a_fat_value_and_offers_the_rest_as_its_own_fetch(

@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from hyphae.analyze import queries
 from hyphae.view import app as view_app
 from hyphae.view.app import build_app
+from hyphae.view.detail import DETAILS
 from hyphae.view.pages.node import columns as view_columns
 from hyphae.view.text import format as fmt
 from hyphae.view.text.labels import LABELS
@@ -93,12 +94,12 @@ def test_every_fact_a_header_asks_for_has_a_label() -> None:
 
     A header field with no label would reach a reader as a column name, which is the thing
     `LABELS` exists to stop, and an entry nothing asks for is a word nobody sees. Read off the
-    markup, the panes and the log's column table rather than listed here, so a fact added
-    to any of them lands in this check. The panes are a source because a previewed value is
-    labelled by the name the route passed it under, which no component names; the column table
-    is one because a children log heads itself from a variable, which no regex over a source
-    file can see. Every module of the view package is read rather than `app.py` alone, so a
-    pane that moves to a module of its own keeps its previews in the check.
+    markup, the detail registry and the log's column table rather than listed here, so a fact
+    added to any of them lands in this check. The registry is a source because a previewed
+    value is labelled by the name its spec files it under, which no component names; the
+    column table is one because a children log heads itself from a variable, which no regex
+    over a source file can see. Every module of the view package is scanned for the markup
+    half rather than `app.py` alone, so a fact that moves to a page's own module stays in.
 
     A source scan and not a render, unlike its neighbours: a label a component asks for and no
     page reaches would go unseen either way, but a missing one crashes on `LABELS`'s own
@@ -112,16 +113,13 @@ def test_every_fact_a_header_asks_for_has_a_label() -> None:
             r"""(?:fact|label)(?:led)?\(\s*(?:name=)?["']([a-z_]+)""", path.read_text()
         )
     }
-    previewed = {
-        name
-        for path in Path(view_app.__file__).parent.rglob("*.py")
-        for name in re.findall(r'detail_of\(\s*name="([a-z_]+)"', path.read_text())
-    }
-    # Both scans walk the whole view package rather than one directory of it, and both have to
-    # find something: a scan that matched nothing would agree with the registry by saying
-    # nothing, so a `fact()` or a `detail_of()` call that moved into a page's own markup —
+    previewed = {spec.name for spec in DETAILS}
+    # The markup scan walks the whole view package rather than one directory of it, and both
+    # sources have to find something: a scan that matched nothing would agree with the
+    # registry by saying nothing, so a `fact()` call that moved into a page's own markup —
     # where a glob over `components/` alone no longer reaches — would drop out of the check
-    # instead of reding it.
+    # instead of reddening it. `DETAILS` is held to the same rule: a registry that emptied
+    # itself would take every previewed name out of the comparison and pass.
     assert asked, "no component asks for a label, so the registry has no subject"
     assert previewed, "no pane previews a value, so half this check has no subject"
     headed = {column.field for shape in view_columns.COLUMNS.values() for column in shape}
