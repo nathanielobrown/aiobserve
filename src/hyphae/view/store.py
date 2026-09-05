@@ -160,10 +160,12 @@ def bound(
     argument rather than as a key.
 
     Every parameter `page` declares is filled from one of the three or this raises, naming the
-    page, the parameter and the surface; a key or a size that names a width raises too — an
-    override is a second surface, so declare one (`view/bounds.py`). DuckDB refuses a read
-    short of a parameter as well, but only once a connection is open and a statement handed
-    over, and its message names neither the surface nor which half should have carried it.
+    page, the parameter and the surface; a parameter filled twice raises too — a key or a size
+    that names a width is an override, which is a second surface, so declare one
+    (`view/bounds.py`), and a key that names a size is two answers to what the URL asked.
+    DuckDB refuses a read short of a parameter as well, but only once a connection is open and
+    a statement handed over, and its message names neither the surface nor which half should
+    have carried it.
 
     The mapping comes back in the order it was spelled — keys, then widths, then sizes — which
     is the order the citation under the page quotes them in (`view/citation.py`).
@@ -171,6 +173,13 @@ def bound(
     surface = type(widths).__name__
     declared = manifest.describe(page).params
     fields = widths._asdict()
+    # Ahead of the merge, which is where the shadowing would happen: `sizes` is written second
+    # into the mapping, so the reader's number would take the read's silently.
+    if twice := sorted(keys.keys() & sizes.keys()):
+        raise ValueError(
+            f"{page} is passed {', '.join(twice)} twice: a size is what a reader asked the page "
+            f"for, so a read that keys one of its own is answering the URL over the reader"
+        )
     given = {**keys, **sizes}
     if claimed := sorted(given.keys() & fields.keys()):
         raise ValueError(

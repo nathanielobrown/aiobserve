@@ -89,6 +89,29 @@ def test_a_key_that_is_also_a_width_is_refused_rather_than_overriding_it() -> No
         )
 
 
+def test_a_key_that_is_also_a_size_is_refused_rather_than_being_shadowed_by_it() -> None:
+    """The third collision, refused like the other two: a size the read also spells as a key.
+
+    A size is what a reader asked the page for and a key is what the read is about, so a
+    parameter arriving as both is two answers to one question — and the URL's would win, being
+    written second into the mapping. Silently: the citation would quote the reader's number
+    while the call site went on saying the read binds its own.
+
+    `detail_chars` is the collision that can happen, because it is the one size a node page
+    passes and no surface declares — the width arms above never see it.
+    """
+    with pytest.raises(ValueError, match=r"view_turn_header is passed detail_chars twice"):
+        bound(
+            Page.TURN_HEADER,
+            bounds.HEADER_WIDTHS,
+            {"detail_chars": bounds.DETAIL.default},
+            session_id=SPINE,
+            source=MAIN,
+            turn_id=SLASH_TURN,
+            detail_chars=10,
+        )
+
+
 def test_a_key_the_statement_does_not_bind_is_refused_before_a_connection_is_opened(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
