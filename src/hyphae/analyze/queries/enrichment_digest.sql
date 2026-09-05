@@ -7,7 +7,8 @@
 -- visible rather than absent. Bind `$level` to `turn`, `agent_run` or `session` to read one
 -- level; NULL is all three.
 -- Reads the `enriched_*` views (`docs/enrichment.md`), so it is the `live_*` family a keyed
--- query always reads: a resumed session shows the rows its own files hold.
+-- query always reads: a resumed session shows the rows its own files hold. A store no
+-- enrichment pass has touched does not hold these tables, and this query fails on it saying so.
 WITH item AS (
     SELECT
         'turn' AS level,

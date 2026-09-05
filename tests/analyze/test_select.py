@@ -15,7 +15,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from hyphae.analyze.manifest import QUERIES
+from hyphae.analyze.manifest import describe
 from tests.analyze.conftest import (
     AGENT_TYPES,
     AS_OF_PARTIAL,
@@ -292,7 +292,7 @@ def test_the_production_quotas_are_the_designed_reading_budget() -> None:
     """A bare selection run draws the budget the committed reports quote."""
     # Every other leaf here binds fixture-sized values, so this is the only thing standing
     # between an edited quota and a report citing a number nobody ran.
-    defaults = {name: spec.default for name, spec in QUERIES["select_sessions"].params.items()}
+    defaults = {name: spec.default for name, spec in describe("select_sessions").params.items()}
     assert defaults == {
         "cost_quota": 8,
         "error_quota": 5,
@@ -305,7 +305,7 @@ def test_the_production_quotas_are_the_designed_reading_budget() -> None:
     }
     # The run draw rides the same pin: its floor is what keeps a corpus of one-off agent
     # names from turning a ~20-run reading budget into one run per name.
-    assert {name: spec.default for name, spec in QUERIES["select_runs"].params.items()} == {
+    assert {name: spec.default for name, spec in describe("select_runs").params.items()} == {
         "runs_per_stratum": 1,
         "min_runs": 5,
     }

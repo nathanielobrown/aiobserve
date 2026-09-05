@@ -11,6 +11,8 @@
 -- Counts through the `corpus_*` family like everything else here, rather than the
 -- `enriched_*` views, which are LEFT joins over `live_*`: a resume's copied turn is enriched
 -- under the copy's own key, so dropping the copy drops its enrichment row with it.
+-- Reads tables an enrichment pass writes (`docs/enrichment.md`). A store no pass has touched
+-- does not hold them, and this query fails on it saying so.
 WITH item AS (
     SELECT
         p.period,

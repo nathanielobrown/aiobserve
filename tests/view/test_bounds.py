@@ -21,7 +21,7 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from hyphae.analyze import macros, queries
-from hyphae.analyze.manifest import QUERIES
+from hyphae.analyze.manifest import catalog
 from hyphae.analyze.queries import VIEW_PREFIX
 from hyphae.view import bounds
 from hyphae.view.app import build_app
@@ -65,6 +65,10 @@ from tests.view.conftest import (
 # tier's, and what the production sizes are read off here.
 from tests.view.pages.query.test_query import CITING, bound
 from tests.view.scenarios import SCENARIOS
+
+# The library described once for the whole module: every leaf below reads what a query binds,
+# and a `Query` is derived from its statement rather than looked up (`analyze/manifest.py`).
+CATALOG = catalog()
 
 # What a query may wrap a fat column in and still be bounded: a fixed-width prefix of it, a
 # count of what it holds, the check that it parses, the window the model it names answers in,
@@ -259,9 +263,9 @@ def test_every_viewer_query_is_declared_as_a_page_a_fragment_or_a_value() -> Non
     """
     declared = set(Page) | set(Fragment) | set(Value)
     # Every query the viewer owns is scanned by one of the leaves above...
-    assert {name for name in QUERIES if name.startswith(VIEW_PREFIX)} <= declared
+    assert {name for name in CATALOG if name.startswith(VIEW_PREFIX)} <= declared
     # ...and every name declared is a query that ships, timelines shared with the runner too.
-    assert declared <= set(QUERIES)
+    assert declared <= set(CATALOG)
 
 
 def ran_at(client: TestClient) -> dict[str, dict[str, set[int]]]:
@@ -284,7 +288,7 @@ def test_the_pages_run_at_the_production_sizes(client: TestClient) -> None:
     """The page sizes the payload bound is computed from are the ones production runs.
 
     Read off what the pages cited, not off the manifest: no `view_` query declares a default
-    (`view/manifest.py`), and back when they did, two of the numbers pinned here were numbers
+    (`analyze/manifest.py`), and back when they did, two of the numbers pinned here were numbers
     no page ever ran — `chip_chars` was declared 60 while the runs log ran it at 300.
 
     Every other leaf in this file binds fixture-sized values, so without this pin the whole
@@ -358,7 +362,7 @@ def test_no_viewer_query_declares_a_default() -> None:
     """
     declared = {
         f"{name}.{parameter}"
-        for name, query in QUERIES.items()
+        for name, query in CATALOG.items()
         if name.startswith(VIEW_PREFIX)
         for parameter, spec in query.params.items()
         if spec.default is not queries.REQUIRED
@@ -485,7 +489,7 @@ def test_the_limit_scan_catches_a_literal_page_size() -> None:
     assert limits("SELECT * FROM raw_records LIMIT $page_records -- LIMIT 100") == ["$page_records"]
 
 
-@pytest.mark.parametrize("name", sorted(name for name in QUERIES if name.startswith(VIEW_PREFIX)))
+@pytest.mark.parametrize("name", sorted(name for name in CATALOG if name.startswith(VIEW_PREFIX)))
 def test_every_page_size_in_a_viewer_query_is_a_bound_parameter(name: str) -> None:
     """No viewer query hides a page size in its text, so every bound is one a reader can see.
 
@@ -495,7 +499,7 @@ def test_every_page_size_in_a_viewer_query_is_a_bound_parameter(name: str) -> No
     """
     for limit in limits(queries.load(name)):
         assert limit.startswith("$"), f"{name} limits by a literal: {limit}"
-        assert limit.lstrip("$") in QUERIES[name].params
+        assert limit.lstrip("$") in CATALOG[name].params
 
 
 def test_every_fat_column_is_still_a_column(enriched_store: duckdb.DuckDBPyConnection) -> None:
@@ -568,7 +572,7 @@ def test_no_route_serves_more_than_the_page_ceiling(path: str, enriched_client: 
     assert len(response.content) < PAGE_BYTES, path
 
 
-@pytest.mark.parametrize("name", sorted(QUERIES))
+@pytest.mark.parametrize("name", sorted(CATALOG))
 def test_every_query_the_library_ships_serves_under_the_ceiling(
     name: str, client: TestClient
 ) -> None:

@@ -1,6 +1,8 @@
 -- One whole raw transcript record, by the line number a citation names. The untruncated `raw`
 -- is the point: this is the route from a preview to the text the session actually held, and
 -- the bound is one record rather than a page of them.
+-- `$line_no` is a key like the session and the thread beside it: "some record of this thread"
+-- is not a question anyone asked, and the answer would be private transcript either way.
 SELECT
     line_no,
     uuid,

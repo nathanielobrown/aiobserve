@@ -2,6 +2,8 @@
 -- node page, so what was typed is cut one character past `$detail_chars` — the protocol
 -- `view/text/format.py:cut` reads — with its whole length beside it, and a pane shows the head,
 -- marks it as cut and says how much more there is (`view_turn_prompt` has the rest).
+-- `$turn_id` is a key like the session and the thread beside it: "some turn of this thread"
+-- is not a question anyone asked.
 WITH call AS (
     SELECT * FROM live_api_calls
     WHERE session_id = $session_id AND source = $source AND turn_id = $turn_id

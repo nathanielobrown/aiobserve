@@ -16,14 +16,15 @@ from typing import Any
 import duckdb
 
 from hyphae.analyze import macros, manifest, queries
-from hyphae.analyze.queries import NoDefault, ParamType, ParamValue, Scope
+from hyphae.analyze.queries import NoDefault, ParamType, ParamValue, QueryError, Scope
 from hyphae.export.duckdb import CLI_WAIT, StoreLocked, open_trace_store
 from hyphae.export.schema import SchemaVersionError
 from hyphae.projects import project_predicate, resolve_project
 
 # The sessions `--project` selects, and the window flag every corpus query reads. Written
 # here rather than in each query file so that a query cannot scope itself differently from
-# the corpus it reports against.
+# the corpus it reports against. These two relations are `queries.CORPUS_RELATIONS`, which is
+# what reading one makes a statement a corpus one.
 _PROJECT_SESSIONS = f"""
 CREATE OR REPLACE TEMP TABLE project_sessions AS
 SELECT
@@ -49,17 +50,9 @@ UNION ALL
 SELECT session_id, 'trailing_window' AS period FROM project_sessions WHERE in_window
 """
 
-# What the runner puts in scope for a corpus query. A query that reads neither is not scoped
-# to `--project` at all, whatever its manifest says.
-CORPUS_RELATIONS = ("project_sessions", "session_period")
-
 # Sessions no project predicate can place. They are excluded from every corpus count, so the
 # runner reports how many there were rather than leaving the gap silent.
 _UNPLACEABLE = "SELECT count(*) FROM sessions WHERE project_dir IS NULL"
-
-
-class QueryError(Exception):
-    """The caller asked for something the library cannot run, and it says which part."""
 
 
 @dataclass(frozen=True)
@@ -92,13 +85,11 @@ def run(
     """Bind one library query and run it read-only against the store at `db`.
 
     `params` are raw `k=v` strings; each is parsed to the type its manifest entry declares.
-    Raises `QueryError` for anything the manifest cannot account for — an unknown query, an
+    Raises `QueryError` for anything the library cannot account for — an unknown query, an
     undeclared parameter, a required one left unbound, `--project` where it is needed or
     where it means nothing.
     """
-    query = manifest.QUERIES.get(name)
-    if query is None:
-        raise QueryError(f"no query named {name!r}. Known queries: {', '.join(manifest.QUERIES)}")
+    query = manifest.describe(name)
     bindings = _resolve(name, query.params, params)
     corpus = query.scope is Scope.CORPUS
     if corpus and project is None:

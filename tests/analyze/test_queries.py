@@ -2,23 +2,20 @@
 
 Discovery, not enumeration — the leaves parametrize over `queries/*.sql`, so a query added
 by any consumer of the library (the analysis process, the viewer) is covered the moment it
-lands, and one shipped without a manifest entry fails here rather than at a reader's prompt.
+lands, and one that cannot be described fails here rather than at a reader's prompt.
 
-`FIXTURE_BINDINGS` is where a query says what to bind on a 16-session store. A query whose
-manifest marks a parameter required must appear there, or its leaf fails naming it.
+`FIXTURE_BINDINGS` is where a query says what to bind on a 16-session store. A query with a
+parameter no default covers must appear there, or its leaf fails naming it.
 """
 
 import re
 
 import pytest
 
-from hyphae.analyze import queries
-from hyphae.analyze.manifest import ANALYSIS, QUERIES
-from hyphae.analyze.queries import Scope
-from hyphae.analyze.runner import CORPUS_RELATIONS
+from hyphae.analyze import manifest, queries
+from hyphae.analyze.queries import PARAM_TYPES, Scope, parameters, relations, statement
 from hyphae.enrich.levels import LEVELS
 from hyphae.export.duckdb import TABLES
-from hyphae.view.manifest import VIEW_QUERIES
 from hyphae.view.store import SHOWN
 from tests.analyze.conftest import AS_OF_WHOLE, QueryRunner
 from tests.conftest import (
@@ -45,7 +42,7 @@ from tests.conftest import (
 )
 
 # What a surface states when it runs a viewer query, at fixture size. No `view_` query
-# declares a default — the surface that prints a value owns its width (`view/manifest.py`) —
+# declares a default — the surface that prints a value owns its width (`view/bounds.py`) —
 # so the smoke run says it here, keyed by parameter rather than by query: what a size is for
 # does not change between the queries that take it, and the production numbers are pinned
 # against what the pages ran (`tests/view/test_bounds.py`).
@@ -232,12 +229,7 @@ ENRICHMENT_VIEWS = "enriched_"
 # fixture store today and returns nothing next month.
 CLOCK = ("current_date", "current_timestamp", "now", "today", "get_current_timestamp")
 
-NAMES = sorted(path.stem for path in queries.QUERY_DIR.glob("*.sql"))
-
-
-def statement(name: str) -> str:
-    """One query's SQL with its comments cut — every rule below reads what runs."""
-    return re.sub(r"--[^\n]*", "", queries.load(name))
+NAMES = manifest.names()
 
 
 def identifiers(name: str) -> set[str]:
@@ -245,26 +237,12 @@ def identifiers(name: str) -> set[str]:
     return set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", statement(name)))
 
 
-def relations(name: str) -> set[str]:
-    """What a query reads: the identifier after each FROM or JOIN, CTE names included.
-
-    A rollup column is named after the table it counts (`turns`, `api_calls`), so a bare
-    identifier scan cannot tell a table read from a column selected.
-    """
-    return set(re.findall(r"\b(?:FROM|JOIN)\s+([A-Za-z_][A-Za-z0-9_]*)", statement(name)))
-
-
 def reads_enrichment(name: str) -> bool:
     """Whether a query needs a store an enrichment pass has already written to."""
-    read = relations(name)
+    read = relations(statement(name))
     return bool(read & ENRICHMENT_TABLES) or any(
         relation.startswith(ENRICHMENT_VIEWS) for relation in read
     )
-
-
-def declared_parameters(name: str) -> set[str]:
-    """The `$name` parameters the SQL text itself references."""
-    return set(re.findall(r"\$([A-Za-z_][A-Za-z0-9_]*)", statement(name)))
 
 
 AT_WIDTH = re.compile(r"substr\((.*?),\s*1,\s*\$(\w+)\s*\)")
@@ -320,7 +298,7 @@ HAND_CUTS: dict[str, set[str]] = {
 @pytest.mark.parametrize("name", NAMES)
 def test_every_query_runs(name: str, run_query: QueryRunner, enriched_query: QueryRunner) -> None:
     """Every shipped query executes against a real store — an empty result is fine."""
-    query = QUERIES[name]
+    query = manifest.describe(name)
     runner = enriched_query if reads_enrichment(name) else run_query
     # If a parameter is required with no default, this tier has to say what to bind: a size
     # off the table above, and anything a query keys on off its own entry...
@@ -348,21 +326,24 @@ def test_every_query_runs(name: str, run_query: QueryRunner, enriched_query: Que
     assert len(printed.csv_rows()) > 1, f"{name} returned no rows: bind it in FIXTURE_BINDINGS"
 
 
-def test_every_query_file_has_a_manifest_entry() -> None:
-    """The manifest and the directory hold the same set of queries, declared once each."""
-    assert sorted(QUERIES) == NAMES
-    # `QUERIES` is `ANALYSIS | VIEW_QUERIES`, and a merge settles a clash by keeping the right
-    # half. A name in both would leave one entry standing and the other gone — different
-    # parameters bound under the name a citation prints — while the set above stays whole and
-    # says nothing. One name space, so one declaration.
-    assert not set(ANALYSIS) & set(VIEW_QUERIES), "declared in both halves of the manifest"
-
-
 def test_a_citation_with_nothing_bound_ends_at_the_query_file() -> None:
     """A citation is a line someone pastes into a report, so it never trails whitespace."""
     # Every shipped query resolves at least one binding, so this is the contract for a caller
     # that composes its own — the viewer builds citations from what it bound, not a manifest.
     assert queries.citation("sessions", {}) == "-- queries/sessions.sql"
+
+
+def test_every_default_and_param_type_is_bound_by_a_shipped_query() -> None:
+    """`DEFAULTS` and `PARAM_TYPES` name only what a shipped statement actually binds.
+
+    `describe` only reaches a name the directory holds, so a `DEFAULTS` entry for a query
+    that was deleted — or a `PARAM_TYPES` entry for a parameter no statement binds any
+    more — is never looked at, and never fails. Both are the same drift the per-query
+    orphan guard catches, one level up: unused rather than unbound.
+    """
+    bound = {parameter for name in NAMES for parameter in parameters(statement(name))}
+    assert set(manifest.DEFAULTS) <= set(NAMES)
+    assert set(PARAM_TYPES) == bound
 
 
 @pytest.mark.parametrize("name", CUT_SQL)
@@ -403,23 +384,19 @@ def test_every_cut_to_a_width_is_the_macro_or_a_named_exception(name: str) -> No
 
 
 @pytest.mark.parametrize("name", NAMES)
-def test_the_manifest_declares_exactly_the_parameters_the_sql_uses(name: str) -> None:
-    """No parameter goes unbound, and no manifest entry describes one that is gone."""
-    assert declared_parameters(name) == set(QUERIES[name].params)
-
-
-@pytest.mark.parametrize("name", NAMES)
 def test_a_cross_session_query_counts_through_the_corpus_views(name: str) -> None:
     """A corpus query reads `corpus_*`, so a resumed session is counted once."""
-    if QUERIES[name].scope is not Scope.CORPUS:
+    read = relations(statement(name))
+    # A query is a corpus one *because* it reads one of the relations the runner builds from
+    # `--project`, so that is the skip rather than an assertion — what the two refusals it
+    # earns look like at the command line is `test_query.py`'s to pin.
+    if manifest.describe(name).scope is not Scope.CORPUS:
         pytest.skip("keyed queries fetch one session's own rows")
-    read = relations(name)
     # The `live_*` family counts a resume's copied rows twice across sessions, and a base
     # table counts a fork's replays as well. A corpus query reads neither: it joins the
-    # `corpus_*` views to one of the relations the runner builds from `--project`.
+    # `corpus_*` views to reach what the runner put in scope (`queries.CORPUS_RELATIONS`).
     assert not {word for word in read if word.startswith("live_")}
     assert not (read & set(TABLES))
-    assert read & set(CORPUS_RELATIONS)
 
 
 @pytest.mark.parametrize("name", NAMES)
