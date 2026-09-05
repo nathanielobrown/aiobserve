@@ -1,9 +1,14 @@
-"""What an API call cost, from a price table we maintain.
+"""What an API call cost, from the one price table we maintain.
+
+`MODELS` is what every reader asks: the extract prices a recorded reply through
+`compute_cost`, the viewer draws its context bar against the window, the analyze macros read
+the window, and `hp enrich` quotes a pass off the same rates (`hyphae.enrich.cost`).
 
 This table is **ours**, not Claude Code's. A model missing from it is a gap in our list, not
 a schema change to surface, so `compute_cost` returns `None` and the caller records the
 model name with no cost — a queryable absence that can be filled in later. Crashing here
-would kill a backfill the day a new model ships.
+would kill a backfill the day a new model ships. A quote has no backfill to protect, so it
+crashes instead.
 
 Prices are USD per million tokens, read from
 <https://platform.claude.com/docs/en/about-claude/pricing> on **2026-08-30**. Nothing in the
@@ -30,7 +35,8 @@ _CACHE_READ = 0.1
 _CACHE_WRITE_5M = 1.25
 _CACHE_WRITE_1H = 2.0
 
-_PER_MILLION = 1_000_000
+# Every rate below is per this many tokens, so every reader divides by it.
+PER_MILLION = 1_000_000
 
 
 class ModelSpec(NamedTuple):
@@ -59,9 +65,10 @@ class TokenUsage(NamedTuple):
     cache_1h: int | None
 
 
-# Every model the mycelia corpus records, plus the placeholder. Keyed by the exact
-# `message.model` string, since that is what the transcript carries. A model absent here
-# shows no cost and draws no context bar.
+# Every model the mycelia corpus records, plus the placeholder and any model an enrichment
+# pass may name. Keyed by the exact `message.model` string, since that is what the transcript
+# carries — and `--model` names the same strings. A model absent here shows no cost and draws
+# no context bar.
 #
 # The table has no effective-date dimension: it says what a model charges, not what it
 # charged. Every price it has ever held has been the model's only one, and a rise announced
@@ -92,6 +99,10 @@ MODELS: dict[str, ModelSpec] = {
     # 2026-08-30). One price, no boundary.
     "claude-sonnet-5": ModelSpec(input=2.0, output=10.0, context_window=200_000),
     "claude-sonnet-4-6": ModelSpec(input=3.0, output=15.0, context_window=200_000),
+    # No recorded call names this model; it is here because an enrichment pass may. Read from
+    # the pricing page on 2026-09-03, and its window rests on the published figure alone,
+    # since the corpus holds no call to check it against.
+    "claude-sonnet-4-5-20250929": ModelSpec(input=3.0, output=15.0, context_window=200_000),
     "claude-haiku-4-5-20251001": ModelSpec(input=1.0, output=5.0, context_window=200_000),
 }
 
@@ -139,7 +150,7 @@ def _charges(model: str, tokens: TokenUsage) -> CostSplit | None:
 def split_cost(model: str, tokens: TokenUsage) -> CostSplit | None:
     """What one reply cost by category, or None when the table does not price its model."""
     charges = _charges(model, tokens)
-    return None if charges is None else CostSplit(*(charge / _PER_MILLION for charge in charges))
+    return None if charges is None else CostSplit(*(charge / PER_MILLION for charge in charges))
 
 
 def compute_cost(model: str, tokens: TokenUsage) -> float | None:
@@ -149,4 +160,4 @@ def compute_cost(model: str, tokens: TokenUsage) -> float | None:
     number it was: four divisions rounded and then added is not always the same float.
     """
     charges = _charges(model, tokens)
-    return None if charges is None else sum(charges) / _PER_MILLION
+    return None if charges is None else sum(charges) / PER_MILLION
