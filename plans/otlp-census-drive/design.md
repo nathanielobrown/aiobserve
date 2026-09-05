@@ -36,6 +36,8 @@ CONTEXT.md                             ~  Census, Delivery ledger
 tests/export/test_otlp__census.py      ~  census_project leaf rewritten onto refresh; a send-then-census leaf
 tests/export/test_otlp__cli.py         ~  the dry-run leaf counts after a send and honours --backend
 tests/export/test_otlp__delivery.py    ~  OtlpExporter constructions take a ledger
+tests/export/conftest.py               ~  the deliver fixture's ledger construction
+tests/export/test_schema.py            ~  two OtlpExporter constructor sites
 ```
 
 ## Key contracts
@@ -66,6 +68,7 @@ tests/export/test_otlp__delivery.py    ~  OtlpExporter constructions take a ledg
 - Diff against `--backend`'s ledger — rejected: keep counting the selection and rename the line. The operator's question is the run time and quota of the send they are about to start; the corpus size is one `hp query` away
 - `fingerprints()` returns `{}` for a missing table — rejected: run the DDL on the dry-run path. It would take the write lock and leave a table behind, which the dry-run leaf forbids. `check_shape` already treats an absent table as not-drift
 - Print `skipped` beside the count — rejected: the count alone. "6 would ship" with no "567 unchanged" reads like a shrunken corpus
+- `BackendMismatchError` at `OtlpExporter.__init__` when `ledger.backend != backend.name` — a deliberate fail-fast, not a defense against a live CLI path. In `_export_otlp` both names come from the single `args.backend`, so the guard is unreachable there; it exists for a caller that builds the two independently, and a public constructor that can be handed a mismatched pair should refuse rather than record under the wrong name
 
 ## Out of scope
 
