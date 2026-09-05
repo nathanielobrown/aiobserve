@@ -10,7 +10,7 @@ hp export-otlp /path/to/repo --db data/traces.duckdb --dry-run
 
 A dry run shapes every selected session with the same mapper used by a real export. It reports the session and span counts, including compactions, without configuring a backend or key. It opens the store read-only, writes no delivery records, and sends no requests.
 
-Compactions are broken out because a compaction is where a session's account of itself gets lossy, so how many will ship is worth seeing before an hour of sending. The count matches `live_compactions`: the mapper and the view both read the `replayed` flag the extractor set.
+Compactions are broken out because a compaction is where a session's account of itself gets lossy, so how many will ship is worth seeing before an hour of sending. The count matches `live_compactions`: the mapper ships each session's `SessionTrace.live()` rows, which is what the `live_*` views hold ([the store guide](store.md)).
 
 Use the result to check the backend's ingest quota and estimate the run time at your chosen `--rate`.
 

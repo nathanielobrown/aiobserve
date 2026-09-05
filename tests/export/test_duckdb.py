@@ -17,6 +17,7 @@ from hyphae.export.duckdb import (
     DuckDbExporter,
     open_trace_store,
 )
+from hyphae.model import LiveRows
 from tests.conftest import MODEL_ONLY, NO_WAIT, TraceFactory, stored_rows
 
 SPINE = "4208c1bd-78a0-46ef-9d3c-269b9b7a8e2b"
@@ -260,6 +261,45 @@ def test_a_rollup_counts_replayed_work_once(db: Path, fixture_trace: TraceFactor
         exporter.path, "SELECT count(*), sum(output_tokens) FROM api_calls WHERE replayed"
     ) == [(1, 1146)]
     assert stored_rows(exporter.path, "SELECT count(*) FROM compactions WHERE replayed") == [(1,)]
+
+
+# What `fork_origin` holds per kind: rows in the base table, then rows the trace calls live.
+# Four of the five shrink and `agent_runs` does not, so one recorded session discriminates
+# every field of `LiveRows` at once — and a `live()` that filtered nothing could not pass by
+# agreeing with a view that filtered nothing either.
+FORK_ROWS = {
+    "turns": (2, 1),
+    "api_calls": (4, 3),
+    "tool_calls": (11, 7),
+    "agent_runs": (2, 2),
+    "compactions": (2, 1),
+}
+
+
+@pytest.mark.parametrize("field", [field.name for field in dataclasses.fields(LiveRows)])
+def test_the_live_views_hold_what_the_trace_calls_live(
+    db: Path, fixture_trace: TraceFactory, field: str
+):
+    """Each `live_*` view holds exactly the rows the trace itself calls live — the store's
+    answer and the model's answer are one answer."""
+    # If the fork fixture is written to a store — its own transcript and the run it forked
+    # from, so four of the five kinds hold a copy the other already recorded...
+    trace = fixture_trace("fork_origin", ORIGIN)
+    exporter = DuckDbExporter(db, wait=NO_WAIT)
+    exporter.export(trace, "fingerprint-1")
+    stored, live = FORK_ROWS[field]
+    # ...then the view's count is the length of the trace's own list for that kind...
+    assert stored_rows(
+        exporter.path, f"SELECT count(*) FROM live_{field} WHERE session_id = ?", [ORIGIN]
+    ) == [(len(getattr(trace.live(), field)),)]
+    # ...and that number is the one this fixture records, so a kind whose predicate went
+    # missing on both sides cannot pass by agreeing with itself...
+    assert len(getattr(trace.live(), field)) == live
+    # ...while the base table still holds every row the session's files recorded, copies
+    # included: the live family is a projection of the archive, not a cut into it.
+    assert stored_rows(
+        exporter.path, f"SELECT count(*) FROM {field} WHERE session_id = ?", [ORIGIN]
+    ) == [(stored,)]
 
 
 def test_a_corpus_rollup_counts_a_resumed_session_once(db: Path, fixture_trace: TraceFactory):

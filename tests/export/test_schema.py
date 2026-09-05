@@ -9,6 +9,7 @@ import hashlib
 import os
 from dataclasses import fields
 from pathlib import Path
+from typing import get_args, get_type_hints
 
 import duckdb
 import pytest
@@ -26,6 +27,7 @@ from hyphae.export.schema import (
     declared_shape,
     table_ddl,
 )
+from hyphae.model import LiveRows
 from tests.conftest import NO_WAIT, opens_elsewhere
 
 
@@ -98,6 +100,19 @@ def test_a_tables_ddl_columns_are_exactly_its_models_fields(table: str) -> None:
     # are found by, and the ones they come back ordered by. Nothing else reads these, so a
     # typo in either would only show up as a binder error at the next export.
     assert {spec.session_key, *spec.order} <= columns
+
+
+@pytest.mark.parametrize("field", [field.name for field in fields(LiveRows)])
+def test_a_live_rows_field_names_the_table_holding_its_row_type(field: str) -> None:
+    """Every kind the trace calls live names a stored table of the same rows.
+
+    `refresh_views` builds `live_<field>` from these names and reads the `WHERE NOT replayed`
+    predicate off `TABLES[field].model`, so renaming one side or repointing a `TableSpec`
+    fails here rather than as a `KeyError` or a binder error at the next store open.
+    """
+    # The field's row type, read off its own annotation rather than listed again here.
+    (row_type,) = get_args(get_type_hints(LiveRows)[field])
+    assert TABLES[field].model is row_type
 
 
 def test_a_declared_shape_holds_every_table_a_ddl_creates_and_none_of_its_views() -> None:

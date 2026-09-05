@@ -37,10 +37,13 @@ so the census tier sees it too.
   the parent lookup goes through `turns` (every row the trace holds, including the copy), and
   the fixture's two live `FORK_RUN` calls sit under a turn `live()` drops. Rewriting the
   lookup over `live.turns` makes it red
-- A replayed turn and a replayed tool call ship no span. *Evidence:* no shaping leaf names
-  these directly; the census tier below carries them — `fork_origin`'s 1 replayed turn and 4
-  replayed tool calls are 5 spans the `MAPPING` oracle subtracts, so a filter lost in the
-  rewrite moves the corpus total by 5. Noted as a coverage seam, not a gap: see the report
+- A replayed turn and a replayed tool call ship no span. *Evidence:* **already discharged
+  directly**, contrary to this plan's reading — `tests/export/test_otlp.py:154
+  test_a_forks_copies_never_become_spans` asserts span-key disjointness per kind over all
+  seven of `fork_origin`'s copies, then counts what is left. The audit looked only in
+  `test_otlp__shaping.py` and missed it, so the coverage seam described here and in the report
+  below does not exist, and the census is not the only carrier. No leaf was added. Confirmed
+  by red-check: a `live()` that filters nothing reds this leaf
 - A tool call that spawned a run ships as the run rather than as a call of its own, and the
   suppression is computed over live rows. *Evidence:*
   `test_a_matched_tool_call_becomes_the_run_it_spawned` (spine) and
@@ -137,11 +140,17 @@ so the census tier sees it too.
   `tests/extract/` runs unchanged. A bump would re-extract 630 sessions to store identical
   rows
 - **The suite would notice `live()` or the predicate being wrong.** *Evidence:*
-  `mise run mutate` on the branch scope (`hyphae.model.*`, `hyphae.export.otlp.*`,
-  `hyphae.export.duckdb.*`), cold and serial per `.claude/rules/testing.md`. The mutants that
-  must die: `live()` returning unfiltered lists, an inverted `not x.replayed`, and
-  `_live_view` emitting the empty predicate. A survivor over the derived predicate is a
-  missing assertion in the parametrized parity leaf, not a new test
+  `mise run mutate`, cold and serial per `.claude/rules/testing.md`, **for the two exporter
+  scopes only**. `hyphae.model.*` is unreachable: mutmut skips every method of a decorated
+  class (`mutmut/mutation/file_mutation.py:292`), `SessionTrace` is a `@dataclass`, so
+  `mutants/src/hyphae/model.py` holds no mutant of `live()` and a scoped run exits 1 with
+  "nothing matches". Substituted by hand red-checks, each planted then reverted, recorded in
+  the PR body: `live()` filtering nothing (reds 5 leaves), `spawns` built over
+  `trace.tool_calls` (reds only the planted spawn leaf), `turns` indexed over `live.turns`
+  (reds 15), `_live_view` emitting the empty predicate (reds 7, including four parity cases),
+  the predicate forced onto `agent_runs` (binder error across the file), and a member dropped
+  from the derived family (catalog error across the file). A survivor over the derived
+  predicate is a missing assertion in the parametrized parity leaf, not a new test
 - Slice independence: slice 1 changes no SQL and slice 2 changes no shaping. *Evidence:*
   `mise run check` green at each commit, and `rg -n '\.replayed' src/hyphae/export/otlp.py`
   returning only `_chat_parent`'s read after slice 1

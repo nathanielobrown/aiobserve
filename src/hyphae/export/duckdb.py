@@ -36,6 +36,7 @@ from hyphae.model import (
     AgentRun,
     ApiCall,
     Compaction,
+    LiveRows,
     OffloadFile,
     PrLink,
     RawRecord,
@@ -201,20 +202,14 @@ SELECT id AS session_id, row_number() OVER (ORDER BY started_at, id) AS rank FRO
 """
 
 
-# Whether the table carries `replayed` — the flag a fork's copy of another transcript's
-# records takes. Only `agent_runs` carries none: a run is described by its own pair of files,
-# so no fork ever holds a copy of one.
-_COUNTED: dict[str, bool] = {
-    "turns": True,
-    "api_calls": True,
-    "tool_calls": True,
-    "agent_runs": False,
-    "compactions": True,
-}
+def _live_view(table: str, view: str) -> str:
+    """The rows of one table that count for the session whose files hold them.
 
-
-def _live_view(table: str, replayed: bool, view: str) -> str:
-    """The rows of one table that count for the session whose files hold them."""
+    The predicate comes off the row's own model: a table whose model declares `replayed`
+    holds a fork's copies and filters them out. Only `agent_runs` declares none — a run is
+    described by its own pair of files, so no fork ever holds a copy of one.
+    """
+    replayed = any(field.name == "replayed" for field in fields(TABLES[table].model))
     where = " WHERE NOT replayed" if replayed else ""
     return f"CREATE OR REPLACE {view} live_{table} AS SELECT * FROM {table}{where};"
 
@@ -303,13 +298,17 @@ def refresh_views(connection: duckdb.DuckDBPyConnection, *, read_only: bool) -> 
     15 GB store, which is the whole of what a reader pays for the guarantee.
     """
     view = "TEMP VIEW" if read_only else "VIEW"
+    # Which tables get a live view is the model's answer, not a second list here: the fields
+    # of `LiveRows` are the family, and `tests/export/test_schema.py` pins each one to the
+    # `TABLES` entry holding its rows.
+    counted = [field.name for field in fields(LiveRows)]
     # `first_seen` leads: the corpus views read it, and the rollups read those.
     connection.execute(
         "".join(
             [
                 _first_seen_view(view),
-                *(_live_view(table, replayed, view) for table, replayed in _COUNTED.items()),
-                *(_corpus_view(table, view) for table in _COUNTED),
+                *(_live_view(table, view) for table in counted),
+                *(_corpus_view(table, view) for table in counted),
                 _rollup_view("session_rollups", "live", view),
                 _rollup_view("corpus_rollups", "corpus", view),
             ]

@@ -34,6 +34,7 @@ The extract → store → export seam: `src/hyphae/pipeline.py`; the store: `doc
 - **Fingerprint** — changes when any of a session's files do; the only thing deciding re-extraction
 - **Price table** — what each model charges per million tokens and the window it answers in; one table, `src/hyphae/extract/pricing.py:MODELS`, read by the extract, the viewer, the analyze macros and the `hp enrich` quote
 - **Corpus** — the rows minus every replayed copy: the basis for any cross-session count
+- **Live** — a row no fork copied, plus every agent run: what a sink counts or ships; the trace's `live()` and the store's `live_*` views name the same rows
 - **Rollup** — one row per session: counts, tokens, cost
 - **Timeline** — one thread in outline, a row per turn in the order they ran: `session_timeline` for `main`, `run_timeline` for an agent run
 - **Span** — a store row's OTLP shadow; one OTLP trace per session
