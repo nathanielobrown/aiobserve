@@ -15,7 +15,8 @@ import pytest
 
 from hyphae.enrich.client import CLAUDE
 from hyphae.enrich.items import SessionItem
-from hyphae.enrich.store import EnrichmentStore, Stamp
+from hyphae.enrich.stamp import Stamp, Versions
+from hyphae.enrich.store import EnrichmentStore
 from hyphae.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
 from hyphae.enrich.validation import Enrichment
 from tests.conftest import build_store, fixture_transcripts
@@ -23,6 +24,10 @@ from tests.enrich.fake_cli import FakeCli, Reply
 
 # The model the fake answers are attributed to, at both doors that write rows.
 MODEL = "claude-haiku-4-5-20251001"
+
+# What every pass here runs under, unless the leaf is about a version moving — those hand
+# `enrich` a `replace()`d copy, which is the whole point of the argument.
+CURRENT = Versions.current()
 
 # The fixture directories enrichment reads, and the session ids their transcripts carry.
 # `plans/enrichment/testing_plan.md` maps each one to the shapes it carries; the rest of

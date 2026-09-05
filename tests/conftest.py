@@ -23,7 +23,8 @@ import pytest
 
 from hyphae.enrich.items import Level
 from hyphae.enrich.levels import LEVELS
-from hyphae.enrich.store import EnrichmentStore, Stamp
+from hyphae.enrich.stamp import Stamp
+from hyphae.enrich.store import EnrichmentStore
 from hyphae.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
 from hyphae.enrich.validation import Enrichment
 from hyphae.export.duckdb import DuckDbExporter, open_trace_store

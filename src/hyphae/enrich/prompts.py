@@ -7,7 +7,6 @@ orders of magnitude short of the real budgets and elision could not otherwise be
 all; `enrich/levels.py` holds the budgets a pass really runs on.
 """
 
-import hashlib
 import re
 from collections.abc import Sequence
 
@@ -195,15 +194,6 @@ def render_session(item: SessionItem, budgets: Budgets) -> str:
         "## Work",
     ]
     return _fit("\n".join(head), [_child_line(child) for child in item.children], budgets.total)
-
-
-def input_hash(rendered: str) -> str:
-    """The staleness hash: the rendered content and nothing else.
-
-    Not the instructions and not the output schema — a level's `prompt_version` covers those,
-    so an instruction edit does not have to pretend the content changed.
-    """
-    return hashlib.sha256(rendered.encode()).hexdigest()
 
 
 # What a run with no prompt of its own says in place of a task. All 41 zero-turn runs of the

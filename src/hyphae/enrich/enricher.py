@@ -10,10 +10,9 @@ from dataclasses import dataclass
 
 from hyphae.enrich.client import BatchClient, EnrichRequest, Failed, Succeeded
 from hyphae.enrich.items import Item, Level, level_of
-from hyphae.enrich.levels import LEVELS, ROUND_ORDER, instructions, render
-from hyphae.enrich.prompts import input_hash
-from hyphae.enrich.store import EnrichmentStore, Stamp
-from hyphae.enrich.taxonomy import TAXONOMY_VERSION
+from hyphae.enrich.levels import ROUND_ORDER, instructions, render
+from hyphae.enrich.stamp import Stamp, Versions, stale
+from hyphae.enrich.store import EnrichmentStore
 from hyphae.enrich.validation import InvalidOutput, ItemFailure, validate
 
 
@@ -51,7 +50,12 @@ class EnrichmentFailed(Exception):
 
 
 def plan(
-    store: EnrichmentStore, model: str, *, project: str | None, limit: int | None
+    store: EnrichmentStore,
+    model: str,
+    *,
+    versions: Versions,
+    project: str | None,
+    limit: int | None,
 ) -> list[PlannedItem]:
     """Every item a run would send now, in the order it would send them — for a dry run.
 
@@ -73,7 +77,7 @@ def plan(
             restated={key for entry in sending for key in _ancestors(entry.item.key, parents)},
         )
 
-    _pass(store, model, project=project, limit=limit, describe=describe)
+    _pass(store, model, versions=versions, project=project, limit=limit, describe=describe)
     return quoted
 
 
@@ -81,6 +85,7 @@ def enrich(
     store: EnrichmentStore,
     client: BatchClient,
     *,
+    versions: Versions,
     project: str | None = None,
     limit: int | None = None,
 ) -> EnrichReport:
@@ -104,7 +109,7 @@ def enrich(
         # re-reads and re-hashes its items and sees for itself which prompts moved.
         return _Outcome(failures=round_failures, restated=set())
 
-    _pass(store, client.model, project=project, limit=limit, describe=describe)
+    _pass(store, client.model, versions=versions, project=project, limit=limit, describe=describe)
     if failures:
         raise EnrichmentFailed(failures)
     return EnrichReport(swept=swept, enriched=enriched)
@@ -124,6 +129,7 @@ def _pass(
     store: EnrichmentStore,
     model: str,
     *,
+    versions: Versions,
     project: str | None,
     limit: int | None,
     describe: Callable[[list[PlannedItem]], _Outcome],
@@ -149,12 +155,14 @@ def _pass(
     for level, keys in rounds:
         if remaining is not None and remaining <= 0:
             break
-        entries = _plan_level(store, model, level, project=project)
-        stale = set(store.stale_keys(level, {key: entry.stamp for key, entry in entries.items()}))
+        entries = _plan_level(store, model, level, versions=versions, project=project)
+        moved = set(
+            stale({key: entry.stamp for key, entry in entries.items()}, store.stamps(level))
+        )
         sending = [
             entry
             for key, entry in entries.items()
-            if key in stale | restated and key not in blocked and (keys is None or key in keys)
+            if key in moved | restated and key not in blocked and (keys is None or key in keys)
         ][:remaining]
         outcome = describe(sending)
         for failure in outcome.failures:
@@ -164,7 +172,7 @@ def _pass(
 
 
 def _plan_level(
-    store: EnrichmentStore, model: str, level: Level, *, project: str | None
+    store: EnrichmentStore, model: str, level: Level, *, versions: Versions, project: str | None
 ) -> dict[str, PlannedItem]:
     """One level's items, rendered and stamped as they stand right now.
 
@@ -175,12 +183,7 @@ def _plan_level(
         item.key: PlannedItem(
             item=item,
             rendered=(rendered := render(item)),
-            stamp=Stamp(
-                input_hash=input_hash(rendered),
-                prompt_version=LEVELS[level].prompt_version,
-                taxonomy_version=TAXONOMY_VERSION,
-                model=model,
-            ),
+            stamp=versions.stamp(level, rendered, model),
         )
         for item in store.items(level, project)
     }

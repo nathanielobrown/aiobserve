@@ -4,12 +4,13 @@ These tables live in the same DuckDB file as the trace store but outside the pip
 per-session replace, so a re-extraction never touches them. They attach to the pipeline's
 natural keys, which come from the data and survive re-extraction with it.
 
-Open a store, ask it for the items of a level, and it hands back rows to render. Ask it what
-is stale and it compares each item's `Stamp` against the one on disk.
+Open a store, ask it for the items of a level, and it hands back rows to render. Ask it for
+a level's `Stamp`s and it hands back what each stored row was written under, for
+`enrich/stamp.py` to judge.
 """
 
 import datetime as dt
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,6 +30,7 @@ from hyphae.enrich.items import (
     item_key,
 )
 from hyphae.enrich.levels import LEVELS
+from hyphae.enrich.stamp import Stamp
 from hyphae.enrich.validation import Enrichment
 from hyphae.export.duckdb import CLI_WAIT, open_trace_store
 from hyphae.export.schema import check_shape
@@ -142,18 +144,6 @@ class RunLink:
     # The main turn holding the spawning call, when no run does. None alongside `parent_run`
     # means nothing in the session embeds this run, and the session carries it directly.
     parent_turn: str | None
-
-
-@dataclass(frozen=True)
-class Stamp:
-    """What a row was written under. A row is current when its stamp equals today's."""
-
-    # sha256 of the rendered prompt content — not of the instructions, which
-    # `prompt_version` covers.
-    input_hash: str
-    prompt_version: int
-    taxonomy_version: int
-    model: str
 
 
 class EnrichmentStore:
@@ -603,16 +593,13 @@ class EnrichmentStore:
             )
         return parents
 
-    def stale_keys(self, level: Level, planned: Mapping[str, Stamp]) -> list[str]:
-        """The planned items whose stored stamp is not the one the enricher would write now.
+    def stamps(self, level: Level) -> dict[str, Stamp]:
+        """What every row of one level was written under, keyed by item key.
 
-        Called again after every round: a child's new description changes its parents'
-        rendered input, and only a fresh comparison sees that.
+        Read again after every round rather than cached: a child's new description changes
+        its parents' rendered input, and only a fresh read sees that. What the caller does
+        with them is `enrich/stamp.py:stale`.
         """
-        stored = self._stamps(level)
-        return [key for key, stamp in planned.items() if stored.get(key) != stamp]
-
-    def _stamps(self, level: Level) -> dict[str, Stamp]:
         spec = LEVELS[level]
         columns = ", ".join(spec.keys)
         rows = self.connection.execute(

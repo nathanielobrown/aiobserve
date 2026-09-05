@@ -20,10 +20,13 @@ from hyphae.enrich.enricher import (
     enrich,
     plan,
 )
+from hyphae.enrich.levels import LEVELS
 from hyphae.enrich.store import EnrichmentStore
+from hyphae.enrich.taxonomy import TAXONOMY_VERSION
 from hyphae.extract.pricing import SYNTHETIC_MODEL
 from tests.conftest import MYCELIA
 from tests.enrich.conftest import (
+    CURRENT,
     MODEL,
     SPINE,
     SPINE_LEAF,
@@ -192,13 +195,13 @@ def test_a_dry_run_counts_the_ancestors_of_what_is_stale(
     """
     # If a fully enriched store has one leaf run made stale — by renaming a tool call only
     # that run's prompt renders...
-    enrich(store, FakeClient())
+    enrich(store, FakeClient(), versions=CURRENT)
     store.connection.execute(
         "UPDATE tool_calls SET name = 'Grep' WHERE id = 'toolu_01SzCMuLzJk8ag5BnK545sWY'"
     )
     # ...then a dry run quotes the leaf, the run that spawned it, the main turn that spawned
     # *that*, and the session holding the turn — one per level of the chain above it.
-    planned = plan(store, MODEL, project=None, limit=None)
+    planned = plan(store, MODEL, versions=CURRENT, project=None, limit=None)
     assert {entry.item.key for entry in planned} == {
         key_of(store, SPINE_LEAF),
         key_of(store, SPINE_RUN),
@@ -218,7 +221,7 @@ def test_a_dry_run_quotes_a_price_it_computed_itself(
     implementation that asked the model what it charges would raise here rather than print.
     """
     # If a dry run reports on a store nothing has enriched...
-    planned = plan(store, MODEL, project=None, limit=None)
+    planned = plan(store, MODEL, versions=CURRENT, project=None, limit=None)
     cli.main("enrich", "--db", str(store.path), "--dry-run")
     printed = capsys.readouterr().out
     # ...then the price it printed is the one `estimate` derives from the same prompts —
@@ -247,15 +250,22 @@ def test_the_cli_writes_what_the_library_writes(
     monkeypatch.setattr(cli, "build_client", lambda model, *, concurrency: FakeClient())
     cli.main("enrich", "--db", str(through_cli))
     with EnrichmentStore(direct) as store:
-        enrich(store, FakeClient())
+        enrich(store, FakeClient(), versions=CURRENT)
         expected = stored(store) + [row[:3] for row in stored_runs(store)] + stored_sessions(store)
     # ...then both stores hold the same rows at every level, `enriched_at` aside — the one
-    # column a second run cannot reproduce.
+    # column a second run cannot reproduce...
     with EnrichmentStore(through_cli) as store:
         assert (
             stored(store) + [row[:3] for row in stored_runs(store)] + stored_sessions(store)
             == expected
         )
+        # ...and every row the command wrote was stamped with today's declarations, because
+        # `_enrich` builds them itself. Nothing else would catch a CLI that handed the
+        # library an empty or hand-built `Versions`: every other leaf supplies its own.
+        for spec in LEVELS.values():
+            assert store.connection.execute(
+                f"SELECT DISTINCT prompt_version, taxonomy_version FROM {spec.table}"
+            ).fetchall() == [(spec.prompt_version, TAXONOMY_VERSION)]
 
 
 def test_the_cli_limits_what_it_sends(

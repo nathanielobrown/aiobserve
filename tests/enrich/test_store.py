@@ -12,7 +12,8 @@ import duckdb
 import pytest
 
 from hyphae.enrich.items import Level, TurnItem, item_key, level_of
-from hyphae.enrich.store import EnrichmentStore, Stamp
+from hyphae.enrich.stamp import Stamp, stale
+from hyphae.enrich.store import EnrichmentStore
 from hyphae.export.schema import SchemaVersionError
 from hyphae.model import MAIN_SOURCE
 from tests.conftest import MODEL_ONLY, MYCELIA, build_store, fixture_transcripts
@@ -408,7 +409,7 @@ def test_staleness_returns_the_rows_whose_key_moved(
         # If every turn is enriched under the same stamp, nothing is stale...
         for item in items:
             store.upsert(item, enrichment(), stamp())
-        assert store.stale_keys(Level.turn, planned) == []
+        assert stale(planned, store.stamps(Level.turn)) == []
         # ...and if one stored row's stamp is moved off today's value...
         target = items[1]
         column, value = next(iter(mutation.items()))
@@ -417,14 +418,14 @@ def test_staleness_returns_the_rows_whose_key_moved(
             [value, target.turn_id],
         )
         # ...then that row, and only that row, comes back stale.
-        assert store.stale_keys(Level.turn, planned) == [target.key]
+        assert stale(planned, store.stamps(Level.turn)) == [target.key]
 
 
 def test_an_item_with_no_row_is_stale(mutable_db: Path) -> None:
     """A turn nothing has enriched yet is stale, which is how a first pass finds work."""
     with EnrichmentStore(mutable_db) as store:
         planned = {item.key: stamp() for item in spine_turns(store)}
-        assert store.stale_keys(Level.turn, planned) == list(planned)
+        assert stale(planned, store.stamps(Level.turn)) == list(planned)
 
 
 def test_a_zombie_enrichment_is_swept(mutable_db: Path) -> None:
