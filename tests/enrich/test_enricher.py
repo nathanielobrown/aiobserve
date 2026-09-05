@@ -23,13 +23,14 @@ from hyphae.enrich.client import (
 from hyphae.enrich.enricher import EnrichmentFailed, EnrichReport, enrich, plan
 from hyphae.enrich.items import Level
 from hyphae.enrich.levels import LEVELS, ROUND_ORDER, render
-from hyphae.enrich.prompts import input_hash
+from hyphae.enrich.stamp import input_hash
 from hyphae.enrich.store import EnrichmentStore
 from hyphae.enrich.taxonomy import TAXONOMY_VERSION
 from hyphae.enrich.validation import FailureKind
 from tests.conftest import MODEL_ONLY, build_store, fixture_transcripts
 from tests.enrich.conftest import (
     AUDITOR_RUN,
+    CURRENT,
     MODEL,
     ORIGIN_RUN,
     SPINE,
@@ -106,7 +107,7 @@ def test_a_run_writes_a_row_for_every_stale_item(store: EnrichmentStore) -> None
     """One pass describes every enrichable item and records what it was described under."""
     # If a run enriches the `spine/` store...
     client = FakeClient()
-    report = enrich(store, client)
+    report = enrich(store, client, versions=CURRENT)
     # ...then it reports what it did, having swept nothing — there are no orphans yet...
     assert report == EnrichReport(swept=0, enriched=7)
     # ...the client was asked about the two agent runs, the deeper one first, then about every
@@ -157,7 +158,7 @@ def test_a_pass_never_sends_a_gated_session_and_reports_the_row_it_deleted(
         # pass that had no gate...
         store.upsert(session_item(MODEL_ONLY), enrichment(), stamp())
         client = FakeClient()
-        report = enrich(store, client)
+        report = enrich(store, client, versions=CURRENT)
         # ...then the run sweeps that row and says so — the one place a reader learns the
         # rows went...
         assert report.swept == 1
@@ -178,10 +179,10 @@ def test_a_second_run_over_an_unchanged_store_sends_nothing(forest: EnrichmentSt
     re-described — and re-billed — every night. 43 recorded runs hold such a self-copy.
     """
     # If a store is enriched, and then enriched again with nothing changed...
-    enrich(forest, FakeClient())
+    enrich(forest, FakeClient(), versions=CURRENT)
     before = written_at(forest)
     second = FakeClient()
-    report = enrich(forest, second)
+    report = enrich(forest, second, versions=CURRENT)
     # ...then the second run sends no round at all — not an empty one...
     assert second.rounds == []
     assert report == EnrichReport(swept=0, enriched=0)
@@ -189,28 +190,25 @@ def test_a_second_run_over_an_unchanged_store_sends_nothing(forest: EnrichmentSt
     assert written_at(forest) == before
 
 
-def test_a_prompt_version_bump_re_enriches_the_level(
-    store: EnrichmentStore, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_prompt_version_bump_re_enriches_the_level(store: EnrichmentStore) -> None:
     """Changing the instructions the hash cannot see re-enriches everything they cover."""
-    enrich(store, FakeClient())
+    enrich(store, FakeClient(), versions=CURRENT)
     # If the turn level's prompt version moves — an instruction or output-schema edit...
-    monkeypatch.setitem(LEVELS, Level.turn, replace(LEVELS[Level.turn], prompt_version=99))
+    bumped = replace(CURRENT, prompt={**CURRENT.prompt, Level.turn: 99})
     client = FakeClient()
-    enrich(store, client)
+    enrich(store, client, versions=bumped)
     # ...then every turn is re-sent, and every row records the new version.
     assert client.keys == [item.key for item in turns(store)]
     assert {row[8] for row in stored(store)} == {99}
 
 
-def test_a_taxonomy_bump_re_enriches(
-    store: EnrichmentStore, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_taxonomy_bump_re_enriches(store: EnrichmentStore) -> None:
     """A taxonomy revision makes existing rows stale without invalidating them."""
-    enrich(store, FakeClient())
-    monkeypatch.setattr("hyphae.enrich.enricher.TAXONOMY_VERSION", 99)
+    enrich(store, FakeClient(), versions=CURRENT)
+    # If the taxonomy is revised — one version every level's answers are judged against...
     client = FakeClient()
-    enrich(store, client)
+    enrich(store, client, versions=replace(CURRENT, taxonomy=99))
+    # ...then every item of every level is re-sent, and every row records the revision.
     assert client.keys == [
         key_of(store, SPINE_LEAF),
         key_of(store, SPINE_RUN),
@@ -222,9 +220,11 @@ def test_a_taxonomy_bump_re_enriches(
 
 def test_a_model_switch_re_enriches(store: EnrichmentStore) -> None:
     """`--model` re-enriches automatically: a description is an answer from one model."""
-    enrich(store, FakeClient())
+    enrich(store, FakeClient(), versions=CURRENT)
+    # The model rides on the client, not on `versions`: both passes run under the same
+    # declarations, so nothing but the model moved.
     client = FakeClient(model="claude-sonnet-4-5")
-    enrich(store, client)
+    enrich(store, client, versions=CURRENT)
     assert client.keys == [
         key_of(store, SPINE_LEAF),
         key_of(store, SPINE_RUN),
@@ -264,7 +264,7 @@ def test_a_round_of_mixed_failures_crashes_naming_keys_and_kinds(store: Enrichme
     # ...then the run crashes, because a silent failure here is a hole in the coverage the
     # hash would then call current forever...
     with pytest.raises(EnrichmentFailed) as failure:
-        enrich(store, client)
+        enrich(store, client, versions=CURRENT)
     summary = str(failure.value)
     # ...the summary names each item and how it failed...
     assert [key in summary for key in (abandoned.key, invalid.key, refused.key)] == [True] * 3
@@ -292,11 +292,15 @@ def test_a_failed_request_leaves_its_item_stale(store: EnrichmentStore, tmp_path
     items = turns(store)
     dropped = items[0]
     with pytest.raises(EnrichmentFailed):
-        enrich(store, FakeClient(answers={dropped.key: Failed(dropped.key, FailureKind.timeout)}))
+        enrich(
+            store,
+            FakeClient(answers={dropped.key: Failed(dropped.key, FailureKind.timeout)}),
+            versions=CURRENT,
+        )
     # If the next run is the retry, it asks about exactly the item that failed — and about the
     # session it belongs to, which the first run refused to describe from a hole...
     client = FakeClient()
-    assert enrich(store, client) == EnrichReport(swept=0, enriched=2)
+    assert enrich(store, client, versions=CURRENT) == EnrichReport(swept=0, enriched=2)
     assert client.keys == [dropped.key, session_key(store, SPINE)]
     # ...and the crash wrote no resume file to find it by: the store and DuckDB's own
     # write-ahead log are everything on disk.
@@ -356,7 +360,7 @@ def test_a_run_the_cli_refuses_names_what_the_cli_said(
     )
     # If a real client runs a pass against a CLI that refuses every call...
     with pytest.raises(EnrichmentFailed) as failure:
-        enrich(forest, CliClient(MODEL, concurrency=1))
+        enrich(forest, CliClient(MODEL, concurrency=1), versions=CURRENT)
     said = str(failure.value)
     # ...then the crash says what the CLI said, once rather than once per failed item...
     assert said.count(refused.strip()) == 1
@@ -374,7 +378,7 @@ def test_rounds_send_children_before_parents(forest: EnrichmentStore) -> None:
     # If three sessions are enriched at once — a run under a run under a turn, a fork under
     # an auditor under no turn at all, and a run nothing spawned...
     client = FakeClient()
-    enrich(forest, client)
+    enrich(forest, client, versions=CURRENT)
     # ...then the rounds are the levels of the forest, deepest first: every leaf run...
     assert [{request.key for request in sent} for sent in client.rounds] == [
         {key_of(forest, SPINE_LEAF), key_of(forest, ORIGIN_RUN), key_of(forest, TEAM_RUN)},
@@ -398,10 +402,12 @@ def test_a_dry_run_names_exactly_the_items_a_run_sends(forest: EnrichmentStore) 
     # If the three-session forest — four rounds deep — is planned under a limit that runs
     # out partway through the second round...
     limit = 4
-    planned = [entry.item.key for entry in plan(forest, MODEL, project=None, limit=limit)]
+    planned = [
+        entry.item.key for entry in plan(forest, MODEL, versions=CURRENT, project=None, limit=limit)
+    ]
     # ...then a pass under the same limit asks about exactly those keys, in that order...
     client = FakeClient()
-    enrich(forest, client, limit=limit)
+    enrich(forest, client, versions=CURRENT, limit=limit)
     assert client.keys == planned
     # ...four items and no more. The second round holds two stale runs, so the limit stops
     # inside it: what pins the round being cut to what is left rather than sent whole. A pass
@@ -425,7 +431,7 @@ def test_a_rootless_run_is_a_root(forest: EnrichmentStore) -> None:
     starts rather than an agent. Waiting for a parent they do not have would strand them.
     """
     client = FakeClient()
-    enrich(forest, client)
+    enrich(forest, client, versions=CURRENT)
     first = {request.key for request in client.rounds[0]}
     # The teammate run, which names neither a spawning call nor a parent agent, goes in the
     # first round; a run that does name a parent waits for it.
@@ -445,7 +451,7 @@ def test_a_run_naming_a_missing_parent_crashes(forest: EnrichmentStore) -> None:
     forest.connection.execute("DELETE FROM agent_runs WHERE id = ?", [SPINE_RUN])
     # ...then the run refuses to order anything, and says which child it could not place.
     with pytest.raises(ValueError, match=f"{SPINE_LEAF}.*{SPINE_RUN}"):
-        enrich(forest, FakeClient())
+        enrich(forest, FakeClient(), versions=CURRENT)
 
 
 def test_a_childs_new_description_makes_its_ancestors_stale(store: EnrichmentStore) -> None:
@@ -456,7 +462,7 @@ def test_a_childs_new_description_makes_its_ancestors_stale(store: EnrichmentSto
     """
     # If `spine/` is fully enriched, and then the leaf run alone is made stale — by renaming
     # a tool call only that run's prompt renders...
-    enrich(store, FakeClient())
+    enrich(store, FakeClient(), versions=CURRENT)
     before = {row[0]: row[2] for row in stored_runs(store)} | {
         row[2]: row[7] for row in stored(store)
     }
@@ -475,7 +481,7 @@ def test_a_childs_new_description_makes_its_ancestors_stale(store: EnrichmentSto
         )
     }
     client = FakeClient(answers=rewritten)
-    enrich(store, client)
+    enrich(store, client, versions=CURRENT)
     # ...then the run goes up the tree: the leaf, then the run whose prompt embeds its
     # description, then the main turn whose prompt embeds *that*, and last the session whose
     # prompt embeds the turn — none of which was stale when the round started.
@@ -501,14 +507,14 @@ def test_a_child_re_described_identically_stops_the_cascade(store: EnrichmentSto
     """
     # If the same leaf run is made stale, and the model answers it with the same description
     # as before...
-    enrich(store, FakeClient())
+    enrich(store, FakeClient(), versions=CURRENT)
     turns_before = stored(store)
     parent_before = [row for row in stored_runs(store) if row[0] == SPINE_RUN]
     store.connection.execute(
         "UPDATE tool_calls SET name = 'Grep' WHERE id = 'toolu_01SzCMuLzJk8ag5BnK545sWY'"
     )
     client = FakeClient()
-    enrich(store, client)
+    enrich(store, client, versions=CURRENT)
     # ...then the leaf is the only item sent: its parent's prompt reads the same as it did,
     # so nothing above it is stale...
     assert client.keys == [key_of(store, SPINE_LEAF)]
@@ -527,7 +533,7 @@ def test_a_failed_childs_parents_are_skipped(store: EnrichmentStore) -> None:
     leaf = key_of(store, SPINE_LEAF)
     client = FakeClient(answers={leaf: Failed(leaf, FailureKind.api_error)})
     with pytest.raises(EnrichmentFailed, match=str(FailureKind.api_error)):
-        enrich(store, client)
+        enrich(store, client, versions=CURRENT)
     # ...then nothing above it was sent — not the run that spawned it, not the main turn that
     # spawned *that*, and not the session, whose prompt embeds the turn — and none wrote a
     # row...

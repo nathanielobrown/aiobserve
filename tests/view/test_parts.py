@@ -19,10 +19,11 @@ import pytest
 from hyphae.analyze import queries
 from hyphae.enrich.items import Level
 from hyphae.enrich.levels import LEVELS
+from hyphae.enrich.taxonomy import TAXONOMY_VERSION
 from hyphae.view.citation import cited
 from hyphae.view.components import citation, parts
 from hyphae.view.detail import Detail, EnrichmentLines
-from hyphae.view.enrichment import GLYPH, TAXONOMY_VERSION, Enrichment
+from hyphae.view.enrichment import GLYPH, Enrichment
 from hyphae.view.text.highlight import Syntax
 from tests.conftest import SPINE
 from tests.view.conftest import block, classed, plain, prose, values, walled

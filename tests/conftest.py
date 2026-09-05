@@ -23,7 +23,8 @@ import pytest
 
 from hyphae.enrich.items import Level
 from hyphae.enrich.levels import LEVELS
-from hyphae.enrich.store import EnrichmentStore, Stamp
+from hyphae.enrich.stamp import Stamp
+from hyphae.enrich.store import EnrichmentStore
 from hyphae.enrich.taxonomy import TAXONOMY_VERSION, Category, Outcome
 from hyphae.enrich.validation import Enrichment
 from hyphae.export.duckdb import DuckDbExporter, open_trace_store
@@ -529,7 +530,10 @@ def planted_stamp(level: Level, index: int) -> Stamp:
         # the prompt version, axes that moved together could not say which, and the viewer's
         # stale tag needs a row on each side of the current version.
         prompt_version=LEVELS[level].prompt_version - (1 if index % 5 == 0 else 0),
-        taxonomy_version=TAXONOMY_VERSION,
+        # And a version behind on every seventh, coprime with the cycle above so that rows
+        # behind on the taxonomy alone exist: the two halves of the staleness rule are only
+        # told apart by a row that moved on one of them.
+        taxonomy_version=TAXONOMY_VERSION - (1 if index % 7 == 0 else 0),
         model=PLANTED_MODELS[index % len(PLANTED_MODELS)],
     )
 

@@ -25,6 +25,7 @@ from hyphae.enrich.client import (
 from hyphae.enrich.cost import Prompt, estimate
 from hyphae.enrich.enricher import PlannedItem, enrich, plan
 from hyphae.enrich.levels import ROUND_ORDER
+from hyphae.enrich.stamp import Versions
 from hyphae.enrich.store import EnrichmentStore
 from hyphae.export.duckdb import CLI_WAIT, DuckDbExporter, open_trace_store
 from hyphae.export.otlp import DEFAULT_MAX_CHARS, TextPolicy, census_project
@@ -249,12 +250,17 @@ def _enrich(args: argparse.Namespace) -> None:
     if not args.dry_run:
         preflight()
     project = str(resolve_project(args.project)) if args.project else None
+    # One value for the quote and the pass: what the declarations say right now.
+    versions = Versions.current()
     with EnrichmentStore(args.db) as store:
         if args.dry_run:
-            _report_plan(plan(store, args.model, project=project, limit=args.limit), args.model)
+            _report_plan(
+                plan(store, args.model, versions=versions, project=project, limit=args.limit),
+                args.model,
+            )
             return
         client = build_client(args.model, concurrency=args.concurrency)
-        report = enrich(store, client, project=project, limit=args.limit)
+        report = enrich(store, client, versions=versions, project=project, limit=args.limit)
     print(f"{report.enriched} item(s) enriched, {report.swept} orphaned row(s) swept")
 
 

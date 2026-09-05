@@ -12,7 +12,8 @@ from hyphae.enrich.items import (
     SessionItem,
     TurnItem,
 )
-from hyphae.enrich.store import EnrichmentStore, Stamp
+from hyphae.enrich.stamp import Stamp
+from hyphae.enrich.store import EnrichmentStore
 from hyphae.enrich.taxonomy import (
     Category,
     Outcome,

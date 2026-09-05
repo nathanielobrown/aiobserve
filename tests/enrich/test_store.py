@@ -4,7 +4,6 @@ The base rows come from the fixture-built pipeline output, so the natural keys u
 the ones the pipeline really writes. Assertions are SQL against a real DuckDB file.
 """
 
-import dataclasses
 import json
 from pathlib import Path
 
@@ -12,8 +11,10 @@ import duckdb
 import pytest
 
 from hyphae.enrich.items import Level, TurnItem, item_key, level_of
-from hyphae.enrich.store import EnrichmentStore, Stamp
-from hyphae.export.schema import SchemaVersionError
+from hyphae.enrich.levels import LEVELS
+from hyphae.enrich.stamp import stale
+from hyphae.enrich.store import _SCHEMA, PAYLOAD_COLUMNS, EnrichmentStore
+from hyphae.export.schema import SchemaVersionError, declared_shape
 from hyphae.model import MAIN_SOURCE
 from tests.conftest import MODEL_ONLY, MYCELIA, build_store, fixture_transcripts
 from tests.enrich.conftest import (
@@ -364,9 +365,13 @@ def test_a_second_upsert_replaces_the_row(mutable_db: Path) -> None:
         item = spine_turns(store)[0]
         store.upsert(item, enrichment("The first answer."), stamp("hash-1"))
         store.upsert(item, enrichment("The second answer."), stamp("hash-2"))
+        # Each payload field landed in its own column, the two closed vocabularies reading
+        # back as the taxonomy's plain strings: `upsert` binds them as the `StrEnum` members
+        # they are and DuckDB stores those same bytes. So what this holds is the order — a
+        # binding that paired a value with its neighbour's column fails here and nowhere else.
         assert store.connection.execute(
-            "SELECT description, input_hash FROM turn_enrichments"
-        ).fetchall() == [("The second answer.", "hash-2")]
+            "SELECT description, input_hash, category, outcome FROM turn_enrichments"
+        ).fetchall() == [("The second answer.", "hash-2", "test", "completed")]
 
 
 def test_enriched_turns_left_joins(mutable_db: Path) -> None:
@@ -405,10 +410,15 @@ def test_staleness_returns_the_rows_whose_key_moved(
     with EnrichmentStore(mutable_db) as store:
         items = spine_turns(store)
         planned = {item.key: stamp() for item in items}
-        # If every turn is enriched under the same stamp, nothing is stale...
+        # If every turn is enriched under the same stamp, the store hands each one back
+        # under the key it was written for — the one place the binding `upsert` writes
+        # through is read back through the ordering `stamps` selects by, so a reordering of
+        # either, which typechecks and which the DDL parity leaf cannot see, fails here...
         for item in items:
             store.upsert(item, enrichment(), stamp())
-        assert store.stale_keys(Level.turn, planned) == []
+        assert store.stamps(Level.turn) == planned
+        # ...nothing is stale...
+        assert stale(planned, store.stamps(Level.turn)) == []
         # ...and if one stored row's stamp is moved off today's value...
         target = items[1]
         column, value = next(iter(mutation.items()))
@@ -417,14 +427,14 @@ def test_staleness_returns_the_rows_whose_key_moved(
             [value, target.turn_id],
         )
         # ...then that row, and only that row, comes back stale.
-        assert store.stale_keys(Level.turn, planned) == [target.key]
+        assert stale(planned, store.stamps(Level.turn)) == [target.key]
 
 
 def test_an_item_with_no_row_is_stale(mutable_db: Path) -> None:
     """A turn nothing has enriched yet is stale, which is how a first pass finds work."""
     with EnrichmentStore(mutable_db) as store:
         planned = {item.key: stamp() for item in spine_turns(store)}
-        assert store.stale_keys(Level.turn, planned) == list(planned)
+        assert stale(planned, store.stamps(Level.turn)) == list(planned)
 
 
 def test_a_zombie_enrichment_is_swept(mutable_db: Path) -> None:
@@ -638,11 +648,15 @@ def test_a_path_with_no_store_behind_it_creates_nothing(tmp_path: Path) -> None:
     assert not path.exists()
 
 
-def test_stamp_is_the_four_field_staleness_key() -> None:
-    """The staleness key is exactly the design's four fields, so a fifth cannot creep in."""
-    assert [field.name for field in dataclasses.fields(Stamp)] == [
-        "input_hash",
-        "prompt_version",
-        "taxonomy_version",
-        "model",
-    ]
+def test_every_table_declares_its_keys_and_the_payload_columns() -> None:
+    """Each level's table holds exactly its primary key plus the columns a row is written
+    with, so neither list can gain a field the other lacks.
+
+    A fifth stamp field, or an `Enrichment` field added without a DDL column, fails here
+    naming the table that has to change. The DDL stays hand-written for its comments, so
+    this is what holds it to the tuple everything else derives from.
+    """
+    shape = declared_shape(_SCHEMA)
+    assert {spec.table: shape[spec.table] for spec in LEVELS.values()} == {
+        spec.table: set(spec.keys) | set(PAYLOAD_COLUMNS) for spec in LEVELS.values()
+    }

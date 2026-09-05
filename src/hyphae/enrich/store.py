@@ -4,14 +4,15 @@ These tables live in the same DuckDB file as the trace store but outside the pip
 per-session replace, so a re-extraction never touches them. They attach to the pipeline's
 natural keys, which come from the data and survive re-extraction with it.
 
-Open a store, ask it for the items of a level, and it hands back rows to render. Ask it what
-is stale and it compares each item's `Stamp` against the one on disk.
+Open a store, ask it for the items of a level, and it hands back rows to render. Ask it for
+a level's `Stamp`s and it hands back what each stored row was written under, for
+`enrich/stamp.py` to judge.
 """
 
 import datetime as dt
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from contextlib import ExitStack
-from dataclasses import dataclass
+from dataclasses import astuple, dataclass, fields
 from pathlib import Path
 from types import TracebackType
 from typing import Any
@@ -29,11 +30,29 @@ from hyphae.enrich.items import (
     item_key,
 )
 from hyphae.enrich.levels import LEVELS
+from hyphae.enrich.stamp import COLUMNS as STAMP_COLUMNS
+from hyphae.enrich.stamp import Stamp
 from hyphae.enrich.validation import Enrichment
 from hyphae.export.duckdb import CLI_WAIT, open_trace_store
 from hyphae.export.schema import check_shape
 from hyphae.model import MAIN_SOURCE
 from hyphae.projects import project_predicate
+
+# What one enrichment row is, past its primary key: the model's answer, the stamp it was
+# written under, and when. In the order `upsert` binds them, and the one list the views
+# project and the DDL below is held to (`tests/enrich/test_store.py`).
+PAYLOAD_COLUMNS: tuple[str, ...] = (
+    *(field.name for field in fields(Enrichment)),
+    *STAMP_COLUMNS,
+    "enriched_at",
+)
+
+# Those columns as a view projects them off the enrichment table. The one rename is spelled
+# here for all three views; `enriched_agent_runs` below says why `model` cannot keep its name.
+_ENRICHMENT_PROJECTION = ", ".join(
+    f"e.{column} AS enrichment_model" if column == "model" else f"e.{column}"
+    for column in PAYLOAD_COLUMNS
+)
 
 # Every enrichment table holds the same columns; only the primary key differs.
 _ENRICHMENT_COLUMNS = """
@@ -74,12 +93,9 @@ CREATE TABLE IF NOT EXISTS session_enrichments (
 -- found the model inventing work for them rather than reporting none.
 CREATE OR REPLACE VIEW describable_sessions AS
 SELECT * FROM session_rollups WHERE (turns > 0 OR agent_runs > 0) AND api_calls > 0;
--- LEFT join, so an un-enriched turn still appears and coverage reads honestly. The
--- enrichment's own model is renamed: `agent_runs` carries a `model` of its own, and the
--- three views answer the same question the same way.
+-- LEFT join, so an un-enriched turn still appears and coverage reads honestly.
 CREATE OR REPLACE VIEW enriched_turns AS
-SELECT t.*, e.description, e.category, e.outcome, e.friction, e.input_hash,
-       e.prompt_version, e.taxonomy_version, e.model AS enrichment_model, e.enriched_at
+SELECT t.*, {_ENRICHMENT_PROJECTION}
 FROM live_turns t
 LEFT JOIN turn_enrichments e
   ON e.session_id = t.session_id AND e.source = t.source AND e.turn_id = t.id;
@@ -87,31 +103,15 @@ LEFT JOIN turn_enrichments e
 -- meaning under a name that says whose it is, and `description` means the enrichment's in
 -- all three views. The run's own brief needs no such rename: it is `brief`.
 CREATE OR REPLACE VIEW enriched_agent_runs AS
-SELECT r.* EXCLUDE (model),
-       r.model AS agent_model, e.description, e.category, e.outcome, e.friction, e.input_hash,
-       e.prompt_version, e.taxonomy_version, e.model AS enrichment_model, e.enriched_at
+SELECT r.* EXCLUDE (model), r.model AS agent_model, {_ENRICHMENT_PROJECTION}
 FROM live_agent_runs r
 LEFT JOIN agent_run_enrichments e
   ON e.session_id = r.session_id AND e.agent_run_id = r.id;
 CREATE OR REPLACE VIEW enriched_sessions AS
-SELECT r.*, e.description, e.category, e.outcome, e.friction, e.input_hash,
-       e.prompt_version, e.taxonomy_version, e.model AS enrichment_model, e.enriched_at
+SELECT r.*, {_ENRICHMENT_PROJECTION}
 FROM session_rollups r
 LEFT JOIN session_enrichments e ON e.session_id = r.session_id;
 """
-
-
-_PAYLOAD_COLUMNS = (
-    "description",
-    "category",
-    "outcome",
-    "friction",
-    "input_hash",
-    "prompt_version",
-    "taxonomy_version",
-    "model",
-    "enriched_at",
-)
 
 
 def _source_clause(alias: str, *, main: bool) -> str:
@@ -142,18 +142,6 @@ class RunLink:
     # The main turn holding the spawning call, when no run does. None alongside `parent_run`
     # means nothing in the session embeds this run, and the session carries it directly.
     parent_turn: str | None
-
-
-@dataclass(frozen=True)
-class Stamp:
-    """What a row was written under. A row is current when its stamp equals today's."""
-
-    # sha256 of the rendered prompt content — not of the instructions, which
-    # `prompt_version` covers.
-    input_hash: str
-    prompt_version: int
-    taxonomy_version: int
-    model: str
 
 
 class EnrichmentStore:
@@ -603,42 +591,34 @@ class EnrichmentStore:
             )
         return parents
 
-    def stale_keys(self, level: Level, planned: Mapping[str, Stamp]) -> list[str]:
-        """The planned items whose stored stamp is not the one the enricher would write now.
+    def stamps(self, level: Level) -> dict[str, Stamp]:
+        """What every row of one level was written under, keyed by item key.
 
-        Called again after every round: a child's new description changes its parents'
-        rendered input, and only a fresh comparison sees that.
+        Read again after every round rather than cached: a child's new description changes
+        its parents' rendered input, and only a fresh read sees that. What the caller does
+        with them is `enrich/stamp.py:stale`.
         """
-        stored = self._stamps(level)
-        return [key for key, stamp in planned.items() if stored.get(key) != stamp]
-
-    def _stamps(self, level: Level) -> dict[str, Stamp]:
         spec = LEVELS[level]
-        columns = ", ".join(spec.keys)
-        rows = self.connection.execute(
-            f"SELECT {columns}, input_hash, prompt_version, taxonomy_version, model"
-            f" FROM {spec.table}"
-        ).fetchall()
+        columns = ", ".join((*spec.keys, *STAMP_COLUMNS))
+        rows = self.connection.execute(f"SELECT {columns} FROM {spec.table}").fetchall()
         width = len(spec.keys)
         return {item_key(level, *row[:width]): Stamp(*row[width:]) for row in rows}
 
     def upsert(self, item: Item, enrichment: Enrichment, stamp: Stamp) -> None:
         """Write one item's enrichment, replacing whatever the key held before."""
         spec = LEVELS[item.level]
-        columns = ", ".join((*spec.keys, *_PAYLOAD_COLUMNS))
-        placeholders = ", ".join("?" for _ in range(len(spec.keys) + len(_PAYLOAD_COLUMNS)))
+        columns = ", ".join((*spec.keys, *PAYLOAD_COLUMNS))
+        placeholders = ", ".join("?" for _ in range(len(spec.keys) + len(PAYLOAD_COLUMNS)))
         self.connection.execute(
             f"INSERT OR REPLACE INTO {spec.table} ({columns}) VALUES ({placeholders})",
             [
                 *item.key_values,
-                enrichment.description,
-                str(enrichment.category),
-                str(enrichment.outcome),
-                enrichment.friction,
-                stamp.input_hash,
-                stamp.prompt_version,
-                stamp.taxonomy_version,
-                stamp.model,
+                # Field order, both dataclasses, because that is where `PAYLOAD_COLUMNS` gets
+                # its names: a value list spelled by hand could drift from the column list
+                # beside it. The two closed vocabularies are `StrEnum` members, so DuckDB
+                # binds them as the strings the taxonomy spells.
+                *astuple(enrichment),
+                *astuple(stamp),
                 dt.datetime.now(dt.UTC),
             ],
         )

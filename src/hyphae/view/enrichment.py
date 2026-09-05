@@ -18,7 +18,7 @@ from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.enrich.items import Level
 from hyphae.enrich.levels import LEVELS
-from hyphae.enrich.taxonomy import TAXONOMY_VERSION
+from hyphae.enrich.stamp import Versions
 from hyphae.view.store import Page, page_rows
 from hyphae.view.text.format import when
 
@@ -64,11 +64,14 @@ class Enrichment(NamedTuple):
         Two of the four staleness axes are invisible from a read — whether the rendered
         content moved needs a re-render, and which model a pass would use today is the pass's
         own configuration — so a row this leaves untagged is current on the versions and
-        unjudged on the rest.
+        unjudged on the rest. The version half is `Versions.moved_past`, the same rule the
+        enricher re-describes a row under: a page that answered it here could drift from what
+        the next pass would do.
         """
-        return (
-            self.prompt_version != LEVELS[self.level].prompt_version
-            or self.taxonomy_version != TAXONOMY_VERSION
+        return Versions.current().moved_past(
+            self.level,
+            prompt_version=self.prompt_version,
+            taxonomy_version=self.taxonomy_version,
         )
 
     @property
