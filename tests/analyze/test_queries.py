@@ -13,7 +13,7 @@ import re
 import pytest
 
 from hyphae.analyze import manifest, queries
-from hyphae.analyze.queries import Scope, relations, statement
+from hyphae.analyze.queries import PARAM_TYPES, Scope, parameters, relations, statement
 from hyphae.enrich.levels import LEVELS
 from hyphae.export.duckdb import TABLES
 from hyphae.view.store import SHOWN
@@ -331,6 +331,19 @@ def test_a_citation_with_nothing_bound_ends_at_the_query_file() -> None:
     # Every shipped query resolves at least one binding, so this is the contract for a caller
     # that composes its own — the viewer builds citations from what it bound, not a manifest.
     assert queries.citation("sessions", {}) == "-- queries/sessions.sql"
+
+
+def test_every_default_and_param_type_is_bound_by_a_shipped_query() -> None:
+    """`DEFAULTS` and `PARAM_TYPES` name only what a shipped statement actually binds.
+
+    `describe` only reaches a name the directory holds, so a `DEFAULTS` entry for a query
+    that was deleted — or a `PARAM_TYPES` entry for a parameter no statement binds any
+    more — is never looked at, and never fails. Both are the same drift the per-query
+    orphan guard catches, one level up: unused rather than unbound.
+    """
+    bound = {parameter for name in NAMES for parameter in parameters(statement(name))}
+    assert set(manifest.DEFAULTS) <= set(NAMES)
+    assert set(PARAM_TYPES) == bound
 
 
 @pytest.mark.parametrize("name", CUT_SQL)
