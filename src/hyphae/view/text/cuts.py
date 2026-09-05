@@ -70,7 +70,7 @@ def item(value: str) -> str:
     What `member` does for a header's lists, at the width a row shows a skill or an agent type.
     The kinds of work beside them do not come through here: their vocabulary is closed
     (`enrich/taxonomy.py`), so the list's `kind_chars` is a bound the page's arithmetic needs
-    than one a value reaches, and a mark there could never be true.
+    rather than one a value reaches, and a mark there could never be true.
     """
     return fmt.cut(value, bounds.LIST_WIDTHS.item_chars)
 

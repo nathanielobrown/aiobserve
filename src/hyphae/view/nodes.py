@@ -505,7 +505,9 @@ class Node:
         """
         # The cap is a preview's rather than this width, because a header query returns its
         # strings at this width *or wider*: the pane cannot tell where such a string was cut,
-        # so its own budget is the only cut it may mark.
+        # so its own budget is the only cut it may mark. The ceiling and not the size a reader
+        # got, because the pane is not told which `?detail=` the header ran at: the widest the
+        # query could have cut at is the one cap that never marks a string nothing stopped.
         return self._at(
             bounds.HEADER_WIDTHS.head_chars,
             self.lead,
