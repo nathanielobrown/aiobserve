@@ -13,7 +13,7 @@ from fastapi.responses import Response
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.model import MAIN_SOURCE
-from hyphae.view import builders, detail, nodes
+from hyphae.view import bounds, builders, detail, nodes
 from hyphae.view.deps import ViewerDep
 from hyphae.view.detail import details, preview
 from hyphae.view.nodes import Kind, Ref
@@ -36,6 +36,7 @@ from hyphae.view.store import (
     Fragment,
     Page,
     Row,
+    bound,
     listed,
     page_rows,
     window,
@@ -55,11 +56,11 @@ def session_page(
 
     def read(connection: duckdb.DuckDBPyConnection, corpus: nav_tree.Corpus, head: Row) -> Seen:
         offset = skipped(page, knobs.log)
-        bound: dict[str, ParamValue] = {
+        timeline: dict[str, ParamValue] = {
             "session_id": session_id,
             "log_chars": queries.LOG_CHARS,
         }
-        turns = window(connection, Page.TIMELINE, TURN_CURSOR, offset, knobs.log, **bound)
+        turns = window(connection, Page.TIMELINE, TURN_CURSOR, offset, knobs.log, **timeline)
         return Seen(
             header=head,
             trail=[Ref(Kind.SESSION, None, session_id)],
@@ -68,7 +69,7 @@ def session_page(
             total=turns.total,
             details=[],
             record=None,
-            ran=[(Page.TIMELINE, bound | {"offset": offset, "limit": knobs.log})],
+            ran=[(Page.TIMELINE, timeline | {"offset": offset, "limit": knobs.log})],
         )
 
     return browse(viewer, session_id, MAIN_SOURCE, knobs, page, read)
@@ -86,15 +87,16 @@ def turn_page(
     """One turn: what it was asked, and the api calls that answered it."""
 
     def read(connection: duckdb.DuckDBPyConnection, corpus: nav_tree.Corpus, head: Row) -> Seen:
-        bound: dict[str, ParamValue] = {
-            "session_id": session_id,
-            "source": source,
-            "turn_id": turn_id,
-            "head_chars": queries.HEADER_CHARS,
-            "detail_chars": knobs.detail,
-        }
+        bindings = bound(
+            Page.TURN_HEADER,
+            bounds.HEADER_WIDTHS,
+            {"detail_chars": knobs.detail},
+            session_id=session_id,
+            source=source,
+            turn_id=turn_id,
+        )
         keyed = {"session_id": session_id, "source": source, "turn_id": turn_id}
-        rows = page_rows(connection, Page.TURN_HEADER, **bound)
+        rows = page_rows(connection, Page.TURN_HEADER, **bindings)
         if not rows:
             raise HTTPException(404, "No turn with that id is in this thread.")
         # Which line of the transcript each turn of this thread came from. Read for the
@@ -117,7 +119,7 @@ def turn_page(
                 preview(detail.TURN_COMMAND_ARGS, rows[0], size=knobs.detail, **keyed),
             ),
             record=archived.get(turn_id),
-            ran=[(Page.TURN_HEADER, bound), *ran, (Page.TURN_RECORDS, thread)],
+            ran=[(Page.TURN_HEADER, bindings), *ran, (Page.TURN_RECORDS, thread)],
         )
 
     return browse(viewer, session_id, source, knobs, page, read)
@@ -138,14 +140,15 @@ def run_page(
     """
 
     def read(connection: duckdb.DuckDBPyConnection, corpus: nav_tree.Corpus, head: Row) -> Seen:
-        bound: dict[str, ParamValue] = {
-            "session_id": session_id,
-            "run_id": run_id,
-            "head_chars": queries.HEADER_CHARS,
-            "detail_chars": knobs.detail,
-        }
+        bindings = bound(
+            Page.RUN_HEADER,
+            bounds.HEADER_WIDTHS,
+            {"detail_chars": knobs.detail},
+            session_id=session_id,
+            run_id=run_id,
+        )
         keyed = {"session_id": session_id, "run_id": run_id}
-        rows = page_rows(connection, Page.RUN_HEADER, **bound)
+        rows = page_rows(connection, Page.RUN_HEADER, **bindings)
         if not rows:
             raise HTTPException(404, "No run with that id is in this session.")
         offset = skipped(page, knobs.log)
@@ -169,7 +172,7 @@ def run_page(
             ),
             record=None,
             ran=[
-                (Page.RUN_HEADER, bound),
+                (Page.RUN_HEADER, bindings),
                 (Page.RUN_TIMELINE, timeline | {"offset": offset, "limit": knobs.log}),
             ],
         )
@@ -189,15 +192,16 @@ def call_page(
     """One api call: what it answered, what it thought, and the tools it called."""
 
     def read(connection: duckdb.DuckDBPyConnection, corpus: nav_tree.Corpus, head: Row) -> Seen:
-        bound: dict[str, ParamValue] = {
-            "session_id": session_id,
-            "source": source,
-            "api_call_id": api_call_id,
-            "head_chars": queries.HEADER_CHARS,
-            "detail_chars": knobs.detail,
-        }
+        bindings = bound(
+            Page.CALL_HEADER,
+            bounds.HEADER_WIDTHS,
+            {"detail_chars": knobs.detail},
+            session_id=session_id,
+            source=source,
+            api_call_id=api_call_id,
+        )
         keyed = {"session_id": session_id, "source": source, "api_call_id": api_call_id}
-        rows = page_rows(connection, Page.CALL_HEADER, **bound)
+        rows = page_rows(connection, Page.CALL_HEADER, **bindings)
         if not rows:
             raise HTTPException(404, "No api call with that id is in this thread.")
         row = rows[0]
@@ -230,7 +234,7 @@ def call_page(
                 preview(detail.CALL_THINKING, row, size=knobs.detail, **keyed),
             ),
             record=None,
-            ran=[(Page.CALL_HEADER, bound), (Fragment.CALL_TOOLS, tools)],
+            ran=[(Page.CALL_HEADER, bindings), (Fragment.CALL_TOOLS, tools)],
         )
 
     return browse(viewer, session_id, source, knobs, page, read)
@@ -248,15 +252,16 @@ def tool_page(
     """One tool call: what it was passed, and what it returned. Nothing hangs under it."""
 
     def read(connection: duckdb.DuckDBPyConnection, corpus: nav_tree.Corpus, head: Row) -> Seen:
-        bound: dict[str, ParamValue] = {
-            "session_id": session_id,
-            "source": source,
-            "tool_call_id": tool_call_id,
-            "head_chars": queries.HEADER_CHARS,
-            "detail_chars": knobs.detail,
-        }
+        bindings = bound(
+            Page.TOOL_HEADER,
+            bounds.HEADER_WIDTHS,
+            {"detail_chars": knobs.detail},
+            session_id=session_id,
+            source=source,
+            tool_call_id=tool_call_id,
+        )
         keyed = {"session_id": session_id, "source": source, "tool_call_id": tool_call_id}
-        rows = page_rows(connection, Page.TOOL_HEADER, **bound)
+        rows = page_rows(connection, Page.TOOL_HEADER, **bindings)
         if not rows:
             raise HTTPException(404, "No tool call with that id is in this thread.")
         row = rows[0]
@@ -280,7 +285,7 @@ def tool_page(
                 preview(detail.TOOL_RESULT, row, size=knobs.detail, **keyed),
             ),
             record=None,
-            ran=[(Page.TOOL_HEADER, bound)],
+            ran=[(Page.TOOL_HEADER, bindings)],
         )
 
     return browse(viewer, session_id, source, knobs, page, read)
@@ -302,14 +307,12 @@ def compaction_page(
     """
 
     def read(connection: duckdb.DuckDBPyConnection, corpus: nav_tree.Corpus, head: Row) -> Seen:
-        bound: dict[str, ParamValue] = {
-            "session_id": session_id,
-            "source": source,
-            "chip_chars": queries.HEADER_CHARS,
-        }
+        bindings = bound(
+            Page.COMPACTIONS, bounds.HEADER_WIDTHS, session_id=session_id, source=source
+        )
         found = [
             row
-            for row in page_rows(connection, Page.COMPACTIONS, **bound)
+            for row in page_rows(connection, Page.COMPACTIONS, **bindings)
             if row["compaction_id"] == compaction_id
         ]
         if not found:
@@ -329,7 +332,7 @@ def compaction_page(
             total=0,
             details=[],
             record=None,
-            ran=[(Page.COMPACTIONS, bound)],
+            ran=[(Page.COMPACTIONS, bindings)],
         )
 
     return browse(viewer, session_id, source, knobs, page, read)

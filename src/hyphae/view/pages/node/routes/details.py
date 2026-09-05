@@ -19,6 +19,7 @@ from fastapi.responses import Response
 
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
+from hyphae.view import bounds
 from hyphae.view.deps import Db, Viewer, ViewerDep
 from hyphae.view.detail import DETAILS, Spec, Written, syntax_of
 from hyphae.view.enrichment import enriched
@@ -72,7 +73,7 @@ def fetch(spec: Spec, request: Request, viewer: Viewer, connection: Db) -> Respo
         # Not a cut of the answer, which rides whole: the bound on the file suffix beside it,
         # which is what says how the answer is marked up. The one arm that reads the row to
         # find that out is the one arm that pays for it.
-        keyed["head_chars"] = queries.HEADER_CHARS
+        keyed["head_chars"] = bounds.HEADER_WIDTHS.head_chars
     row, citation = fetched(connection, spec.whole, keyed, "value")
     whole = values.Whole(row["value"], spec.name, citation)
     match spec.written:

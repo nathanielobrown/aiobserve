@@ -19,17 +19,23 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, NamedTuple
 
 import duckdb
 
-from hyphae.analyze import macros, queries
+from hyphae.analyze import macros, manifest, queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.export.duckdb import PAGE_WAIT, open_trace_store
 from hyphae.export.schema import SchemaVersionError
 from hyphae.projects import project_predicate
+from hyphae.view.bounds import Widths
 
 Row = dict[str, Any]
+
+# A read that binds nothing a reader typed, which is most of them: a surface prints at its own
+# widths, and only the node page's `?detail=` reaches into a query from the URL.
+NO_SIZES: Mapping[str, ParamValue] = MappingProxyType({})
 
 # The column both turn timelines are ordered by: unique and ascending within one thread, and
 # NULL on the row standing for the calls that answer no turn, which rides no page of them.
@@ -140,18 +146,47 @@ class Value(StrEnum):
 Library = Page | Fragment | Value
 
 
-def header_bound(session_id: str) -> dict[str, ParamValue]:
-    """What `Page.SESSION_HEADER` binds for one session, named once for every reader of it.
+def bound(
+    page: Library,
+    widths: Widths,
+    sizes: Mapping[str, ParamValue] = NO_SIZES,
+    /,
+    **keys: ParamValue,
+) -> dict[str, ParamValue]:
+    """What one read binds: its keys, the surface's widths, and the sizes a reader asked for.
 
-    A node page reads the row whole; the errors page reads it only to word a 404, but both
-    have to bind the same params or a change to one silently stops answering for the other.
+    The first three are positional so a key can be named anything a statement binds: a read
+    keyed by a column called `sizes` is a store shape away, and it would land here as an
+    argument rather than as a key.
+
+    Every parameter `page` declares is filled from one of the three or this raises, naming the
+    page, the parameter and the surface; a key or a size that names a width raises too — an
+    override is a second surface, so declare one (`view/bounds.py`). DuckDB refuses a read
+    short of a parameter as well, but only once a connection is open and a statement handed
+    over, and its message names neither the surface nor which half should have carried it.
+
+    The mapping comes back in the order it was spelled — keys, then widths, then sizes — which
+    is the order the citation under the page quotes them in (`view/citation.py`).
     """
-    return {
-        "session_id": session_id,
-        "head_chars": queries.HEADER_CHARS,
-        "item_chars": queries.HEADER_ITEM_CHARS,
-        "head_items": queries.HEADER_ITEMS,
-    }
+    surface = type(widths).__name__
+    declared = manifest.describe(page).params
+    fields = widths._asdict()
+    given = {**keys, **sizes}
+    if claimed := sorted(given.keys() & fields.keys()):
+        raise ValueError(
+            f"{page} takes {', '.join(claimed)} from the {surface} surface: a read that prints "
+            f"at another width names another surface rather than binding one of its own"
+        )
+    if excess := sorted(given.keys() - declared.keys()):
+        raise ValueError(
+            f"{page} binds no {', '.join(excess)}: the read passes a key its statement never names"
+        )
+    if missing := [name for name in declared if name not in given and name not in fields]:
+        raise ValueError(
+            f"{page} binds {', '.join(missing)}, which no key carries and the {surface} surface "
+            f"does not declare: pass it as a key, or give the surface the width in view/bounds.py"
+        )
+    return {**keys, **{name: fields[name] for name in fields if name in declared}, **sizes}
 
 
 class SchemaMoved(Exception):

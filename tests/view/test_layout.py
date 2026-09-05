@@ -309,7 +309,7 @@ def test_a_models_module_appears_only_where_a_second_markup_module_reads_it() ->
 def test_no_page_package_imports_a_sibling_page() -> None:
     """One page is one directory, so what two pages share is lifted rather than reached for.
 
-    `failures.py` and `header_bound` were lifted into the shared layer for exactly this
+    `failures.py` and the session header's widths were lifted into the shared layer for this
     (`design.md`, "Three lifts"): a session's failures are a session fact the errors page and
     the node page's stepper both read, and a sibling import would make the errors page the node
     page's dependency.

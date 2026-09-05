@@ -32,7 +32,7 @@ from hyphae.view.store import (
     Fragment,
     Page,
     Row,
-    header_bound,
+    bound,
     open_store,
     page_rows,
 )
@@ -168,15 +168,13 @@ def thread_body(
     shaped = BODIES.get(kind)
     if shaped is None:
         raise HTTPException(404, "No expansion is served for that kind of node.")
-    bound: dict[str, ParamValue] = {
-        "session_id": session_id,
-        "source": source,
-        shaped.keyed: node_id,
-        "head_chars": queries.HEADER_CHARS,
-        # A body renders facts and no fat value, so the columns a pane would preview are
-        # read at the width the title is cut from rather than at the reader's `?detail=`.
-        "detail_chars": queries.HEADER_CHARS,
-    }
+    bindings = bound(
+        shaped.page,
+        bounds.EXPANSION_WIDTHS,
+        session_id=session_id,
+        source=source,
+        **{shaped.keyed: node_id},
+    )
     keyed: dict[str, ParamValue] = {"session_id": session_id, "source": source}
     # The level the expansion lists, where its kind lists one: the first page of it, at the
     # size the reader is reading logs under. Which page is not a question an expansion
@@ -190,7 +188,7 @@ def thread_body(
     if shaped.listed is not None:
         level[shaped.listed.size] = knobs.log
     with open_store(viewer.db) as connection:
-        rows = page_rows(connection, shaped.page, **bound)
+        rows = page_rows(connection, shaped.page, **bindings)
         if not rows:
             raise HTTPException(404, "No node with that id is in this thread.")
         under = (
@@ -205,7 +203,7 @@ def thread_body(
         # log row that opened this expansion has it.
         describes = described(connection, session_id, source) if shaped.described else None
     told = describes.turns.get(node_id) if describes else None
-    ran: Ran = [(shaped.page, bound)]
+    ran: Ran = [(shaped.page, bindings)]
     if shaped.listed is not None:
         ran.append((shaped.listed.query, level))
     if describes is not None and describes.queried:
@@ -230,21 +228,16 @@ def run_body(
     knobs: KnobsDep,
 ) -> Response:
     """One agent run's body. Its own mount: a run's URL carries its id where a thread goes."""
-    bound: dict[str, ParamValue] = {
-        "session_id": session_id,
-        "run_id": run_id,
-        "head_chars": queries.HEADER_CHARS,
-        "detail_chars": queries.HEADER_CHARS,
-    }
+    bindings = bound(Page.RUN_HEADER, bounds.EXPANSION_WIDTHS, session_id=session_id, run_id=run_id)
     keyed: dict[str, ParamValue] = {"session_id": session_id, "source": run_id}
     with open_store(viewer.db) as connection:
-        rows = page_rows(connection, Page.RUN_HEADER, **bound)
+        rows = page_rows(connection, Page.RUN_HEADER, **bindings)
         if not rows:
             raise HTTPException(404, "No agent run with that id is in this session.")
         # A run's id is the thread its own rows carry, so it is what the pass keyed on too.
         describes = described(connection, session_id, run_id)
     row = describes.runs.get(run_id)
-    ran: Ran = [(Page.RUN_HEADER, bound)]
+    ran: Ran = [(Page.RUN_HEADER, bindings)]
     if describes.queried:
         ran.append((Page.ENRICHMENT, keyed))
     return expanded(
@@ -281,7 +274,11 @@ def spilled(
         raise HTTPException(400, f"A NavTree row sits between depth 1 and {bounds.DEPTH}.")
     keyed: dict[str, ParamValue] = {"session_id": session_id}
     with open_store(viewer.db) as connection:
-        head = page_rows(connection, Page.SESSION_HEADER, **header_bound(session_id))
+        head = page_rows(
+            connection,
+            Page.SESSION_HEADER,
+            **bound(Page.SESSION_HEADER, bounds.HEADER_WIDTHS, session_id=session_id),
+        )
         if not head:
             raise HTTPException(404, "No session with that id is in this store.")
         runs = page_rows(connection, Page.RUNS, **keyed, chip_chars=queries.NAV_CHARS)
