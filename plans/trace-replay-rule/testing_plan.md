@@ -145,7 +145,7 @@ so the census tier sees it too.
   class (`mutmut/mutation/file_mutation.py:292`), `SessionTrace` is a `@dataclass`, so
   `mutants/src/hyphae/model.py` holds no mutant of `live()` and a scoped run exits 1 with
   "nothing matches". Substituted by hand red-checks, each planted then reverted, recorded in
-  the PR body: `live()` filtering nothing (reds 5 leaves), `spawns` built over
+  the PR body: `live()` filtering nothing (reds 12 ids across 9 functions), `spawns` built over
   `trace.tool_calls` (reds only the planted spawn leaf), `turns` indexed over `live.turns`
   (reds 15), `_live_view` emitting the empty predicate (reds 7, including four parity cases),
   the predicate forced onto `agent_runs` (binder error across the file), and a member dropped
