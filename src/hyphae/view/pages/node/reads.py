@@ -77,7 +77,7 @@ def logged(shape: Shape, node: Node, row: Row) -> logs.Logged:
                 node=node,
                 call_index=row["call_index"],
                 model=row["model"],
-                text_head=row["text_head"],
+                text=row["text"],
                 tool_calls=row["tool_calls"],
                 # The words rather than the rows: naming a tool call is Python's
                 # (`view/text/tool_names.py`), so the query ships the fields and this composes them.

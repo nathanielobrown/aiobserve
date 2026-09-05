@@ -26,7 +26,7 @@ SELECT
     -- What the call itself said, at the width of the column that prints it. The row's own
     -- words: a call that answered with tool calls and nothing else has none, and the model
     -- beside it is what the row is named by.
-    cut(c.text, $log_chars) AS text_head,
+    cut(c.text, $log_chars) AS text,
     c.effort,
     c.stop_reason,
     c.attribution_skill,

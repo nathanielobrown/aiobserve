@@ -51,7 +51,7 @@ class LoggedCall(NamedTuple):
     node: Node
     call_index: int
     model: str | None
-    text_head: str | None
+    text: str | None
     tool_calls: int
     called: str
     text_chars: int
@@ -221,7 +221,7 @@ def _cells(*, shape: Shape, row: Logged, suffix: str) -> Html:
                         words=cuts.line(row.model),
                         second="",
                     ),
-                    _cell(shape=shape, field="text", value=cuts.line(row.text_head)),
+                    _cell(shape=shape, field="text", value=cuts.line(row.text)),
                     _cell(shape=shape, field="tool_calls", value=fmt.count(row.tool_calls)),
                     _cell(shape=shape, field="tool_titles", value=cuts.line(row.called)),
                     _cell(shape=shape, field="text_chars", value=fmt.count(row.text_chars)),

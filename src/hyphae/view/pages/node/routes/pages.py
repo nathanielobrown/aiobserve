@@ -264,7 +264,7 @@ def call_page(
             details=details(
                 detail_of(
                     name="text",
-                    head=row["text_head"],
+                    head=row["text"],
                     chars=row["text_chars"],
                     url=f"/fragment/text{at}",
                     size=knobs.detail,
@@ -272,7 +272,7 @@ def call_page(
                 ),
                 detail_of(
                     name="thinking",
-                    head=row["thinking_head"],
+                    head=row["thinking"],
                     chars=row["thinking_chars"],
                     url=f"/fragment/thinking{at}",
                     size=knobs.detail,
@@ -352,7 +352,7 @@ def tool_page(
                 # characters the store holds rather than lexing it as broken JSON.
                 detail_of(
                     name="result",
-                    head=row["result_head"],
+                    head=row["result"],
                     chars=row["result_chars"],
                     url=f"/fragment/result{at}",
                     size=knobs.detail,
