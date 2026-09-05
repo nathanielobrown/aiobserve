@@ -47,7 +47,12 @@ src/hyphae/view/store.py                  changed: + bound(); − header_bound, 
                                           SHOWN's composition read bounds.LIST by attribute
 src/hyphae/analyze/queries.py             changed: viewer-only widths leave (C34); LOG_CHARS, LOG_CHARS_PARAM stay
 src/hyphae/view/pages/node/routes/        changed: pages, browse, expansions, details, popovers call bound()
-src/hyphae/view/pages/node/nav_tree.py    changed, with failures.py, enrichment.py, detail.py
+src/hyphae/view/pages/node/nav_tree.py    changed, with failures.py and enrichment.py
+src/hyphae/view/detail.py                 amended at implementation: the row above read `detail.py` as a fourth
+                                          file of the node package, and the file it means is the detail registry
+                                          one layer up. It binds no width and reads two — the ENRICHMENT_CHARS
+                                          behind the enrichment block's previews (322, 324). The `bound()` call
+                                          the row was taken for is routes/details.py:75
 src/hyphae/view/pages/{sessions,projects,records}/routes.py   changed
 src/hyphae/view/text/cuts.py, nodes.py    changed: a Python-side cut reads bounds.<SURFACE>.<parameter>
 src/hyphae/view/pages/node/reads.py       changed: node_numbers replaces window_numbers

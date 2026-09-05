@@ -34,7 +34,11 @@ Plan against the tree after both. Consequences, in the order they bite:
 - **`routes/enrichment.py` is deleted and `routes/details.py` keeps one `fetch()`.** The
   design's file-tree row naming `detail.py` beside `nav_tree.py` resolves to the single
   `head_chars` binding inside `fetch`'s `NAMED_FILE` arm, not to ten handlers. `view/detail.py`
-  (the registry) binds no width and is not touched
+  (the registry) binds no width and is not touched — **amended at implementation:** it binds
+  none, but it reads two, so it is touched. `routes/details.py:75` is the `bound()` call this
+  row is about, and `view/detail.py:322,324` is a constant swap: the two
+  `queries.ENRICHMENT_CHARS` reads behind the enrichment block's previews become
+  `bounds.ENRICHMENT_WIDTHS.description_chars`, as every other constant read did in slice 4
 - `tests/analyze/test_queries.py` is touched by both siblings and **not** by this design: no
   query file's text changes here except `view_numbers.sql`'s alias in slice 5
 
