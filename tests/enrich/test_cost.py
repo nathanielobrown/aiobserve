@@ -1,8 +1,9 @@
-"""What a dry run quotes: arithmetic over rendered prompts and a price table in the code.
+"""What a dry run quotes: arithmetic over rendered prompts and the one price table.
 
-No estimate here asks anything what it charges. The rates are a dated constant a reader can
-check against Anthropic's price page, and everything else is multiplication over character
-counts the planner already holds — so a dry run costs nothing and works offline.
+No estimate here asks anything what it charges. The rates come from
+`hyphae.extract.pricing.MODELS`, a dated constant a reader can check against Anthropic's
+price page, and everything else is multiplication over character counts the planner already
+holds — so a dry run costs nothing and works offline.
 """
 
 import pytest
@@ -10,7 +11,6 @@ import pytest
 from hyphae.enrich.cost import (
     CHARS_PER_TOKEN,
     OUTPUT_TOKENS,
-    PRICES,
     TRANSPORT_TOKENS,
     Estimate,
     Prompt,
@@ -18,11 +18,17 @@ from hyphae.enrich.cost import (
 )
 from hyphae.enrich.items import Level
 from hyphae.enrich.levels import instructions
+from hyphae.extract.pricing import MODELS, PER_MILLION
 
 MODEL = "claude-haiku-4-5-20251001"
+# The other model `--model` is likely to name. Worth quoting alongside the default because its
+# input rate is not 1.00: against Haiku alone, an `estimate` that divided by the input rate
+# instead of multiplying by it would quote the same dollars and no assertion could tell.
+PRICIER_MODEL = "claude-sonnet-4-5-20250929"
 
 
-def test_an_estimate_is_multiplication_a_reader_can_redo() -> None:
+@pytest.mark.parametrize("model", [MODEL, PRICIER_MODEL])
+def test_an_estimate_is_multiplication_a_reader_can_redo(model: str) -> None:
     """The quoted price is the rendered characters, the instructions, the scaffold, and rates."""
     # If a run would send two prompts — one turn and one session, of known length...
     prompts = [Prompt(Level.turn, "x" * 1_000), Prompt(Level.session, "y" * 3_000)]
@@ -34,9 +40,9 @@ def test_an_estimate_is_multiplication_a_reader_can_redo() -> None:
     # here on top of the characters above counts nothing twice...
     input_tokens = int(characters / CHARS_PER_TOKEN) + 2 * TRANSPORT_TOKENS
     output_tokens = 2 * OUTPUT_TOKENS
-    rates = PRICES[MODEL]
-    full = (input_tokens * rates.input_usd + output_tokens * rates.output_usd) / 1_000_000
-    quote = estimate(prompts, MODEL)
+    spec = MODELS[model]
+    full = (input_tokens * spec.input + output_tokens * spec.output) / PER_MILLION
+    quote = estimate(prompts, model)
     # ...the token counts are exact — the dollars are lifted here and checked below, because
     # float arithmetic is the one thing a whole-object compare cannot state...
     assert quote == Estimate(
@@ -57,15 +63,10 @@ def test_the_measured_constants_are_pinned_to_their_probe() -> None:
 
 
 def test_an_empty_plan_costs_nothing() -> None:
-    """A run with nothing stale quotes zero rather than a floor price."""
-    assert estimate([], MODEL) == Estimate(items=0, input_tokens=0, output_tokens=0, usd=0.0)
+    """A run with nothing stale quotes zero rather than a floor price.
 
-
-def test_an_unpriced_model_crashes() -> None:
-    """A model the table does not price refuses to be quoted, rather than quoting zero.
-
-    Anthropic adds models faster than this file will be updated, and a silent zero would read
-    as "this pass is free" on exactly the run whose price nobody knows.
+    It still names a model, so the table lookup happens even on a plan holding nothing. An
+    unpriced model is refused a step earlier now, at the CLI door
+    (`test_enricher__cli.py:test_an_unpriced_model_is_refused_at_the_door`).
     """
-    with pytest.raises(KeyError, match="claude-opus-9"):
-        estimate([Prompt(Level.turn, "x")], "claude-opus-9")
+    assert estimate([], MODEL) == Estimate(items=0, input_tokens=0, output_tokens=0, usd=0.0)

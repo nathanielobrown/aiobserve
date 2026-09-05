@@ -39,6 +39,7 @@ from hyphae.export.otlp_delivery import (
 )
 from hyphae.extract.claude_code import ClaudeCodeExtractor
 from hyphae.extract.layout import DEFAULT_PROJECTS_ROOT, find_sessions
+from hyphae.extract.pricing import MODELS, SYNTHETIC_MODEL
 from hyphae.extract.store import StoreSource, UnknownProjectError
 from hyphae.pipeline import refresh
 from hyphae.projects import resolve_project
@@ -265,6 +266,12 @@ def _enrich_arguments(subcommand: argparse.ArgumentParser) -> None:
     subcommand.add_argument(
         "--model",
         default=DEFAULT_MODEL,
+        # A model the price table lacks would quote nothing and then burn the breaker cycle
+        # on every item, so the accepted names are the priced ones — minus the placeholder,
+        # which is in the table only to price Claude Code's own zero-token records.
+        choices=[model for model in MODELS if model != SYNTHETIC_MODEL],
+        # Without this argparse prints the whole table in every usage line.
+        metavar="MODEL",
         help=f"The model to describe with (default: {DEFAULT_MODEL})",
     )
     subcommand.add_argument(

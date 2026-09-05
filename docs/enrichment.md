@@ -117,13 +117,13 @@ A missing contract field is drift. On the canary, it raises `EnvelopeDrift` afte
 
 ## A dry run quotes money, not elapsed time
 
-`src/hyphae/enrich/cost.py` owns the rates and arithmetic. It estimates tokens from rendered characters, then adds each level's instructions and a flat transport cost per item. Each fresh subprocess pays that cost for the CLI framing and `--json-schema` payload.
+The quote reads the same price table every other reader does, `src/hyphae/extract/pricing.py`; `src/hyphae/enrich/cost.py` owns the arithmetic over it. It estimates tokens from rendered characters, then adds each level's instructions and a flat transport cost per item. Each fresh subprocess pays that cost for the CLI framing and `--json-schema` payload.
 
 The quote uses list price. The API batch discount no longer applies, and prompt caching is priced at zero, so the estimate runs high. A full Haiku pass over the mycelia corpus costs single-digit dollars.
 
 The practical cost is time. At about four seconds per item, measured on 2026-08-13, a full pass with four workers takes more than an hour. Those workers share the Claude allowance with this project's agents. `--limit` is the only pacing control, and you must set it yourself.
 
-Prices and models change. Asking for an unpriced model crashes instead of returning a zero quote.
+Prices and models change. `--model` accepts only the names the price table prices, so asking for an unpriced one is refused at the door — before preflight, before the store is read, and before a prompt is rendered. A typo costs the message and nothing else.
 
 ## Prompt and taxonomy changes buy new descriptions
 

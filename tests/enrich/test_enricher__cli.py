@@ -21,6 +21,7 @@ from hyphae.enrich.enricher import (
     plan,
 )
 from hyphae.enrich.store import EnrichmentStore
+from hyphae.extract.pricing import SYNTHETIC_MODEL
 from tests.conftest import MYCELIA
 from tests.enrich.conftest import (
     MODEL,
@@ -49,6 +50,37 @@ def logged_in(monkeypatch: pytest.MonkeyPatch) -> None:
     does afterwards.
     """
     monkeypatch.setattr(cli, "preflight", lambda: None)
+
+
+# The two ways a `--model` can name nothing the price table prices: a model that does not
+# exist, and the placeholder, which exists in the table but never went to a model at all.
+@pytest.mark.parametrize("model", ["claude-opus-9", SYNTHETIC_MODEL])
+# Whether the run would have spent is beside the point: the door is argparse, so it shuts
+# before either branch of `_enrich` is reached.
+@pytest.mark.parametrize("extra", [(), ("--dry-run",)])
+def test_an_unpriced_model_is_refused_at_the_door(
+    store: EnrichmentStore,
+    model: str,
+    extra: tuple[str, ...],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A model the price table does not price is refused before the run reads or spends.
+
+    This is where "an unknown model refuses to quote" now lives. Anthropic adds models faster
+    than the table will be updated, and the old refusal came after a rendered plan; this one
+    costs a typo nothing but the message.
+    """
+    # If a person names a model no rate exists for...
+    with pytest.raises(SystemExit) as refusal:
+        cli.main("enrich", "--db", str(store.path), "--model", model, *extra)
+    # ...then the command exits on argparse's usage error rather than running...
+    assert refusal.value.code == 2
+    # ...naming the model it would not accept, so the typo is visible in the message...
+    assert model in capsys.readouterr().err
+    # ...and nothing was spent or written: this leaf takes no `logged_in`, so a check that
+    # ran inside `_enrich` would have reached `preflight` and tripped the autouse subprocess
+    # guard instead of exiting, and the store still holds no enrichment row.
+    assert stored(store) == []
 
 
 def test_a_dry_run_asks_no_auth_question(
