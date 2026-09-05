@@ -4,9 +4,10 @@ A finding cites the query behind it, so a question lives in a versioned file a r
 name and anyone can re-run — not in a Python string. Two consumers share this library: the
 `hp query` runner and the trace viewer (`plans/trace-viewer/design.md`).
 
-What is here is how a query is declared and every width one binds: the parameter types, the
-shared `Param`s, and the character and row counts that bound what a page can ask for. What
-each query takes is `analyze/manifest.py`, and the SQL itself is `analyze/queries/`.
+What is here is how a query is declared and every width one binds: the type of each parameter
+name, the character and row counts that bound what a page can ask for, and the readers that
+take a statement apart. The production defaults are `analyze/manifest.py`, and the SQL itself
+is `analyze/queries/`.
 """
 
 import datetime as dt
@@ -85,24 +86,111 @@ class Query:
     params: Mapping[str, Param]
 
 
-# The keys of a keyed query: which session, and which thread inside it. Neither has a
-# sensible default — a timeline of "some session" is not a question anyone asked.
-SESSION_ID = Param(type=ParamType.TEXT, default=REQUIRED)
-SOURCE = Param(type=ParamType.TEXT, default=REQUIRED)
-# Which turn, which run, which api call, which tool call, which compaction. Keys for the same
-# reason, one level down: a node's own query is about that node, so absence cannot stand in for
-# its id.
-TURN_ID = Param(type=ParamType.TEXT, default=REQUIRED)
-RUN_ID = Param(type=ParamType.TEXT, default=REQUIRED)
-API_CALL_ID = Param(type=ParamType.TEXT, default=REQUIRED)
-TOOL_CALL_ID = Param(type=ParamType.TEXT, default=REQUIRED)
-COMPACTION_ID = Param(type=ParamType.TEXT, default=REQUIRED)
-# And the pair a query serving every kind of node takes instead: whichever id the node carries,
-# and the word saying what kind of id it is. `view_numbers` is the one query written that way —
-# what a node's numbers are made of differs by kind, and four files answering one question are
-# four chances for them to disagree.
-NODE_ID = Param(type=ParamType.TEXT, default=REQUIRED)
-NODE_KIND = Param(type=ParamType.TEXT, default=REQUIRED)
+# What every parameter in the library binds as, by name. A type belongs to the name rather
+# than to the query that takes it: `head_chars` is a width wherever it appears, and one name
+# meaning two things would be a name to fix rather than a table to grow. A statement binding a
+# name absent here is refused (`analyze/manifest.py:describe`), which is what stands between a
+# new query and a value the binder guesses at.
+PARAM_TYPES: dict[str, ParamType] = {
+    # The ids a keyed query is about: which session, which thread inside it, which node of
+    # that thread, and which file it wrote out. `node_id` with `kind` is the pair a query
+    # serving every kind of node takes instead of an id of its own.
+    **dict.fromkeys(
+        (
+            "session_id",
+            "source",
+            "turn_id",
+            "run_id",
+            "api_call_id",
+            "tool_call_id",
+            "compaction_id",
+            "node_id",
+            "kind",
+            "name",
+        ),
+        ParamType.TEXT,
+    ),
+    # Text a caller chooses rather than an id: which level to read, a phrase to keep rows by,
+    # the seed a draw hashes with.
+    **dict.fromkeys(("level", "mentions", "missing", "seed", "signature"), ParamType.TEXT),
+    # The widths a value is cut to before it is printed. A width is the surface's number
+    # rather than the query's; the ones an analysis query defaults to are the constants below.
+    **dict.fromkeys(
+        (
+            "after_chars",
+            "chip_chars",
+            "chunk_chars",
+            "description_chars",
+            "detail_chars",
+            "head_chars",
+            "item_chars",
+            "kind_chars",
+            "log_chars",
+            "max_chars",
+            "model_chars",
+            "nav_chars",
+            "preview_chars",
+            "signature_chars",
+            "tag_chars",
+        ),
+        ParamType.INTEGER,
+    ),
+    # How many rows come back and where they start: the page sizes, the cursors, and the
+    # line ranges a raw fetch is bound by.
+    **dict.fromkeys(
+        (
+            "after",
+            "errors",
+            "first_line",
+            "head_items",
+            "head_kinds",
+            "head_projects",
+            "last_line",
+            "line_no",
+            "page_calls",
+            "page_records",
+            "page_tools",
+            "projects",
+            "skipped",
+        ),
+        ParamType.INTEGER,
+    ),
+    # The thresholds, quotas and windows an analysis query's claim is bound by. A number here
+    # is part of what the query asserts, which is why it is bound and cited rather than fixed.
+    **dict.fromkeys(
+        (
+            "busy_tool_calls",
+            "compaction_quota",
+            "cost_quota",
+            "delegating_runs",
+            "discovery_quota",
+            "editing_calls",
+            "error_quota",
+            "idle_seconds",
+            "min_api_calls",
+            "min_discovery_api_calls",
+            "min_idle_seconds",
+            "min_occurrences",
+            "min_rebuilt_pct",
+            "min_rebuilt_tokens",
+            "min_runs",
+            "min_sessions",
+            "per_category",
+            "recent_days",
+            "runs_per_stratum",
+            "short_gap_seconds",
+            "skill_share_pct",
+            "skill_threshold",
+            "tail_segments",
+            "window_days",
+            "within_calls",
+        ),
+        ParamType.INTEGER,
+    ),
+    # The clock point a trailing window is measured back from: bound, so a landing page's
+    # "last 7 days" says which day it counted from.
+    "as_of": ParamType.DATE,
+}
 
 # How much of one raw record `records_slice` returns. A cap, not a limit: a reader can raise
 # it, and the design says so — the mechanism here is that the number is stated and cited.
@@ -226,7 +314,6 @@ CRUMB_CHARS = 40
 # than a NavTree row, which is a line, and far narrower than the pane above it, which is one
 # node read whole: a log is a dozen rows a reader picks the next node out of.
 LOG_CHARS = 300
-LOG_CHARS_PARAM = Param(type=ParamType.INTEGER, default=LOG_CHARS)
 
 # How much of the one value a node page is *about* the pane shows before it offers the rest:
 # an api call's answer, a tool call's result, the prompt a turn was given. Far wider than any
@@ -240,7 +327,7 @@ FIRST_PAGE = -1
 
 # What every seeded draw hashes its keys with. Any fixed value serves; what matters is that
 # the citation carries it, so a draw can be re-run — and rotated when a read wants new ground.
-DRAW_SEED = Param(type=ParamType.TEXT, default="hyphae")
+DRAW_SEED = "hyphae"
 
 # The turn id `session_timeline` and `run_timeline` give the api calls that sit under no turn. A
 # sentinel rather than NULL so it can travel in a URL; `view_turn_calls` takes NULL for the
@@ -264,6 +351,15 @@ def statement(name: str) -> str:
     does not read. Everything derived from a query file is derived from this.
     """
     return re.sub(r"--[^\n]*", "", load(name))
+
+
+def parameters(statement: str) -> tuple[str, ...]:
+    """The `$name`s a statement binds, first appearance first — the order `--list` prints.
+
+    Statement order rather than sorted, because what a caller reads it as is the query's own
+    argument list: the keys it is about, then what bounds them.
+    """
+    return tuple(dict.fromkeys(re.findall(r"\$([A-Za-z_][A-Za-z0-9_]*)", statement)))
 
 
 def relations(statement: str) -> set[str]:

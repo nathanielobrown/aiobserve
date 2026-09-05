@@ -158,7 +158,7 @@ def test_the_listing_names_every_query_with_its_scope_and_what_it_needs_bound(
 
     Read off the library rather than written down, so a query that ships is a line here the
     day its file lands. The viewer's half declares no defaults — a size belongs to the surface
-    that prints it (`view/manifest.py`) — so for those queries this is the only place a caller
+    that prints it (`view/bounds.py`) — so for those queries this is the only place a caller
     finds out what a bare run is missing.
     """
     printed = run_query("--list").stdout.splitlines()
@@ -168,8 +168,8 @@ def test_the_listing_names_every_query_with_its_scope_and_what_it_needs_bound(
     assert set(listed) == set(manifest.names())
     # ...each carrying the scope, which is what says whether `--project` is wanted...
     assert listed["agent_types"] == ["corpus"]
-    # ...and the parameters with no default, in the order the manifest declares them.
-    assert listed["view_runs"] == ["keyed", "session_id", "chip_chars"]
+    # ...and the parameters with no default, in the order the statement binds them.
+    assert listed["view_runs"] == ["keyed", "chip_chars", "session_id"]
     assert listed["records_slice"] == ["keyed", "session_id", "source", "first_line", "last_line"]
 
 
@@ -223,15 +223,55 @@ def test_a_parameter_type_nothing_binds_is_refused_rather_than_bound_to_null(
     member this build knows nothing about.
     """
     monkeypatch.setattr(queries, "QUERY_DIR", tmp_path)
-    monkeypatch.setitem(
-        manifest.PARAMS,
-        "planted",
-        {"flag": queries.Param(type=cast(queries.ParamType, "boolean"), default=queries.REQUIRED)},
-    )
+    monkeypatch.setitem(queries.PARAM_TYPES, "flag", cast(queries.ParamType, "boolean"))
     (tmp_path / "planted.sql").write_text("SELECT $flag AS flag")
     # The refusal names the type it could not bind, so the fix is the binder and not the call.
     with pytest.raises(SystemExit, match="boolean"):
         query(corpus_db, capsys, "planted", "--param", "flag=true")
+
+
+def test_a_parameter_the_library_types_nowhere_is_refused_rather_than_bound_blind(
+    corpus_db: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A `$parameter` no `PARAM_TYPES` entry covers stops the run, naming the parameter.
+
+    A type is one of the two facts a statement cannot state about itself, so a query naming a
+    parameter the library has never seen has to add one. Nothing else stands between that
+    omission and a run that parses the reader's text as whatever the binder guesses.
+
+    Planted rather than shipped: the point is a shape no file in the library has.
+    """
+    # If a query binds a parameter the type table does not know...
+    monkeypatch.setattr(queries, "QUERY_DIR", tmp_path)
+    (tmp_path / "planted.sql").write_text("SELECT $undeclared AS value")
+    # ...the refusal names it, so the fix is one line in the table rather than a hunt.
+    with pytest.raises(SystemExit, match="undeclared"):
+        query(corpus_db, capsys, "planted", "--param", "undeclared=1")
+
+
+def test_a_default_the_statement_binds_nothing_to_is_refused(
+    corpus_db: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A `DEFAULTS` key the query does not bind is an error, not a value quietly unused.
+
+    Defaults are the half that stays in Python, so they are the half that can drift: a
+    parameter renamed in the SQL leaves its old default behind, and the query then runs on
+    whatever the reader passes while `DEFAULTS` still shows a number that moves nothing. The
+    orphan is invisible in every other tier, which is why it crashes here.
+    """
+    # If the table carries a default for a name the statement never mentions...
+    monkeypatch.setattr(queries, "QUERY_DIR", tmp_path)
+    (tmp_path / "planted.sql").write_text("SELECT $max_chars AS width")
+    monkeypatch.setitem(manifest.DEFAULTS, "planted", {"max_chars": 80, "raw_chars": 100})
+    # ...the run stops and names the orphan rather than the query.
+    with pytest.raises(SystemExit, match="raw_chars"):
+        query(corpus_db, capsys, "planted")
 
 
 @pytest.mark.parametrize(
@@ -284,7 +324,6 @@ def test_the_store_is_opened_read_only(
     """No query can write to the store, whatever its SQL says."""
     # If a query file asks for DDL (planted here — no shipped query does)...
     monkeypatch.setattr(queries, "QUERY_DIR", tmp_path)
-    monkeypatch.setitem(manifest.PARAMS, "ddl", {})
     (tmp_path / "ddl.sql").write_text("CREATE TABLE planted (a INTEGER);")
     before = _tables(corpus_db)
     # ...then running it raises...

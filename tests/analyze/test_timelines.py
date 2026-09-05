@@ -308,7 +308,7 @@ def test_view_runs_carries_what_ranking_a_session_s_runs_takes(
                 "--param",
                 f"session_id={FORK_ORIGIN}",
                 # The query declares no width — a viewer size is the surface's
-                # (`view/manifest.py`) — and a caller from the command line states one. What
+                # (`view/bounds.py`) — and a caller from the command line states one. What
                 # this leaf reads back is the numbers beside the strings, at any width.
                 "--param",
                 f"chip_chars={queries.CHIP_CHARS}",

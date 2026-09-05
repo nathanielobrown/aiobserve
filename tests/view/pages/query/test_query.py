@@ -100,7 +100,7 @@ def test_every_citation_a_page_carries_links_to_the_query_it_names(
 def test_a_citation_quotes_every_binding_its_query_takes(path: str, client: TestClient) -> None:
     """A page cites what it ran — all of it, not the bindings that happen to vary by page.
 
-    No `view_` parameter has a default (`view/manifest.py`), so a width left out of a citation
+    No `view_` parameter has a default (`analyze/manifest.py`), so a width left out of a citation
     is a width nobody can recover: the line under the page is the whole record of what the page
     bound, and a reader comparing the line under one page with the line under the next cannot
     tell a query bound differently from a query cited differently.

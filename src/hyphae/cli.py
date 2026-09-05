@@ -137,7 +137,7 @@ def _query_listing() -> str:
 
     Read off the library, so a query that ships is a line here the day its file lands. Only
     the parameters with no default are listed — they are what a run refuses without — and
-    every viewer query takes several (`view/manifest.py`).
+    every viewer query takes several (`view/bounds.py`).
     """
     described = catalog()
     width = max(len(name) for name in described)

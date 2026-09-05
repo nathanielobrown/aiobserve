@@ -288,7 +288,7 @@ def test_the_pages_run_at_the_production_sizes(client: TestClient) -> None:
     """The page sizes the payload bound is computed from are the ones production runs.
 
     Read off what the pages cited, not off the manifest: no `view_` query declares a default
-    (`view/manifest.py`), and back when they did, two of the numbers pinned here were numbers
+    (`analyze/manifest.py`), and back when they did, two of the numbers pinned here were numbers
     no page ever ran — `chip_chars` was declared 60 while the runs log ran it at 300.
 
     Every other leaf in this file binds fixture-sized values, so without this pin the whole

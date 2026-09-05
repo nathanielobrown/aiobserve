@@ -2,10 +2,10 @@
 
 Discovery, not enumeration — the leaves parametrize over `queries/*.sql`, so a query added
 by any consumer of the library (the analysis process, the viewer) is covered the moment it
-lands, and one shipped without a manifest entry fails here rather than at a reader's prompt.
+lands, and one that cannot be described fails here rather than at a reader's prompt.
 
-`FIXTURE_BINDINGS` is where a query says what to bind on a 16-session store. A query whose
-manifest marks a parameter required must appear there, or its leaf fails naming it.
+`FIXTURE_BINDINGS` is where a query says what to bind on a 16-session store. A query with a
+parameter no default covers must appear there, or its leaf fails naming it.
 """
 
 import re
@@ -13,11 +13,9 @@ import re
 import pytest
 
 from hyphae.analyze import manifest, queries
-from hyphae.analyze.manifest import ANALYSIS, PARAMS
 from hyphae.analyze.queries import Scope, relations, statement
 from hyphae.enrich.levels import LEVELS
 from hyphae.export.duckdb import TABLES
-from hyphae.view.manifest import VIEW_QUERIES
 from hyphae.view.store import SHOWN
 from tests.analyze.conftest import AS_OF_WHOLE, QueryRunner
 from tests.conftest import (
@@ -44,7 +42,7 @@ from tests.conftest import (
 )
 
 # What a surface states when it runs a viewer query, at fixture size. No `view_` query
-# declares a default — the surface that prints a value owns its width (`view/manifest.py`) —
+# declares a default — the surface that prints a value owns its width (`view/bounds.py`) —
 # so the smoke run says it here, keyed by parameter rather than by query: what a size is for
 # does not change between the queries that take it, and the production numbers are pinned
 # against what the pages ran (`tests/view/test_bounds.py`).
@@ -247,11 +245,6 @@ def reads_enrichment(name: str) -> bool:
     )
 
 
-def declared_parameters(name: str) -> set[str]:
-    """The `$name` parameters the SQL text itself references."""
-    return set(re.findall(r"\$([A-Za-z_][A-Za-z0-9_]*)", statement(name)))
-
-
 AT_WIDTH = re.compile(r"substr\((.*?),\s*1,\s*\$(\w+)\s*\)")
 
 
@@ -333,16 +326,6 @@ def test_every_query_runs(name: str, run_query: QueryRunner, enriched_query: Que
     assert len(printed.csv_rows()) > 1, f"{name} returned no rows: bind it in FIXTURE_BINDINGS"
 
 
-def test_every_query_file_has_a_manifest_entry() -> None:
-    """The manifest and the directory hold the same set of queries, declared once each."""
-    assert sorted(PARAMS) == NAMES
-    # `PARAMS` is `ANALYSIS | VIEW_QUERIES`, and a merge settles a clash by keeping the right
-    # half. A name in both would leave one entry standing and the other gone — different
-    # parameters bound under the name a citation prints — while the set above stays whole and
-    # says nothing. One name space, so one declaration.
-    assert not set(ANALYSIS) & set(VIEW_QUERIES), "declared in both halves of the manifest"
-
-
 def test_a_citation_with_nothing_bound_ends_at_the_query_file() -> None:
     """A citation is a line someone pastes into a report, so it never trails whitespace."""
     # Every shipped query resolves at least one binding, so this is the contract for a caller
@@ -385,12 +368,6 @@ def test_every_cut_to_a_width_is_the_macro_or_a_named_exception(name: str) -> No
         "which returns the one character past it that says there is more, or name the "
         "exception and why it is one"
     )
-
-
-@pytest.mark.parametrize("name", NAMES)
-def test_the_manifest_declares_exactly_the_parameters_the_sql_uses(name: str) -> None:
-    """No parameter goes unbound, and no manifest entry describes one that is gone."""
-    assert declared_parameters(name) == set(PARAMS[name])
 
 
 @pytest.mark.parametrize("name", NAMES)

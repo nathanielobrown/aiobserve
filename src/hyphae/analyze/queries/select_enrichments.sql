@@ -7,6 +7,8 @@
 -- Each row carries what it takes to open the item — the session and source `run_timeline`,
 -- `session_timeline` and `enrichment_digest` are bound at — and what it costs to read it.
 -- The seed is bound, so the draw is one anyone can re-run and a later read can rotate.
+-- `$level` has no default: the three are different populations — 2,500 runs, 1,400 turns and
+-- 470 sessions on the mycelia corpus — and a draw over "some level" answers nobody.
 WITH described AS (
     SELECT
         e.category,
