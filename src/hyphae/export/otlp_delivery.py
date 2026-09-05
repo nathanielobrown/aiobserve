@@ -1,4 +1,4 @@
-"""Getting shaped spans to a backend and knowing what landed.
+"""Getting shaped spans to a backend, knowing what landed, and counting what has not.
 
 At-least-once with stable ids. A delivery row in the store records the fingerprint and the
 mapper version a session shipped under, so re-running ships only what moved and a shaping

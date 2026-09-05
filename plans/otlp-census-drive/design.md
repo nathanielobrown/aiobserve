@@ -79,7 +79,7 @@ tests/export/test_schema.py            ~  two OtlpExporter constructor sites
 
 ## Open questions
 
-- Does the ledger move to its own module rather than stay in `otlp_delivery.py`? Settled by whether the transport module's docstring — "never reads a store row" — still reads true with a named ledger class inside it
+- ~~Does the ledger move to its own module rather than stay in `otlp_delivery.py`?~~ **As built,** it stayed. The module's claim — it reads no session row, only the spans the mapper made and the ledger it owns — holds with `DeliveryLedger` named inside it, and the two `Exporter`s over one ledger read together
 - Should `--dry-run` with a named backend refuse when that backend's key is missing, rehearsing the send's preflight? I kept the no-key dry run: the census answers a question one asks before having a key
 
 ## Glossary changes
