@@ -133,26 +133,24 @@ def session_spans(trace: SessionTrace, text: TextPolicy = METADATA_ONLY) -> list
             f"Session {session.id} records no timestamps but reached the mapper. The source "
             f"filter excludes the sessions that hold none, so this is schema drift."
         )
+    live = trace.live()
+    # Every turn the trace holds, copies included: a call under a replayed turn needs to see
+    # the copy to tell it from a turn its session never recorded, which crashes.
     turns = {(turn.source, turn.id): turn for turn in trace.turns}
-    runs = {run.id: run for run in trace.agent_runs}
-    live_tools = [call for call in trace.tool_calls if not call.replayed]
-    # The live tool call each run named as its launch, if this trace holds one. Replayed
-    # copies are excluded first: matching one would collapse a span that never ships.
-    launched = {run.tool_use_id for run in trace.agent_runs if run.tool_use_id is not None}
-    spawns = {call.id: call for call in live_tools if call.id in launched}
+    runs = {run.id: run for run in live.agent_runs}
+    # The live tool call each run named as its launch, if this trace holds one. Matching a
+    # fork's copy would collapse a span that never ships.
+    launched = {run.tool_use_id for run in live.agent_runs if run.tool_use_id is not None}
+    spawns = {call.id: call for call in live.tool_calls if call.id in launched}
     children = [
-        *(_turn_span(session, turn, text) for turn in trace.turns if not turn.replayed),
-        *(_chat_span(session, call, turns, text) for call in trace.api_calls if not call.replayed),
-        *(_tool_span(session, call, text) for call in live_tools if call.id not in spawns),
+        *(_turn_span(session, turn, text) for turn in live.turns),
+        *(_chat_span(session, call, turns, text) for call in live.api_calls),
+        *(_tool_span(session, call, text) for call in live.tool_calls if call.id not in spawns),
         *(
             _run_span(session, run, spawns.get(run.tool_use_id or ""), runs, text)
-            for run in trace.agent_runs
+            for run in live.agent_runs
         ),
-        *(
-            _compaction_span(session, compaction)
-            for compaction in trace.compactions
-            if not compaction.replayed
-        ),
+        *(_compaction_span(session, compaction) for compaction in live.compactions),
     ]
     return [_root_span(trace, children, text), *children]
 
@@ -188,8 +186,8 @@ class Census:
 
     sessions: int
     spans: int
-    # Compactions shipped: what `live_compactions` holds, since the mapper and the view
-    # both read the extractor's `replayed` flag.
+    # Compactions shipped: what `live_compactions` holds, since the mapper ships
+    # `SessionTrace.live()`.
     compactions: int
 
 
