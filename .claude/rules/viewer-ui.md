@@ -196,6 +196,12 @@ Elements are written `htpy.div[...]`, never `from htpy import div`: the prefix i
 
 `tests/view/test_components.py` holds the floor: every parameter keyword-only, and none typed `Any`, `Row`, `Request` or `Response`. That is what a scan can see. Above it is a review obligation — `Kind` where a bare `str` would typecheck, a `NamedTuple` where a tuple would, the narrow union rather than the wide one — because no checker knows which string is a kind.
 
+# A read names its surface, not its widths
+
+A read is composed by `store.bound`, which takes the query, the surface the rows will be drawn at, and the sizes the URL asked for — `bound(Page.TURN_HEADER, bounds.HEADER_WIDTHS, {"detail_chars": knobs.detail}, session_id=session_id, ...)`. It fills every width the statement declares off the profile and refuses a read that spells one of its own, so what a surface prints at is said once, in `src/hyphae/view/bounds.py`, and a page's footer quotes the widths it bound.
+
+Name the surface the rows are drawn at rather than the widest one that fits. A read at too wide a profile ships green and prints the same bytes, having fetched string nobody shows: the two reads of a session's runs are the pair to copy — a children log row at `LOG_WIDTHS`, the tail row's fetch at `NAV_TREE_WIDTHS` — and `tests/view/test_bounds__widths.py` holds them there. A surface printing at widths no profile carries is a profile to declare, not a number to pass.
+
 # A cut value goes through the filter that marks it
 
 A string its query cut arrives one character past the width it is printed at, and the filter that prints it cuts it back and marks where the rest was left behind (`src/hyphae/view/text/format.py:cut`): `line` for a children log's row, `head` and `member` for a header, `short` and `item` for a row of the session list. Print such a value bare and a reader cannot tell a name that ended from one that was stopped. A title arrives marked already, at whichever of the four widths `src/hyphae/view/nodes.py` cut it to.
