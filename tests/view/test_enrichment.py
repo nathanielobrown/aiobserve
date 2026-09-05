@@ -357,15 +357,19 @@ def wrote(store: duckdb.DuckDBPyConnection, turn_id: str) -> str:
     )
 
 
-def test_an_item_described_under_an_older_prompt_is_marked_stale(
+def test_an_item_described_under_an_older_version_is_marked_stale(
     enriched_client: TestClient, enriched_store: duckdb.DuckDBPyConnection
 ) -> None:
-    """A description this build's prompt would no longer produce says so, quietly.
+    """A description this build's prompt or taxonomy would no longer produce says so, quietly.
 
     Only the versions are visible from a read: whether the rendered content moved, or which
     model a pass would use today, is not something the store can answer. The tag says which
     of the two states a row is in; the glyph beside the line says what it was written under,
     which is what a reader needs to decide whether to re-run a pass.
+
+    Three turns, because the rule has two version halves and the page has to tag on either:
+    one behind on the prompt, one behind on the taxonomy alone, one current on both.
+    `planted_stamp` moves the two axes on coprime cycles, so the middle row exists.
     """
     session_id, turn_id = one(
         enriched_store,
@@ -373,11 +377,17 @@ def test_an_item_described_under_an_older_prompt_is_marked_stale(
         " WHERE source = 'main' AND prompt_version < ?",
         [LEVELS[Level.turn].prompt_version],
     )
+    aged_taxonomy = one(
+        enriched_store,
+        "SELECT session_id, turn_id FROM turn_enrichments"
+        " WHERE source = 'main' AND prompt_version = ? AND taxonomy_version < ?",
+        [LEVELS[Level.turn].prompt_version, TAXONOMY_VERSION],
+    )
     fresh = one(
         enriched_store,
         "SELECT session_id, turn_id FROM turn_enrichments"
-        " WHERE source = 'main' AND prompt_version = ?",
-        [LEVELS[Level.turn].prompt_version],
+        " WHERE source = 'main' AND prompt_version = ? AND taxonomy_version = ?",
+        [LEVELS[Level.turn].prompt_version, TAXONOMY_VERSION],
     )
     # The turn described under the older prompt version is tagged...
     stale_page = enriched_client.get(f"/session/{session_id}/thread/main/turn/{turn_id}").text
@@ -388,7 +398,13 @@ def test_an_item_described_under_an_older_prompt_is_marked_stale(
     assert f"{said['category']} {said['outcome']} stale" in reads(
         stale_page, "data-enrichment", turn_id
     )
-    # ...and one described under the current one is not, so the tag is telling them apart.
+    # ...so is one whose prompt version is this build's and whose taxonomy version is not,
+    # which no rule reading the prompt half alone could tag...
+    aged_page = enriched_client.get(
+        f"/session/{aged_taxonomy[0]}/thread/main/turn/{aged_taxonomy[1]}"
+    ).text
+    assert fields(aged_page, "data-enrichment", aged_taxonomy[1]).get("stale") == "stale"
+    # ...and one described under the current pair is not, so the tag is telling them apart.
     fresh_page = enriched_client.get(f"/session/{fresh[0]}/thread/main/turn/{fresh[1]}").text
     assert "stale" not in fields(fresh_page, "data-enrichment", fresh[1])
     # Both carry the same glyph, and its tooltip is where the two rows differ in full: the
@@ -399,6 +415,9 @@ def test_an_item_described_under_an_older_prompt_is_marked_stale(
     ]
     assert inside(fresh_page, "data-enrichment", fresh[1], "title") == [
         wrote(enriched_store, fresh[1])
+    ]
+    assert inside(aged_page, "data-enrichment", aged_taxonomy[1], "title") == [
+        wrote(enriched_store, aged_taxonomy[1])
     ]
 
 
