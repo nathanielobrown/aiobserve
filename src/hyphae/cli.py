@@ -35,6 +35,7 @@ from hyphae.export.otlp_delivery import (
     ENDPOINT_ENV,
     GENERIC,
     ConfigurationError,
+    DeliveryLedger,
     OtlpExporter,
     named_backend,
 )
@@ -317,7 +318,11 @@ def _export_otlp(args: argparse.Namespace) -> None:
         with (
             open_trace_store(args.db, read_only=False, wait=CLI_WAIT) as connection,
             OtlpExporter(
-                backend, connection, service_name=args.service_name, text=text, rate=args.rate
+                backend,
+                DeliveryLedger(connection, backend=backend.name),
+                service_name=args.service_name,
+                text=text,
+                rate=args.rate,
             ) as exporter,
         ):
             result = refresh(args.project, extractor=StoreSource(connection), exporter=exporter)

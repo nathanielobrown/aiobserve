@@ -10,7 +10,6 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-import duckdb
 import pytest
 
 from hyphae import cli
@@ -22,6 +21,7 @@ from hyphae.export.otlp_delivery import (
     HEADERS_ENV,
     Backend,
     DeliveryError,
+    DeliveryLedger,
     OtlpExporter,
 )
 from hyphae.extract.store import StoreSource
@@ -62,7 +62,10 @@ def test_the_command_ships_what_a_refresh_ships(
     shutil.copyfile(delivered_db, direct)
     with (
         open_trace_store(direct, read_only=False, wait=NO_WAIT) as connection,
-        OtlpExporter(Backend(name=GENERIC, endpoint=receiver.url), connection) as exporter,
+        OtlpExporter(
+            Backend(name=GENERIC, endpoint=receiver.url),
+            DeliveryLedger(connection, backend=GENERIC),
+        ) as exporter,
     ):
         refresh(Path(MYCELIA), extractor=StoreSource(connection), exporter=exporter)
     expected = receiver.spans
@@ -216,9 +219,9 @@ def test_the_delivery_flags_reach_the_exporter(
     captured: dict[str, object] = {}
 
     class Recording(OtlpExporter):
-        def __init__(self, backend: Backend, connection: duckdb.DuckDBPyConnection, **kwargs: Any):
+        def __init__(self, backend: Backend, ledger: DeliveryLedger, **kwargs: Any):
             captured.update(kwargs)
-            super().__init__(backend, connection, **kwargs)
+            super().__init__(backend, ledger, **kwargs)
 
     monkeypatch.setattr(cli, "OtlpExporter", Recording)
     cli.main(
