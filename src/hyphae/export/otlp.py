@@ -33,7 +33,6 @@ from hyphae.model import (
     ToolCall,
     Turn,
 )
-from hyphae.pipeline import Extractor, SessionSource
 
 # The span-shaping version. A row in `otlp_delivery` recorded under an older one is treated
 # as undelivered, so a shaping change re-sends the corpus the way an extractor upgrade
@@ -190,6 +189,14 @@ class Census:
     # `SessionTrace.live()`.
     compactions: int
 
+    def __add__(self, other: "Census") -> "Census":
+        """Two counts as one, so a run can be counted a session at a time as it goes."""
+        return Census(
+            sessions=self.sessions + other.sessions,
+            spans=self.spans + other.spans,
+            compactions=self.compactions + other.compactions,
+        )
+
 
 def census(traces: Iterable[SessionTrace], text: TextPolicy = METADATA_ONLY) -> Census:
     """Count what a send would put on the wire, without sending it.
@@ -197,25 +204,15 @@ def census(traces: Iterable[SessionTrace], text: TextPolicy = METADATA_ONLY) -> 
     Shapes each session exactly as `export()` does, so the total is the mapper's own answer
     rather than a SQL approximation of it.
     """
-    sessions = spans = compactions = 0
+    total = Census(sessions=0, spans=0, compactions=0)
     for trace in traces:
         shaped = session_spans(trace, text)
-        sessions += 1
-        spans += len(shaped)
-        compactions += sum(1 for span in shaped if span.name == COMPACTION_SPAN)
-    return Census(sessions=sessions, spans=spans, compactions=compactions)
-
-
-def census_project[SourceT: SessionSource](
-    project: Path, *, extractor: Extractor[SourceT], text: TextPolicy = METADATA_ONLY
-) -> Census:
-    """Count what a run against `project` would ship, shaping every session and sending none.
-
-    The dry run's half of `pipeline.refresh`: the same extractor, driven the same way, with
-    no fingerprint diff in front of it — a census counts the whole selection, not the part
-    that moved since the last send.
-    """
-    return census((extractor.extract(source) for source in extractor.sessions(project)), text)
+        total += Census(
+            sessions=1,
+            spans=len(shaped),
+            compactions=sum(1 for span in shaped if span.name == COMPACTION_SPAN),
+        )
+    return total
 
 
 class TimelessSessionError(Exception):

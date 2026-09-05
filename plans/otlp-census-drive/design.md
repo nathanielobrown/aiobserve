@@ -21,15 +21,15 @@ Proposed — one `with`, one `refresh` call, two exporters:
 
 - `cli._export_otlp` → `open_trace_store(read_only=args.dry_run)` → `DeliveryLedger(connection, backend=args.backend)` → the mode's exporter → `refresh(project, extractor=StoreSource(connection), exporter=…)`
 - send: `named_backend` first, as today, then `OtlpExporter(backend, ledger, …)`; `export()` posts, then `ledger.record(…)`
-- dry run: `OtlpCensus(ledger, text=…)`; `export()` runs `session_spans`, adds to `.counts`, and records the fingerprint in memory so the `Exporter` contract holds. `refresh` returns what would ship and what the ledger already holds; the CLI prints both
+- dry run: `OtlpCensus(ledger, text=…)`; `export()` runs `session_spans` and adds to `.counts`. `refresh` returns what would ship and what the ledger already holds; the CLI prints both
 
 `census(traces, text)` stays as the pure count the tests use as their oracle. `census_project` is deleted: its loop is `refresh`.
 
 ## File-tree diff
 
 ```
-src/hyphae/export/otlp_delivery.py     ~  DeliveryLedger split out of OtlpExporter, which now takes one
-src/hyphae/export/otlp.py              ~  OtlpCensus; Census.__add__; census_project deleted
+src/hyphae/export/otlp_delivery.py     ~  DeliveryLedger split out of OtlpExporter, which now takes one; OtlpCensus beside it
+src/hyphae/export/otlp.py              ~  Census.__add__; census_project deleted
 src/hyphae/cli.py                      ~  _export_otlp opens once and picks the exporter; _census_otlp deleted
 docs/otlp-export.md                    ~  the dry run previews the send to --backend, not the selection
 CONTEXT.md                             ~  Census, Delivery ledger
@@ -42,7 +42,7 @@ tests/export/test_otlp__delivery.py    ~  OtlpExporter constructions take a ledg
 
 - `DeliveryLedger(connection, *, backend: str)` — `fingerprints() -> dict[str, str]` for this backend at `MAPPER_VERSION`, `{}` when the store has no `otlp_delivery` table; `record(session_id, fingerprint, spans_sent)`; `create()` runs `check_shape` and the DDL. Only `OtlpExporter.__init__` calls `create()`. A backend name is the whole address: the ledger never sees a key
 - `OtlpExporter(backend: Backend, ledger: DeliveryLedger, *, …)` — the connection argument goes; the ledger carries it
-- `OtlpCensus(ledger: DeliveryLedger, *, text: TextPolicy)` — an `Exporter`; `counts: Census` after a refresh. `text` has no default: the CLI made that choice
+- `OtlpCensus(ledger: DeliveryLedger, *, text: TextPolicy)` — an `Exporter`; `counts: Census` after a refresh. `text` has no default: the CLI made that choice. `fingerprints()` delegates to the ledger, and `export()` records nothing of its own — `refresh` reads the fingerprints once before its loop, so an in-memory record would be unobservable (`testing_plan.md`)
 - `Census.__add__`, so a census is a sum of per-session censuses and `census(traces)` is that sum as a loop
 - `refresh()` and `RefreshResult` — untouched
 - CLI line: `"{sessions} session(s) and {spans} span(s) would ship to {backend}, {compactions} of them compactions; {skipped} unchanged — nothing sent"`
@@ -61,6 +61,7 @@ tests/export/test_otlp__delivery.py    ~  OtlpExporter constructions take a ledg
 ## Decisions
 
 - A census `Exporter`, not a mode of `refresh` — rejected: a `dry_run` flag or a `describe` callback on `refresh` (the `enrich/enricher.py:_pass` shape). Enrichment had to build its injection point; the pipeline already has one, and `refresh` passes the deletion test by having one job
+- `OtlpCensus` beside `OtlpExporter` in `otlp_delivery.py`, not in `otlp.py` as the file-tree diff first said — rejected by the import direction: `otlp_delivery` imports the mapper, so a census in `otlp.py` naming a `DeliveryLedger` is a cycle. The two `Exporter`s over one ledger belong together anyway, and the mapper now imports nothing of the pipeline
 - Split the ledger out of `OtlpExporter` — rejected: `OtlpExporter(send=False)`. A census would then need a `Backend`, which needs a key, which the dry run must not need. A ledger read by two adapters is a real seam; read by one it was a hypothetical one
 - Diff against `--backend`'s ledger — rejected: keep counting the selection and rename the line. The operator's question is the run time and quota of the send they are about to start; the corpus size is one `hp query` away
 - `fingerprints()` returns `{}` for a missing table — rejected: run the DDL on the dry-run path. It would take the write lock and leave a table behind, which the dry-run leaf forbids. `check_shape` already treats an absent table as not-drift

@@ -25,7 +25,9 @@ from opentelemetry.proto.trace.v1 import trace_pb2
 from hyphae.export.otlp import (
     MAPPER_VERSION,
     METADATA_ONLY,
+    Census,
     TextPolicy,
+    census,
     session_resource,
     session_spans,
 )
@@ -260,6 +262,29 @@ class DeliveryLedger:
         return self.connection.execute(
             "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'otlp_delivery'"
         ).fetchone() != (0,)
+
+
+class OtlpCensus:
+    """Counts what a send to one backend would ship, and ships nothing.
+
+    The dry run's `Exporter`, driven by the same `refresh()` as a send: the ledger says what
+    that backend already holds, so a census counts the remainder rather than the whole
+    selection. It holds no `Backend`, so there is nowhere for one to send and no key to need.
+    """
+
+    def __init__(self, ledger: DeliveryLedger, *, text: TextPolicy) -> None:
+        self.ledger = ledger
+        # No default: whether transcript text ships changes the count, so the caller chooses.
+        self.text = text
+        self.counts = Census(sessions=0, spans=0, compactions=0)
+
+    def fingerprints(self) -> dict[str, str]:
+        """What this backend holds, which is what the count leaves out."""
+        return self.ledger.fingerprints()
+
+    def export(self, trace: SessionTrace, fingerprint: str) -> None:
+        """Shape one session the way a send would, and count it instead of posting it."""
+        self.counts += census([trace], self.text)
 
 
 class OtlpExporter:

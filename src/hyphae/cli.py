@@ -28,7 +28,7 @@ from hyphae.enrich.levels import ROUND_ORDER
 from hyphae.enrich.stamp import Versions
 from hyphae.enrich.store import EnrichmentStore
 from hyphae.export.duckdb import CLI_WAIT, DuckDbExporter, open_trace_store
-from hyphae.export.otlp import DEFAULT_MAX_CHARS, TextPolicy, census_project
+from hyphae.export.otlp import DEFAULT_MAX_CHARS, TextPolicy
 from hyphae.export.otlp_delivery import (
     BACKEND_NAMES,
     DEFAULT_RATE,
@@ -36,6 +36,7 @@ from hyphae.export.otlp_delivery import (
     GENERIC,
     ConfigurationError,
     DeliveryLedger,
+    OtlpCensus,
     OtlpExporter,
     named_backend,
 )
@@ -334,7 +335,9 @@ def _export_otlp(args: argparse.Namespace) -> None:
 def _census_otlp(args: argparse.Namespace, text: TextPolicy) -> None:
     """Say what a send would ship, without a backend, a key, or the store's write lock."""
     with open_trace_store(args.db, read_only=True, wait=CLI_WAIT) as connection:
-        counts = census_project(args.project, extractor=StoreSource(connection), text=text)
+        counting = OtlpCensus(DeliveryLedger(connection, backend=args.backend), text=text)
+        refresh(args.project, extractor=StoreSource(connection), exporter=counting)
+    counts = counting.counts
     # The compaction count is broken out because a compaction is where a session's account
     # of itself gets lossy, so how many ship is worth seeing before an hour of sending.
     print(

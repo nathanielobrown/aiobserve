@@ -236,6 +236,9 @@ proves the code does what it says and nothing about what a run ships. I recommen
 the `Exporter` protocol asks for `export` and `fingerprints`, and delegating `fingerprints` to
 the ledger satisfies it already.
 
+**Settled that way at implementation.** The design no longer promises the in-memory record, so
+this plan owes no leaf for it and none was written.
+
 Two soft spots, flagged rather than hidden. The dry run "takes no write lock" is asserted
 indirectly — through the recorded `read_only=True` and the absent table — because a DuckDB
 read-only open cannot proceed while another process holds the write lock, so the
