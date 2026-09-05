@@ -55,12 +55,16 @@ def test_a_parameter_neither_the_keys_nor_the_surface_carries_is_refused_by_name
     it names neither the surface nor which of the two halves should have carried the number,
     and it only says so once a connection has been opened and the statement handed over.
 
-    The session header cuts three strings and caps a list; the popover declares the two it
-    prints and no `head_chars`, so binding one against the other is the mistake this catches:
-    a surface used for a read that is not its own.
+    The session header cuts three strings and caps a list; the popover declares two of them
+    and no `head_chars`, so binding one against the other is the mistake this catches: a
+    surface used for a read that is not its own. Nothing is keyed either, so two names are
+    short at once and the message lists them — the read that has to be fixed usually owes
+    more than one.
     """
-    with pytest.raises(ValueError, match=r"view_session_header.*head_chars.*Popover"):
-        bound(Page.SESSION_HEADER, bounds.POPOVER_WIDTHS, session_id=SPINE)
+    with pytest.raises(
+        ValueError, match=r"view_session_header binds session_id, head_chars,.*Popover"
+    ):
+        bound(Page.SESSION_HEADER, bounds.POPOVER_WIDTHS)
 
 
 def test_a_key_that_is_also_a_width_is_refused_rather_than_overriding_it() -> None:
@@ -69,9 +73,10 @@ def test_a_key_that_is_also_a_width_is_refused_rather_than_overriding_it() -> No
     Silent overriding is what the profiles exist to end — a page that passed its own
     `head_chars` would run at a width nothing in `bounds.py` declares, and the citation under
     it would be the only place that number appears. The refusal names the field, so the fix is
-    to declare the surface rather than to keep the argument.
+    to declare the surface rather than to keep the argument. Two of them are passed, so the
+    refusal has to name both rather than stop at the first.
     """
-    with pytest.raises(ValueError, match=r"head_chars.*Header"):
+    with pytest.raises(ValueError, match=r"chip_chars, head_chars from the Header surface"):
         bound(
             Page.TURN_HEADER,
             bounds.HEADER_WIDTHS,
@@ -80,6 +85,7 @@ def test_a_key_that_is_also_a_width_is_refused_rather_than_overriding_it() -> No
             source=MAIN,
             turn_id=SLASH_TURN,
             head_chars=10,
+            chip_chars=10,
         )
 
 
@@ -90,13 +96,13 @@ def test_a_key_the_statement_does_not_bind_is_refused_before_a_connection_is_ope
 
     The query is planted — invented, and deliberately a shape no shipped file has: one
     parameter, and that one a width — because what this holds is the arm that reads the
-    statement rather than any page. The records browser's own surface fills it, and the key
-    beside it belongs to no column the statement mentions.
+    statement rather than any page. The records browser's own surface fills it, and the two
+    keys beside it belong to no column the statement mentions, so the refusal lists both.
 
     No `duckdb` import and no store path is in reach of this test, which is the claim: the
     refusal happens while the mapping is being built.
     """
     monkeypatch.setattr(queries, "QUERY_DIR", tmp_path)
     (tmp_path / f"{Page.RECORDS}.sql").write_text("SELECT $preview_chars AS preview_chars")
-    with pytest.raises(ValueError, match=r"view_records.*session_id"):
-        bound(Page.RECORDS, bounds.RECORDS_WIDTHS, session_id=SPINE)
+    with pytest.raises(ValueError, match=r"view_records binds no session_id, source:"):
+        bound(Page.RECORDS, bounds.RECORDS_WIDTHS, session_id=SPINE, source=MAIN)
