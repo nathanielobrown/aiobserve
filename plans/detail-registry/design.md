@@ -44,7 +44,8 @@ tests/view/test_app__headers.py                    the detail_of regex → {spec
 tests/analyze/test_queries.py                      the three view_*_said bindings → six
 ```
 
-Not touched: `components/parts.py`, `markup/values.py`, `markup/page.py`, `browse.py:Seen`, `bounds.py`, `labels.py`, `scenarios.py`, `tests/e2e/routes.json`. Public URLs and rendered bytes are unchanged.
+Not touched: `components/parts.py`, `markup/values.py`, `markup/page.py`, `browse.py:Seen`, `bounds.py`, `labels.py`, `tests/e2e/routes.json`. Public URLs and rendered bytes are unchanged.
+*Amended at implementation:* `scenarios.py` came off that list. It gained `path_params()`, which reads one URL's keys back out of the route template that minted it, and `path_pattern()` under it, which matches every URL of one route shape. The registry sweeps read both; no scenario changed.
 
 ## Key contracts
 
@@ -86,7 +87,8 @@ URLs served by `build_app` over the fixture stores, as every viewer test does. T
 ## Decisions
 
 - **Routes are registered from the registry, not collapsed under a `{detail}` segment.** One handler body, sixteen `add_api_route` calls, public URLs unchanged. Rejected: `/fragment/{detail}/session/…`, which collides with `/fragment/numbers/session/{session_id}` and `/fragment/body/…/run/{run_id}` (Starlette resolves by order), drops a scenario per value from `SCENARIOS` and the gallery, and moves the unknown-name 404 into the handler.
-- **`name` is the header column.** Two header columns rename (`text_head`, `result_head`); the log and NavTree queries keep `text_head` because they cut at other widths for other rows (`reads.py:80` reads a `view_turn_calls` row, not the header). Rejected: a `column` field carried by sixteen entries for two exceptions.
+- **`name` is the header column.** Two header columns rename (`text_head`, `result_head`). Rejected: a `column` field carried by sixteen entries for two exceptions.
+  *Amended at implementation:* the rename reached every query that cuts a call's words, not the header alone. `view_turn_calls.sql` and `view_nav_tree_calls.sql` call theirs `text` too, and `thinking_head` renamed to `thinking` beside it — one name per value on every query that cuts it, whatever width it cut at. The design had them keeping `text_head` because they cut at other widths, which is a reason to keep two queries and not two names.
 - **The said queries split into one per value.** `store.Value`'s docstring promises one whole value per query; `view_*_said` return two. Rejected: a `value_column` field on `Spec`, which would keep the irregularity and declare it in the registry.
 - **Enrichment lines are entries.** They are already `Detail`s and their URLs are hand-minted in `enrichment_lines()`; a `LINE` arm costs one branch on a closed enum. Rejected: leaving them in `routes/enrichment.py` as a second, smaller copy of the problem.
 - **The handler reads `request.path_params`.** Rejected: sixteen typed stubs each calling the shared body, which keeps FastAPI's signature per route but keeps sixteen declarations of the keys.

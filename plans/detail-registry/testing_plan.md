@@ -45,7 +45,7 @@ Re-run against the working tree at `718a2b8`.
 | slice 4: docs name `detail_of` or a `_said` query | **false.** `grep -rn "detail_of\|_said" docs CONTEXT.md` → 0 matches. Slice 4 is the glossary entry and nothing else |
 | open question: any report cites a `_said` query? | **no.** `grep -rln "_said" reports` → 0 matches. The rename breaks no committed citation |
 | "Not touched: … `browse.py:Seen`"; "rendered bytes are unchanged" | **contradicted.** `src/hyphae/view/builders.py:214` reads `row.get("text_head")`, and `call_node` is fed a `view_call_header` row from `routes/browse.py:86` (`TITLED`) and `routes/expansions.py:89`. Renaming `text_head` → `text` in that header silently retitles every api call pane and expansion from `❝ <what it said>` to the model name. `builders.py` is missing from the file-tree diff |
-| the log and NavTree keep `text_head` | verified: `view_turn_calls.sql:28` and `view_nav_tree_calls.sql:15`, read by `reads.py:80` and `logs.py:224` |
+| the log and NavTree keep `text_head` | verified against the working tree — but **amended at implementation**: they renamed too. `view_turn_calls.sql:29` and `view_nav_tree_calls.sql:15` now cut into `text` at their own widths, read by `reads.py:80` and `logs.py:224` |
 | `result_head` has no reader but `pages.py:355` | verified |
 | `routes/enrichment.py` is deleted with no other edit | incomplete: `routes/__init__.py:12` imports it and lists it in the extend loop |
 
@@ -138,12 +138,12 @@ a test leaf, not at import.
     against a recorded call that both spoke and ran tools. Bolded and listed first among the renames:
     `builders.call_node` reads `row.get("text_head")` off the `view_call_header` row, so `text_head` →
     `text` retitles the pane *silently* unless `builders.py:214` moves with the query, and the design
-    omits that file. The same leaf pins the NavTree title at `NAV_CHARS`, which must keep reading
-    `text_head` out of `view_nav_tree_calls`
+    omits that file. The same leaf pins the NavTree title at `NAV_CHARS`, which reads
+    the column `view_nav_tree_calls` cuts — `text_head` at planning time, `text` as it landed
   - A children log and a NavTree row still cut a call's words at their own widths. *Evidence:*
     `tests/view/pages/node/test_node__logs.py` and `test_nav_tree__names.py`, unchanged — they read
-    `view_turn_calls`/`view_nav_tree_calls`, which keep `text_head`, so a rename that reached them
-    goes red
+    `view_turn_calls`/`view_nav_tree_calls`. *Amended at implementation:* the rename reached them
+    as well, and these are the leaves that said so — they read the head under its new name, `text`
   - The tool pane still previews its result. *Evidence:* the round-trip leaf above, `result` case —
     `result_head` has exactly one reader (`pages.py:355`), which the rename to `result` moves
 - **Bytes — `tests/view/test_bounds__node.py` under `HYPHAE_PIN_EXACT=1`** — the measurement is the pin
