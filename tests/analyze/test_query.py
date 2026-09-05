@@ -156,16 +156,16 @@ def test_the_listing_names_every_query_with_its_scope_and_what_it_needs_bound(
 ) -> None:
     """`--list` is the library's directory: a reader picks a name off it and knows what to bind.
 
-    Read off the registry rather than written down, so a query that ships is a line here
-    whichever half of the manifest declared it. The viewer's half declares no defaults — a
-    size belongs to the surface that prints it (`view/manifest.py`) — so for those queries
-    this is the only place a caller finds out what a bare run is missing.
+    Read off the library rather than written down, so a query that ships is a line here the
+    day its file lands. The viewer's half declares no defaults — a size belongs to the surface
+    that prints it (`view/manifest.py`) — so for those queries this is the only place a caller
+    finds out what a bare run is missing.
     """
     printed = run_query("--list").stdout.splitlines()
     listed = {line.split()[0]: line.split()[1:] for line in printed}
-    # One line per query, and the names are the registry's...
-    assert len(printed) == len(manifest.QUERIES)
-    assert set(listed) == set(manifest.QUERIES)
+    # One line per query, and the names are the library's...
+    assert len(printed) == len(manifest.names())
+    assert set(listed) == set(manifest.names())
     # ...each carrying the scope, which is what says whether `--project` is wanted...
     assert listed["agent_types"] == ["corpus"]
     # ...and the parameters with no default, in the order the manifest declares them.
@@ -224,16 +224,9 @@ def test_a_parameter_type_nothing_binds_is_refused_rather_than_bound_to_null(
     """
     monkeypatch.setattr(queries, "QUERY_DIR", tmp_path)
     monkeypatch.setitem(
-        manifest.QUERIES,
+        manifest.PARAMS,
         "planted",
-        queries.Query(
-            scope=queries.Scope.KEYED,
-            params={
-                "flag": queries.Param(
-                    type=cast(queries.ParamType, "boolean"), default=queries.REQUIRED
-                )
-            },
-        ),
+        {"flag": queries.Param(type=cast(queries.ParamType, "boolean"), default=queries.REQUIRED)},
     )
     (tmp_path / "planted.sql").write_text("SELECT $flag AS flag")
     # The refusal names the type it could not bind, so the fix is the binder and not the call.
@@ -291,9 +284,7 @@ def test_the_store_is_opened_read_only(
     """No query can write to the store, whatever its SQL says."""
     # If a query file asks for DDL (planted here — no shipped query does)...
     monkeypatch.setattr(queries, "QUERY_DIR", tmp_path)
-    monkeypatch.setitem(
-        manifest.QUERIES, "ddl", queries.Query(scope=queries.Scope.KEYED, params={})
-    )
+    monkeypatch.setitem(manifest.PARAMS, "ddl", {})
     (tmp_path / "ddl.sql").write_text("CREATE TABLE planted (a INTEGER);")
     before = _tables(corpus_db)
     # ...then running it raises...

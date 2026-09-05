@@ -23,7 +23,7 @@ def query_page(request: Request, query_name: str, viewer: ViewerDep) -> Response
     never a path: a name the manifest does not declare is a 404 before anything is read,
     which is what makes a request for `../../secret` a miss rather than a file.
     """
-    if query_name not in manifest.QUERIES:
+    if query_name not in manifest.names():
         raise HTTPException(404, "No query by that name ships with this build.")
     statement = queries.load(query_name)
     return viewer.html(

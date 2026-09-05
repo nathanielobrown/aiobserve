@@ -21,6 +21,8 @@ lives with every other query file in `analyze/queries/`, and the parameter vocab
 entries are written in is `analyze/queries.py`.
 """
 
+from collections.abc import Mapping
+
 from hyphae.analyze.queries import (
     API_CALL_ID,
     COMPACTION_ID,
@@ -34,8 +36,6 @@ from hyphae.analyze.queries import (
     TURN_ID,
     Param,
     ParamType,
-    Query,
-    Scope,
 )
 
 # Every number a viewer query takes: a width to cut a value to, a page of rows to fetch, a
@@ -43,301 +43,202 @@ from hyphae.analyze.queries import (
 # surface that binds one and not anything declared here.
 SIZE = Param(type=ParamType.INTEGER, default=REQUIRED)
 
-VIEW_QUERIES: dict[str, Query] = {
-    "view_call_text": Query(
-        scope=Scope.KEYED,
-        params={"session_id": SESSION_ID, "source": SOURCE, "api_call_id": API_CALL_ID},
-    ),
-    "view_call_thinking": Query(
-        scope=Scope.KEYED,
-        params={"session_id": SESSION_ID, "source": SOURCE, "api_call_id": API_CALL_ID},
-    ),
-    "view_call_tools": Query(
-        scope=Scope.KEYED,
-        params={
-            "session_id": SESSION_ID,
-            "source": SOURCE,
-            "api_call_id": API_CALL_ID,
-            "skipped": SIZE,
-            "page_tools": SIZE,
-            "log_chars": SIZE,
-        },
-    ),
-    "view_call_header": Query(
-        scope=Scope.KEYED,
-        params={
-            "session_id": SESSION_ID,
-            "source": SOURCE,
-            "api_call_id": API_CALL_ID,
-            "head_chars": SIZE,
-            "detail_chars": SIZE,
-        },
-    ),
-    "view_described_sessions": Query(
-        scope=Scope.KEYED,
-        # What a list row shows of a session's enrichment. The work cell is cut here rather
-        # than in the composition around the query: nothing filters on it.
-        params={
-            "head_chars": SIZE,
-            "tag_chars": SIZE,
-            "kind_chars": SIZE,
-            "head_kinds": SIZE,
-        },
-    ),
-    "view_enrichment": Query(
-        scope=Scope.KEYED,
-        params={
-            "session_id": SESSION_ID,
-            # Which thread's turns to describe. The turn keys are `(session, source, turn)`,
-            # so a page that left this out would be answering for another thread.
-            "source": SOURCE,
-            "description_chars": SIZE,
-            "tag_chars": SIZE,
-            # The model's own name is cut at a width of its own: a model string is longer
-            # than a taxonomy word and shorter than a sentence.
-            "head_chars": SIZE,
-        },
-    ),
+VIEW_QUERIES: dict[str, Mapping[str, Param]] = {
+    "view_call_text": {"session_id": SESSION_ID, "source": SOURCE, "api_call_id": API_CALL_ID},
+    "view_call_thinking": {"session_id": SESSION_ID, "source": SOURCE, "api_call_id": API_CALL_ID},
+    "view_call_tools": {
+        "session_id": SESSION_ID,
+        "source": SOURCE,
+        "api_call_id": API_CALL_ID,
+        "skipped": SIZE,
+        "page_tools": SIZE,
+        "log_chars": SIZE,
+    },
+    "view_call_header": {
+        "session_id": SESSION_ID,
+        "source": SOURCE,
+        "api_call_id": API_CALL_ID,
+        "head_chars": SIZE,
+        "detail_chars": SIZE,
+    },
+    # What a list row shows of a session's enrichment. The work cell is cut here rather
+    # than in the composition around the query: nothing filters on it.
+    "view_described_sessions": {
+        "head_chars": SIZE,
+        "tag_chars": SIZE,
+        "kind_chars": SIZE,
+        "head_kinds": SIZE,
+    },
+    "view_enrichment": {
+        "session_id": SESSION_ID,
+        # Which thread's turns to describe. The turn keys are `(session, source, turn)`,
+        # so a page that left this out would be answering for another thread.
+        "source": SOURCE,
+        "description_chars": SIZE,
+        "tag_chars": SIZE,
+        # The model's own name is cut at a width of its own: a model string is longer
+        # than a taxonomy word and shorter than a sentence.
+        "head_chars": SIZE,
+    },
     # The whole of what that pass wrote, one item at a time: the three levels the pane shows,
     # each keyed the way its own table is. The fetch behind a description or a friction line
     # the pane had to cut.
-    "view_turn_said": Query(
-        scope=Scope.KEYED,
-        params={"session_id": SESSION_ID, "source": SOURCE, "turn_id": TURN_ID},
-    ),
-    "view_run_said": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID, "run_id": RUN_ID}),
-    "view_session_said": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID}),
-    "view_compactions": Query(
-        scope=Scope.KEYED,
-        params={"session_id": SESSION_ID, "source": SOURCE, "chip_chars": SIZE},
-    ),
-    "view_run_header": Query(
-        scope=Scope.KEYED,
-        # The run's id is also the source its rows carry, so one key answers both questions.
-        params={
-            "session_id": SESSION_ID,
-            "run_id": RUN_ID,
-            "head_chars": SIZE,
-            "detail_chars": SIZE,
-        },
-    ),
-    "view_run_brief": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID, "run_id": RUN_ID}),
+    "view_turn_said": {"session_id": SESSION_ID, "source": SOURCE, "turn_id": TURN_ID},
+    "view_run_said": {"session_id": SESSION_ID, "run_id": RUN_ID},
+    "view_session_said": {"session_id": SESSION_ID},
+    "view_compactions": {"session_id": SESSION_ID, "source": SOURCE, "chip_chars": SIZE},
+    # The run's id is also the source its rows carry, so one key answers both questions.
+    "view_run_header": {
+        "session_id": SESSION_ID,
+        "run_id": RUN_ID,
+        "head_chars": SIZE,
+        "detail_chars": SIZE,
+    },
+    "view_run_brief": {"session_id": SESSION_ID, "run_id": RUN_ID},
     # The two a run reads off the call that spawned it, keyed the same way the brief is.
-    "view_run_prompt": Query(
-        scope=Scope.KEYED, params={"session_id": SESSION_ID, "run_id": RUN_ID}
-    ),
-    "view_run_result": Query(
-        scope=Scope.KEYED, params={"session_id": SESSION_ID, "run_id": RUN_ID}
-    ),
+    "view_run_prompt": {"session_id": SESSION_ID, "run_id": RUN_ID},
+    "view_run_result": {"session_id": SESSION_ID, "run_id": RUN_ID},
     # The numbers behind one node's row, which the NavTree draws as a bar and a badge. One query
     # for every kind that is made of api calls, keyed by the kind as well as the id; the tool
     # call, which is made of none, has its own.
-    "view_numbers": Query(
-        scope=Scope.KEYED,
-        params={
-            "session_id": SESSION_ID,
-            "source": SOURCE,
-            "node_id": NODE_ID,
-            "kind": NODE_KIND,
-            "model_chars": SIZE,
-        },
-    ),
+    "view_numbers": {
+        "session_id": SESSION_ID,
+        "source": SOURCE,
+        "node_id": NODE_ID,
+        "kind": NODE_KIND,
+        "model_chars": SIZE,
+    },
     # And the compaction, which is made of no api calls either — what it has is the window it
     # dropped, off the boundary record itself.
-    "view_numbers_compaction": Query(
-        scope=Scope.KEYED,
-        params={
-            "session_id": SESSION_ID,
-            "source": SOURCE,
-            "compaction_id": COMPACTION_ID,
-            "chip_chars": SIZE,
-        },
-    ),
-    "view_numbers_tool": Query(
-        scope=Scope.KEYED,
-        params={
-            "session_id": SESSION_ID,
-            "source": SOURCE,
-            "tool_call_id": TOOL_CALL_ID,
-            "item_chars": SIZE,
-            "head_items": SIZE,
-        },
-    ),
-    "view_offload": Query(
-        scope=Scope.KEYED,
-        params={
-            "session_id": SESSION_ID,
-            # Which file: a key, like the session it was written under.
-            "name": Param(type=ParamType.TEXT, default=REQUIRED),
-            "after_chars": SIZE,
-            "chunk_chars": SIZE,
-        },
-    ),
-    "view_project_rollups": Query(
-        scope=Scope.KEYED,
-        params={
-            # The clock both windows are measured back from. A landing page's "last 7 days"
-            # is only reproducible if the day it counted from is bound and cited, and SQL's
-            # own clock would answer something else tomorrow.
-            "as_of": Param(type=ParamType.DATE, default=REQUIRED),
-            "recent_days": SIZE,
-            "window_days": SIZE,
-            # A project path takes a head, and the row links by the whole path: the head is
-            # what the page shows and not what it filters by.
-            "head_chars": SIZE,
-            "projects": SIZE,
-        },
-    ),
-    "view_projects": Query(
-        scope=Scope.KEYED,
-        params={"head_chars": SIZE, "head_projects": SIZE},
-    ),
-    "view_record": Query(
-        scope=Scope.KEYED,
-        params={
-            "session_id": SESSION_ID,
-            "source": SOURCE,
-            # Which line. A key like the two above: "some record of this thread" is not a
-            # question anyone asked, and the answer would be private transcript either way.
-            "line_no": Param(type=ParamType.INTEGER, default=REQUIRED),
-        },
-    ),
-    "view_records": Query(
-        scope=Scope.KEYED,
-        params={
-            "session_id": SESSION_ID,
-            "source": SOURCE,
-            "after": SIZE,
-            "page_records": SIZE,
-            "preview_chars": SIZE,
-        },
-    ),
-    "view_runs": Query(scope=Scope.KEYED, params={"session_id": SESSION_ID, "chip_chars": SIZE}),
-    "view_session_header": Query(
-        scope=Scope.KEYED,
-        params={
-            "session_id": SESSION_ID,
-            "head_chars": SIZE,
-            "item_chars": SIZE,
-            "head_items": SIZE,
-        },
-    ),
-    "view_session_errors": Query(
-        scope=Scope.KEYED,
-        params={
-            "session_id": SESSION_ID,
-            # The rows link to nodes, so a failure reads as the same line here as it does in
-            # the NavTree beside its own page — which is what the surface binds it at.
-            "nav_chars": SIZE,
-            "errors": SIZE,
-        },
-    ),
-    "view_sessions": Query(
-        scope=Scope.KEYED,
-        # How much of each agent definition's name a row's list carries. The viewer composes
-        # the rest of a row's cuts around this query (`view/store.py`) because its filters
-        # read whole values; nothing filters on this one, so it is cut in the file.
-        params={"item_chars": SIZE},
-    ),
-    "view_tool_header": Query(
-        scope=Scope.KEYED,
-        params={
-            "session_id": SESSION_ID,
-            "source": SOURCE,
-            "tool_call_id": TOOL_CALL_ID,
-            "head_chars": SIZE,
-            "detail_chars": SIZE,
-        },
-    ),
-    "view_tool_command": Query(
-        scope=Scope.KEYED,
-        params={"session_id": SESSION_ID, "source": SOURCE, "tool_call_id": TOOL_CALL_ID},
-    ),
-    "view_tool_input": Query(
-        scope=Scope.KEYED,
-        params={"session_id": SESSION_ID, "source": SOURCE, "tool_call_id": TOOL_CALL_ID},
-    ),
-    "view_tool_result": Query(
-        scope=Scope.KEYED,
-        params={
-            "session_id": SESSION_ID,
-            "source": SOURCE,
-            "tool_call_id": TOOL_CALL_ID,
-            # Not a width the answer is cut to — the value rides whole — but the bound on the
-            # file suffix beside it, which says what the value is written in.
-            "head_chars": SIZE,
-        },
-    ),
-    "view_nav_tree_calls": Query(
-        scope=Scope.KEYED,
-        params={
-            "session_id": SESSION_ID,
-            "source": SOURCE,
-            # NULL is the real question "which calls sit under no turn", so the key carries
-            # it: nothing may stand in for the id.
-            "turn_id": TURN_ID,
-            "nav_chars": SIZE,
-        },
-    ),
-    "view_nav_tree_tools": Query(
-        scope=Scope.KEYED,
-        params={
-            "session_id": SESSION_ID,
-            "source": SOURCE,
-            # Both NULL-able, and NULL is a question at each: "under this turn, whichever
-            # call made it" at the first, "under no turn of this thread" at the second.
-            "api_call_id": API_CALL_ID,
-            "turn_id": TURN_ID,
-            "nav_chars": SIZE,
-        },
-    ),
-    "view_nav_tree_turns": Query(
-        scope=Scope.KEYED,
-        params={"session_id": SESSION_ID, "source": SOURCE, "nav_chars": SIZE},
-    ),
-    "view_turn_calls": Query(
-        scope=Scope.KEYED,
-        params={
-            "session_id": SESSION_ID,
-            "source": SOURCE,
-            # NULL is the real question "which calls sit under no turn", so the key carries
-            # it: nothing may stand in for the id.
-            "turn_id": TURN_ID,
-            "skipped": SIZE,
-            "page_calls": SIZE,
-            # The width the two model names a call row shows are cut to.
-            "log_chars": SIZE,
-        },
-    ),
-    "view_turn_command_args": Query(
-        scope=Scope.KEYED,
-        params={
-            "session_id": SESSION_ID,
-            "source": SOURCE,
-            "turn_id": TURN_ID,
-        },
-    ),
-    "view_turn_header": Query(
-        scope=Scope.KEYED,
-        params={
-            "session_id": SESSION_ID,
-            "source": SOURCE,
-            # Which turn. A key like the session and the thread: "some turn of this thread"
-            # is not a question anyone asked.
-            "turn_id": TURN_ID,
-            "head_chars": SIZE,
-            "detail_chars": SIZE,
-        },
-    ),
-    "view_turn_prompt": Query(
-        scope=Scope.KEYED,
-        params={
-            "session_id": SESSION_ID,
-            "source": SOURCE,
-            "turn_id": TURN_ID,
-        },
-    ),
-    "view_turn_records": Query(
-        scope=Scope.KEYED, params={"session_id": SESSION_ID, "source": SOURCE}
-    ),
+    "view_numbers_compaction": {
+        "session_id": SESSION_ID,
+        "source": SOURCE,
+        "compaction_id": COMPACTION_ID,
+        "chip_chars": SIZE,
+    },
+    "view_numbers_tool": {
+        "session_id": SESSION_ID,
+        "source": SOURCE,
+        "tool_call_id": TOOL_CALL_ID,
+        "item_chars": SIZE,
+        "head_items": SIZE,
+    },
+    "view_offload": {
+        "session_id": SESSION_ID,
+        # Which file: a key, like the session it was written under.
+        "name": Param(type=ParamType.TEXT, default=REQUIRED),
+        "after_chars": SIZE,
+        "chunk_chars": SIZE,
+    },
+    "view_project_rollups": {
+        # The clock both windows are measured back from. A landing page's "last 7 days"
+        # is only reproducible if the day it counted from is bound and cited, and SQL's
+        # own clock would answer something else tomorrow.
+        "as_of": Param(type=ParamType.DATE, default=REQUIRED),
+        "recent_days": SIZE,
+        "window_days": SIZE,
+        # A project path takes a head, and the row links by the whole path: the head is
+        # what the page shows and not what it filters by.
+        "head_chars": SIZE,
+        "projects": SIZE,
+    },
+    "view_projects": {"head_chars": SIZE, "head_projects": SIZE},
+    "view_record": {
+        "session_id": SESSION_ID,
+        "source": SOURCE,
+        # Which line. A key like the two above: "some record of this thread" is not a
+        # question anyone asked, and the answer would be private transcript either way.
+        "line_no": Param(type=ParamType.INTEGER, default=REQUIRED),
+    },
+    "view_records": {
+        "session_id": SESSION_ID,
+        "source": SOURCE,
+        "after": SIZE,
+        "page_records": SIZE,
+        "preview_chars": SIZE,
+    },
+    "view_runs": {"session_id": SESSION_ID, "chip_chars": SIZE},
+    "view_session_header": {
+        "session_id": SESSION_ID,
+        "head_chars": SIZE,
+        "item_chars": SIZE,
+        "head_items": SIZE,
+    },
+    "view_session_errors": {
+        "session_id": SESSION_ID,
+        # The rows link to nodes, so a failure reads as the same line here as it does in
+        # the NavTree beside its own page — which is what the surface binds it at.
+        "nav_chars": SIZE,
+        "errors": SIZE,
+    },
+    # How much of each agent definition's name a row's list carries. The viewer composes
+    # the rest of a row's cuts around this query (`view/store.py`) because its filters
+    # read whole values; nothing filters on this one, so it is cut in the file.
+    "view_sessions": {"item_chars": SIZE},
+    "view_tool_header": {
+        "session_id": SESSION_ID,
+        "source": SOURCE,
+        "tool_call_id": TOOL_CALL_ID,
+        "head_chars": SIZE,
+        "detail_chars": SIZE,
+    },
+    "view_tool_command": {"session_id": SESSION_ID, "source": SOURCE, "tool_call_id": TOOL_CALL_ID},
+    "view_tool_input": {"session_id": SESSION_ID, "source": SOURCE, "tool_call_id": TOOL_CALL_ID},
+    "view_tool_result": {
+        "session_id": SESSION_ID,
+        "source": SOURCE,
+        "tool_call_id": TOOL_CALL_ID,
+        # Not a width the answer is cut to — the value rides whole — but the bound on the
+        # file suffix beside it, which says what the value is written in.
+        "head_chars": SIZE,
+    },
+    "view_nav_tree_calls": {
+        "session_id": SESSION_ID,
+        "source": SOURCE,
+        # NULL is the real question "which calls sit under no turn", so the key carries
+        # it: nothing may stand in for the id.
+        "turn_id": TURN_ID,
+        "nav_chars": SIZE,
+    },
+    "view_nav_tree_tools": {
+        "session_id": SESSION_ID,
+        "source": SOURCE,
+        # Both NULL-able, and NULL is a question at each: "under this turn, whichever
+        # call made it" at the first, "under no turn of this thread" at the second.
+        "api_call_id": API_CALL_ID,
+        "turn_id": TURN_ID,
+        "nav_chars": SIZE,
+    },
+    "view_nav_tree_turns": {"session_id": SESSION_ID, "source": SOURCE, "nav_chars": SIZE},
+    "view_turn_calls": {
+        "session_id": SESSION_ID,
+        "source": SOURCE,
+        # NULL is the real question "which calls sit under no turn", so the key carries
+        # it: nothing may stand in for the id.
+        "turn_id": TURN_ID,
+        "skipped": SIZE,
+        "page_calls": SIZE,
+        # The width the two model names a call row shows are cut to.
+        "log_chars": SIZE,
+    },
+    "view_turn_command_args": {
+        "session_id": SESSION_ID,
+        "source": SOURCE,
+        "turn_id": TURN_ID,
+    },
+    "view_turn_header": {
+        "session_id": SESSION_ID,
+        "source": SOURCE,
+        # Which turn. A key like the session and the thread: "some turn of this thread"
+        # is not a question anyone asked.
+        "turn_id": TURN_ID,
+        "head_chars": SIZE,
+        "detail_chars": SIZE,
+    },
+    "view_turn_prompt": {
+        "session_id": SESSION_ID,
+        "source": SOURCE,
+        "turn_id": TURN_ID,
+    },
+    "view_turn_records": {"session_id": SESSION_ID, "source": SOURCE},
 }

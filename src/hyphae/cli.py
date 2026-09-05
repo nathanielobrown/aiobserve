@@ -12,9 +12,9 @@ from typing import Any, NamedTuple
 
 from dotenv import load_dotenv
 
-from hyphae.analyze.manifest import QUERIES
-from hyphae.analyze.queries import REQUIRED
-from hyphae.analyze.runner import QueryError, Result, run
+from hyphae.analyze.manifest import catalog
+from hyphae.analyze.queries import REQUIRED, QueryError
+from hyphae.analyze.runner import Result, run
 from hyphae.enrich.client import (
     DEFAULT_CONCURRENCY,
     DEFAULT_MODEL,
@@ -135,13 +135,14 @@ def _view_arguments(subcommand: argparse.ArgumentParser) -> None:
 def _query_listing() -> str:
     """Every query in the library: its name, its scope, and what a caller has to bind.
 
-    Read off the registry, so a query that ships is a line here whichever half of the
-    manifest declared it. Only the parameters with no default are listed — they are what a
-    run refuses without — and every viewer query takes several (`view/manifest.py`).
+    Read off the library, so a query that ships is a line here the day its file lands. Only
+    the parameters with no default are listed — they are what a run refuses without — and
+    every viewer query takes several (`view/manifest.py`).
     """
-    width = max(len(name) for name in QUERIES)
+    described = catalog()
+    width = max(len(name) for name in described)
     lines = []
-    for name, query in sorted(QUERIES.items()):
+    for name, query in described.items():
         needed = " ".join(
             parameter for parameter, spec in query.params.items() if spec.default is REQUIRED
         )

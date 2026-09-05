@@ -10,6 +10,7 @@ each query takes is `analyze/manifest.py`, and the SQL itself is `analyze/querie
 """
 
 import datetime as dt
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum, StrEnum
@@ -33,6 +34,17 @@ class Scope(StrEnum):
     # `WHERE session_id = $session_id` is noise, and the viewer browses the store it is
     # pointed at rather than one analyzed repository.
     KEYED = "keyed"
+
+
+# The two relations `analyze/runner.py` builds from `--project`, and so the whole of what
+# makes a statement a corpus one: a query reading neither is not scoped to a project at all,
+# whatever anyone says about it. Declared here rather than beside the SQL that creates them
+# because it is the contract between a statement and the runner, and both sides read it.
+CORPUS_RELATIONS = ("project_sessions", "session_period")
+
+
+class QueryError(Exception):
+    """The caller asked for something the library cannot run, and it says which part."""
 
 
 class ParamType(StrEnum):
@@ -243,6 +255,24 @@ VIEW_PREFIX = "view_"
 def load(name: str) -> str:
     """The SQL text of one library query, by file stem."""
     return (QUERY_DIR / f"{name}.sql").read_text()
+
+
+def statement(name: str) -> str:
+    """One query's SQL with its comments cut: what actually runs, and what declares it.
+
+    A header explains the query to a reader and may name a relation or a `$parameter` it
+    does not read. Everything derived from a query file is derived from this.
+    """
+    return re.sub(r"--[^\n]*", "", load(name))
+
+
+def relations(statement: str) -> set[str]:
+    """What a statement reads: the identifier after each FROM or JOIN, CTE names included.
+
+    A rollup column is named after the table it counts (`turns`, `api_calls`), so a bare
+    identifier scan cannot tell a table read from a column selected.
+    """
+    return set(re.findall(r"\b(?:FROM|JOIN)\s+([A-Za-z_][A-Za-z0-9_]*)", statement))
 
 
 def citation(name: str, bindings: Mapping[str, ParamValue]) -> str:
