@@ -12,7 +12,6 @@ from typing import NamedTuple
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
-from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.view import bounds, builders, nodes
 from hyphae.view.citation import Ran, cited
@@ -179,14 +178,10 @@ def thread_body(
     # The level the expansion lists, where its kind lists one: the first page of it, at the
     # size the reader is reading logs under. Which page is not a question an expansion
     # asks — the way past the first is the link to the node's own page.
-    level: dict[str, ParamValue] = {
-        **keyed,
-        shaped.keyed: node_id,
-        "skipped": 0,
-        "log_chars": queries.LOG_CHARS,
-    }
+    level: dict[str, ParamValue] = {**keyed, shaped.keyed: node_id, "skipped": 0}
     if shaped.listed is not None:
         level[shaped.listed.size] = knobs.log
+        level = bound(shaped.listed.query, bounds.LOG_WIDTHS, **level)
     with open_store(viewer.db) as connection:
         rows = page_rows(connection, shaped.page, **bindings)
         if not rows:
@@ -281,7 +276,7 @@ def spilled(
         )
         if not head:
             raise HTTPException(404, "No session with that id is in this store.")
-        runs = page_rows(connection, Page.RUNS, **keyed, chip_chars=queries.NAV_CHARS)
+        runs = page_rows(connection, Page.RUNS, **bound(Page.RUNS, bounds.NAV_TREE_WIDTHS, **keyed))
         corpus = Corpus(
             session_id=session_id,
             held=nodes.ledger(session_id, head[0]["cost_usd"] or 0, runs),

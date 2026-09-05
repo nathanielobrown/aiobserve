@@ -21,13 +21,11 @@ from typing import NamedTuple
 
 import duckdb
 
-from hyphae.analyze import queries
-from hyphae.analyze.queries import ParamValue
 from hyphae.view import bounds
 from hyphae.view.builders import tool_node
 from hyphae.view.citation import Ran
 from hyphae.view.nodes import NO_LEDGER, Node
-from hyphae.view.store import Page, dropped, page_rows
+from hyphae.view.store import Page, bound, dropped, page_rows
 
 
 class Failure(NamedTuple):
@@ -52,19 +50,15 @@ def failures(connection: duckdb.DuckDBPyConnection, session_id: str) -> Failures
     Read at the NavTree's title width rather than a log's: a row here leads to a node, so it
     is named the way that node is named everywhere else it appears.
     """
-    bound: dict[str, ParamValue] = {
-        "session_id": session_id,
-        "nav_chars": queries.NAV_CHARS,
-        "errors": bounds.ERRORS.default,
-    }
-    rows = page_rows(connection, Page.SESSION_ERRORS, **bound)
+    binds = bound(Page.SESSION_ERRORS, bounds.ERRORS_WIDTHS, session_id=session_id)
+    rows = page_rows(connection, Page.SESSION_ERRORS, **binds)
     listed = [
         Failure(tool_node(session_id, row["source"], row, NO_LEDGER), row["started_at"])
         for row in rows
     ]
     # Counted by the query before its LIMIT bit, so a page that cut some says how many rather
     # than reading as the whole list.
-    return Failures(listed, dropped(rows), [(Page.SESSION_ERRORS, bound)])
+    return Failures(listed, dropped(rows), [(Page.SESSION_ERRORS, binds)])
 
 
 class Step(NamedTuple):

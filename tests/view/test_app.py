@@ -23,7 +23,6 @@ import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
-from hyphae.analyze import queries
 from hyphae.view import bounds, nodes
 from hyphae.view.detail import DETAILS, Spec, Written
 from tests.conftest import (
@@ -61,18 +60,23 @@ def test_a_node_page_cites_every_query_it_ran(client: TestClient) -> None:
         ),
         "view_nav_tree_turns": (
             f"-- queries/view_nav_tree_turns.sql session_id={SPINE} source={MAIN}"
-            f" nav_chars={queries.NAV_CHARS}"
+            f" nav_chars={bounds.NAV_TREE_WIDTHS.nav_chars}"
         ),
         # A run is printed twice on this page — as a NavTree row and as a children log row — so
         # the citation says which of the two widths this request read them at: the wider.
-        "view_runs": f"-- queries/view_runs.sql session_id={SPINE} chip_chars={queries.LOG_CHARS}",
+        "view_runs": (
+            f"-- queries/view_runs.sql session_id={SPINE} chip_chars={bounds.LOG_WIDTHS.chip_chars}"
+        ),
         "view_compactions": (
             f"-- queries/view_compactions.sql session_id={SPINE} source={MAIN}"
-            f" chip_chars={queries.NAV_CHARS}"
+            f" chip_chars={bounds.NAV_TREE_WIDTHS.chip_chars}"
         ),
         # The whole thread in outline, which is what places the runs: no window, so no paging.
+        # The children log below reads this query a second time at its own width, and the
+        # footer keys a citation by query name — so the line quoted is the NavTree's.
         "session_timeline": (
-            f"-- queries/session_timeline.sql session_id={SPINE} log_chars={queries.LOG_CHARS}"
+            f"-- queries/session_timeline.sql session_id={SPINE}"
+            f" log_chars={bounds.NAV_TREE_WIDTHS.log_chars}"
         ),
     }
 

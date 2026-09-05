@@ -309,12 +309,12 @@ def test_the_pages_run_at_the_production_sizes(client: TestClient) -> None:
     # decides how much of it fits. Every level cuts to the same width, whatever kind of child
     # it holds.
     for level in ("view_nav_tree_turns", "view_nav_tree_calls", "view_nav_tree_tools"):
-        assert ran[level]["nav_chars"] == {110}, level
+        assert ran[level]["nav_chars"] == {bounds.NAV_TREE_WIDTHS.nav_chars}, level
     # And how much of each string a row of the pane's children log shows, with the page it is
     # read in. Wider than a NavTree row: a log row is a line of a table, with room for the first
     # words of a prompt beside the numbers.
-    assert ran["view_turn_calls"]["log_chars"] == {300}
-    assert ran["view_call_tools"]["log_chars"] == {300}
+    assert ran["view_turn_calls"]["log_chars"] == {bounds.LOG_WIDTHS.log_chars}
+    assert ran["view_call_tools"]["log_chars"] == {bounds.LOG_WIDTHS.log_chars}
     assert ran["view_turn_calls"]["page_calls"] == {queries.LOG_ROWS}
     assert ran["view_call_tools"]["page_tools"] == {queries.LOG_ROWS}
     assert queries.LOG_ROWS == 100
@@ -337,8 +337,16 @@ def test_the_pages_run_at_the_production_sizes(client: TestClient) -> None:
     # How much of a run row's and a compaction row's three columns the row that prints them
     # shows. One parameter at two widths, which is what a single declared default could never
     # be: the runs log gives a chip a log row's width, and the NavTree gives it a row's.
-    assert ran["view_runs"]["chip_chars"] == {queries.LOG_CHARS}
-    assert ran["view_compactions"]["chip_chars"] == {queries.NAV_CHARS}
+    assert ran["view_runs"]["chip_chars"] == {bounds.LOG_WIDTHS.chip_chars}
+    assert ran["view_compactions"]["chip_chars"] == {bounds.NAV_TREE_WIDTHS.chip_chars}
+    # And what those two surfaces declare.
+    assert bounds.NavTree(nav_chars=110, chip_chars=110, log_chars=110) == bounds.NAV_TREE_WIDTHS
+    assert bounds.Log(log_chars=300, chip_chars=300) == bounds.LOG_WIDTHS
+    # A thread's timeline is the one query two surfaces read — the NavTree places the thread's
+    # buckets from it at a row's width, the pane's children log lists the same turns at a log's
+    # — and the footer keys a citation by query name, so a page quotes whichever ran last. That
+    # is the NavTree's, which is why this reads 110 and not 300.
+    assert ran["session_timeline"]["log_chars"] == {bounds.NAV_TREE_WIDTHS.log_chars}
     # The list's rows drop the agent types a session spawned, but the query behind them still
     # gathers the names, so a member is cut where the list cuts a skill name.
     assert ran["view_sessions"]["item_chars"] == {queries.LIST_ITEM_CHARS}
@@ -349,15 +357,21 @@ def test_the_pages_run_at_the_production_sizes(client: TestClient) -> None:
     assert ran["view_project_rollups"]["projects"] == {100}
     # And the errors list, bound the same way — a session can fail arbitrarily many calls —
     # and titled at a NavTree row's width, because each of its rows leads to a node.
-    assert ran["view_session_errors"]["nav_chars"] == {queries.NAV_CHARS}
-    assert ran["view_session_errors"]["errors"] == {100}
+    assert ran["view_session_errors"]["nav_chars"] == {bounds.ERRORS_WIDTHS.nav_chars}
+    assert ran["view_session_errors"]["errors"] == {bounds.ERRORS_WIDTHS.errors}
+    assert bounds.Errors(nav_chars=110, errors=100) == bounds.ERRORS_WIDTHS
     # Two queries no page cites, because a fragment carries no footer: the enrichment block a
     # node page fetches, and the filter suggestions above the session list. What binds them is
     # pinned at the constant the composing module reads instead (`view/enrichment.py`,
     # `view/pages/sessions/routes.py`). The enrichment taxonomy is closed and its longest
     # member is nine characters (`enrich/taxonomy.py`), so the tag cut bounds a hand-edited row
     # rather than anything a pass writes.
-    assert (queries.ENRICHMENT_CHARS, queries.TAG_CHARS) == (200, 20)
+    assert (
+        bounds.Enrichment(
+            description_chars=200, tag_chars=20, head_chars=bounds.HEADER_WIDTHS.head_chars
+        )
+        == bounds.ENRICHMENT_WIDTHS
+    )
     assert (queries.LIST_CHARS, queries.LIST_ITEM_CHARS, queries.LIST_ITEMS) == (100, 20, 4)
     assert queries.LIST_PROJECTS == 10
 

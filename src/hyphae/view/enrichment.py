@@ -14,12 +14,11 @@ from typing import NamedTuple
 
 import duckdb
 
-from hyphae.analyze import queries
-from hyphae.analyze.queries import ParamValue
 from hyphae.enrich.items import Level
 from hyphae.enrich.levels import LEVELS
 from hyphae.enrich.stamp import Versions
-from hyphae.view.store import Page, page_rows
+from hyphae.view import bounds
+from hyphae.view.store import Page, bound, page_rows
 from hyphae.view.text.format import when
 
 # The enrichment tables, by the level whose rows they hold. Read off the level map rather than
@@ -120,13 +119,9 @@ def described(connection: duckdb.DuckDBPyConnection, session_id: str, source: st
     """
     if not enriched(connection):
         return Descriptions()
-    bindings: dict[str, ParamValue] = {
-        "session_id": session_id,
-        "source": source,
-        "description_chars": queries.ENRICHMENT_CHARS,
-        "tag_chars": queries.TAG_CHARS,
-        "head_chars": queries.HEADER_CHARS,
-    }
+    bindings = bound(
+        Page.ENRICHMENT, bounds.ENRICHMENT_WIDTHS, session_id=session_id, source=source
+    )
     by_level: dict[Level, dict[str, Enrichment]] = {level: {} for level in Level}
     for row in page_rows(connection, Page.ENRICHMENT, **bindings):
         level = Level(row["level"])

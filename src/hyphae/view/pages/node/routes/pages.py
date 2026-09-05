@@ -10,7 +10,6 @@ import duckdb
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
-from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.model import MAIN_SOURCE
 from hyphae.view import bounds, builders, detail, nodes
@@ -56,10 +55,7 @@ def session_page(
 
     def read(connection: duckdb.DuckDBPyConnection, corpus: nav_tree.Corpus, head: Row) -> Seen:
         offset = skipped(page, knobs.log)
-        timeline: dict[str, ParamValue] = {
-            "session_id": session_id,
-            "log_chars": queries.LOG_CHARS,
-        }
+        timeline = bound(Page.TIMELINE, bounds.LOG_WIDTHS, session_id=session_id)
         turns = window(connection, Page.TIMELINE, TURN_CURSOR, offset, knobs.log, **timeline)
         return Seen(
             header=head,
@@ -152,11 +148,7 @@ def run_page(
         if not rows:
             raise HTTPException(404, "No run with that id is in this session.")
         offset = skipped(page, knobs.log)
-        timeline: dict[str, ParamValue] = {
-            "session_id": session_id,
-            "source": run_id,
-            "log_chars": queries.LOG_CHARS,
-        }
+        timeline = bound(Page.RUN_TIMELINE, bounds.LOG_WIDTHS, session_id=session_id, source=run_id)
         turns = window(connection, Page.RUN_TIMELINE, TURN_CURSOR, offset, knobs.log, **timeline)
         return Seen(
             header=rows[0],
@@ -205,14 +197,15 @@ def call_page(
         if not rows:
             raise HTTPException(404, "No api call with that id is in this thread.")
         row = rows[0]
-        tools: dict[str, ParamValue] = {
-            "session_id": session_id,
-            "source": source,
-            "api_call_id": api_call_id,
-            "skipped": skipped(page, knobs.log),
-            "page_tools": knobs.log,
-            "log_chars": queries.LOG_CHARS,
-        }
+        tools = bound(
+            Fragment.CALL_TOOLS,
+            bounds.LOG_WIDTHS,
+            session_id=session_id,
+            source=source,
+            api_call_id=api_call_id,
+            skipped=skipped(page, knobs.log),
+            page_tools=knobs.log,
+        )
         called = listed(page_rows(connection, Fragment.CALL_TOOLS, **tools))
         return Seen(
             header=row,

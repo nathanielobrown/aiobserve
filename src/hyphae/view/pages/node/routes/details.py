@@ -25,7 +25,7 @@ from hyphae.view.detail import DETAILS, Spec, Written, syntax_of
 from hyphae.view.enrichment import enriched
 from hyphae.view.pages.node import reads
 from hyphae.view.pages.node.markup import values
-from hyphae.view.store import Row, Value, page_rows
+from hyphae.view.store import Row, Value, bound, page_rows
 
 router = APIRouter()
 
@@ -68,12 +68,11 @@ def fetch(spec: Spec, request: Request, viewer: Viewer, connection: Db) -> Respo
         # against the store while the viewer is reading it. Ahead of the read, which would
         # otherwise fail on the missing table rather than on the missing line.
         raise HTTPException(404, "No enrichment pass has written to this store.")
-    keyed: dict[str, ParamValue] = dict(request.path_params)
-    if spec.written is Written.NAMED_FILE:
-        # Not a cut of the answer, which rides whole: the bound on the file suffix beside it,
-        # which is what says how the answer is marked up. The one arm that reads the row to
-        # find that out is the one arm that pays for it.
-        keyed["head_chars"] = bounds.HEADER_WIDTHS.head_chars
+    # The statement decides which of the sixteen takes a width, not the `Written` arm: only
+    # the named-file read declares `head_chars`, and it is not a cut of the answer — which
+    # rides whole — but the bound on the file suffix beside it, which says how the answer is
+    # marked up. A fetch prints at the pane's widths, so it names the pane's surface.
+    keyed = bound(spec.whole, bounds.HEADER_WIDTHS, **request.path_params)
     row, citation = fetched(connection, spec.whole, keyed, "value")
     whole = values.Whole(row["value"], spec.name, citation)
     match spec.written:
