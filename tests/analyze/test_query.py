@@ -173,6 +173,26 @@ def test_the_listing_names_every_query_with_its_scope_and_what_it_needs_bound(
     assert listed["records_slice"] == ["keyed", "session_id", "source", "first_line", "last_line"]
 
 
+def test_a_corpus_query_needs_a_project_and_a_keyed_one_refuses_it(
+    run_query: QueryRunner,
+) -> None:
+    """Which of `--project` and `--since` a query takes follows from what its statement reads.
+
+    A query counting across sessions reads the `project_sessions` the runner builds, so it
+    cannot run without one. A keyed query reads no such thing, and a corpus predicate on
+    `WHERE session_id = $session_id` would narrow nothing while reading as if it had. Both
+    refusals are the query's scope, which is the one fact about a run nobody types.
+    """
+    # If a corpus query runs with no `--project`, it is refused rather than counting the
+    # whole store — a total over every project in it answers nobody's question...
+    with pytest.raises(SystemExit, match="agent_types counts across sessions"):
+        run_query("agent_types")
+    # ...and if a keyed query is handed one, that is refused too, naming the query: a flag
+    # silently ignored is a citation quoting a corpus the rows were never scoped to.
+    with pytest.raises(SystemExit, match="session_overview is keyed"):
+        run_query("session_overview", "--param", f"session_id={SPINE}", "--project", MYCELIA)
+
+
 def test_an_unknown_query_or_parameter_names_what_it_did_not_recognize(
     run_query: QueryRunner,
 ) -> None:
