@@ -14,12 +14,13 @@ The seam is the design's: `cost.estimate` for the arithmetic, `cli.main` for the
   already sweeps `MODELS.items()`; the added Sonnet 4.5 row falls under it with no edit, and a
   row added with `context_window=None` turns it red
 - **The added row moves no stored cost, which is what lets `EXTRACTOR_VERSION` stand.**
-  *Evidence:* no fixture under `tests/fixtures/` records `claude-sonnet-4-5-20250929` as a
-  `message.model` — the recorded models are `claude-fable-5` (101), `claude-opus-4-8` (26),
-  `claude-opus-5` (9), `claude-sonnet-5` (4), `claude-opus-4-1-20250805` (1) — so every
-  existing cost assertion in `tests/extract/` is itself the red-check: one of them moving
-  means the row priced a model the corpus records, which is the case the design says needs a
-  version bump
+  *Evidence:* a fixture census — no fixture under `tests/fixtures/` records
+  `claude-sonnet-4-5-20250929` as a `message.model` — the recorded models are
+  `claude-fable-5` (101), `claude-opus-4-8` (26), `claude-opus-5` (9), `claude-sonnet-5` (4),
+  `claude-opus-4-1-20250805` (1) — and the red-check is
+  `tests/view/test_bounds__lists.py::test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets`,
+  not anything in `tests/extract/`: deleting `claude-opus-4-1-20250805` from `MODELS` turns it
+  red, which is the case the design says needs a version bump
 - `PER_MILLION` is the one definition of the divisor. *Evidence:* `split_cost` and
   `compute_cost` keep passing their existing assertions in
   `test_a_reply_is_priced_by_its_model_and_its_four_token_kinds` and
@@ -76,11 +77,12 @@ assertion rather than a hope.
 
 ## integration (argparse surface) — `tests/test_cli.py`, parser only, no store
 
-- Adding `choices` and `metavar` changes no parsed default. *Evidence:* the `enrich` entry in
-  `SURFACES` already pins `{"db", "project", "model": DEFAULT_MODEL, "dry_run", "limit",
-  "concurrency"}`; it stays green unedited. `DEFAULT_MODEL` is
-  `claude-haiku-4-5-20251001` (`src/hyphae/enrich/client.py:35`), which is in `MODELS`, so a
-  default outside the choices would fail here at parse time
+- Adding `choices` and `metavar` changes no parsed default. *Evidence:* six leaves in
+  `tests/enrich/test_enricher__cli.py` (`test_a_dry_run_asks_no_auth_question` and five
+  siblings) run `enrich` without `--model`; `DEFAULT_MODEL` is `claude-haiku-4-5-20251001`
+  (`src/hyphae/enrich/client.py:35`), which is in `MODELS`, so a default outside the choices
+  would fail here at parse time — the `enrich` entry in `SURFACES`/`test_cli.py` stays green
+  either way and is not the red-check
 
 ## documentation and glossary — the gates, not pytest
 

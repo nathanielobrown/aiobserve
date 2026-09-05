@@ -11,9 +11,10 @@ would kill a backfill the day a new model ships. A quote has no backfill to prot
 crashes instead.
 
 Prices are USD per million tokens, read from
-<https://platform.claude.com/docs/en/about-claude/pricing> on **2026-08-30**. Nothing in the
-test suite can check them against that page; re-read it and update the date when you touch
-the table.
+<https://platform.claude.com/docs/en/about-claude/pricing> on **2026-08-30**, the date the whole
+table was last checked against that page — a row added from another source may carry its own
+later dated comment. Nothing in the test suite can check them against that page; re-read it and
+update this date when you check the table as a whole.
 
 Two published modifiers are deliberately absent, because no recorded call uses them: fast
 mode and US-only inference. Across the mycelia corpus's ~290,000 assistant records (scanned
