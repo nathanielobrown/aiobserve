@@ -302,7 +302,8 @@ def test_the_pages_run_at_the_production_sizes(client: TestClient) -> None:
     """
     ran = ran_at(client)
     assert ran["view_records"]["page_records"] == {100}
-    assert ran["view_records"]["preview_chars"] == {160}
+    assert ran["view_records"]["preview_chars"] == {bounds.RECORDS_WIDTHS.preview_chars}
+    assert bounds.Records(preview_chars=160) == bounds.RECORDS_WIDTHS
     assert ran["view_offload"]["chunk_chars"] == {50_000}
     # How much of a title a row of the NavTree shows. Wide enough that a draggable tree has
     # something to show when a reader widens it — the cut is what a row can say, and CSS
@@ -349,31 +350,45 @@ def test_the_pages_run_at_the_production_sizes(client: TestClient) -> None:
     assert ran["session_timeline"]["log_chars"] == {bounds.NAV_TREE_WIDTHS.log_chars}
     # The list's rows drop the agent types a session spawned, but the query behind them still
     # gathers the names, so a member is cut where the list cuts a skill name.
-    assert ran["view_sessions"]["item_chars"] == {queries.LIST_ITEM_CHARS}
+    assert ran["view_sessions"]["item_chars"] == {bounds.LIST_WIDTHS.item_chars}
+    # And what the list surface declares, from the row's own strings through to the two
+    # counted lists a described row adds and the suggestions in the filter box above it.
+    assert (
+        bounds.SessionList(
+            head_chars=100,
+            item_chars=20,
+            head_items=4,
+            tag_chars=20,
+            kind_chars=20,
+            head_kinds=3,
+            head_projects=10,
+        )
+        == bounds.LIST_WIDTHS
+    )
     # And the landing page, whose row shows a path at the list's head and links by the whole
     # one. How many projects it ranks is a size like the rest; the two windows it counts them
     # in are not sizes, and `tests/view/test_projects.py` pins those against what it cites.
-    assert ran["view_project_rollups"]["head_chars"] == {queries.LIST_CHARS}
-    assert ran["view_project_rollups"]["projects"] == {100}
+    assert ran["view_project_rollups"]["head_chars"] == {bounds.PROJECTS_WIDTHS.head_chars}
+    assert ran["view_project_rollups"]["projects"] == {bounds.PROJECTS_WIDTHS.projects}
+    assert (
+        bounds.Projects(recent_days=7, window_days=30, head_chars=100, projects=100)
+        == bounds.PROJECTS_WIDTHS
+    )
     # And the errors list, bound the same way — a session can fail arbitrarily many calls —
     # and titled at a NavTree row's width, because each of its rows leads to a node.
     assert ran["view_session_errors"]["nav_chars"] == {bounds.ERRORS_WIDTHS.nav_chars}
     assert ran["view_session_errors"]["errors"] == {bounds.ERRORS_WIDTHS.errors}
     assert bounds.Errors(nav_chars=110, errors=100) == bounds.ERRORS_WIDTHS
-    # Two queries no page cites, because a fragment carries no footer: the enrichment block a
-    # node page fetches, and the filter suggestions above the session list. What binds them is
-    # pinned at the constant the composing module reads instead (`view/enrichment.py`,
-    # `view/pages/sessions/routes.py`). The enrichment taxonomy is closed and its longest
-    # member is nine characters (`enrich/taxonomy.py`), so the tag cut bounds a hand-edited row
-    # rather than anything a pass writes.
+    # The enrichment block a node page fetches is the one surface no footer quotes — a
+    # fragment carries none — so its widths are pinned on the profile alone. The taxonomy is
+    # closed and its longest member is nine characters (`enrich/taxonomy.py`), so the tag cut
+    # bounds a hand-edited row rather than anything a pass writes.
     assert (
         bounds.Enrichment(
             description_chars=200, tag_chars=20, head_chars=bounds.HEADER_WIDTHS.head_chars
         )
         == bounds.ENRICHMENT_WIDTHS
     )
-    assert (queries.LIST_CHARS, queries.LIST_ITEM_CHARS, queries.LIST_ITEMS) == (100, 20, 4)
-    assert queries.LIST_PROJECTS == 10
 
 
 def test_no_viewer_query_declares_a_default() -> None:

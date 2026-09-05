@@ -29,7 +29,7 @@ from hyphae.analyze.queries import ParamValue
 from hyphae.export.duckdb import PAGE_WAIT, open_trace_store
 from hyphae.export.schema import SchemaVersionError
 from hyphae.projects import project_predicate
-from hyphae.view.bounds import Widths
+from hyphae.view import bounds
 
 Row = dict[str, Any]
 
@@ -148,7 +148,7 @@ Library = Page | Fragment | Value
 
 def bound(
     page: Library,
-    widths: Widths,
+    widths: bounds.Widths,
     sizes: Mapping[str, ParamValue] = NO_SIZES,
     /,
     **keys: ParamValue,
@@ -409,16 +409,6 @@ SHOWN = """SELECT * EXCLUDE (pr_urls) REPLACE (
 # under the page quotes the size the reader asked for instead (`view/pages/sessions/routes.py`).
 PAGER_PROBE = 1
 
-# What the description joined to a page of the list cuts its own strings to. Bound by the query
-# when there is an enrichment pass to join, and cited on its own when there is — the same four
-# values either way, because a citation is what its page ran.
-DESCRIBED_BOUND: dict[str, ParamValue] = {
-    "head_chars": queries.LIST_CHARS,
-    "tag_chars": queries.TAG_CHARS,
-    "kind_chars": queries.TAG_CHARS,
-    "head_kinds": queries.LIST_CATEGORIES,
-}
-
 
 def list_bound(page: int, size: int, filters: Mapping[str, ParamValue]) -> dict[str, ParamValue]:
     """What one page of the session list binds: its window, its row cut, and its filters.
@@ -430,9 +420,13 @@ def list_bound(page: int, size: int, filters: Mapping[str, ParamValue]) -> dict[
     return {
         "limit": size,
         "offset": (page - 1) * size,
-        "head_chars": queries.LIST_CHARS,
-        "item_chars": queries.LIST_ITEM_CHARS,
-        "head_items": queries.LIST_ITEMS,
+        # Read off the surface a field at a time rather than through `bound`: the statement
+        # these three go to is composed here, so the manifest has no parameter list to fill
+        # from — `SHOWN` binds them, the library query below binds `item_chars` again, and the
+        # window and the filters are the composition's own.
+        "head_chars": bounds.LIST_WIDTHS.head_chars,
+        "item_chars": bounds.LIST_WIDTHS.item_chars,
+        "head_items": bounds.LIST_WIDTHS.head_items,
         **filters,
     }
 
@@ -481,20 +475,23 @@ def sorted_sessions(
     # whichever way a URL was typed.
     applied = [FILTERS[key].predicate for key in FILTERS if key in filters]
     where = f" WHERE {' AND '.join(applied)}" if applied else ""
-    bound = list_bound(page, size, filters)
+    binds = list_bound(page, size, filters)
     # The one place the query and the citation under it differ, and deliberately: reading a row
     # past the page is cheaper than a second query and all a pager needs to know there is
     # another one, while a footer quoting that limit would offer a row the page never showed.
-    bound["limit"] = size + PAGER_PROBE
-    # The joined query cuts its own strings, and takes the same head a row's other strings do.
+    binds["limit"] = size + PAGER_PROBE
+    # The joined query cuts its own strings, and takes the same head a row's other strings do —
+    # one surface prints the row. The page cites this half on its own out of the same call
+    # (`view/pages/sessions/routes.py`), and the two cannot drift: both read one profile
+    # through one manifest.
     if described:
-        bound |= DESCRIBED_BOUND
+        binds |= bound(Page.DESCRIBED_SESSIONS, bounds.LIST_WIDTHS)
     rows = fetch(
         connection,
         f"{SHOWN} (SELECT * FROM ({_core(Page.SESSIONS)}){joined}{where}"
         f" ORDER BY {sort} {keyword} NULLS LAST, session_id {keyword}"
         " LIMIT $limit OFFSET $offset)",
-        bound,
+        binds,
     )
     return Listing(rows[:size], len(rows) > size)
 

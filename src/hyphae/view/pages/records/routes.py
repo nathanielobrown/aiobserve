@@ -16,6 +16,7 @@ from hyphae.view.pages.records import markup
 from hyphae.view.store import (
     MATCHED_ROWS,
     Page,
+    bound,
     open_store,
     page_rows,
     paged,
@@ -39,13 +40,9 @@ def records_page(
     """
     checked(size, bounds.RECORDS.ceiling)
     keyed: dict[str, ParamValue] = {"session_id": session_id, "source": source}
-    bound = keyed | {
-        "after": after,
-        "page_records": size,
-        "preview_chars": queries.RECORD_PREVIEW,
-    }
+    binds = bound(Page.RECORDS, bounds.RECORDS_WIDTHS, **keyed, after=after, page_records=size)
     with open_store(viewer.db) as connection:
-        page = paged(page_rows(connection, Page.RECORDS, **bound), "line_no")
+        page = paged(page_rows(connection, Page.RECORDS, **binds), "line_no")
     # A thread the store never held and a cursor past the end of one it does are the same
     # answer — nothing at this URL. Neither is a page worth rendering empty.
     if not page.rows:
@@ -75,7 +72,7 @@ def records_page(
             after=page.after,
             more=page.more,
             size=size,
-            citations={Page.RECORDS.value: cited(Page.RECORDS, bound)},
+            citations={Page.RECORDS.value: cited(Page.RECORDS, binds)},
             dev=viewer.dev,
         )
     )
