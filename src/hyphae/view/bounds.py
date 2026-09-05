@@ -117,11 +117,6 @@ PROJECTS = Bound(default=queries.PAGE_PROJECTS, ceiling=queries.PAGE_PROJECTS)
 # rather than one the stepper steps to and the list denies.
 ERRORS = Bound(default=queries.PAGE_ERRORS, ceiling=queries.PAGE_ERRORS)
 
-# How much of a string one row of the pane's children log carries. Not a size a URL names —
-# a reader picks the next node out of a log rather than reading one — so it is the arithmetic's
-# multiplicand rather than a knob. Declared with the parameter it binds (`analyze/queries.py`).
-LOG_CHARS = queries.LOG_CHARS
-
 # How deep a chain the NavTree will open, the selection counted. A session's nesting is a
 # transcript's, and a transcript can nest as far as an agent spawns: the corpus reaches five,
 # and a chain past this is a store shape nothing here has seen rather than a page to render,

@@ -17,19 +17,17 @@ from collections.abc import Sequence
 from enum import StrEnum
 from typing import NamedTuple
 
-from hyphae.analyze import queries
 from hyphae.view import bounds, nodes
 from hyphae.view.pages.node.knobs import KNOB_DEFAULTS, Knobs
 from tests.view import budgets
 from tools import text
 
 # Where a cited name is looked up. `bounds.py` names every page size beside its ceiling and
-# re-exports the widths the queries declare; a width it does not re-export is read here from
-# `analyze/queries.py`, which declares it, so no number is copied to be printed.
-# `budgets.py` is where the arithmetic itself lives, beside the measurements it multiplies,
-# because the tests weigh each page against it — printing a page's worst case here would be a
-# second derivation of a number the suite already enforces.
-MODULES = {"bounds": bounds, "queries": queries, "budgets": budgets}
+# every width beside the surface that prints it, so a table cites a width where it is declared
+# and nowhere else. `budgets.py` is where the arithmetic itself lives, beside the measurements
+# it multiplies, because the tests weigh each page against it — printing a page's worst case
+# here would be a second derivation of a number the suite already enforces.
+MODULES = {"bounds": bounds, "budgets": budgets}
 
 
 class Table(StrEnum):
@@ -46,8 +44,10 @@ class Row(NamedTuple):
 
     `cites` runs parallel to the numbers `says` spells — one name per number, in that order,
     so a swapped pair reads as a mismatch rather than as two cited numbers. A bound is cited
-    by the end it prints: `bounds.RECORDS.default`, never bare `bounds.RECORDS`. A derivation
-    is cited as the function that performs it, and `valued` calls it.
+    by the end it prints: `bounds.RECORDS.default`, never bare `bounds.RECORDS`. A width is
+    cited by its surface and its parameter, `bounds.LIST_WIDTHS.head_chars`, which is where
+    the number is declared. A derivation is cited as the function that performs it, and
+    `valued` calls it.
     """
 
     subject: str
@@ -83,15 +83,27 @@ UNCITED = {
     "OPENED_RECORD_CHARS": "how long a record the records browser opens by itself may be",
     "CURSORLESS_TURNS": "how many turn rows a level renders that no cursor reaches",
     "INDENT_CHARS": "when a JSON value is re-indented rather than served as stored",
+    # And the surfaces the tables leave out. Each is part of a page the tables already price
+    # rather than a page a reader asks for: the row above states what the page holds, and what
+    # a fragment inside it cuts to is the node page's arithmetic, not a URL's answer.
+    "HEADER_WIDTHS": "what the reading pane cuts the strings of the one node it heads to",
+    "EXPANSION_WIDTHS": "what a child's body opened in place from a log row cuts to",
+    "POPOVER_WIDTHS": "what the numbers behind a NavTree row cut their model names to",
+    "ENRICHMENT_WIDTHS": "what the block a node page fetches cuts a pass's words to",
 }
 
 
 def declared() -> set[str]:
-    """Every page size `bounds.py` declares: a number, or a default beside its ceiling."""
+    """Every size `bounds.py` declares: a number, a default beside its ceiling, or a surface.
+
+    A surface counts as one name rather than one per width, because what a table owes a reader
+    is the surface — the widths under it are cited by the rows that print them, and a surface
+    no row prints is named in `UNCITED` whole.
+    """
     return {
         name
         for name, value in vars(bounds).items()
-        if not name.startswith("_") and isinstance(value, bounds.Bound | int)
+        if not name.startswith("_") and isinstance(value, bounds.Bound | bounds.Widths | int)
     }
 
 
@@ -106,6 +118,11 @@ def valued(name: str) -> int:
     if isinstance(value, bounds.Bound):
         if end not in ("default", "ceiling"):
             raise ValueError(f"`{name}` is a bound: cite its `.default` or its `.ceiling`")
+        return getattr(value, end)
+    if isinstance(value, bounds.Widths):
+        if end not in value._fields:
+            named = ", ".join(value._fields)
+            raise ValueError(f"`{name}` is a surface: cite one of its widths, {named}")
         return getattr(value, end)
     if end:
         raise ValueError(f"`{name}` is a plain number, so `.{end}` names nothing")
@@ -167,41 +184,41 @@ def bound_rows() -> list[Row]:
         Row(
             "Session list",
             f"{text.count(bounds.SESSIONS.default)} sessions; each long string is cut to "
-            f"{text.count(queries.LIST_CHARS)} characters, skills and agent types to "
-            f"{queries.LIST_ITEMS} {queries.LIST_ITEM_CHARS}-character names, and work to "
-            f"{queries.LIST_CATEGORIES}",
+            f"{text.count(bounds.LIST_WIDTHS.head_chars)} characters, skills and agent types to "
+            f"{bounds.LIST_WIDTHS.head_items} {bounds.LIST_WIDTHS.item_chars}-character names, "
+            f"and work to {bounds.LIST_WIDTHS.head_kinds}",
             (
                 "bounds.SESSIONS.default",
-                "queries.LIST_CHARS",
-                "queries.LIST_ITEMS",
-                "queries.LIST_ITEM_CHARS",
-                "queries.LIST_CATEGORIES",
+                "bounds.LIST_WIDTHS.head_chars",
+                "bounds.LIST_WIDTHS.head_items",
+                "bounds.LIST_WIDTHS.item_chars",
+                "bounds.LIST_WIDTHS.head_kinds",
             ),
         ),
         Row(
             "Projects",
             f"{text.count(bounds.PROJECTS.default)} projects; the path is cut to "
-            f"{text.count(queries.LIST_CHARS)} characters",
-            ("bounds.PROJECTS.default", "queries.LIST_CHARS"),
+            f"{text.count(bounds.PROJECTS_WIDTHS.head_chars)} characters",
+            ("bounds.PROJECTS.default", "bounds.PROJECTS_WIDTHS.head_chars"),
         ),
         Row(
             "A session's errors",
             f"{text.count(bounds.ERRORS.default)} failed tool calls; each title is cut to "
-            f"{text.count(queries.NAV_CHARS)} characters",
-            ("bounds.ERRORS.default", "queries.NAV_CHARS"),
+            f"{text.count(bounds.ERRORS_WIDTHS.nav_chars)} characters",
+            ("bounds.ERRORS.default", "bounds.ERRORS_WIDTHS.nav_chars"),
         ),
         Row(
             "NavTree",
             f"{text.count(bounds.KIN.default)} children per open level, "
             f"{text.count(bounds.DEPTH)} levels deep, each title cut to "
-            f"{text.count(queries.NAV_CHARS)} characters",
-            ("bounds.KIN.default", "bounds.DEPTH", "queries.NAV_CHARS"),
+            f"{text.count(bounds.NAV_TREE_WIDTHS.nav_chars)} characters",
+            ("bounds.KIN.default", "bounds.DEPTH", "bounds.NAV_TREE_WIDTHS.nav_chars"),
         ),
         Row(
             "Children log",
             f"{text.count(bounds.LOG.default)} rows a page, each string cut to "
-            f"{text.count(bounds.LOG_CHARS)} characters",
-            ("bounds.LOG.default", "bounds.LOG_CHARS"),
+            f"{text.count(bounds.LOG_WIDTHS.log_chars)} characters",
+            ("bounds.LOG.default", "bounds.LOG_WIDTHS.log_chars"),
         ),
         Row(
             "Previewed value",
@@ -211,8 +228,13 @@ def bound_rows() -> list[Row]:
         Row(
             "Raw records",
             f"{text.count(bounds.RECORDS.default)} rows by default, at most "
-            f"{text.count(bounds.RECORDS.ceiling)}",
-            ("bounds.RECORDS.default", "bounds.RECORDS.ceiling"),
+            f"{text.count(bounds.RECORDS.ceiling)}; each row previews "
+            f"{text.count(bounds.RECORDS_WIDTHS.preview_chars)} characters of its record",
+            (
+                "bounds.RECORDS.default",
+                "bounds.RECORDS.ceiling",
+                "bounds.RECORDS_WIDTHS.preview_chars",
+            ),
         ),
         Row(
             "Offload",

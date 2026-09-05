@@ -473,12 +473,12 @@ def test_every_page_fits_under_the_ceiling_it_is_priced_at() -> None:
         "ERRORS",
     }
     # The same for the bounds that are not sizes a URL carries: how deep a chain opens, how
-    # many turn rows no cursor reaches, how much of a string a log row shows, how long a value
-    # is marked up in its own syntax, and what one row of the NavTree may weigh.
+    # many turn rows no cursor reaches, how long a value is marked up in its own syntax, and
+    # what one row of the NavTree may weigh. A width is not among them — a width belongs to
+    # the surface that prints it, and the surfaces are pinned above.
     assert {name for name, value in vars(bounds).items() if isinstance(value, int)} == {
         "DEPTH",
         "CURSORLESS_TURNS",
-        "LOG_CHARS",
         "INDENT_CHARS",
         "HIGHLIGHT_CHARS",
         "OPENED_RECORD_CHARS",

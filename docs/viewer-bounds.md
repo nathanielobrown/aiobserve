@@ -58,7 +58,7 @@ Full-value requests are the declared exception. Each returns one whole value —
 | NavTree | 200 children per open level, 16 levels deep, each title cut to 110 characters |
 | Children log | 100 rows a page, each string cut to 300 characters |
 | Previewed value | 4,000 characters, with the rest a fetch away |
-| Raw records | 100 rows by default, at most 200 |
+| Raw records | 100 rows by default, at most 200; each row previews 160 characters of its record |
 | Offload | 50,000 characters by default, at most 60,000 |
 | Syntax highlighting | 256,000 characters, above which the value prints as stored |
 <!-- aigarden:end -->
