@@ -6,6 +6,7 @@ declares, and the gallery, which serves each entry as a page you can open. A reg
 `conftest` owns is a registry only pytest can import.
 """
 
+import re
 from enum import StrEnum
 from typing import NamedTuple
 
@@ -285,3 +286,20 @@ SCENARIOS: dict[str, Scenario] = {
         f"{QUERY_URL}/view_sessions", "The query behind the session list", Group.QUERY
     ),
 }
+
+
+def path_params(route: str, url: str) -> dict[str, str]:
+    """The keys one URL carries, read back out of the route template it was minted from.
+
+    The scenario corpus pins a working URL per route (`tests/view/scenarios.py`) and the
+    registry declares the template (`view/detail.py:Spec.route`); this recovers what a request
+    for that URL puts in `request.path_params`, in the order the path names them, so a sweep
+    over the registry can key a query the way the handler does without a table of ids.
+    """
+    names = re.findall(r"\{(\w+)\}", route)
+    pattern = re.escape(route)
+    for name in names:
+        pattern = pattern.replace(re.escape("{" + name + "}"), "([^/]+)")
+    found = re.fullmatch(pattern, url)
+    assert found, f"{url} is not a {route}"
+    return dict(zip(names, found.groups(), strict=True))

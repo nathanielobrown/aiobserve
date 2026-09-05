@@ -1,25 +1,30 @@
 """The rest of one cut value: what a pane previewed at its width, fetched whole.
 
 Every fat value on a node page is printed to its cut and marked, and the mark links here
-(`docs/viewer-bounds.md`). A route reads the one column it was asked for and hands it back as
-the block it was previewed in — prose where it was written as markdown, marked-up code where it
-was not. A row that exists with nothing under it is a 404: nothing links here unless there is a
-value to fetch.
+(`docs/viewer-bounds.md`). One handler serves all sixteen, because a Detail declares
+everything the fetch needs (`view/detail.py:DETAILS`): the query behind it, how it was
+written, and the keys its route carries. A row that exists with nothing under it is a 404:
+nothing links here unless there is a value to fetch.
+
+The record route is the exception and keeps its own handler — it arrives with a header line
+of its own, nothing previews a head of it, and no pane files it under a name.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from typing import assert_never
 
 import duckdb
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.view.deps import Db, Viewer, ViewerDep
+from hyphae.view.detail import DETAILS, Spec, Written, syntax_of
+from hyphae.view.enrichment import enriched
 from hyphae.view.pages.node import reads
 from hyphae.view.pages.node.markup import values
 from hyphae.view.store import Row, Value, page_rows
-from hyphae.view.text import highlight
 
 router = APIRouter()
 
@@ -43,63 +48,64 @@ def fetched(
     return rows[0], queries.citation(value, keyed)
 
 
-def prose(
-    viewer: Viewer,
-    connection: duckdb.DuckDBPyConnection,
-    value: Value,
-    keyed: Mapping[str, ParamValue],
-    column: str,
-    detail: str,
-) -> Response:
-    """One whole value that was written as markdown, in the block its head was previewed in.
+def fetch(spec: Spec, request: Request, viewer: Viewer, connection: Db) -> Response:
+    """One Detail whole, in the block its head was previewed in.
 
-    `detail` is the name the pane files this value under, and the fragment replaces that
-    whole section, so it carries the name out with it — the styling that tells an ask from
-    an answer reads it.
+    The keys come off the request rather than a signature per route: the path named them, the
+    spec's own route template is what minted the URL, and `queries.citation` prints them back
+    into the line the fragment carries. A key the query does not bind is a crash there, which
+    is a route registered against the wrong `whole`.
+
+    `Written` decides the rest — the gate, the extra binding, and which of the three blocks
+    the value comes back in. Nothing here asks the row what it is holding except through
+    `syntax_of`, so a pane and its fetch cannot mark the same value up two ways.
     """
-    row, citation = fetched(connection, value, keyed, column)
-    return viewer.html(values.prose(node=values.Whole(row[column], detail, citation)))
+    if spec.written is Written.LINE and not enriched(connection):
+        # A pass creates the enrichment tables rather than the exporter, so a store none has
+        # touched holds no such line — the same nothing a missing row is, and the same answer
+        # (`view/enrichment.py`). Asked per request and not at startup, because a pass can run
+        # against the store while the viewer is reading it. Ahead of the read, which would
+        # otherwise fail on the missing table rather than on the missing line.
+        raise HTTPException(404, "No enrichment pass has written to this store.")
+    keyed: dict[str, ParamValue] = dict(request.path_params)
+    if spec.written is Written.NAMED_FILE:
+        # Not a cut of the answer, which rides whole: the bound on the file suffix beside it,
+        # which is what says how the answer is marked up. The one arm that reads the row to
+        # find that out is the one arm that pays for it.
+        keyed["head_chars"] = queries.HEADER_CHARS
+    row, citation = fetched(connection, spec.whole, keyed, "value")
+    whole = values.Whole(row["value"], spec.name, citation)
+    match spec.written:
+        case Written.LINE:
+            return viewer.html(values.enrichment_line(node=whole))
+        case Written.MARKDOWN:
+            return viewer.html(values.prose(node=whole))
+        case Written.BASH | Written.JSON | Written.NAMED_FILE:
+            syntax = syntax_of(spec.written, row)
+            assert syntax is not None  # noqa: S101  # only the two prose arms answer None
+            return viewer.html(values.code(node=whole, syntax=syntax))
+        case _:
+            assert_never(spec.written)
 
 
-def code(
-    viewer: Viewer,
-    connection: duckdb.DuckDBPyConnection,
-    value: Value,
-    keyed: Mapping[str, ParamValue],
-    column: str,
-    detail: str,
-    syntax: highlight.Syntax | None = None,
-) -> Response:
-    """One whole value that was never prose, marked up in the syntax it was written in.
+def serving(spec: Spec) -> Callable[[Request, ViewerDep, Db], Response]:
+    """One spec bound into an endpoint FastAPI can read a signature off.
 
-    `syntax` is what the route knows the value is written in. A value whose language is a
-    property of the row instead — the file a `Read` returned — carries it in the query's
-    own `result_type`, so the fetch is marked up the way its preview on the pane was, and
-    falls back to JSON: a tool's arguments are JSON far more often than they are anything.
+    A closure rather than sixteen stubs: what changes between the routes is the spec, and
+    what stays is the three things every fragment takes.
     """
-    row, citation = fetched(connection, value, keyed, column)
-    written = syntax or highlight.by_suffix(row.get("result_type")) or highlight.Syntax.JSON
-    return viewer.html(
-        values.code(node=values.Whole(row[column], detail, citation), syntax=written)
-    )
+
+    def serve(request: Request, viewer: ViewerDep, connection: Db) -> Response:
+        return fetch(spec, request, viewer, connection)
+
+    return serve
 
 
-@router.get("/fragment/text/session/{session_id}/thread/{source}/call/{api_call_id}")
-def call_text(
-    session_id: str, source: str, api_call_id: str, viewer: ViewerDep, connection: Db
-) -> Response:
-    """What one api call said, whole."""
-    keyed = {"session_id": session_id, "source": source, "api_call_id": api_call_id}
-    return prose(viewer, connection, Value.CALL_TEXT, keyed, "value", "text")
-
-
-@router.get("/fragment/thinking/session/{session_id}/thread/{source}/call/{api_call_id}")
-def call_thinking(
-    session_id: str, source: str, api_call_id: str, viewer: ViewerDep, connection: Db
-) -> Response:
-    """What one api call thought, whole."""
-    keyed = {"session_id": session_id, "source": source, "api_call_id": api_call_id}
-    return prose(viewer, connection, Value.CALL_THINKING, keyed, "value", "thinking")
+for spec in DETAILS:
+    # The public URLs are the registry's own, one route each — not one route under a
+    # `/fragment/{detail}` segment, which would collide with the popover and expansion
+    # fragments and move the unknown-name 404 out of the router and into the handler.
+    router.add_api_route(spec.route, serving(spec), methods=["GET"], name=spec.whole)
 
 
 @router.get("/fragment/record/session/{session_id}/thread/{source}/line/{line_no}")
@@ -116,78 +122,3 @@ def record_value(
     # The record itself, which the store holds NOT NULL.
     row, citation = fetched(connection, Value.RECORD, keyed, "raw")
     return viewer.html(values.record(node=reads.record_value(row, citation)))
-
-
-@router.get("/fragment/input/session/{session_id}/thread/{source}/tool/{tool_call_id}")
-def tool_input(
-    session_id: str, source: str, tool_call_id: str, viewer: ViewerDep, connection: Db
-) -> Response:
-    """What one tool call was passed, whole."""
-    keyed = {"session_id": session_id, "source": source, "tool_call_id": tool_call_id}
-    return code(viewer, connection, Value.TOOL_INPUT, keyed, "value", "input")
-
-
-@router.get("/fragment/result/session/{session_id}/thread/{source}/tool/{tool_call_id}")
-def tool_result(
-    session_id: str, source: str, tool_call_id: str, viewer: ViewerDep, connection: Db
-) -> Response:
-    """What one tool call returned, whole — the largest single fetch the viewer makes."""
-    keyed = {
-        "session_id": session_id,
-        "source": source,
-        "tool_call_id": tool_call_id,
-        # Not a cut of the answer, which rides whole: the bound on the file suffix beside
-        # it, which is what says how the answer is marked up.
-        "head_chars": queries.HEADER_CHARS,
-    }
-    return code(viewer, connection, Value.TOOL_RESULT, keyed, "value", "result")
-
-
-@router.get("/fragment/command/session/{session_id}/thread/{source}/tool/{tool_call_id}")
-def tool_command(
-    session_id: str, source: str, tool_call_id: str, viewer: ViewerDep, connection: Db
-) -> Response:
-    """What one `Bash` call ran, whole — read as the shell reads it."""
-    keyed = {"session_id": session_id, "source": source, "tool_call_id": tool_call_id}
-    return code(
-        viewer, connection, Value.TOOL_COMMAND, keyed, "value", "command", highlight.Syntax.BASH
-    )
-
-
-@router.get("/fragment/prompt/session/{session_id}/thread/{source}/turn/{turn_id}")
-def turn_prompt(
-    session_id: str, source: str, turn_id: str, viewer: ViewerDep, connection: Db
-) -> Response:
-    """What one turn was asked, whole."""
-    keyed = {"session_id": session_id, "source": source, "turn_id": turn_id}
-    return prose(viewer, connection, Value.TURN_PROMPT, keyed, "value", "prompt")
-
-
-@router.get("/fragment/args/session/{session_id}/thread/{source}/turn/{turn_id}")
-def turn_command_args(
-    session_id: str, source: str, turn_id: str, viewer: ViewerDep, connection: Db
-) -> Response:
-    """What followed the slash command one turn ran, whole."""
-    keyed = {"session_id": session_id, "source": source, "turn_id": turn_id}
-    return prose(viewer, connection, Value.TURN_COMMAND_ARGS, keyed, "value", "command_args")
-
-
-@router.get("/fragment/brief/session/{session_id}/run/{run_id}")
-def run_brief(session_id: str, run_id: str, viewer: ViewerDep, connection: Db) -> Response:
-    """The whole brief one agent run was given."""
-    keyed = {"session_id": session_id, "run_id": run_id}
-    return prose(viewer, connection, Value.RUN_BRIEF, keyed, "value", "brief")
-
-
-@router.get("/fragment/prompt/session/{session_id}/run/{run_id}")
-def run_prompt(session_id: str, run_id: str, viewer: ViewerDep, connection: Db) -> Response:
-    """The whole of what one agent run was asked, off the call that spawned it."""
-    keyed = {"session_id": session_id, "run_id": run_id}
-    return prose(viewer, connection, Value.RUN_PROMPT, keyed, "value", "prompt")
-
-
-@router.get("/fragment/result/session/{session_id}/run/{run_id}")
-def run_result(session_id: str, run_id: str, viewer: ViewerDep, connection: Db) -> Response:
-    """The whole of what one agent run sent back to the agent that spawned it."""
-    keyed = {"session_id": session_id, "run_id": run_id}
-    return prose(viewer, connection, Value.RUN_RESULT, keyed, "value", "result")

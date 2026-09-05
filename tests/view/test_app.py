@@ -25,15 +25,13 @@ from fastapi.testclient import TestClient
 
 from hyphae.analyze import queries
 from hyphae.view import nodes
+from hyphae.view.detail import DETAILS, Spec, Written
 from tests.conftest import (
-    BASH_TOOL,
     DENSE_CALL,
-    DENSE_CALL_TURN,
     DENSE_TOOL,
     FORK_ORIGIN,
     FORK_ORIGIN_RUN,
     MAIN,
-    SLASH_TURN,
     SPINE,
     SPINE_RUN,
 )
@@ -44,7 +42,7 @@ from tests.view.conftest import (
     values,
     viewer_css,
 )
-from tests.view.scenarios import SCENARIOS
+from tests.view.scenarios import SCENARIOS, path_params
 
 
 def test_a_node_page_cites_every_query_it_ran(client: TestClient) -> None:
@@ -292,64 +290,44 @@ def test_a_per_value_fragment_returns_the_one_value_it_names(
         assert other == DENSE_TOOL or other not in served
 
 
-def test_a_fragment_cites_the_query_that_fetched_it(client: TestClient) -> None:
+@pytest.mark.parametrize("spec", DETAILS, ids=lambda spec: f"{spec.whole.name}-{spec.name}")
+def test_a_fragment_cites_the_query_that_fetched_it(
+    spec: Spec, enriched_client: TestClient
+) -> None:
     """Every whole-value fragment carries the query and the keys it was fetched by.
 
     A fragment arrives on a page that has already been served, so it cannot ride the footer
-    the pages share: each one carries the line itself. All nine routes hand one shared seam
-    their own keys, so each is here — a seam pinned through one route alone would still let
-    another cite a key it was not fetched by.
+    the pages share: each one carries the line itself. One seam serves all sixteen, so a pin
+    through one route alone would still let another cite a key it was not fetched by — hence
+    the sweep, over the registry rather than a list, so a Detail added anywhere lands here.
+
+    Both halves are built from sources the handler does not read: the query name off
+    `spec.whole`, and the keys off the scenario URL in the order its route template names
+    them. That order is the claim — a handler that reordered `request.path_params` would cite
+    a line nobody can paste back into `hp query`. `head_chars` is the one binding no URL
+    carries, and only `Written.NAMED_FILE` may add it: the file suffix that says how the value
+    is marked up is cut at that width, and every other arm knows its markup without asking.
     """
-    keyed = f"session_id={FORK_ORIGIN} source={FORK_ORIGIN_RUN}"
-    for url, expected in (
-        (
-            f"/fragment/text/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/call/{DENSE_CALL}",
-            f"-- queries/view_call_text.sql {keyed} api_call_id={DENSE_CALL}",
-        ),
-        (
-            f"/fragment/thinking/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/call/{DENSE_CALL}",
-            f"-- queries/view_call_thinking.sql {keyed} api_call_id={DENSE_CALL}",
-        ),
-        (
-            f"/fragment/input/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}",
-            f"-- queries/view_tool_input.sql {keyed} tool_call_id={DENSE_TOOL}",
-        ),
-        (
-            f"/fragment/result/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/tool/{DENSE_TOOL}",
-            f"-- queries/view_tool_result.sql {keyed} tool_call_id={DENSE_TOOL}"
-            f" head_chars={queries.HEADER_CHARS}",
-        ),
-        # The command a `Bash` call ran, which only a `Bash` call has — so this one is keyed
-        # off the thread that holds one rather than off the dense call above.
-        (
-            f"/fragment/command/session/{SPINE}/thread/{MAIN}/tool/{BASH_TOOL}",
-            f"-- queries/view_tool_command.sql session_id={SPINE} source={MAIN}"
-            f" tool_call_id={BASH_TOOL}",
-        ),
-        (
-            f"/fragment/prompt/session/{FORK_ORIGIN}/thread/{FORK_ORIGIN_RUN}/turn/{DENSE_CALL_TURN}",
-            f"-- queries/view_turn_prompt.sql {keyed} turn_id={DENSE_CALL_TURN}",
-        ),
-        # The arguments of a slash turn, which only the one recorded slash turn has.
-        (
-            f"/fragment/args/session/{SPINE}/thread/{MAIN}/turn/{SLASH_TURN}",
-            f"-- queries/view_turn_command_args.sql session_id={SPINE} source={MAIN}"
-            f" turn_id={SLASH_TURN}",
-        ),
-        # A run is keyed by the session and its own id: a run has one home, so no thread
-        # names it.
-        (
-            f"/fragment/brief/session/{FORK_ORIGIN}/run/{FORK_ORIGIN_RUN}",
-            f"-- queries/view_run_brief.sql session_id={FORK_ORIGIN} run_id={FORK_ORIGIN_RUN}",
-        ),
-        # The record route keys on a line number rather than an id. Fetched off a subagent
-        # thread at a line past the first, so neither key can be a constant the fixture hides.
-        (
-            f"/fragment/record/session/{SPINE}/thread/{SPINE_RUN}/line/2",
-            f"-- queries/view_record.sql session_id={SPINE} source={SPINE_RUN} line_no=2",
-        ),
-    ):
-        assert values(client.get(url).text, "data-query") == [expected], url
+    url = SCENARIOS[spec.route].url
+    keyed = path_params(spec.route, url)
+    if spec.written is Written.NAMED_FILE:
+        keyed["head_chars"] = str(queries.HEADER_CHARS)
+    bound = " ".join(f"{key}={value}" for key, value in keyed.items())
+    expected = f"-- queries/{spec.whole}.sql {bound}"
+    assert values(enriched_client.get(url).text, "data-query") == [expected], url
+
+
+def test_the_record_fragment_cites_the_query_that_fetched_it(client: TestClient) -> None:
+    """The one whole-value route that is not a Detail cites itself the same way.
+
+    A record arrives with a header line of its own and nothing on a pane previews a head of
+    it, so it is declared by no spec and swept by no loop — which is exactly why it is pinned
+    here by hand. Fetched off a subagent thread at a line past the first, so neither key can
+    be a constant the fixture hides.
+    """
+    url = f"/fragment/record/session/{SPINE}/thread/{SPINE_RUN}/line/2"
+    expected = f"-- queries/view_record.sql session_id={SPINE} source={SPINE_RUN} line_no=2"
+    assert values(client.get(url).text, "data-query") == [expected]
 
 
 def test_a_fragment_naming_nothing_is_a_404(client: TestClient) -> None:

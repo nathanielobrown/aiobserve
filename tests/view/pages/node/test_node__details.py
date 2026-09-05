@@ -7,15 +7,18 @@ person or a model wrote, shown as what it was written in rather than rendered.
 """
 
 import json
+import re
 
 import duckdb
 import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
+from hyphae.analyze import queries
 from hyphae.view import bounds, detail
 from hyphae.view.app import build_app
-from hyphae.view.detail import DETAILS, Written
+from hyphae.view.detail import DETAILS, Spec, Written
+from hyphae.view.store import page_rows
 from hyphae.view.text.format import ELLIPSIS
 from hyphae.view.text.highlight import Syntax
 from hyphae.view.text.labels import LABELS
@@ -32,7 +35,7 @@ from tests.view.conftest import (
     values,
     walled,
 )
-from tests.view.scenarios import SCENARIOS, Group
+from tests.view.scenarios import SCENARIOS, Group, path_params
 from tests.view.selections import (
     TURN,
 )
@@ -606,87 +609,67 @@ def test_a_result_no_file_names_is_json_where_it_parses_and_the_stored_character
         assert block(said.get(fetch).text, "value") == PLAIN_RESULT
 
 
+@pytest.mark.parametrize("spec", DETAILS, ids=lambda spec: f"{spec.whole.name}-{spec.name}")
 def test_every_value_a_pane_previews_is_fetchable_whole_from_its_own_url(
-    client: TestClient, store: duckdb.DuckDBPyConnection
+    spec: Spec, enriched_client: TestClient, enriched_store: duckdb.DuckDBPyConnection
 ) -> None:
-    """The five fat columns a node page previews each round-trip through a value route.
+    """Every Detail the registry declares previews on its node's pane and fetches whole.
 
-    One route per column rather than one per row: a tool call's input and its result are two
+    One route per value rather than one per row: a tool call's input and its result are two
     values a reader opens apart, and a route that served the row whole would send the other
-    one every time. Each is checked against the length the store holds, which is what proves
-    the fetch is untruncated rather than merely longer than the preview.
+    one every time. Swept over `DETAILS` rather than a list of columns, so a Detail added
+    anywhere is covered the moment it is declared — the datum per spec is the URL the scenario
+    corpus pins for its route, which is a URL known to work against this store.
+
+    The node whose pane previews the value is that same URL with the `/fragment/<name>` prefix
+    taken off. That is a claim as well as a convenience: a fetch lives under the node it
+    belongs to, so a route minted anywhere else would find no pane here.
+
+    The length is read back through the spec's own `whole` query, which is the query the
+    handler reads — so what this proves is the rendering, that every character the query
+    returned reaches the reader rather than a cut of them. That the query is the right one,
+    and that it answers a single column named `value`, is held next door by `test_app.py`'s
+    citation sweep and `test_queries.py`'s spec-contract leaf, both built from sources the
+    handler never reads.
     """
-    columns = {
-        # The node URL that previews it, the value route, and where the store keeps it.
-        "command_args": (
-            f"/session/{SPINE}/thread/{MAIN}/turn/{{0}}",
-            f"/fragment/args/session/{SPINE}/thread/{MAIN}/turn/{{0}}",
-            "SELECT id, length(command_args) FROM live_turns WHERE session_id = ? AND source = ?"
-            " AND command_name IS NOT NULL AND length(command_args) > 0"
-            " ORDER BY length(command_args) DESC LIMIT 1",
-        ),
-        "prompt": (
-            f"/session/{SPINE}/thread/{MAIN}/turn/{{0}}",
-            f"/fragment/prompt/session/{SPINE}/thread/{MAIN}/turn/{{0}}",
-            # Of a turn that was typed rather than run: a slash turn's prompt is the
-            # `<command-…>` wrapper, which the pane shows as the two values inside it instead.
-            "SELECT id, length(prompt) FROM live_turns WHERE session_id = ? AND source = ?"
-            " AND command_name IS NULL AND length(prompt) > 0"
-            " ORDER BY length(prompt) DESC LIMIT 1",
-        ),
-        "input": (
-            f"/session/{SPINE}/thread/{MAIN}/tool/{{0}}",
-            f"/fragment/input/session/{SPINE}/thread/{MAIN}/tool/{{0}}",
-            "SELECT id, length(input) FROM live_tool_calls WHERE session_id = ? AND source = ?"
-            " AND length(input) > 0 ORDER BY length(input) DESC LIMIT 1",
-        ),
-        "result": (
-            f"/session/{SPINE}/thread/{MAIN}/tool/{{0}}",
-            f"/fragment/result/session/{SPINE}/thread/{MAIN}/tool/{{0}}",
-            "SELECT id, length(result) FROM live_tool_calls WHERE session_id = ? AND source = ?"
-            " AND length(result) > 0 ORDER BY length(result) DESC LIMIT 1",
-        ),
-        "text": (
-            f"/session/{SPINE}/thread/{MAIN}/call/{{0}}",
-            f"/fragment/text/session/{SPINE}/thread/{MAIN}/call/{{0}}",
-            "SELECT id, length(text) FROM live_api_calls WHERE session_id = ? AND source = ?"
-            " AND length(text) > 0 ORDER BY length(text) DESC LIMIT 1",
-        ),
-    }
-    for name, (node, fragment, sql) in columns.items():
-        node_id, held = one(store, sql, [SPINE, MAIN])
-        # The pane previews it under its own name...
-        page = client.get(node.format(node_id)).text
-        assert fields(page, "data-detail", name)[name], name
-        # ...and its own route answers with every character the store holds. Reached by URL
-        # rather than by the pane's link, which the pane only draws when there is a rest to
-        # offer — every value this corpus records fits inside the preview.
-        served = client.get(fragment.format(node_id))
-        assert served.status_code == 200, name
-        assert values(served.text, "data-value") == [str(held)], name
-        # The fetch replaces the section the preview sat in, so it comes back filed under the
-        # same name: what a value is styled as — the rail that tells an ask from an answer —
-        # hangs off that name, and a fragment that dropped it would open unstyled.
-        assert values(served.text, "data-detail") == [name], name
-        # And a value that is not prose comes back marked up the way the preview was. The
-        # fragment files it under `value` and the pane under the column's own name, so the
-        # two `<pre>` classes are what compare — one rule in `view/node_pages.py` decides
-        # both, and this is the reading that would see them part again.
-        if name in ("input", "result"):
-            assert walled(served.text, "value") == walled(page, name), name
-            assert classed(block(served.text, "value")) == classed(block(page, name)), name
-    # And a run's brief, which is the one fat column that hangs off the session rather than a
-    # thread, so its route takes no source.
-    session_id, run_id, held = one(
-        store,
-        "SELECT session_id, id, length(brief) FROM live_agent_runs"
-        " WHERE length(brief) > 0 ORDER BY length(brief) DESC LIMIT 1",
-    )
-    page = client.get(f"/session/{session_id}/run/{run_id}").text
-    assert fields(page, "data-detail", "brief")["brief"]
-    served = client.get(f"/fragment/brief/session/{session_id}/run/{run_id}")
-    assert values(served.text, "data-value") == [str(held)]
-    assert values(served.text, "data-detail") == ["brief"]
-    # The brief is what a run was asked to do, so it is labelled as a brief and not as a
-    # description of the run — the word the enrichment pass owns.
+    url = SCENARIOS[spec.route].url
+    keyed: dict[str, str | int] = dict(path_params(spec.route, url))
+    node = re.sub(r"^/fragment/[a-z_]+(?=/session/)", "", url)
+    # Which element carries the value is the one thing `Written.LINE` decides here: a line a
+    # pass wrote is a span inside the enrichment block, and every other Detail is a block of
+    # its own. Both surfaces of one Detail agree on it, which is why one name reads both.
+    marker = "data-enrichment-line" if spec.written is Written.LINE else "data-detail"
+    # The pane previews it under the spec's own name...
+    page = enriched_client.get(node)
+    assert page.status_code == 200, node
+    assert fields(page.text, marker, spec.name)[spec.name], spec.name
+    # ...and the URL it minted answers with every character the store holds under it. Reached
+    # by URL rather than by the pane's link, which the pane only draws when there is a rest to
+    # offer — every value this corpus records fits inside the preview.
+    if spec.written is Written.NAMED_FILE:
+        keyed["head_chars"] = queries.HEADER_CHARS
+    held = page_rows(enriched_store, spec.whole, **keyed)[0]["value"]
+    served = enriched_client.get(url)
+    assert served.status_code == 200, url
+    assert values(served.text, "data-value") == [str(len(held))], url
+    # The fetch replaces the section the preview sat in, so it comes back filed under the same
+    # name: what a value is styled as — the rail that tells an ask from an answer — hangs off
+    # that name, and a fragment that dropped it would open unstyled.
+    assert values(served.text, marker) == [spec.name], url
+    # And a value that is not prose comes back marked up the way the preview was. The fragment
+    # files it under `value` and the pane under the column's own name, so the two `<pre>`
+    # classes are what compare — one rule in `view/detail.py:syntax_of` decides both, and this
+    # is the reading that would see them part again.
+    if spec.written in (Written.JSON, Written.NAMED_FILE, Written.BASH):
+        assert walled(served.text, "value") == walled(page.text, spec.name), url
+        assert classed(block(served.text, "value")) == classed(block(page.text, spec.name)), url
+
+
+def test_a_brief_is_labelled_as_an_ask_and_not_as_a_description_of_the_run() -> None:
+    """A run's brief is what it was asked to do, not what a pass said it did.
+
+    Two fat values sit in a run's pane under words a reader could take for the same thing, and
+    only one of them belongs to the enrichment pass. The registry files them apart by name;
+    this is the half saying the names still reach a reader as different words.
+    """
     assert (LABELS["brief"], LABELS["description"]) == ("Task brief", "Description")
