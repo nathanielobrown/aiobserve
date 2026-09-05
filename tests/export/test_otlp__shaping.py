@@ -10,7 +10,7 @@ from dataclasses import replace
 
 import pytest
 
-from hyphae.export.otlp import SpanKey, TimelessRunError, session_spans
+from hyphae.export.otlp import SpanKey, TimelessRunError, UnparentedCallError, session_spans
 from tests.conftest import (
     BYREF_FORK,
     COMPACTED,
@@ -218,6 +218,54 @@ def test_a_fork_spawned_inside_its_own_transcript_hangs_off_the_run_it_continues
     # cannot be inside it.
     span = one(session_spans(trace), digest(FORK_ORIGIN, SpanKey.agent_run, "", FORK_RUN))
     assert span.parent_span_id == digest(FORK_ORIGIN, SpanKey.agent_run, "", FORK_ORIGIN_RUN)
+
+
+def test_a_replayed_copy_of_a_spawning_call_is_not_read_as_a_spawn(
+    fixture_trace: TraceFactory,
+) -> None:
+    """A run whose only matching tool call is a fork's copy ships as an orphan, and the copy
+    ships nothing."""
+    # If the fork fixture's spawning call is flipped to a fork's copy — planted, because no
+    # recorded session holds one: every `tool_use_id` a `fork_origin` run names matches a live
+    # call, and the four calls it did replay match none...
+    trace = fixture_trace("fork_origin", FORK_ORIGIN)
+    run = next(row for row in trace.agent_runs if row.id == FORK_RUN)
+    spawn = next(call for call in trace.tool_calls if call.id == run.tool_use_id)
+    assert not spawn.replayed, "the fixture stopped carrying a live spawning call"
+    copies = [replace(call, replayed=True) if call is spawn else call for call in trace.tool_calls]
+    spans = session_spans(replace(trace, tool_calls=copies))
+    # ...then the copy is not what placed the run: suppression is computed over live calls
+    # only, so a call that ships no span of its own cannot swallow one either...
+    identifiers = {span.span_id for span in spans}
+    assert digest(FORK_ORIGIN, SpanKey.tool_call, spawn.source, spawn.id) not in identifiers
+    # ...and the run still ships, hanging off the root as an orphan carrying the id that
+    # failed to place it — the shape a run naming a call no transcript held also gets.
+    span = one(spans, digest(FORK_ORIGIN, SpanKey.agent_run, "", FORK_RUN))
+    assert span.parent_span_id == digest(FORK_ORIGIN, SpanKey.session, "", FORK_ORIGIN)
+    assert attributes(span)["hyphae.orphan"] is True
+    assert attributes(span)["claude_code.agent_run.tool_use_id"] == spawn.id
+
+
+def test_a_call_naming_a_turn_no_transcript_held_crashes(fixture_trace: TraceFactory) -> None:
+    """A model call whose turn is in no transcript of its session crashes rather than being
+    hung off an invented parent."""
+    # If the turn the fork replayed is dropped from the trace — planted, because a recorded
+    # session holds every turn its calls name; a copy is only told apart from an absence while
+    # the mapper can still see the copy...
+    trace = fixture_trace("fork_origin", FORK_ORIGIN)
+    replayed = next(turn for turn in trace.turns if turn.replayed)
+    orphaned = next(
+        call
+        for call in trace.api_calls
+        if not call.replayed and (call.source, call.turn_id) == (replayed.source, replayed.id)
+    )
+    kept = [turn for turn in trace.turns if turn is not replayed]
+    # ...then the calls beneath it resolve no parent at all, and the mapper crashes naming the
+    # call and the turn it could not find, rather than falling back the way it does for a copy.
+    with pytest.raises(UnparentedCallError) as raised:
+        session_spans(replace(trace, turns=kept))
+    assert orphaned.id in str(raised.value)
+    assert replayed.id in str(raised.value)
 
 
 def test_null_agent_run_times_crash(fixture_trace: TraceFactory) -> None:

@@ -293,6 +293,22 @@ class RawRecord:
 
 
 @dataclass(frozen=True)
+class LiveRows:
+    """The rows a sink counts or ships: every threaded row no fork copied, plus every run.
+
+    Field names are the store's table names — `refresh_views` builds `live_<field>` from
+    them. A run carries no `replayed`: it is described by its own pair of files, which no
+    fork copies.
+    """
+
+    turns: list[Turn]
+    api_calls: list[ApiCall]
+    tool_calls: list[ToolCall]
+    agent_runs: list[AgentRun]
+    compactions: list[Compaction]
+
+
+@dataclass(frozen=True)
 class SessionTrace:
     """Everything extracted from one session, ready to hand to an exporter."""
 
@@ -310,3 +326,17 @@ class SessionTrace:
     pr_links: list[PrLink]
     offload_files: list[OffloadFile]
     raw_records: list[RawRecord]
+
+    def live(self) -> LiveRows:
+        """What this session's files recorded, minus every row a fork copied from another.
+
+        The same set `live_*` holds for this session in the store, and `session_rollups`
+        counts. The trace keeps the copies either way — this is a view of them, not a cut.
+        """
+        return LiveRows(
+            turns=[turn for turn in self.turns if not turn.replayed],
+            api_calls=[call for call in self.api_calls if not call.replayed],
+            tool_calls=[call for call in self.tool_calls if not call.replayed],
+            agent_runs=list(self.agent_runs),
+            compactions=[row for row in self.compactions if not row.replayed],
+        )
