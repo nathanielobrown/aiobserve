@@ -101,9 +101,9 @@ The query directory on `main` at 2026-09-03: 66 files, and the two manifests as 
 
 ## Open questions
 
-- Whether the 43 comment lines in `view/manifest.py` move into headers or are cut where the header already says it (`view_offload` and `view_nav_tree_tools` already do; the implementer diffs the rest)
+- ~~Whether the 43 comment lines in `view/manifest.py` move into headers or are cut where the header already says it (`view_offload` and `view_nav_tree_tools` already do; the implementer diffs the rest)~~ **As built,** both: 18 lines landed in the headers of the 9 files that lacked the rationale, and the rest said what its header already said
 - Whether a library-wide type per parameter name is a constraint Nathaniel accepts: a future query wanting `level` as an integer would need another name
-- Whether `--list` should sort required keys before sizes instead of statement order; `PARAM_TYPES` makes that possible (TEXT before INTEGER) if the re-pin reads wrong
+- ~~Whether `--list` should sort required keys before sizes instead of statement order; `PARAM_TYPES` makes that possible (TEXT before INTEGER) if the re-pin reads wrong~~ **As built,** statement order stands: `view_runs` reads `chip_chars session_id` and nothing else moved
 
 ## Glossary changes
 
