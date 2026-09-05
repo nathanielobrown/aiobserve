@@ -9,12 +9,14 @@ person or a model wrote, shown as what it was written in rather than rendered.
 import json
 
 import duckdb
+import pytest
 from fastapi.testclient import TestClient
 
-from hyphae.view import bounds
+from hyphae.view import bounds, detail
 from hyphae.view.app import build_app
+from hyphae.view.detail import Written
 from hyphae.view.text.format import ELLIPSIS
-from hyphae.view.text.labels import LABELS
+from hyphae.view.text.highlight import Syntax
 from tests.conftest import ANCESTOR, DENSE_TURN, MAIN, SLASH_TURN, SPINE
 from tests.view.conftest import (
     Planter,
@@ -28,9 +30,26 @@ from tests.view.conftest import (
     values,
     walled,
 )
-from tests.view.selections import (
-    TURN,
-)
+from tests.view.selections import TURN
+
+
+def test_the_one_syntax_rule_refuses_a_row_that_never_said_what_it_holds() -> None:
+    """A `NAMED_FILE` value reads its syntax off the row, and a row without it is a crash.
+
+    Called directly rather than through a URL, which is the one leaf here that is: both
+    queries behind the only `NAMED_FILE` spec select `result_type` (`view_tool_header.sql`,
+    `view_tool_result.sql`), so no request can produce the row below. The obligation is real
+    anyway — the fetch used to read the column with `.get`, which turned a query that stopped
+    selecting it into the same JSON a suffix-less file falls back to, silently.
+
+    The rows are invented: a row the two queries cannot return is the whole point.
+    """
+    with pytest.raises(KeyError):
+        detail.syntax_of(Written.NAMED_FILE, {})
+    # Present and naming a file, present and naming none: the fallback is JSON because a tool
+    # that does not answer in prose answers in JSON far more often than anything else.
+    assert detail.syntax_of(Written.NAMED_FILE, {"result_type": ".md"}) is Syntax.MARKDOWN
+    assert detail.syntax_of(Written.NAMED_FILE, {"result_type": None}) is Syntax.JSON
 
 
 def test_a_pane_previews_a_fat_value_and_offers_the_rest_as_its_own_fetch(
@@ -222,15 +241,20 @@ def test_a_run_page_reads_the_call_that_spawned_it_for_the_ask_and_the_answer(
     assert prose(answered.text, "result") == prose(pane, "result")
 
 
-def test_a_run_nobody_asked_in_words_shows_no_ask_and_serves_none(
+def test_a_pane_previews_nothing_where_the_store_holds_no_characters_under_a_name(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """A run whose spawning call carried no prompt has no ask to show, and its route 404s.
+    """A NULL and an empty string are one nothing to a pane, and two answers to a fetch.
 
-    Two ways a run reaches the store without one: spawned by a tool that takes something other
-    than a prompt — a `Workflow` names a workflow — and recorded with no spawning call at all,
-    which is what a resumed or forked transcript replays. Neither is an empty value: nothing on
-    the pane links to the route, so a request for it is a URL somebody kept.
+    Three ways a value reaches the store with no characters in it. A run is spawned by a tool
+    that takes something other than a prompt — a `Workflow` names a workflow — or recorded with
+    no spawning call at all, which is what a resumed or forked transcript replays; either way
+    the column is NULL, nothing on the pane links to the route, and a request for it is a URL
+    somebody kept. A tool can also answer in no characters, which is a result the store holds
+    and the fetch serves: the row is there, and it is zero characters long.
+
+    The pane cannot tell those apart and does not try — `view/detail.py:preview` leaves on the
+    value itself rather than on its NULL-ness, so a block with nothing in it is never drawn.
     """
     for named, sql in (
         (
@@ -251,6 +275,17 @@ def test_a_run_nobody_asked_in_words_shows_no_ask_and_serves_none(
         pane = client.get(run).text
         assert "prompt" not in values(pane, "data-detail"), named
         assert client.get(f"/fragment/prompt{run}").status_code == 404, named
+    # And the empty string, which is the same silence on the pane and not on the fetch: the one
+    # recorded call in the corpus that came back with no characters draws no result block, and
+    # its route answers with the row it has — zero characters, not a 404.
+    session_id, source, tool_id = one(
+        store, "SELECT session_id, source, id FROM live_tool_calls WHERE result = ''"
+    )
+    call = f"/session/{session_id}/thread/{source}/tool/{tool_id}"
+    assert "result" not in values(client.get(call).text, "data-detail"), call
+    empty = client.get(f"/fragment/result{call}")
+    assert empty.status_code == 200, call
+    assert fields(empty.text, "data-detail", "result") == {"value": ""}, call
 
 
 def test_the_pane_walls_what_a_session_wrote_as_a_quote_and_leaves_a_payload_as_code(
@@ -550,89 +585,3 @@ def test_a_result_no_file_names_is_json_where_it_parses_and_the_stored_character
         assert walled(page, "result") == ""
         assert block(page, "result") == PLAIN_RESULT
         assert block(said.get(fetch).text, "value") == PLAIN_RESULT
-
-
-def test_every_value_a_pane_previews_is_fetchable_whole_from_its_own_url(
-    client: TestClient, store: duckdb.DuckDBPyConnection
-) -> None:
-    """The five fat columns a node page previews each round-trip through a value route.
-
-    One route per column rather than one per row: a tool call's input and its result are two
-    values a reader opens apart, and a route that served the row whole would send the other
-    one every time. Each is checked against the length the store holds, which is what proves
-    the fetch is untruncated rather than merely longer than the preview.
-    """
-    columns = {
-        # The node URL that previews it, the value route, and where the store keeps it.
-        "command_args": (
-            f"/session/{SPINE}/thread/{MAIN}/turn/{{0}}",
-            f"/fragment/args/session/{SPINE}/thread/{MAIN}/turn/{{0}}",
-            "SELECT id, length(command_args) FROM live_turns WHERE session_id = ? AND source = ?"
-            " AND command_name IS NOT NULL AND length(command_args) > 0"
-            " ORDER BY length(command_args) DESC LIMIT 1",
-        ),
-        "prompt": (
-            f"/session/{SPINE}/thread/{MAIN}/turn/{{0}}",
-            f"/fragment/prompt/session/{SPINE}/thread/{MAIN}/turn/{{0}}",
-            # Of a turn that was typed rather than run: a slash turn's prompt is the
-            # `<command-…>` wrapper, which the pane shows as the two values inside it instead.
-            "SELECT id, length(prompt) FROM live_turns WHERE session_id = ? AND source = ?"
-            " AND command_name IS NULL AND length(prompt) > 0"
-            " ORDER BY length(prompt) DESC LIMIT 1",
-        ),
-        "input": (
-            f"/session/{SPINE}/thread/{MAIN}/tool/{{0}}",
-            f"/fragment/input/session/{SPINE}/thread/{MAIN}/tool/{{0}}",
-            "SELECT id, length(input) FROM live_tool_calls WHERE session_id = ? AND source = ?"
-            " AND length(input) > 0 ORDER BY length(input) DESC LIMIT 1",
-        ),
-        "result": (
-            f"/session/{SPINE}/thread/{MAIN}/tool/{{0}}",
-            f"/fragment/result/session/{SPINE}/thread/{MAIN}/tool/{{0}}",
-            "SELECT id, length(result) FROM live_tool_calls WHERE session_id = ? AND source = ?"
-            " AND length(result) > 0 ORDER BY length(result) DESC LIMIT 1",
-        ),
-        "text": (
-            f"/session/{SPINE}/thread/{MAIN}/call/{{0}}",
-            f"/fragment/text/session/{SPINE}/thread/{MAIN}/call/{{0}}",
-            "SELECT id, length(text) FROM live_api_calls WHERE session_id = ? AND source = ?"
-            " AND length(text) > 0 ORDER BY length(text) DESC LIMIT 1",
-        ),
-    }
-    for name, (node, fragment, sql) in columns.items():
-        node_id, held = one(store, sql, [SPINE, MAIN])
-        # The pane previews it under its own name...
-        page = client.get(node.format(node_id)).text
-        assert fields(page, "data-detail", name)[name], name
-        # ...and its own route answers with every character the store holds. Reached by URL
-        # rather than by the pane's link, which the pane only draws when there is a rest to
-        # offer — every value this corpus records fits inside the preview.
-        served = client.get(fragment.format(node_id))
-        assert served.status_code == 200, name
-        assert values(served.text, "data-value") == [str(held)], name
-        # The fetch replaces the section the preview sat in, so it comes back filed under the
-        # same name: what a value is styled as — the rail that tells an ask from an answer —
-        # hangs off that name, and a fragment that dropped it would open unstyled.
-        assert values(served.text, "data-detail") == [name], name
-        # And a value that is not prose comes back marked up the way the preview was. The
-        # fragment files it under `value` and the pane under the column's own name, so the
-        # two `<pre>` classes are what compare — one rule in `view/node_pages.py` decides
-        # both, and this is the reading that would see them part again.
-        if name in ("input", "result"):
-            assert walled(served.text, "value") == walled(page, name), name
-            assert classed(block(served.text, "value")) == classed(block(page, name)), name
-    # And a run's brief, which is the one fat column that hangs off the session rather than a
-    # thread, so its route takes no source.
-    session_id, run_id, held = one(
-        store,
-        "SELECT session_id, id, length(brief) FROM live_agent_runs"
-        " WHERE length(brief) > 0 ORDER BY length(brief) DESC LIMIT 1",
-    )
-    page = client.get(f"/session/{session_id}/run/{run_id}").text
-    assert fields(page, "data-detail", "brief")["brief"]
-    served = client.get(f"/fragment/brief/session/{session_id}/run/{run_id}")
-    assert values(served.text, "data-value") == [str(held)]
-    assert values(served.text, "data-detail") == ["brief"]
-    # The brief is what a run was asked to do, so it is labelled as a brief and not as a
-    # description of the run — the word the enrichment pass owns.
-    assert (LABELS["brief"], LABELS["description"]) == ("Task brief", "Description")

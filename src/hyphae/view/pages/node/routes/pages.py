@@ -13,9 +13,9 @@ from fastapi.responses import Response
 from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.model import MAIN_SOURCE
-from hyphae.view import builders, nodes
+from hyphae.view import builders, detail, nodes
 from hyphae.view.deps import ViewerDep
-from hyphae.view.detail import detail_of, details
+from hyphae.view.detail import details, preview
 from hyphae.view.nodes import Kind, Ref
 from hyphae.view.pages.node import nav_tree, reads
 from hyphae.view.pages.node.columns import Shape
@@ -40,7 +40,6 @@ from hyphae.view.store import (
     page_rows,
     window,
 )
-from hyphae.view.text import highlight
 
 router = APIRouter()
 
@@ -94,7 +93,7 @@ def turn_page(
             "head_chars": queries.HEADER_CHARS,
             "detail_chars": knobs.detail,
         }
-        at = f"{nodes.thread_url(session_id, source)}/turn/{turn_id}"
+        keyed = {"session_id": session_id, "source": source, "turn_id": turn_id}
         rows = page_rows(connection, Page.TURN_HEADER, **bound)
         if not rows:
             raise HTTPException(404, "No turn with that id is in this thread.")
@@ -114,22 +113,8 @@ def turn_page(
             rows=log_rows,
             total=calls.total,
             details=details(
-                detail_of(
-                    name="prompt",
-                    head=rows[0]["prompt"],
-                    chars=rows[0]["prompt_chars"],
-                    url=f"/fragment/prompt{at}",
-                    size=knobs.detail,
-                    markdown=True,
-                ),
-                detail_of(
-                    name="command_args",
-                    head=rows[0]["command_args"],
-                    chars=rows[0]["command_args_chars"],
-                    url=f"/fragment/args{at}",
-                    size=knobs.detail,
-                    markdown=True,
-                ),
+                preview(detail.TURN_PROMPT, rows[0], size=knobs.detail, **keyed),
+                preview(detail.TURN_COMMAND_ARGS, rows[0], size=knobs.detail, **keyed),
             ),
             record=archived.get(turn_id),
             ran=[(Page.TURN_HEADER, bound), *ran, (Page.TURN_RECORDS, thread)],
@@ -159,6 +144,7 @@ def run_page(
             "head_chars": queries.HEADER_CHARS,
             "detail_chars": knobs.detail,
         }
+        keyed = {"session_id": session_id, "run_id": run_id}
         rows = page_rows(connection, Page.RUN_HEADER, **bound)
         if not rows:
             raise HTTPException(404, "No run with that id is in this session.")
@@ -176,32 +162,10 @@ def run_page(
             rows=turn_log(corpus, run_id, turns.rows),
             total=turns.total,
             details=details(
-                detail_of(
-                    name="brief",
-                    head=rows[0]["brief"],
-                    chars=rows[0]["brief_chars"],
-                    url=f"/fragment/brief{nodes.run_url(session_id, run_id)}",
-                    size=knobs.detail,
-                    markdown=True,
-                ),
-                # The ask and the answer, both markdown: one was written by whoever
-                # spawned the run and the other by the run itself.
-                detail_of(
-                    name="prompt",
-                    head=rows[0]["prompt"],
-                    chars=rows[0]["prompt_chars"],
-                    url=f"/fragment/prompt{nodes.run_url(session_id, run_id)}",
-                    size=knobs.detail,
-                    markdown=True,
-                ),
-                detail_of(
-                    name="result",
-                    head=rows[0]["result"],
-                    chars=rows[0]["result_chars"],
-                    url=f"/fragment/result{nodes.run_url(session_id, run_id)}",
-                    size=knobs.detail,
-                    markdown=True,
-                ),
+                preview(detail.RUN_BRIEF, rows[0], size=knobs.detail, **keyed),
+                # Then the ask and the answer, off the call that spawned it.
+                preview(detail.RUN_PROMPT, rows[0], size=knobs.detail, **keyed),
+                preview(detail.RUN_RESULT, rows[0], size=knobs.detail, **keyed),
             ),
             record=None,
             ran=[
@@ -232,7 +196,7 @@ def call_page(
             "head_chars": queries.HEADER_CHARS,
             "detail_chars": knobs.detail,
         }
-        at = f"{nodes.thread_url(session_id, source)}/call/{api_call_id}"
+        keyed = {"session_id": session_id, "source": source, "api_call_id": api_call_id}
         rows = page_rows(connection, Page.CALL_HEADER, **bound)
         if not rows:
             raise HTTPException(404, "No api call with that id is in this thread.")
@@ -262,22 +226,8 @@ def call_page(
             ],
             total=called.total,
             details=details(
-                detail_of(
-                    name="text",
-                    head=row["text_head"],
-                    chars=row["text_chars"],
-                    url=f"/fragment/text{at}",
-                    size=knobs.detail,
-                    markdown=True,
-                ),
-                detail_of(
-                    name="thinking",
-                    head=row["thinking_head"],
-                    chars=row["thinking_chars"],
-                    url=f"/fragment/thinking{at}",
-                    size=knobs.detail,
-                    markdown=True,
-                ),
+                preview(detail.CALL_TEXT, row, size=knobs.detail, **keyed),
+                preview(detail.CALL_THINKING, row, size=knobs.detail, **keyed),
             ),
             record=None,
             ran=[(Page.CALL_HEADER, bound), (Fragment.CALL_TOOLS, tools)],
@@ -305,7 +255,7 @@ def tool_page(
             "head_chars": queries.HEADER_CHARS,
             "detail_chars": knobs.detail,
         }
-        at = f"{nodes.thread_url(session_id, source)}/tool/{tool_call_id}"
+        keyed = {"session_id": session_id, "source": source, "tool_call_id": tool_call_id}
         rows = page_rows(connection, Page.TOOL_HEADER, **bound)
         if not rows:
             raise HTTPException(404, "No tool call with that id is in this thread.")
@@ -323,42 +273,11 @@ def tool_page(
             rows=[],
             total=0,
             details=details(
-                # The command first, where the call ran one: it is what the input is
-                # about, and the input below it is the record it was read out of.
-                detail_of(
-                    name="command",
-                    head=row["command"],
-                    chars=row["command_chars"],
-                    url=f"/fragment/command{at}",
-                    size=knobs.detail,
-                    syntax=highlight.Syntax.BASH,
-                    markdown=False,
-                ),
-                # What a tool was passed is JSON — Claude Code records every tool's
-                # arguments as an object — so the preview is marked up as JSON without
-                # asking the row, which is the same syntax its own fetch reads it under.
-                detail_of(
-                    name="input",
-                    head=row["input"],
-                    chars=row["input_chars"],
-                    url=f"/fragment/input{at}",
-                    size=knobs.detail,
-                    syntax=highlight.Syntax.JSON,
-                    markdown=False,
-                ),
-                # And what it answered is that file's syntax where the record names a
-                # file, else JSON: a tool that does not answer in prose answers in
-                # JSON, and `highlight.lit` prints a value that does not parse as the
-                # characters the store holds rather than lexing it as broken JSON.
-                detail_of(
-                    name="result",
-                    head=row["result_head"],
-                    chars=row["result_chars"],
-                    url=f"/fragment/result{at}",
-                    size=knobs.detail,
-                    syntax=highlight.by_suffix(row["result_type"]) or highlight.Syntax.JSON,
-                    markdown=False,
-                ),
+                # The command first, where the call ran one: it is what the input is about,
+                # and the input below it is the record it was read out of.
+                preview(detail.TOOL_COMMAND, row, size=knobs.detail, **keyed),
+                preview(detail.TOOL_INPUT, row, size=knobs.detail, **keyed),
+                preview(detail.TOOL_RESULT, row, size=knobs.detail, **keyed),
             ),
             record=None,
             ran=[(Page.TOOL_HEADER, bound)],

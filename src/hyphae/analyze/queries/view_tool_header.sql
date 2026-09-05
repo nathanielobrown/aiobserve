@@ -34,7 +34,7 @@ SELECT
     cut(t.input, $detail_chars) AS input,
     length(t.input) AS input_chars,
     -- NULL where the tool returned nothing at all, which is not the same as returning "".
-    cut(t.result, $detail_chars) AS result_head,
+    cut(t.result, $detail_chars) AS result,
     length(t.result) AS result_chars,
     -- What a `Bash` call ran, as a value of its own: the input holds it escaped onto one line
     -- among the call's other arguments, and a shell command is the thing a reader opened the

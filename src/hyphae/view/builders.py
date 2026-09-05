@@ -211,7 +211,7 @@ def call_node(session_id: str, source: str, row: Row, held: Ledger) -> Node:
     # A call that answered with tool calls and no text has nothing to quote, so it is named
     # by what it did: the tool it called first, that call's own name, and a count of the rest.
     # One that neither spoke nor called a tool is named by the model that answered.
-    spoken = row.get("text_head")
+    spoken = row.get("text")
     silent = not spoken and bool(names)
     # Named through the same derivation the tool row under it takes, so the glyph a reader
     # picks a `Read` out of a tree by leads here too (`_named`).

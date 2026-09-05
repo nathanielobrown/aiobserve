@@ -24,9 +24,9 @@ SELECT
     round(c.cost_usd, 4) AS cost_usd,
     -- A NULL cost is a model our price table lacks, not a call that was free.
     (c.cost_usd IS NULL)::INTEGER AS unpriced_api_calls,
-    cut(c.text, $detail_chars) AS text_head,
+    cut(c.text, $detail_chars) AS text,
     length(c.text) AS text_chars,
-    cut(c.thinking, $detail_chars) AS thinking_head,
+    cut(c.thinking, $detail_chars) AS thinking,
     length(c.thinking) AS thinking_chars,
     (
         SELECT count(*) FROM live_tool_calls t
