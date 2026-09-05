@@ -7,7 +7,8 @@ name and anyone can re-run — not in a Python string. Two consumers share this 
 What is here is how a query is declared: the type of each parameter name, the readers that
 take a statement apart, and the few values no statement can say about itself. The production
 defaults are `analyze/manifest.py` and the SQL itself is `analyze/queries/`. A width a page
-binds is not here: it belongs to the surface that prints at it (`view/bounds.py`).
+binds is not here: it belongs to the surface that prints at it (`view/bounds.py`). `LOG_CHARS`
+is the exception, and it is a timeline's own default for the `hp query` runs no page serves.
 """
 
 import datetime as dt

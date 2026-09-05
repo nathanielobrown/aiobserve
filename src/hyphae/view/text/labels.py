@@ -2,7 +2,10 @@
 
 A header is a column of the store read by a person, so the two names it carries answer to
 different readers: the `data-field` beside every value stays the store's own column, and the
-word above it is what someone says out loud. Closed on purpose — a header field with no entry
+word above it is what someone says out loud. A `data-field` a page derives rather than reads —
+`new_input_tokens` is the one — is named for what it is and says so beside its entry.
+
+Closed on purpose — a header field with no entry
 here raises rather than falling back to the column name, and `tests/view/test_app__headers.py`
 checks the registry against the facts the components and the panes actually ask for.
 """
