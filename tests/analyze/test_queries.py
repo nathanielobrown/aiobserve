@@ -16,6 +16,7 @@ from hyphae.analyze import manifest, queries
 from hyphae.analyze.queries import PARAM_TYPES, Scope, parameters, relations, statement
 from hyphae.enrich.levels import LEVELS
 from hyphae.export.duckdb import TABLES
+from hyphae.view.detail import DETAILS, Spec, Written
 from hyphae.view.store import SHOWN
 from tests.analyze.conftest import AS_OF_WHOLE, QueryRunner
 from tests.conftest import (
@@ -212,11 +213,14 @@ FIXTURE_BINDINGS: dict[str, dict[str, str]] = {
     # The viewer's own read of the three tables, at the thread a session page renders: the
     # plant describes `spine/` at every level, so all three arms of the union answer.
     "view_enrichment": {"session_id": SPINE, "source": MAIN},
-    # The whole of one line the pass wrote, one query per level — bound at the same session,
-    # which the plant describes at every level, and at a turn and a run under it.
-    "view_turn_said": {"session_id": SPINE, "source": MAIN, "turn_id": SLASH_TURN},
-    "view_run_said": {"session_id": SPINE, "run_id": SPINE_RUN},
-    "view_session_said": {"session_id": SPINE},
+    # The whole of one line the pass wrote, one query per line per level — bound at the same
+    # session, which the plant describes at every level, and at a turn and a run under it.
+    "view_turn_description": {"session_id": SPINE, "source": MAIN, "turn_id": SLASH_TURN},
+    "view_turn_friction": {"session_id": SPINE, "source": MAIN, "turn_id": SLASH_TURN},
+    "view_run_description": {"session_id": SPINE, "run_id": SPINE_RUN},
+    "view_run_friction": {"session_id": SPINE, "run_id": SPINE_RUN},
+    "view_session_description": {"session_id": SPINE},
+    "view_session_friction": {"session_id": SPINE},
 }
 
 # The relations only a store an enrichment pass has written to holds: the pipeline creates
@@ -295,13 +299,15 @@ HAND_CUTS: dict[str, set[str]] = {
 }
 
 
-@pytest.mark.parametrize("name", NAMES)
-def test_every_query_runs(name: str, run_query: QueryRunner, enriched_query: QueryRunner) -> None:
-    """Every shipped query executes against a real store — an empty result is fine."""
+def arguments_for(name: str) -> list[str]:
+    """What this tier binds to run one query: `--param` pairs, and a corpus query's window.
+
+    A parameter required with no default has to be said here — a size off `VIEW_SIZES`, and
+    anything a query keys on off its own `FIXTURE_BINDINGS` entry. A required parameter
+    neither covers fails naming itself, which is the message that tells the next person where
+    to add it.
+    """
     query = manifest.describe(name)
-    runner = enriched_query if reads_enrichment(name) else run_query
-    # If a parameter is required with no default, this tier has to say what to bind: a size
-    # off the table above, and anything a query keys on off its own entry...
     required = {
         parameter for parameter, spec in query.params.items() if spec.default is queries.REQUIRED
     }
@@ -319,11 +325,56 @@ def test_every_query_runs(name: str, run_query: QueryRunner, enriched_query: Que
         # session carrying agent runs aged out. Pinned at the `$as_of` that opens the
         # window before the earliest fixture session, so the whole corpus stays in view.
         arguments += ["--project", MYCELIA, "--as-of", AS_OF_WHOLE]
-    # ...and the run completes, which is what catches a query a schema bump broke...
-    printed = runner(name, "--csv", *arguments)
+    return arguments
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_every_query_runs(name: str, run_query: QueryRunner, enriched_query: QueryRunner) -> None:
+    """Every shipped query executes against a real store — an empty result is fine."""
+    runner = enriched_query if reads_enrichment(name) else run_query
+    # The run completes, which is what catches a query a schema bump broke...
+    printed = runner(name, "--csv", *arguments_for(name))
     # ...having answered with rows. A query that returns nothing on this corpus runs green
     # while asking its question of no data at all, which is the failure this tier is for.
     assert len(printed.csv_rows()) > 1, f"{name} returned no rows: bind it in FIXTURE_BINDINGS"
+
+
+def answered(name: str, run_query: QueryRunner, enriched_query: QueryRunner) -> list[str]:
+    """The columns one query comes back with, read off the header row of a real run.
+
+    A run rather than a parse of the statement: what a reader binds to is the result set
+    DuckDB built, so a `SELECT *` or a macro that expands to more than it looks like is
+    counted the way the caller meets it.
+    """
+    runner = enriched_query if reads_enrichment(name) else run_query
+    header, *_ = runner(name, "--csv", *arguments_for(name)).csv_rows()
+    return header
+
+
+@pytest.mark.parametrize("spec", DETAILS, ids=lambda spec: f"{spec.whole.name}-{spec.name}")
+def test_a_detail_spec_names_a_column_its_header_answers_and_a_whole_query_that_answers_one(
+    spec: Spec, run_query: QueryRunner, enriched_query: QueryRunner
+) -> None:
+    """The two queries behind one Detail keep the bargain `Spec` writes down.
+
+    `view/detail.py` reads a preview out of the header row by the spec's own name and the
+    length beside it, and hands the fetch back whatever the whole query put under `value`.
+    Six places used to agree on those strings by spelling them the same; this is what stands
+    where that agreement did, and it runs both queries rather than reading them, so a column
+    that stopped being selected fails here and not on a reader's page.
+
+    The `whole` half is an equality and not a membership: a per-value query answering a second
+    column is one the fetch has to be told which to read, and that is the second declaration
+    `Spec` exists to remove. The one column allowed beside `value` is `result_type`, and only
+    where `Written.NAMED_FILE` says the row is what decides the markup — `detail.syntax_of`
+    subscripts it there, on the fetched row as well as the previewed one. Derived from the
+    spec rather than listed, so the exception stays tied to the arm that needs it.
+    """
+    header = answered(spec.header, run_query, enriched_query)
+    assert spec.name in header, f"{spec.header} stopped answering {spec.name}"
+    assert f"{spec.name}_chars" in header, f"{spec.header} stopped answering {spec.name}_chars"
+    marks_itself = {"result_type"} if spec.written is Written.NAMED_FILE else set()
+    assert set(answered(spec.whole, run_query, enriched_query)) == {"value"} | marks_itself
 
 
 def test_a_citation_with_nothing_bound_ends_at_the_query_file() -> None:

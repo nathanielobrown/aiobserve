@@ -39,8 +39,10 @@ def enrichment_line(
     written = enriched(connection)
     if not written:
         raise HTTPException(404, "No enrichment pass has written to this store.")
-    row, citation = fetched(connection, value, keyed, field)
-    return viewer.html(values.enrichment_line(node=values.Whole(row[field], field, citation)))
+    # The query answers the one line under `value`, like every other per-value query; `field`
+    # is the name the block it swaps into is filed under, which is what the pane calls it.
+    row, citation = fetched(connection, value, keyed, "value")
+    return viewer.html(values.enrichment_line(node=values.Whole(row["value"], field, citation)))
 
 
 @router.get("/fragment/description/session/{session_id}/thread/{source}/turn/{turn_id}")
@@ -49,7 +51,7 @@ def turn_description(
 ) -> Response:
     """The whole of what a pass said one turn did."""
     keyed = {"session_id": session_id, "source": source, "turn_id": turn_id}
-    return enrichment_line(viewer, connection, Value.TURN_SAID, keyed, "description")
+    return enrichment_line(viewer, connection, Value.TURN_DESCRIPTION, keyed, "description")
 
 
 @router.get("/fragment/friction/session/{session_id}/thread/{source}/turn/{turn_id}")
@@ -58,28 +60,28 @@ def turn_friction(
 ) -> Response:
     """The whole of the friction a pass saw in one turn."""
     keyed = {"session_id": session_id, "source": source, "turn_id": turn_id}
-    return enrichment_line(viewer, connection, Value.TURN_SAID, keyed, "friction")
+    return enrichment_line(viewer, connection, Value.TURN_FRICTION, keyed, "friction")
 
 
 @router.get("/fragment/description/session/{session_id}/run/{run_id}")
 def run_description(session_id: str, run_id: str, viewer: ViewerDep, connection: Db) -> Response:
     """The whole of what a pass said one agent run did."""
     keyed = {"session_id": session_id, "run_id": run_id}
-    return enrichment_line(viewer, connection, Value.RUN_SAID, keyed, "description")
+    return enrichment_line(viewer, connection, Value.RUN_DESCRIPTION, keyed, "description")
 
 
 @router.get("/fragment/friction/session/{session_id}/run/{run_id}")
 def run_friction(session_id: str, run_id: str, viewer: ViewerDep, connection: Db) -> Response:
     """The whole of the friction a pass saw in one agent run."""
     keyed = {"session_id": session_id, "run_id": run_id}
-    return enrichment_line(viewer, connection, Value.RUN_SAID, keyed, "friction")
+    return enrichment_line(viewer, connection, Value.RUN_FRICTION, keyed, "friction")
 
 
 @router.get("/fragment/description/session/{session_id}")
 def session_description(session_id: str, viewer: ViewerDep, connection: Db) -> Response:
     """The whole of what a pass said one session did."""
     return enrichment_line(
-        viewer, connection, Value.SESSION_SAID, {"session_id": session_id}, "description"
+        viewer, connection, Value.SESSION_DESCRIPTION, {"session_id": session_id}, "description"
     )
 
 
@@ -87,5 +89,5 @@ def session_description(session_id: str, viewer: ViewerDep, connection: Db) -> R
 def session_friction(session_id: str, viewer: ViewerDep, connection: Db) -> Response:
     """The whole of the friction a pass saw in one session."""
     return enrichment_line(
-        viewer, connection, Value.SESSION_SAID, {"session_id": session_id}, "friction"
+        viewer, connection, Value.SESSION_FRICTION, {"session_id": session_id}, "friction"
     )

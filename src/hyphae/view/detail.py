@@ -168,47 +168,48 @@ TOOL_RESULT = Spec(
     Written.NAMED_FILE,
 )
 # And the two lines a pass wrote about an item, at each of the three levels it writes at. One
-# header query for all six — a page reads what the pass said about everything on it at once.
+# header query for all six — a page reads what the pass said about everything on it at once —
+# and a whole query each, because a fetch serves one value.
 TURN_DESCRIPTION = Spec(
     "description",
     "/fragment/description/session/{session_id}/thread/{source}/turn/{turn_id}",
     Page.ENRICHMENT,
-    Value.TURN_SAID,
+    Value.TURN_DESCRIPTION,
     Written.LINE,
 )
 TURN_FRICTION = Spec(
     "friction",
     "/fragment/friction/session/{session_id}/thread/{source}/turn/{turn_id}",
     Page.ENRICHMENT,
-    Value.TURN_SAID,
+    Value.TURN_FRICTION,
     Written.LINE,
 )
 RUN_DESCRIPTION = Spec(
     "description",
     "/fragment/description/session/{session_id}/run/{run_id}",
     Page.ENRICHMENT,
-    Value.RUN_SAID,
+    Value.RUN_DESCRIPTION,
     Written.LINE,
 )
 RUN_FRICTION = Spec(
     "friction",
     "/fragment/friction/session/{session_id}/run/{run_id}",
     Page.ENRICHMENT,
-    Value.RUN_SAID,
+    Value.RUN_FRICTION,
     Written.LINE,
 )
 SESSION_DESCRIPTION = Spec(
     "description",
     "/fragment/description/session/{session_id}",
     Page.ENRICHMENT,
-    Value.SESSION_SAID,
+    Value.SESSION_DESCRIPTION,
     Written.LINE,
 )
 SESSION_FRICTION = Spec(
     "friction",
     "/fragment/friction/session/{session_id}",
     Page.ENRICHMENT,
-    Value.SESSION_SAID,
+    Value.SESSION_FRICTION,
     Written.LINE,
 )
 

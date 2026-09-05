@@ -27,7 +27,9 @@ from tests.view.conftest import (
 # spawned with and `description` the one a pass wrote about an item — prose either way, and
 # nothing bounds what a caller passes the Agent tool. `agent_type` and `model` are short in every
 # session recorded so far and short by nothing: an agent definition is named by whoever writes
-# it, and a model name is a string an api request carried.
+# it, and a model name is a string an api request carried. `friction` is the pass's other line
+# and as unbounded as its first — it was missing here while the two shared one query, where
+# `description` beside it was what the scan caught.
 # `prompt` is whatever was typed or pasted at a turn, and `command_args` whatever followed a
 # slash command — the canonical store holds one of 7,947 characters. Both reach a page through
 # a turn's heading, and both are cut by the timelines that select them.
@@ -40,6 +42,7 @@ FAT = (
     "content",
     "brief",
     "description",
+    "friction",
     "agent_type",
     "model",
     "prompt",
