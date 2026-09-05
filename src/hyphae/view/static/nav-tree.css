@@ -117,7 +117,10 @@ li.node:hover .popover, li.node:focus-within .popover { display: block; }
 .popover .charges dd { padding-left: var(--space-2); }
 .popover .charges .sum > * { border-top: 1px solid var(--line); padding-top: 2px; }
 .popover dl > div { display: contents; }
-.popover dt { color: var(--dim); }
+/* The registry capitalizes a word for the pane that heads a column with it ("Cache read");
+   the popover's own terms are lowercase ("context used", "asked"), so the case is set here
+   rather than by a second spelling in Python (`view/text/labels.py`). */
+.popover dt { color: var(--dim); text-transform: lowercase; }
 .popover dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 .popover .beside { margin: 0; color: var(--dim); }
 .popover .sum [data-field="cost_usd"] { color: var(--ink); font-weight: 600; }

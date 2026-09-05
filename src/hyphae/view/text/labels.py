@@ -48,6 +48,9 @@ LABELS: dict[str, str] = {
     "unpriced_api_calls": "Unpriced calls",
     "input_tokens": "Input tokens",
     "output_tokens": "Output tokens",
+    # What a call sent that no cache answered: its input plus the cache it wrote. Derived
+    # rather than stored, and printed by the popover alone (`view/pages/node/numbers.py`).
+    "new_input_tokens": "New input",
     "cache_read_tokens": "Cache read",
     "cache_creation_tokens": "Cache written",
     # The skills a session loaded, cut in SQL and counted by the pane.

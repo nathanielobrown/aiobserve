@@ -11,11 +11,13 @@ same wherever it is read, and only what a row is *shown as* is this page's own.
 
 from typing import NamedTuple
 
+from hyphae.extract.pricing import TokenUsage
 from hyphae.view.builders import tool_about, tool_titles
 from hyphae.view.nodes import Kind, Node
 from hyphae.view.pages.node.columns import Shape
 from hyphae.view.pages.node.markup import body as node_body
 from hyphae.view.pages.node.markup import logs, numbers, values
+from hyphae.view.pages.node.numbers import Numbers
 from hyphae.view.store import Row
 
 
@@ -106,16 +108,47 @@ def logged(shape: Shape, node: Node, row: Row) -> logs.Logged:
             raise ValueError("A log of no shape lists no rows.")
 
 
-def window_numbers(row: Row) -> numbers.Window:
-    """A popover's readings for a node made of api calls, off the row `view_numbers` answered."""
-    return numbers.Window(
-        model=row["model"],
-        fill=row["fill"],
-        window_tokens=row["window_tokens"],
-        added=row["added"],
+def node_numbers(row: Row) -> Numbers:
+    """A popover's readings for a node made of api calls, off the row `view_numbers` answered.
+
+    The whole row at once — the window the component prints, the counts and dollars the
+    charge lines are composed from, and the per-model groups they are priced at — so the
+    route past here reads named fields rather than indexing the row six more times.
+    """
+    return Numbers(
+        window=numbers.Window(
+            model=row["model"],
+            fill=row["fill"],
+            window_tokens=row["window_tokens"],
+            added=row["added"],
+            cost_usd=row["cost_usd"],
+            api_calls=row["api_calls"],
+            unpriced_api_calls=row["unpriced_api_calls"],
+        ),
+        cache_read_tokens=row["cache_read_tokens"],
+        new_input_tokens=row["new_input_tokens"],
+        output_tokens=row["output_tokens"],
         cost_usd=row["cost_usd"],
-        api_calls=row["api_calls"],
-        unpriced_api_calls=row["unpriced_api_calls"],
+        subtree_usd=row["subtree_usd"],
+        session_usd=row["session_usd"],
+        spent=tuple((group["model"], _usage(group)) for group in row["spent"]),
+    )
+
+
+def _usage(group: Row) -> TokenUsage:
+    """One model's summed tokens as the price table takes them.
+
+    The TTL split is summed per call in SQL, under the same fallback `pricing.py` applies to
+    one — a call that reported no split puts its whole write on the 5-minute rate — so the
+    group carries a split whether or not every call in it did.
+    """
+    return TokenUsage(
+        input=group["input_tokens"],
+        output=group["output_tokens"],
+        cache_read=group["cache_read_tokens"],
+        cache_creation=group["cache_creation_tokens"],
+        cache_5m=group["cache_5m_tokens"],
+        cache_1h=group["cache_1h_tokens"],
     )
 
 

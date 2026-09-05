@@ -239,4 +239,4 @@ def test_a_cache_write_with_no_ttl_on_it_is_charged_at_the_short_rate(
     # where its tokens are counted, so what shows it was charged at all is that dollar standing
     # above what the call's own input came to.
     assert split.cache_write > 0
-    assert amount(printed["cost_new_input"]) > split.input
+    assert amount(printed["new_input_usd"]) > split.input

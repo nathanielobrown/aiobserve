@@ -59,7 +59,7 @@ WITH RECURSIVE calls AS (
         max_by(s.window_tokens, s."index") AS window_tokens,
         max_by(s.fill, s."index") AS fill,
         max_by(s.added, s."index") AS added,
-        max_by(s.cache_read_tokens, s."index") AS cached_tokens,
+        max_by(s.cache_read_tokens, s."index") AS cache_read_tokens,
         max_by(s.input_tokens + s.cache_creation_tokens, s."index") AS new_input_tokens,
         max_by(s.output_tokens, s."index") AS output_tokens
     FROM calls s
@@ -143,7 +143,7 @@ SELECT
     -- NULL where our table holds no window for the model, which the popover says rather than
     -- scaling the numbers beside it to a guess.
     held.window_tokens,
-    held.cached_tokens,
+    held.cache_read_tokens,
     held.new_input_tokens,
     held.output_tokens,
     held.fill,

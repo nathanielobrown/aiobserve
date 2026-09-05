@@ -67,20 +67,21 @@ def counted(
     # The query aggregates, so it answers a row for a node that is not there as readily as
     # for one that is — a node with no api calls under it is a real reading, and the
     # popover prints it as the dashes it is.
-    whole = rows[0]["session_usd"]
+    read = reads.node_numbers(rows[0])
+    whole = read.session_usd
     return viewer.html(
         numbers.popover(
             key=Ref(kind, source, node_id).key,
             citation=queries.citation(Fragment.NUMBERS, binds),
-            node=reads.window_numbers(rows[0]),
+            node=read.window,
             # The three lines between the window and the total, each priced and washed
             # here rather than in the component: what a charge is made of is arithmetic
             # (`view/numbers.py`), and the total under them takes the same ground.
-            charges=charges(rows[0], spend(rows[0]["spent"]), whole),
-            total_wash=wash(rows[0]["cost_usd"], whole),
+            charges=charges(read, spend(read.spent), whole),
+            total_wash=wash(read.cost_usd, whole),
             # And the two lines under them, where agent runs hang below this node: None
             # where none does, which is what keeps the breakout off every other row.
-            breakout=breakout(rows[0]["cost_usd"], rows[0]["subtree_usd"], whole),
+            breakout=breakout(read.cost_usd, read.subtree_usd, whole),
         )
     )
 

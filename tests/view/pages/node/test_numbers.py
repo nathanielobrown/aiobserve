@@ -25,6 +25,7 @@ from hyphae.extract.pricing import MODELS, CostSplit, TokenUsage, split_cost
 from hyphae.view.app import build_app
 from hyphae.view.nodes import NUMBERS_URL, Kind
 from hyphae.view.text.format import ABSENT
+from hyphae.view.text.labels import label
 from tests.conftest import (
     ANCESTOR,
     DENSE_CALL,
@@ -88,9 +89,9 @@ def held(
     assert window is not None, model
     return {
         "model": model,
-        "cached": f"{cached:,}",
-        "new_input": f"{creation + sent:,}",
-        "output": f"{out:,}",
+        "cache_read_tokens": f"{cached:,}",
+        "new_input_tokens": f"{creation + sent:,}",
+        "output_tokens": f"{out:,}",
         "fill": f"{cached + creation + sent + out:,}",
         "window": f"{window:,}",
     }
@@ -113,7 +114,7 @@ def charged(
 
 
 # The dollars the popover prints beside its token counts, in the order they stand.
-CHARGES = ("cost_cached", "cost_new_input", "cost_output")
+CHARGES = ("cache_read_usd", "new_input_usd", "output_usd")
 
 
 # How far a printed dollar may sit from the oracle's: one unit in the last place it prints.
@@ -272,7 +273,9 @@ def test_a_call_says_the_cache_it_read_apart_from_the_context_it_sent(
         f"{Kind.CALL}:{DENSE_CALL}",
     )
     assert printed | held(store, FORK_ORIGIN, FORK_ORIGIN_RUN, extra=where) == printed
-    assert printed["added"] == f"{tokens(printed, 'fill') - tokens(printed, 'cached'):+,}"
+    assert (
+        printed["added"] == f"{tokens(printed, 'fill') - tokens(printed, 'cache_read_tokens'):+,}"
+    )
     # One call is one model, so the dollars beside the counts are that call's own.
     split, stored = charged(store, FORK_ORIGIN, extra=where)
     assert not misread(printed, split)
@@ -307,9 +310,8 @@ def test_the_popovers_two_columns_come_to_the_totals_under_them(
         client, f"/session/{SPINE}/thread/{MAIN}/turn/{turn_id}", f"{Kind.TURN}:{turn_id}"
     )
     # The counts: the cache the last call read, what it sent, and what it said back.
-    assert sum(tokens(printed, name) for name in ("cached", "new_input", "output")) == tokens(
-        printed, "fill"
-    )
+    counts = ("cache_read_tokens", "new_input_tokens", "output_tokens")
+    assert sum(tokens(printed, name) for name in counts) == tokens(printed, "fill")
     # The dollars: to the cent, because each is rounded before it is printed and the total is
     # rounded off the store's own sum rather than off these three.
     dollars = [amount(printed[name]) for name in CHARGES]
@@ -602,6 +604,30 @@ def test_a_kind_with_no_numbers_is_a_route_that_answers_nothing(client: TestClie
         f"/session/{ANCESTOR}/thread/{MAIN}/{Kind.UNATTACHED}/{ANCESTOR}",
     ):
         assert client.get(f"{NUMBERS_URL}{path}").status_code == 404
+
+
+def test_a_charge_line_is_headed_by_the_word_the_registry_gives_its_column(
+    client: TestClient,
+) -> None:
+    """The three charge lines take `view/text/labels.py`'s word for the column each counts.
+
+    One word per store column wherever a page prints it: a popover spelling its own "cache
+    read" beside a pane that says "Cache read" is two names for one column, and the registry
+    is the thing that stops that. The `data-field` beside each is the column itself, as it is
+    everywhere else, so the pair reads back here without a second vocabulary between them.
+
+    The case is the stylesheet's. The terms these stand among — "context used", "asked" — are
+    the popover's own lowercase words, and the registry's are capitalized for a pane that
+    heads a column with them, so the popover lowercases every `dt` it draws.
+    """
+    headed = dict(
+        re.findall(
+            r"<dt>([^<]*)</dt>\s*<dd data-field=\"([^\"]+)\"", popped(client, f"/session/{SPINE}")
+        )
+    )
+    for column in ("cache_read_tokens", "new_input_tokens", "output_tokens"):
+        assert headed[label(column)] == column
+    assert re.search(r"\.popover dt\s*\{[^{}]*text-transform: lowercase", viewer_css(client))
 
 
 def test_a_popover_is_hidden_until_its_row_is_pointed_at_or_tabbed_into(
