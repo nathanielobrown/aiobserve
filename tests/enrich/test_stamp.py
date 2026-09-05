@@ -85,6 +85,25 @@ def test_current_reads_the_two_declarations() -> None:
     assert current.taxonomy == TAXONOMY_VERSION
 
 
+def test_current_reads_each_levels_own_prompt_version(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every level's prompt version is that level's own declaration, not one level's for all.
+
+    Today's three levels declare the same number, so the leaf above builds its oracle from
+    coincident values and cannot tell a per-level read from a constant. Patching the
+    declaration is the only falsifier — and it is a different animal from the monkeypatches
+    this module exists to delete: those faked a bump to drive behaviour through the seam,
+    this moves the one input of a function whose whole job is to read `levels.py`.
+    """
+    # If the turn level alone moves to a version no other level is on — the state
+    # `docs/enrichment.md` tells a maintainer to create...
+    monkeypatch.setitem(LEVELS, Level.turn, replace(LEVELS[Level.turn], prompt_version=99))
+    current = Versions.current()
+    # ...then that is the version `current()` reports for turns...
+    assert current.prompt[Level.turn] == 99
+    # ...and the other two are still their own.
+    assert current.prompt == {level: LEVELS[level].prompt_version for level in Level}
+
+
 @pytest.mark.parametrize(
     ("level", "prompt_version"),
     # Every level, against the version `SPREAD` puts it on and no other.
