@@ -58,9 +58,15 @@ def test_stale_names_the_key_whose_held_stamp_moved(mutation: dict[str, Any]) ->
 
 
 def test_a_planned_key_nothing_holds_is_stale() -> None:
-    """An item nothing has enriched yet is stale, which is how a first pass finds work."""
-    planned = {"a": PLANNED, "b": PLANNED}
-    assert stale(planned, {}) == ["a", "b"]
+    """An item nothing has enriched yet is stale, which is how a first pass finds work.
+
+    Planned out of alphabetical order, so the list also holds the second half of the
+    contract — planned order out. On keys that were already sorted, a `stale` that sorted
+    its own would read the same here while quietly replacing the caller's order with the
+    alphabet.
+    """
+    planned = {"b": PLANNED, "a": PLANNED}
+    assert stale(planned, {}) == ["b", "a"]
 
 
 def test_an_identical_stamp_is_fresh_and_a_held_key_nothing_planned_is_not_reported() -> None:
