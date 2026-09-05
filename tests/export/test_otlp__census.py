@@ -13,10 +13,26 @@ import duckdb
 import pytest
 
 from hyphae.export.duckdb import open_trace_store
-from hyphae.export.otlp import SpanKey, census, census_project, session_spans, span_id
+from hyphae.export.otlp import METADATA_ONLY, Census, SpanKey, census, session_spans, span_id
+from hyphae.export.otlp_delivery import (
+    GENERIC,
+    Backend,
+    DeliveryLedger,
+    OtlpCensus,
+    OtlpExporter,
+)
 from hyphae.extract.store import StoreSource
 from hyphae.model import SessionTrace
+from hyphae.pipeline import RefreshResult, refresh
 from tests.conftest import FORK_COMPACTION, FORK_RUN, MYCELIA, NO_WAIT, SPINE, SPINE_RUN
+from tests.export.conftest import (
+    FIRST,
+    SECOND,
+    Receiver,
+    deliver,
+    delivery_rows,
+    trace_of,
+)
 
 # The store a dry run reads when one is named, mirroring the pipeline plan's census pattern:
 # the leaf skips rather than inventing a corpus, since no fixture set is the real one.
@@ -79,21 +95,71 @@ def counted(exportable_db: Path, tmp_path: Path) -> Iterator[duckdb.DuckDBPyConn
         yield connection
 
 
+def census_pass(connection: duckdb.DuckDBPyConnection) -> tuple[OtlpCensus, RefreshResult]:
+    """One dry run over the store's sessions, driven the way the command drives it."""
+    counting = OtlpCensus(DeliveryLedger(connection, backend=GENERIC), text=METADATA_ONLY)
+    return counting, refresh(Path(MYCELIA), extractor=StoreSource(connection), exporter=counting)
+
+
 def test_the_census_counts_what_the_mapper_would_ship(
     counted: duckdb.DuckDBPyConnection,
 ) -> None:
     """The dry run's span total is the number a real send would put on the wire."""
-    # If a project's whole selection is counted the way a dry run counts it — the extractor
-    # `refresh` would drive, with no fingerprint diff in front of it...
-    counts = census_project(Path(MYCELIA), extractor=StoreSource(counted))
+    # If a project's whole selection is counted the way a dry run counts it — the same
+    # `refresh` a send drives, over a store holding no delivery, so nothing is diffed away...
+    counting, result = census_pass(counted)
+    counts = counting.counts
+    shipped = traces(counted)
+    assert result.skipped == []
     # ...then the census agrees with the shapes themselves, session for session and span for
     # span...
-    shipped = traces(counted)
     assert counts.sessions == len(shipped)
     assert counts.spans == sum(len(session_spans(trace)) for trace in shipped)
     # ...and with the store's own rows read through the mapping formula, which is the check
-    # that catches a mapper counting a matched run/tool pair twice.
+    # that catches a mapper counting a matched run/tool pair twice...
     assert counts.spans == mapping_true(counted, shipped)
+    # ...and it is the sum of the per-session counts `refresh` handed it one at a time,
+    # compared whole so an addition that dropped a field fails here.
+    assert sum((census([trace]) for trace in shipped), start=Census(0, 0, 0)) == counts
+
+
+def test_a_census_counts_only_what_a_send_would_ship(
+    store: duckdb.DuckDBPyConnection, receiver: Receiver
+) -> None:
+    """A dry run after a send counts what is left to ship, not the whole corpus again."""
+    # If nothing has shipped yet, the census counts both recorded sessions...
+    whole, result = census_pass(store)
+    assert (result.extracted, result.skipped) == ([FIRST, SECOND], [])
+    assert whole.counts.sessions == 2
+    # ...and then one of them is delivered, at the fingerprint the store holds for it...
+    extracted = dict(store.execute("SELECT session_id, fingerprint FROM extract_state").fetchall())
+    with OtlpExporter(
+        Backend(name=GENERIC, endpoint=receiver.url),
+        DeliveryLedger(store, backend=GENERIC),
+    ) as exporter:
+        exporter.export(trace_of(store, FIRST), extracted[FIRST])
+    recorded = delivery_rows(store)
+    receiver.bodies.clear()
+    # ...then the next census counts the other session alone — the one a send would ship —
+    # where a census with no diff in front of it would report both again...
+    remaining, result = census_pass(store)
+    assert (result.extracted, result.skipped) == ([SECOND], [FIRST])
+    assert remaining.counts == census([trace_of(store, SECOND)])
+    assert remaining.counts != whole.counts
+    # ...having sent nothing and recorded nothing on the way: no request reached the receiver,
+    # and the ledger is byte-identical to what the send left it, `delivered_at` included...
+    assert receiver.bodies == []
+    assert delivery_rows(store) == recorded
+    # ...and when the rest ships too, a corpus with nothing left counts to zeros rather than
+    # crashing, which is the case the printed line has to read sensibly for.
+    deliver(store, receiver)
+    receiver.bodies.clear()
+    delivered = delivery_rows(store)
+    nothing, result = census_pass(store)
+    assert (result.extracted, result.skipped) == ([], [FIRST, SECOND])
+    assert nothing.counts == Census(sessions=0, spans=0, compactions=0)
+    assert receiver.bodies == []
+    assert delivery_rows(store) == delivered
 
 
 def test_the_compaction_term_and_the_store_agree_on_a_fork_copy(

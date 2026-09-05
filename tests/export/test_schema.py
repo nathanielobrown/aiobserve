@@ -19,7 +19,7 @@ from hyphae.enrich.store import EnrichmentStore
 from hyphae.export.duckdb import _SCHEMA as TRACE_SCHEMA
 from hyphae.export.duckdb import TABLES, DuckDbExporter, open_trace_store
 from hyphae.export.otlp_delivery import _DELIVERY_SCHEMA as DELIVERY_SCHEMA
-from hyphae.export.otlp_delivery import Backend, OtlpExporter
+from hyphae.export.otlp_delivery import Backend, DeliveryLedger, OtlpExporter
 from hyphae.export.schema import (
     SCHEMA_VERSION,
     SchemaShapeError,
@@ -179,11 +179,11 @@ def test_a_renamed_delivery_column_is_refused_the_same_way(db: Path) -> None:
     backend = Backend(name="test", endpoint="http://127.0.0.1:1/v1/traces")
     DuckDbExporter(db, wait=NO_WAIT)
     with duckdb.connect(str(db)) as connection:
-        OtlpExporter(backend, connection).close()
+        OtlpExporter(backend, DeliveryLedger(connection, backend="test")).close()
         connection.execute("ALTER TABLE otlp_delivery RENAME spans_sent TO spans")
 
         with pytest.raises(SchemaShapeError) as refused:
-            OtlpExporter(backend, connection)
+            OtlpExporter(backend, DeliveryLedger(connection, backend="test"))
     assert "otlp_delivery" in str(refused.value)
     assert "spans_sent" in str(refused.value)
 

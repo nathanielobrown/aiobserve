@@ -26,9 +26,12 @@ from hyphae.export.otlp import (
 from hyphae.export.otlp_delivery import (
     DEFAULT_BATCH_SPANS,
     DEFAULT_RATE,
+    GENERIC,
     Backend,
+    BackendMismatchError,
     ConfigurationError,
     DeliveryError,
+    DeliveryLedger,
     OtlpExporter,
     RejectedSpansError,
     named_backend,
@@ -121,7 +124,12 @@ def test_a_session_with_no_project_and_no_service_name_crashes(
     # ...then it crashes before anything is sent, naming the session and the drift it is:
     # no place, rather than the no-clock drift the mapper refuses sessions for.
     with (
-        OtlpExporter(backend, store, service_name=None, text=METADATA_ONLY) as exporter,
+        OtlpExporter(
+            backend,
+            DeliveryLedger(store, backend="generic"),
+            service_name=None,
+            text=METADATA_ONLY,
+        ) as exporter,
         pytest.raises(PlacelessSessionError, match=FIRST),
     ):
         exporter.export(placeless, "fingerprint")
@@ -238,6 +246,26 @@ def test_delivery_is_recorded_per_backend(
     ]
 
 
+def test_a_send_refuses_a_ledger_that_names_another_backend(
+    store: duckdb.DuckDBPyConnection, receiver: Receiver
+) -> None:
+    """An exporter records under the backend it ships to, or it refuses to ship at all."""
+    # If a send to one backend is handed the ledger of another — the crossed wiring two
+    # separate names make possible, and the reason they are checked against each other...
+    with pytest.raises(BackendMismatchError, match="second"):
+        OtlpExporter(
+            Backend(name=GENERIC, endpoint=receiver.url),
+            DeliveryLedger(store, backend="second"),
+        )
+    # ...then it crashes where it was built, before a span leaves and before it so much as
+    # creates the ledger table: a run recording under a backend it never shipped to would
+    # leave the real one undelivered for ever, and the store's own rows would say otherwise.
+    assert receiver.bodies == []
+    assert store.execute(
+        "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'otlp_delivery'"
+    ).fetchone() == (0,)
+
+
 def test_a_server_error_crashes_and_the_next_run_re_sends(
     store: duckdb.DuckDBPyConnection, receiver: Receiver
 ) -> None:
@@ -321,6 +349,22 @@ def test_the_ledger_is_created_without_a_schema_bump(
         "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'otlp_delivery'"
     ).fetchone() == (1,)
     assert store.execute("SELECT schema_version FROM meta").fetchone() == (SCHEMA_VERSION,)
+
+
+def test_a_ledger_over_a_store_with_no_table_holds_nothing(store_path: Path) -> None:
+    """A store that never shipped reports nothing delivered, and grows no table by being read.
+
+    This is what lets a read-only opener — the dry run — read the same ledger a send writes.
+    """
+    # If a store `extract` wrote, which knows nothing of OTLP, is opened read-only...
+    with open_trace_store(store_path, read_only=True, wait=NO_WAIT) as connection:
+        # ...then its ledger answers for the backend rather than crashing on the absent table...
+        assert DeliveryLedger(connection, backend=GENERIC).fingerprints() == {}
+        # ...and reading one created nothing: the DDL is `OtlpExporter`'s alone, and running it
+        # here would need the write lock this open does not hold.
+        assert connection.execute(
+            "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'otlp_delivery'"
+        ).fetchone() == (0,)
 
 
 def test_a_multi_batch_session_ships_every_span_exactly_once(
@@ -531,7 +575,7 @@ def test_a_live_send_is_accepted(store: duckdb.DuckDBPyConnection) -> None:
         pytest.skip(str(missing))
     # Any refusal — a status, or a nonzero `partial_success` — raises out of `export()`, so
     # reaching the rows means the backend took every span of both sessions.
-    with OtlpExporter(backend, store) as exporter:
+    with OtlpExporter(backend, DeliveryLedger(store, backend=backend.name)) as exporter:
         result = refresh(Path(MYCELIA), extractor=StoreSource(store), exporter=exporter)
     assert result.extracted == [FIRST, SECOND]
     assert [row[0] for row in delivery_rows(store)] == [FIRST, SECOND]

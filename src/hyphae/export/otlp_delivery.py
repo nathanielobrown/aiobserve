@@ -1,4 +1,4 @@
-"""Getting shaped spans to a backend and knowing what landed.
+"""Getting shaped spans to a backend, knowing what landed, and counting what has not.
 
 At-least-once with stable ids. A delivery row in the store records the fingerprint and the
 mapper version a session shipped under, so re-running ships only what moved and a shaping
@@ -25,7 +25,9 @@ from opentelemetry.proto.trace.v1 import trace_pb2
 from hyphae.export.otlp import (
     MAPPER_VERSION,
     METADATA_ONLY,
+    Census,
     TextPolicy,
+    census,
     session_resource,
     session_spans,
 )
@@ -90,6 +92,10 @@ class Backend:
 
 class ConfigurationError(Exception):
     """The environment does not say where to ship. Raised before anything is read."""
+
+
+class BackendMismatchError(Exception):
+    """A send was handed the ledger of another backend, so it would record the wrong name."""
 
 
 class DeliveryError(Exception):
@@ -201,6 +207,97 @@ class _Pacer:
         self.ready = now + spans / self.rate
 
 
+class DeliveryLedger:
+    """What one backend acknowledged per session, and the fingerprints a send diffs against.
+
+    Reading is safe over a store opened read-only: a store that never shipped holds no
+    ledger table, and the ledger answers for it rather than creating one. Only `create()`
+    writes, and only `OtlpExporter` calls it — which is what lets the census read the same
+    ledger a send writes without the write lock.
+
+    Takes an open connection rather than a path because DuckDB admits one writer at a time:
+    the `StoreSource` reading beside it has to be holding the same one.
+    """
+
+    def __init__(self, connection: duckdb.DuckDBPyConnection, *, backend: str) -> None:
+        self.connection = connection
+        # The backend's name is the whole address here: a ledger never sees a key.
+        self.backend = backend
+
+    def create(self) -> None:
+        """Make the store hold the ledger table, refusing one whose columns have drifted."""
+        # Before the DDL, like every other owner of a table in this file: a ledger that
+        # drifted from the DDL is skipped by `CREATE TABLE IF NOT EXISTS` and fails later.
+        check_shape(self.connection, _DELIVERY_SCHEMA)
+        self.connection.execute(_DELIVERY_SCHEMA)
+
+    def fingerprints(self) -> dict[str, str]:
+        """What this backend holds, as far as delivery can tell.
+
+        Rows recorded under an older mapper are left out, which is what makes a shaping
+        change re-send the corpus: `refresh()` sees them as sessions it never shipped.
+        """
+        if not self._exists():
+            return {}
+        rows = self.connection.execute(
+            "SELECT session_id, fingerprint FROM otlp_delivery"
+            " WHERE backend = ? AND mapper_version = ?",
+            [self.backend, MAPPER_VERSION],
+        ).fetchall()
+        return dict(rows)
+
+    def record(self, session_id: str, fingerprint: str, spans_sent: int) -> None:
+        """Record one confirmed delivery, replacing what this backend held for the session."""
+        self.connection.execute(
+            "INSERT OR REPLACE INTO otlp_delivery VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                session_id,
+                self.backend,
+                fingerprint,
+                MAPPER_VERSION,
+                spans_sent,
+                dt.datetime.now(dt.UTC),
+            ],
+        )
+
+    def _exists(self) -> bool:
+        """Whether the store holds the ledger yet. A store that never shipped does not, and
+        a reader must not be the one to change that."""
+        return self.connection.execute(
+            "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'otlp_delivery'"
+        ).fetchone() != (0,)
+
+
+class OtlpCensus:
+    """Counts what a send to one backend would ship, and ships nothing.
+
+    The dry run's `Exporter`, driven by the same `refresh()` as a send: the ledger says what
+    that backend already holds, so a census counts the remainder rather than the whole
+    selection. It holds no `Backend`, so there is nowhere for one to send and no key to need.
+    """
+
+    def __init__(self, ledger: DeliveryLedger, *, text: TextPolicy) -> None:
+        self.ledger = ledger
+        # No default: the caller must choose, even though the policy moves attributes rather
+        # than the span count — `session_spans` emits one span per live row whatever it is.
+        self.text = text
+        self.counts = Census(sessions=0, spans=0, compactions=0)
+
+    def fingerprints(self) -> dict[str, str]:
+        """What this backend holds, which is what the count leaves out."""
+        return self.ledger.fingerprints()
+
+    def export(self, trace: SessionTrace, fingerprint: str) -> None:
+        """Shape one session the way a send would, and count it instead of posting it.
+
+        Breaks the `Exporter` protocol's post-condition that `fingerprints()` reports the
+        fingerprint afterwards — this counts a session without recording it as held. Safe
+        because `refresh()` reads `fingerprints()` once, before any `export()` call; a second
+        `refresh()` over the same census would count the same sessions again.
+        """
+        self.counts += census([trace], self.text)
+
+
 class OtlpExporter:
     """Ships each session's spans to one backend and records what the backend confirmed.
 
@@ -209,14 +306,14 @@ class OtlpExporter:
     will hold duplicates. Nothing here diffs what already landed — that machinery was the
     prior importer's largest bug source.
 
-    Takes an open store connection rather than a path because DuckDB admits one writer at a
-    time: the `StoreSource` reading beside it has to be holding the same one.
+    Reaches the store only through the `DeliveryLedger` it is handed, which is what a census
+    reads instead of sending.
     """
 
     def __init__(
         self,
         backend: Backend,
-        connection: duckdb.DuckDBPyConnection,
+        ledger: DeliveryLedger,
         *,
         service_name: str | None = None,
         text: TextPolicy = METADATA_ONLY,
@@ -226,8 +323,14 @@ class OtlpExporter:
         sleep: Callable[[float], None] = time.sleep,
         timeout: float = DEFAULT_TIMEOUT,
     ) -> None:
+        # One name, spelled twice: recording under a backend this run never shipped to would
+        # leave the real one permanently undelivered, and the store would say otherwise.
+        if ledger.backend != backend.name:
+            raise BackendMismatchError(
+                f"a send to {backend.name} was handed the ledger of {ledger.backend}"
+            )
         self.backend = backend
-        self.connection = connection
+        self.ledger = ledger
         # None routes each session to a service named for its project directory.
         self.service_name = service_name
         # Transcript text stays home unless the caller opts it in.
@@ -238,10 +341,9 @@ class OtlpExporter:
         self.sleep = sleep
         self.pacer = _Pacer(rate, monotonic, sleep)
         self.client = httpx.Client(timeout=timeout)
-        # Before the DDL, like every other owner of a table in this file: a ledger that
-        # drifted from the DDL is skipped by `CREATE TABLE IF NOT EXISTS` and fails later.
-        check_shape(self.connection, _DELIVERY_SCHEMA)
-        self.connection.execute(_DELIVERY_SCHEMA)
+        # A send is the only thing that may grow the table: the census reads the same ledger
+        # over a read-only connection, which could not run this.
+        ledger.create()
 
     def __enter__(self) -> "OtlpExporter":
         return self
@@ -259,17 +361,8 @@ class OtlpExporter:
         self.client.close()
 
     def fingerprints(self) -> dict[str, str]:
-        """What this backend holds, as far as delivery can tell.
-
-        Rows recorded under an older mapper are left out, which is what makes a shaping
-        change re-send the corpus: `refresh()` sees them as sessions it never shipped.
-        """
-        rows = self.connection.execute(
-            "SELECT session_id, fingerprint FROM otlp_delivery"
-            " WHERE backend = ? AND mapper_version = ?",
-            [self.backend.name, MAPPER_VERSION],
-        ).fetchall()
-        return dict(rows)
+        """What this backend holds, as far as delivery can tell."""
+        return self.ledger.fingerprints()
 
     def export(self, trace: SessionTrace, fingerprint: str) -> None:
         """Ship one session, and record it only once every batch came back confirmed."""
@@ -279,17 +372,7 @@ class OtlpExporter:
         for index, batch in enumerate(_batches(spans, self.batch_spans)):
             self._post(trace.session.id, index, batch, resource)
             sent += len(batch)
-        self.connection.execute(
-            "INSERT OR REPLACE INTO otlp_delivery VALUES (?, ?, ?, ?, ?, ?)",
-            [
-                trace.session.id,
-                self.backend.name,
-                fingerprint,
-                MAPPER_VERSION,
-                sent,
-                dt.datetime.now(dt.UTC),
-            ],
-        )
+        self.ledger.record(trace.session.id, fingerprint, sent)
 
     def _post(
         self,

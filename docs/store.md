@@ -61,7 +61,7 @@ The version alone doesn't catch a DDL edit that reached a store already on disk,
 
 You meet this machinery when you change a DDL and `tests/export/test_schema.py` fails: it digests each owner's table statements and holds them to the current version. Bump `SCHEMA_VERSION`, add the step that carries an existing store across your change to `MIGRATIONS` under the new version, then set the digest to the one the failure prints.
 
-A fresh store has an empty `otlp_delivery` table. Because `export-otlp` uses that table to track what each backend confirmed, the next export sends every session to every backend again. See [the OTLP export guide](otlp-export.md).
+A fresh store holds no `otlp_delivery` table at all; the first send to a backend creates it. Because `export-otlp` uses that table to track what each backend confirmed, the next export sends every session to every backend again. See [the OTLP export guide](otlp-export.md).
 
 ## Compare session IDs before deleting an old store
 

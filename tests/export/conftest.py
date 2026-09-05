@@ -31,6 +31,7 @@ from hyphae.export.otlp_delivery import (
     DEFAULT_BATCH_SPANS,
     DEFAULT_RATE,
     Backend,
+    DeliveryLedger,
     OtlpExporter,
 )
 from hyphae.extract.store import StoreSource
@@ -320,7 +321,7 @@ def deliver(
     waited = clock or Clock()
     with OtlpExporter(
         shipping,
-        store,
+        DeliveryLedger(store, backend=shipping.name),
         service_name=service_name,
         text=text,
         batch_spans=batch_spans,
