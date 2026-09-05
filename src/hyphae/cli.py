@@ -392,7 +392,7 @@ def _export_otlp_arguments(subcommand: argparse.ArgumentParser) -> None:
     subcommand.add_argument(
         "--dry-run",
         action="store_true",
-        help="Count what a send would ship and send nothing. Needs no backend and no key",
+        help="Count what a send to --backend would ship, and send nothing. Needs no key",
     )
 
 
