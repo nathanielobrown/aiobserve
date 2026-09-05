@@ -58,15 +58,10 @@ def test_the_measured_constants_are_pinned_to_their_probe() -> None:
 
 
 def test_an_empty_plan_costs_nothing() -> None:
-    """A run with nothing stale quotes zero rather than a floor price."""
-    assert estimate([], MODEL) == Estimate(items=0, input_tokens=0, output_tokens=0, usd=0.0)
+    """A run with nothing stale quotes zero rather than a floor price.
 
-
-def test_an_unpriced_model_crashes() -> None:
-    """A model the table does not price refuses to be quoted, rather than quoting zero.
-
-    Anthropic adds models faster than this file will be updated, and a silent zero would read
-    as "this pass is free" on exactly the run whose price nobody knows.
+    It still names a model, so the table lookup happens even on a plan holding nothing. An
+    unpriced model is refused a step earlier now, at the CLI door
+    (`test_enricher__cli.py:test_an_unpriced_model_is_refused_at_the_door`).
     """
-    with pytest.raises(KeyError, match="claude-opus-9"):
-        estimate([Prompt(Level.turn, "x")], "claude-opus-9")
+    assert estimate([], MODEL) == Estimate(items=0, input_tokens=0, output_tokens=0, usd=0.0)

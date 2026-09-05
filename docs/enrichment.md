@@ -123,7 +123,7 @@ The quote uses list price. The API batch discount no longer applies, and prompt 
 
 The practical cost is time. At about four seconds per item, measured on 2026-08-13, a full pass with four workers takes more than an hour. Those workers share the Claude allowance with this project's agents. `--limit` is the only pacing control, and you must set it yourself.
 
-Prices and models change. Asking for an unpriced model crashes instead of returning a zero quote.
+Prices and models change. `--model` accepts only the names the price table prices, so asking for an unpriced one is refused at the door — before preflight, before the store is read, and before a prompt is rendered. A typo costs the message and nothing else.
 
 ## Prompt and taxonomy changes buy new descriptions
 
