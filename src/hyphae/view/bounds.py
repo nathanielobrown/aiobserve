@@ -23,6 +23,11 @@ of one whole value, bound by the largest single value in the store rather than b
 them (`view/store.py:Value`); the tail row's fetch, bound by the level it stands in (`KIN`);
 and a query's citation page, which is the size of a file we ship rather than of anything a
 corpus or a reader moves (`tests/view/test_bounds.py`).
+
+The widths below the ceilings are the other half of the same question: a size is what a reader
+may ask a page for, and a width is what one surface of that page prints store text at. The
+profiles at the foot declare each surface's, one field per parameter it binds, and a read names
+the surface instead of the numbers (`view/store.py:bound`).
 """
 
 from typing import NamedTuple
@@ -182,3 +187,157 @@ HIGHLIGHT_CHARS = 256_000
 # gone. The markup a reader gets is the same one — what left the row is whitespace
 # (`src/hyphae/view/pages/node/markup/nav_tree.py`).
 NAV_TREE_ROW_BYTES = 1703
+
+
+# What each surface prints at. A surface is one place a page shows store text at widths of its
+# own — the NavTree, a node's header, a children log, an expansion, a popover, a list row — and
+# a profile is one field per query parameter that surface binds, named for the parameter. A read
+# names its surface and `view/store.py:bound` fills the mapping from it, so the pairing of
+# parameter to width is stated once here instead of in every line that reads.
+#
+# No field takes a default: a surface that binds a parameter says what it binds it at, and a read
+# that wants another width names another surface. The field order is the order the citation under
+# the page prints these bindings in, after the keys the read is about.
+
+
+class NavTree(NamedTuple):
+    """The left column: every row's title, a compaction's trigger, and the timeline behind."""
+
+    nav_chars: int
+    chip_chars: int
+    # The timeline the NavTree places its rows from, which it reads for counts and an order
+    # rather than for the strings a log row prints — so it cuts them where a row would.
+    log_chars: int
+
+
+class Header(NamedTuple):
+    """The pane's header: every string a node's own row carries, and its two lists."""
+
+    head_chars: int
+    item_chars: int
+    head_items: int
+    # A compaction's trigger, when the compaction is the node.
+    chip_chars: int
+
+
+class Log(NamedTuple):
+    """One row of the pane's children log: a line of a table, wider than a NavTree row."""
+
+    log_chars: int
+    chip_chars: int
+
+
+class Expansion(NamedTuple):
+    """A child's body opened in place, from a log row's View button."""
+
+    head_chars: int
+    # A body renders facts and no fat value, so the columns a pane would preview are read at
+    # the width the title is cut from rather than at the reader's `?detail=`.
+    detail_chars: int
+
+
+class Popover(NamedTuple):
+    """The numbers behind one NavTree row, and the words naming what they were spent on."""
+
+    model_chars: int
+    chip_chars: int
+    item_chars: int
+    head_items: int
+
+
+class SessionList(NamedTuple):
+    """A row of the session list, and the filter suggestions above it."""
+
+    head_chars: int
+    item_chars: int
+    head_items: int
+    tag_chars: int
+    kind_chars: int
+    head_kinds: int
+    head_projects: int
+
+
+class Projects(NamedTuple):
+    """The landing page: one row per project, ranked by what it was doing lately."""
+
+    recent_days: int
+    window_days: int
+    head_chars: int
+    projects: int
+
+
+class Errors(NamedTuple):
+    """One session's failed tool calls. Each row leads to a node, so it is titled as one."""
+
+    nav_chars: int
+    errors: int
+
+
+class Records(NamedTuple):
+    """The records browser, whose row is a preview of the record it opens."""
+
+    preview_chars: int
+
+
+class Enrichment(NamedTuple):
+    """What a pass wrote about a node, in the block a page fetches under the title."""
+
+    description_chars: int
+    tag_chars: int
+    head_chars: int
+
+
+# Every surface, for the one seam that binds a read. A union rather than a base class: a
+# `NamedTuple` cannot inherit fields, and what a reader wants from this name is the list.
+Widths = (
+    NavTree
+    | Header
+    | Log
+    | Expansion
+    | Popover
+    | SessionList
+    | Projects
+    | Errors
+    | Records
+    | Enrichment
+)
+
+NAV_TREE_WIDTHS = NavTree(
+    nav_chars=queries.NAV_CHARS, chip_chars=queries.NAV_CHARS, log_chars=queries.NAV_CHARS
+)
+HEADER_WIDTHS = Header(
+    head_chars=queries.HEADER_CHARS,
+    item_chars=queries.HEADER_ITEM_CHARS,
+    head_items=queries.HEADER_ITEMS,
+    chip_chars=queries.HEADER_CHARS,
+)
+LOG_WIDTHS = Log(log_chars=queries.LOG_CHARS, chip_chars=queries.LOG_CHARS)
+EXPANSION_WIDTHS = Expansion(head_chars=queries.HEADER_CHARS, detail_chars=queries.HEADER_CHARS)
+POPOVER_WIDTHS = Popover(
+    model_chars=queries.MODEL_CHARS,
+    chip_chars=queries.CHIP_CHARS,
+    item_chars=queries.HEADER_ITEM_CHARS,
+    head_items=queries.HEADER_ITEMS,
+)
+LIST_WIDTHS = SessionList(
+    head_chars=queries.LIST_CHARS,
+    item_chars=queries.LIST_ITEM_CHARS,
+    head_items=queries.LIST_ITEMS,
+    tag_chars=queries.TAG_CHARS,
+    kind_chars=queries.TAG_CHARS,
+    head_kinds=queries.LIST_CATEGORIES,
+    head_projects=queries.LIST_PROJECTS,
+)
+PROJECTS_WIDTHS = Projects(
+    recent_days=queries.PAGE_RECENT_DAYS,
+    window_days=queries.PAGE_WINDOW_DAYS,
+    head_chars=queries.LIST_CHARS,
+    projects=PROJECTS.default,
+)
+ERRORS_WIDTHS = Errors(nav_chars=queries.NAV_CHARS, errors=ERRORS.default)
+RECORDS_WIDTHS = Records(preview_chars=queries.RECORD_PREVIEW)
+ENRICHMENT_WIDTHS = Enrichment(
+    description_chars=queries.ENRICHMENT_CHARS,
+    tag_chars=queries.TAG_CHARS,
+    head_chars=queries.HEADER_CHARS,
+)

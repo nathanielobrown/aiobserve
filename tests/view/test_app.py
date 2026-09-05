@@ -24,7 +24,7 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from hyphae.analyze import queries
-from hyphae.view import nodes
+from hyphae.view import bounds, nodes
 from hyphae.view.detail import DETAILS, Spec, Written
 from tests.conftest import (
     DENSE_CALL,
@@ -306,12 +306,13 @@ def test_a_fragment_cites_the_query_that_fetched_it(
     them. That order is the claim — a handler that reordered `request.path_params` would cite
     a line nobody can paste back into `hp query`. `head_chars` is the one binding no URL
     carries, and only `Written.NAMED_FILE` may add it: the file suffix that says how the value
-    is marked up is cut at that width, and every other arm knows its markup without asking.
+    is marked up is cut at the header's width, and every other arm knows its markup without
+    asking. No page footer quotes that binding, so this is where the width is held.
     """
     url = SCENARIOS[spec.route].url
     keyed = path_params(spec.route, url)
     if spec.written is Written.NAMED_FILE:
-        keyed["head_chars"] = str(queries.HEADER_CHARS)
+        keyed["head_chars"] = str(bounds.HEADER_WIDTHS.head_chars)
     bound = " ".join(f"{key}={value}" for key, value in keyed.items())
     expected = f"-- queries/{spec.whole}.sql {bound}"
     assert values(enriched_client.get(url).text, "data-query") == [expected], url

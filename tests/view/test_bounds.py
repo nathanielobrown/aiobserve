@@ -294,6 +294,11 @@ def test_the_pages_run_at_the_production_sizes(client: TestClient) -> None:
     Every other leaf in this file binds fixture-sized values, so without this pin the whole
     section would pass against any size at all — a `page_records` of 5,000 would break the
     bound in production while CI stayed green.
+
+    Where a surface declares its widths (`view/bounds.py`), the number is read off the profile
+    and the profile is pinned to its literals below: the first half says the pages run at the
+    width their surface names, the second says which width that is. Read off the profile alone,
+    the two would be one assertion comparing a number with itself.
     """
     ran = ran_at(client)
     assert ran["view_records"]["page_records"] == {100}
@@ -316,13 +321,19 @@ def test_the_pages_run_at_the_production_sizes(client: TestClient) -> None:
     # A node header cuts every string it carries to a head, and the one fat value its pane
     # previews to a detail — the four kinds that have fields of their own take the same two.
     for header in ("view_turn_header", "view_call_header", "view_tool_header", "view_run_header"):
-        assert ran[header]["head_chars"] == {100}, header
+        assert ran[header]["head_chars"] == {bounds.HEADER_WIDTHS.head_chars}, header
         assert ran[header]["detail_chars"] == {4_000}, header
     # The session header is the widest of the panes: two of its columns are lists that grow
     # with the session, so it cuts the members and caps how many it shows.
-    assert ran["view_session_header"]["head_chars"] == {100}
-    assert ran["view_session_header"]["item_chars"] == {60}
-    assert ran["view_session_header"]["head_items"] == {5}
+    assert ran["view_session_header"]["head_chars"] == {bounds.HEADER_WIDTHS.head_chars}
+    assert ran["view_session_header"]["item_chars"] == {bounds.HEADER_WIDTHS.item_chars}
+    assert ran["view_session_header"]["head_items"] == {bounds.HEADER_WIDTHS.head_items}
+    # And what the header surface declares those three at, plus the width it cuts a
+    # compaction's trigger to where the compaction is the node the pane is about.
+    assert (
+        bounds.Header(head_chars=100, item_chars=60, head_items=5, chip_chars=100)
+        == bounds.HEADER_WIDTHS
+    )
     # How much of a run row's and a compaction row's three columns the row that prints them
     # shows. One parameter at two widths, which is what a single declared default could never
     # be: the runs log gives a chip a log row's width, and the NavTree gives it a row's.
