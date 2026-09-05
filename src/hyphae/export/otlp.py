@@ -186,8 +186,8 @@ class Census:
 
     sessions: int
     spans: int
-    # Compactions shipped: what `live_compactions` holds, since the mapper and the view
-    # both read the extractor's `replayed` flag.
+    # Compactions shipped: what `live_compactions` holds, since the mapper ships
+    # `SessionTrace.live()`.
     compactions: int
 
 

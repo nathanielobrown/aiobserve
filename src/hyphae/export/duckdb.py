@@ -202,14 +202,14 @@ SELECT id AS session_id, row_number() OVER (ORDER BY started_at, id) AS rank FRO
 """
 
 
-def _live_view(table: str, view: str) -> str:
+def _live_view(table: str, model: type, view: str) -> str:
     """The rows of one table that count for the session whose files hold them.
 
     The predicate comes off the row's own model: a table whose model declares `replayed`
     holds a fork's copies and filters them out. Only `agent_runs` declares none — a run is
     described by its own pair of files, so no fork ever holds a copy of one.
     """
-    replayed = any(field.name == "replayed" for field in fields(TABLES[table].model))
+    replayed = any(field.name == "replayed" for field in fields(model))
     where = " WHERE NOT replayed" if replayed else ""
     return f"CREATE OR REPLACE {view} live_{table} AS SELECT * FROM {table}{where};"
 
@@ -307,7 +307,7 @@ def refresh_views(connection: duckdb.DuckDBPyConnection, *, read_only: bool) -> 
         "".join(
             [
                 _first_seen_view(view),
-                *(_live_view(table, view) for table in counted),
+                *(_live_view(table, TABLES[table].model, view) for table in counted),
                 *(_corpus_view(table, view) for table in counted),
                 _rollup_view("session_rollups", "live", view),
                 _rollup_view("corpus_rollups", "corpus", view),
