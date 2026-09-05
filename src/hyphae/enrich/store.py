@@ -613,12 +613,11 @@ class EnrichmentStore:
             f"INSERT OR REPLACE INTO {spec.table} ({columns}) VALUES ({placeholders})",
             [
                 *item.key_values,
-                enrichment.description,
-                # The two closed vocabularies go in as the strings the taxonomy spells;
-                # bound as members, DuckDB would name them itself.
-                str(enrichment.category),
-                str(enrichment.outcome),
-                enrichment.friction,
+                # Field order, both dataclasses, because that is where `PAYLOAD_COLUMNS` gets
+                # its names: a value list spelled by hand could drift from the column list
+                # beside it. The two closed vocabularies are `StrEnum` members, so DuckDB
+                # binds them as the strings the taxonomy spells.
+                *astuple(enrichment),
                 *astuple(stamp),
                 dt.datetime.now(dt.UTC),
             ],

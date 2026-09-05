@@ -366,9 +366,9 @@ def test_a_second_upsert_replaces_the_row(mutable_db: Path) -> None:
         store.upsert(item, enrichment("The first answer."), stamp("hash-1"))
         store.upsert(item, enrichment("The second answer."), stamp("hash-2"))
         # Each payload field landed in its own column, the two closed vocabularies reading
-        # back as the taxonomy's plain strings. Binding them as the `StrEnum` members they
-        # are stores the same bytes, so what this holds is the order: a binding that paired
-        # a value with its neighbour's column fails here and nowhere else.
+        # back as the taxonomy's plain strings: `upsert` binds them as the `StrEnum` members
+        # they are and DuckDB stores those same bytes. So what this holds is the order — a
+        # binding that paired a value with its neighbour's column fails here and nowhere else.
         assert store.connection.execute(
             "SELECT description, input_hash, category, outcome FROM turn_enrichments"
         ).fetchall() == [("The second answer.", "hash-2", "test", "completed")]
