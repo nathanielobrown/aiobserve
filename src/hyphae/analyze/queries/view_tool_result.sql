@@ -2,6 +2,8 @@
 -- store's biggest recorded `result`. NULL means the tool returned nothing, which a call that
 -- returned "" did not; a result the transcript offloaded to a file is NULL here too, and that
 -- file has its own page (`view_offload`) rather than riding in this row.
+-- `$head_chars` is not a width the answer is cut to — the value rides whole — but the bound
+-- on the file suffix beside it, which says what the value is written in.
 SELECT
     t.result AS value,
     -- What the result is written in, where the call says so: the suffix of the file a `Read`

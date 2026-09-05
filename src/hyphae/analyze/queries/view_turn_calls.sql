@@ -6,6 +6,7 @@
 -- `$turn_id` NULL selects this thread's unattributed calls, which is the bucket's own page.
 -- Unattributed is decided by the join and not by `c.turn_id IS NULL`, for the reason
 -- `view_nav_tree_calls` states: a call naming a turn recorded on another thread is this thread's.
+-- `$log_chars` is the width the two model names a call row shows are cut to.
 -- `text` is previewed here and fetched whole one value at a time (`view_call_text`); the
 -- tool rows under a call are their own query (`view_call_tools`), capped the same way.
 --

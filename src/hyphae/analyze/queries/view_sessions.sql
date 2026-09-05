@@ -3,6 +3,9 @@
 -- a reader opening the session will see, resume copies included.
 -- The viewer wraps this SELECT to sort and filter it (`view/store.py`): the file stays the
 -- citable core, and no user-supplied value is ever interpolated into it.
+-- `$item_chars` bounds how much of each agent definition's name a row's list carries, and is
+-- cut in the file rather than around it because nothing filters on that name: the rest of a
+-- row's cuts are composed where the filters are, since those read whole values.
 WITH agent_kinds AS (
     SELECT session_id, list({'name': name, 'runs': runs} ORDER BY runs DESC, name) AS agent_types
     FROM (
