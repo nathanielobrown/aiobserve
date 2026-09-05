@@ -16,7 +16,6 @@ session looks like, not an invented one.
 import duckdb
 from fastapi.testclient import TestClient
 
-from hyphae.analyze import queries
 from hyphae.view import bounds
 from hyphae.view.app import build_app
 from tests.conftest import DENSE_TOOL, FORK_ORIGIN, FORK_ORIGIN_RUN, SPINE
@@ -177,7 +176,7 @@ def test_the_errors_page_and_the_stepper_cite_the_one_query_behind_them(
     """
     line = (
         f"-- queries/view_session_errors.sql session_id={FORK_ORIGIN}"
-        f" nav_chars={queries.NAV_CHARS} errors={bounds.ERRORS.default}"
+        f" nav_chars={bounds.ERRORS_WIDTHS.nav_chars} errors={bounds.ERRORS.default}"
     )
     # The list itself is that one query and nothing else...
     assert fields(client.get(f"/session/{FORK_ORIGIN}/errors").text, "id", "citation") == {

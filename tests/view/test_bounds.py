@@ -316,9 +316,9 @@ def test_the_pages_run_at_the_production_sizes(client: TestClient) -> None:
     # words of a prompt beside the numbers.
     assert ran["view_turn_calls"]["log_chars"] == {bounds.LOG_WIDTHS.log_chars}
     assert ran["view_call_tools"]["log_chars"] == {bounds.LOG_WIDTHS.log_chars}
-    assert ran["view_turn_calls"]["page_calls"] == {queries.LOG_ROWS}
-    assert ran["view_call_tools"]["page_tools"] == {queries.LOG_ROWS}
-    assert queries.LOG_ROWS == 100
+    assert ran["view_turn_calls"]["page_calls"] == {bounds.LOG.default}
+    assert ran["view_call_tools"]["page_tools"] == {bounds.LOG.default}
+    assert bounds.LOG.default == 100
     # A node header cuts every string it carries to a head, and the one fat value its pane
     # previews to a detail — the four kinds that have fields of their own take the same two.
     for header in ("view_turn_header", "view_call_header", "view_tool_header", "view_run_header"):
@@ -431,7 +431,6 @@ def test_every_page_fits_under_the_ceiling_it_is_priced_at() -> None:
     # derived from the row's cost, so a row that grew has to move it rather than eat the slack
     # silently. The two together are what make `bounds.SESSIONS` a measurement — an upper bound
     # alone is satisfied by any smaller page, including one a stale derivation left behind.
-    # It is the only ceiling held from below, for the reason kept beside the constants.
     assert (
         MEASURED_LIST_CHROME + (bounds.SESSIONS.ceiling + 1) * worst_session_row_bytes()
         >= PAGE_BYTES
@@ -455,9 +454,8 @@ def test_every_page_fits_under_the_ceiling_it_is_priced_at() -> None:
     # And no default asks for more than its own ceiling allows, which nothing else checks: a
     # default above the ceiling serves a 400 to a reader who typed no size at all. Read off the
     # module rather than listed, so a size added later cannot dodge the check.
-    declared = {
-        name: value for name, value in vars(bounds).items() if isinstance(value, bounds.Bound)
-    }
+    named = vars(bounds).items()
+    declared = {name: value for name, value in named if isinstance(value, bounds.Bound)}
     for name, size in declared.items():
         assert size.default <= size.ceiling, name
     # ...and those are the sizes this leaf priced above: a new one reds here until its ceiling
@@ -472,17 +470,19 @@ def test_every_page_fits_under_the_ceiling_it_is_priced_at() -> None:
         "PROJECTS",
         "ERRORS",
     }
-    # The same for the bounds that are not sizes a URL carries: how deep a chain opens, how
-    # many turn rows no cursor reaches, how long a value is marked up in its own syntax, and
-    # what one row of the NavTree may weigh. A width is not among them — a width belongs to
-    # the surface that prints it, and the surfaces are pinned above.
-    assert {name for name, value in vars(bounds).items() if isinstance(value, int)} == {
+    # The same for the bounds that are not sizes a URL carries: how deep a chain opens, how many
+    # turn rows no cursor reaches, how long a value is marked up in its own syntax, what one row
+    # of the NavTree may weigh, and the one width no query binds — a crumb's. Public names only:
+    # a width two surfaces share is declared once under a leading underscore, and what a table
+    # cites is the surface that reads it, never the number underneath.
+    assert {name for name, value in named if isinstance(value, int) and name[0] != "_"} == {
         "DEPTH",
         "CURSORLESS_TURNS",
         "INDENT_CHARS",
         "HIGHLIGHT_CHARS",
         "OPENED_RECORD_CHARS",
         "NAV_TREE_ROW_BYTES",
+        "CRUMB_CHARS",
     }
 
 

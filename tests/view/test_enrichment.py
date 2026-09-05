@@ -19,10 +19,10 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from hyphae.analyze import queries
 from hyphae.enrich.items import Level
 from hyphae.enrich.levels import LEVELS
 from hyphae.enrich.taxonomy import TAXONOMY_VERSION
+from hyphae.view import bounds
 from hyphae.view.app import build_app
 from hyphae.view.enrichment import GLYPH, GLYPH_CLASS
 from hyphae.view.store import Page
@@ -114,7 +114,7 @@ def test_the_session_list_shows_what_the_model_said_about_each_session(
         row = fields(listing, "data-session-id", session_id)
         description, category, outcome = said[session_id]
         # ...each described row showing a head of what the pass wrote, and both its tags...
-        assert row["description"] == description[: queries.LIST_CHARS]
+        assert row["description"] == description[: bounds.LIST_WIDTHS.head_chars]
         assert (row["category"], row["outcome"]) == (category, outcome)
         # ...with a space before the first pill. A tag carries a right margin and no left one,
         # so without it the pill's border touches the last word of the description.
@@ -130,11 +130,11 @@ def test_the_session_list_shows_what_the_model_said_about_each_session(
     # prints, so the cut is the ordinary case here rather than the edge. It is marked like
     # every other cut value, which is what the row's link then makes good on — the whole line
     # is on the session's own page, a click from the mark that says there is more of it.
-    sentence = "w" * (queries.LIST_CHARS + 1)
+    sentence = "w" * (bounds.LIST_WIDTHS.head_chars + 1)
     path: Path = enriched_plant(("UPDATE session_enrichments SET description = ?", [sentence]))
     with TestClient(build_app(path)) as planted:
         row = fields(planted.get("/sessions").text, "data-session-id", described[0])
-    assert row["description"] == cut(sentence, queries.LIST_CHARS)
+    assert row["description"] == cut(sentence, bounds.LIST_WIDTHS.head_chars)
 
 
 def test_the_work_cell_counts_the_turn_categories_a_pass_described(
@@ -153,7 +153,7 @@ def test_the_work_cell_counts_the_turn_categories_a_pass_described(
     kinds = enriched_store.execute(
         "SELECT category, count(*) FROM turn_enrichments WHERE session_id = ?"
         " GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT ?",
-        [SPINE, queries.LIST_CATEGORIES],
+        [SPINE, bounds.LIST_WIDTHS.head_kinds],
     ).fetchall()
     assert kinds, "the described corpus no longer describes this session's turns"
     assert row["work"] == ", ".join(f"{name} ×{turns}" for name, turns in kinds)
@@ -201,14 +201,17 @@ def test_every_described_node_carries_its_own_words_on_its_own_page(
     # runs past a thousand, which is the ordinary size of one — the canonical store's longest
     # is 1,731 characters — and puts the separator a reader sees into the assertion.
     rest = {"description": 1_234, "friction": 57}
-    words = {name: "w" * (queries.ENRICHMENT_CHARS + over) for name, over in rest.items()}
+    words = {
+        name: "w" * (bounds.ENRICHMENT_WIDTHS.description_chars + over)
+        for name, over in rest.items()
+    }
     said_long = [words["description"], words["friction"]]
     path: Path = enriched_plant(
         ("UPDATE session_enrichments SET description = ?, friction = ?", said_long),
         ("UPDATE turn_enrichments SET description = ?, friction = ?", said_long),
         ("UPDATE agent_run_enrichments SET description = ?, friction = ?", said_long),
     )
-    marked = cut(words["description"], queries.ENRICHMENT_CHARS)
+    marked = cut(words["description"], bounds.ENRICHMENT_WIDTHS.description_chars)
     with TestClient(build_app(path)) as planted:
         for url, item_id in (
             (f"/session/{SPINE}", SPINE),
@@ -442,7 +445,7 @@ def test_a_nav_tree_row_the_model_named_carries_a_bare_glyph(
     page = enriched_client.get(f"/session/{SPINE}").text
     # The described row is titled with what the pass said, cut to the width of the NavTree...
     assert fields(page, "data-nav-tree", f"turn:{turn_id}")["title"] == cut(
-        described[turn_id][0], queries.NAV_CHARS
+        described[turn_id][0], bounds.NAV_TREE_WIDTHS.nav_chars
     )
     # ...and marked as the model's words, with nothing hanging off the mark.
     assert GLYPH_CLASS in inside(page, "data-nav-tree", f"turn:{turn_id}", "class")
@@ -455,7 +458,7 @@ def test_a_nav_tree_row_the_model_named_carries_a_bare_glyph(
     # that named the whole session rather than one of its turns.
     named = enrichment_of(enriched_store, Level.session, SPINE)
     assert fields(page, "data-nav-tree", f"session:{SPINE}")["title"] == cut(
-        named[SPINE][0], queries.NAV_CHARS
+        named[SPINE][0], bounds.NAV_TREE_WIDTHS.nav_chars
     )
     assert GLYPH_CLASS in inside(page, "data-nav-tree", f"session:{SPINE}", "class")
     assert not inside(page, "data-nav-tree", f"session:{SPINE}", "title")
@@ -479,7 +482,7 @@ def test_a_nav_tree_row_the_model_named_carries_a_bare_glyph(
     )
     page = enriched_client.get(f"/session/{SPINE}/run/{run_id}").text
     assert fields(page, "data-nav-tree", f"run:{run_id}")["title"] == cut(
-        f"[{agent_type}] {ran[run_id][0]}", queries.NAV_CHARS
+        f"[{agent_type}] {ran[run_id][0]}", bounds.NAV_TREE_WIDTHS.nav_chars
     )
     assert GLYPH_CLASS in inside(page, "data-nav-tree", f"run:{run_id}", "class")
     assert not inside(page, "data-nav-tree", f"run:{run_id}", "title")
@@ -511,7 +514,10 @@ def test_a_model_written_description_is_escaped_like_any_other_transcript_text(
     titled = [key for key in values(page, "data-nav-tree") if key.startswith("turn:")]
     assert titled, "the session that carries the fixture turn tree no longer opens one"
     for key in titled:
-        assert fields(page, "data-nav-tree", key)["title"] == injected[: queries.NAV_CHARS]
+        assert (
+            fields(page, "data-nav-tree", key)["title"]
+            == injected[: bounds.NAV_TREE_WIDTHS.nav_chars]
+        )
 
 
 def test_a_run_pages_turns_carry_no_description_of_their_own(

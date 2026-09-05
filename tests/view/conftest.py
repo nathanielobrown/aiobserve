@@ -23,8 +23,9 @@ import pytest
 from fastapi.testclient import TestClient
 from markupsafe import escape
 
-from hyphae.analyze import macros, queries
+from hyphae.analyze import macros
 from hyphae.extract.pricing import MODELS
+from hyphae.view import bounds
 from hyphae.view.app import build_app
 from hyphae.view.components import layout
 from hyphae.view.nodes import BAR_STEPS
@@ -41,8 +42,8 @@ MISSING = "00000000-0000-0000-0000-000000000000"
 # What every list citation says about the display cut, which the viewer composes around the
 # query the same way it composes the paging: re-running the file alone answers whole values.
 CUT = (
-    f"head_chars={queries.LIST_CHARS} item_chars={queries.LIST_ITEM_CHARS}"
-    f" head_items={queries.LIST_ITEMS}"
+    f"head_chars={bounds.LIST_WIDTHS.head_chars} item_chars={bounds.LIST_WIDTHS.item_chars}"
+    f" head_items={bounds.LIST_WIDTHS.head_items}"
 )
 
 

@@ -126,7 +126,7 @@ def test_a_citation_tuple_maps_to_a_working_url(
     assert fields(response.text, "id", "citation") == {
         "view_records": f"-- queries/view_records.sql session_id={session_id} source={source}"
         f" after={line_no - 1} page_records={bounds.RECORDS.default}"
-        f" preview_chars={queries.RECORD_PREVIEW}"
+        f" preview_chars={bounds.RECORDS_WIDTHS.preview_chars}"
     }
 
 
@@ -182,7 +182,7 @@ def test_a_record_row_shows_a_preview_and_the_length_it_was_cut_from(
         "SELECT raw FROM raw_records WHERE session_id = ? AND source = ? AND line_no = ?",
         [RESUME, MAIN, str(RESUME_LONG_RECORD)],
     )
-    assert len(stored) > queries.RECORD_PREVIEW * 10
+    assert len(stored) > bounds.RECORDS_WIDTHS.preview_chars * 10
     page = client.get(
         f"/session/{RESUME}/thread/{MAIN}/records", params={"after": RESUME_LONG_RECORD - 1}
     ).text
@@ -190,7 +190,7 @@ def test_a_record_row_shows_a_preview_and_the_length_it_was_cut_from(
     # Through the same formatter every count on a page goes through. This record is the one
     # recorded value long enough to tell the two spellings apart: 3,054 against 3054.
     assert row["raw_chars"] == f"{len(stored):,}"
-    assert len(row["raw_head"]) <= queries.RECORD_PREVIEW
+    assert len(row["raw_head"]) <= bounds.RECORDS_WIDTHS.preview_chars
     # And the row's five values read as five, not as one long word. Only the line number carries
     # a margin here — `ol.records li` is no flex row (`view/static/pages.css`) — so the spaces
     # between the type, the time, the length and the preview are all that hold them apart.

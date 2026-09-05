@@ -4,10 +4,10 @@ A finding cites the query behind it, so a question lives in a versioned file a r
 name and anyone can re-run — not in a Python string. Two consumers share this library: the
 `hp query` runner and the trace viewer (`plans/trace-viewer/design.md`).
 
-What is here is how a query is declared and every width one binds: the type of each parameter
-name, the character and row counts that bound what a page can ask for, and the readers that
-take a statement apart. The production defaults are `analyze/manifest.py`, and the SQL itself
-is `analyze/queries/`.
+What is here is how a query is declared: the type of each parameter name, the readers that
+take a statement apart, and the few values no statement can say about itself. The production
+defaults are `analyze/manifest.py` and the SQL itself is `analyze/queries/`. A width a page
+binds is not here: it belongs to the surface that prints at it (`view/bounds.py`).
 """
 
 import datetime as dt
@@ -211,115 +211,13 @@ SIGNATURE_CHARS = 120
 # private text, and no run of it may reach a table a report quotes.
 COMMAND_HEAD_CHARS = 60
 
-# The viewer's page sizes that a query binds: each is a parameter's default, declared here
-# and nowhere else, because the payload bound the design states is arithmetic over these
-# numbers, and every character of what a row prints can escape to five bytes.
-# `view/bounds.py` names each of them beside the ceiling a URL may not pass, and
-# the `test_bounds*` leaves assert the arithmetic still fits.
-# How many children one node page's log lists — its api calls, its tool calls, its turns.
-# One size for every kind of child, because one pane holds one log. A hundred because the log
-# is numbered rather than a cursor: a reader who can see how many pages a level has is reading
-# the level, and a level of a hundred rows is one page of it rather than nine.
-LOG_ROWS = 100
-PAGE_RECORDS = 100
-# How many projects the landing page ranks. A corpus grows projects the way it grows sessions,
-# so the page is bound like the list — and a store holding more says how many it left out.
-PAGE_PROJECTS = 100
-# And how many of a session's failed tool calls its errors page lists. Bound the same way and
-# for the same reason: nothing about a session caps how often its tools fail. The busiest
-# session read so far failed 43 calls (`reports/2026_08_07_mycelia_agent_friction.md`), so
-# this is headroom over what the corpus records rather than a number a page has reached.
-PAGE_ERRORS = 100
-
-# The two trailing windows the landing page counts a project in, beside its whole history: a
-# week and a month. Not `WINDOW_DAYS` above, which is what a report's counts are quoted in and
-# four weeks long so a weekly rhythm cannot bias them; these are what a reader scanning for
-# what is running lately means, and the page heads its columns from them.
-PAGE_RECENT_DAYS = 7
-PAGE_WINDOW_DAYS = 30
-
-# How much of an offloaded tool result one chunk of the offload page carries. The only value
-# the viewer serves with no ceiling behind it — `offload_files.content` is whatever a tool
-# wrote, and the canonical store holds one over 50 MB — so the page is a walk, not a fetch.
-CHUNK_CHARS = 50_000
-
-# How much of an agent run's three display columns a chip carries, and of a compaction's
-# trigger. The corpus maxima are 60, 22 and 15 characters, but a maximum is an observation:
-# a page whose size is arithmetic needs the number bound, not noticed.
-CHIP_CHARS = 60
-
-# How much of a model name the popover prints, and the width its per-model token groups are
-# keyed at. Wide enough that nothing our price table names is cut — the longest key is 24
-# characters — because a group keyed on a cut name is a group nothing can price.
-MODEL_CHARS = 60
-
-# What a header shows of each string it carries, of each member of the two lists a session's
-# carries, and how many members of a list it shows before it says how many it left. A header
-# is the part of a page no size a reader types bounds, so these are what the ceiling budgets
-# it: 100 covers the longest title the canonical store holds (81) and 60 a PR url (51), while
-# the lists grow with the session — one has recorded 32 PR links. A run header carries one
-# string of its own, the line the run was spawned with, and takes the same head.
-HEADER_CHARS = 100
-HEADER_ITEM_CHARS = 60
-HEADER_ITEMS = 5
-
-# The same three for one row of the session list, which the viewer composes rather than the
-# query (`view/store.py:SHOWN`): the list's filters read the whole values. 100 covers the longest
-# title the canonical store holds (81) and its longest project path (58); 4 skills of 20 cover
-# the busiest session recorded, whose longest skill name is 18. A skill name is not a PR url,
-# which is why the header's 60 does not carry over — the list multiplies its row by the page.
-LIST_CHARS = 100
-LIST_ITEM_CHARS = 20
-LIST_ITEMS = 4
-
-# How many kinds of work one list row names before it says how many it left: the categories a
-# pass described that session's turns as. Fewer than the lists above, because the taxonomy is
-# closed and small — three names say what a session spent its time on, and a fourth is noise.
-LIST_CATEGORIES = 3
-
-# How many projects the list's filter box suggests, and the longest path it offers. The
-# suggestions grow with the corpus the way the rows do, so the box is bound too. A path is
-# offered whole or left out: a suggestion cut to its head filters to nothing.
-LIST_PROJECTS = 10
-
-# How much of a model-written description or friction line a page shows, and how much of a
-# taxonomy value one tag carries. The taxonomy is closed and its longest member is 9
-# characters, but a page whose size is arithmetic needs the number bound rather than noticed —
-# and a description is only as short as the schema the model answered under asked for.
-ENRICHMENT_CHARS = 200
-TAG_CHARS = 20
-
-# How much of a raw record one browser row shows. Long enough to tell a `user` record from an
-# `assistant` one and to recognise a line already read; short enough that a hundred of them
-# is a page rather than a transcript.
-RECORD_PREVIEW = 160
-
-# How much of a title a NavTree row carries — a turn's, a run's, an api call's. What a row *can*
-# say rather than what fits: the NavTree is draggable (`view/static/nav-tree-width.js`), and at 48 a
-# reader who widened it got more whitespace and no more of the title, because the cut had
-# already happened in SQL. CSS clamps the line to one with an ellipsis, so this is the reach
-# of a drag and not a wrap. It prices every row of the NavTree
-# (`view/bounds.py:NAV_TREE_ROW_BYTES`).
-NAV_CHARS = 110
-
-# How much of a title one crumb of a crumb chain carries. A chain is up to sixteen links laid
-# across one line above the pane (`view/bounds.py:DEPTH`), so a crumb is a place to click and
-# not a place to read: what it owes the reader is which node this is, and the node itself is
-# open underneath. Narrow enough that a chain of long titles still fits the line, wide enough
-# that a path or a prompt says which one. No cut of its own in SQL — a crumb is a node the
-# NavTree already fetched, so this cuts what that width already brought back.
-CRUMB_CHARS = 40
-
-# How much of a string one row of a children log carries — a model name, a tool name. Wider
-# than a NavTree row, which is a line, and far narrower than the pane above it, which is one
-# node read whole: a log is a dozen rows a reader picks the next node out of.
+# How much of a prompt a timeline row carries — `session_timeline` and `run_timeline` cut theirs
+# to it (`analyze/manifest.py`). It is also what the viewer's children log prints a string at,
+# since a log row is one row of a timeline read for the strings rather than the counts
+# (`view/bounds.py:LOG_WIDTHS`). Wider than a NavTree row, which is a line, and far narrower than
+# the pane above it, which is one node read whole: a log is a dozen rows a reader picks the next
+# node out of.
 LOG_CHARS = 300
-
-# How much of the one value a node page is *about* the pane shows before it offers the rest:
-# an api call's answer, a tool call's result, the prompt a turn was given. Far wider than any
-# repeated row, because it is not repeated — one node, one value, and the whole of it is a
-# click away (`view/store.py`'s per-value queries). `?detail=` only goes down.
-DETAIL_CHARS = 4_000
 
 # The keyset cursor before the first row: "the last index already shown", and indexes start
 # at 0, so this is what a page asking for the first one binds.

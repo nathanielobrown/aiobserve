@@ -12,8 +12,8 @@ from pathlib import Path
 import duckdb
 from fastapi.testclient import TestClient
 
-from hyphae.analyze import macros, queries
-from hyphae.view import nodes
+from hyphae.analyze import macros
+from hyphae.view import bounds, nodes
 from hyphae.view.app import build_app
 from hyphae.view.nodes import LEAD_SEPARATOR
 from hyphae.view.text import tool_names
@@ -71,7 +71,7 @@ def test_one_tool_call_is_titled_the_same_way_wherever_it_is_named(
     # The title the derivation composes: the glyph that stands for the tool, then what it was
     # asked. Short enough that the narrowest of the five surfaces still prints it whole.
     titled = "📖 src/hyphae/view/nodes.py"
-    assert len(titled) < queries.CRUMB_CHARS
+    assert len(titled) < bounds.CRUMB_CHARS
     # Its own pane heads it, the NavTree row it stands on carries it, the crumb chain that
     # leads the pane ends on it, and the errors list — which reads a query of its own, over
     # every thread of the session — carries the same string.
@@ -110,26 +110,29 @@ def test_one_tool_call_is_titled_the_same_way_wherever_it_is_named(
     # The glyph is spent out of the width like any other character: it leads the words, so
     # every surface pays two characters for it and cuts the path two characters earlier.
     whole = f"📖 {long_path}"
-    assert fields(pane, "data-body", "tool")["title"] == whole[: queries.HEADER_CHARS] + ELLIPSIS
+    assert (
+        fields(pane, "data-body", "tool")["title"]
+        == whole[: bounds.HEADER_WIDTHS.head_chars] + ELLIPSIS
+    )
     assert (
         fields(pane, "data-crumb", f"tool:{tool_id}")["tool"]
-        == whole[: queries.CRUMB_CHARS] + ELLIPSIS
+        == whole[: bounds.CRUMB_CHARS] + ELLIPSIS
     )
     for shown, where in ((pane, "data-nav-tree"), (listed, "data-error")):
         assert (
             fields(shown, where, f"tool:{tool_id}")["title"]
-            == whole[: queries.NAV_CHARS] + ELLIPSIS
+            == whole[: bounds.NAV_TREE_WIDTHS.nav_chars] + ELLIPSIS
         )
     assert (
         fields(parent, "data-child", f"tool:{tool_id}")["title"]
-        == whole[: queries.LOG_CHARS] + ELLIPSIS
+        == whole[: bounds.LOG_WIDTHS.log_chars] + ELLIPSIS
     )
     # And a path that fits every width reaches every surface whole, extension and all: the
     # pane has the least room of the four widths that cut a whole title and 30 characters of
     # project directory is what decides whether a reader sees the end of the name or a cut
     # that says nothing.
     fits = f"src/hyphae/{'v' * 72}.sql"
-    assert len(f"📖 {fits}") < queries.HEADER_CHARS
+    assert len(f"📖 {fits}") < bounds.HEADER_WIDTHS.head_chars
     snug = plant(
         ("UPDATE sessions SET project_dir = ? WHERE id = ?", [project, session_id]),
         (
@@ -185,12 +188,14 @@ def test_every_registered_tool_the_corpus_records_agrees_across_its_surfaces(
         # The NavTree cuts widest, so its row is the whole title when it carries no ellipsis.
         whole = fields(pane, "data-nav-tree", f"tool:{tool_id}")["title"]
         assert whole.startswith(f"{glyph} ") and not whole.endswith(ELLIPSIS), (name, whole)
-        assert fields(pane, "data-body", "tool")["title"] == cut(whole, queries.HEADER_CHARS)
+        assert fields(pane, "data-body", "tool")["title"] == cut(
+            whole, bounds.HEADER_WIDTHS.head_chars
+        )
         assert fields(pane, "data-crumb", f"tool:{tool_id}")["tool"] == cut(
-            whole, queries.CRUMB_CHARS
+            whole, bounds.CRUMB_CHARS
         )
         assert fields(parent, "data-child", f"tool:{tool_id}")["title"] == cut(
-            whole, queries.LOG_CHARS
+            whole, bounds.LOG_WIDTHS.log_chars
         )
         # A path is the one field read against something outside the tool call: the session's
         # own project directory comes off the front, so the row spends its width on the part
@@ -235,7 +240,7 @@ def test_a_tool_the_registry_does_not_name_keeps_the_title_the_store_composed(
         " FROM live_tool_calls t LEFT JOIN sessions s ON s.id = t.session_id"
         f" WHERE t.name NOT IN ({', '.join('?' * len(known))})"
         ' ORDER BY t.session_id, t.source, t."index"',
-        [queries.HEADER_CHARS] * 3 + known,
+        [bounds.HEADER_WIDTHS.head_chars] * 3 + known,
     ).fetchall()
     reading.close()
     assert unnamed, "the corpus records no call of a tool the registry leaves unnamed"
@@ -253,7 +258,7 @@ def test_a_tool_the_registry_does_not_name_keeps_the_title_the_store_composed(
         page = client.get(f"/session/{session_id}/thread/{source}/tool/{tool_id}").text
         # The tool's own name still leads the row, because no glyph stands in for it.
         assert fields(page, "data-body", "tool")["title"] == cut(
-            f"{name}{LEAD_SEPARATOR}{words}", queries.HEADER_CHARS
+            f"{name}{LEAD_SEPARATOR}{words}", bounds.HEADER_WIDTHS.head_chars
         ), (name, tool_id)
     assert took == {"path", "about", "head"}
 
@@ -394,9 +399,9 @@ def test_an_api_call_that_answered_with_tool_calls_is_named_by_what_it_called(
     )
     said = f"{nodes.SPEECH_MARK} {spoken}"
     page = client.get(f"/session/{spoke}/thread/{spoke_source}/call/{spoke_call}").text
-    assert fields(page, "data-body", "call")["title"] == cut(said, queries.HEADER_CHARS)
+    assert fields(page, "data-body", "call")["title"] == cut(said, bounds.HEADER_WIDTHS.head_chars)
     assert fields(page, "data-nav-tree", f"call:{spoke_call}")["title"] == cut(
-        said, queries.NAV_CHARS
+        said, bounds.NAV_TREE_WIDTHS.nav_chars
     )
 
 
@@ -434,7 +439,7 @@ def test_the_count_of_a_calls_tools_survives_every_width_the_title_is_cut_to(
     # enough to run past every width. Each of those widths is spent on the command less the
     # count, so both ends survive: what the call did first, marked where it was stopped, and
     # how many followed.
-    asked = "w" * (queries.NAV_CHARS * 2)
+    asked = "w" * (bounds.NAV_TREE_WIDTHS.nav_chars * 2)
     described = (
         "UPDATE tool_calls SET name = ?, input = ? WHERE id = ?",
         ["Bash", json.dumps({"command": asked, "description": "Run the long one"}), tool_id],
@@ -442,7 +447,10 @@ def test_the_count_of_a_calls_tools_survives_every_width_the_title_is_cut_to(
     with TestClient(build_app(plant(silent, described))) as planted:
         page = planted.get(url).text
     tally = " +2(Read)"
-    for where, chars in (("data-body", queries.HEADER_CHARS), ("data-nav-tree", queries.NAV_CHARS)):
+    for where, chars in (
+        ("data-body", bounds.HEADER_WIDTHS.head_chars),
+        ("data-nav-tree", bounds.NAV_TREE_WIDTHS.nav_chars),
+    ):
         key = "call" if where == "data-body" else f"call:{call_id}"
         shown = fields(page, where, key)["title"]
         assert shown == f"⚡ {asked}"[: chars - len(tally)] + ELLIPSIS + tally

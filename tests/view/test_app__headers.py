@@ -12,8 +12,8 @@ from pathlib import Path
 import duckdb
 from fastapi.testclient import TestClient
 
-from hyphae.analyze import queries
 from hyphae.view import app as view_app
+from hyphae.view import bounds
 from hyphae.view.app import build_app
 from hyphae.view.detail import DETAILS
 from hyphae.view.pages.node import columns as view_columns
@@ -194,7 +194,7 @@ def test_a_headers_list_marks_a_member_it_cut_and_links_only_a_whole_url(
     for what it is and followed by nothing. Both values are planted and invented: redaction
     flattened the recorded PR links, and no recorded skill has a name near the width.
     """
-    width = queries.HEADER_ITEM_CHARS
+    width = bounds.HEADER_WIDTHS.item_chars
     skill = "planted-skill-" + "s" * width
     fits = "https://example.test/org/repo/pull/1"
     over = f"{fits}?planted={'q' * width}"

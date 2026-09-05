@@ -324,9 +324,15 @@ def node_rows() -> list[Row]:
         ),
         Row(
             "Crumbs",
-            f"{text.count(bounds.DEPTH)} at {text.count(budgets.worst_crumb_bytes())}: "
+            f"{text.count(bounds.DEPTH)} titles cut to {text.count(bounds.CRUMB_CHARS)} "
+            f"characters, at {text.count(budgets.worst_crumb_bytes())}: "
             f"{text.count(budgets.worst_crumbs_bytes())}",
-            ("bounds.DEPTH", "budgets.worst_crumb_bytes", "budgets.worst_crumbs_bytes"),
+            (
+                "bounds.DEPTH",
+                "bounds.CRUMB_CHARS",
+                "budgets.worst_crumb_bytes",
+                "budgets.worst_crumbs_bytes",
+            ),
         ),
         Row(
             "Pager",

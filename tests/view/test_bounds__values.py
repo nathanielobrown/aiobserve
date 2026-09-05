@@ -12,8 +12,7 @@ from pathlib import Path
 import duckdb
 from fastapi.testclient import TestClient
 
-from hyphae.analyze import queries
-from hyphae.view import nodes
+from hyphae.view import bounds, nodes
 from hyphae.view.app import build_app
 from hyphae.view.text.format import ELLIPSIS
 from tests.conftest import (
@@ -128,7 +127,7 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
         [ANCESTOR],
     )
     # Each value is planted well past its own cap, onto the real row a fixture recorded...
-    long = "x" * (queries.DETAIL_CHARS + 5_000)
+    long = "x" * (bounds.DETAIL.default + 5_000)
     path: Path = plant(
         (
             "UPDATE sessions SET title = ?, project_dir = ?, git_branch = ?, version = ?,"
@@ -175,9 +174,9 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     row = fields(listing, "data-session-id", SPINE)
     # Marked as cut, not merely short enough: a row's strings are the ones a page multiplies,
     # so a value that ended at the width and one that was stopped there have to read apart.
-    assert row["title"] == row["project_dir"] == "x" * queries.LIST_CHARS + ELLIPSIS
+    assert row["title"] == row["project_dir"] == "x" * bounds.LIST_WIDTHS.head_chars + ELLIPSIS
     # And each member of the lists beside them, at the narrower width a member takes.
-    assert row["agent_types"].startswith("x" * queries.LIST_ITEM_CHARS + ELLIPSIS)
+    assert row["agent_types"].startswith("x" * bounds.LIST_WIDTHS.item_chars + ELLIPSIS)
     # A path too long for the filter box to suggest whole is left out of it rather than cut:
     # half a path fills the filter in with a value that matches nothing. Bounded by the box
     # still being full — an absence read off an empty list is no absence at all.
@@ -190,7 +189,7 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     titles = re.findall(r'<span data-field="title">(.*?)</span>', tree, flags=re.DOTALL)
     # Cut and marked as cut: every column a title is composed from comes back one character
     # past the width, so a row that fills the line says the value went on.
-    assert max(titles, key=len) == "x" * queries.NAV_CHARS + ELLIPSIS
+    assert max(titles, key=len) == "x" * bounds.NAV_TREE_WIDTHS.nav_chars + ELLIPSIS
     # A children log row is a line of a table, so it takes the next cut up — and every value
     # the plant reached is marked where it was cut, not merely short enough. Per value and not
     # at the maximum: a maximum is satisfied by whichever sibling overflowed furthest, which
@@ -205,7 +204,7 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # (`view/text/tool_names.py:FORMATTERS`), and the glyph is spent out of the width like any
     # character.
     for value in reached:
-        assert len(value) == queries.LOG_CHARS + len(ELLIPSIS), value
+        assert len(value) == bounds.LOG_WIDTHS.log_chars + len(ELLIPSIS), value
         assert value.endswith("x" + ELLIPSIS), value
     # And the pane heads the node it is about at the widest of the three, because nothing on
     # the page repeats it. Every kind, not the session alone: the NavTree built the row the pane
@@ -219,7 +218,7 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
     # Swept over the whole header rather than field by field: which fields a header prints
     # grows with the store, and a list written out here would go on passing while the field
     # added beside it truncated in silence.
-    headed = "x" * queries.HEADER_CHARS + ELLIPSIS
+    headed = "x" * bounds.HEADER_WIDTHS.head_chars + ELLIPSIS
     for shown, kind in (
         (session, "session"),
         (turn, "turn"),
@@ -249,20 +248,20 @@ def test_a_long_value_is_cut_before_it_reaches_a_page_or_a_fragment(
         assert set(filled.values()) == cut_at, (kind, filled)
     # A pane reads one node, so its strings take a header's cut — and the one value the node
     # is about takes the widest of the four, with the rest of it offered as its own fetch.
-    assert fields(turn, "data-detail", "prompt")["prompt"] == "x" * queries.DETAIL_CHARS + ELLIPSIS
+    assert fields(turn, "data-detail", "prompt")["prompt"] == "x" * bounds.DETAIL.default + ELLIPSIS
     assert inside(turn, "data-detail", "prompt", "data-whole") == ["prompt"]
     # A slash turn shows the same two widths on one page: the command it ran is a word the
     # pane leads with, cut to a header's width, and what followed it is a second value of the
     # turn, cut to a pane's and offering the rest of itself like the prompt does.
     assert fields(slash, "data-command", command_id)["command_name"] == headed
     arguments = fields(slash, "data-detail", "command_args")
-    assert arguments["command_args"] == "x" * queries.DETAIL_CHARS + ELLIPSIS
+    assert arguments["command_args"] == "x" * bounds.DETAIL.default + ELLIPSIS
     assert inside(slash, "data-detail", "command_args", "data-whole") == ["command_args"]
     brief = fields(run, "data-detail", "brief")["brief"]
-    assert brief == "x" * queries.DETAIL_CHARS + ELLIPSIS
-    assert fields(call, "data-detail", "text")["text"] == "x" * queries.DETAIL_CHARS + ELLIPSIS
+    assert brief == "x" * bounds.DETAIL.default + ELLIPSIS
+    assert fields(call, "data-detail", "text")["text"] == "x" * bounds.DETAIL.default + ELLIPSIS
     # A detail the page marks up is cut the same way and says so the same way, which no other
     # assertion here reaches: the mark lands inside the highlighted block, where it is one
     # more character for the lexer to make of what it will. Read back through the markup,
     # because a value that came back marked up is only cut if a reader still sees the cut.
-    assert plain(block(ran, "command")) == "x" * queries.DETAIL_CHARS + ELLIPSIS
+    assert plain(block(ran, "command")) == "x" * bounds.DETAIL.default + ELLIPSIS

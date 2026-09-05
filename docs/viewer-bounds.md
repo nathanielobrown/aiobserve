@@ -84,7 +84,7 @@ The node page is weighed against a budget of its own rather than the 500,000 the
 | NavTree | 3,217 rows at 1,703: 5,478,551 |
 | Children log | 100 rows at 6,165: 616,500 |
 | Previewed values | 3 rendered at 120,550: 361,650 |
-| Crumbs | 16 at 556: 8,896 |
+| Crumbs | 16 titles cut to 40 characters, at 556: 8,896 |
 | Pager | 565 |
 | Chrome | 18,100 |
 | Spare | 15,738 |

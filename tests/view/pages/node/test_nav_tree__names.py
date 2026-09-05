@@ -14,7 +14,7 @@ from collections.abc import Sequence
 import duckdb
 from fastapi.testclient import TestClient
 
-from hyphae.analyze import queries
+from hyphae.view import bounds
 from hyphae.view.app import build_app
 from hyphae.view.nodes import LEAD_SEPARATOR, Kind
 from hyphae.view.store import Page, open_store, page_rows
@@ -154,10 +154,12 @@ def titled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, tuple
         # with no name beside it — the glyph is what a reader picks the call out of a tree by.
         # Any other tool leads with its name, and after it the title that tells two `Read`
         # rows apart.
-        if (named := _named(name, given, project, addressed, queries.NAV_CHARS)) is not None:
+        if (
+            named := _named(name, given, project, addressed, bounds.NAV_TREE_WIDTHS.nav_chars)
+        ) is not None:
             said[f"{Kind.TOOL}:{tool_id}"] = named
             continue
-        titled = _shaped(given, project, queries.NAV_CHARS)
+        titled = _shaped(given, project, bounds.NAV_TREE_WIDTHS.nav_chars)
         said[f"{Kind.TOOL}:{tool_id}"] = f"{name}{LEAD_SEPARATOR}{titled}" if titled else name
     for call_id, spoken, model, tools, given, project, addressed in store.execute(
         # The tool calls a call went on to make, in the order it made them: their names, and
@@ -189,8 +191,12 @@ def titled(store: duckdb.DuckDBPyConnection, session_id: str) -> dict[str, tuple
             # tool's own rule under its glyph, else its name leading the shape of its input.
             # One derivation for both rows is the point — a reader following a call into the
             # tool it called must not meet a different name at the bottom.
-            if (named := _named(tools[0], given, project, addressed, queries.NAV_CHARS)) is None:
-                asked = _shaped(given, project, queries.NAV_CHARS)
+            if (
+                named := _named(
+                    tools[0], given, project, addressed, bounds.NAV_TREE_WIDTHS.nav_chars
+                )
+            ) is None:
+                asked = _shaped(given, project, bounds.NAV_TREE_WIDTHS.nav_chars)
                 named = f"{tools[0]}{LEAD_SEPARATOR}{asked}" if asked else tools[0]
             said[f"{Kind.CALL}:{call_id}"] = named
             kept[f"{Kind.CALL}:{call_id}"] = _tallied(tools[1:])
@@ -235,7 +241,7 @@ def test_every_row_is_named_from_the_column_its_kind_is_named_by(
     # Composed at a NavTree row's width the way the surfaces compose it: the count of an api
     # call's tool calls is taken out of the width first, so the row is cut around it.
     said = {
-        (str(at), key): (cut(head, queries.NAV_CHARS - len(kept)) + kept).strip()
+        (str(at), key): (cut(head, bounds.NAV_TREE_WIDTHS.nav_chars - len(kept)) + kept).strip()
         for (at,) in store.execute("SELECT id FROM sessions").fetchall()
         for key, (head, kept) in titled(store, str(at)).items()
     }
@@ -327,7 +333,7 @@ def test_an_address_names_a_run_of_the_sending_session_and_no_other(
             session_id=str(session_id),
             source=str(source),
             tool_call_id=str(tool_id),
-            head_chars=queries.HEADER_CHARS,
-            detail_chars=queries.DETAIL_CHARS,
+            head_chars=bounds.HEADER_WIDTHS.head_chars,
+            detail_chars=bounds.DETAIL.default,
         )
     assert len(header) == 1

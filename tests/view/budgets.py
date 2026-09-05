@@ -486,9 +486,9 @@ def worst_crumb_bytes() -> int:
     knobs its link carries once.
 
     A crumb's own width and not a row's: a chain is many nodes on one line and cuts narrower
-    than anything else that names one (`analyze/queries.py:CRUMB_CHARS`).
+    than anything else that names one (`view/bounds.py:CRUMB_CHARS`).
     """
-    return MEASURED_CRUMB_MARKUP + queries.CRUMB_CHARS * ESCAPED_CHAR_BYTES + worst_knob_bytes()
+    return MEASURED_CRUMB_MARKUP + bounds.CRUMB_CHARS * ESCAPED_CHAR_BYTES + worst_knob_bytes()
 
 
 def worst_stored_detail_bytes() -> int:

@@ -18,7 +18,6 @@ from typing import NamedTuple
 
 from markupsafe import Markup
 
-from hyphae.analyze import queries
 from hyphae.view import bounds
 from hyphae.view.store import Row
 from hyphae.view.text import inline_markdown
@@ -462,12 +461,12 @@ class Node:
         could show: a chain is many nodes on one line, and the node the chain ends at is open
         underneath it. Cut here rather than in SQL — the query behind a crumb is the NavTree's,
         which fetched a row's width, and a second query for a narrower copy of the same string
-        would be a page cost paid for nothing (`analyze/queries.py:CRUMB_CHARS`).
+        would be a page cost paid for nothing (`view/bounds.py:CRUMB_CHARS`).
         """
         # Cut to a crumb's width against a NavTree row's cap, because the row's query is where
         # the words came from: what stopped them is that cut, not the narrower one here.
         return self._at(
-            queries.CRUMB_CHARS,
+            bounds.CRUMB_CHARS,
             self.lead,
             self.words,
             links=False,

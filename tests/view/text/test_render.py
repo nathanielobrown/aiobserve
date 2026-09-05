@@ -13,7 +13,7 @@ every pin below is taken twice.
 
 from markupsafe import escape
 
-from hyphae.analyze import queries
+from hyphae.view import bounds
 from hyphae.view.text import inline_markdown, render
 from hyphae.view.text.format import ELLIPSIS
 from tests.view.conftest import plain
@@ -269,12 +269,15 @@ def test_a_title_the_query_cut_is_marked_however_short_its_markup_renders() -> N
     saying the other 169 were dropped.
     """
     written = "**ab** " * 40
-    stored = written[: queries.NAV_CHARS + 1]
+    stored = written[: bounds.NAV_TREE_WIDTHS.nav_chars + 1]
     shown = inline_markdown.cut(
-        stored, queries.NAV_CHARS, links=False, source_cap=queries.NAV_CHARS
+        stored,
+        bounds.NAV_TREE_WIDTHS.nav_chars,
+        links=False,
+        source_cap=bounds.NAV_TREE_WIDTHS.nav_chars,
     )
     # The row is a third of its own width and still says the session wrote more.
-    assert len(plain(shown)) < queries.NAV_CHARS
+    assert len(plain(shown)) < bounds.NAV_TREE_WIDTHS.nav_chars
     assert plain(shown).endswith(ELLIPSIS)
 
     # And the other side of the rule: a line the query did not cut carries no mark, however
@@ -282,9 +285,9 @@ def test_a_title_the_query_cut_is_marked_however_short_its_markup_renders() -> N
     # behind it is a NavTree row's, so marking on raw length alone would stop a title here
     # that nothing stopped.
     complete = "**bold** `code` *and* `more` and **more**"
-    assert len(complete) > queries.CRUMB_CHARS
+    assert len(complete) > bounds.CRUMB_CHARS
     crumb = inline_markdown.cut(
-        complete, queries.CRUMB_CHARS, links=False, source_cap=queries.NAV_CHARS
+        complete, bounds.CRUMB_CHARS, links=False, source_cap=bounds.NAV_TREE_WIDTHS.nav_chars
     )
     assert plain(crumb) == "bold code and more and more"
 

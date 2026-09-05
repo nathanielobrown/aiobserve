@@ -33,7 +33,7 @@ def test_a_filled_read_binds_what_the_route_used_to_spell_by_hand() -> None:
         "session_id": SPINE,
         "source": MAIN,
         "turn_id": SLASH_TURN,
-        "head_chars": queries.HEADER_CHARS,
+        "head_chars": bounds.HEADER_WIDTHS.head_chars,
         "detail_chars": bounds.DETAIL.default,
     }
     filled = bound(
