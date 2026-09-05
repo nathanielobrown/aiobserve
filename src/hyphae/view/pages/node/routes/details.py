@@ -101,11 +101,18 @@ def serving(spec: Spec) -> Callable[[Request, ViewerDep, Db], Response]:
     return serve
 
 
-for spec in DETAILS:
-    # The public URLs are the registry's own, one route each — not one route under a
-    # `/fragment/{detail}` segment, which would collide with the popover and expansion
-    # fragments and move the unknown-name 404 out of the router and into the handler.
-    router.add_api_route(spec.route, serving(spec), methods=["GET"], name=spec.whole)
+def register(on: APIRouter) -> None:
+    """Every Detail the registry declares, as a route of its own on `on`.
+
+    The public URLs are the registry's own, one route each — not one route under a
+    `/fragment/{detail}` segment, which would collide with the popover and expansion
+    fragments and move the unknown-name 404 out of the router and into the handler.
+    """
+    for spec in DETAILS:
+        on.add_api_route(spec.route, serving(spec), methods=["GET"], name=spec.whole.value)
+
+
+register(router)
 
 
 @router.get("/fragment/record/session/{session_id}/thread/{source}/line/{line_no}")
