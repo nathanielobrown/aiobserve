@@ -21,9 +21,14 @@ from hyphae.enrich.levels import instructions
 from hyphae.extract.pricing import MODELS, PER_MILLION
 
 MODEL = "claude-haiku-4-5-20251001"
+# The other model `--model` is likely to name. Worth quoting alongside the default because its
+# input rate is not 1.00: against Haiku alone, an `estimate` that divided by the input rate
+# instead of multiplying by it would quote the same dollars and no assertion could tell.
+PRICIER_MODEL = "claude-sonnet-4-5-20250929"
 
 
-def test_an_estimate_is_multiplication_a_reader_can_redo() -> None:
+@pytest.mark.parametrize("model", [MODEL, PRICIER_MODEL])
+def test_an_estimate_is_multiplication_a_reader_can_redo(model: str) -> None:
     """The quoted price is the rendered characters, the instructions, the scaffold, and rates."""
     # If a run would send two prompts — one turn and one session, of known length...
     prompts = [Prompt(Level.turn, "x" * 1_000), Prompt(Level.session, "y" * 3_000)]
@@ -35,9 +40,9 @@ def test_an_estimate_is_multiplication_a_reader_can_redo() -> None:
     # here on top of the characters above counts nothing twice...
     input_tokens = int(characters / CHARS_PER_TOKEN) + 2 * TRANSPORT_TOKENS
     output_tokens = 2 * OUTPUT_TOKENS
-    spec = MODELS[MODEL]
+    spec = MODELS[model]
     full = (input_tokens * spec.input + output_tokens * spec.output) / PER_MILLION
-    quote = estimate(prompts, MODEL)
+    quote = estimate(prompts, model)
     # ...the token counts are exact — the dollars are lifted here and checked below, because
     # float arithmetic is the one thing a whole-object compare cannot state...
     assert quote == Estimate(
