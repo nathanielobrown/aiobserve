@@ -103,6 +103,17 @@ def test_missing_configuration_refuses_before_anything_is_read(
     """A run with no endpoint configured refuses at command start, naming the variable."""
     # If nothing says where to ship — neither the environment nor a `.env`...
     monkeypatch.setattr(cli, "load_dotenv", lambda: None)
+    # ...and every store the command opens is recorded, so "before the store is opened" is an
+    # assertion rather than a code reading: a refusal after the open would still leave the
+    # ledger table absent, so that check alone cannot tell the two orderings apart.
+    opened: list[bool] = []
+    opener = cli.open_trace_store
+
+    def recording(path: Path, *, read_only: bool, wait: float) -> Any:
+        opened.append(read_only)
+        return opener(path, read_only=read_only, wait=wait)
+
+    monkeypatch.setattr(cli, "open_trace_store", recording)
     for absent in ("", "   "):
         monkeypatch.setenv(ENDPOINT_ENV, absent)
         with pytest.raises(SystemExit, match=ENDPOINT_ENV):
@@ -110,9 +121,10 @@ def test_missing_configuration_refuses_before_anything_is_read(
     monkeypatch.delenv(ENDPOINT_ENV)
     with pytest.raises(SystemExit, match=ENDPOINT_ENV):
         cli.main("export-otlp", MYCELIA, "--db", str(store_path))
-    # ...then it refuses before it opens the store: no request went out, and the store came
-    # away without even the ledger table a first export creates.
+    # ...then it refuses before it opens the store: no request went out, the store was never
+    # opened at all, and it came away without even the ledger table a first export creates.
     assert receiver.bodies == []
+    assert opened == []
     with open_trace_store(store_path, read_only=True, wait=NO_WAIT) as connection:
         assert connection.execute(
             "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'otlp_delivery'"
