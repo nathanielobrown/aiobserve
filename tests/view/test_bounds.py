@@ -296,14 +296,13 @@ def test_the_pages_run_at_the_production_sizes(client: TestClient) -> None:
     bound in production while CI stayed green.
 
     Where a surface declares its widths (`view/bounds.py`), the number is read off the profile
-    and the profile is pinned to its literals below: the first half says the pages run at the
-    width their surface names, the second says which width that is. Read off the profile alone,
-    the two would be one assertion comparing a number with itself.
+    and the profile is pinned to its literals by the leaf below: this half says the pages run at
+    the width their surface names, that half says which width that is. Read off the profile
+    alone, the two would be one assertion comparing a number with itself.
     """
     ran = ran_at(client)
     assert ran["view_records"]["page_records"] == {100}
     assert ran["view_records"]["preview_chars"] == {bounds.RECORDS_WIDTHS.preview_chars}
-    assert bounds.Records(preview_chars=160) == bounds.RECORDS_WIDTHS
     assert ran["view_offload"]["chunk_chars"] == {50_000}
     # How much of a title a row of the NavTree shows. Wide enough that a draggable tree has
     # something to show when a reader widens it — the cut is what a row can say, and CSS
@@ -329,20 +328,11 @@ def test_the_pages_run_at_the_production_sizes(client: TestClient) -> None:
     assert ran["view_session_header"]["head_chars"] == {bounds.HEADER_WIDTHS.head_chars}
     assert ran["view_session_header"]["item_chars"] == {bounds.HEADER_WIDTHS.item_chars}
     assert ran["view_session_header"]["head_items"] == {bounds.HEADER_WIDTHS.head_items}
-    # And what the header surface declares those three at, plus the width it cuts a
-    # compaction's trigger to where the compaction is the node the pane is about.
-    assert (
-        bounds.Header(head_chars=100, item_chars=60, head_items=5, chip_chars=100)
-        == bounds.HEADER_WIDTHS
-    )
     # How much of a run row's and a compaction row's three columns the row that prints them
     # shows. One parameter at two widths, which is what a single declared default could never
     # be: the runs log gives a chip a log row's width, and the NavTree gives it a row's.
     assert ran["view_runs"]["chip_chars"] == {bounds.LOG_WIDTHS.chip_chars}
     assert ran["view_compactions"]["chip_chars"] == {bounds.NAV_TREE_WIDTHS.chip_chars}
-    # And what those two surfaces declare.
-    assert bounds.NavTree(nav_chars=110, chip_chars=110, log_chars=110) == bounds.NAV_TREE_WIDTHS
-    assert bounds.Log(log_chars=300, chip_chars=300) == bounds.LOG_WIDTHS
     # A thread's timeline is the one query two surfaces read — the NavTree places the thread's
     # buckets from it at a row's width, the pane's children log lists the same turns at a log's
     # — and the footer keys a citation by query name, so a page quotes whichever ran last. That
@@ -351,42 +341,15 @@ def test_the_pages_run_at_the_production_sizes(client: TestClient) -> None:
     # The list's rows drop the agent types a session spawned, but the query behind them still
     # gathers the names, so a member is cut where the list cuts a skill name.
     assert ran["view_sessions"]["item_chars"] == {bounds.LIST_WIDTHS.item_chars}
-    # And what the list surface declares: the row, the two lists a described row adds, the box.
-    assert (
-        bounds.SessionList(
-            head_chars=100,
-            item_chars=20,
-            head_items=4,
-            tag_chars=20,
-            kind_chars=20,
-            head_kinds=3,
-            head_projects=10,
-        )
-        == bounds.LIST_WIDTHS
-    )
     # And the landing page, whose row shows a path at its own head and links by the whole one.
     # The two windows it counts a project in are not sizes, and `tests/view/pages/projects/`
     # pins those against what the page cites.
     assert ran["view_project_rollups"]["head_chars"] == {bounds.PROJECTS_WIDTHS.head_chars}
     assert ran["view_project_rollups"]["projects"] == {bounds.PROJECTS_WIDTHS.projects}
-    assert (
-        bounds.Projects(recent_days=7, window_days=30, head_chars=100, projects=100)
-        == bounds.PROJECTS_WIDTHS
-    )
     # And the errors list, bound the same way — a session can fail arbitrarily many calls —
     # and titled at a NavTree row's width, because each of its rows leads to a node.
     assert ran["view_session_errors"]["nav_chars"] == {bounds.ERRORS_WIDTHS.nav_chars}
     assert ran["view_session_errors"]["errors"] == {bounds.ERRORS_WIDTHS.errors}
-    assert bounds.Errors(nav_chars=110, errors=100) == bounds.ERRORS_WIDTHS
-    # The enrichment block a node page fetches is the one surface no footer quotes — a fragment
-    # carries none — so its widths are pinned on the profile alone. The taxonomy is closed and
-    # its longest member is nine characters, so the tag cut bounds a hand-edited row.
-    assert (
-        bounds.Enrichment(
-            description_chars=200, tag_chars=20, head_chars=bounds.HEADER_WIDTHS.head_chars
-        )
-        == bounds.ENRICHMENT_WIDTHS
-    )
 
 
 def test_no_viewer_query_declares_a_default() -> None:
