@@ -94,6 +94,10 @@ class ConfigurationError(Exception):
     """The environment does not say where to ship. Raised before anything is read."""
 
 
+class BackendMismatchError(Exception):
+    """A send was handed the ledger of another backend, so it would record the wrong name."""
+
+
 class DeliveryError(Exception):
     """A batch never landed: the backend refused it, or stopped answering."""
 
@@ -312,6 +316,12 @@ class OtlpExporter:
         sleep: Callable[[float], None] = time.sleep,
         timeout: float = DEFAULT_TIMEOUT,
     ) -> None:
+        # One name, spelled twice: recording under a backend this run never shipped to would
+        # leave the real one permanently undelivered, and the store would say otherwise.
+        if ledger.backend != backend.name:
+            raise BackendMismatchError(
+                f"a send to {backend.name} was handed the ledger of {ledger.backend}"
+            )
         self.backend = backend
         self.ledger = ledger
         # None routes each session to a service named for its project directory.

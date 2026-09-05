@@ -28,6 +28,7 @@ from hyphae.export.otlp_delivery import (
     DEFAULT_RATE,
     GENERIC,
     Backend,
+    BackendMismatchError,
     ConfigurationError,
     DeliveryError,
     DeliveryLedger,
@@ -243,6 +244,26 @@ def test_delivery_is_recorded_per_backend(
         (SECOND, "generic"),
         (SECOND, "second"),
     ]
+
+
+def test_a_send_refuses_a_ledger_that_names_another_backend(
+    store: duckdb.DuckDBPyConnection, receiver: Receiver
+) -> None:
+    """An exporter records under the backend it ships to, or it refuses to ship at all."""
+    # If a send to one backend is handed the ledger of another — the crossed wiring two
+    # separate names make possible, and the reason they are checked against each other...
+    with pytest.raises(BackendMismatchError, match="second"):
+        OtlpExporter(
+            Backend(name=GENERIC, endpoint=receiver.url),
+            DeliveryLedger(store, backend="second"),
+        )
+    # ...then it crashes where it was built, before a span leaves and before it so much as
+    # creates the ledger table: a run recording under a backend it never shipped to would
+    # leave the real one undelivered for ever, and the store's own rows would say otherwise.
+    assert receiver.bodies == []
+    assert store.execute(
+        "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'otlp_delivery'"
+    ).fetchone() == (0,)
 
 
 def test_a_server_error_crashes_and_the_next_run_re_sends(

@@ -28,12 +28,13 @@ from hyphae.enrich.levels import ROUND_ORDER
 from hyphae.enrich.stamp import Versions
 from hyphae.enrich.store import EnrichmentStore
 from hyphae.export.duckdb import CLI_WAIT, DuckDbExporter, open_trace_store
-from hyphae.export.otlp import DEFAULT_MAX_CHARS, TextPolicy
+from hyphae.export.otlp import DEFAULT_MAX_CHARS, Census, TextPolicy
 from hyphae.export.otlp_delivery import (
     BACKEND_NAMES,
     DEFAULT_RATE,
     ENDPOINT_ENV,
     GENERIC,
+    Backend,
     ConfigurationError,
     DeliveryLedger,
     OtlpCensus,
@@ -302,47 +303,56 @@ def _export_otlp(args: argparse.Namespace) -> None:
     """Ship every session of a project that this backend has not already confirmed."""
     load_dotenv()
     text = TextPolicy(include=args.include_text, max_chars=args.max_chars)
+    # Resolved before the store is opened: a run with nowhere to ship refuses now rather than
+    # after reading a corpus. A dry run resolves nothing, because counting what a send would
+    # ship is what an operator does *before* they have a key.
+    backend = None if args.dry_run else _backend(args.backend)
     # A project the store holds nothing under is a mistyped argument, whichever half of the
     # command reads it: worth a line an operator can act on rather than a traceback.
     try:
-        if args.dry_run:
-            _census_otlp(args, text)
-            return
-        # Before the store is opened: a run with nowhere to ship refuses now rather than after
-        # reading a corpus.
-        try:
-            backend = named_backend(args.backend, os.environ)
-        except ConfigurationError as error:
-            raise SystemExit(str(error)) from error
-        # One connection for both halves — DuckDB admits a single writer, and the exporter
-        # needs to write its ledger into the store the source is reading.
-        with (
-            open_trace_store(args.db, read_only=False, wait=CLI_WAIT) as connection,
-            OtlpExporter(
+        # One connection for both halves — DuckDB admits a single writer, and a send has to
+        # write its ledger into the store the source is reading. A dry run writes nothing, so
+        # it opens read-only and never takes that lock.
+        with open_trace_store(args.db, read_only=args.dry_run, wait=CLI_WAIT) as connection:
+            ledger = DeliveryLedger(connection, backend=args.backend)
+            if backend is None:
+                counting = OtlpCensus(ledger, text=text)
+                counted = refresh(
+                    args.project, extractor=StoreSource(connection), exporter=counting
+                )
+                print(_census_line(counting.counts, args.backend, len(counted.skipped)))
+                return
+            with OtlpExporter(
                 backend,
-                DeliveryLedger(connection, backend=backend.name),
+                ledger,
                 service_name=args.service_name,
                 text=text,
                 rate=args.rate,
-            ) as exporter,
-        ):
-            result = refresh(args.project, extractor=StoreSource(connection), exporter=exporter)
+            ) as exporter:
+                result = refresh(args.project, extractor=StoreSource(connection), exporter=exporter)
     except UnknownProjectError as error:
         raise SystemExit(str(error)) from error
     print(f"{len(result.extracted)} session(s) exported, {len(result.skipped)} unchanged")
 
 
-def _census_otlp(args: argparse.Namespace, text: TextPolicy) -> None:
-    """Say what a send would ship, without a backend, a key, or the store's write lock."""
-    with open_trace_store(args.db, read_only=True, wait=CLI_WAIT) as connection:
-        counting = OtlpCensus(DeliveryLedger(connection, backend=args.backend), text=text)
-        refresh(args.project, extractor=StoreSource(connection), exporter=counting)
-    counts = counting.counts
-    # The compaction count is broken out because a compaction is where a session's account
-    # of itself gets lossy, so how many ship is worth seeing before an hour of sending.
-    print(
-        f"{counts.sessions} session(s) and {counts.spans} span(s) would ship, "
-        f"{counts.compactions} of them compactions — nothing sent"
+def _backend(name: str) -> Backend:
+    """Where `--backend` ships, or a line an operator can act on instead of a traceback."""
+    try:
+        return named_backend(name, os.environ)
+    except ConfigurationError as error:
+        raise SystemExit(str(error)) from error
+
+
+def _census_line(counts: Census, backend: str, skipped: int) -> str:
+    """What a dry run prints: what the next send to this backend ships, and what it skips.
+
+    The compaction count is broken out because a compaction is where a session's account of
+    itself gets lossy, and the unchanged count because "6 would ship" with nothing beside it
+    reads like a shrunken corpus rather than a corpus already delivered.
+    """
+    return (
+        f"{counts.sessions} session(s) and {counts.spans} span(s) would ship to {backend}, "
+        f"{counts.compactions} of them compactions; {skipped} unchanged — nothing sent"
     )
 
 
