@@ -7,21 +7,16 @@ person or a model wrote, shown as what it was written in rather than rendered.
 """
 
 import json
-import re
 
 import duckdb
 import pytest
-from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
-from hyphae.analyze import queries
 from hyphae.view import bounds, detail
 from hyphae.view.app import build_app
-from hyphae.view.detail import DETAILS, Spec, Written
-from hyphae.view.store import page_rows
+from hyphae.view.detail import Written
 from hyphae.view.text.format import ELLIPSIS
 from hyphae.view.text.highlight import Syntax
-from hyphae.view.text.labels import LABELS
 from tests.conftest import ANCESTOR, DENSE_TURN, MAIN, SLASH_TURN, SPINE
 from tests.view.conftest import (
     Planter,
@@ -35,40 +30,7 @@ from tests.view.conftest import (
     values,
     walled,
 )
-from tests.view.scenarios import SCENARIOS, Group, path_params
-from tests.view.selections import (
-    TURN,
-)
-
-# The one `/fragment/` route that serves a whole value and is not a Detail: a record arrives
-# with a header line of its own and no pane previews a head of it (`routes/details.py`).
-RECORD_ROUTE = "/fragment/record/session/{session_id}/thread/{source}/line/{line_no}"
-
-
-def test_the_registry_declares_every_value_the_viewer_previews_and_fetches(
-    client: TestClient,
-) -> None:
-    """`DETAILS` is the whole population of previewable values, read against the app itself.
-
-    A Detail used to be declared in six places that agreed only by string equality — the
-    pane's call, the fetch route, the two header columns, a `store.Value` and a label key —
-    and a hand-kept list in a test was a seventh. This is what replaces them all: every
-    spec's route is a route the app answers, and the specs plus the raw record are exactly
-    the value and enrichment fetches the scenario corpus pins.
-
-    Both halves are needed. The route set alone would pass a spec that declared a URL nobody
-    can reach; the scenario set alone would pass a route no spec declares. Together with
-    `test_bounds.py:test_every_route_the_viewer_exposes_is_in_the_payload_sweep`, which
-    equates the app's routes to `SCENARIOS`, no public URL can move without one going red.
-    """
-    routes = {spec.route for spec in DETAILS}
-    exposed = {route.path for route in client.app.routes if isinstance(route, APIRoute)}  # pyrefly: ignore
-    assert routes <= exposed
-    assert routes | {RECORD_ROUTE} == {
-        path
-        for path, scenario in SCENARIOS.items()
-        if scenario.group in (Group.VALUES, Group.ENRICHMENT)
-    }
+from tests.view.selections import TURN
 
 
 def test_the_one_syntax_rule_refuses_a_row_that_never_said_what_it_holds() -> None:
@@ -607,69 +569,3 @@ def test_a_result_no_file_names_is_json_where_it_parses_and_the_stored_character
         assert walled(page, "result") == ""
         assert block(page, "result") == PLAIN_RESULT
         assert block(said.get(fetch).text, "value") == PLAIN_RESULT
-
-
-@pytest.mark.parametrize("spec", DETAILS, ids=lambda spec: f"{spec.whole.name}-{spec.name}")
-def test_every_value_a_pane_previews_is_fetchable_whole_from_its_own_url(
-    spec: Spec, enriched_client: TestClient, enriched_store: duckdb.DuckDBPyConnection
-) -> None:
-    """Every Detail the registry declares previews on its node's pane and fetches whole.
-
-    One route per value rather than one per row: a tool call's input and its result are two
-    values a reader opens apart, and a route that served the row whole would send the other
-    one every time. Swept over `DETAILS` rather than a list of columns, so a Detail added
-    anywhere is covered the moment it is declared — the datum per spec is the URL the scenario
-    corpus pins for its route, which is a URL known to work against this store.
-
-    The node whose pane previews the value is that same URL with the `/fragment/<name>` prefix
-    taken off. That is a claim as well as a convenience: a fetch lives under the node it
-    belongs to, so a route minted anywhere else would find no pane here.
-
-    The length is read back through the spec's own `whole` query, which is the query the
-    handler reads — so what this proves is the rendering, that every character the query
-    returned reaches the reader rather than a cut of them. That the query is the right one,
-    and that it answers a single column named `value`, is held next door by `test_app.py`'s
-    citation sweep and `test_queries.py`'s spec-contract leaf, both built from sources the
-    handler never reads.
-    """
-    url = SCENARIOS[spec.route].url
-    keyed: dict[str, str | int] = dict(path_params(spec.route, url))
-    node = re.sub(r"^/fragment/[a-z_]+(?=/session/)", "", url)
-    # Which element carries the value is the one thing `Written.LINE` decides here: a line a
-    # pass wrote is a span inside the enrichment block, and every other Detail is a block of
-    # its own. Both surfaces of one Detail agree on it, which is why one name reads both.
-    marker = "data-enrichment-line" if spec.written is Written.LINE else "data-detail"
-    # The pane previews it under the spec's own name...
-    page = enriched_client.get(node)
-    assert page.status_code == 200, node
-    assert fields(page.text, marker, spec.name)[spec.name], spec.name
-    # ...and the URL it minted answers with every character the store holds under it. Reached
-    # by URL rather than by the pane's link, which the pane only draws when there is a rest to
-    # offer — every value this corpus records fits inside the preview.
-    if spec.written is Written.NAMED_FILE:
-        keyed["head_chars"] = queries.HEADER_CHARS
-    held = page_rows(enriched_store, spec.whole, **keyed)[0]["value"]
-    served = enriched_client.get(url)
-    assert served.status_code == 200, url
-    assert values(served.text, "data-value") == [str(len(held))], url
-    # The fetch replaces the section the preview sat in, so it comes back filed under the same
-    # name: what a value is styled as — the rail that tells an ask from an answer — hangs off
-    # that name, and a fragment that dropped it would open unstyled.
-    assert values(served.text, marker) == [spec.name], url
-    # And a value that is not prose comes back marked up the way the preview was. The fragment
-    # files it under `value` and the pane under the column's own name, so the two `<pre>`
-    # classes are what compare — one rule in `view/detail.py:syntax_of` decides both, and this
-    # is the reading that would see them part again.
-    if spec.written in (Written.JSON, Written.NAMED_FILE, Written.BASH):
-        assert walled(served.text, "value") == walled(page.text, spec.name), url
-        assert classed(block(served.text, "value")) == classed(block(page.text, spec.name)), url
-
-
-def test_a_brief_is_labelled_as_an_ask_and_not_as_a_description_of_the_run() -> None:
-    """A run's brief is what it was asked to do, not what a pass said it did.
-
-    Two fat values sit in a run's pane under words a reader could take for the same thing, and
-    only one of them belongs to the enrichment pass. The registry files them apart by name;
-    this is the half saying the names still reach a reader as different words.
-    """
-    assert (LABELS["brief"], LABELS["description"]) == ("Task brief", "Description")

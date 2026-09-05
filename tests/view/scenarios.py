@@ -288,6 +288,19 @@ SCENARIOS: dict[str, Scenario] = {
 }
 
 
+def path_pattern(route: str) -> re.Pattern[str]:
+    """One route template as the pattern its URLs match, each key a group under its own name.
+
+    A sweep that wants every URL of one shape — every node in a store a Detail could be
+    previewed on — asks for this and matches; a sweep that wants the keys of one URL asks
+    `path_params`.
+    """
+    pattern = re.escape(route)
+    for name in re.findall(r"\{(\w+)\}", route):
+        pattern = pattern.replace(re.escape("{" + name + "}"), f"(?P<{name}>[^/]+)")
+    return re.compile(pattern)
+
+
 def path_params(route: str, url: str) -> dict[str, str]:
     """The keys one URL carries, read back out of the route template it was minted from.
 
@@ -296,10 +309,6 @@ def path_params(route: str, url: str) -> dict[str, str]:
     for that URL puts in `request.path_params`, in the order the path names them, so a sweep
     over the registry can key a query the way the handler does without a table of ids.
     """
-    names = re.findall(r"\{(\w+)\}", route)
-    pattern = re.escape(route)
-    for name in names:
-        pattern = pattern.replace(re.escape("{" + name + "}"), "([^/]+)")
-    found = re.fullmatch(pattern, url)
+    found = path_pattern(route).fullmatch(url)
     assert found, f"{url} is not a {route}"
-    return dict(zip(names, found.groups(), strict=True))
+    return found.groupdict()
