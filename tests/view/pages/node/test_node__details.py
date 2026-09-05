@@ -241,15 +241,20 @@ def test_a_run_page_reads_the_call_that_spawned_it_for_the_ask_and_the_answer(
     assert prose(answered.text, "result") == prose(pane, "result")
 
 
-def test_a_run_nobody_asked_in_words_shows_no_ask_and_serves_none(
+def test_a_pane_previews_nothing_where_the_store_holds_no_characters_under_a_name(
     client: TestClient, store: duckdb.DuckDBPyConnection
 ) -> None:
-    """A run whose spawning call carried no prompt has no ask to show, and its route 404s.
+    """A NULL and an empty string are one nothing to a pane, and two answers to a fetch.
 
-    Two ways a run reaches the store without one: spawned by a tool that takes something other
-    than a prompt — a `Workflow` names a workflow — and recorded with no spawning call at all,
-    which is what a resumed or forked transcript replays. Neither is an empty value: nothing on
-    the pane links to the route, so a request for it is a URL somebody kept.
+    Three ways a value reaches the store with no characters in it. A run is spawned by a tool
+    that takes something other than a prompt — a `Workflow` names a workflow — or recorded with
+    no spawning call at all, which is what a resumed or forked transcript replays; either way
+    the column is NULL, nothing on the pane links to the route, and a request for it is a URL
+    somebody kept. A tool can also answer in no characters, which is a result the store holds
+    and the fetch serves: the row is there, and it is zero characters long.
+
+    The pane cannot tell those apart and does not try — `view/detail.py:preview` leaves on the
+    value itself rather than on its NULL-ness, so a block with nothing in it is never drawn.
     """
     for named, sql in (
         (
@@ -270,6 +275,17 @@ def test_a_run_nobody_asked_in_words_shows_no_ask_and_serves_none(
         pane = client.get(run).text
         assert "prompt" not in values(pane, "data-detail"), named
         assert client.get(f"/fragment/prompt{run}").status_code == 404, named
+    # And the empty string, which is the same silence on the pane and not on the fetch: the one
+    # recorded call in the corpus that came back with no characters draws no result block, and
+    # its route answers with the row it has — zero characters, not a 404.
+    session_id, source, tool_id = one(
+        store, "SELECT session_id, source, id FROM live_tool_calls WHERE result = ''"
+    )
+    call = f"/session/{session_id}/thread/{source}/tool/{tool_id}"
+    assert "result" not in values(client.get(call).text, "data-detail"), call
+    empty = client.get(f"/fragment/result{call}")
+    assert empty.status_code == 200, call
+    assert fields(empty.text, "data-detail", "result") == {"value": ""}, call
 
 
 def test_the_pane_walls_what_a_session_wrote_as_a_quote_and_leaves_a_payload_as_code(
