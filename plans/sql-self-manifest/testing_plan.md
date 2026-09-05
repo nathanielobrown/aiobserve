@@ -47,7 +47,7 @@ The sibling refactors do not collide. `one-price-table`, `enrichment-stamp`, `tr
   - No surviving path names `view/manifest.py`. *Evidence:* `check-fast` reports a link or path that does not resolve; the 11 prose references found in `src/hyphae/view/bounds.py`, `src/hyphae/cli.py`, `tests/analyze/test_queries.py`, `tests/analyze/test_query.py`, `tests/analyze/test_timelines.py` and `tests/view/test_bounds.py` are what it will catch
   - `docs/analysis.md`'s sentence still names the module that holds a quoted default. *Evidence:* the line "`src/hyphae/analyze/manifest.py` defines the production defaults that committed reports quote" resolves against a module that still exports `DEFAULTS`
 - **Mutation — `mise run mutate 'hyphae.analyze.manifest.*' 'hyphae.analyze.queries.*'`** — cold and serial, so the number reproduces
-  - The derivation's own branches are claimed by a leaf. *Evidence:* survivors in `describe`, `relations` and `parameters` read against `uv run mutmut browse`; the scope arm and the `DEFAULTS.get(...)` fallback are the two to check, since both are single expressions the smoke tier could pass over. A survivor over the scope arm means the corpus-views leaf is skipping rather than asserting
+  - The derivation's own branches are claimed by a leaf. *Evidence:* survivors in `describe`, `relations` and `parameters` read against `uv run mutmut browse`; the scope arm and the `DEFAULTS.get(...)` fallback are the two to check, since both are single expressions the smoke tier could pass over. The `--project` refusal leaf is what claims the scope arm: the corpus-views leaf reads the derived scope to decide what to skip, so an inverted arm only moves which queries it skips
 
 ## Not covered, and why
 

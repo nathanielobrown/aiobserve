@@ -31,9 +31,9 @@ flowchart LR
 
 ```
 src/hyphae/analyze/
-  queries.py       ~ + PARAM_TYPES, statement(), parameters(), relations(); - SESSION_ID..NODE_KIND, LOG_CHARS_PARAM, DRAW_SEED
+  queries.py       ~ + PARAM_TYPES, statement(), parameters(), relations(), and CORPUS_RELATIONS and QueryError moved in from runner.py; - SESSION_ID..NODE_KIND, LOG_CHARS_PARAM, DRAW_SEED
   manifest.py      ~ ANALYSIS → DEFAULTS (17 queries, 43 values, comments kept); + names(), describe(), catalog(); - QUERIES
-  runner.py        ~ describe() in place of QUERIES.get; CORPUS_RELATIONS is what scope is read against
+  runner.py        ~ describe() in place of QUERIES.get; - CORPUS_RELATIONS, QueryError, which describe() reads and raises while runner.py imports manifest
   queries/view_*.sql  ~ headers take the rationale lines `view/manifest.py` held that the file lacks
 src/hyphae/view/
   manifest.py      - deleted
@@ -50,6 +50,8 @@ docs/analysis.md, CONTEXT.md  ~ one sentence each
 ```python
 # analyze/queries.py
 PARAM_TYPES: dict[str, ParamType]            # one type per parameter name, library-wide
+CORPUS_RELATIONS: tuple[str, ...]            # the two relations `--project` builds
+class QueryError(Exception)                  # what the library cannot run, and which part
 def statement(name: str) -> str              # the SQL with its comments cut; moves from the test module
 def parameters(statement: str) -> tuple[str, ...]   # $names, first appearance first
 def relations(statement: str) -> set[str]    # the identifier after each FROM or JOIN
