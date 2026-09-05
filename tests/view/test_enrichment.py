@@ -371,22 +371,29 @@ def test_an_item_described_under_an_older_version_is_marked_stale(
     one behind on the prompt, one behind on the taxonomy alone, one current on both.
     `planted_stamp` moves the two axes on coprime cycles, so the middle row exists.
     """
+    # Each row is asked for on both axes, and ordered so it is a named row rather than
+    # whichever the store hands back. The plant moves the two axes on cycles that meet: a row
+    # asked for by one half alone can be behind on the other half too, and a page tagged from
+    # such a row tells the two arms of the rule apart from neither.
     session_id, turn_id = one(
         enriched_store,
         "SELECT session_id, turn_id FROM turn_enrichments"
-        " WHERE source = 'main' AND prompt_version < ?",
-        [LEVELS[Level.turn].prompt_version],
+        " WHERE source = 'main' AND prompt_version < ? AND taxonomy_version = ?"
+        " ORDER BY turn_id",
+        [LEVELS[Level.turn].prompt_version, TAXONOMY_VERSION],
     )
     aged_taxonomy = one(
         enriched_store,
         "SELECT session_id, turn_id FROM turn_enrichments"
-        " WHERE source = 'main' AND prompt_version = ? AND taxonomy_version < ?",
+        " WHERE source = 'main' AND prompt_version = ? AND taxonomy_version < ?"
+        " ORDER BY turn_id",
         [LEVELS[Level.turn].prompt_version, TAXONOMY_VERSION],
     )
     fresh = one(
         enriched_store,
         "SELECT session_id, turn_id FROM turn_enrichments"
-        " WHERE source = 'main' AND prompt_version = ? AND taxonomy_version = ?",
+        " WHERE source = 'main' AND prompt_version = ? AND taxonomy_version = ?"
+        " ORDER BY turn_id",
         [LEVELS[Level.turn].prompt_version, TAXONOMY_VERSION],
     )
     # The turn described under the older prompt version is tagged...
