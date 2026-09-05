@@ -294,61 +294,62 @@ def test_the_pages_run_at_the_production_sizes(client: TestClient) -> None:
     Every other leaf in this file binds fixture-sized values, so without this pin the whole
     section would pass against any size at all — a `page_records` of 5,000 would break the
     bound in production while CI stayed green.
+
+    Where a surface declares its widths (`view/bounds.py`), the number is read off the profile
+    and the profile is pinned to its literals by the leaf below: this half says the pages run at
+    the width their surface names, that half says which width that is. Read off the profile
+    alone, the two would be one assertion comparing a number with itself.
     """
     ran = ran_at(client)
     assert ran["view_records"]["page_records"] == {100}
-    assert ran["view_records"]["preview_chars"] == {160}
+    assert ran["view_records"]["preview_chars"] == {bounds.RECORDS_WIDTHS.preview_chars}
     assert ran["view_offload"]["chunk_chars"] == {50_000}
     # How much of a title a row of the NavTree shows. Wide enough that a draggable tree has
     # something to show when a reader widens it — the cut is what a row can say, and CSS
     # decides how much of it fits. Every level cuts to the same width, whatever kind of child
     # it holds.
     for level in ("view_nav_tree_turns", "view_nav_tree_calls", "view_nav_tree_tools"):
-        assert ran[level]["nav_chars"] == {110}, level
+        assert ran[level]["nav_chars"] == {bounds.NAV_TREE_WIDTHS.nav_chars}, level
     # And how much of each string a row of the pane's children log shows, with the page it is
     # read in. Wider than a NavTree row: a log row is a line of a table, with room for the first
     # words of a prompt beside the numbers.
-    assert ran["view_turn_calls"]["log_chars"] == {300}
-    assert ran["view_call_tools"]["log_chars"] == {300}
-    assert ran["view_turn_calls"]["page_calls"] == {queries.LOG_ROWS}
-    assert ran["view_call_tools"]["page_tools"] == {queries.LOG_ROWS}
-    assert queries.LOG_ROWS == 100
+    assert ran["view_turn_calls"]["log_chars"] == {bounds.LOG_WIDTHS.log_chars}
+    assert ran["view_call_tools"]["log_chars"] == {bounds.LOG_WIDTHS.log_chars}
+    assert ran["view_turn_calls"]["page_calls"] == {bounds.LOG.default}
+    assert ran["view_call_tools"]["page_tools"] == {bounds.LOG.default}
+    assert bounds.LOG.default == 100
     # A node header cuts every string it carries to a head, and the one fat value its pane
     # previews to a detail — the four kinds that have fields of their own take the same two.
     for header in ("view_turn_header", "view_call_header", "view_tool_header", "view_run_header"):
-        assert ran[header]["head_chars"] == {100}, header
+        assert ran[header]["head_chars"] == {bounds.HEADER_WIDTHS.head_chars}, header
         assert ran[header]["detail_chars"] == {4_000}, header
     # The session header is the widest of the panes: two of its columns are lists that grow
     # with the session, so it cuts the members and caps how many it shows.
-    assert ran["view_session_header"]["head_chars"] == {100}
-    assert ran["view_session_header"]["item_chars"] == {60}
-    assert ran["view_session_header"]["head_items"] == {5}
+    assert ran["view_session_header"]["head_chars"] == {bounds.HEADER_WIDTHS.head_chars}
+    assert ran["view_session_header"]["item_chars"] == {bounds.HEADER_WIDTHS.item_chars}
+    assert ran["view_session_header"]["head_items"] == {bounds.HEADER_WIDTHS.head_items}
     # How much of a run row's and a compaction row's three columns the row that prints them
     # shows. One parameter at two widths, which is what a single declared default could never
     # be: the runs log gives a chip a log row's width, and the NavTree gives it a row's.
-    assert ran["view_runs"]["chip_chars"] == {queries.LOG_CHARS}
-    assert ran["view_compactions"]["chip_chars"] == {queries.NAV_CHARS}
+    assert ran["view_runs"]["chip_chars"] == {bounds.LOG_WIDTHS.chip_chars}
+    assert ran["view_compactions"]["chip_chars"] == {bounds.NAV_TREE_WIDTHS.chip_chars}
+    # A thread's timeline is the one query two surfaces read — the NavTree places the thread's
+    # buckets from it at a row's width, the pane's children log lists the same turns at a log's
+    # — and the footer keys a citation by query name, so a page quotes whichever ran last. That
+    # is the NavTree's, which is why this reads 110 and not 300.
+    assert ran["session_timeline"]["log_chars"] == {bounds.NAV_TREE_WIDTHS.log_chars}
     # The list's rows drop the agent types a session spawned, but the query behind them still
     # gathers the names, so a member is cut where the list cuts a skill name.
-    assert ran["view_sessions"]["item_chars"] == {queries.LIST_ITEM_CHARS}
-    # And the landing page, whose row shows a path at the list's head and links by the whole
-    # one. How many projects it ranks is a size like the rest; the two windows it counts them
-    # in are not sizes, and `tests/view/test_projects.py` pins those against what it cites.
-    assert ran["view_project_rollups"]["head_chars"] == {queries.LIST_CHARS}
-    assert ran["view_project_rollups"]["projects"] == {100}
+    assert ran["view_sessions"]["item_chars"] == {bounds.LIST_WIDTHS.item_chars}
+    # And the landing page, whose row shows a path at its own head and links by the whole one.
+    # The two windows it counts a project in are not sizes, and `tests/view/pages/projects/`
+    # pins those against what the page cites.
+    assert ran["view_project_rollups"]["head_chars"] == {bounds.PROJECTS_WIDTHS.head_chars}
+    assert ran["view_project_rollups"]["projects"] == {bounds.PROJECTS_WIDTHS.projects}
     # And the errors list, bound the same way — a session can fail arbitrarily many calls —
     # and titled at a NavTree row's width, because each of its rows leads to a node.
-    assert ran["view_session_errors"]["nav_chars"] == {queries.NAV_CHARS}
-    assert ran["view_session_errors"]["errors"] == {100}
-    # Two queries no page cites, because a fragment carries no footer: the enrichment block a
-    # node page fetches, and the filter suggestions above the session list. What binds them is
-    # pinned at the constant the composing module reads instead (`view/enrichment.py`,
-    # `view/pages/sessions/routes.py`). The enrichment taxonomy is closed and its longest
-    # member is nine characters (`enrich/taxonomy.py`), so the tag cut bounds a hand-edited row
-    # rather than anything a pass writes.
-    assert (queries.ENRICHMENT_CHARS, queries.TAG_CHARS) == (200, 20)
-    assert (queries.LIST_CHARS, queries.LIST_ITEM_CHARS, queries.LIST_ITEMS) == (100, 20, 4)
-    assert queries.LIST_PROJECTS == 10
+    assert ran["view_session_errors"]["nav_chars"] == {bounds.ERRORS_WIDTHS.nav_chars}
+    assert ran["view_session_errors"]["errors"] == {bounds.ERRORS_WIDTHS.errors}
 
 
 def test_no_viewer_query_declares_a_default() -> None:
@@ -393,7 +394,6 @@ def test_every_page_fits_under_the_ceiling_it_is_priced_at() -> None:
     # derived from the row's cost, so a row that grew has to move it rather than eat the slack
     # silently. The two together are what make `bounds.SESSIONS` a measurement — an upper bound
     # alone is satisfied by any smaller page, including one a stale derivation left behind.
-    # It is the only ceiling held from below, for the reason kept beside the constants.
     assert (
         MEASURED_LIST_CHROME + (bounds.SESSIONS.ceiling + 1) * worst_session_row_bytes()
         >= PAGE_BYTES
@@ -417,9 +417,8 @@ def test_every_page_fits_under_the_ceiling_it_is_priced_at() -> None:
     # And no default asks for more than its own ceiling allows, which nothing else checks: a
     # default above the ceiling serves a 400 to a reader who typed no size at all. Read off the
     # module rather than listed, so a size added later cannot dodge the check.
-    declared = {
-        name: value for name, value in vars(bounds).items() if isinstance(value, bounds.Bound)
-    }
+    named = vars(bounds).items()
+    declared = {name: value for name, value in named if isinstance(value, bounds.Bound)}
     for name, size in declared.items():
         assert size.default <= size.ceiling, name
     # ...and those are the sizes this leaf priced above: a new one reds here until its ceiling
@@ -434,17 +433,19 @@ def test_every_page_fits_under_the_ceiling_it_is_priced_at() -> None:
         "PROJECTS",
         "ERRORS",
     }
-    # The same for the bounds that are not sizes a URL carries: how deep a chain opens, how
-    # many turn rows no cursor reaches, how much of a string a log row shows, how long a value
-    # is marked up in its own syntax, and what one row of the NavTree may weigh.
-    assert {name for name, value in vars(bounds).items() if isinstance(value, int)} == {
+    # The same for the bounds that are not sizes a URL carries: how deep a chain opens, how many
+    # turn rows no cursor reaches, how long a value is marked up in its own syntax, what one row
+    # of the NavTree may weigh, and the one width no query binds — a crumb's. Public names only:
+    # a width two surfaces share is declared once under a leading underscore, and what a table
+    # cites is the surface that reads it, never the number underneath.
+    assert {name for name, value in named if isinstance(value, int) and name[0] != "_"} == {
         "DEPTH",
         "CURSORLESS_TURNS",
-        "LOG_CHARS",
         "INDENT_CHARS",
         "HIGHLIGHT_CHARS",
         "OPENED_RECORD_CHARS",
         "NAV_TREE_ROW_BYTES",
+        "CRUMB_CHARS",
     }
 
 

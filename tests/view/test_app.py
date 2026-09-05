@@ -23,8 +23,7 @@ import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
-from hyphae.analyze import queries
-from hyphae.view import nodes
+from hyphae.view import bounds, nodes
 from hyphae.view.detail import DETAILS, Spec, Written
 from tests.conftest import (
     DENSE_CALL,
@@ -61,18 +60,23 @@ def test_a_node_page_cites_every_query_it_ran(client: TestClient) -> None:
         ),
         "view_nav_tree_turns": (
             f"-- queries/view_nav_tree_turns.sql session_id={SPINE} source={MAIN}"
-            f" nav_chars={queries.NAV_CHARS}"
+            f" nav_chars={bounds.NAV_TREE_WIDTHS.nav_chars}"
         ),
         # A run is printed twice on this page — as a NavTree row and as a children log row — so
         # the citation says which of the two widths this request read them at: the wider.
-        "view_runs": f"-- queries/view_runs.sql session_id={SPINE} chip_chars={queries.LOG_CHARS}",
+        "view_runs": (
+            f"-- queries/view_runs.sql session_id={SPINE} chip_chars={bounds.LOG_WIDTHS.chip_chars}"
+        ),
         "view_compactions": (
             f"-- queries/view_compactions.sql session_id={SPINE} source={MAIN}"
-            f" chip_chars={queries.NAV_CHARS}"
+            f" chip_chars={bounds.NAV_TREE_WIDTHS.chip_chars}"
         ),
         # The whole thread in outline, which is what places the runs: no window, so no paging.
+        # The children log below reads this query a second time at its own width, and the
+        # footer keys a citation by query name — so the line quoted is the NavTree's.
         "session_timeline": (
-            f"-- queries/session_timeline.sql session_id={SPINE} log_chars={queries.LOG_CHARS}"
+            f"-- queries/session_timeline.sql session_id={SPINE}"
+            f" log_chars={bounds.NAV_TREE_WIDTHS.log_chars}"
         ),
     }
 
@@ -306,12 +310,13 @@ def test_a_fragment_cites_the_query_that_fetched_it(
     them. That order is the claim — a handler that reordered `request.path_params` would cite
     a line nobody can paste back into `hp query`. `head_chars` is the one binding no URL
     carries, and only `Written.NAMED_FILE` may add it: the file suffix that says how the value
-    is marked up is cut at that width, and every other arm knows its markup without asking.
+    is marked up is cut at the header's width, and every other arm knows its markup without
+    asking. No page footer quotes that binding, so this is where the width is held.
     """
     url = SCENARIOS[spec.route].url
     keyed = path_params(spec.route, url)
     if spec.written is Written.NAMED_FILE:
-        keyed["head_chars"] = str(queries.HEADER_CHARS)
+        keyed["head_chars"] = str(bounds.HEADER_WIDTHS.head_chars)
     bound = " ".join(f"{key}={value}" for key, value in keyed.items())
     expected = f"-- queries/{spec.whole}.sql {bound}"
     assert values(enriched_client.get(url).text, "data-query") == [expected], url

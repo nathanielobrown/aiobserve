@@ -20,9 +20,11 @@ from pathlib import Path
 import pytest
 
 import hyphae.view
+from hyphae.analyze import queries
 from tests.view import test_components
 
 PACKAGE = "hyphae.view"
+QUERIES = "hyphae.analyze.queries"
 VIEW = Path(hyphae.view.__file__).parent
 PAGES = VIEW / "pages"
 TEXT = VIEW / "text"
@@ -50,6 +52,10 @@ UNNAMED = frozenset({"logic.py", "utils.py", "helpers.py", "common.py", "misc.py
 # leaf beside `text/` rather than above it because `highlight` and `inline_markdown` read their
 # cuts from it, and a cut is a size (`design.md`, "Decisions").
 SERVER, PAGE, SHARED, BASE, LEAF = 4, 3, 2, 1, 0
+
+# The one number `analyze/queries.py` declares that is not a size: the keyset cursor standing
+# before the first row, which a paged route takes as its default rather than cutting to it.
+NOT_A_SIZE = frozenset({"FIRST_PAGE"})
 
 # The modules of each layer by name, for the ones that are not decided by their directory. The
 # top level has no default: a module that lands there and is not listed reds `layer()`, because
@@ -142,6 +148,24 @@ def imports(path: Path) -> set[str]:
     # A module reaching into itself is not an edge, and neither is the package root, which
     # holds a docstring and nothing to import.
     return {name for name in found if name and name != here}
+
+
+def queried(path: Path) -> set[str]:
+    """Every name one file takes from the query library, by attribute or by import."""
+    tree = ast.parse(path.read_text())
+    found = {
+        node.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "queries"
+    }
+    return found | {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module == QUERIES
+        for alias in node.names
+    }
 
 
 def edges() -> set[tuple[str, str]]:
@@ -309,7 +333,7 @@ def test_a_models_module_appears_only_where_a_second_markup_module_reads_it() ->
 def test_no_page_package_imports_a_sibling_page() -> None:
     """One page is one directory, so what two pages share is lifted rather than reached for.
 
-    `failures.py` and `header_bound` were lifted into the shared layer for exactly this
+    `failures.py` and the session header's widths were lifted into the shared layer for this
     (`design.md`, "Three lifts"): a session's failures are a session fact the errors page and
     the node page's stepper both read, and a sibling import would make the errors page the node
     page's dependency.
@@ -358,6 +382,26 @@ def test_text_reaches_nothing_in_the_viewer_but_itself_and_the_sizes_it_cuts_to(
     for path in found:
         for name in imports(path):
             assert name == "bounds" or name.split(".")[0] == "text", f"{dotted(path)} → {name}"
+
+
+def test_no_module_of_the_viewer_but_bounds_names_a_size_the_query_library_declares() -> None:
+    """A width is the surface's, so `bounds.py` is the one place the viewer names a number.
+
+    `bounds.py` reads one off the library itself: the two timelines behind a children log
+    declare `LOG_CHARS` as their own default (`analyze/manifest.py`), which makes it a query's
+    number that a surface reads rather than a viewer width the library holds. Everything else
+    the viewer takes from that module is a type, a loader or a sentinel.
+    """
+    taken = {(dotted(path), name) for path in sources(VIEW) for name in queried(path)}
+    sizes = {
+        (where, name)
+        for where, name in taken
+        if name not in NOT_A_SIZE and isinstance(getattr(queries, name), int)
+    }
+    # The scan reaches the library at all...
+    assert ("bounds", "LOG_CHARS") in sizes
+    # ...and nothing but the sizes leaf takes a number from it.
+    assert {where for where, _ in sizes} == {"bounds"}
 
 
 def test_the_shared_node_model_reads_nothing_from_a_page() -> None:

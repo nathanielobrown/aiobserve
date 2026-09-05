@@ -24,12 +24,12 @@ from hyphae.view.links import DEFAULT_DIRECTION, DEFAULT_SORT, LIST_URL, list_ur
 from hyphae.view.pages.sessions import markup
 from hyphae.view.pages.sessions.markup import Control
 from hyphae.view.store import (
-    DESCRIBED_BOUND,
     DIRECTIONS,
     FILTERS,
     SORTS,
     Page,
     Row,
+    bound,
     list_bound,
     open_store,
     page_rows,
@@ -149,12 +149,7 @@ def session_list(
         rows, more = sorted_sessions(
             connection, sort, direction, page, size, filters, described=describes
         )
-        projects = page_rows(
-            connection,
-            Page.PROJECTS,
-            head_chars=queries.LIST_CHARS,
-            head_projects=queries.LIST_PROJECTS,
-        )
+        projects = page_rows(connection, Page.PROJECTS, **bound(Page.PROJECTS, bounds.LIST_WIDTHS))
     # A header link flips the direction of the column already sorted by, and opens any
     # other column at the direction that puts its largest values first. Re-sorting starts
     # from the first page: page 4 of one order says nothing about page 4 of another.
@@ -202,7 +197,12 @@ def session_list(
                 # Joined to that page rather than run against it, so it is cited on its
                 # own — and only over a store whose enrichment tables exist to join.
                 **(
-                    {Page.DESCRIBED_SESSIONS.value: cited(Page.DESCRIBED_SESSIONS, DESCRIBED_BOUND)}
+                    {
+                        Page.DESCRIBED_SESSIONS.value: cited(
+                            Page.DESCRIBED_SESSIONS,
+                            bound(Page.DESCRIBED_SESSIONS, bounds.LIST_WIDTHS),
+                        )
+                    }
                     if describes
                     else {}
                 ),

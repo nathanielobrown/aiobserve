@@ -17,7 +17,7 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from hyphae.analyze import queries
+from hyphae.view import bounds
 from hyphae.view.app import build_app
 from hyphae.view.nodes import BODY_URL, Kind
 from hyphae.view.pages.node.columns import COLUMNS, Shape
@@ -506,7 +506,7 @@ def test_a_crumb_is_cut_narrower_than_every_other_place_a_title_is_read(
     )
     # The whole thread's turns, so the two the walk names are as long as the one it is about.
     # The slash columns go with them: a turn that ran a command is titled by the command.
-    long = "x" * (queries.NAV_CHARS + 60)
+    long = "x" * (bounds.NAV_TREE_WIDTHS.nav_chars + 60)
     path = plant(
         (
             "UPDATE turns SET prompt = ?, command_name = NULL, command_args = NULL"
@@ -518,11 +518,11 @@ def test_a_crumb_is_cut_narrower_than_every_other_place_a_title_is_read(
         page = planted.get(f"/session/{session_id}/thread/{MAIN}/turn/{turn_id}").text
     # The crumb stops at the crumb's own width, marked where it stopped.
     crumb = fields(page, "data-crumb", values(page, "data-crumb")[-1])["turn"]
-    assert crumb == "x" * queries.CRUMB_CHARS + ELLIPSIS
+    assert crumb == "x" * bounds.CRUMB_CHARS + ELLIPSIS
     # While the walk along the turn's own level, and the tab, still carry a row's width.
     walked = [fields(page, "data-walk", where)["title"] for where in values(page, "data-walk")]
-    assert len(walked) == 2 and set(walked) == {"x" * queries.NAV_CHARS + ELLIPSIS}
-    assert f"<title>❯ {'x' * queries.NAV_CHARS}{ELLIPSIS} · hyphae</title>" in page
+    assert len(walked) == 2 and set(walked) == {"x" * bounds.NAV_TREE_WIDTHS.nav_chars + ELLIPSIS}
+    assert f"<title>❯ {'x' * bounds.NAV_TREE_WIDTHS.nav_chars}{ELLIPSIS} · hyphae</title>" in page
 
     # The error stepper is the fourth of them, and it steps between failures rather than along
     # a level — so it is read on a page that stands on one. Every tool call of a recorded
@@ -546,7 +546,7 @@ def test_a_crumb_is_cut_narrower_than_every_other_place_a_title_is_read(
         ]
     # A failure with one on either side of it, so the stepper names two.
     middle = next(page for page in pages if {"previous", "next"} <= set(values(page, "data-step")))
-    read = "📖 " + "x" * (queries.NAV_CHARS - 2) + ELLIPSIS
+    read = "📖 " + "x" * (bounds.NAV_TREE_WIDTHS.nav_chars - 2) + ELLIPSIS
     assert [fields(middle, "data-step", where)["title"] for where in ("previous", "next")] == [
         read,
         read,
@@ -554,7 +554,7 @@ def test_a_crumb_is_cut_narrower_than_every_other_place_a_title_is_read(
     # While the crumb naming the same node on the same page stops seventy characters earlier.
     ended = values(middle, "data-crumb")[-1]
     assert fields(middle, "data-crumb", ended)["tool"] == (
-        "📖 " + "x" * (queries.CRUMB_CHARS - 2) + ELLIPSIS
+        "📖 " + "x" * (bounds.CRUMB_CHARS - 2) + ELLIPSIS
     )
 
     # Every one of those widths is spent on what a reader sees rather than on what the line
@@ -562,12 +562,12 @@ def test_a_crumb_is_cut_narrower_than_every_other_place_a_title_is_read(
     # tail of plain text: the crumb stops on the character it stopped on above, four asterisks
     # earlier than a width counting them would have — and closes what it cut inside, because
     # an unclosed `<strong>` bolds the rest of the page.
-    bold = "x" * (queries.CRUMB_CHARS + 20)
+    bold = "x" * (bounds.CRUMB_CHARS + 20)
     styled = plant(
         (
             "UPDATE turns SET prompt = ?, command_name = NULL, command_args = NULL"
             " WHERE session_id = ?",
-            [f"**{bold}** {'y' * queries.NAV_CHARS}", session_id],
+            [f"**{bold}** {'y' * bounds.NAV_TREE_WIDTHS.nav_chars}", session_id],
         )
     )
     with TestClient(build_app(styled)) as planted:
@@ -575,7 +575,7 @@ def test_a_crumb_is_cut_narrower_than_every_other_place_a_title_is_read(
     at_crumb = values(bolded, "data-crumb")[-1]
     assert fields(bolded, "data-crumb", at_crumb)["turn"] == crumb
     assert marked_up(bolded, "data-crumb", at_crumb, "turn") == (
-        f"<strong>{'x' * queries.CRUMB_CHARS}</strong>{ELLIPSIS}"
+        f"<strong>{'x' * bounds.CRUMB_CHARS}</strong>{ELLIPSIS}"
     )
     # And the tab, which has nowhere to put markup, says the same words without any of it.
     assert f"<title>❯ {bold} y" in bolded

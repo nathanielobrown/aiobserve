@@ -15,7 +15,6 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from hyphae.analyze import queries
 from hyphae.extract.pricing import MODELS
 from hyphae.view import bounds, nodes
 from hyphae.view.app import build_app
@@ -96,15 +95,15 @@ def escaped_at_every_cap() -> tuple[Statement, ...]:
     pass wrote, and the prompt, command, agent type, model, tool name and tool payload a page
     falls back to.
     """
-    head = "&" * queries.HEADER_CHARS
+    head = "&" * bounds.HEADER_WIDTHS.head_chars
     # Longer than the widest cut any query makes, so every cut bites and every preview offers
     # the rest of itself: what this weighs is the page at its caps, not at the corpus's sizes.
-    fat = "&" * (queries.DETAIL_CHARS + 1)
-    item = "&" * queries.HEADER_ITEM_CHARS
+    fat = "&" * (bounds.DETAIL.default + 1)
+    item = "&" * bounds.HEADER_WIDTHS.item_chars
     # And the same width of the pair every lexer here makes two tokens of, for the two previews
     # a row can name the syntax of.
-    tokens = "&;" * ((queries.DETAIL_CHARS + 2) // 2)
-    over = queries.HEADER_ITEMS + 2
+    tokens = "&;" * ((bounds.DETAIL.default + 2) // 2)
+    over = bounds.HEADER_WIDTHS.head_items + 2
     return (
         (
             "UPDATE sessions SET title = ?, agent_name = ?, project_dir = ?, git_branch = ?,"
@@ -316,7 +315,7 @@ def reached_the_caps(split: list[Split]) -> None:
     """
     session = next(chrome for chrome, _ in split if 'data-body="session"' in chrome)
     facts = fields(session, "data-body", "session")
-    assert len(facts["git_branch"]) == len(facts["version"]) == queries.HEADER_CHARS
+    assert len(facts["git_branch"]) == len(facts["version"]) == bounds.HEADER_WIDTHS.head_chars
     escaped = {
         found.count("&amp;")
         for row in found_rows(split, "nav_tree")
@@ -326,7 +325,7 @@ def reached_the_caps(split: list[Split]) -> None:
     # bucket is named by the viewer and a compaction by its trigger — so the widest is what
     # says the cut bit rather than every row being the same width. Every sweep reaches the cut,
     # so every one of them holds it from below.
-    assert max(escaped) == queries.NAV_CHARS
+    assert max(escaped) == bounds.NAV_TREE_WIDTHS.nav_chars
     assert {row.count("more character(s)") for row in found_rows(split, "detail")} == {1}
     # And the mark a failed call carries reached the rows the NavTree priced, so
     # `NAV_TREE_ROW_BYTES` is a price for the dearest tool row rather than for one that happened
@@ -334,7 +333,7 @@ def reached_the_caps(split: list[Split]) -> None:
     assert any('data-field="is_error"' in row for row in found_rows(split, "nav_tree"))
     # The enrichment sits in the chrome, stale tag and all, so it is planted with the rest.
     described = fields(session, "data-enrichment", values(session, "data-enrichment")[0])
-    marked = "&" * queries.ENRICHMENT_CHARS + ELLIPSIS
+    marked = "&" * bounds.ENRICHMENT_WIDTHS.description_chars + ELLIPSIS
     assert described["description"] == described["friction"] == marked
     assert described["stale"] == "stale"
 
@@ -454,9 +453,9 @@ def test_an_expansion_weighs_a_body_and_the_one_page_of_rows_it_lists(
     what an enrichment pass wrote. So the described store, planted at the enrichment's caps
     as well.
     """
-    fat = "&" * (queries.LOG_CHARS + 1)
+    fat = "&" * (bounds.LOG_WIDTHS.log_chars + 1)
     # The body's own strings are cut at the width a title is, not at the reader's `?detail=`.
-    head = "&" * (queries.HEADER_CHARS + 1)
+    head = "&" * (bounds.EXPANSION_WIDTHS.head_chars + 1)
     session_id, source, api_call_id, recorded = one(
         store,
         "SELECT session_id, source, api_call_id, count(*) FROM live_tool_calls"
@@ -528,7 +527,9 @@ def test_an_expansion_weighs_a_body_and_the_one_page_of_rows_it_lists(
     ), [len(body.encode()) for body in bodies]
     # A turn's body is the one whose title a pass can have written, so the described store is
     # what makes that title the widest it gets rather than the prompt's own head.
-    assert fields(bodies[-2], "data-body", "turn")["title"].startswith("&" * queries.TAG_CHARS)
+    assert fields(bodies[-2], "data-body", "turn")["title"].startswith(
+        "&" * bounds.ENRICHMENT_WIDTHS.tag_chars
+    )
     # ...and an expansion opens no expansion: not one of those rows carries a button that
     # would fetch another body under it.
     assert "data-view" not in served.text

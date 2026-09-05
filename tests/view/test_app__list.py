@@ -226,7 +226,7 @@ def test_the_subagents_cell_ranks_by_count_and_says_what_it_cut(plant: Planter) 
     types than the cell shows. Both are properties of a redacted corpus rather than of the
     store the viewer serves, so the row is built to have them.
     """
-    over = queries.LIST_ITEMS + 2
+    over = bounds.LIST_WIDTHS.head_items + 2
     path = plant(
         # One recorded run cloned into `over` types of its own, the kth spawned k times: more
         # types than the cell shows, no two of them tied, so the order it shows them in is a
@@ -245,11 +245,11 @@ def test_the_subagents_cell_ranks_by_count_and_says_what_it_cut(plant: Planter) 
     listed = row["agent_types"].split(" and ")[0].split(", ")
     counts = [int(entry.rsplit(" ×", 1)[1]) for entry in listed]
     # As many types as the cell shows, no more, ranked by the runs each stood for...
-    assert len(listed) == queries.LIST_ITEMS
+    assert len(listed) == bounds.LIST_WIDTHS.head_items
     assert counts == sorted(counts, reverse=True) and len(set(counts)) == len(counts)
     # ...and a tail counting the types it left out rather than dropping them silently. Two
     # recorded types sit under the planted ones, which is what the cut has to reach past.
-    assert row["agent_types"].endswith(f"and {over + 2 - queries.LIST_ITEMS} more")
+    assert row["agent_types"].endswith(f"and {over + 2 - bounds.LIST_WIDTHS.head_items} more")
 
 
 def test_a_list_row_links_to_the_session_it_names(
@@ -270,7 +270,7 @@ def test_every_sort_key_names_a_column_the_query_returns(
     # At the width the list runs its one parameter at, read off the manifest rather than
     # listed: what a sort key names is a column, and no binding changes which columns come
     # back.
-    widths = dict.fromkeys(manifest.describe("view_sessions").params, queries.LIST_ITEM_CHARS)
+    widths = dict.fromkeys(manifest.describe("view_sessions").params, bounds.LIST_WIDTHS.item_chars)
     returned = {row[0] for row in store.execute(f"DESCRIBE ({listing})", widths).fetchall()}
     assert set(SORTS) <= returned
 
@@ -289,7 +289,7 @@ def test_a_sort_and_its_reverse_are_exact_opposites(
     # Which sessions carry no value in this column, asked of the query the list ranks rather
     # than of a table beside it: two of the eleven keys are the query's own arithmetic.
     listing = queries.load("view_sessions").strip().rstrip(";")
-    widths = dict.fromkeys(manifest.describe("view_sessions").params, queries.LIST_ITEM_CHARS)
+    widths = dict.fromkeys(manifest.describe("view_sessions").params, bounds.LIST_WIDTHS.item_chars)
     empty = {
         row[0]
         for row in store.execute(

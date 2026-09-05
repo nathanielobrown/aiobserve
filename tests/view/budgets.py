@@ -254,7 +254,7 @@ MEASURED_RECORD_BYTES = 800
 # call's when a call's row began saying what the call said and which tools it called: nine
 # columns against a tool row's seven, and the same three strings.
 MEASURED_LOG_ROW_MARKUP = 1_500
-# How many strings one row of a children log prints, each cut to `LOG_CHARS` and selected a
+# How many strings one row of a children log prints, each cut to the log's width and selected a
 # character past it. Three is the widest row there is: an api call's row is the model that
 # answered, the head of what it said, and the tools it went on to call; a tool row is the
 # tool's name, the head of what it was asked, and the command that head describes. A turn row
@@ -316,7 +316,7 @@ DEAR_PANE_DETAILS = 3
 # Re-measured through the app by `test_bounds__node.py` at 18,100 B, which is what it is pinned
 # at: `HYPHAE_PIN_EXACT=1` is what re-pins it. Up to five of its strings
 # are tree titles — the page title, and the two steppers under the pane — so it moves with
-# `queries.NAV_CHARS`.
+# `bounds.NAV_TREE_WIDTHS.nav_chars`.
 MEASURED_NODE_CHROME = 18_100
 
 # The parameter every truncated column of a run row is cut to. Counted per query rather than
@@ -382,14 +382,16 @@ def worst_session_row_bytes() -> int:
     said = queries.load(Page.DESCRIBED_SESSIONS)
     shown = heads(SHOWN, LIST_HEAD)
     written = heads(said, LIST_HEAD)
-    strings = shown * queries.LIST_CHARS
+    strings = shown * bounds.LIST_WIDTHS.head_chars
     # The skill names are cut in the composition and the agent types in the query itself —
     # a type is grouped after its cut, so the cut has to be where the grouping can see it.
     listed = heads(SHOWN, LIST_ITEM_HEAD) + heads(queries.load(Page.SESSIONS), LIST_ITEM_HEAD)
-    members = listed * queries.LIST_ITEMS
-    names = members * queries.LIST_ITEM_CHARS
-    described = written * queries.LIST_CHARS
-    kinds = heads(said, LIST_KIND_HEAD) * queries.LIST_CATEGORIES * queries.TAG_CHARS
+    members = listed * bounds.LIST_WIDTHS.head_items
+    names = members * bounds.LIST_WIDTHS.item_chars
+    described = written * bounds.LIST_WIDTHS.head_chars
+    kinds = (
+        heads(said, LIST_KIND_HEAD) * bounds.LIST_WIDTHS.head_kinds * bounds.LIST_WIDTHS.kind_chars
+    )
     return (
         MEASURED_SESSION_ROW_MARKUP
         + (strings + names + described + kinds) * ESCAPED_CHAR_BYTES
@@ -413,7 +415,7 @@ def worst_project_row_bytes() -> int:
     the list to it. Everything else in the row is the store's own arithmetic: two counts, three
     costs and a timestamp, each as long as its type allows and no longer.
     """
-    return MEASURED_PROJECT_ROW_MARKUP + queries.LIST_CHARS * (
+    return MEASURED_PROJECT_ROW_MARKUP + bounds.PROJECTS_WIDTHS.head_chars * (
         ESCAPED_CHAR_BYTES + ENCODED_CHAR_BYTES
     )
 
@@ -426,7 +428,7 @@ def worst_error_row_bytes() -> int:
     it ran on and the clock. The thread is an agent id the store minted, and the timestamp is
     as long as its type allows; only the title is text a transcript wrote.
     """
-    return MEASURED_ERROR_ROW_MARKUP + queries.NAV_CHARS * ESCAPED_CHAR_BYTES
+    return MEASURED_ERROR_ROW_MARKUP + bounds.ERRORS_WIDTHS.nav_chars * ESCAPED_CHAR_BYTES
 
 
 def worst_tag_bytes() -> int:
@@ -435,7 +437,7 @@ def worst_tag_bytes() -> int:
     Two of them — category and outcome — and the third says the row is stale, which is words
     of ours rather than of the store's and rides in the markup measured above.
     """
-    return 2 * queries.TAG_CHARS * ESCAPED_CHAR_BYTES
+    return 2 * bounds.ENRICHMENT_WIDTHS.tag_chars * ESCAPED_CHAR_BYTES
 
 
 def worst_knob_bytes() -> int:
@@ -472,7 +474,7 @@ def worst_log_row_bytes() -> int:
     """
     return (
         MEASURED_LOG_ROW_MARKUP
-        + LOG_ROW_STRINGS * (queries.LOG_CHARS + 1) * ESCAPED_CHAR_BYTES
+        + LOG_ROW_STRINGS * (bounds.LOG_WIDTHS.log_chars + 1) * ESCAPED_CHAR_BYTES
         # A row links where it fetches and mounts where it expands, so it carries the knobs
         # three times.
         + 3 * worst_knob_bytes()
@@ -484,9 +486,9 @@ def worst_crumb_bytes() -> int:
     knobs its link carries once.
 
     A crumb's own width and not a row's: a chain is many nodes on one line and cuts narrower
-    than anything else that names one (`analyze/queries.py:CRUMB_CHARS`).
+    than anything else that names one (`view/bounds.py:CRUMB_CHARS`).
     """
-    return MEASURED_CRUMB_MARKUP + queries.CRUMB_CHARS * ESCAPED_CHAR_BYTES + worst_knob_bytes()
+    return MEASURED_CRUMB_MARKUP + bounds.CRUMB_CHARS * ESCAPED_CHAR_BYTES + worst_knob_bytes()
 
 
 def worst_stored_detail_bytes() -> int:
@@ -601,9 +603,8 @@ def node_spare() -> int:
 
 def worst_record_bytes() -> int:
     """What one row of the records browser can weigh: its markup, and a preview of `&`."""
-    return (
-        MEASURED_RECORD_BYTES - queries.RECORD_PREVIEW + queries.RECORD_PREVIEW * ESCAPED_CHAR_BYTES
-    )
+    preview = bounds.RECORDS_WIDTHS.preview_chars
+    return MEASURED_RECORD_BYTES - preview + preview * ESCAPED_CHAR_BYTES
 
 
 # Describing every item of a store at every cap: a row per turn, per run and per session, each
@@ -614,10 +615,10 @@ def _described_at_every_cap() -> tuple[Statement, ...]:
     # A character past each cap, so the page pays for the mark as well as the width: the words
     # a pass writes are the one field here that routinely runs past what a pane prints.
     payload: list[str | int] = [
-        "&" * (queries.ENRICHMENT_CHARS + 1),
-        "&" * queries.TAG_CHARS,
-        "&" * queries.TAG_CHARS,
-        "&" * (queries.ENRICHMENT_CHARS + 1),
+        "&" * (bounds.ENRICHMENT_WIDTHS.description_chars + 1),
+        "&" * bounds.ENRICHMENT_WIDTHS.tag_chars,
+        "&" * bounds.ENRICHMENT_WIDTHS.tag_chars,
+        "&" * (bounds.ENRICHMENT_WIDTHS.description_chars + 1),
     ]
     stamp = "'planted', 0, 0, 'planted', '1970-01-01T00:00:00Z'"
     return (

@@ -61,16 +61,16 @@ def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     # Every string goes in one character past what a row prints, because that character is the
     # whole of how the page knows a value was stopped rather than ended: at the cap exactly,
     # nothing is marked and the row costs less than the arithmetic gives it.
-    head = "&" * (queries.LIST_CHARS + 1)
+    head = "&" * (bounds.LIST_WIDTHS.head_chars + 1)
     # Except a project path, which the filter box offers whole or not at all
     # (`view_projects.sql`): the paths that fill the box sit exactly at the width, and every
     # path past those goes one over it, where the row's own mark is. Two digits tell them
     # apart, so both halves of the page are measured against the same plant.
-    root = "&" * (queries.LIST_CHARS - 2)
-    name = "&" * queries.LIST_ITEM_CHARS
-    kind = "&" * queries.TAG_CHARS
-    over = queries.LIST_ITEMS + 2
-    kinds = queries.LIST_CATEGORIES + 2
+    root = "&" * (bounds.LIST_WIDTHS.head_chars - 2)
+    name = "&" * bounds.LIST_WIDTHS.item_chars
+    kind = "&" * bounds.LIST_WIDTHS.kind_chars
+    over = bounds.LIST_WIDTHS.head_items + 2
+    kinds = bounds.LIST_WIDTHS.head_kinds + 2
     path = enriched_plant(
         # A project path per session, each one longer than the filter box offers, so the box
         # has more suggestions than it shows. The two digits that tell them apart are the only
@@ -80,7 +80,7 @@ def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
             " || CASE WHEN r.n > ? THEN '&' ELSE '' END"
             " FROM (SELECT id, row_number() OVER (ORDER BY id) AS n FROM sessions) r"
             " WHERE r.id = sessions.id",
-            [head, root, queries.LIST_PROJECTS],
+            [head, root, bounds.LIST_WIDTHS.head_projects],
         ),
         # ...and every session runs more skills than a row shows, cloning a live api call rather
         # than inventing one: `live_api_calls` is the population a row's skill list counts.
@@ -118,7 +118,9 @@ def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
         ),
     )
     (sessions,) = one(store, "SELECT count(*) FROM sessions")
-    assert sessions > queries.LIST_PROJECTS, "the fixture corpus no longer fills the filter box"
+    assert sessions > bounds.LIST_WIDTHS.head_projects, (
+        "the fixture corpus no longer fills the filter box"
+    )
     with TestClient(build_app(path)) as planted:
 
         def served(size: int) -> str:
@@ -147,29 +149,29 @@ def test_a_session_list_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     row = fields(dearest, "data-session-id", values(dearest, "data-session-id")[0])
     # Each of the row's own strings cut to its head and marked there, which is what says the
     # cut bit rather than the plant happening to end at the width.
-    assert row["title"] == "&" * queries.LIST_CHARS + ELLIPSIS
-    assert len(row["project_dir"]) == queries.LIST_CHARS + len(ELLIPSIS)
+    assert row["title"] == "&" * bounds.LIST_WIDTHS.head_chars + ELLIPSIS
+    assert len(row["project_dir"]) == bounds.LIST_WIDTHS.head_chars + len(ELLIPSIS)
     assert row["project_dir"].endswith(ELLIPSIS)
-    assert row["skills"].count(name + ELLIPSIS) == queries.LIST_ITEMS
+    assert row["skills"].count(name + ELLIPSIS) == bounds.LIST_WIDTHS.head_items
     assert row["skills"].endswith("more")
     # The two counted lists reached their own caps, each name cut to the head it is grouped
     # under — the last two characters of one are the digits that tell the plants apart, and
     # the mark behind them is the escape the plant put past the cut.
-    assert row["agent_types"].count(name[:-2]) == queries.LIST_ITEMS
-    assert row["agent_types"].count(ELLIPSIS) == queries.LIST_ITEMS
+    assert row["agent_types"].count(name[:-2]) == bounds.LIST_WIDTHS.head_items
+    assert row["agent_types"].count(ELLIPSIS) == bounds.LIST_WIDTHS.head_items
     # The kinds of work are the one cut column with no mark, and the plant cannot show why:
     # `$kind_chars` has no character to spare (`view_described_sessions.sql`), so a name
     # arrives at the width whatever was planted behind it and a mark could not fire. What
     # holds the budget is the vocabulary itself — closed, and every member of both of them
     # short of the cut — which is the claim the row above prices at no mark at all.
-    assert max(len(member) for member in (*Category, *Outcome)) < queries.TAG_CHARS
-    assert row["work"].count(kind[:-2]) == queries.LIST_CATEGORIES
+    assert max(len(member) for member in (*Category, *Outcome)) < bounds.LIST_WIDTHS.kind_chars
+    assert row["work"].count(kind[:-2]) == bounds.LIST_WIDTHS.head_kinds
     assert row["agent_types"].endswith("more") and row["work"].endswith("more")
-    assert len(suggestions(one_row)) == queries.LIST_PROJECTS
+    assert len(suggestions(one_row)) == bounds.LIST_WIDTHS.head_projects
     # And the pass's own line reached the head the list cuts it to, with both tags beside it —
     # the whole description is on the session's page, which is a page ceiling of its own.
-    assert row["description"] == "&" * queries.LIST_CHARS + ELLIPSIS
-    assert len(row["category"]) == len(row["outcome"]) == queries.TAG_CHARS
+    assert row["description"] == "&" * bounds.LIST_WIDTHS.head_chars + ELLIPSIS
+    assert len(row["category"]) == len(row["outcome"]) == bounds.LIST_WIDTHS.tag_chars
     assert "stale" not in row
 
 
@@ -187,7 +189,7 @@ def test_a_projects_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     # Three digits tell the paths apart inside the head the page shows, so 97 of every 100
     # characters are escapes — and no path is a prefix of another, so none folds into another's
     # row. The sessions are clones of a recorded one rather than invented rows.
-    head = "&" * (queries.LIST_CHARS - 3)
+    head = "&" * (bounds.PROJECTS_WIDTHS.head_chars - 3)
     path = plant(
         (
             "INSERT INTO sessions (SELECT s.* REPLACE (s.id || '-planted-' || i AS id,"
@@ -208,7 +210,10 @@ def test_a_projects_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     # attribute is read back through the escaping the page wrote it with, which is the point:
     # every character of a planted path is one of the five-byte ones.
     widest = unescape(max(shown, key=len))
-    assert len(fields(page, "data-project", widest)["project_dir"]) == queries.LIST_CHARS
+    assert (
+        len(fields(page, "data-project", widest)["project_dir"])
+        == bounds.PROJECTS_WIDTHS.head_chars
+    )
     # ...each row linking by the whole path it shows, which is what the encoded head budgets...
     assert inside(page, "data-project", widest, "href") == [
         f"/sessions?sort=started_at&direction=desc&project={quote(widest, safe='')}"
@@ -246,7 +251,7 @@ def test_an_errors_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     # A title longer than the width a row cuts it to, so the cut bites on every row. The index
     # differs per clone because it is half of what orders the list: a page showing the first
     # `ERRORS` of a partial order is a page that cannot say what it cut.
-    title = "&" * (queries.NAV_CHARS + 1)
+    title = "&" * (bounds.ERRORS_WIDTHS.nav_chars + 1)
     path = plant(
         (
             "INSERT INTO tool_calls (SELECT c.* REPLACE (c.id || '-planted-' || i AS id,"
@@ -266,7 +271,7 @@ def test_an_errors_page_of_nothing_but_escapes_costs_what_the_ceiling_budgets(
     assert len(shown) == bounds.ERRORS.ceiling
     # ...every one of them a planted failure cut to the width a row reads it at...
     titles = {len(fields(page, "data-error", key)["title"]) for key in shown}
-    assert max(titles) == queries.NAV_CHARS + len(ELLIPSIS)
+    assert max(titles) == bounds.ERRORS_WIDTHS.nav_chars + len(ELLIPSIS)
     # ...and what it left out said rather than dropped, against the store's own count.
     with duckdb.connect(str(path), read_only=True) as connection:
         (failures,) = one(
@@ -298,7 +303,7 @@ def test_the_timeline_rows_no_window_reaches_are_capped_at_what_a_page_budgets(
     recorded timeline crosses: more of these rows than the ceiling budgets raises rather than
     riding a page nothing counted them on.
     """
-    bound: dict[str, ParamValue] = {"session_id": RESUME, "log_chars": queries.LOG_CHARS}
+    bound: dict[str, ParamValue] = {"session_id": RESUME, "log_chars": bounds.LOG_WIDTHS.log_chars}
     rows = cursorless_rows(store, Page.TIMELINE, TURN_CURSOR, bounds.CURSORLESS_TURNS, **bound)
     assert [row["turn_id"] for row in rows] == [queries.UNATTRIBUTED]
     with pytest.raises(ValueError, match="more than 0"):

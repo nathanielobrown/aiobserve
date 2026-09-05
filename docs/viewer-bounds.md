@@ -47,7 +47,7 @@ A browser can hang if the viewer renders a whole transcript. The viewer therefor
 
 Full-value requests are the declared exception. Each returns one whole value — `src/hyphae/view/store.py:Value` names them, from a transcript line to a line an enrichment pass wrote — so its size depends on the largest such value in the store rather than on a page of them. The tail row's fetch is a second: a reader who clicks `+N more` is asking for the rest of that level, so it serves the level less the window at a NavTree row apiece — 1.8 MB for the widest level in the canonical store, 1,587 tool calls under one turn with the api calls folded away, since the fetch serves whichever preset the URL names. A query's citation page is the third, and the one no corpus moves: it is the size of a statement we ship. Offloads remain chunked. JSON is re-indented only while doing so remains cheap; deeply nested data stays as stored because indentation work grows quadratically with nesting.
 
-`src/hyphae/view/bounds.py` defines each page size beside its ceiling. A typed size above its ceiling returns 400. The payload checks charge each transcript character at five bytes, the longest HTML escape, and add measured markup costs from the canonical store.
+`src/hyphae/view/bounds.py` defines each page size beside its ceiling, and beside them the widths every surface below prints at — one profile per surface, a field per query parameter it binds, which a read names rather than spelling its own numbers. A typed size above its ceiling returns 400. The payload checks charge each transcript character at five bytes, the longest HTML escape, and add measured markup costs from the canonical store.
 
 <!-- aigarden:cog sh "uv run python -m tools.gen_bounds bounds" -->
 | Surface | Default and limit |
@@ -58,7 +58,7 @@ Full-value requests are the declared exception. Each returns one whole value —
 | NavTree | 200 children per open level, 16 levels deep, each title cut to 110 characters |
 | Children log | 100 rows a page, each string cut to 300 characters |
 | Previewed value | 4,000 characters, with the rest a fetch away |
-| Raw records | 100 rows by default, at most 200 |
+| Raw records | 100 rows by default, at most 200; each row previews 160 characters of its record |
 | Offload | 50,000 characters by default, at most 60,000 |
 | Syntax highlighting | 256,000 characters, above which the value prints as stored |
 <!-- aigarden:end -->
@@ -84,7 +84,7 @@ The node page is weighed against a budget of its own rather than the 500,000 the
 | NavTree | 3,217 rows at 1,703: 5,478,551 |
 | Children log | 100 rows at 6,165: 616,500 |
 | Previewed values | 3 rendered at 120,550: 361,650 |
-| Crumbs | 16 at 556: 8,896 |
+| Crumbs | 16 titles cut to 40 characters, at 556: 8,896 |
 | Pager | 565 |
 | Chrome | 18,100 |
 | Spare | 15,738 |

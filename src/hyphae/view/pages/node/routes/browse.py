@@ -15,9 +15,7 @@ import duckdb
 from fastapi import HTTPException
 from fastapi.responses import Response
 
-from hyphae.analyze import queries
-from hyphae.analyze.queries import ParamValue
-from hyphae.view import builders, failures, links, nodes
+from hyphae.view import bounds, builders, failures, links, nodes
 from hyphae.view.citation import Ran, cited
 from hyphae.view.deps import Viewer
 from hyphae.view.detail import Detail, enrichment_lines
@@ -38,7 +36,7 @@ from hyphae.view.store import (
     Listed,
     Page,
     Row,
-    header_bound,
+    bound,
     listed,
     open_store,
     page_rows,
@@ -133,13 +131,13 @@ def browse(
     # one is a question about the node, and only the level can answer it.
     if page < 1:
         raise HTTPException(400, "Ask for a children log page from one upwards.")
-    bound = header_bound(session_id)
+    header_bound = bound(Page.SESSION_HEADER, bounds.HEADER_WIDTHS, session_id=session_id)
     # The session's runs are read once and printed twice: as a NavTree row at its width
     # and as a children log row at the log's. Cut to the wider of the two here, and cut
     # again at each — a row cut to the narrower would print a line already stopped.
-    runs_bound = {"session_id": session_id, "chip_chars": queries.LOG_CHARS}
+    runs_bound = bound(Page.RUNS, bounds.LOG_WIDTHS, session_id=session_id)
     with open_store(viewer.db) as connection:
-        head = page_rows(connection, Page.SESSION_HEADER, **bound)
+        head = page_rows(connection, Page.SESSION_HEADER, **header_bound)
         if not head:
             raise HTTPException(404, "No session with that id is in this store.")
         # The session's runs whole, once: a run is placed by the call that spawned it
@@ -187,7 +185,7 @@ def browse(
     if (titled := TITLED.get(selection.kind)) is not None:
         selection = replace(selection, words=titled(session_id, source, seen.header, corpus).words)
     ran: Ran = [
-        (Page.SESSION_HEADER, bound),
+        (Page.SESSION_HEADER, header_bound),
         (Page.RUNS, runs_bound),
         *seen.ran,
         *built.ran,
@@ -287,22 +285,23 @@ def call_log(
     One function for both because the two differ by that binding alone, which is the same
     rule the NavTree's level reads by: a call answering no turn sits in its thread's bucket.
     """
-    bound: dict[str, ParamValue] = {
-        "session_id": corpus.session_id,
-        "source": source,
-        "turn_id": turn_id,
-        "skipped": skipped(page, log),
-        "page_calls": log,
-        "log_chars": queries.LOG_CHARS,
-    }
-    calls = listed(page_rows(connection, Fragment.TURN_CALLS, **bound))
+    binds = bound(
+        Fragment.TURN_CALLS,
+        bounds.LOG_WIDTHS,
+        session_id=corpus.session_id,
+        source=source,
+        turn_id=turn_id,
+        skipped=skipped(page, log),
+        page_calls=log,
+    )
+    calls = listed(page_rows(connection, Fragment.TURN_CALLS, **binds))
     rows = [
         reads.logged(
             Shape.CALLS, builders.call_node(corpus.session_id, source, row, corpus.held), row
         )
         for row in calls.rows
     ]
-    return calls, rows, [(Fragment.TURN_CALLS, bound)]
+    return calls, rows, [(Fragment.TURN_CALLS, binds)]
 
 
 def run_log(corpus: nav_tree.Corpus, rows: list[Row]) -> list[Logged]:

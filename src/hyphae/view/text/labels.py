@@ -2,7 +2,10 @@
 
 A header is a column of the store read by a person, so the two names it carries answer to
 different readers: the `data-field` beside every value stays the store's own column, and the
-word above it is what someone says out loud. Closed on purpose — a header field with no entry
+word above it is what someone says out loud. A `data-field` a page derives rather than reads —
+`new_input_tokens` is the one — is named for what it is and says so beside its entry.
+
+Closed on purpose — a header field with no entry
 here raises rather than falling back to the column name, and `tests/view/test_app__headers.py`
 checks the registry against the facts the components and the panes actually ask for.
 """
@@ -48,6 +51,9 @@ LABELS: dict[str, str] = {
     "unpriced_api_calls": "Unpriced calls",
     "input_tokens": "Input tokens",
     "output_tokens": "Output tokens",
+    # What a call sent that no cache answered: its input plus the cache it wrote. Derived
+    # rather than stored, and printed by the popover alone (`view/pages/node/numbers.py`).
+    "new_input_tokens": "New input",
     "cache_read_tokens": "Cache read",
     "cache_creation_tokens": "Cache written",
     # The skills a session loaded, cut in SQL and counted by the pane.

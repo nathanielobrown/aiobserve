@@ -16,10 +16,10 @@ import re
 import htpy
 import pytest
 
-from hyphae.analyze import queries
 from hyphae.enrich.items import Level
 from hyphae.enrich.levels import LEVELS
 from hyphae.enrich.taxonomy import TAXONOMY_VERSION
+from hyphae.view import bounds
 from hyphae.view.citation import cited
 from hyphae.view.components import citation, parts
 from hyphae.view.detail import Detail, EnrichmentLines
@@ -134,12 +134,12 @@ def test_a_counted_list_of_closed_vocabulary_marks_no_name_it_prints() -> None:
     The name is passed at its full length either way; what changes is whether the cut mark
     `fmt.cut` writes can appear. Proven with a name past the cut, so the two arms differ.
     """
-    long = parts.Count("a" * (queries.LIST_ITEM_CHARS + 10), 2)
+    long = parts.Count("a" * (bounds.LIST_WIDTHS.item_chars + 10), 2)
     marked = plain(str(parts.counted(entries=[long], mark_cuts=True)))
     whole = plain(str(parts.counted(entries=[long], mark_cuts=False)))
     # The marked arm stopped the name and said so; the closed-vocabulary arm printed it whole.
     assert len(marked) < len(whole)
-    assert whole.startswith("a" * (queries.LIST_ITEM_CHARS + 10))
+    assert whole.startswith("a" * (bounds.LIST_WIDTHS.item_chars + 10))
 
 
 def test_a_fact_prints_the_dash_the_viewer_prints_for_a_column_the_store_left_null() -> None:
@@ -176,7 +176,7 @@ def test_a_fact_that_opts_out_of_the_cut_keeps_the_count_of_what_its_query_left(
     The value here ends in the count `parts.more` wrote, which is the part a second cut would
     take — so the two arms are told apart by whether that count survives.
     """
-    joined = "x" * queries.HEADER_CHARS + " and 3 more"
+    joined = "x" * bounds.HEADER_WIDTHS.head_chars + " and 3 more"
     assert plain(str(parts.fact(name="skills", value=joined, cut=False))).endswith("and 3 more")
     assert not plain(str(parts.fact(name="skills", value=joined, cut=True))).endswith("and 3 more")
 

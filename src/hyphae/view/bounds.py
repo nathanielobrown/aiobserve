@@ -23,6 +23,11 @@ of one whole value, bound by the largest single value in the store rather than b
 them (`view/store.py:Value`); the tail row's fetch, bound by the level it stands in (`KIN`);
 and a query's citation page, which is the size of a file we ship rather than of anything a
 corpus or a reader moves (`tests/view/test_bounds.py`).
+
+The widths below the ceilings are the other half of the same question: a size is what a reader
+may ask a page for, and a width is what one surface of that page prints store text at. The
+profiles at the foot declare each surface's, one field per parameter it binds, and a read names
+the surface instead of the numbers (`view/store.py:bound`).
 """
 
 from typing import NamedTuple
@@ -66,11 +71,11 @@ class Bound(NamedTuple):
 # four times the rows, and the NavTree is four fifths of that page — which is why the ceiling
 # moved with it rather than the window being raised inside the old one.
 KIN = Bound(default=200, ceiling=200)
-LOG = Bound(default=queries.LOG_ROWS, ceiling=queries.LOG_ROWS)
-DETAIL = Bound(default=queries.DETAIL_CHARS, ceiling=queries.DETAIL_CHARS)
+LOG = Bound(default=100, ceiling=100)
+DETAIL = Bound(default=4_000, ceiling=4_000)
 
 # The records browser, whose row is a preview and the `hx-get` that fetches the record whole.
-RECORDS = Bound(default=queries.PAGE_RECORDS, ceiling=200)
+RECORDS = Bound(default=100, ceiling=200)
 # How long the record a page opens by itself may be. The first row arrives open, because a
 # citation's cursor puts the record it names there — and a fetch nobody clicked is priced
 # against the page that triggers it rather than against the value route it goes to. A record
@@ -85,7 +90,7 @@ OPENED_RECORD_CHARS = 15_000
 # character. The only value the viewer serves with no row cost behind it — `offload_files.
 # content` is whatever a tool wrote, and the canonical store holds one over 50 MB — so the
 # page is a walk, not a fetch.
-CHUNK = Bound(default=queries.CHUNK_CHARS, ceiling=60_000)
+CHUNK = Bound(default=50_000, ceiling=60_000)
 # The session list, the one page a corpus grows: 575 sessions rendered whole came to 587 KB,
 # past the ceiling, so the size is bound rather than assumed small. The maximum is what fits
 # under that ceiling at the *worst* cost of a row rather than the measured one — every
@@ -103,19 +108,16 @@ SESSIONS = Bound(default=113, ceiling=113)
 # paging through them, so the page shows the most recently active `PROJECTS` and says how many
 # it left. The row is dearer than its own markup because it carries a link holding a whole
 # project path, and percent-encoding writes three bytes for every byte of it.
-PROJECTS = Bound(default=queries.PAGE_PROJECTS, ceiling=queries.PAGE_PROJECTS)
+PROJECTS = Bound(default=100, ceiling=100)
 # One session's failed tool calls, bound like the landing page rather than paged like the
 # records browser: nothing about a session caps how often its tools fail, and a reader jumps
 # to a failure rather than paging through them — so the page shows the first `ERRORS` in
 # reading order and says how many it left. The prev/next stepper reads the same list, which is
 # why there is one number and not two: a failure past the cap is one neither surface reaches,
-# rather than one the stepper steps to and the list denies.
-ERRORS = Bound(default=queries.PAGE_ERRORS, ceiling=queries.PAGE_ERRORS)
-
-# How much of a string one row of the pane's children log carries. Not a size a URL names —
-# a reader picks the next node out of a log rather than reading one — so it is the arithmetic's
-# multiplicand rather than a knob. Declared with the parameter it binds (`analyze/queries.py`).
-LOG_CHARS = queries.LOG_CHARS
+# rather than one the stepper steps to and the list denies. The busiest session read so far
+# failed 43 calls (`reports/2026_08_07_mycelia_agent_friction.md`), so this is headroom over what
+# the corpus records rather than a number a page has reached.
+ERRORS = Bound(default=100, ceiling=100)
 
 # How deep a chain the NavTree will open, the selection counted. A session's nesting is a
 # transcript's, and a transcript can nest as far as an agent spawns: the corpus reaches five,
@@ -141,11 +143,11 @@ INDENT_CHARS = 20_000
 # neither of those is counted in bytes. So a multibyte value under this ceiling is marked up
 # even where its bytes run past it, which is deliberate: the cost follows the tokens.
 HIGHLIGHT_CHARS = 256_000
-# What one row of the NavTree may weigh, whole: its markup, a title of `queries.NAV_CHARS`
-# characters that each escape to five bytes, and the knobs every link repeats. The NavTree is
-# what multiplies — `1 + DEPTH * (KIN + 1)` rows spend this 3,217 times, four fifths of the
-# ceiling — so it is a price to defend rather than a knob to turn: a row that grows past it
-# is a page over the bound, and the answer is a slimmer row.
+# What one row of the NavTree may weigh, whole: its markup, a title of
+# `NAV_TREE_WIDTHS.nav_chars` characters that each escape to five bytes, and the knobs every
+# link repeats. The NavTree is what multiplies — `1 + DEPTH * (KIN + 1)` rows spend this 3,217
+# times, four fifths of the ceiling — so it is a price to defend rather than a knob to turn: a
+# row that grows past it is a page over the bound, and the answer is a slimmer row.
 #
 # Measured through the app rather than budgeted, at every title full of `&` and the longest
 # query string a link can carry (`tests/view/test_bounds__node.py`). Pinned at exactly what it
@@ -182,3 +184,219 @@ HIGHLIGHT_CHARS = 256_000
 # gone. The markup a reader gets is the same one — what left the row is whitespace
 # (`src/hyphae/view/pages/node/markup/nav_tree.py`).
 NAV_TREE_ROW_BYTES = 1703
+
+
+# What each surface prints at. A surface is one place a page shows store text at widths of its
+# own — the NavTree, a node's header, a children log, an expansion, a popover, a list row — and
+# a profile is one field per query parameter that surface binds, named for the parameter. A read
+# names its surface and `view/store.py:bound` fills the mapping from it, so the pairing of
+# parameter to width is stated once here instead of in every line that reads.
+#
+# No field takes a default: a surface that binds a parameter says what it binds it at, and a read
+# that wants another width names another surface. The field order is the order the citation under
+# the page prints these bindings in, after the keys the read is about.
+
+
+class NavTree(NamedTuple):
+    """The left column: every row's title, a compaction's trigger, and the timeline behind."""
+
+    nav_chars: int
+    chip_chars: int
+    # The timeline the NavTree places its rows from, which it reads for counts and an order
+    # rather than for the strings a log row prints — so it cuts them where a row would.
+    log_chars: int
+
+
+class Header(NamedTuple):
+    """The pane's header: every string a node's own row carries, and its two lists."""
+
+    head_chars: int
+    item_chars: int
+    head_items: int
+    # A compaction's trigger, when the compaction is the node.
+    chip_chars: int
+
+
+class Log(NamedTuple):
+    """One row of the pane's children log: a line of a table, wider than a NavTree row."""
+
+    log_chars: int
+    chip_chars: int
+
+
+class Expansion(NamedTuple):
+    """A child's body opened in place, from a log row's View button."""
+
+    head_chars: int
+    # A body renders facts and no fat value, so the columns a pane would preview are read at
+    # the width the title is cut from rather than at the reader's `?detail=`.
+    detail_chars: int
+
+
+class Popover(NamedTuple):
+    """The numbers behind one NavTree row, and the words naming what they were spent on."""
+
+    model_chars: int
+    chip_chars: int
+    item_chars: int
+    head_items: int
+
+
+class SessionList(NamedTuple):
+    """A row of the session list, and the filter suggestions above it."""
+
+    head_chars: int
+    item_chars: int
+    head_items: int
+    tag_chars: int
+    kind_chars: int
+    head_kinds: int
+    head_projects: int
+
+
+class Projects(NamedTuple):
+    """The landing page: one row per project, ranked by what it was doing lately."""
+
+    recent_days: int
+    window_days: int
+    head_chars: int
+    projects: int
+
+
+class Errors(NamedTuple):
+    """One session's failed tool calls. Each row leads to a node, so it is titled as one."""
+
+    nav_chars: int
+    errors: int
+
+
+class Records(NamedTuple):
+    """The records browser, whose row is a preview of the record it opens."""
+
+    preview_chars: int
+
+
+class Enrichment(NamedTuple):
+    """What a pass wrote about a node, in the block a page fetches under the title."""
+
+    description_chars: int
+    tag_chars: int
+    head_chars: int
+
+
+# Every surface, for the one seam that binds a read. A union rather than a base class: a
+# `NamedTuple` cannot inherit fields, and what a reader wants from this name is the list.
+Widths = (
+    NavTree
+    | Header
+    | Log
+    | Expansion
+    | Popover
+    | SessionList
+    | Projects
+    | Errors
+    | Records
+    | Enrichment
+)
+
+# How much of a title a NavTree row carries — a turn's, a run's, an api call's. What a row *can*
+# say rather than what fits: the NavTree is draggable (`view/static/nav-tree-width.js`), and at 48
+# a reader who widened it got more whitespace and no more of the title, because the cut had
+# already happened in SQL. CSS clamps the line to one with an ellipsis, so this is the reach of a
+# drag and not a wrap. It prices every row of the NavTree (`NAV_TREE_ROW_BYTES`), and the errors
+# page reads at it too: each of its rows leads to a node, so it is titled as the NavTree titles
+# one.
+_NAV_CHARS = 110
+NAV_TREE_WIDTHS = NavTree(nav_chars=_NAV_CHARS, chip_chars=_NAV_CHARS, log_chars=_NAV_CHARS)
+
+# What a header shows of each string it carries, of each member of the two lists a session's
+# carries, and how many members of a list it shows before it says how many it left. A header is
+# the part of a page no size a reader types bounds, so these are what the ceiling budgets it: 100
+# covers the longest title the canonical store holds (81) and 60 a PR url (51), while the lists
+# grow with the session — one has recorded 32 PR links. A run header carries one string of its
+# own, the line the run was spawned with, and takes the same head. An expansion is a header with
+# no fat value under it, and the popover's own lists are the header's read again.
+_HEADER_CHARS = 100
+_HEADER_ITEM_CHARS = 60
+_HEADER_ITEMS = 5
+HEADER_WIDTHS = Header(
+    head_chars=_HEADER_CHARS,
+    item_chars=_HEADER_ITEM_CHARS,
+    head_items=_HEADER_ITEMS,
+    chip_chars=_HEADER_CHARS,
+)
+LOG_WIDTHS = Log(log_chars=queries.LOG_CHARS, chip_chars=queries.LOG_CHARS)
+EXPANSION_WIDTHS = Expansion(head_chars=_HEADER_CHARS, detail_chars=_HEADER_CHARS)
+POPOVER_WIDTHS = Popover(
+    # How much of a model name the popover prints, and the width its per-model token groups are
+    # keyed at. Wide enough that nothing our price table names is cut — the longest key is 24
+    # characters — because a group keyed on a cut name is a group nothing can price.
+    model_chars=60,
+    # How much of an agent run's three display columns a chip carries, and of a compaction's
+    # trigger. The corpus maxima are 60, 22 and 15 characters, but a maximum is an observation: a
+    # page whose size is arithmetic needs the number bound, not noticed.
+    chip_chars=60,
+    item_chars=_HEADER_ITEM_CHARS,
+    head_items=_HEADER_ITEMS,
+)
+
+# What one row of the session list shows of each long string, which the viewer composes rather
+# than the query (`view/store.py:SHOWN`): the list's filters read the whole values. 100 covers the
+# longest title the canonical store holds (81) and its longest project path (58). The landing
+# page ranks paths at the same width, one row per project rather than per session.
+_LIST_CHARS = 100
+# How much of a taxonomy value one tag carries. The taxonomy is closed and its longest member is
+# 9 characters, but a page whose size is arithmetic needs the number bound rather than noticed. A
+# session list row prints the same values twice — the tags a pass gave the session, and the kinds
+# of work its turns were.
+_TAG_CHARS = 20
+LIST_WIDTHS = SessionList(
+    head_chars=_LIST_CHARS,
+    # 4 skills of 20 cover the busiest session recorded, whose longest skill name is 18. A skill
+    # name is not a PR url, which is why the header's 60 does not carry over — the list
+    # multiplies its row by the page.
+    item_chars=20,
+    head_items=4,
+    tag_chars=_TAG_CHARS,
+    kind_chars=_TAG_CHARS,
+    # How many kinds of work one row names before it says how many it left: the categories a pass
+    # described that session's turns as. Fewer than the lists above, because the taxonomy is
+    # closed and small — three names say what a session spent its time on, and a fourth is noise.
+    head_kinds=3,
+    # How many projects the filter box suggests. The suggestions grow with the corpus the way the
+    # rows do, so the box is bound too. A path is offered whole or left out: a suggestion cut to
+    # its head filters to nothing.
+    head_projects=10,
+)
+PROJECTS_WIDTHS = Projects(
+    # The two trailing windows the landing page counts a project in, beside its whole history: a
+    # week and a month. Not the `WINDOW_DAYS` a report's counts are quoted in, which is four weeks
+    # long so that a weekly rhythm cannot bias them; these are what a reader scanning for what is
+    # running lately means, and the page heads its columns from them.
+    recent_days=7,
+    window_days=30,
+    head_chars=_LIST_CHARS,
+    projects=PROJECTS.default,
+)
+ERRORS_WIDTHS = Errors(nav_chars=_NAV_CHARS, errors=ERRORS.default)
+RECORDS_WIDTHS = Records(
+    # How much of a raw record one browser row shows. Long enough to tell a `user` record from an
+    # `assistant` one and to recognise a line already read; short enough that a hundred of them is
+    # a page rather than a transcript.
+    preview_chars=160
+)
+ENRICHMENT_WIDTHS = Enrichment(
+    # How much of a model-written description or friction line a page shows. A description is
+    # only as short as the schema the model answered under asked for.
+    description_chars=200,
+    tag_chars=_TAG_CHARS,
+    head_chars=_HEADER_CHARS,
+)
+
+# How much of a title one crumb of a crumb chain carries — the one width no surface declares,
+# because no query binds it: a crumb is a node the NavTree already fetched, so this cuts what
+# that width brought back. A chain is up to sixteen links laid across one line above the pane
+# (`DEPTH`), so a crumb is a place to click and not a place to read: what it owes the reader is
+# which node this is, and the node itself is open underneath. Narrow enough that a chain of long
+# titles still fits the line, wide enough that a path or a prompt says which one.
+CRUMB_CHARS = 40

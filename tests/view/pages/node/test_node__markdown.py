@@ -15,7 +15,7 @@ import duckdb
 from fastapi.testclient import TestClient
 from markupsafe import escape
 
-from hyphae.analyze import queries
+from hyphae.view import bounds
 from hyphae.view.app import build_app
 from hyphae.view.nodes import LEAD_SEPARATOR
 from hyphae.view.text.format import ELLIPSIS
@@ -164,7 +164,7 @@ def test_a_row_that_spent_none_of_its_width_still_says_the_query_cut_the_line(
     row = plain(marked_up(page, "data-nav-tree", turn, "title"))
     # Half a row wide and still marked: the syntax the rest of the prompt was written in is
     # what the query's cut spent, and only the query knows it spent it.
-    assert len(row) < queries.NAV_CHARS // 2
+    assert len(row) < bounds.NAV_TREE_WIDTHS.nav_chars // 2
     assert row.endswith(ELLIPSIS)
 
     # A description is cut by `view_enrichment` at a width of its own, wider than any row —
@@ -188,7 +188,9 @@ def test_a_row_that_spent_none_of_its_width_still_says_the_query_cut_the_line(
     # words fill the cap exactly is marked the moment the lead is counted against it. A tool
     # the registry does not name leads with the tool's own name, which is what plants one here.
     words = "**ab** " * 15 + "cdefg"
-    assert len(words) == queries.NAV_CHARS, "the plant is the widest uncut string there is"
+    assert len(words) == bounds.NAV_TREE_WIDTHS.nav_chars, (
+        "the plant is the widest uncut string there is"
+    )
     told, thread, tool_id = one(
         store,
         'SELECT session_id, source, id FROM live_tool_calls ORDER BY session_id, source, "index"'

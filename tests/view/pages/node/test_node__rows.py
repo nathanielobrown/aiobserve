@@ -12,7 +12,7 @@ import re
 import duckdb
 from fastapi.testclient import TestClient
 
-from hyphae.analyze import queries
+from hyphae.view import bounds
 from hyphae.view.app import build_app
 from hyphae.view.text.format import ELLIPSIS
 from tests.conftest import (
@@ -289,8 +289,8 @@ def test_a_call_row_says_what_the_call_said_and_which_tools_it_called(
     # Both are cut to the column's width and marked where they were cut, like every other
     # string a row of a hundred prints: a call that talked for a page and called forty tools
     # is a row, not a page of one.
-    long_said = "s" * (queries.LOG_CHARS + 40)
-    long_path = f"src/hyphae/{'v' * queries.LOG_CHARS}.sql"
+    long_said = "s" * (bounds.LOG_WIDTHS.log_chars + 40)
+    long_path = f"src/hyphae/{'v' * bounds.LOG_WIDTHS.log_chars}.sql"
     reach = plant(
         ("UPDATE sessions SET project_dir = ? WHERE id = ?", [project, session_id]),
         ("UPDATE api_calls SET text = ? WHERE id = ?", [long_said, call_id]),
@@ -302,8 +302,8 @@ def test_a_call_row_says_what_the_call_said_and_which_tools_it_called(
     with TestClient(build_app(reach)) as planted:
         wide = planted.get(f"/session/{session_id}/thread/{source}/turn/{turn_id}").text
     cut = fields(wide, "data-child", f"call:{call_id}")
-    assert cut["text"] == long_said[: queries.LOG_CHARS] + ELLIPSIS
-    assert cut["tool_titles"] == f"📖 {long_path}"[: queries.LOG_CHARS] + ELLIPSIS
+    assert cut["text"] == long_said[: bounds.LOG_WIDTHS.log_chars] + ELLIPSIS
+    assert cut["tool_titles"] == f"📖 {long_path}"[: bounds.LOG_WIDTHS.log_chars] + ELLIPSIS
 
     # A call that answered with tool calls and no text prints nothing rather than the dash a
     # missing value takes: `api_calls.text` is NOT NULL, so a call that said nothing holds the

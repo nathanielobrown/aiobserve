@@ -17,7 +17,6 @@ import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
-from hyphae.analyze import queries
 from hyphae.projects import project_predicate
 from hyphae.view import bounds
 from hyphae.view.app import build_app
@@ -263,17 +262,17 @@ def test_a_project_path_too_long_to_link_is_marked_where_it_was_cut(plant: Plant
     """
     # One character past what the page shows, under no root the corpus recorded, so the fold
     # leaves it standing as its own row rather than folding it into a shorter directory.
-    long_path = "/" + "n" * queries.LIST_CHARS
+    long_path = "/" + "n" * bounds.PROJECTS_WIDTHS.head_chars
     path = plant(("UPDATE sessions SET project_dir = ? WHERE id = ?", [long_path, SPINE]))
     with TestClient(build_app(path)) as planted:
         landing, listed = planted.get("/").text, planted.get("/sessions").text
     # The row is keyed by what the query returned, which is the head plus the one character
     # that says there is more...
-    key = long_path[: queries.LIST_CHARS + 1]
+    key = long_path[: bounds.PROJECTS_WIDTHS.head_chars + 1]
     assert key in values(landing, "data-project")
     # ...and the cell prints the head with the mark in that character's place.
     assert fields(landing, "data-project", key)["project_dir"] == (
-        "/" + "n" * (queries.LIST_CHARS - 1) + ELLIPSIS
+        "/" + "n" * (bounds.PROJECTS_WIDTHS.head_chars - 1) + ELLIPSIS
     )
     # Nothing on the row offers the whole path: no link out of the cell, and no suggestion in
     # the filter box, which is why the mark is the only thing that can say the path goes on.

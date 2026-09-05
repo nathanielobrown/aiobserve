@@ -4,6 +4,9 @@ Three shapes, because three kinds of node are measured three ways. A node made o
 has a window and a price; a tool call has neither — its tokens are its api call's — and reports
 the size of what it gave back; a compaction has no calls at all and reports the window it
 dropped. Each arrives as one element htmx swaps under the row that asked (`docs/viewer.md`).
+
+Every shape a component here takes is declared here, filled a layer up: what the popover
+prints of the window, and the priced lines under it (`view/pages/node/numbers.py`).
 """
 
 from collections.abc import Sequence
@@ -12,7 +15,6 @@ from typing import NamedTuple
 import htpy
 
 from hyphae.view.components import Html, parts
-from hyphae.view.pages.node.numbers import Breakout, Charge
 from hyphae.view.text import format as fmt
 
 
@@ -26,6 +28,37 @@ class Window(NamedTuple):
     cost_usd: float | None
     api_calls: int | None
     unpriced_api_calls: int | None
+
+
+class Charge(NamedTuple):
+    """One line of the charges column: a count of tokens, and what those tokens cost."""
+
+    # What the popover calls the line, and the fields its two numbers are labelled with.
+    label: str
+    field: str
+    cost_field: str
+    tokens: int | None
+    # None where our price table holds no rate for the model the node answered on. The count
+    # beside it still prints: a reading we have no price for is not a reading we do not have.
+    cost: float | None
+    # The step class the dollar's ground is drawn at — the badge's own, so the popover and the
+    # row it opened from wash one number the same way.
+    wash: str
+
+
+class Breakout(NamedTuple):
+    """The two lines under the total, on a node with agent runs hanging below it.
+
+    What the node's own thread spent is the column above; this is what the runs it asked for
+    spent, and the two together. Absent where no run hangs there — see `numbers.breakout`.
+    """
+
+    # What the runs below the node spent, and what that is with the node's own added back.
+    subagents: float
+    total: float
+    # The ground each is drawn on, the badge's own, as every other dollar here takes it.
+    subagents_wash: str
+    total_wash: str
 
 
 class Tool(NamedTuple):

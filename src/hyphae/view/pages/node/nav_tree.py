@@ -21,7 +21,6 @@ from typing import NamedTuple
 
 import duckdb
 
-from hyphae.analyze import queries
 from hyphae.analyze.queries import ParamValue
 from hyphae.model import MAIN_SOURCE
 from hyphae.view import bounds
@@ -45,7 +44,7 @@ from hyphae.view.nodes import (
 )
 from hyphae.view.pages.node.levels import Levels
 from hyphae.view.pages.node.markup.nav_tree import NavTreeRow
-from hyphae.view.store import TURN_CURSOR, Library, Page, Row
+from hyphae.view.store import TURN_CURSOR, Library, Page, Row, bound
 
 
 @dataclass(frozen=True)
@@ -185,11 +184,17 @@ def home(source: str, turn_id: str | None) -> Ref:
 
 
 def _timeline(session_id: str, source: str) -> tuple[Library, dict[str, ParamValue]]:
-    """Which timeline answers for a thread, and what it binds: `main` has one of its own."""
-    bound: dict[str, ParamValue] = {"session_id": session_id, "log_chars": queries.LOG_CHARS}
+    """Which timeline answers for a thread, and what it binds: `main` has one of its own.
+
+    Read at a NavTree row's width, not a log's: what the NavTree takes from a timeline is the
+    thread's buckets, and a bucket row is titled the way every other row of the tree is. The
+    pane's children log reads the same query at its own width (`routes/pages.py`).
+    """
     if source == MAIN_SOURCE:
-        return Page.TIMELINE, bound
-    return Page.RUN_TIMELINE, bound | {"source": source}
+        return Page.TIMELINE, bound(Page.TIMELINE, bounds.NAV_TREE_WIDTHS, session_id=session_id)
+    return Page.RUN_TIMELINE, bound(
+        Page.RUN_TIMELINE, bounds.NAV_TREE_WIDTHS, session_id=session_id, source=source
+    )
 
 
 def unattributed(
@@ -200,11 +205,11 @@ def unattributed(
     None where every call on the thread answers a turn — and where the thread is not one this
     session holds, which is the same answer: there is no bucket at that URL either way.
     """
-    timeline, bound = _timeline(corpus.session_id, source)
+    timeline, binds = _timeline(corpus.session_id, source)
     rows = corpus.levels.cursorless(
-        connection, timeline, TURN_CURSOR, bounds.CURSORLESS_TURNS, **bound
+        connection, timeline, TURN_CURSOR, bounds.CURSORLESS_TURNS, **binds
     )
-    return Standing(rows[0], (timeline, bound)) if rows else None
+    return Standing(rows[0], (timeline, binds)) if rows else None
 
 
 def _thread_level(
@@ -219,15 +224,15 @@ def _thread_level(
     """
     # One mapping per query, because the two take different widths — and the mapping a query
     # runs under is the mapping it is cited by, so a reader re-running the line gets this page.
-    keyed: dict[str, ParamValue] = {"session_id": corpus.session_id, "source": source}
-    listed = keyed | {"nav_chars": queries.NAV_CHARS}
-    chipped = keyed | {"chip_chars": queries.NAV_CHARS}
+    keys = {"session_id": corpus.session_id, "source": source}
+    listed = bound(Page.NAV_TREE_TURNS, bounds.NAV_TREE_WIDTHS, **keys)
+    chipped = bound(Page.COMPACTIONS, bounds.NAV_TREE_WIDTHS, **keys)
     turns = corpus.levels.rows(connection, Page.NAV_TREE_TURNS, **listed)
     marks = corpus.levels.rows(connection, Page.COMPACTIONS, **chipped)
     # The thread's calls that answer no turn, as one group — the bucket's own row, read the
     # same way the bucket's own page reads it.
     standing = unattributed(connection, corpus, source)
-    timeline, bound = _timeline(corpus.session_id, source)
+    timeline, binds = _timeline(corpus.session_id, source)
     placed = _interleave(
         [
             (
@@ -255,7 +260,7 @@ def _thread_level(
         if loose_runs:
             placed.append(unattached_node(corpus.session_id, loose_runs, corpus.held))
     return Level(
-        placed, [(Page.NAV_TREE_TURNS, listed), (Page.COMPACTIONS, chipped), (timeline, bound)]
+        placed, [(Page.NAV_TREE_TURNS, listed), (Page.COMPACTIONS, chipped), (timeline, binds)]
     )
 
 
@@ -292,11 +297,9 @@ def _marks(
     """
     if turn_id is None:
         return [], []
-    keyed: dict[str, ParamValue] = {
-        "session_id": corpus.session_id,
-        "source": source,
-        "chip_chars": queries.NAV_CHARS,
-    }
+    keyed = bound(
+        Page.COMPACTIONS, bounds.NAV_TREE_WIDTHS, session_id=corpus.session_id, source=source
+    )
     rows = corpus.levels.rows(connection, Page.COMPACTIONS, **keyed)
     return [
         (compaction_node(corpus.session_id, source, row), row["timestamp"])
@@ -376,9 +379,14 @@ def _calls_level(
     under the tool call that spawned it, two levels down, and `spread` is what stands it
     against a shut row.
     """
-    keyed: dict[str, ParamValue] = {"session_id": corpus.session_id, "source": source}
-    bound = keyed | {"turn_id": turn_id, "nav_chars": queries.NAV_CHARS}
-    calls = corpus.levels.rows(connection, Page.NAV_TREE_CALLS, **bound)
+    keyed = bound(
+        Page.NAV_TREE_CALLS,
+        bounds.NAV_TREE_WIDTHS,
+        session_id=corpus.session_id,
+        source=source,
+        turn_id=turn_id,
+    )
+    calls = corpus.levels.rows(connection, Page.NAV_TREE_CALLS, **keyed)
     marks, mark_ran = _marks(connection, corpus, source, turn_id)
     level = _interleave(
         [
@@ -387,7 +395,7 @@ def _calls_level(
         ],
         marks,
     )
-    return Level(level, [(Page.NAV_TREE_CALLS, bound), *mark_ran])
+    return Level(level, [(Page.NAV_TREE_CALLS, keyed), *mark_ran])
 
 
 def _tools_level(
@@ -403,14 +411,15 @@ def _tools_level(
     under the turn in call-then-tool order and the turn's compactions interleave by time. A
     call's own level holds no compaction, because that hangs off the turn.
     """
-    bound: dict[str, ParamValue] = {
-        "session_id": corpus.session_id,
-        "source": source,
-        "api_call_id": api_call_id,
-        "turn_id": turn_id,
-        "nav_chars": queries.NAV_CHARS,
-    }
-    rows = corpus.levels.rows(connection, Page.NAV_TREE_TOOLS, **bound)
+    keyed = bound(
+        Page.NAV_TREE_TOOLS,
+        bounds.NAV_TREE_WIDTHS,
+        session_id=corpus.session_id,
+        source=source,
+        api_call_id=api_call_id,
+        turn_id=turn_id,
+    )
+    rows = corpus.levels.rows(connection, Page.NAV_TREE_TOOLS, **keyed)
     under = None if api_call_id is not None else turn_id
     marks, mark_ran = _marks(connection, corpus, source, under)
     level = _interleave(
@@ -420,7 +429,7 @@ def _tools_level(
         ],
         marks,
     )
-    return Level(level, [(Page.NAV_TREE_TOOLS, bound), *mark_ran])
+    return Level(level, [(Page.NAV_TREE_TOOLS, keyed), *mark_ran])
 
 
 def _unattached_level(connection: duckdb.DuckDBPyConnection, corpus: Corpus, at: Ref) -> Level:

@@ -10,7 +10,7 @@ leaves own what is true of a run whichever tree it appears in.
 import duckdb
 from fastapi.testclient import TestClient
 
-from hyphae.analyze import queries
+from hyphae.view import bounds
 from hyphae.view.app import build_app
 from tests.conftest import (
     BYREF_FORK,
@@ -227,6 +227,6 @@ def test_the_run_page_cites_the_two_queries_that_read_its_thread(client: TestCli
         " head_chars=100 detail_chars=4000"
     )
     assert citations["run_timeline"] == (
-        f"-- queries/run_timeline.sql session_id={SPINE} log_chars={queries.LOG_CHARS}"
-        f" source={SPINE_RUN}"
+        f"-- queries/run_timeline.sql session_id={SPINE} source={SPINE_RUN}"
+        f" log_chars={bounds.NAV_TREE_WIDTHS.log_chars}"
     )

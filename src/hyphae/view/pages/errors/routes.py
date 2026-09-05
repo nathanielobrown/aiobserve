@@ -7,13 +7,13 @@ a session's failures are scattered across every thread it ran (`docs/viewer.md`)
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
-from hyphae.view import failures
+from hyphae.view import bounds, failures
 from hyphae.view.citation import cited
 from hyphae.view.deps import ViewerDep
 from hyphae.view.pages.errors import markup
 from hyphae.view.store import (
     Page,
-    header_bound,
+    bound,
     open_store,
     page_rows,
 )
@@ -36,7 +36,11 @@ def errors_page(session_id: str, viewer: ViewerDep) -> Response:
         # nothing at this URL, and not the same nothing. The header is read only when
         # there is a 404 to word, so the page a reader actually opens runs one query.
         held = bool(failed.listed) or bool(
-            page_rows(connection, Page.SESSION_HEADER, **header_bound(session_id))
+            page_rows(
+                connection,
+                Page.SESSION_HEADER,
+                **bound(Page.SESSION_HEADER, bounds.HEADER_WIDTHS, session_id=session_id),
+            )
         )
     if not failed.listed:
         raise HTTPException(

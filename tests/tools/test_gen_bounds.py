@@ -125,3 +125,27 @@ def test_a_preset_with_no_words_crashes_the_generator(monkeypatch: pytest.Monkey
 def test_the_table_ends_without_its_own_newline(table: gen_bounds.Table) -> None:
     # `main()` prints, and the cog splice owns the framing newline.
     assert not gen_bounds.generate(table).endswith("\n")
+
+
+def test_a_width_is_cited_through_the_surface_that_declares_it() -> None:
+    # A surface is a `NamedTuple`, which is neither a `Bound` nor a number, so the ratchet above
+    # looked straight past one: a table could have cited a width off `analyze/queries.py`, or a
+    # surface could have been added, with nothing red. `valued` reads a width off the surface
+    # instead, and refuses to stand for a surface whole — a table prints one number per cell.
+    assert gen_bounds.valued("bounds.LIST_WIDTHS.head_chars") == bounds.LIST_WIDTHS.head_chars
+    with pytest.raises(ValueError, match="cite one of its widths, head_chars"):
+        gen_bounds.valued("bounds.LIST_WIDTHS.head_charrs")
+    with pytest.raises(ValueError, match="cite one of its widths"):
+        gen_bounds.valued("bounds.LIST_WIDTHS")
+
+
+def test_a_surface_re_cut_to_another_width_changes_the_table_that_prints_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # And what that citation buys: the table is spliced into `docs/viewer-bounds.md`, so a
+    # surface re-cut to a different width leaves the document quoting a number the viewer no
+    # longer runs — and `mise run cogs-check` reds on the splice before a reader reads it.
+    before = gen_bounds.generate(gen_bounds.Table.BOUNDS)
+    narrower = bounds.LIST_WIDTHS._replace(head_chars=bounds.LIST_WIDTHS.head_chars - 1)
+    monkeypatch.setattr(bounds, "LIST_WIDTHS", narrower)
+    assert gen_bounds.generate(gen_bounds.Table.BOUNDS) != before

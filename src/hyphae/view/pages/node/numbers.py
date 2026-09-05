@@ -19,46 +19,34 @@ from typing import NamedTuple
 
 from hyphae.extract.pricing import CostSplit, TokenUsage, split_cost
 from hyphae.view.nodes import COST_PLACES, meter
-from hyphae.view.store import Row
+from hyphae.view.pages.node.markup import numbers as markup
+from hyphae.view.text.labels import label
 
 
-class Charge(NamedTuple):
-    """One line of the popover: a count of tokens, and what those tokens cost."""
+class Numbers(NamedTuple):
+    """One node's popover, read off the row `view_numbers` answered.
 
-    # What the popover calls the line, and the fields its two numbers are labelled with.
-    label: str
-    field: str
-    cost_field: str
-    tokens: int | None
-    # None where our price table holds no rate for the model the node answered on. The count
-    # beside it still prints: a reading we have no price for is not a reading we do not have.
-    cost: float | None
-    # The step class the dollar's ground is drawn at — the badge's own, so the popover and the
-    # row it opened from wash one number the same way.
-    wash: str
-
-
-# What the popover calls each line, beside the name its two numbers are labelled with: the
-# store's own column less its `_tokens`, and that same name under a `cost_` for the dollar.
-_LINES = (("cache read", "cached"), ("new input", "new_input"), ("output", "output"))
-
-
-class Breakout(NamedTuple):
-    """The two lines under the total, on a node with agent runs hanging below it.
-
-    What the node's own thread spent is the column above; this is what the runs it asked for
-    spent, and the two together. Absent where no run hangs there — see `breakout`.
+    The counts are the node's last answering call and come to the window above them; the
+    dollars are every call it made. Filled in `view/pages/node/reads.py`, which is where the
+    row stops being a bag of columns.
     """
 
-    # What the runs below the node spent, and what that is with the node's own added back.
-    subagents: float
-    total: float
-    # The ground each is drawn on, the badge's own, as every other dollar here takes it.
-    subagents_wash: str
-    total_wash: str
+    # What the popover prints of the window, which the component takes whole.
+    window: markup.Window
+    # The three counts the charge lines stand on, named for the store columns they sum.
+    cache_read_tokens: int | None
+    new_input_tokens: int | None
+    output_tokens: int | None
+    # What the node's own calls cost, what the runs below it cost, and what the whole session
+    # cost — the last being the share every dollar here is washed against.
+    cost_usd: float | None
+    subtree_usd: float | None
+    session_usd: float | None
+    # One (model, usage) pair per group the query summed, for `spend` to price.
+    spent: tuple[tuple[str, TokenUsage], ...]
 
 
-def breakout(own: float | None, under: float | None, whole: float | None) -> Breakout | None:
+def breakout(own: float | None, under: float | None, whole: float | None) -> markup.Breakout | None:
     """The subagent and total lines, or None where nothing hangs under the node.
 
     None rather than a pair of zeroes: a subagent charge of nothing and a total repeating the
@@ -69,10 +57,10 @@ def breakout(own: float | None, under: float | None, whole: float | None) -> Bre
     if not under:
         return None
     total = round((own or 0) + under, COST_PLACES)
-    return Breakout(under, total, wash(under, whole), wash(total, whole))
+    return markup.Breakout(under, total, wash(under, whole), wash(total, whole))
 
 
-def charges(row: Row, split: CostSplit | None, whole: float | None) -> list[Charge]:
+def charges(read: Numbers, split: CostSplit | None, whole: float | None) -> list[markup.Charge]:
     """The three lines the popover prints between the window and the total.
 
     The counts come off the node's last answering call and add up to the window it left; the
@@ -80,15 +68,41 @@ def charges(row: Row, split: CostSplit | None, whole: float | None) -> list[Char
     wrote rides on the new-input line rather than on one of its own, because that is where its
     tokens are counted (`view_numbers.sql`) — a fourth dollar would leave a column of charges
     coming to nothing the reader can see.
+
+    Each line is written out, and each takes the label registry's word for the column it
+    counts: a line composed out of the column name would be a second vocabulary, and a word
+    the registry cannot see is a word `tests/view/test_app__headers.py` cannot close over.
     """
-    priced: tuple[float | None, ...] = (
+    cache_read, new_input, output = (
         (split.cache_read, split.input + split.cache_write, split.output)
         if split is not None
         else (None, None, None)
     )
     return [
-        Charge(label, field, f"cost_{field}", row[f"{field}_tokens"], cost, wash(cost, whole))
-        for (label, field), cost in zip(_LINES, priced, strict=True)
+        markup.Charge(
+            label=label("cache_read_tokens"),
+            field="cache_read_tokens",
+            cost_field="cache_read_usd",
+            tokens=read.cache_read_tokens,
+            cost=cache_read,
+            wash=wash(cache_read, whole),
+        ),
+        markup.Charge(
+            label=label("new_input_tokens"),
+            field="new_input_tokens",
+            cost_field="new_input_usd",
+            tokens=read.new_input_tokens,
+            cost=new_input,
+            wash=wash(new_input, whole),
+        ),
+        markup.Charge(
+            label=label("output_tokens"),
+            field="output_tokens",
+            cost_field="output_usd",
+            tokens=read.output_tokens,
+            cost=output,
+            wash=wash(output, whole),
+        ),
     ]
 
 
@@ -102,35 +116,16 @@ def wash(cost: float | None, whole: float | None) -> str:
     return meter(cost / whole if cost and whole else None)
 
 
-def spend(groups: Sequence[Row]) -> CostSplit | None:
+def spend(spent: Sequence[tuple[str, TokenUsage]]) -> CostSplit | None:
     """The four charges a node's tokens come to, or None where nothing in it could be priced.
 
-    `groups` is `view_numbers.sql`'s `spent` — one member per model, with that model's tokens
-    summed. A group our price table lacks is left out rather than counted as zero, which is
-    the same nothing the badge above prints: the popover says how many calls went unpriced.
+    `spent` is `Numbers.spent` — one pair per model, with that model's tokens summed. A group
+    our price table lacks is left out rather than counted as zero, which is the same nothing
+    the badge above prints: the popover says how many calls went unpriced.
     """
     priced = [
-        charged
-        for group in groups
-        if (charged := split_cost(group["model"], _usage(group))) is not None
+        charged for model, usage in spent if (charged := split_cost(model, usage)) is not None
     ]
     if not priced:
         return None
     return CostSplit(*(sum(parts) for parts in zip(*priced, strict=True)))
-
-
-def _usage(group: Row) -> TokenUsage:
-    """One model's summed tokens as the price table takes them.
-
-    The TTL split is summed per call in SQL, under the same fallback `pricing.py` applies to
-    one — a call that reported no split puts its whole write on the 5-minute rate — so the
-    group carries a split whether or not every call in it did.
-    """
-    return TokenUsage(
-        input=group["input_tokens"],
-        output=group["output_tokens"],
-        cache_read=group["cache_read_tokens"],
-        cache_creation=group["cache_creation_tokens"],
-        cache_5m=group["cache_5m_tokens"],
-        cache_1h=group["cache_1h_tokens"],
-    )

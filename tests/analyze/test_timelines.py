@@ -311,7 +311,7 @@ def test_view_runs_carries_what_ranking_a_session_s_runs_takes(
                 # (`view/bounds.py`) — and a caller from the command line states one. What
                 # this leaf reads back is the numbers beside the strings, at any width.
                 "--param",
-                f"chip_chars={queries.CHIP_CHARS}",
+                "chip_chars=60",
                 "--csv",
             )
         )
